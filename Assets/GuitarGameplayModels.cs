@@ -127,6 +127,7 @@ public sealed class GuitarGameplaySnapshot
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
     public float audioOffsetMs;
+    public float tabSpeedOffsetPercent;
     public bool hasBackingTrack;
     public bool isBackingTrackPlaying;
     public float backingTrackTime;

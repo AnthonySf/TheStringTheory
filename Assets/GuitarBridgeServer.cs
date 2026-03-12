@@ -205,12 +205,14 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         public string songFileName;
         public float audioOffsetMs = 0f;
+        public float tabSpeedOffsetPercent = 100f;
     }
 
     private string currentSongFileName = "song.mp3";
     private bool hasBackingTrack;
     private bool showSongSettings;
     private float audioOffsetMs;
+    private float tabSpeedOffsetPercent = 100f;
     private SongMetadata songMetadata = new SongMetadata();
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
@@ -233,7 +235,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (!isPaused)
         {
-            songTimer += Time.deltaTime * GetPlaybackSpeedScale();
+            songTimer += Time.deltaTime * GetTabPlaybackSpeedScale();
             HandleLoopPlayback();
         }
 
@@ -264,20 +266,20 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandlePauseControls()
     {
-        if (Input.GetKeyDown(KeyCode.Space))
-        {
-            isPaused = !isPaused;
-            showSongSettings = false;
-            SyncAudioToSongTimer(playImmediately: !isPaused);
-        }
-
-        if (isPaused && Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs)
+        if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
             showSongSettings = !showSongSettings;
 
         if (showSongSettings)
         {
             HandleSongSettingsControls();
             return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            isPaused = !isPaused;
+            showSongSettings = false;
+            SyncAudioToSongTimer(playImmediately: !isPaused);
         }
 
         if (!isPaused)
@@ -327,22 +329,44 @@ public class GuitarBridgeServer : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
         {
             showSongSettings = false;
+            isPaused = true;
+            SyncAudioToSongTimer(playImmediately: false);
             return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            isPaused = !isPaused;
+            SyncAudioToSongTimer(playImmediately: !isPaused);
         }
 
         if (TryReadOffsetSliderMs(out float sliderOffsetMs))
         {
             audioOffsetMs = sliderOffsetMs;
             SaveSongMetadata();
-            SyncAudioToSongTimer(playImmediately: false);
+            SyncAudioToSongTimer(playImmediately: !isPaused);
+        }
+
+        if (TryReadTabSpeedOffsetSliderPercent(out float tabSpeedOffsetSlider))
+        {
+            tabSpeedOffsetPercent = tabSpeedOffsetSlider;
+            SaveSongMetadata();
         }
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
-            showSongSettings = false;
             isPaused = false;
             SyncAudioToSongTimer(playImmediately: true);
         }
+
+        float seekDirection = 0f;
+        if (Input.GetKey(KeyCode.LeftArrow))
+            seekDirection -= 1f;
+        if (Input.GetKey(KeyCode.RightArrow))
+            seekDirection += 1f;
+
+        if (!Mathf.Approximately(seekDirection, 0f))
+            SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
     }
 
     private void HandleLoopPlayback()
@@ -452,9 +476,39 @@ public class GuitarBridgeServer : MonoBehaviour
         return true;
     }
 
+    private bool TryReadTabSpeedOffsetSliderPercent(out float tabSpeedPercent)
+    {
+        tabSpeedPercent = tabSpeedOffsetPercent;
+
+        if (!showSongSettings || renderMode != GuitarRenderMode.Tabs)
+            return false;
+
+        if (!Input.GetMouseButton(0) || Camera.main == null)
+            return false;
+
+        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 0.74f, tabZDepth - 0.35f);
+        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
+        float halfWidth = 180f;
+        float halfHeight = 26f;
+
+        Vector3 mouse = Input.mousePosition;
+        if (mouse.y < screenCenter.y - halfHeight || mouse.y > screenCenter.y + halfHeight)
+            return false;
+
+        float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
+        float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
+        tabSpeedPercent = Mathf.Lerp(50f, 150f, t);
+        return true;
+    }
+
     private float GetPlaybackSpeedScale()
     {
         return Mathf.Clamp(playbackSpeedPercent / 100f, 0.01f, 2f);
+    }
+
+    private float GetTabPlaybackSpeedScale()
+    {
+        return Mathf.Clamp(GetPlaybackSpeedScale() * (tabSpeedOffsetPercent / 100f), 0.01f, 4f);
     }
 
     private void SeekSongTime(float targetTime, bool updateSelectedMarker)
@@ -839,7 +893,7 @@ private void ParseUdpState()
 
             if (eventId <= 0 || string.IsNullOrWhiteSpace(eventCsv) || eventCsv == "--") return;
 
-            float eventAgeInSongTime = Mathf.Max(0f, eventAge) * GetPlaybackSpeedScale();
+            float eventAgeInSongTime = Mathf.Max(0f, eventAge) * GetTabPlaybackSpeedScale();
             float estimatedEventTime = Mathf.Max(0f, songTimer - eventAgeInSongTime);
             
             // Log exactly what timestamp Unity is assigning this event on the timeline
@@ -984,6 +1038,7 @@ private void ParseUdpState()
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
             audioOffsetMs = audioOffsetMs,
+            tabSpeedOffsetPercent = tabSpeedOffsetPercent,
             hasBackingTrack = hasBackingTrack,
             isBackingTrackPlaying = backingTrackSource != null && backingTrackSource.isPlaying,
             backingTrackTime = backingTrackSource != null ? backingTrackSource.time : 0f
@@ -1019,6 +1074,7 @@ private void ParseUdpState()
             $"LOOP: <color=yellow>{loopTxt}</color> Marker:{selectedLoopMarker}\n" +
             $"SPEED: <color=white>{playbackSpeedPercent:F0}%</color>\n" +
             $"AUDIO: <color=white>{(isLoadingBackingTrack ? "LOADING" : (hasBackingTrack ? "READY" : "MISSING"))}</color>  OFFSET:<color=cyan>{audioOffsetMs:F0}ms</color>\n" +
+            $"TAB SPEED OFFSET: <color=cyan>{tabSpeedOffsetPercent:F0}%</color>\n" +
             $"AUDIO SRC: <color=grey>{(string.IsNullOrEmpty(backingTrackLoadError) ? currentSongFileName : backingTrackLoadError)}</color>";
     }
 
@@ -1041,6 +1097,7 @@ private void ParseUdpState()
         selectedLoopMarker = 1;
         playbackSpeedPercent = 100f;
         showSongSettings = false;
+        tabSpeedOffsetPercent = 100f;
 
         List<NoteData> loadedNotes = null;
 
@@ -1150,6 +1207,7 @@ private void ParseUdpState()
 
         songMetadata = LoadSongMetadata(currentSongFileName);
         audioOffsetMs = songMetadata.audioOffsetMs;
+        tabSpeedOffsetPercent = Mathf.Clamp(songMetadata.tabSpeedOffsetPercent <= 0f ? 100f : songMetadata.tabSpeedOffsetPercent, 50f, 150f);
 
         backingTrackLoadError = string.Empty;
         isLoadingBackingTrack = false;
@@ -1227,7 +1285,7 @@ private void ParseUdpState()
 
     private SongMetadata LoadSongMetadata(string songFileName)
     {
-        SongMetadata data = new SongMetadata { songFileName = songFileName, audioOffsetMs = 0f };
+        SongMetadata data = new SongMetadata { songFileName = songFileName, audioOffsetMs = 0f, tabSpeedOffsetPercent = 100f };
         string path = GetMetadataPath(songFileName);
 
         try
@@ -1259,6 +1317,7 @@ private void ParseUdpState()
 
         songMetadata.songFileName = currentSongFileName;
         songMetadata.audioOffsetMs = audioOffsetMs;
+        songMetadata.tabSpeedOffsetPercent = tabSpeedOffsetPercent;
 
         try
         {
