@@ -1047,7 +1047,7 @@ private void ParseUdpState()
     {
         float sectionDuration = GetEffectiveTabSectionDuration();
         if (sectionDuration <= 0.05f) return 0;
-        return Mathf.Max(0, Mathf.FloorToInt(time / sectionDuration));
+        return Mathf.FloorToInt(time / sectionDuration);
     }
 
     private GuitarGameplaySnapshot BuildSnapshot()
