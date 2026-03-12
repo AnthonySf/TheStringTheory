@@ -179,11 +179,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private float songTimer;
     private bool isPaused;
-    private float pauseSeekStepSeconds = 0.5f;
-    private float heldSeekBaseSpeed = 2.5f;
-    private float heldSeekMaxSpeed = 14f;
-    private float heldSeekAcceleration = 10f;
-    private float currentHeldSeekSpeed;
+    private float pauseSeekStepSeconds = 6.0f;
 
     private bool loopEnabled;
     private float loopStartTime;
@@ -241,10 +237,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private void HandlePauseControls()
     {
         if (Input.GetKeyDown(KeyCode.Space))
-        {
             isPaused = !isPaused;
-            currentHeldSeekSpeed = 0f;
-        }
 
         if (!isPaused)
             return;
@@ -274,16 +267,9 @@ public class GuitarBridgeServer : MonoBehaviour
             seekDirection += 1f;
 
         if (Mathf.Approximately(seekDirection, 0f))
-        {
-            currentHeldSeekSpeed = 0f;
             return;
-        }
 
-        currentHeldSeekSpeed = Mathf.MoveTowards(currentHeldSeekSpeed, heldSeekMaxSpeed, heldSeekAcceleration * Time.deltaTime);
-        if (currentHeldSeekSpeed < heldSeekBaseSpeed)
-            currentHeldSeekSpeed = heldSeekBaseSpeed;
-
-        SeekSongTime(songTimer + (seekDirection * currentHeldSeekSpeed * Time.deltaTime), true);
+        SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
     }
 
     private void HandleLoopPlayback()
@@ -308,10 +294,10 @@ public class GuitarBridgeServer : MonoBehaviour
         if (Camera.main == null)
             return false;
 
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.75f) - 0.48f, tabZDepth - 0.35f);
+        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 2.05f) - 0.85f, tabZDepth - 0.35f);
         Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 140f;
-        float halfHeight = 34f;
+        float halfWidth = 240f;
+        float halfHeight = 58f;
 
         Vector3 mouse = Input.mousePosition;
         return mouse.x >= screenCenter.x - halfWidth &&
@@ -878,7 +864,6 @@ private void ParseUdpState()
         latestNoteEventId = 0;
         songTimer = 0f;
         isPaused = false;
-        currentHeldSeekSpeed = 0f;
 
         loopStartTime = Mathf.Max(0.2f, tabSectionDuration * 0.40f);
         loopEndTime = Mathf.Max(loopStartTime + 0.5f, tabSectionDuration * 0.60f);

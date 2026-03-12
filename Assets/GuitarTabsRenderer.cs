@@ -287,30 +287,30 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     {
         pauseMenuRoot = new GameObject("PauseMenu");
         pauseMenuRoot.transform.SetParent(root.transform, false);
-        pauseMenuRoot.transform.position = new Vector3(owner.tabPanelCenterX, owner.TabTopPanelY + owner.tabPanelHeight * 1.75f, owner.tabZDepth - 0.35f);
+        pauseMenuRoot.transform.position = new Vector3(owner.tabPanelCenterX, owner.TabTopPanelY + owner.tabPanelHeight * 2.05f, owner.tabZDepth - 0.35f);
 
         GameObject menuBg = GameObject.CreatePrimitive(PrimitiveType.Cube);
         menuBg.name = "PauseMenuBg";
         menuBg.transform.SetParent(pauseMenuRoot.transform, false);
-        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.56f, 2.0f, 0.05f);
+        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.78f, 3.2f, 0.06f);
         menuBg.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.06f, 0.08f, 0.12f, 0.95f), 0.4f);
 
         GameObject titleObj = new GameObject("PauseTitle");
         titleObj.transform.SetParent(pauseMenuRoot.transform, false);
-        titleObj.transform.localPosition = new Vector3(0f, 0.58f, -0.05f);
+        titleObj.transform.localPosition = new Vector3(0f, 1.0f, -0.05f);
         pauseTitleText = titleObj.AddComponent<TextMeshPro>();
         pauseTitleText.text = "PAUSE";
-        pauseTitleText.fontSize = owner.tabLabelFontSize * 1.35f;
+        pauseTitleText.fontSize = owner.tabLabelFontSize * 1.9f;
         pauseTitleText.alignment = TextAlignmentOptions.Center;
         pauseTitleText.color = Color.white;
         pauseTitleText.sortingOrder = 35;
 
         GameObject helpObj = new GameObject("PauseHelp");
         helpObj.transform.SetParent(pauseMenuRoot.transform, false);
-        helpObj.transform.localPosition = new Vector3(0f, 0.08f, -0.05f);
+        helpObj.transform.localPosition = new Vector3(0f, 0.25f, -0.05f);
         pauseHelpText = helpObj.AddComponent<TextMeshPro>();
         pauseHelpText.text = "Left/Right Seek   |   1/2 Select Marker   |   Space Resume";
-        pauseHelpText.fontSize = owner.tabLabelFontSize * 0.52f;
+        pauseHelpText.fontSize = owner.tabLabelFontSize * 0.95f;
         pauseHelpText.alignment = TextAlignmentOptions.Center;
         pauseHelpText.color = new Color(0.86f, 0.89f, 0.95f);
         pauseHelpText.sortingOrder = 35;
@@ -318,14 +318,14 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         pauseLoopButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
         pauseLoopButton.name = "PauseLoopButton";
         pauseLoopButton.transform.SetParent(pauseMenuRoot.transform, false);
-        pauseLoopButton.transform.localPosition = new Vector3(0f, -0.48f, 0f);
-        pauseLoopButton.transform.localScale = new Vector3(4.3f, 0.6f, 0.08f);
+        pauseLoopButton.transform.localPosition = new Vector3(0f, -0.85f, 0f);
+        pauseLoopButton.transform.localScale = new Vector3(7.2f, 1.05f, 0.09f);
 
         GameObject loopTextObj = new GameObject("PauseLoopLabel");
         loopTextObj.transform.SetParent(pauseMenuRoot.transform, false);
-        loopTextObj.transform.localPosition = new Vector3(0f, -0.50f, -0.06f);
+        loopTextObj.transform.localPosition = new Vector3(0f, -0.89f, -0.06f);
         pauseLoopText = loopTextObj.AddComponent<TextMeshPro>();
-        pauseLoopText.fontSize = owner.tabLabelFontSize * 0.62f;
+        pauseLoopText.fontSize = owner.tabLabelFontSize * 1.1f;
         pauseLoopText.alignment = TextAlignmentOptions.Center;
         pauseLoopText.sortingOrder = 38;
 
