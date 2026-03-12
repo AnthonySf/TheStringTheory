@@ -1,0 +1,35 @@
+{
+    "version": 1,
+    "strings": [
+        {
+            "stringName": "Low E",
+            "openNote": "E2",
+            "threshold": 14.0
+        },
+        {
+            "stringName": "A",
+            "openNote": "A2",
+            "threshold": 13.0
+        },
+        {
+            "stringName": "D",
+            "openNote": "D3",
+            "threshold": 12.0
+        },
+        {
+            "stringName": "G",
+            "openNote": "G3",
+            "threshold": 11.0
+        },
+        {
+            "stringName": "B",
+            "openNote": "B3",
+            "threshold": 10.0
+        },
+        {
+            "stringName": "High E",
+            "openNote": "E4",
+            "threshold": 9.0
+        }
+    ]
+}
