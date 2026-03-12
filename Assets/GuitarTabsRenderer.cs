@@ -726,7 +726,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
     private void UpdatePanelColors(TabPanelView panel)
     {
-        if (panel == null || panel.SectionIndex < 0)
+        if (panel == null)
             return;
 
         foreach (var kv in panel.NoteViews)
@@ -760,10 +760,17 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
     private TabSectionData GetSection(int sectionIndex)
     {
-        if (!sectionByIndex.TryGetValue(sectionIndex, out TabSectionData section))
-            return null;
+        if (sectionByIndex.TryGetValue(sectionIndex, out TabSectionData section))
+            return section;
 
-        return section;
+        float sectionDuration = Mathf.Max(0.25f, owner.tabSectionDuration * Mathf.Max(0.5f, owner.tabSectionLengthMultiplier));
+        return new TabSectionData
+        {
+            index = sectionIndex,
+            startTime = sectionIndex * sectionDuration,
+            endTime = (sectionIndex + 1) * sectionDuration,
+            noteIds = new List<int>()
+        };
     }
 
     private void SetPanelWorldY(TabPanelView panel, float y)
