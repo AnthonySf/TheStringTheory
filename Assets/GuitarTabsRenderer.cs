@@ -275,8 +275,9 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         playhead.SetActive(true);
 
-        float sectionStart = topPanel.SectionIndex * owner.tabSectionDuration;
-        float localProgress = Mathf.Clamp01((snapshot.songTime - sectionStart) / Mathf.Max(0.01f, owner.tabSectionDuration));
+        float sectionDuration = Mathf.Max(0.01f, snapshot.sectionDuration);
+        float sectionStart = topPanel.SectionIndex * sectionDuration;
+        float localProgress = Mathf.Clamp01((snapshot.songTime - sectionStart) / sectionDuration);
         float x = topPanel.LeftEdge + (localProgress * topPanel.UsableWidth);
 
         playhead.transform.position = new Vector3(x, topPanel.CenterY, owner.tabZDepth + 0.10f);
@@ -287,30 +288,30 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     {
         pauseMenuRoot = new GameObject("PauseMenu");
         pauseMenuRoot.transform.SetParent(root.transform, false);
-        pauseMenuRoot.transform.position = new Vector3(owner.tabPanelCenterX, owner.TabTopPanelY + owner.tabPanelHeight * 2.05f, owner.tabZDepth - 0.35f);
+        pauseMenuRoot.transform.position = new Vector3(owner.tabPanelCenterX, owner.TabTopPanelY + owner.tabPanelHeight * 1.08f, owner.tabZDepth - 0.35f);
 
         GameObject menuBg = GameObject.CreatePrimitive(PrimitiveType.Cube);
         menuBg.name = "PauseMenuBg";
         menuBg.transform.SetParent(pauseMenuRoot.transform, false);
-        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.78f, 3.2f, 0.06f);
+        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 1.75f, 0.055f);
         menuBg.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.06f, 0.08f, 0.12f, 0.95f), 0.4f);
 
         GameObject titleObj = new GameObject("PauseTitle");
         titleObj.transform.SetParent(pauseMenuRoot.transform, false);
-        titleObj.transform.localPosition = new Vector3(0f, 1.0f, -0.05f);
+        titleObj.transform.localPosition = new Vector3(0f, 0.43f, -0.05f);
         pauseTitleText = titleObj.AddComponent<TextMeshPro>();
         pauseTitleText.text = "PAUSE";
-        pauseTitleText.fontSize = owner.tabLabelFontSize * 1.9f;
+        pauseTitleText.fontSize = owner.tabLabelFontSize * 1.35f;
         pauseTitleText.alignment = TextAlignmentOptions.Center;
         pauseTitleText.color = Color.white;
         pauseTitleText.sortingOrder = 35;
 
         GameObject helpObj = new GameObject("PauseHelp");
         helpObj.transform.SetParent(pauseMenuRoot.transform, false);
-        helpObj.transform.localPosition = new Vector3(0f, 0.25f, -0.05f);
+        helpObj.transform.localPosition = new Vector3(0f, 0.02f, -0.05f);
         pauseHelpText = helpObj.AddComponent<TextMeshPro>();
         pauseHelpText.text = "Left/Right Seek   |   1/2 Select Marker   |   Space Resume";
-        pauseHelpText.fontSize = owner.tabLabelFontSize * 0.95f;
+        pauseHelpText.fontSize = owner.tabLabelFontSize * 0.62f;
         pauseHelpText.alignment = TextAlignmentOptions.Center;
         pauseHelpText.color = new Color(0.86f, 0.89f, 0.95f);
         pauseHelpText.sortingOrder = 35;
@@ -318,14 +319,14 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         pauseLoopButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
         pauseLoopButton.name = "PauseLoopButton";
         pauseLoopButton.transform.SetParent(pauseMenuRoot.transform, false);
-        pauseLoopButton.transform.localPosition = new Vector3(0f, -0.85f, 0f);
-        pauseLoopButton.transform.localScale = new Vector3(7.2f, 1.05f, 0.09f);
+        pauseLoopButton.transform.localPosition = new Vector3(0f, -0.44f, 0f);
+        pauseLoopButton.transform.localScale = new Vector3(4.7f, 0.64f, 0.08f);
 
         GameObject loopTextObj = new GameObject("PauseLoopLabel");
         loopTextObj.transform.SetParent(pauseMenuRoot.transform, false);
-        loopTextObj.transform.localPosition = new Vector3(0f, -0.89f, -0.06f);
+        loopTextObj.transform.localPosition = new Vector3(0f, -0.46f, -0.06f);
         pauseLoopText = loopTextObj.AddComponent<TextMeshPro>();
-        pauseLoopText.fontSize = owner.tabLabelFontSize * 1.1f;
+        pauseLoopText.fontSize = owner.tabLabelFontSize * 0.72f;
         pauseLoopText.alignment = TextAlignmentOptions.Center;
         pauseLoopText.sortingOrder = 38;
 
@@ -374,7 +375,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (!showMarkers)
             return;
 
-        if (TryGetMarkerWorldPosition(snapshot.loopStartTime, out Vector3 startPos, out float startHeight))
+        if (TryGetMarkerWorldPosition(snapshot.loopStartTime, snapshot.sectionDuration, out Vector3 startPos, out float startHeight))
         {
             loopMarkerStart.transform.position = startPos;
             loopMarkerStart.transform.localScale = new Vector3(owner.tabPlayheadWidth * 1.15f, startHeight, owner.tabPlayheadDepth * 1.25f);
@@ -384,7 +385,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             loopMarkerStart.SetActive(false);
         }
 
-        if (TryGetMarkerWorldPosition(snapshot.loopEndTime, out Vector3 endPos, out float endHeight))
+        if (TryGetMarkerWorldPosition(snapshot.loopEndTime, snapshot.sectionDuration, out Vector3 endPos, out float endHeight))
         {
             loopMarkerEnd.transform.position = endPos;
             loopMarkerEnd.transform.localScale = new Vector3(owner.tabPlayheadWidth * 1.15f, endHeight, owner.tabPlayheadDepth * 1.25f);
@@ -395,12 +396,13 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         }
     }
 
-    private bool TryGetMarkerWorldPosition(float markerTime, out Vector3 position, out float height)
+    private bool TryGetMarkerWorldPosition(float markerTime, float sectionDuration, out Vector3 position, out float height)
     {
         position = Vector3.zero;
         height = owner.tabPanelHeight + 0.42f;
 
-        int markerSection = Mathf.Max(0, Mathf.FloorToInt(markerTime / Mathf.Max(0.01f, owner.tabSectionDuration)));
+        float safeSectionDuration = Mathf.Max(0.01f, sectionDuration);
+        int markerSection = Mathf.Max(0, Mathf.FloorToInt(markerTime / safeSectionDuration));
         TabPanelView panel = null;
 
         if (topPanel != null && topPanel.SectionIndex == markerSection)
@@ -411,8 +413,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (panel == null)
             return false;
 
-        float sectionStart = markerSection * owner.tabSectionDuration;
-        float localProgress = Mathf.Clamp01((markerTime - sectionStart) / Mathf.Max(0.01f, owner.tabSectionDuration));
+        float sectionStart = markerSection * safeSectionDuration;
+        float localProgress = Mathf.Clamp01((markerTime - sectionStart) / safeSectionDuration);
         float x = panel.LeftEdge + localProgress * panel.UsableWidth;
 
         position = new Vector3(x, panel.CenterY, owner.tabZDepth + 0.11f);

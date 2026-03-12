@@ -149,6 +149,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("Tabs Sections")]
     public float tabSectionDuration = 4.0f;
+    [Range(0.5f, 3.0f)] public float tabSectionLengthMultiplier = 1.0f;
     public float tabPanelSwapDuration = 0.4f;
     public float tabPanelLiftDistance = 2.0f;
 
@@ -179,7 +180,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private float songTimer;
     private bool isPaused;
-    private float pauseSeekStepSeconds = 6.0f;
+    private float pauseSeekStepSeconds = 3.2f;
 
     private bool loopEnabled;
     private float loopStartTime;
@@ -294,10 +295,10 @@ public class GuitarBridgeServer : MonoBehaviour
         if (Camera.main == null)
             return false;
 
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 2.05f) - 0.85f, tabZDepth - 0.35f);
+        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 0.36f, tabZDepth - 0.35f);
         Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 240f;
-        float halfHeight = 58f;
+        float halfWidth = 180f;
+        float halfHeight = 42f;
 
         Vector3 mouse = Input.mousePosition;
         return mouse.x >= screenCenter.x - halfWidth &&
@@ -794,17 +795,24 @@ private void ParseUdpState()
         noteToIndex["B"] = 11;
     }
 
+    private float GetEffectiveTabSectionDuration()
+    {
+        return Mathf.Max(0.25f, tabSectionDuration * Mathf.Max(0.5f, tabSectionLengthMultiplier));
+    }
+
     private int GetSectionIndex(float time)
     {
-        if (tabSectionDuration <= 0.05f) return 0;
-        return Mathf.Max(0, Mathf.FloorToInt(time / tabSectionDuration));
+        float sectionDuration = GetEffectiveTabSectionDuration();
+        if (sectionDuration <= 0.05f) return 0;
+        return Mathf.Max(0, Mathf.FloorToInt(time / sectionDuration));
     }
 
     private GuitarGameplaySnapshot BuildSnapshot()
     {
         int currentSectionIndex = GetSectionIndex(songTimer);
-        float sectionStart = currentSectionIndex * tabSectionDuration;
-        float progress = Mathf.Clamp01((songTimer - sectionStart) / Mathf.Max(0.01f, tabSectionDuration));
+        float sectionDuration = GetEffectiveTabSectionDuration();
+        float sectionStart = currentSectionIndex * sectionDuration;
+        float progress = Mathf.Clamp01((songTimer - sectionStart) / Mathf.Max(0.01f, sectionDuration));
 
         return new GuitarGameplaySnapshot
         {
@@ -817,7 +825,7 @@ private void ParseUdpState()
             currentSectionIndex = currentSectionIndex,
             nextSectionIndex = currentSectionIndex + 1,
             currentSectionProgress = progress,
-            sectionDuration = tabSectionDuration,
+            sectionDuration = GetEffectiveTabSectionDuration(),
             noteStates = noteStates,
             sections = tabSections,
             latestDetectedPitches = latestDetectedPitches
@@ -865,8 +873,9 @@ private void ParseUdpState()
         songTimer = 0f;
         isPaused = false;
 
-        loopStartTime = Mathf.Max(0.2f, tabSectionDuration * 0.40f);
-        loopEndTime = Mathf.Max(loopStartTime + 0.5f, tabSectionDuration * 0.60f);
+        float sectionDuration = GetEffectiveTabSectionDuration();
+        loopStartTime = Mathf.Max(0.2f, sectionDuration * 0.40f);
+        loopEndTime = Mathf.Max(loopStartTime + 0.5f, sectionDuration * 0.60f);
         loopEnabled = false;
         selectedLoopMarker = 1;
 
@@ -943,7 +952,7 @@ private void ParseUdpState()
         noteStates = chartNotes.Select(n => new GameplayNoteState(n)).ToList();
         
 
-        float songEndTime = chartNotes.Count > 0 ? chartNotes.Max(n => n.time + n.duration) : tabSectionDuration;
+        float songEndTime = chartNotes.Count > 0 ? chartNotes.Max(n => n.time + n.duration) : GetEffectiveTabSectionDuration();
         loopStartTime = Mathf.Clamp(loopStartTime, 0f, Mathf.Max(0f, songEndTime - 0.05f));
         loopEndTime = Mathf.Clamp(loopEndTime, loopStartTime + 0.05f, Mathf.Max(loopStartTime + 0.05f, songEndTime));
 
@@ -1012,12 +1021,13 @@ private List<NoteData> BuildDemoSong()
         if (chartNotes == null || chartNotes.Count == 0) return;
 
         float maxTime = chartNotes.Max(n => n.time + n.duration);
-        int totalSections = Mathf.Max(2, Mathf.CeilToInt(maxTime / tabSectionDuration) + 1);
+        float sectionDuration = GetEffectiveTabSectionDuration();
+        int totalSections = Mathf.Max(2, Mathf.CeilToInt(maxTime / sectionDuration) + 1);
 
         for (int i = 0; i < totalSections; i++)
         {
-            float start = i * tabSectionDuration;
-            float end = start + tabSectionDuration;
+            float start = i * sectionDuration;
+            float end = start + sectionDuration;
 
             var ids = chartNotes
                 .Where(n => n.time >= start && n.time < end)
