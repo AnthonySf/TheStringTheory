@@ -344,11 +344,6 @@ public class GuitarBridgeServer : MonoBehaviour
         return Mathf.Clamp(playbackSpeedPercent / 100f, 0.01f, 2f);
     }
 
-    private float ScaleTimelineValueForPlayback(float value)
-    {
-        return value * GetPlaybackSpeedScale();
-    }
-
     private void SeekSongTime(float targetTime, bool updateSelectedMarker)
     {
         float previousTime = songTimer;
@@ -474,7 +469,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
             noteState.isJudgeable = IsNoteJudgeableNow(noteState);
 
-            if (songTimer < noteState.data.time - ScaleTimelineValueForPlayback(hitWindowEarly))
+            if (songTimer < noteState.data.time - hitWindowEarly)
                 continue;
 
             NoteEvent matchedEvent;
@@ -508,7 +503,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 continue;
             }
 
-            float latestJudgeTime = noteState.data.time + ScaleTimelineValueForPlayback(hitWindowLate + judgmentGrace);
+            float latestJudgeTime = noteState.data.time + hitWindowLate + judgmentGrace;
             if (songTimer > latestJudgeTime + (noteState.data.stringIdx >= 4 ? highStringExtraLate : 0f))
             {
                 noteState.result = GameplayNoteResult.Missed;
@@ -528,10 +523,8 @@ public class GuitarBridgeServer : MonoBehaviour
         float extraEarly = note.data.stringIdx >= 4 ? highStringExtraEarly : 0f;
         float extraLate = note.data.stringIdx >= 4 ? highStringExtraLate : 0f;
 
-        float matchWindowEarly = ScaleTimelineValueForPlayback(eventMatchEarly + eventTimeSlack + extraEarly);
-        float matchWindowLate = ScaleTimelineValueForPlayback(eventMatchLate + eventTimeSlack + extraLate);
-        float windowStart = note.data.time - matchWindowEarly;
-        float windowEnd = note.data.time + matchWindowLate;
+        float windowStart = note.data.time - eventMatchEarly - eventTimeSlack - extraEarly;
+        float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + extraLate;
 
         int exactTargetPitch = stringBasePitch[note.data.stringIdx] + note.data.fret;
         int targetPitchModulo = exactTargetPitch % 12; 
@@ -573,10 +566,8 @@ public class GuitarBridgeServer : MonoBehaviour
         int exactTargetPitch = stringBasePitch[note.data.stringIdx] + note.data.fret;
         int targetPitchModulo = exactTargetPitch % 12;
 
-        float legatoWindowEarly = ScaleTimelineValueForPlayback(eventMatchEarly + eventTimeSlack);
-        float legatoWindowLate = ScaleTimelineValueForPlayback(eventMatchLate + eventTimeSlack + 0.1f);
-        float windowStart = note.data.time - legatoWindowEarly;
-        float windowEnd = note.data.time + legatoWindowLate;
+        float windowStart = note.data.time - eventMatchEarly - eventTimeSlack;
+        float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + 0.1f;
 
         if (songTimer >= windowStart && songTimer <= windowEnd)
         {
@@ -615,9 +606,8 @@ public class GuitarBridgeServer : MonoBehaviour
         int exactTargetPitch = stringBasePitch[note.data.stringIdx] + note.data.fret;
         int targetPitchModulo = exactTargetPitch % 12;
 
-        float rescueWindow = ScaleTimelineValueForPlayback(highStringRescueTightWindow + eventTimeSlack);
-        float windowStart = note.data.time - rescueWindow;
-        float windowEnd = note.data.time + rescueWindow;
+        float windowStart = note.data.time - highStringRescueTightWindow - eventTimeSlack;
+        float windowEnd = note.data.time + highStringRescueTightWindow + eventTimeSlack;
 
         rescueConsumeKey = 500000 + (exactTargetPitch * 8) + note.data.stringIdx;
 
@@ -630,7 +620,7 @@ public class GuitarBridgeServer : MonoBehaviour
             if (!ev.pitches.Any(p => p % 12 == targetPitchModulo)) continue;
             if (ev.consumedKeys.Contains(rescueConsumeKey) || ev.consumedKeys.Contains(exactTargetPitch)) continue;
 
-            bool closeEnough = Mathf.Abs(ev.time - note.data.time) <= ScaleTimelineValueForPlayback(highStringRescueTightWindow);
+            bool closeEnough = Mathf.Abs(ev.time - note.data.time) <= highStringRescueTightWindow;
             bool chordish = ev.pitches.Count >= 2;
 
             if (closeEnough || chordish)
@@ -644,9 +634,8 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void LogMissReason(GameplayNoteState noteState)
     {
-        float logWindow = ScaleTimelineValueForPlayback(eventMatchEarly + eventTimeSlack);
-        float windowStart = noteState.data.time - logWindow;
-        float windowEnd = noteState.data.time + logWindow;
+        float windowStart = noteState.data.time - eventMatchEarly - eventTimeSlack;
+        float windowEnd = noteState.data.time + eventMatchLate + eventTimeSlack;
         
         int exactTargetPitch = stringBasePitch[noteState.data.stringIdx] + noteState.data.fret;
         string targetNoteName = GetNoteNameFromMidi(exactTargetPitch);
@@ -799,8 +788,8 @@ private void ParseUdpState()
 
     private bool IsNoteJudgeableNow(GameplayNoteState noteState)
     {
-        float start = noteState.data.time - ScaleTimelineValueForPlayback(hitWindowEarly);
-        float end = noteState.data.time + ScaleTimelineValueForPlayback(hitWindowLate);
+        float start = noteState.data.time - hitWindowEarly;
+        float end = noteState.data.time + hitWindowLate;
         return songTimer >= start && songTimer <= end;
     }
 
