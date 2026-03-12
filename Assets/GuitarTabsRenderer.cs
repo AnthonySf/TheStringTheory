@@ -292,7 +292,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (playhead == null)
             return;
 
-        if (topPanel == null || topPanel.SectionIndex < 0)
+        if (topPanel == null)
         {
             playhead.SetActive(false);
             return;
@@ -301,21 +301,9 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         playhead.SetActive(true);
 
         float sectionDuration = Mathf.Max(0.01f, snapshot.sectionDuration);
-        float x;
-
-        if (snapshot.songTime < 0f && snapshot.songStartDelaySeconds > 0.01f)
-        {
-            float preRollProgress = Mathf.Clamp01((snapshot.songTime + snapshot.songStartDelaySeconds) / snapshot.songStartDelaySeconds);
-            float virtualLeadWidth = topPanel.UsableWidth * (snapshot.songStartDelaySeconds / sectionDuration);
-            virtualLeadWidth = Mathf.Max(topPanel.UsableWidth * 0.10f, virtualLeadWidth);
-            x = (topPanel.LeftEdge - virtualLeadWidth) + (preRollProgress * virtualLeadWidth);
-        }
-        else
-        {
-            float sectionStart = topPanel.SectionIndex * sectionDuration;
-            float localProgress = Mathf.Clamp01((snapshot.songTime - sectionStart) / sectionDuration);
-            x = topPanel.LeftEdge + (localProgress * topPanel.UsableWidth);
-        }
+        float sectionStart = topPanel.SectionIndex * sectionDuration;
+        float localProgress = Mathf.Clamp01((snapshot.songTime - sectionStart) / sectionDuration);
+        float x = topPanel.LeftEdge + (localProgress * topPanel.UsableWidth);
 
         playhead.transform.position = new Vector3(x, topPanel.CenterY, owner.tabZDepth + 0.10f);
         playhead.transform.localScale = new Vector3(owner.tabPlayheadWidth, owner.tabPanelHeight + 0.4f, owner.tabPlayheadDepth);
