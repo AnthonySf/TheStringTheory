@@ -35,6 +35,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private GameObject offsetSliderTrack;
     private GameObject offsetSliderFill;
     private GameObject offsetSliderKnob;
+    private TextMeshPro tabSpeedOffsetSliderText;
+    private GameObject tabSpeedOffsetSliderTrack;
+    private GameObject tabSpeedOffsetSliderFill;
+    private GameObject tabSpeedOffsetSliderKnob;
     private TextMeshPro songStatusText;
 
     private int displayedTopSectionIndex = -999;
@@ -405,7 +409,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         GameObject menuBg = GameObject.CreatePrimitive(PrimitiveType.Cube);
         menuBg.name = "SongSettingsBg";
         menuBg.transform.SetParent(songSettingsRoot.transform, false);
-        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 1.95f, 0.055f);
+        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 2.65f, 0.055f);
         menuBg.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.08f, 0.10f, 0.16f, 0.97f), 0.4f);
 
         GameObject titleObj = new GameObject("SongSettingsTitle");
@@ -422,7 +426,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         helpObj.transform.SetParent(songSettingsRoot.transform, false);
         helpObj.transform.localPosition = new Vector3(0f, 0.24f, -0.05f);
         songSettingsHelpText = helpObj.AddComponent<TextMeshPro>();
-        songSettingsHelpText.text = "Drag slider to set offset ms  |  Enter: Play from cursor  |  Esc: Back";
+        songSettingsHelpText.text = "Space: Play/Pause  |  Left/Right: Seek  |  Enter: Play  |  Esc: Back";
         songSettingsHelpText.fontSize = owner.tabLabelFontSize * 0.48f;
         songSettingsHelpText.alignment = TextAlignmentOptions.Center;
         songSettingsHelpText.color = new Color(0.86f, 0.91f, 1f);
@@ -458,9 +462,39 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         offsetSliderKnob.transform.localScale = new Vector3(0.17f, 0.23f, 0.09f);
         offsetSliderKnob.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.9f, 0.98f, 1f, 0.98f), 1.2f);
 
+        GameObject tabSpeedLabelObj = new GameObject("TabSpeedOffsetLabel");
+        tabSpeedLabelObj.transform.SetParent(songSettingsRoot.transform, false);
+        tabSpeedLabelObj.transform.localPosition = new Vector3(0f, -0.50f, -0.06f);
+        tabSpeedOffsetSliderText = tabSpeedLabelObj.AddComponent<TextMeshPro>();
+        tabSpeedOffsetSliderText.fontSize = owner.tabLabelFontSize * 0.58f;
+        tabSpeedOffsetSliderText.alignment = TextAlignmentOptions.Center;
+        tabSpeedOffsetSliderText.color = new Color(0.93f, 0.95f, 1f);
+        tabSpeedOffsetSliderText.sortingOrder = 38;
+
+        tabSpeedOffsetSliderTrack = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        tabSpeedOffsetSliderTrack.name = "TabSpeedOffsetSliderTrack";
+        tabSpeedOffsetSliderTrack.transform.SetParent(songSettingsRoot.transform, false);
+        tabSpeedOffsetSliderTrack.transform.localPosition = new Vector3(0f, -0.74f, 0f);
+        tabSpeedOffsetSliderTrack.transform.localScale = new Vector3(3.60f, 0.12f, 0.07f);
+        tabSpeedOffsetSliderTrack.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.22f, 0.25f, 0.31f, 0.95f), 0.8f);
+
+        tabSpeedOffsetSliderFill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        tabSpeedOffsetSliderFill.name = "TabSpeedOffsetSliderFill";
+        tabSpeedOffsetSliderFill.transform.SetParent(songSettingsRoot.transform, false);
+        tabSpeedOffsetSliderFill.transform.localPosition = new Vector3(-1.78f, -0.74f, -0.01f);
+        tabSpeedOffsetSliderFill.transform.localScale = new Vector3(0.04f, 0.10f, 0.06f);
+        tabSpeedOffsetSliderFill.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.97f, 0.60f, 0.22f, 0.95f), 1.3f);
+
+        tabSpeedOffsetSliderKnob = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        tabSpeedOffsetSliderKnob.name = "TabSpeedOffsetSliderKnob";
+        tabSpeedOffsetSliderKnob.transform.SetParent(songSettingsRoot.transform, false);
+        tabSpeedOffsetSliderKnob.transform.localPosition = new Vector3(-1.78f, -0.74f, -0.03f);
+        tabSpeedOffsetSliderKnob.transform.localScale = new Vector3(0.17f, 0.23f, 0.09f);
+        tabSpeedOffsetSliderKnob.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(1f, 0.95f, 0.85f, 0.98f), 1.3f);
+
         GameObject statusObj = new GameObject("SongStatusLabel");
         statusObj.transform.SetParent(songSettingsRoot.transform, false);
-        statusObj.transform.localPosition = new Vector3(0f, -0.62f, -0.05f);
+        statusObj.transform.localPosition = new Vector3(0f, -1.00f, -0.05f);
         songStatusText = statusObj.AddComponent<TextMeshPro>();
         songStatusText.fontSize = owner.tabLabelFontSize * 0.52f;
         songStatusText.alignment = TextAlignmentOptions.Center;
@@ -533,7 +567,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (songSettingsRoot == null)
             return;
 
-        bool visible = snapshot != null && snapshot.isPaused && snapshot.showSongSettings;
+        bool visible = snapshot != null && snapshot.showSongSettings;
         songSettingsRoot.SetActive(visible);
 
         if (!visible)
@@ -558,11 +592,27 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             offsetSliderFill.transform.localPosition = new Vector3((knobX + centerX) * 0.5f, -0.30f, -0.01f);
         }
 
+        float tabSpeedOffsetPercent = Mathf.Clamp(snapshot.tabSpeedOffsetPercent, 50f, 150f);
+        if (tabSpeedOffsetSliderText != null)
+            tabSpeedOffsetSliderText.text = $"TAB SPEED OFFSET  {tabSpeedOffsetPercent:F0}%";
+
+        float tabSpeedSliderT = Mathf.InverseLerp(50f, 150f, tabSpeedOffsetPercent);
+        if (tabSpeedOffsetSliderKnob != null)
+            tabSpeedOffsetSliderKnob.transform.localPosition = new Vector3(Mathf.Lerp(-1.78f, 1.78f, tabSpeedSliderT), -0.74f, -0.03f);
+
+        if (tabSpeedOffsetSliderFill != null)
+        {
+            float fillWidth = Mathf.Lerp(0.04f, 3.56f, tabSpeedSliderT);
+            tabSpeedOffsetSliderFill.transform.localScale = new Vector3(fillWidth, 0.10f, 0.06f);
+            tabSpeedOffsetSliderFill.transform.localPosition = new Vector3(-1.78f + (fillWidth * 0.5f), -0.74f, -0.01f);
+        }
+
         if (songStatusText != null)
         {
             string status = snapshot.hasBackingTrack ? "Loaded" : "Missing";
             string play = snapshot.isBackingTrackPlaying ? "Playing" : "Paused";
-            songStatusText.text = $"Track: {status}   Audio: {play}   T={snapshot.backingTrackTime:F2}s";
+            string notesState = snapshot.isPaused ? "Notes paused" : "Notes moving";
+            songStatusText.text = $"Track: {status}   Audio: {play}   {notesState}   T={snapshot.backingTrackTime:F2}s";
             songStatusText.color = snapshot.hasBackingTrack ? new Color(0.88f, 1f, 0.9f) : new Color(1f, 0.75f, 0.75f);
         }
     }
