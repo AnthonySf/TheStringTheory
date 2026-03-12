@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Net;
@@ -484,7 +483,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 return;
             }
 
-            ProcessStartInfo startInfo = new ProcessStartInfo
+            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = "python",
                 Arguments = $"\"{toneLabPath}\"",
@@ -493,7 +492,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 CreateNoWindow = false
             };
 
-            Process.Start(startInfo);
+            System.Diagnostics.Process.Start(startInfo);
             StartCoroutine(FocusToneLabWindowWhenReady(toneLabWindowTitle));
         }
         catch (Exception ex)
