@@ -548,6 +548,12 @@ MonoBehaviour:
   tabSustainDepth: 0.06
   tabSustainMinWidth: 0.25
   tabSustainColor: {r: 0.8, g: 0.9, b: 1, a: 1}
+  tabTechniqueTunnelHeight: 0.26
+  tabTechniqueTunnelDepth: 0.06
+  tabTechniqueInnerPadding: 0.05
+  tabTechniqueGlyphFontSize: 2
+  tabTechniqueGlyphColor: {r: 1, g: 1, b: 1, a: 1}
+  tabTechniqueFillColor: {r: 0.28, g: 0.31, b: 0.36, a: 0.95}
   tabCameraSize: 9
   tabCameraZ: -10
   tabBackgroundColor: {r: 0.02, g: 0.03, b: 0.05, a: 1}
@@ -567,6 +573,7 @@ MonoBehaviour:
   tabPlayheadDepth: 0.15
   tabPlayheadColor: {r: 1, g: 1, b: 1, a: 1}
   tabSectionDuration: 4.5
+  tabSectionLengthMultiplier: 1.5
   tabPanelSwapDuration: 0.25
   tabPanelLiftDistance: 5
   midiTrackIndex: 2
