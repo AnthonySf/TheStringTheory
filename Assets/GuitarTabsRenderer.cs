@@ -25,6 +25,17 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private GameObject speedSliderFill;
     private GameObject speedSliderKnob;
     private TextMeshPro speedSliderText;
+    private GameObject songSettingsButton;
+    private TextMeshPro songSettingsButtonText;
+
+    private GameObject songSettingsRoot;
+    private TextMeshPro songSettingsTitleText;
+    private TextMeshPro songSettingsHelpText;
+    private TextMeshPro offsetSliderText;
+    private GameObject offsetSliderTrack;
+    private GameObject offsetSliderFill;
+    private GameObject offsetSliderKnob;
+    private TextMeshPro songStatusText;
 
     private int displayedTopSectionIndex = -999;
     private int displayedBottomSectionIndex = -999;
@@ -51,6 +62,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         playhead.GetComponent<Renderer>().material = CreateGlowMaterial(owner.tabPlayheadColor, 4f);
 
         CreatePauseMenuVisuals();
+        CreateSongSettingsVisuals();
 
         loopMarkerStart = GameObject.CreatePrimitive(PrimitiveType.Cube);
         loopMarkerStart.name = "LoopMarkerStart";
@@ -107,6 +119,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         UpdatePanelColors(bottomPanel);
         UpdatePlayhead(snapshot);
         UpdatePauseMenu(snapshot);
+        UpdateSongSettings(snapshot);
         UpdateLoopMarkers(snapshot);
     }
 
@@ -364,7 +377,97 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         pauseLoopText.alignment = TextAlignmentOptions.Center;
         pauseLoopText.sortingOrder = 38;
 
+        songSettingsButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        songSettingsButton.name = "SongSettingsButton";
+        songSettingsButton.transform.SetParent(pauseMenuRoot.transform, false);
+        songSettingsButton.transform.localPosition = new Vector3(0f, -1.02f, 0f);
+        songSettingsButton.transform.localScale = new Vector3(4.7f, 0.50f, 0.08f);
+
+        GameObject songSettingsTextObj = new GameObject("SongSettingsButtonLabel");
+        songSettingsTextObj.transform.SetParent(pauseMenuRoot.transform, false);
+        songSettingsTextObj.transform.localPosition = new Vector3(0f, -1.04f, -0.06f);
+        songSettingsButtonText = songSettingsTextObj.AddComponent<TextMeshPro>();
+        songSettingsButtonText.text = "SONG SETTINGS [S / Click]";
+        songSettingsButtonText.fontSize = owner.tabLabelFontSize * 0.62f;
+        songSettingsButtonText.alignment = TextAlignmentOptions.Center;
+        songSettingsButtonText.color = new Color(0.95f, 0.98f, 1f);
+        songSettingsButtonText.sortingOrder = 38;
+
         pauseMenuRoot.SetActive(false);
+    }
+
+    private void CreateSongSettingsVisuals()
+    {
+        songSettingsRoot = new GameObject("SongSettingsMenu");
+        songSettingsRoot.transform.SetParent(root.transform, false);
+        songSettingsRoot.transform.position = new Vector3(owner.tabPanelCenterX, owner.TabTopPanelY + owner.tabPanelHeight * 1.08f, owner.tabZDepth - 0.35f);
+
+        GameObject menuBg = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        menuBg.name = "SongSettingsBg";
+        menuBg.transform.SetParent(songSettingsRoot.transform, false);
+        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 1.95f, 0.055f);
+        menuBg.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.08f, 0.10f, 0.16f, 0.97f), 0.4f);
+
+        GameObject titleObj = new GameObject("SongSettingsTitle");
+        titleObj.transform.SetParent(songSettingsRoot.transform, false);
+        titleObj.transform.localPosition = new Vector3(0f, 0.56f, -0.05f);
+        songSettingsTitleText = titleObj.AddComponent<TextMeshPro>();
+        songSettingsTitleText.text = "SONG SETTINGS";
+        songSettingsTitleText.fontSize = owner.tabLabelFontSize * 1.05f;
+        songSettingsTitleText.alignment = TextAlignmentOptions.Center;
+        songSettingsTitleText.color = Color.white;
+        songSettingsTitleText.sortingOrder = 35;
+
+        GameObject helpObj = new GameObject("SongSettingsHelp");
+        helpObj.transform.SetParent(songSettingsRoot.transform, false);
+        helpObj.transform.localPosition = new Vector3(0f, 0.24f, -0.05f);
+        songSettingsHelpText = helpObj.AddComponent<TextMeshPro>();
+        songSettingsHelpText.text = "Drag slider to set offset ms  |  Enter: Play from cursor  |  Esc: Back";
+        songSettingsHelpText.fontSize = owner.tabLabelFontSize * 0.48f;
+        songSettingsHelpText.alignment = TextAlignmentOptions.Center;
+        songSettingsHelpText.color = new Color(0.86f, 0.91f, 1f);
+        songSettingsHelpText.sortingOrder = 35;
+
+        GameObject offsetLabelObj = new GameObject("OffsetLabel");
+        offsetLabelObj.transform.SetParent(songSettingsRoot.transform, false);
+        offsetLabelObj.transform.localPosition = new Vector3(0f, -0.02f, -0.06f);
+        offsetSliderText = offsetLabelObj.AddComponent<TextMeshPro>();
+        offsetSliderText.fontSize = owner.tabLabelFontSize * 0.60f;
+        offsetSliderText.alignment = TextAlignmentOptions.Center;
+        offsetSliderText.color = new Color(0.90f, 0.93f, 1f);
+        offsetSliderText.sortingOrder = 38;
+
+        offsetSliderTrack = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        offsetSliderTrack.name = "OffsetSliderTrack";
+        offsetSliderTrack.transform.SetParent(songSettingsRoot.transform, false);
+        offsetSliderTrack.transform.localPosition = new Vector3(0f, -0.30f, 0f);
+        offsetSliderTrack.transform.localScale = new Vector3(3.60f, 0.12f, 0.07f);
+        offsetSliderTrack.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.22f, 0.25f, 0.31f, 0.95f), 0.8f);
+
+        offsetSliderFill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        offsetSliderFill.name = "OffsetSliderFill";
+        offsetSliderFill.transform.SetParent(songSettingsRoot.transform, false);
+        offsetSliderFill.transform.localPosition = new Vector3(0f, -0.30f, -0.01f);
+        offsetSliderFill.transform.localScale = new Vector3(0.04f, 0.10f, 0.06f);
+        offsetSliderFill.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.25f, 0.83f, 0.96f, 0.95f), 1.3f);
+
+        offsetSliderKnob = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        offsetSliderKnob.name = "OffsetSliderKnob";
+        offsetSliderKnob.transform.SetParent(songSettingsRoot.transform, false);
+        offsetSliderKnob.transform.localPosition = new Vector3(0f, -0.30f, -0.03f);
+        offsetSliderKnob.transform.localScale = new Vector3(0.17f, 0.23f, 0.09f);
+        offsetSliderKnob.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.9f, 0.98f, 1f, 0.98f), 1.2f);
+
+        GameObject statusObj = new GameObject("SongStatusLabel");
+        statusObj.transform.SetParent(songSettingsRoot.transform, false);
+        statusObj.transform.localPosition = new Vector3(0f, -0.62f, -0.05f);
+        songStatusText = statusObj.AddComponent<TextMeshPro>();
+        songStatusText.fontSize = owner.tabLabelFontSize * 0.52f;
+        songStatusText.alignment = TextAlignmentOptions.Center;
+        songStatusText.color = new Color(0.90f, 0.95f, 1f);
+        songStatusText.sortingOrder = 38;
+
+        songSettingsRoot.SetActive(false);
     }
 
     private void UpdatePauseMenu(GuitarGameplaySnapshot snapshot)
@@ -372,7 +475,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (pauseMenuRoot == null)
             return;
 
-        bool visible = snapshot != null && snapshot.isPaused;
+        bool visible = snapshot != null && snapshot.isPaused && !snapshot.showSongSettings;
         pauseMenuRoot.SetActive(visible);
 
         if (!visible)
@@ -409,6 +512,58 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 r.material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
                 r.material.SetColor("_EmissionColor", buttonColor * Mathf.Pow(2f, 1.8f));
             }
+        }
+
+        if (songSettingsButton != null)
+        {
+            Renderer r = songSettingsButton.GetComponent<Renderer>();
+            if (r != null)
+            {
+                Color buttonColor = new Color(0.15f, 0.27f, 0.48f, 0.97f);
+                r.material.color = buttonColor;
+                r.material.EnableKeyword("_EMISSION");
+                r.material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+                r.material.SetColor("_EmissionColor", buttonColor * Mathf.Pow(2f, 1.8f));
+            }
+        }
+    }
+
+    private void UpdateSongSettings(GuitarGameplaySnapshot snapshot)
+    {
+        if (songSettingsRoot == null)
+            return;
+
+        bool visible = snapshot != null && snapshot.isPaused && snapshot.showSongSettings;
+        songSettingsRoot.SetActive(visible);
+
+        if (!visible)
+            return;
+
+        float offsetMs = Mathf.Clamp(snapshot.audioOffsetMs, -2000f, 2000f);
+        if (offsetSliderText != null)
+            offsetSliderText.text = $"AUDIO OFFSET  {offsetMs:F0} ms";
+
+        float sliderT = Mathf.InverseLerp(-2000f, 2000f, offsetMs);
+        if (offsetSliderKnob != null)
+            offsetSliderKnob.transform.localPosition = new Vector3(Mathf.Lerp(-1.78f, 1.78f, sliderT), -0.30f, -0.03f);
+
+        if (offsetSliderFill != null)
+        {
+            float centerX = 0f;
+            float leftX = -1.78f;
+            float rightX = 1.78f;
+            float knobX = Mathf.Lerp(leftX, rightX, sliderT);
+            float fillWidth = Mathf.Max(0.04f, Mathf.Abs(knobX - centerX));
+            offsetSliderFill.transform.localScale = new Vector3(fillWidth, 0.10f, 0.06f);
+            offsetSliderFill.transform.localPosition = new Vector3((knobX + centerX) * 0.5f, -0.30f, -0.01f);
+        }
+
+        if (songStatusText != null)
+        {
+            string status = snapshot.hasBackingTrack ? "Loaded" : "Missing";
+            string play = snapshot.isBackingTrackPlaying ? "Playing" : "Paused";
+            songStatusText.text = $"Track: {status}   Audio: {play}   T={snapshot.backingTrackTime:F2}s";
+            songStatusText.color = snapshot.hasBackingTrack ? new Color(0.88f, 1f, 0.9f) : new Color(1f, 0.75f, 0.75f);
         }
     }
 

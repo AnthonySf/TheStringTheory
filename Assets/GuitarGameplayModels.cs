@@ -125,4 +125,9 @@ public sealed class GuitarGameplaySnapshot
     public List<GameplayNoteState> noteStates;
     public List<TabSectionData> sections;
     public HashSet<int> latestDetectedPitches;
+    public bool showSongSettings;
+    public float audioOffsetMs;
+    public bool hasBackingTrack;
+    public bool isBackingTrackPlaying;
+    public float backingTrackTime;
 }
