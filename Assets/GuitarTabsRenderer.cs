@@ -39,6 +39,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private GameObject tabSpeedOffsetSliderTrack;
     private GameObject tabSpeedOffsetSliderFill;
     private GameObject tabSpeedOffsetSliderKnob;
+    private TextMeshPro songStartDelaySliderText;
+    private GameObject songStartDelaySliderTrack;
+    private GameObject songStartDelaySliderFill;
+    private GameObject songStartDelaySliderKnob;
     private TextMeshPro songStatusText;
 
     private int displayedTopSectionIndex = -999;
@@ -297,9 +301,19 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         playhead.SetActive(true);
 
         float sectionDuration = Mathf.Max(0.01f, snapshot.sectionDuration);
-        float sectionStart = topPanel.SectionIndex * sectionDuration;
-        float localProgress = Mathf.Clamp01((snapshot.songTime - sectionStart) / sectionDuration);
-        float x = topPanel.LeftEdge + (localProgress * topPanel.UsableWidth);
+        float x;
+
+        if (snapshot.songTime < 0f && snapshot.songStartDelaySeconds > 0.01f)
+        {
+            float preRollProgress = Mathf.Clamp01((snapshot.songTime + snapshot.songStartDelaySeconds) / snapshot.songStartDelaySeconds);
+            x = topPanel.LeftEdge + (preRollProgress * topPanel.UsableWidth);
+        }
+        else
+        {
+            float sectionStart = topPanel.SectionIndex * sectionDuration;
+            float localProgress = Mathf.Clamp01((snapshot.songTime - sectionStart) / sectionDuration);
+            x = topPanel.LeftEdge + (localProgress * topPanel.UsableWidth);
+        }
 
         playhead.transform.position = new Vector3(x, topPanel.CenterY, owner.tabZDepth + 0.10f);
         playhead.transform.localScale = new Vector3(owner.tabPlayheadWidth, owner.tabPanelHeight + 0.4f, owner.tabPlayheadDepth);
@@ -409,7 +423,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         GameObject menuBg = GameObject.CreatePrimitive(PrimitiveType.Cube);
         menuBg.name = "SongSettingsBg";
         menuBg.transform.SetParent(songSettingsRoot.transform, false);
-        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 2.65f, 0.055f);
+        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 3.25f, 0.055f);
         menuBg.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.08f, 0.10f, 0.16f, 0.97f), 0.4f);
 
         GameObject titleObj = new GameObject("SongSettingsTitle");
@@ -492,9 +506,39 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         tabSpeedOffsetSliderKnob.transform.localScale = new Vector3(0.17f, 0.23f, 0.09f);
         tabSpeedOffsetSliderKnob.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(1f, 0.95f, 0.85f, 0.98f), 1.3f);
 
+        GameObject startDelayLabelObj = new GameObject("SongStartDelayLabel");
+        startDelayLabelObj.transform.SetParent(songSettingsRoot.transform, false);
+        startDelayLabelObj.transform.localPosition = new Vector3(0f, -0.92f, -0.06f);
+        songStartDelaySliderText = startDelayLabelObj.AddComponent<TextMeshPro>();
+        songStartDelaySliderText.fontSize = owner.tabLabelFontSize * 0.58f;
+        songStartDelaySliderText.alignment = TextAlignmentOptions.Center;
+        songStartDelaySliderText.color = new Color(0.93f, 0.95f, 1f);
+        songStartDelaySliderText.sortingOrder = 38;
+
+        songStartDelaySliderTrack = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        songStartDelaySliderTrack.name = "SongStartDelaySliderTrack";
+        songStartDelaySliderTrack.transform.SetParent(songSettingsRoot.transform, false);
+        songStartDelaySliderTrack.transform.localPosition = new Vector3(0f, -1.10f, 0f);
+        songStartDelaySliderTrack.transform.localScale = new Vector3(3.60f, 0.12f, 0.07f);
+        songStartDelaySliderTrack.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.22f, 0.25f, 0.31f, 0.95f), 0.8f);
+
+        songStartDelaySliderFill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        songStartDelaySliderFill.name = "SongStartDelaySliderFill";
+        songStartDelaySliderFill.transform.SetParent(songSettingsRoot.transform, false);
+        songStartDelaySliderFill.transform.localPosition = new Vector3(-1.78f, -1.10f, -0.01f);
+        songStartDelaySliderFill.transform.localScale = new Vector3(0.04f, 0.10f, 0.06f);
+        songStartDelaySliderFill.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.58f, 0.93f, 0.35f, 0.95f), 1.3f);
+
+        songStartDelaySliderKnob = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        songStartDelaySliderKnob.name = "SongStartDelaySliderKnob";
+        songStartDelaySliderKnob.transform.SetParent(songSettingsRoot.transform, false);
+        songStartDelaySliderKnob.transform.localPosition = new Vector3(-1.78f, -1.10f, -0.03f);
+        songStartDelaySliderKnob.transform.localScale = new Vector3(0.17f, 0.23f, 0.09f);
+        songStartDelaySliderKnob.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.92f, 1f, 0.88f, 0.98f), 1.3f);
+
         GameObject statusObj = new GameObject("SongStatusLabel");
         statusObj.transform.SetParent(songSettingsRoot.transform, false);
-        statusObj.transform.localPosition = new Vector3(0f, -1.00f, -0.05f);
+        statusObj.transform.localPosition = new Vector3(0f, -1.42f, -0.05f);
         songStatusText = statusObj.AddComponent<TextMeshPro>();
         songStatusText.fontSize = owner.tabLabelFontSize * 0.52f;
         songStatusText.alignment = TextAlignmentOptions.Center;
@@ -605,6 +649,21 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             float fillWidth = Mathf.Lerp(0.04f, 3.56f, tabSpeedSliderT);
             tabSpeedOffsetSliderFill.transform.localScale = new Vector3(fillWidth, 0.10f, 0.06f);
             tabSpeedOffsetSliderFill.transform.localPosition = new Vector3(-1.78f + (fillWidth * 0.5f), -0.74f, -0.01f);
+        }
+
+        float songStartDelaySeconds = Mathf.Clamp(snapshot.songStartDelaySeconds, 0f, 8f);
+        if (songStartDelaySliderText != null)
+            songStartDelaySliderText.text = $"START DELAY  {songStartDelaySeconds:F2}s";
+
+        float startDelaySliderT = Mathf.InverseLerp(0f, 8f, songStartDelaySeconds);
+        if (songStartDelaySliderKnob != null)
+            songStartDelaySliderKnob.transform.localPosition = new Vector3(Mathf.Lerp(-1.78f, 1.78f, startDelaySliderT), -1.10f, -0.03f);
+
+        if (songStartDelaySliderFill != null)
+        {
+            float fillWidth = Mathf.Lerp(0.04f, 3.56f, startDelaySliderT);
+            songStartDelaySliderFill.transform.localScale = new Vector3(fillWidth, 0.10f, 0.06f);
+            songStartDelaySliderFill.transform.localPosition = new Vector3(-1.78f + (fillWidth * 0.5f), -1.10f, -0.01f);
         }
 
         if (songStatusText != null)
