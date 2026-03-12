@@ -10,6 +10,7 @@ using System.Threading;
 using System.IO;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Networking;
 
 public class GuitarBridgeServer : MonoBehaviour
 {
@@ -211,6 +212,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool showSongSettings;
     private float audioOffsetMs;
     private SongMetadata songMetadata = new SongMetadata();
+    private bool isLoadingBackingTrack;
+    private string backingTrackLoadError = string.Empty;
 
     private void Start()
     {
@@ -1015,7 +1018,8 @@ private void ParseUdpState()
             $"TIME: <color=white>{songTimer:F2}</color>\n" +
             $"LOOP: <color=yellow>{loopTxt}</color> Marker:{selectedLoopMarker}\n" +
             $"SPEED: <color=white>{playbackSpeedPercent:F0}%</color>\n" +
-            $"AUDIO: <color=white>{(hasBackingTrack ? "READY" : "MISSING")}</color>  OFFSET:<color=cyan>{audioOffsetMs:F0}ms</color>";
+            $"AUDIO: <color=white>{(isLoadingBackingTrack ? "LOADING" : (hasBackingTrack ? "READY" : "MISSING"))}</color>  OFFSET:<color=cyan>{audioOffsetMs:F0}ms</color>\n" +
+            $"AUDIO SRC: <color=grey>{(string.IsNullOrEmpty(backingTrackLoadError) ? currentSongFileName : backingTrackLoadError)}</color>";
     }
 
     // =========================================================
@@ -1143,21 +1147,82 @@ private void ParseUdpState()
 
         string songPath = Path.Combine(Application.dataPath, backingTrackFileName);
         currentSongFileName = Path.GetFileName(songPath);
-        hasBackingTrack = File.Exists(songPath);
 
         songMetadata = LoadSongMetadata(currentSongFileName);
         audioOffsetMs = songMetadata.audioOffsetMs;
+
+        backingTrackLoadError = string.Empty;
+        isLoadingBackingTrack = false;
+
+        if (backingTrackSource.clip != null)
+        {
+            hasBackingTrack = true;
+            return;
+        }
 
         AudioClip clip = Resources.Load<AudioClip>(Path.GetFileNameWithoutExtension(backingTrackFileName));
         if (clip != null)
         {
             backingTrackSource.clip = clip;
             hasBackingTrack = true;
+            return;
         }
-        else
+
+        if (File.Exists(songPath))
         {
-            hasBackingTrack = backingTrackSource.clip != null || hasBackingTrack;
+            StartCoroutine(LoadBackingTrackFromFile(songPath));
+            return;
         }
+
+        hasBackingTrack = false;
+        backingTrackLoadError = $"Backing track not found at: {songPath}";
+        Debug.LogWarning(backingTrackLoadError);
+    }
+
+
+    private System.Collections.IEnumerator LoadBackingTrackFromFile(string absolutePath)
+    {
+        isLoadingBackingTrack = true;
+        hasBackingTrack = false;
+
+        string uri = "file://" + absolutePath.Replace("\\", "/");
+        using (UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(uri, AudioType.UNKNOWN))
+        {
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            bool failed = request.result != UnityWebRequest.Result.Success;
+#else
+            bool failed = request.isNetworkError || request.isHttpError;
+#endif
+            if (failed)
+            {
+                backingTrackLoadError = $"Failed to load backing track '{absolutePath}': {request.error}";
+                Debug.LogWarning(backingTrackLoadError);
+                hasBackingTrack = false;
+                isLoadingBackingTrack = false;
+                yield break;
+            }
+
+            AudioClip loadedClip = DownloadHandlerAudioClip.GetContent(request);
+            if (loadedClip == null)
+            {
+                backingTrackLoadError = $"Audio clip content was null for backing track: {absolutePath}";
+                Debug.LogWarning(backingTrackLoadError);
+                hasBackingTrack = false;
+                isLoadingBackingTrack = false;
+                yield break;
+            }
+
+            loadedClip.name = Path.GetFileNameWithoutExtension(absolutePath);
+            backingTrackSource.clip = loadedClip;
+            hasBackingTrack = true;
+
+            ApplyPlaybackSpeedToAudio();
+            SyncAudioToSongTimer(playImmediately: !isPaused);
+        }
+
+        isLoadingBackingTrack = false;
     }
 
     private SongMetadata LoadSongMetadata(string songFileName)
