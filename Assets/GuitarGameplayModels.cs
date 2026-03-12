@@ -117,6 +117,7 @@ public sealed class GuitarGameplaySnapshot
     public float loopStartTime;
     public float loopEndTime;
     public int selectedLoopMarker;
+    public float playbackSpeedPercent;
     public float currentSectionProgress;
     public int currentSectionIndex;
     public int nextSectionIndex;

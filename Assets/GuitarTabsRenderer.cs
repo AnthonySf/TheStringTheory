@@ -21,6 +21,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private TextMeshPro pauseHelpText;
     private TextMeshPro pauseLoopText;
     private GameObject pauseLoopButton;
+    private GameObject speedSliderTrack;
+    private GameObject speedSliderFill;
+    private GameObject speedSliderKnob;
+    private TextMeshPro speedSliderText;
 
     private int displayedTopSectionIndex = -999;
     private int displayedBottomSectionIndex = -999;
@@ -316,15 +320,45 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         pauseHelpText.color = new Color(0.86f, 0.89f, 0.95f);
         pauseHelpText.sortingOrder = 35;
 
+        GameObject speedLabelObj = new GameObject("SpeedLabel");
+        speedLabelObj.transform.SetParent(pauseMenuRoot.transform, false);
+        speedLabelObj.transform.localPosition = new Vector3(0f, -0.20f, -0.06f);
+        speedSliderText = speedLabelObj.AddComponent<TextMeshPro>();
+        speedSliderText.fontSize = owner.tabLabelFontSize * 0.60f;
+        speedSliderText.alignment = TextAlignmentOptions.Center;
+        speedSliderText.color = new Color(0.90f, 0.93f, 1f);
+        speedSliderText.sortingOrder = 38;
+
+        speedSliderTrack = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        speedSliderTrack.name = "SpeedSliderTrack";
+        speedSliderTrack.transform.SetParent(pauseMenuRoot.transform, false);
+        speedSliderTrack.transform.localPosition = new Vector3(0f, -0.08f, 0f);
+        speedSliderTrack.transform.localScale = new Vector3(3.60f, 0.12f, 0.07f);
+        speedSliderTrack.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.22f, 0.25f, 0.31f, 0.95f), 0.8f);
+
+        speedSliderFill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        speedSliderFill.name = "SpeedSliderFill";
+        speedSliderFill.transform.SetParent(pauseMenuRoot.transform, false);
+        speedSliderFill.transform.localPosition = new Vector3(-1.78f, -0.08f, -0.01f);
+        speedSliderFill.transform.localScale = new Vector3(0.04f, 0.10f, 0.06f);
+        speedSliderFill.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.95f, 0.78f, 0.18f, 0.95f), 1.6f);
+
+        speedSliderKnob = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        speedSliderKnob.name = "SpeedSliderKnob";
+        speedSliderKnob.transform.SetParent(pauseMenuRoot.transform, false);
+        speedSliderKnob.transform.localPosition = new Vector3(-1.78f, -0.08f, -0.03f);
+        speedSliderKnob.transform.localScale = new Vector3(0.17f, 0.23f, 0.09f);
+        speedSliderKnob.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(1f, 0.95f, 0.85f, 0.98f), 1.4f);
+
         pauseLoopButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
         pauseLoopButton.name = "PauseLoopButton";
         pauseLoopButton.transform.SetParent(pauseMenuRoot.transform, false);
-        pauseLoopButton.transform.localPosition = new Vector3(0f, -0.44f, 0f);
+        pauseLoopButton.transform.localPosition = new Vector3(0f, -0.62f, 0f);
         pauseLoopButton.transform.localScale = new Vector3(4.7f, 0.64f, 0.08f);
 
         GameObject loopTextObj = new GameObject("PauseLoopLabel");
         loopTextObj.transform.SetParent(pauseMenuRoot.transform, false);
-        loopTextObj.transform.localPosition = new Vector3(0f, -0.46f, -0.06f);
+        loopTextObj.transform.localPosition = new Vector3(0f, -0.64f, -0.06f);
         pauseLoopText = loopTextObj.AddComponent<TextMeshPro>();
         pauseLoopText.fontSize = owner.tabLabelFontSize * 0.72f;
         pauseLoopText.alignment = TextAlignmentOptions.Center;
@@ -346,8 +380,23 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         bool isOn = snapshot.loopEnabled;
         bool markerOne = snapshot.selectedLoopMarker == 1;
+        float speedPercent = Mathf.Clamp(snapshot.playbackSpeedPercent, 1f, 200f);
         pauseLoopText.text = $"LOOP {(isOn ? "ON" : "OFF")}  [Enter / Click]   Active Marker: {(markerOne ? "1" : "2")}";
         pauseLoopText.color = isOn ? new Color(0.95f, 1f, 0.95f) : new Color(0.95f, 0.9f, 0.9f);
+
+        if (speedSliderText != null)
+            speedSliderText.text = $"SPEED  {speedPercent:F0}%";
+
+        float sliderT = Mathf.InverseLerp(1f, 200f, speedPercent);
+        if (speedSliderKnob != null)
+            speedSliderKnob.transform.localPosition = new Vector3(Mathf.Lerp(-1.78f, 1.78f, sliderT), -0.08f, -0.03f);
+
+        if (speedSliderFill != null)
+        {
+            float fillWidth = Mathf.Lerp(0.04f, 3.56f, sliderT);
+            speedSliderFill.transform.localScale = new Vector3(fillWidth, 0.10f, 0.06f);
+            speedSliderFill.transform.localPosition = new Vector3(-1.78f + (fillWidth * 0.5f), -0.08f, -0.01f);
+        }
 
         if (pauseLoopButton != null)
         {
