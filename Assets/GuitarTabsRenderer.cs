@@ -27,6 +27,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private TextMeshPro speedSliderText;
     private GameObject songSettingsButton;
     private TextMeshPro songSettingsButtonText;
+    private GameObject toneLabButton;
+    private TextMeshPro toneLabButtonText;
 
     private GameObject songSettingsRoot;
     private TextMeshPro songSettingsTitleText;
@@ -318,7 +320,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         GameObject menuBg = GameObject.CreatePrimitive(PrimitiveType.Cube);
         menuBg.name = "PauseMenuBg";
         menuBg.transform.SetParent(pauseMenuRoot.transform, false);
-        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 1.75f, 0.055f);
+        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 2.45f, 0.055f);
         menuBg.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.06f, 0.08f, 0.12f, 0.95f), 0.4f);
 
         GameObject titleObj = new GameObject("PauseTitle");
@@ -335,7 +337,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         helpObj.transform.SetParent(pauseMenuRoot.transform, false);
         helpObj.transform.localPosition = new Vector3(0f, 0.02f, -0.05f);
         pauseHelpText = helpObj.AddComponent<TextMeshPro>();
-        pauseHelpText.text = "Left/Right Seek   |   1/2 Select Marker   |   Space Resume";
+        pauseHelpText.text = "Left/Right Seek   |   1/2 Select Marker   |   Space Resume   |   T Tone Lab";
         pauseHelpText.fontSize = owner.tabLabelFontSize * 0.62f;
         pauseHelpText.alignment = TextAlignmentOptions.Center;
         pauseHelpText.color = new Color(0.86f, 0.89f, 0.95f);
@@ -400,6 +402,22 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         songSettingsButtonText.alignment = TextAlignmentOptions.Center;
         songSettingsButtonText.color = new Color(0.95f, 0.98f, 1f);
         songSettingsButtonText.sortingOrder = 38;
+
+        toneLabButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        toneLabButton.name = "ToneLabButton";
+        toneLabButton.transform.SetParent(pauseMenuRoot.transform, false);
+        toneLabButton.transform.localPosition = new Vector3(0f, -1.38f, 0f);
+        toneLabButton.transform.localScale = new Vector3(4.7f, 0.50f, 0.08f);
+
+        GameObject toneLabTextObj = new GameObject("ToneLabButtonLabel");
+        toneLabTextObj.transform.SetParent(pauseMenuRoot.transform, false);
+        toneLabTextObj.transform.localPosition = new Vector3(0f, -1.40f, -0.06f);
+        toneLabButtonText = toneLabTextObj.AddComponent<TextMeshPro>();
+        toneLabButtonText.text = "TONE LAB [T / Click]";
+        toneLabButtonText.fontSize = owner.tabLabelFontSize * 0.62f;
+        toneLabButtonText.alignment = TextAlignmentOptions.Center;
+        toneLabButtonText.color = new Color(0.97f, 0.95f, 1f);
+        toneLabButtonText.sortingOrder = 38;
 
         pauseMenuRoot.SetActive(false);
     }
@@ -588,6 +606,19 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             if (r != null)
             {
                 Color buttonColor = new Color(0.15f, 0.27f, 0.48f, 0.97f);
+                r.material.color = buttonColor;
+                r.material.EnableKeyword("_EMISSION");
+                r.material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+                r.material.SetColor("_EmissionColor", buttonColor * Mathf.Pow(2f, 1.8f));
+            }
+        }
+
+        if (toneLabButton != null)
+        {
+            Renderer r = toneLabButton.GetComponent<Renderer>();
+            if (r != null)
+            {
+                Color buttonColor = new Color(0.34f, 0.18f, 0.48f, 0.97f);
                 r.material.color = buttonColor;
                 r.material.EnableKeyword("_EMISSION");
                 r.material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
