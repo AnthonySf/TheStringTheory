@@ -112,6 +112,12 @@ public sealed class TabSectionData
 public sealed class GuitarGameplaySnapshot
 {
     public float songTime;
+    public bool isPaused;
+    public bool loopEnabled;
+    public float loopStartTime;
+    public float loopEndTime;
+    public int selectedLoopMarker;
+    public float playbackSpeedPercent;
     public float currentSectionProgress;
     public int currentSectionIndex;
     public int nextSectionIndex;
