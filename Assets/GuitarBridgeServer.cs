@@ -178,6 +178,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private GuitarRenderMode activeRendererMode = (GuitarRenderMode)(-1);
 
     private float songTimer;
+    private bool isPaused;
+    private float pauseSeekStepSeconds = 0.5f;
     private int latestNoteEventId;
     private bool latestPacketHadEvent;
     private string latestEventNotesText = "--";
@@ -197,20 +199,74 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void Update()
     {
-        songTimer += Time.deltaTime;
+        HandlePauseControls();
+
+        if (!isPaused)
+            songTimer += Time.deltaTime;
 
         if (midiTrackIndex != currentLoadedTrackIndex)
             LoadTestSong();
 
-        ParseUdpState();
-        PruneHistory();
-        UpdateGameplayStates();
+        if (!isPaused)
+        {
+            ParseUdpState();
+            PruneHistory();
+            UpdateGameplayStates();
+        }
+        else
+        {
+            latestPacketHadEvent = false;
+        }
+
         EnsureRenderer();
 
         if (activeRenderer != null)
             activeRenderer.Render(BuildSnapshot());
 
         UpdateUiText();
+    }
+
+
+    private void HandlePauseControls()
+    {
+        if (Input.GetKeyDown(KeyCode.Space))
+            isPaused = !isPaused;
+
+        if (!isPaused)
+            return;
+
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+            SeekSongTime(songTimer - pauseSeekStepSeconds);
+        else if (Input.GetKeyDown(KeyCode.RightArrow))
+            SeekSongTime(songTimer + pauseSeekStepSeconds);
+    }
+
+    private void SeekSongTime(float targetTime)
+    {
+        float previousTime = songTimer;
+        float clampedTime = Mathf.Max(0f, targetTime);
+        songTimer = clampedTime;
+
+        bool isRewinding = clampedTime < previousTime;
+        if (isRewinding)
+        {
+            for (int i = 0; i < noteStates.Count; i++)
+            {
+                GameplayNoteState noteState = noteStates[i];
+                if (noteState.data.time > songTimer)
+                {
+                    noteState.result = GameplayNoteResult.Pending;
+                    noteState.resolvedAt = -1f;
+                    noteState.isJudgeable = false;
+                }
+            }
+        }
+
+        recentNoteEvents.Clear();
+        latestDetectedPitches.Clear();
+        latestEventNotesText = "--";
+        latestNoteEventId = 0;
+        latestPacketHadEvent = false;
     }
 
     private void OnApplicationQuit()
@@ -671,6 +727,7 @@ private void ParseUdpState()
         return new GuitarGameplaySnapshot
         {
             songTime = songTimer,
+            isPaused = isPaused,
             currentSectionIndex = currentSectionIndex,
             nextSectionIndex = currentSectionIndex + 1,
             currentSectionProgress = progress,
@@ -718,6 +775,7 @@ private void ParseUdpState()
         recentNoteEvents.Clear();
         latestNoteEventId = 0;
         songTimer = 0f;
+        isPaused = false;
 
         List<NoteData> loadedNotes = null;
 

@@ -112,6 +112,7 @@ public sealed class TabSectionData
 public sealed class GuitarGameplaySnapshot
 {
     public float songTime;
+    public bool isPaused;
     public float currentSectionProgress;
     public int currentSectionIndex;
     public int nextSectionIndex;
