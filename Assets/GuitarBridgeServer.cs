@@ -460,49 +460,57 @@ public class GuitarBridgeServer : MonoBehaviour
                mouse.y <= screenCenter.y + halfHeight;
     }
 
-    private void OpenOrFocusToneLab()
-    {
+private void OpenOrFocusToneLab()
+{
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-        const string toneLabWindowTitle = "Tone Lab";
-        string toneLabPath = @"C:\Users\Anthony\Desktop\guitarProject\ToneLab.py";
+    const string toneLabWindowTitle = "Tone Lab";
 
-        try
+    string toneLabPath = @"C:\Users\Anthony\Desktop\guitarProject\ToneLab.py";
+    string pythonExe = @"C:\Users\Anthony\Desktop\guitarProject\.venv\Scripts\python.exe";
+
+    try
+    {
+        IntPtr existing = FindWindow(null, toneLabWindowTitle);
+        if (existing != IntPtr.Zero)
         {
-            IntPtr existing = FindWindow(null, toneLabWindowTitle);
-            if (existing != IntPtr.Zero)
-            {
-                ShowWindow(existing, SW_RESTORE);
-                SetForegroundWindow(existing);
-                CenterWindowOnUnityDisplay(existing);
-                return;
-            }
-
-            if (!File.Exists(toneLabPath))
-            {
-                Debug.LogWarning($"ToneLab script not found at '{toneLabPath}'.");
-                return;
-            }
-
-            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "python",
-                Arguments = $"\"{toneLabPath}\"",
-                WorkingDirectory = Path.GetDirectoryName(toneLabPath),
-                UseShellExecute = true,
-                CreateNoWindow = false
-            };
-
-            System.Diagnostics.Process.Start(startInfo);
-            StartCoroutine(FocusToneLabWindowWhenReady(toneLabWindowTitle));
+            ShowWindow(existing, SW_RESTORE);
+            SetForegroundWindow(existing);
+            CenterWindowOnUnityDisplay(existing);
+            return;
         }
-        catch (Exception ex)
+
+        if (!File.Exists(toneLabPath))
         {
-            Debug.LogWarning($"Failed to launch Tone Lab: {ex.Message}");
+            Debug.LogWarning($"Tone Lab script not found at '{toneLabPath}'.");
+            return;
         }
-#else
-        Debug.LogWarning("Tone Lab launcher is currently implemented for Windows builds only.");
-#endif
+
+        if (!File.Exists(pythonExe))
+        {
+            Debug.LogWarning($"Tone Lab Python executable not found at '{pythonExe}'.");
+            return;
+        }
+
+        var startInfo = new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = pythonExe,
+            Arguments = $"\"{toneLabPath}\"",
+            WorkingDirectory = Path.GetDirectoryName(toneLabPath),
+            UseShellExecute = false,
+            CreateNoWindow = false
+        };
+
+        System.Diagnostics.Process.Start(startInfo);
+        StartCoroutine(FocusToneLabWindowWhenReady(toneLabWindowTitle));
     }
+    catch (Exception ex)
+    {
+        Debug.LogWarning($"Failed to launch Tone Lab: {ex}");
+    }
+#else
+    Debug.LogWarning("Tone Lab launcher is currently implemented for Windows builds only.");
+#endif
+}
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
     private System.Collections.IEnumerator FocusToneLabWindowWhenReady(string windowTitle)
