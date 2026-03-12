@@ -181,6 +181,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private GuitarRenderMode activeRendererMode = (GuitarRenderMode)(-1);
 
     private float songTimer;
+    private float audioSongTimer;
     private bool isPaused;
     private float pauseSeekStepSeconds = 3.2f;
     private float playbackSpeedPercent = 100f;
@@ -238,6 +239,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (!isPaused)
         {
+            audioSongTimer += Time.deltaTime * GetPlaybackSpeedScale();
             songTimer += Time.deltaTime * GetTabPlaybackSpeedScale();
             HandleLoopPlayback();
         }
@@ -550,6 +552,7 @@ public class GuitarBridgeServer : MonoBehaviour
         float previousTime = songTimer;
         float clampedTime = Mathf.Max(-songStartDelaySeconds, targetTime);
         songTimer = clampedTime;
+        audioSongTimer = clampedTime;
 
         if (updateSelectedMarker)
             UpdateSelectedLoopMarker(clampedTime);
@@ -1124,6 +1127,7 @@ private void ParseUdpState()
         recentNoteEvents.Clear();
         latestNoteEventId = 0;
         songTimer = 0f;
+        audioSongTimer = 0f;
         isPaused = false;
 
         float sectionDuration = GetEffectiveTabSectionDuration();
@@ -1134,6 +1138,8 @@ private void ParseUdpState()
         playbackSpeedPercent = 100f;
         showSongSettings = false;
         tabSpeedOffsetPercent = 100f;
+
+        InitializeSongMetadataAndAudio();
 
         List<NoteData> loadedNotes = null;
 
@@ -1215,8 +1221,8 @@ private void ParseUdpState()
         // 4. GENERATE THE SECTIONS (This is what brings the renderer back to life!)
         GenerateTabSections();
 
-        InitializeSongMetadataAndAudio();
         songTimer = -songStartDelaySeconds;
+        audioSongTimer = -songStartDelaySeconds;
         ApplyPlaybackSpeedToAudio();
         SyncAudioToSongTimer(playImmediately: !isPaused);
     }
@@ -1389,7 +1395,7 @@ private void ParseUdpState()
         if (backingTrackSource == null || backingTrackSource.clip == null)
             return;
 
-        float timelineAudioTime = songTimer + (audioOffsetMs / 1000f);
+        float timelineAudioTime = audioSongTimer + (audioOffsetMs / 1000f);
         float audioTime = Mathf.Clamp(timelineAudioTime, 0f, backingTrackSource.clip.length);
 
         if (Mathf.Abs(backingTrackSource.time - audioTime) > 0.04f)

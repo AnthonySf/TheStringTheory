@@ -306,7 +306,9 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (snapshot.songTime < 0f && snapshot.songStartDelaySeconds > 0.01f)
         {
             float preRollProgress = Mathf.Clamp01((snapshot.songTime + snapshot.songStartDelaySeconds) / snapshot.songStartDelaySeconds);
-            x = topPanel.LeftEdge + (preRollProgress * topPanel.UsableWidth);
+            float virtualLeadWidth = topPanel.UsableWidth * (snapshot.songStartDelaySeconds / sectionDuration);
+            virtualLeadWidth = Mathf.Max(topPanel.UsableWidth * 0.10f, virtualLeadWidth);
+            x = (topPanel.LeftEdge - virtualLeadWidth) + (preRollProgress * virtualLeadWidth);
         }
         else
         {
