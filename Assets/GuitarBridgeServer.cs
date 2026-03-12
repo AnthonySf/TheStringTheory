@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using System.Net;
@@ -296,6 +297,12 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (Input.GetKeyDown(KeyCode.T) || IsToneLabButtonClicked())
+        {
+            OpenOrFocusToneLab();
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || IsLoopToggleClicked())
         {
             loopEnabled = !loopEnabled;
@@ -433,6 +440,145 @@ public class GuitarBridgeServer : MonoBehaviour
                mouse.y >= screenCenter.y - halfHeight &&
                mouse.y <= screenCenter.y + halfHeight;
     }
+
+    private bool IsToneLabButtonClicked()
+    {
+        if (renderMode != GuitarRenderMode.Tabs)
+            return false;
+
+        if (!Input.GetMouseButtonDown(0) || Camera.main == null)
+            return false;
+
+        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 1.38f, tabZDepth - 0.35f);
+        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
+        float halfWidth = 180f;
+        float halfHeight = 26f;
+
+        Vector3 mouse = Input.mousePosition;
+        return mouse.x >= screenCenter.x - halfWidth &&
+               mouse.x <= screenCenter.x + halfWidth &&
+               mouse.y >= screenCenter.y - halfHeight &&
+               mouse.y <= screenCenter.y + halfHeight;
+    }
+
+    private void OpenOrFocusToneLab()
+    {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        const string toneLabWindowTitle = "Tone Lab";
+        string toneLabPath = @"C:\Users\Anthony\Desktop\guitarProject\ToneLab.py";
+
+        try
+        {
+            IntPtr existing = FindWindow(null, toneLabWindowTitle);
+            if (existing != IntPtr.Zero)
+            {
+                ShowWindow(existing, SW_RESTORE);
+                SetForegroundWindow(existing);
+                CenterWindowOnUnityDisplay(existing);
+                return;
+            }
+
+            if (!File.Exists(toneLabPath))
+            {
+                Debug.LogWarning($"ToneLab script not found at '{toneLabPath}'.");
+                return;
+            }
+
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = "python",
+                Arguments = $"\"{toneLabPath}\"",
+                WorkingDirectory = Path.GetDirectoryName(toneLabPath),
+                UseShellExecute = true,
+                CreateNoWindow = false
+            };
+
+            Process.Start(startInfo);
+            StartCoroutine(FocusToneLabWindowWhenReady(toneLabWindowTitle));
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to launch Tone Lab: {ex.Message}");
+        }
+#else
+        Debug.LogWarning("Tone Lab launcher is currently implemented for Windows builds only.");
+#endif
+    }
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+    private System.Collections.IEnumerator FocusToneLabWindowWhenReady(string windowTitle)
+    {
+        const int attempts = 60;
+        for (int i = 0; i < attempts; i++)
+        {
+            IntPtr window = FindWindow(null, windowTitle);
+            if (window != IntPtr.Zero)
+            {
+                ShowWindow(window, SW_RESTORE);
+                SetForegroundWindow(window);
+                CenterWindowOnUnityDisplay(window);
+                yield break;
+            }
+
+            yield return new WaitForSecondsRealtime(0.1f);
+        }
+    }
+
+    private void CenterWindowOnUnityDisplay(IntPtr targetWindow)
+    {
+        if (targetWindow == IntPtr.Zero || Camera.main == null)
+            return;
+
+        IntPtr unityWindow = GetForegroundWindow();
+        if (unityWindow == IntPtr.Zero)
+            return;
+
+        if (!GetWindowRect(unityWindow, out RECT unityRect) || !GetWindowRect(targetWindow, out RECT targetRect))
+            return;
+
+        int unityCenterX = unityRect.Left + ((unityRect.Right - unityRect.Left) / 2);
+        int unityCenterY = unityRect.Top + ((unityRect.Bottom - unityRect.Top) / 2);
+        int targetWidth = targetRect.Right - targetRect.Left;
+        int targetHeight = targetRect.Bottom - targetRect.Top;
+
+        int targetX = unityCenterX - (targetWidth / 2);
+        int targetY = unityCenterY - (targetHeight / 2);
+
+        SetWindowPos(targetWindow, IntPtr.Zero, targetX, targetY, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr FindWindow(string lpClassName, string lpWindowName);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    private const int SW_RESTORE = 9;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOZORDER = 0x0004;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    private struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+#endif
 
     private bool TryReadSpeedSliderPercent(out float speedPercent)
     {
