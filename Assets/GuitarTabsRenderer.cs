@@ -13,6 +13,18 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private TabPanelView topPanel;
     private TabPanelView bottomPanel;
     private GameObject playhead;
+    private GameObject loopMarkerStart;
+    private GameObject loopMarkerEnd;
+
+    private GameObject pauseMenuRoot;
+    private TextMeshPro pauseTitleText;
+    private TextMeshPro pauseHelpText;
+    private TextMeshPro pauseLoopText;
+    private GameObject pauseLoopButton;
+    private GameObject speedSliderTrack;
+    private GameObject speedSliderFill;
+    private GameObject speedSliderKnob;
+    private TextMeshPro speedSliderText;
 
     private int displayedTopSectionIndex = -999;
     private int displayedBottomSectionIndex = -999;
@@ -22,6 +34,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private TabPanelView transitionOutgoingPanel;
     private TabPanelView transitionIncomingPanel;
     private int queuedBottomSectionIndex = -1;
+    private bool transitionIsReverse;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -37,6 +50,18 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         playhead.transform.SetParent(root.transform, false);
         playhead.GetComponent<Renderer>().material = CreateGlowMaterial(owner.tabPlayheadColor, 4f);
 
+        CreatePauseMenuVisuals();
+
+        loopMarkerStart = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        loopMarkerStart.name = "LoopMarkerStart";
+        loopMarkerStart.transform.SetParent(root.transform, false);
+        loopMarkerStart.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(1f, 0.2f, 0.2f, 0.95f), 4f);
+
+        loopMarkerEnd = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        loopMarkerEnd.name = "LoopMarkerEnd";
+        loopMarkerEnd.transform.SetParent(root.transform, false);
+        loopMarkerEnd.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(1f, 0.2f, 0.2f, 0.95f), 4f);
+
         RebuildCaches(sections);
         ConfigureCamera();
 
@@ -44,6 +69,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         displayedBottomSectionIndex = -999;
         isTransitioning = false;
         transitionElapsed = 0f;
+        transitionIsReverse = false;
     }
 
     public void ResetRenderer(List<NoteData> chartNotes, List<TabSectionData> sections)
@@ -55,6 +81,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         isTransitioning = false;
         transitionElapsed = 0f;
         queuedBottomSectionIndex = -1;
+        transitionIsReverse = false;
 
         topPanel.ClearAndHide();
         bottomPanel.ClearAndHide();
@@ -79,6 +106,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         UpdatePanelColors(topPanel);
         UpdatePanelColors(bottomPanel);
         UpdatePlayhead(snapshot);
+        UpdatePauseMenu(snapshot);
+        UpdateLoopMarkers(snapshot);
     }
 
     public void DisposeRenderer()
@@ -145,9 +174,21 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         {
             isTransitioning = true;
             transitionElapsed = 0f;
+            transitionIsReverse = false;
             transitionOutgoingPanel = topPanel;
             transitionIncomingPanel = bottomPanel;
             queuedBottomSectionIndex = snapshot.currentSectionIndex + 1;
+            return;
+        }
+
+        if (snapshot.currentSectionIndex + 1 == displayedTopSectionIndex)
+        {
+            isTransitioning = true;
+            transitionElapsed = 0f;
+            transitionIsReverse = true;
+            transitionOutgoingPanel = bottomPanel;
+            transitionIncomingPanel = topPanel;
+            queuedBottomSectionIndex = snapshot.currentSectionIndex;
             return;
         }
 
@@ -169,8 +210,13 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         transitionElapsed += Time.deltaTime;
         float t = Mathf.Clamp01(transitionElapsed / Mathf.Max(0.01f, owner.tabPanelSwapDuration));
 
-        float incomingY = Mathf.Lerp(owner.TabBottomPanelY, owner.TabTopPanelY, t);
-        float outgoingY = Mathf.Lerp(owner.TabTopPanelY, owner.TabTopPanelY + owner.tabPanelLiftDistance, t);
+        float incomingStartY = transitionIsReverse ? owner.TabTopPanelY : owner.TabBottomPanelY;
+        float incomingEndY = transitionIsReverse ? owner.TabBottomPanelY : owner.TabTopPanelY;
+        float outgoingStartY = transitionIsReverse ? owner.TabBottomPanelY : owner.TabTopPanelY;
+        float outgoingEndY = transitionIsReverse ? owner.TabBottomPanelY - owner.tabPanelLiftDistance : owner.TabTopPanelY + owner.tabPanelLiftDistance;
+
+        float incomingY = Mathf.Lerp(incomingStartY, incomingEndY, t);
+        float outgoingY = Mathf.Lerp(outgoingStartY, outgoingEndY, t);
 
         SetPanelWorldY(transitionIncomingPanel, incomingY);
         SetPanelWorldY(transitionOutgoingPanel, outgoingY);
@@ -181,24 +227,43 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         transitionOutgoingPanel.SetAlpha(1f);
 
-        TabPanelView oldTop = topPanel;
-        topPanel = bottomPanel;
-        bottomPanel = oldTop;
+        if (!transitionIsReverse)
+        {
+            TabPanelView oldTop = topPanel;
+            topPanel = bottomPanel;
+            bottomPanel = oldTop;
 
-        displayedTopSectionIndex = topPanel.SectionIndex;
-        displayedBottomSectionIndex = queuedBottomSectionIndex;
+            displayedTopSectionIndex = topPanel.SectionIndex;
+            displayedBottomSectionIndex = queuedBottomSectionIndex;
 
-        SetPanelWorldY(topPanel, owner.TabTopPanelY);
-        SetPanelWorldY(bottomPanel, owner.TabBottomPanelY);
+            SetPanelWorldY(topPanel, owner.TabTopPanelY);
+            SetPanelWorldY(bottomPanel, owner.TabBottomPanelY);
 
-        bottomPanel.Build(GetSection(displayedBottomSectionIndex));
-        bottomPanel.SetAlpha(1f);
+            bottomPanel.Build(GetSection(displayedBottomSectionIndex));
+            bottomPanel.SetAlpha(1f);
+        }
+        else
+        {
+            TabPanelView oldBottom = bottomPanel;
+            bottomPanel = topPanel;
+            topPanel = oldBottom;
+
+            displayedTopSectionIndex = queuedBottomSectionIndex;
+            displayedBottomSectionIndex = bottomPanel.SectionIndex;
+
+            SetPanelWorldY(topPanel, owner.TabTopPanelY);
+            SetPanelWorldY(bottomPanel, owner.TabBottomPanelY);
+
+            topPanel.Build(GetSection(displayedTopSectionIndex));
+            topPanel.SetAlpha(1f);
+        }
 
         isTransitioning = false;
         transitionElapsed = 0f;
         transitionOutgoingPanel = null;
         transitionIncomingPanel = null;
         queuedBottomSectionIndex = -1;
+        transitionIsReverse = false;
     }
 
     private void UpdatePlayhead(GuitarGameplaySnapshot snapshot)
@@ -214,12 +279,195 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         playhead.SetActive(true);
 
-        float sectionStart = topPanel.SectionIndex * owner.tabSectionDuration;
-        float localProgress = Mathf.Clamp01((snapshot.songTime - sectionStart) / Mathf.Max(0.01f, owner.tabSectionDuration));
+        float sectionDuration = Mathf.Max(0.01f, snapshot.sectionDuration);
+        float sectionStart = topPanel.SectionIndex * sectionDuration;
+        float localProgress = Mathf.Clamp01((snapshot.songTime - sectionStart) / sectionDuration);
         float x = topPanel.LeftEdge + (localProgress * topPanel.UsableWidth);
 
         playhead.transform.position = new Vector3(x, topPanel.CenterY, owner.tabZDepth + 0.10f);
         playhead.transform.localScale = new Vector3(owner.tabPlayheadWidth, owner.tabPanelHeight + 0.4f, owner.tabPlayheadDepth);
+    }
+
+    private void CreatePauseMenuVisuals()
+    {
+        pauseMenuRoot = new GameObject("PauseMenu");
+        pauseMenuRoot.transform.SetParent(root.transform, false);
+        pauseMenuRoot.transform.position = new Vector3(owner.tabPanelCenterX, owner.TabTopPanelY + owner.tabPanelHeight * 1.08f, owner.tabZDepth - 0.35f);
+
+        GameObject menuBg = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        menuBg.name = "PauseMenuBg";
+        menuBg.transform.SetParent(pauseMenuRoot.transform, false);
+        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 1.75f, 0.055f);
+        menuBg.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.06f, 0.08f, 0.12f, 0.95f), 0.4f);
+
+        GameObject titleObj = new GameObject("PauseTitle");
+        titleObj.transform.SetParent(pauseMenuRoot.transform, false);
+        titleObj.transform.localPosition = new Vector3(0f, 0.43f, -0.05f);
+        pauseTitleText = titleObj.AddComponent<TextMeshPro>();
+        pauseTitleText.text = "PAUSE";
+        pauseTitleText.fontSize = owner.tabLabelFontSize * 1.35f;
+        pauseTitleText.alignment = TextAlignmentOptions.Center;
+        pauseTitleText.color = Color.white;
+        pauseTitleText.sortingOrder = 35;
+
+        GameObject helpObj = new GameObject("PauseHelp");
+        helpObj.transform.SetParent(pauseMenuRoot.transform, false);
+        helpObj.transform.localPosition = new Vector3(0f, 0.02f, -0.05f);
+        pauseHelpText = helpObj.AddComponent<TextMeshPro>();
+        pauseHelpText.text = "Left/Right Seek   |   1/2 Select Marker   |   Space Resume";
+        pauseHelpText.fontSize = owner.tabLabelFontSize * 0.62f;
+        pauseHelpText.alignment = TextAlignmentOptions.Center;
+        pauseHelpText.color = new Color(0.86f, 0.89f, 0.95f);
+        pauseHelpText.sortingOrder = 35;
+
+        GameObject speedLabelObj = new GameObject("SpeedLabel");
+        speedLabelObj.transform.SetParent(pauseMenuRoot.transform, false);
+        speedLabelObj.transform.localPosition = new Vector3(0f, -0.20f, -0.06f);
+        speedSliderText = speedLabelObj.AddComponent<TextMeshPro>();
+        speedSliderText.fontSize = owner.tabLabelFontSize * 0.60f;
+        speedSliderText.alignment = TextAlignmentOptions.Center;
+        speedSliderText.color = new Color(0.90f, 0.93f, 1f);
+        speedSliderText.sortingOrder = 38;
+
+        speedSliderTrack = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        speedSliderTrack.name = "SpeedSliderTrack";
+        speedSliderTrack.transform.SetParent(pauseMenuRoot.transform, false);
+        speedSliderTrack.transform.localPosition = new Vector3(0f, -0.08f, 0f);
+        speedSliderTrack.transform.localScale = new Vector3(3.60f, 0.12f, 0.07f);
+        speedSliderTrack.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.22f, 0.25f, 0.31f, 0.95f), 0.8f);
+
+        speedSliderFill = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        speedSliderFill.name = "SpeedSliderFill";
+        speedSliderFill.transform.SetParent(pauseMenuRoot.transform, false);
+        speedSliderFill.transform.localPosition = new Vector3(-1.78f, -0.08f, -0.01f);
+        speedSliderFill.transform.localScale = new Vector3(0.04f, 0.10f, 0.06f);
+        speedSliderFill.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.95f, 0.78f, 0.18f, 0.95f), 1.6f);
+
+        speedSliderKnob = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        speedSliderKnob.name = "SpeedSliderKnob";
+        speedSliderKnob.transform.SetParent(pauseMenuRoot.transform, false);
+        speedSliderKnob.transform.localPosition = new Vector3(-1.78f, -0.08f, -0.03f);
+        speedSliderKnob.transform.localScale = new Vector3(0.17f, 0.23f, 0.09f);
+        speedSliderKnob.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(1f, 0.95f, 0.85f, 0.98f), 1.4f);
+
+        pauseLoopButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        pauseLoopButton.name = "PauseLoopButton";
+        pauseLoopButton.transform.SetParent(pauseMenuRoot.transform, false);
+        pauseLoopButton.transform.localPosition = new Vector3(0f, -0.62f, 0f);
+        pauseLoopButton.transform.localScale = new Vector3(4.7f, 0.64f, 0.08f);
+
+        GameObject loopTextObj = new GameObject("PauseLoopLabel");
+        loopTextObj.transform.SetParent(pauseMenuRoot.transform, false);
+        loopTextObj.transform.localPosition = new Vector3(0f, -0.64f, -0.06f);
+        pauseLoopText = loopTextObj.AddComponent<TextMeshPro>();
+        pauseLoopText.fontSize = owner.tabLabelFontSize * 0.72f;
+        pauseLoopText.alignment = TextAlignmentOptions.Center;
+        pauseLoopText.sortingOrder = 38;
+
+        pauseMenuRoot.SetActive(false);
+    }
+
+    private void UpdatePauseMenu(GuitarGameplaySnapshot snapshot)
+    {
+        if (pauseMenuRoot == null)
+            return;
+
+        bool visible = snapshot != null && snapshot.isPaused;
+        pauseMenuRoot.SetActive(visible);
+
+        if (!visible)
+            return;
+
+        bool isOn = snapshot.loopEnabled;
+        bool markerOne = snapshot.selectedLoopMarker == 1;
+        float speedPercent = Mathf.Clamp(snapshot.playbackSpeedPercent, 1f, 200f);
+        pauseLoopText.text = $"LOOP {(isOn ? "ON" : "OFF")}  [Enter / Click]   Active Marker: {(markerOne ? "1" : "2")}";
+        pauseLoopText.color = isOn ? new Color(0.95f, 1f, 0.95f) : new Color(0.95f, 0.9f, 0.9f);
+
+        if (speedSliderText != null)
+            speedSliderText.text = $"SPEED  {speedPercent:F0}%";
+
+        float sliderT = Mathf.InverseLerp(1f, 200f, speedPercent);
+        if (speedSliderKnob != null)
+            speedSliderKnob.transform.localPosition = new Vector3(Mathf.Lerp(-1.78f, 1.78f, sliderT), -0.08f, -0.03f);
+
+        if (speedSliderFill != null)
+        {
+            float fillWidth = Mathf.Lerp(0.04f, 3.56f, sliderT);
+            speedSliderFill.transform.localScale = new Vector3(fillWidth, 0.10f, 0.06f);
+            speedSliderFill.transform.localPosition = new Vector3(-1.78f + (fillWidth * 0.5f), -0.08f, -0.01f);
+        }
+
+        if (pauseLoopButton != null)
+        {
+            Renderer r = pauseLoopButton.GetComponent<Renderer>();
+            if (r != null)
+            {
+                Color buttonColor = isOn ? new Color(0.16f, 0.55f, 0.28f, 0.97f) : new Color(0.44f, 0.15f, 0.15f, 0.97f);
+                r.material.color = buttonColor;
+                r.material.EnableKeyword("_EMISSION");
+                r.material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+                r.material.SetColor("_EmissionColor", buttonColor * Mathf.Pow(2f, 1.8f));
+            }
+        }
+    }
+
+    private void UpdateLoopMarkers(GuitarGameplaySnapshot snapshot)
+    {
+        bool showMarkers = snapshot != null && snapshot.loopEnabled;
+
+        if (loopMarkerStart != null)
+            loopMarkerStart.SetActive(showMarkers);
+        if (loopMarkerEnd != null)
+            loopMarkerEnd.SetActive(showMarkers);
+
+        if (!showMarkers)
+            return;
+
+        if (TryGetMarkerWorldPosition(snapshot.loopStartTime, snapshot.sectionDuration, out Vector3 startPos, out float startHeight))
+        {
+            loopMarkerStart.transform.position = startPos;
+            loopMarkerStart.transform.localScale = new Vector3(owner.tabPlayheadWidth * 1.15f, startHeight, owner.tabPlayheadDepth * 1.25f);
+        }
+        else
+        {
+            loopMarkerStart.SetActive(false);
+        }
+
+        if (TryGetMarkerWorldPosition(snapshot.loopEndTime, snapshot.sectionDuration, out Vector3 endPos, out float endHeight))
+        {
+            loopMarkerEnd.transform.position = endPos;
+            loopMarkerEnd.transform.localScale = new Vector3(owner.tabPlayheadWidth * 1.15f, endHeight, owner.tabPlayheadDepth * 1.25f);
+        }
+        else
+        {
+            loopMarkerEnd.SetActive(false);
+        }
+    }
+
+    private bool TryGetMarkerWorldPosition(float markerTime, float sectionDuration, out Vector3 position, out float height)
+    {
+        position = Vector3.zero;
+        height = owner.tabPanelHeight + 0.42f;
+
+        float safeSectionDuration = Mathf.Max(0.01f, sectionDuration);
+        int markerSection = Mathf.Max(0, Mathf.FloorToInt(markerTime / safeSectionDuration));
+        TabPanelView panel = null;
+
+        if (topPanel != null && topPanel.SectionIndex == markerSection)
+            panel = topPanel;
+        else if (bottomPanel != null && bottomPanel.SectionIndex == markerSection)
+            panel = bottomPanel;
+
+        if (panel == null)
+            return false;
+
+        float sectionStart = markerSection * safeSectionDuration;
+        float localProgress = Mathf.Clamp01((markerTime - sectionStart) / safeSectionDuration);
+        float x = panel.LeftEdge + localProgress * panel.UsableWidth;
+
+        position = new Vector3(x, panel.CenterY, owner.tabZDepth + 0.11f);
+        return true;
     }
 
     private void UpdatePanelColors(TabPanelView panel)

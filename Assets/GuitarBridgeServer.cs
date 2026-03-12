@@ -149,6 +149,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("Tabs Sections")]
     public float tabSectionDuration = 4.0f;
+    [Range(0.5f, 3.0f)] public float tabSectionLengthMultiplier = 1.0f;
     public float tabPanelSwapDuration = 0.4f;
     public float tabPanelLiftDistance = 2.0f;
 
@@ -178,6 +179,14 @@ public class GuitarBridgeServer : MonoBehaviour
     private GuitarRenderMode activeRendererMode = (GuitarRenderMode)(-1);
 
     private float songTimer;
+    private bool isPaused;
+    private float pauseSeekStepSeconds = 3.2f;
+    private float playbackSpeedPercent = 100f;
+
+    private bool loopEnabled;
+    private float loopStartTime;
+    private float loopEndTime;
+    private int selectedLoopMarker = 1;
     private int latestNoteEventId;
     private bool latestPacketHadEvent;
     private string latestEventNotesText = "--";
@@ -197,20 +206,187 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void Update()
     {
-        songTimer += Time.deltaTime;
+        HandlePauseControls();
+
+        if (!isPaused)
+        {
+            songTimer += Time.deltaTime * GetPlaybackSpeedScale();
+            HandleLoopPlayback();
+        }
 
         if (midiTrackIndex != currentLoadedTrackIndex)
             LoadTestSong();
 
-        ParseUdpState();
-        PruneHistory();
-        UpdateGameplayStates();
+        if (!isPaused)
+        {
+            ParseUdpState();
+            PruneHistory();
+            UpdateGameplayStates();
+        }
+        else
+        {
+            latestPacketHadEvent = false;
+        }
+
         EnsureRenderer();
 
         if (activeRenderer != null)
             activeRenderer.Render(BuildSnapshot());
 
         UpdateUiText();
+    }
+
+    private void HandlePauseControls()
+    {
+        if (Input.GetKeyDown(KeyCode.Space))
+            isPaused = !isPaused;
+
+        if (!isPaused)
+            return;
+
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || IsLoopToggleClicked())
+        {
+            loopEnabled = !loopEnabled;
+            if (loopEnabled && loopEndTime <= loopStartTime)
+                loopEndTime = loopStartTime + 0.25f;
+        }
+
+        if (TryReadSpeedSliderPercent(out float sliderPercent))
+            playbackSpeedPercent = sliderPercent;
+
+        if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
+        {
+            selectedLoopMarker = 1;
+            SeekSongTime(loopStartTime, false);
+        }
+        else if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
+        {
+            selectedLoopMarker = 2;
+            SeekSongTime(loopEndTime, false);
+        }
+
+        float seekDirection = 0f;
+        if (Input.GetKey(KeyCode.LeftArrow))
+            seekDirection -= 1f;
+        if (Input.GetKey(KeyCode.RightArrow))
+            seekDirection += 1f;
+
+        if (Mathf.Approximately(seekDirection, 0f))
+            return;
+
+        SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
+    }
+
+    private void HandleLoopPlayback()
+    {
+        if (!loopEnabled || loopEndTime <= loopStartTime + 0.01f)
+            return;
+
+        if (songTimer < loopEndTime)
+            return;
+
+        SeekSongTime(loopStartTime, false);
+    }
+
+    private bool IsLoopToggleClicked()
+    {
+        if (renderMode != GuitarRenderMode.Tabs)
+            return false;
+
+        if (!Input.GetMouseButtonDown(0))
+            return false;
+
+        if (Camera.main == null)
+            return false;
+
+        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 0.62f, tabZDepth - 0.35f);
+        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
+        float halfWidth = 180f;
+        float halfHeight = 42f;
+
+        Vector3 mouse = Input.mousePosition;
+        return mouse.x >= screenCenter.x - halfWidth &&
+               mouse.x <= screenCenter.x + halfWidth &&
+               mouse.y >= screenCenter.y - halfHeight &&
+               mouse.y <= screenCenter.y + halfHeight;
+    }
+
+    private bool TryReadSpeedSliderPercent(out float speedPercent)
+    {
+        speedPercent = playbackSpeedPercent;
+
+        if (renderMode != GuitarRenderMode.Tabs)
+            return false;
+
+        if (!Input.GetMouseButton(0))
+            return false;
+
+        if (Camera.main == null)
+            return false;
+
+        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 0.08f, tabZDepth - 0.35f);
+        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
+        float halfWidth = 180f;
+        float halfHeight = 26f;
+
+        Vector3 mouse = Input.mousePosition;
+        if (mouse.y < screenCenter.y - halfHeight || mouse.y > screenCenter.y + halfHeight)
+            return false;
+
+        float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
+        float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
+        speedPercent = Mathf.Lerp(1f, 200f, t);
+        return true;
+    }
+
+    private float GetPlaybackSpeedScale()
+    {
+        return Mathf.Clamp(playbackSpeedPercent / 100f, 0.01f, 2f);
+    }
+
+    private void SeekSongTime(float targetTime, bool updateSelectedMarker)
+    {
+        float previousTime = songTimer;
+        float clampedTime = Mathf.Max(0f, targetTime);
+        songTimer = clampedTime;
+
+        if (updateSelectedMarker)
+            UpdateSelectedLoopMarker(clampedTime);
+
+        bool isRewinding = clampedTime < previousTime;
+        if (isRewinding)
+        {
+            for (int i = 0; i < noteStates.Count; i++)
+            {
+                GameplayNoteState noteState = noteStates[i];
+                if (noteState.data.time > songTimer)
+                {
+                    noteState.result = GameplayNoteResult.Pending;
+                    noteState.resolvedAt = -1f;
+                    noteState.isJudgeable = false;
+                }
+            }
+        }
+
+        recentNoteEvents.Clear();
+        latestDetectedPitches.Clear();
+        latestEventNotesText = "--";
+        latestNoteEventId = 0;
+        latestPacketHadEvent = false;
+    }
+
+    private void UpdateSelectedLoopMarker(float markerTime)
+    {
+        if (selectedLoopMarker == 1)
+        {
+            loopStartTime = Mathf.Max(0f, markerTime);
+            if (loopEndTime < loopStartTime + 0.05f)
+                loopEndTime = loopStartTime + 0.05f;
+        }
+        else
+        {
+            loopEndTime = Mathf.Max(loopStartTime + 0.05f, markerTime);
+        }
     }
 
     private void OnApplicationQuit()
@@ -549,7 +725,8 @@ private void ParseUdpState()
 
             if (eventId <= 0 || string.IsNullOrWhiteSpace(eventCsv) || eventCsv == "--") return;
 
-            float estimatedEventTime = Mathf.Max(0f, songTimer - Mathf.Max(0f, eventAge));
+            float eventAgeInSongTime = Mathf.Max(0f, eventAge) * GetPlaybackSpeedScale();
+            float estimatedEventTime = Mathf.Max(0f, songTimer - eventAgeInSongTime);
             
             // Log exactly what timestamp Unity is assigning this event on the timeline
             if (TryStoreNoteEvent(eventId, estimatedEventTime, eventCsv, out NoteEvent ev))
@@ -656,25 +833,38 @@ private void ParseUdpState()
         noteToIndex["B"] = 11;
     }
 
+    private float GetEffectiveTabSectionDuration()
+    {
+        return Mathf.Max(0.25f, tabSectionDuration * Mathf.Max(0.5f, tabSectionLengthMultiplier));
+    }
+
     private int GetSectionIndex(float time)
     {
-        if (tabSectionDuration <= 0.05f) return 0;
-        return Mathf.Max(0, Mathf.FloorToInt(time / tabSectionDuration));
+        float sectionDuration = GetEffectiveTabSectionDuration();
+        if (sectionDuration <= 0.05f) return 0;
+        return Mathf.Max(0, Mathf.FloorToInt(time / sectionDuration));
     }
 
     private GuitarGameplaySnapshot BuildSnapshot()
     {
         int currentSectionIndex = GetSectionIndex(songTimer);
-        float sectionStart = currentSectionIndex * tabSectionDuration;
-        float progress = Mathf.Clamp01((songTimer - sectionStart) / Mathf.Max(0.01f, tabSectionDuration));
+        float sectionDuration = GetEffectiveTabSectionDuration();
+        float sectionStart = currentSectionIndex * sectionDuration;
+        float progress = Mathf.Clamp01((songTimer - sectionStart) / Mathf.Max(0.01f, sectionDuration));
 
         return new GuitarGameplaySnapshot
         {
             songTime = songTimer,
+            isPaused = isPaused,
+            loopEnabled = loopEnabled,
+            loopStartTime = loopStartTime,
+            loopEndTime = loopEndTime,
+            selectedLoopMarker = selectedLoopMarker,
+            playbackSpeedPercent = playbackSpeedPercent,
             currentSectionIndex = currentSectionIndex,
             nextSectionIndex = currentSectionIndex + 1,
             currentSectionProgress = progress,
-            sectionDuration = tabSectionDuration,
+            sectionDuration = GetEffectiveTabSectionDuration(),
             noteStates = noteStates,
             sections = tabSections,
             latestDetectedPitches = latestDetectedPitches
@@ -701,11 +891,14 @@ private void ParseUdpState()
         if (uiText == null) return;
         List<string> stableNames = latestDetectedPitches.Select(GetNoteNameFromMidi).ToList();
         string eventTxt = latestPacketHadEvent ? "YES" : "NO";
+        string loopTxt = loopEnabled ? $"ON ({loopStartTime:F2}s - {loopEndTime:F2}s)" : "OFF";
         uiText.text =
             $"ACTIVE: <color=green>{string.Join(",", stableNames)}</color>\n" +
             $"NEW EVENT: <color=orange>{eventTxt}</color>  ID:{latestNoteEventId}\n" +
             $"EVENT NOTES: <color=cyan>{latestEventNotesText}</color>\n" +
-            $"TIME: <color=white>{songTimer:F2}</color>";
+            $"TIME: <color=white>{songTimer:F2}</color>\n" +
+            $"LOOP: <color=yellow>{loopTxt}</color> Marker:{selectedLoopMarker}\n" +
+            $"SPEED: <color=white>{playbackSpeedPercent:F0}%</color>";
     }
 
     // =========================================================
@@ -718,6 +911,14 @@ private void ParseUdpState()
         recentNoteEvents.Clear();
         latestNoteEventId = 0;
         songTimer = 0f;
+        isPaused = false;
+
+        float sectionDuration = GetEffectiveTabSectionDuration();
+        loopStartTime = Mathf.Max(0.2f, sectionDuration * 0.40f);
+        loopEndTime = Mathf.Max(loopStartTime + 0.5f, sectionDuration * 0.60f);
+        loopEnabled = false;
+        selectedLoopMarker = 1;
+        playbackSpeedPercent = 100f;
 
         List<NoteData> loadedNotes = null;
 
@@ -791,6 +992,11 @@ private void ParseUdpState()
 
         noteStates = chartNotes.Select(n => new GameplayNoteState(n)).ToList();
         
+
+        float songEndTime = chartNotes.Count > 0 ? chartNotes.Max(n => n.time + n.duration) : GetEffectiveTabSectionDuration();
+        loopStartTime = Mathf.Clamp(loopStartTime, 0f, Mathf.Max(0f, songEndTime - 0.05f));
+        loopEndTime = Mathf.Clamp(loopEndTime, loopStartTime + 0.05f, Mathf.Max(loopStartTime + 0.05f, songEndTime));
+
         // 4. GENERATE THE SECTIONS (This is what brings the renderer back to life!)
         GenerateTabSections();
     }
@@ -856,12 +1062,13 @@ private List<NoteData> BuildDemoSong()
         if (chartNotes == null || chartNotes.Count == 0) return;
 
         float maxTime = chartNotes.Max(n => n.time + n.duration);
-        int totalSections = Mathf.Max(2, Mathf.CeilToInt(maxTime / tabSectionDuration) + 1);
+        float sectionDuration = GetEffectiveTabSectionDuration();
+        int totalSections = Mathf.Max(2, Mathf.CeilToInt(maxTime / sectionDuration) + 1);
 
         for (int i = 0; i < totalSections; i++)
         {
-            float start = i * tabSectionDuration;
-            float end = start + tabSectionDuration;
+            float start = i * sectionDuration;
+            float end = start + sectionDuration;
 
             var ids = chartNotes
                 .Where(n => n.time >= start && n.time < end)
