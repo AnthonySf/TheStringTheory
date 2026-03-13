@@ -492,7 +492,7 @@ private void OpenOrFocusToneLab()
             return;
         }
 
-        if (TryStartToneLabProcess(toneLabPath, string.Empty, toneLabWorkingDirectory, true))
+        if (TryStartToneLabProcess(toneLabPath, string.Empty, toneLabWorkingDirectory, false))
         {
             StartCoroutine(FocusToneLabWindowWhenReady(toneLabWindowTitle));
             return;
@@ -529,6 +529,10 @@ private void OpenOrFocusToneLab()
                 Debug.Log($"[ToneLab] Launched using '{fileName} {arguments}' (UseShellExecute={useShellExecute}).");
                 return true;
             }
+        }
+        catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+        {
+            Debug.LogWarning($"[ToneLab] Launch canceled by user/UAC for '{fileName}'. If ToneLab.exe requests admin privileges, remove that requirement from the executable manifest.");
         }
         catch (Exception ex)
         {
