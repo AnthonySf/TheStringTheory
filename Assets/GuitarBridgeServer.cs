@@ -255,6 +255,7 @@ public class GuitarBridgeServer : MonoBehaviour
         Application.targetFrameRate = 60;
         ExternalContentBootstrap.EnsureRuntimeContentReady();
         Debug.Log($"[GuitarBridgeServer] Using persistent content folder: {ExternalContentPaths.PersistentRoot}");
+        Debug.Log($"[NotesDetector] Start() called on '{gameObject.name}'. autoLaunchNotesDetector={autoLaunchNotesDetector}, enabled={enabled}, activeInHierarchy={gameObject.activeInHierarchy}, platform={Application.platform}");
         TryLaunchNotesDetector();
         isRunning = true;
         BuildNoteIndices();
@@ -1264,14 +1265,24 @@ private void OpenOrFocusToneLab()
 
     private void TryLaunchNotesDetector()
     {
+        Debug.Log("[NotesDetector] TryLaunchNotesDetector() invoked.");
+
         if (!autoLaunchNotesDetector)
+        {
+            Debug.Log("[NotesDetector] Auto-launch is disabled in inspector; skipping launch.");
             return;
+        }
 
         if (notesDetectorProcess != null && !notesDetectorProcess.HasExited)
+        {
+            Debug.Log($"[NotesDetector] Process is already running (PID {notesDetectorProcess.Id}); skipping launch.");
             return;
+        }
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
         string detectorPath = Path.Combine(Application.streamingAssetsPath, notesDetectorRelativePath);
+        Debug.Log($"[NotesDetector] Resolved executable path: {detectorPath}");
+
         if (!File.Exists(detectorPath))
         {
             Debug.LogWarning($"[NotesDetector] Executable not found at: {detectorPath}");
@@ -1281,6 +1292,8 @@ private void OpenOrFocusToneLab()
         try
         {
             string detectorWorkingDirectory = Path.GetDirectoryName(detectorPath);
+            Debug.Log($"[NotesDetector] Launching from working directory: {detectorWorkingDirectory}");
+
             var startInfo = new System.Diagnostics.ProcessStartInfo
             {
                 FileName = detectorPath,
@@ -1292,14 +1305,16 @@ private void OpenOrFocusToneLab()
 
             notesDetectorProcess = System.Diagnostics.Process.Start(startInfo);
             if (notesDetectorProcess != null)
-                Debug.Log($"[NotesDetector] Launched: {detectorPath}");
+                Debug.Log($"[NotesDetector] Launched successfully (PID {notesDetectorProcess.Id}): {detectorPath}");
+            else
+                Debug.LogWarning("[NotesDetector] Process.Start returned null process handle.");
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[NotesDetector] Failed to launch '{detectorPath}': {ex.Message}");
+            Debug.LogWarning($"[NotesDetector] Failed to launch '{detectorPath}': {ex}");
         }
 #else
-        Debug.Log("[NotesDetector] Auto-launch is currently only enabled on Windows.");
+        Debug.Log($"[NotesDetector] Auto-launch is currently only enabled on Windows. Current platform: {Application.platform}");
 #endif
     }
 
