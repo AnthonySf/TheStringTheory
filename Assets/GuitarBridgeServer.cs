@@ -70,6 +70,7 @@ public class GuitarBridgeServer : MonoBehaviour
     [Header("Notes Detector")]
     public bool autoLaunchNotesDetector = true;
     public string notesDetectorRelativePath = "NotesReader/guitar_ai2_continuous.exe";
+    public bool openNotesDetectorConsoleWindowInEditor = true;
     private System.Diagnostics.Process notesDetectorProcess;
 
     [Header("Debug")]
@@ -1294,14 +1295,34 @@ private void OpenOrFocusToneLab()
             string detectorWorkingDirectory = Path.GetDirectoryName(detectorPath);
             Debug.Log($"[NotesDetector] Launching from working directory: {detectorWorkingDirectory}");
 
-            var startInfo = new System.Diagnostics.ProcessStartInfo
+            System.Diagnostics.ProcessStartInfo startInfo;
+
+#if UNITY_EDITOR_WIN
+            if (openNotesDetectorConsoleWindowInEditor)
             {
-                FileName = detectorPath,
-                Arguments = string.Empty,
-                WorkingDirectory = detectorWorkingDirectory,
-                UseShellExecute = false,
-                CreateNoWindow = false,
-            };
+                startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = $"/k ""{detectorPath}""",
+                    WorkingDirectory = detectorWorkingDirectory,
+                    UseShellExecute = true,
+                    CreateNoWindow = false,
+                };
+                Debug.Log("[NotesDetector] Launch mode: cmd.exe /k (visible console window).");
+            }
+            else
+#endif
+            {
+                startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = detectorPath,
+                    Arguments = string.Empty,
+                    WorkingDirectory = detectorWorkingDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = false,
+                };
+                Debug.Log("[NotesDetector] Launch mode: direct process start.");
+            }
 
             notesDetectorProcess = System.Diagnostics.Process.Start(startInfo);
             if (notesDetectorProcess != null)
