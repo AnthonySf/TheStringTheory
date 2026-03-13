@@ -220,10 +220,13 @@ public class GuitarBridgeServer : MonoBehaviour
     private SongMetadata songMetadata = new SongMetadata();
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
+    private SongLibraryEntry currentSongEntry;
 
     private void Start()
     {
         Application.targetFrameRate = 60;
+        ExternalContentBootstrap.EnsureRuntimeContentReady();
+        Debug.Log($"[GuitarBridgeServer] Using persistent content folder: {ExternalContentPaths.PersistentRoot}");
         isRunning = true;
         BuildNoteIndices();
         StartUdpThread();
@@ -465,8 +468,12 @@ private void OpenOrFocusToneLab()
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
     const string toneLabWindowTitle = "Tone Lab";
 
-    string toneLabPath = @"C:\Users\Anthony\Desktop\guitarProject\ToneLab.py";
-    string pythonExe = @"C:\Users\Anthony\Desktop\guitarProject\.venv\Scripts\python.exe";
+    if (!ToneLabService.EnsureToneLabRuntimeFiles())
+        return;
+
+    string toneLabPath = ToneLabService.GetToneLabScriptPath();
+    string configuredPythonExe = Path.Combine(Directory.GetParent(Application.dataPath).FullName, ".venv", "Scripts", "python.exe");
+    string pythonExe = File.Exists(configuredPythonExe) ? configuredPythonExe : "python";
 
     try
     {
@@ -481,13 +488,7 @@ private void OpenOrFocusToneLab()
 
         if (!File.Exists(toneLabPath))
         {
-            Debug.LogWarning($"Tone Lab script not found at '{toneLabPath}'.");
-            return;
-        }
-
-        if (!File.Exists(pythonExe))
-        {
-            Debug.LogWarning($"Tone Lab Python executable not found at '{pythonExe}'.");
+            Debug.LogWarning($"Tone Lab script not found at runtime path '{toneLabPath}'.");
             return;
         }
 
@@ -1292,47 +1293,44 @@ private void ParseUdpState()
         showSongSettings = false;
         tabSpeedOffsetPercent = 100f;
 
-        InitializeSongMetadataAndAudio();
-
         List<NoteData> loadedNotes = null;
 
-        // 1. Try MusicXML first so guitar techniques can be imported when available.
+        // 1. Discover and load the first valid runtime song from persistentDataPath/Songs.
         if (!useBuiltInDemoSong)
         {
-            try
+            if (SongLibraryService.TryGetFirstValidSong(out currentSongEntry))
             {
-                string xmlPath = System.IO.Path.Combine(Application.dataPath, "song.musicxml");
-                string xmlFallbackPath = System.IO.Path.Combine(Application.dataPath, "song.xml");
-
-                if (System.IO.File.Exists(xmlPath))
-                {
-                    loadedNotes = MusicXmlLoader.LoadMusicXmlSong(xmlPath, midiTrackIndex);
-                    Debug.Log($"MusicXML load attempt: {xmlPath}");
-                }
-                else if (System.IO.File.Exists(xmlFallbackPath))
-                {
-                    loadedNotes = MusicXmlLoader.LoadMusicXmlSong(xmlFallbackPath, midiTrackIndex);
-                    Debug.Log($"MusicXML load attempt: {xmlFallbackPath}");
-                }
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning("MusicXmlLoader Error: " + e.Message);
-            }
-
-            if (loadedNotes == null || loadedNotes.Count == 0)
-            {
+                Debug.Log($"[GuitarBridgeServer] Selected runtime song '{currentSongEntry.SongId}' from {currentSongEntry.SongDirectory}");
                 try
                 {
-                    string path = System.IO.Path.Combine(Application.dataPath, "song.mid");
-                    loadedNotes = MidiLoader.LoadMidiSong(path, midiTrackIndex);
+                    loadedNotes = MusicXmlLoader.LoadMusicXmlSong(currentSongEntry.XmlPath, midiTrackIndex);
+                    Debug.Log($"MusicXML load attempt: {currentSongEntry.XmlPath}");
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning("MidiLoader Error: " + e.Message);
+                    Debug.LogWarning("MusicXmlLoader Error: " + e.Message);
+                }
+
+                if ((loadedNotes == null || loadedNotes.Count == 0) && !string.IsNullOrEmpty(currentSongEntry.MidiPath))
+                {
+                    try
+                    {
+                        loadedNotes = MidiLoader.LoadMidiSong(currentSongEntry.MidiPath, midiTrackIndex);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogWarning("MidiLoader Error: " + e.Message);
+                    }
                 }
             }
+            else
+            {
+                Debug.LogWarning("[GuitarBridgeServer] No valid runtime songs were found in persistent storage.");
+            }
         }
+
+
+        InitializeSongMetadataAndAudio();
 
         bool useDemo = useBuiltInDemoSong || (useDemoSongIfMidiMissing && (loadedNotes == null || loadedNotes.Count == 0));
 
@@ -1398,7 +1396,15 @@ private void ParseUdpState()
     {
         EnsureBackingTrackSource();
 
-        string songPath = Path.Combine(Application.dataPath, backingTrackFileName);
+        if (currentSongEntry == null)
+        {
+            hasBackingTrack = false;
+            backingTrackLoadError = "No runtime song selected.";
+            Debug.LogWarning(backingTrackLoadError);
+            return;
+        }
+
+        string songPath = currentSongEntry.Mp3Path;
         currentSongFileName = Path.GetFileName(songPath);
 
         songMetadata = LoadSongMetadata(currentSongFileName);
@@ -1410,18 +1416,7 @@ private void ParseUdpState()
         isLoadingBackingTrack = false;
 
         if (backingTrackSource.clip != null)
-        {
-            hasBackingTrack = true;
-            return;
-        }
-
-        AudioClip clip = Resources.Load<AudioClip>(Path.GetFileNameWithoutExtension(backingTrackFileName));
-        if (clip != null)
-        {
-            backingTrackSource.clip = clip;
-            hasBackingTrack = true;
-            return;
-        }
+            backingTrackSource.clip = null;
 
         if (File.Exists(songPath))
         {
@@ -1487,6 +1482,7 @@ private void ParseUdpState()
 
         try
         {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
             if (File.Exists(path))
             {
                 string json = File.ReadAllText(path);
@@ -1519,7 +1515,9 @@ private void ParseUdpState()
 
         try
         {
-            File.WriteAllText(GetMetadataPath(currentSongFileName), JsonUtility.ToJson(songMetadata, true));
+            string metadataPath = GetMetadataPath(currentSongFileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(metadataPath));
+            File.WriteAllText(metadataPath, JsonUtility.ToJson(songMetadata, true));
         }
         catch (Exception ex)
         {
@@ -1529,8 +1527,11 @@ private void ParseUdpState()
 
     private string GetMetadataPath(string songFileName)
     {
+        if (currentSongEntry != null && !string.IsNullOrEmpty(currentSongEntry.MetadataPath))
+            return currentSongEntry.MetadataPath;
+
         string safeName = Regex.Replace(Path.GetFileNameWithoutExtension(songFileName), "[^a-zA-Z0-9_-]", "_");
-        return Path.Combine(Application.persistentDataPath, $"{safeName}.metadata.json");
+        return Path.Combine(ExternalContentPaths.PersistentSongsDirectory, safeName, ExternalContentPaths.SongMetadataFileName);
     }
 
     private void ApplyPlaybackSpeedToAudio()

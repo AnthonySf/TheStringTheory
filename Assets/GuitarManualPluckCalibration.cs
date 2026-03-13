@@ -66,8 +66,7 @@ public class GuitarManualPluckCalibration : MonoBehaviour
             if (!string.IsNullOrWhiteSpace(exportPathOverride))
                 return exportPathOverride;
 
-            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            return Path.Combine(projectRoot, "guitar_manual_pluck_thresholds.json");
+            return Path.Combine(ExternalContentPaths.PersistentRoot, "guitar_manual_pluck_thresholds.json");
         }
     }
 
@@ -76,6 +75,7 @@ public class GuitarManualPluckCalibration : MonoBehaviour
 
     void Start()
     {
+        Directory.CreateDirectory(ExternalContentPaths.PersistentRoot);
         EnsureEventSystem();
         BuildDefaultProfile();
         BuildUI();

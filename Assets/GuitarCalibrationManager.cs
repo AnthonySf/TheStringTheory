@@ -46,7 +46,7 @@ public class GuitarCalibrationManager : MonoBehaviour
     public float rawCaptureVisibleSeconds = 0.30f;
 
     [Header("Export")]
-    [Tooltip("Optional explicit path. Otherwise exports to project root as guitar_calibration_profile.json")]
+    [Tooltip("Optional explicit path. Otherwise exports to persistentDataPath calibration file") ]
     public string calibrationExportPathOverride = "";
 
     private Canvas canvas;
@@ -92,13 +92,13 @@ public class GuitarCalibrationManager : MonoBehaviour
             if (!string.IsNullOrWhiteSpace(calibrationExportPathOverride))
                 return calibrationExportPathOverride;
 
-            string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-            return Path.Combine(projectRoot, "guitar_calibration_profile.json");
+            return Path.Combine(ExternalContentPaths.PersistentRoot, "guitar_calibration_profile.json");
         }
     }
 
     void Start()
     {
+        Directory.CreateDirectory(ExternalContentPaths.PersistentRoot);
         BuildDefaultProfile();
         BuildSteps();
         BuildUI();
