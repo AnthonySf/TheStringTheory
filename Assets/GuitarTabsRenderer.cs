@@ -473,7 +473,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         helpObj.transform.SetParent(songSettingsRoot.transform, false);
         helpObj.transform.localPosition = new Vector3(0f, 0.24f, -0.05f);
         songSettingsHelpText = helpObj.AddComponent<TextMeshPro>();
-        songSettingsHelpText.text = "Space: Play/Pause  |  Left/Right: Seek  |  Enter: Play  |  Esc: Back";
+        songSettingsHelpText.text = "Space: Play/Pause  |  Left/Right: Seek (Double-tap: Prev/Next note)  |  Q/E: Track  |  O: Offset Scope  |  Esc: Back";
         songSettingsHelpText.fontSize = owner.tabLabelFontSize * 0.48f;
         songSettingsHelpText.alignment = TextAlignmentOptions.Center;
         songSettingsHelpText.color = new Color(0.86f, 0.91f, 1f);
@@ -812,7 +812,11 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             string status = snapshot.hasBackingTrack ? "Loaded" : "Missing";
             string play = snapshot.isBackingTrackPlaying ? "Playing" : "Paused";
             string notesState = snapshot.isPaused ? "Notes paused" : "Notes moving";
-            songStatusText.text = $"Track: {status}   Audio: {play}   {notesState}   T={snapshot.backingTrackTime:F2}s";
+            songStatusText.text =
+                $"Track: {status}   Audio: {play}   {notesState}   T={snapshot.backingTrackTime:F2}s\n" +
+                $"PART: {snapshot.selectedTrackDisplayName}\n" +
+                $"OFFSET SCOPE: {snapshot.offsetScopeLabel}\n" +
+                $"{snapshot.trackSelectionHint}  |  {snapshot.offsetScopeHint}";
             songStatusText.color = snapshot.hasBackingTrack ? new Color(0.88f, 1f, 0.9f) : new Color(1f, 0.75f, 0.75f);
         }
     }
