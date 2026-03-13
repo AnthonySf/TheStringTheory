@@ -280,8 +280,9 @@ public static class MusicXmlLoader
                 ? canonicalMeasureStarts[measureIndex]
                 : (canonicalMeasureStarts.Count > 0 ? canonicalMeasureStarts[canonicalMeasureStarts.Count - 1] : 0.0);
 
-            double cursorQuarter = currentMeasureStartQuarter;
-            double lastNoteStartQuarter = currentMeasureStartQuarter;
+            var voiceCursorOffsets = new Dictionary<string, double>();
+            var lastNoteStartByVoice = new Dictionary<string, double>();
+            string activeVoiceKey = "1:1";
 
             foreach (XElement child in measure.Elements())
             {
@@ -304,14 +305,14 @@ public static class MusicXmlLoader
                 else if (local == "backup")
                 {
                     double durQuarter = DurationNodeToQuarter(child, divisions);
-                    cursorQuarter -= durQuarter;
-                    if (cursorQuarter < currentMeasureStartQuarter)
-                        cursorQuarter = currentMeasureStartQuarter;
+                    double currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                    voiceCursorOffsets[activeVoiceKey] = Math.Max(0.0, currentOffset - durQuarter);
                 }
                 else if (local == "forward")
                 {
                     double durQuarter = DurationNodeToQuarter(child, divisions);
-                    cursorQuarter += durQuarter;
+                    double currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                    voiceCursorOffsets[activeVoiceKey] = currentOffset + durQuarter;
                 }
                 else if (local == "note")
                 {
@@ -319,15 +320,33 @@ public static class MusicXmlLoader
                     bool isChordTone = child.Elements().Any(e => e.Name.LocalName == "chord");
                     bool isGrace = child.Elements().Any(e => e.Name.LocalName == "grace");
 
-                    double noteStartQuarter = isChordTone ? lastNoteStartQuarter : cursorQuarter;
-                    if (!isChordTone)
-                        lastNoteStartQuarter = noteStartQuarter;
+                    int staff = ParseInt(ChildValue(child, "staff"), 1);
+                    int voice = ParseInt(ChildValue(child, "voice"), 1);
+                    string voiceKey = voice.ToString(CultureInfo.InvariantCulture) + ":" + staff.ToString(CultureInfo.InvariantCulture);
+
+                    double currentOffset;
+                    if (!voiceCursorOffsets.TryGetValue(voiceKey, out currentOffset))
+                    {
+                        currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                        voiceCursorOffsets[voiceKey] = currentOffset;
+                    }
+
+                    double noteStartQuarter;
+                    if (isChordTone)
+                    {
+                        if (!lastNoteStartByVoice.TryGetValue(voiceKey, out noteStartQuarter))
+                            noteStartQuarter = currentMeasureStartQuarter + currentOffset;
+                    }
+                    else
+                    {
+                        noteStartQuarter = currentMeasureStartQuarter + currentOffset;
+                        lastNoteStartByVoice[voiceKey] = noteStartQuarter;
+                    }
 
                     double durQuarter = isGrace ? 0.0 : DurationNodeToQuarter(child, divisions);
 
                     if (!isRest)
                     {
-                        int staff = ParseInt(ChildValue(child, "staff"), 1);
                         int stringIdx;
                         int fret;
                         int midi;
@@ -389,9 +408,9 @@ public static class MusicXmlLoader
                     }
 
                     if (!isChordTone)
-                    {
-                        cursorQuarter += durQuarter;
-                    }
+                        voiceCursorOffsets[voiceKey] = currentOffset + durQuarter;
+
+                    activeVoiceKey = voiceKey;
                 }
             }
             measureIndex++;
@@ -517,7 +536,8 @@ public static class MusicXmlLoader
                     ? canonicalMeasureStarts[measureIndex]
                     : (canonicalMeasureStarts.Count > 0 ? canonicalMeasureStarts[canonicalMeasureStarts.Count - 1] : 0.0);
 
-                double cursorQuarter = currentMeasureStartQuarter;
+                var voiceCursorOffsets = new Dictionary<string, double>();
+                string activeVoiceKey = "1:1";
 
                 foreach (XElement child in measure.Elements())
                 {
@@ -537,32 +557,52 @@ public static class MusicXmlLoader
                     {
                         double? tempo = TryReadTempoFromDirection(child);
                         if (tempo.HasValue && tempo.Value > 0.0)
-                            tempoCandidates.Add(new TempoEvent(cursorQuarter, tempo.Value));
+                        {
+                            double offsetQuarter = 0.0;
+                            TryReadDirectionOffsetQuarter(child, divisions, out offsetQuarter);
+
+                            double baseOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                            double tempoQuarter = currentMeasureStartQuarter + baseOffset + offsetQuarter;
+                            if (tempoQuarter < currentMeasureStartQuarter)
+                                tempoQuarter = currentMeasureStartQuarter;
+
+                            tempoCandidates.Add(new TempoEvent(tempoQuarter, tempo.Value));
+                        }
                     }
                     else if (local == "backup")
                     {
                         double durQuarter = DurationNodeToQuarter(child, divisions);
-                        cursorQuarter -= durQuarter;
-                        if (cursorQuarter < currentMeasureStartQuarter)
-                            cursorQuarter = currentMeasureStartQuarter;
+                        double currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                        voiceCursorOffsets[activeVoiceKey] = Math.Max(0.0, currentOffset - durQuarter);
                     }
                     else if (local == "forward")
                     {
                         double durQuarter = DurationNodeToQuarter(child, divisions);
-                        cursorQuarter += durQuarter;
+                        double currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                        voiceCursorOffsets[activeVoiceKey] = currentOffset + durQuarter;
                     }
                     else if (local == "note")
                     {
                         bool isChordTone = child.Elements().Any(e => e.Name.LocalName == "chord");
                         bool isGrace = child.Elements().Any(e => e.Name.LocalName == "grace");
+                        int staff = ParseInt(ChildValue(child, "staff"), 1);
+                        int voice = ParseInt(ChildValue(child, "voice"), 1);
+                        string voiceKey = voice.ToString(CultureInfo.InvariantCulture) + ":" + staff.ToString(CultureInfo.InvariantCulture);
+
+                        double currentOffset;
+                        if (!voiceCursorOffsets.TryGetValue(voiceKey, out currentOffset))
+                        {
+                            currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                            voiceCursorOffsets[voiceKey] = currentOffset;
+                        }
 
                         if (!isChordTone)
-                        {
-                            double durQuarter = isGrace ? 0.0 : DurationNodeToQuarter(child, divisions);
-                            cursorQuarter += durQuarter;
-                        }
+                            voiceCursorOffsets[voiceKey] = currentOffset + (isGrace ? 0.0 : DurationNodeToQuarter(child, divisions));
+
+                        activeVoiceKey = voiceKey;
                     }
                 }
+
                 measureIndex++;
             }
         }
@@ -770,6 +810,24 @@ public static class MusicXmlLoader
                     bendStep = 1f;
             }
         }
+    }
+
+    private static bool TryReadDirectionOffsetQuarter(XElement directionNode, double divisions, out double offsetQuarter)
+    {
+        offsetQuarter = 0.0;
+        XElement offsetNode = directionNode.Elements().FirstOrDefault(e => e.Name.LocalName == "offset");
+        if (offsetNode == null)
+            return false;
+
+        if (divisions <= 0.0)
+            divisions = 1.0;
+
+        double offsetDivisions;
+        if (!double.TryParse(offsetNode.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out offsetDivisions))
+            return false;
+
+        offsetQuarter = offsetDivisions / divisions;
+        return true;
     }
 
     private static double? TryReadTempoFromDirection(XElement directionNode)
