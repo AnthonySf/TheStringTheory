@@ -214,6 +214,10 @@ public class GuitarBridgeServer : MonoBehaviour
     private string currentSongFileName = "song.mp3";
     private bool hasBackingTrack;
     private bool showSongSettings;
+    private bool showSongSelection;
+    private int selectedSongListIndex;
+    private int songListScrollOffset;
+    private readonly List<SongLibraryEntry> availableSongs = new List<SongLibraryEntry>();
     private float audioOffsetMs;
     private float tabSpeedOffsetPercent = 100f;
     private float songStartDelaySeconds = 2.0f;
@@ -277,6 +281,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
             showSongSettings = !showSongSettings;
 
+        if (showSongSelection)
+        {
+            HandleSongSelectionControls();
+            return;
+        }
+
         if (showSongSettings)
         {
             HandleSongSettingsControls();
@@ -287,11 +297,18 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             isPaused = !isPaused;
             showSongSettings = false;
+            showSongSelection = false;
             SyncAudioToSongTimer(playImmediately: !isPaused);
         }
 
         if (!isPaused)
             return;
+
+        if (Input.GetKeyDown(KeyCode.L) || IsSongSelectionClicked())
+        {
+            OpenSongSelectionMenu();
+            return;
+        }
 
         if (IsSongSettingsClicked())
         {
@@ -336,6 +353,36 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
+    }
+
+    private void HandleSongSelectionControls()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.L))
+        {
+            showSongSelection = false;
+            isPaused = true;
+            SyncAudioToSongTimer(playImmediately: false);
+            return;
+        }
+
+        if (availableSongs.Count == 0)
+            return;
+
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+            MoveSongSelection(-1);
+        else if (Input.GetKeyDown(KeyCode.DownArrow))
+            MoveSongSelection(1);
+
+        if (TryGetSongSelectionClickIndex(out int clickedIndex))
+        {
+            selectedSongListIndex = clickedIndex;
+            EnsureSongSelectionVisible();
+            SelectSongByIndex(selectedSongListIndex);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            SelectSongByIndex(selectedSongListIndex);
     }
 
     private void HandleSongSettingsControls()
@@ -389,6 +436,121 @@ public class GuitarBridgeServer : MonoBehaviour
             SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
     }
 
+    private void OpenSongSelectionMenu()
+    {
+        RefreshAvailableSongs();
+        showSongSelection = true;
+        showSongSettings = false;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+
+        if (availableSongs.Count == 0)
+        {
+            selectedSongListIndex = 0;
+            songListScrollOffset = 0;
+            return;
+        }
+
+        int selectedIndex = availableSongs.FindIndex(song =>
+            currentSongEntry != null &&
+            string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase));
+
+        selectedSongListIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        EnsureSongSelectionVisible();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    private void RefreshAvailableSongs()
+    {
+        availableSongs.Clear();
+        availableSongs.AddRange(SongLibraryService.GetAvailableSongs());
+
+        if (selectedSongListIndex >= availableSongs.Count)
+            selectedSongListIndex = Mathf.Max(0, availableSongs.Count - 1);
+    }
+
+    private void MoveSongSelection(int delta)
+    {
+        if (availableSongs.Count == 0)
+            return;
+
+        selectedSongListIndex = Mathf.Clamp(selectedSongListIndex + delta, 0, availableSongs.Count - 1);
+        EnsureSongSelectionVisible();
+    }
+
+    private void EnsureSongSelectionVisible()
+    {
+        const int visibleCount = 8;
+        if (selectedSongListIndex < songListScrollOffset)
+            songListScrollOffset = selectedSongListIndex;
+
+        if (selectedSongListIndex >= songListScrollOffset + visibleCount)
+            songListScrollOffset = selectedSongListIndex - visibleCount + 1;
+
+        songListScrollOffset = Mathf.Clamp(songListScrollOffset, 0, Mathf.Max(0, availableSongs.Count - visibleCount));
+    }
+
+    private bool TryGetSongSelectionClickIndex(out int index)
+    {
+        index = -1;
+
+        if (!showSongSelection || !Input.GetMouseButtonDown(0) || Camera.main == null || renderMode != GuitarRenderMode.Tabs)
+            return false;
+
+        const int visibleCount = 8;
+        float menuCenterY = TabTopPanelY + (tabPanelHeight * 1.08f);
+        float topLocalY = -0.35f;
+        float rowHeight = 0.26f;
+        Vector3 mouse = Input.mousePosition;
+
+        for (int row = 0; row < visibleCount; row++)
+        {
+            int songIndex = songListScrollOffset + row;
+            if (songIndex >= availableSongs.Count)
+                break;
+
+            float rowLocalY = topLocalY - (row * rowHeight);
+            Vector3 world = new Vector3(tabPanelCenterX, menuCenterY + rowLocalY, tabZDepth - 0.35f);
+            Vector3 screen = Camera.main.WorldToScreenPoint(world);
+            float halfWidth = 180f;
+            float halfHeight = 16f;
+
+            if (mouse.x >= screen.x - halfWidth && mouse.x <= screen.x + halfWidth &&
+                mouse.y >= screen.y - halfHeight && mouse.y <= screen.y + halfHeight)
+            {
+                index = songIndex;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void SelectSongByIndex(int songIndex)
+    {
+        if (songIndex < 0 || songIndex >= availableSongs.Count)
+            return;
+
+        SongLibraryEntry selected = availableSongs[songIndex];
+        if (currentSongEntry != null && string.Equals(currentSongEntry.SongDirectory, selected.SongDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            showSongSelection = false;
+            return;
+        }
+
+        LoadSongFromEntry(selected);
+        showSongSelection = false;
+    }
+
+    private void LoadSongFromEntry(SongLibraryEntry entry)
+    {
+        currentSongEntry = entry;
+        LoadTestSong();
+        isPaused = true;
+        SeekSongTime(-songStartDelaySeconds, false);
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
     private void HandleLoopPlayback()
     {
         if (!loopEnabled || loopEndTime <= loopStartTime + 0.01f)
@@ -402,48 +564,25 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private bool IsLoopToggleClicked()
     {
-        if (renderMode != GuitarRenderMode.Tabs)
-            return false;
+        return IsPauseMenuButtonClicked(-0.62f, 180f, 42f);
+    }
 
-        if (!Input.GetMouseButtonDown(0))
-            return false;
-
-        if (Camera.main == null)
-            return false;
-
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 0.62f, tabZDepth - 0.35f);
-        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 180f;
-        float halfHeight = 42f;
-
-        Vector3 mouse = Input.mousePosition;
-        return mouse.x >= screenCenter.x - halfWidth &&
-               mouse.x <= screenCenter.x + halfWidth &&
-               mouse.y >= screenCenter.y - halfHeight &&
-               mouse.y <= screenCenter.y + halfHeight;
+    private bool IsSongSelectionClicked()
+    {
+        return IsPauseMenuButtonClicked(-1.02f, 180f, 26f);
     }
 
     private bool IsSongSettingsClicked()
     {
-        if (renderMode != GuitarRenderMode.Tabs)
-            return false;
-
-        if (!Input.GetMouseButtonDown(0) || Camera.main == null)
-            return false;
-
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 1.02f, tabZDepth - 0.35f);
-        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 180f;
-        float halfHeight = 26f;
-
-        Vector3 mouse = Input.mousePosition;
-        return mouse.x >= screenCenter.x - halfWidth &&
-               mouse.x <= screenCenter.x + halfWidth &&
-               mouse.y >= screenCenter.y - halfHeight &&
-               mouse.y <= screenCenter.y + halfHeight;
+        return IsPauseMenuButtonClicked(-1.38f, 180f, 26f);
     }
 
     private bool IsToneLabButtonClicked()
+    {
+        return IsPauseMenuButtonClicked(-1.74f, 180f, 26f);
+    }
+
+    private bool IsPauseMenuButtonClicked(float localYOffset, float halfWidth, float halfHeight)
     {
         if (renderMode != GuitarRenderMode.Tabs)
             return false;
@@ -451,11 +590,8 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!Input.GetMouseButtonDown(0) || Camera.main == null)
             return false;
 
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 1.38f, tabZDepth - 0.35f);
+        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) + localYOffset, tabZDepth - 0.35f);
         Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 180f;
-        float halfHeight = 26f;
-
         Vector3 mouse = Input.mousePosition;
         return mouse.x >= screenCenter.x - halfWidth &&
                mouse.x <= screenCenter.x + halfWidth &&
@@ -1256,6 +1392,10 @@ private void ParseUdpState()
             sections = tabSections,
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
+            showSongSelection = showSongSelection,
+            availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
+            selectedSongIndex = selectedSongListIndex,
+            songListScrollOffset = songListScrollOffset,
             audioOffsetMs = audioOffsetMs,
             tabSpeedOffsetPercent = tabSpeedOffsetPercent,
             songStartDelaySeconds = songStartDelaySeconds,
@@ -1319,14 +1459,20 @@ private void ParseUdpState()
         selectedLoopMarker = 1;
         playbackSpeedPercent = 100f;
         showSongSettings = false;
+        showSongSelection = false;
         tabSpeedOffsetPercent = 100f;
 
         List<NoteData> loadedNotes = null;
 
-        // 1. Discover and load the first valid runtime song from persistentDataPath/Songs.
+        // 1. Discover and load a valid runtime song from persistentDataPath/Songs.
         if (!useBuiltInDemoSong)
         {
-            if (SongLibraryService.TryGetFirstValidSong(out currentSongEntry))
+            RefreshAvailableSongs();
+
+            if (currentSongEntry == null || !availableSongs.Any(song => string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase)))
+                currentSongEntry = availableSongs.FirstOrDefault();
+
+            if (currentSongEntry != null)
             {
                 Debug.Log($"[GuitarBridgeServer] Selected runtime song '{currentSongEntry.SongId}' from {currentSongEntry.SongDirectory}");
                 try

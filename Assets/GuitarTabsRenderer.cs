@@ -25,6 +25,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private GameObject speedSliderFill;
     private GameObject speedSliderKnob;
     private TextMeshPro speedSliderText;
+    private GameObject songSelectionButton;
+    private TextMeshPro songSelectionButtonText;
     private GameObject songSettingsButton;
     private TextMeshPro songSettingsButtonText;
     private GameObject toneLabButton;
@@ -46,6 +48,11 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private GameObject songStartDelaySliderFill;
     private GameObject songStartDelaySliderKnob;
     private TextMeshPro songStatusText;
+
+    private GameObject songSelectionRoot;
+    private TextMeshPro songSelectionTitleText;
+    private TextMeshPro songSelectionHelpText;
+    private readonly List<TextMeshPro> songSelectionRows = new List<TextMeshPro>();
 
     private int displayedTopSectionIndex = -999;
     private int displayedBottomSectionIndex = -999;
@@ -73,6 +80,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         CreatePauseMenuVisuals();
         CreateSongSettingsVisuals();
+        CreateSongSelectionVisuals();
 
         loopMarkerStart = GameObject.CreatePrimitive(PrimitiveType.Cube);
         loopMarkerStart.name = "LoopMarkerStart";
@@ -130,6 +138,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         UpdatePlayhead(snapshot);
         UpdatePauseMenu(snapshot);
         UpdateSongSettings(snapshot);
+        UpdateSongSelection(snapshot);
         UpdateLoopMarkers(snapshot);
     }
 
@@ -337,7 +346,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         helpObj.transform.SetParent(pauseMenuRoot.transform, false);
         helpObj.transform.localPosition = new Vector3(0f, 0.02f, -0.05f);
         pauseHelpText = helpObj.AddComponent<TextMeshPro>();
-        pauseHelpText.text = "Left/Right Seek   |   1/2 Select Marker   |   Space Resume   |   T Tone Lab";
+        pauseHelpText.text = "Left/Right Seek   |   1/2 Select Marker   |   L Song Select   |   T Tone Lab";
         pauseHelpText.fontSize = owner.tabLabelFontSize * 0.62f;
         pauseHelpText.alignment = TextAlignmentOptions.Center;
         pauseHelpText.color = new Color(0.86f, 0.89f, 0.95f);
@@ -387,15 +396,31 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         pauseLoopText.alignment = TextAlignmentOptions.Center;
         pauseLoopText.sortingOrder = 38;
 
+        songSelectionButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        songSelectionButton.name = "SongSelectionButton";
+        songSelectionButton.transform.SetParent(pauseMenuRoot.transform, false);
+        songSelectionButton.transform.localPosition = new Vector3(0f, -1.02f, 0f);
+        songSelectionButton.transform.localScale = new Vector3(4.7f, 0.50f, 0.08f);
+
+        GameObject songSelectionTextObj = new GameObject("SongSelectionButtonLabel");
+        songSelectionTextObj.transform.SetParent(pauseMenuRoot.transform, false);
+        songSelectionTextObj.transform.localPosition = new Vector3(0f, -1.04f, -0.06f);
+        songSelectionButtonText = songSelectionTextObj.AddComponent<TextMeshPro>();
+        songSelectionButtonText.text = "SONG SELECTION [L / Click]";
+        songSelectionButtonText.fontSize = owner.tabLabelFontSize * 0.62f;
+        songSelectionButtonText.alignment = TextAlignmentOptions.Center;
+        songSelectionButtonText.color = new Color(0.95f, 1f, 0.93f);
+        songSelectionButtonText.sortingOrder = 38;
+
         songSettingsButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
         songSettingsButton.name = "SongSettingsButton";
         songSettingsButton.transform.SetParent(pauseMenuRoot.transform, false);
-        songSettingsButton.transform.localPosition = new Vector3(0f, -1.02f, 0f);
+        songSettingsButton.transform.localPosition = new Vector3(0f, -1.38f, 0f);
         songSettingsButton.transform.localScale = new Vector3(4.7f, 0.50f, 0.08f);
 
         GameObject songSettingsTextObj = new GameObject("SongSettingsButtonLabel");
         songSettingsTextObj.transform.SetParent(pauseMenuRoot.transform, false);
-        songSettingsTextObj.transform.localPosition = new Vector3(0f, -1.04f, -0.06f);
+        songSettingsTextObj.transform.localPosition = new Vector3(0f, -1.40f, -0.06f);
         songSettingsButtonText = songSettingsTextObj.AddComponent<TextMeshPro>();
         songSettingsButtonText.text = "SONG SETTINGS [S / Click]";
         songSettingsButtonText.fontSize = owner.tabLabelFontSize * 0.62f;
@@ -406,12 +431,12 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         toneLabButton = GameObject.CreatePrimitive(PrimitiveType.Cube);
         toneLabButton.name = "ToneLabButton";
         toneLabButton.transform.SetParent(pauseMenuRoot.transform, false);
-        toneLabButton.transform.localPosition = new Vector3(0f, -1.38f, 0f);
+        toneLabButton.transform.localPosition = new Vector3(0f, -1.74f, 0f);
         toneLabButton.transform.localScale = new Vector3(4.7f, 0.50f, 0.08f);
 
         GameObject toneLabTextObj = new GameObject("ToneLabButtonLabel");
         toneLabTextObj.transform.SetParent(pauseMenuRoot.transform, false);
-        toneLabTextObj.transform.localPosition = new Vector3(0f, -1.40f, -0.06f);
+        toneLabTextObj.transform.localPosition = new Vector3(0f, -1.76f, -0.06f);
         toneLabButtonText = toneLabTextObj.AddComponent<TextMeshPro>();
         toneLabButtonText.text = "TONE LAB [T / Click]";
         toneLabButtonText.fontSize = owner.tabLabelFontSize * 0.62f;
@@ -556,12 +581,94 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         songSettingsRoot.SetActive(false);
     }
 
+    private void CreateSongSelectionVisuals()
+    {
+        songSelectionRoot = new GameObject("SongSelectionMenu");
+        songSelectionRoot.transform.SetParent(root.transform, false);
+        songSelectionRoot.transform.position = new Vector3(owner.tabPanelCenterX, owner.TabTopPanelY + owner.tabPanelHeight * 1.08f, owner.tabZDepth - 0.35f);
+
+        GameObject menuBg = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        menuBg.name = "SongSelectionBg";
+        menuBg.transform.SetParent(songSelectionRoot.transform, false);
+        menuBg.transform.localScale = new Vector3(owner.tabPanelWidth * 0.52f, 3.1f, 0.055f);
+        menuBg.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(0.08f, 0.12f, 0.10f, 0.97f), 0.4f);
+
+        GameObject titleObj = new GameObject("SongSelectionTitle");
+        titleObj.transform.SetParent(songSelectionRoot.transform, false);
+        titleObj.transform.localPosition = new Vector3(0f, 0.75f, -0.05f);
+        songSelectionTitleText = titleObj.AddComponent<TextMeshPro>();
+        songSelectionTitleText.text = "SONG SELECTION";
+        songSelectionTitleText.fontSize = owner.tabLabelFontSize * 1.1f;
+        songSelectionTitleText.alignment = TextAlignmentOptions.Center;
+        songSelectionTitleText.color = Color.white;
+        songSelectionTitleText.sortingOrder = 38;
+
+        GameObject helpObj = new GameObject("SongSelectionHelp");
+        helpObj.transform.SetParent(songSelectionRoot.transform, false);
+        helpObj.transform.localPosition = new Vector3(0f, 0.48f, -0.05f);
+        songSelectionHelpText = helpObj.AddComponent<TextMeshPro>();
+        songSelectionHelpText.text = "Up/Down: Navigate  |  Enter/Click: Select  |  Esc: Back";
+        songSelectionHelpText.fontSize = owner.tabLabelFontSize * 0.50f;
+        songSelectionHelpText.alignment = TextAlignmentOptions.Center;
+        songSelectionHelpText.color = new Color(0.88f, 0.95f, 0.92f);
+        songSelectionHelpText.sortingOrder = 38;
+
+        for (int i = 0; i < 8; i++)
+        {
+            GameObject rowObj = new GameObject($"SongRow_{i}");
+            rowObj.transform.SetParent(songSelectionRoot.transform, false);
+            rowObj.transform.localPosition = new Vector3(-2.25f, 0.20f - (i * 0.26f), -0.05f);
+
+            TextMeshPro rowText = rowObj.AddComponent<TextMeshPro>();
+            rowText.fontSize = owner.tabLabelFontSize * 0.56f;
+            rowText.alignment = TextAlignmentOptions.Left;
+            rowText.color = new Color(0.84f, 0.90f, 0.86f);
+            rowText.sortingOrder = 38;
+            rowText.text = string.Empty;
+            songSelectionRows.Add(rowText);
+        }
+
+        songSelectionRoot.SetActive(false);
+    }
+
+    private void UpdateSongSelection(GuitarGameplaySnapshot snapshot)
+    {
+        if (songSelectionRoot == null)
+            return;
+
+        bool visible = snapshot != null && snapshot.showSongSelection;
+        songSelectionRoot.SetActive(visible);
+
+        if (!visible)
+            return;
+
+        List<string> songs = snapshot.availableSongNames;
+        int selected = snapshot.selectedSongIndex;
+        int scroll = snapshot.songListScrollOffset;
+
+        for (int row = 0; row < songSelectionRows.Count; row++)
+        {
+            TextMeshPro rowText = songSelectionRows[row];
+            int songIndex = scroll + row;
+            if (songs == null || songIndex >= songs.Count)
+            {
+                rowText.text = string.Empty;
+                continue;
+            }
+
+            string songName = songs[songIndex];
+            bool isSelected = songIndex == selected;
+            rowText.text = isSelected ? $"> {songName}" : $"  {songName}";
+            rowText.color = isSelected ? new Color(0.96f, 1f, 0.65f) : new Color(0.84f, 0.90f, 0.86f);
+        }
+    }
+
     private void UpdatePauseMenu(GuitarGameplaySnapshot snapshot)
     {
         if (pauseMenuRoot == null)
             return;
 
-        bool visible = snapshot != null && snapshot.isPaused && !snapshot.showSongSettings;
+        bool visible = snapshot != null && snapshot.isPaused && !snapshot.showSongSettings && !snapshot.showSongSelection;
         pauseMenuRoot.SetActive(visible);
 
         if (!visible)
@@ -593,6 +700,19 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             if (r != null)
             {
                 Color buttonColor = isOn ? new Color(0.16f, 0.55f, 0.28f, 0.97f) : new Color(0.44f, 0.15f, 0.15f, 0.97f);
+                r.material.color = buttonColor;
+                r.material.EnableKeyword("_EMISSION");
+                r.material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+                r.material.SetColor("_EmissionColor", buttonColor * Mathf.Pow(2f, 1.8f));
+            }
+        }
+
+        if (songSelectionButton != null)
+        {
+            Renderer r = songSelectionButton.GetComponent<Renderer>();
+            if (r != null)
+            {
+                Color buttonColor = new Color(0.18f, 0.41f, 0.22f, 0.97f);
                 r.material.color = buttonColor;
                 r.material.EnableKeyword("_EMISSION");
                 r.material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
