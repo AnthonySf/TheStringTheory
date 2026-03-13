@@ -67,6 +67,11 @@ public class GuitarBridgeServer : MonoBehaviour
     private Thread receiveThread;
     private bool isRunning;
 
+    [Header("Notes Detector")]
+    public bool autoLaunchNotesDetector = true;
+    public string notesDetectorRelativePath = "NotesReader/guitar_ai2_continuous.exe";
+    private System.Diagnostics.Process notesDetectorProcess;
+
     [Header("Debug")]
     public bool logSpawnedNotes = false;
     public bool useBuiltInDemoSong = false;
@@ -250,6 +255,7 @@ public class GuitarBridgeServer : MonoBehaviour
         Application.targetFrameRate = 60;
         ExternalContentBootstrap.EnsureRuntimeContentReady();
         Debug.Log($"[GuitarBridgeServer] Using persistent content folder: {ExternalContentPaths.PersistentRoot}");
+        TryLaunchNotesDetector();
         isRunning = true;
         BuildNoteIndices();
         StartUdpThread();
@@ -1253,6 +1259,69 @@ private void OpenOrFocusToneLab()
         isRunning = false;
         if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
         if (udpClient != null) udpClient.Close();
+        ShutdownNotesDetectorIfRunning();
+    }
+
+    private void TryLaunchNotesDetector()
+    {
+        if (!autoLaunchNotesDetector)
+            return;
+
+        if (notesDetectorProcess != null && !notesDetectorProcess.HasExited)
+            return;
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        string detectorPath = Path.Combine(Application.streamingAssetsPath, notesDetectorRelativePath);
+        if (!File.Exists(detectorPath))
+        {
+            Debug.LogWarning($"[NotesDetector] Executable not found at: {detectorPath}");
+            return;
+        }
+
+        try
+        {
+            string detectorWorkingDirectory = Path.GetDirectoryName(detectorPath);
+            var startInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = detectorPath,
+                Arguments = string.Empty,
+                WorkingDirectory = detectorWorkingDirectory,
+                UseShellExecute = false,
+                CreateNoWindow = false,
+            };
+
+            notesDetectorProcess = System.Diagnostics.Process.Start(startInfo);
+            if (notesDetectorProcess != null)
+                Debug.Log($"[NotesDetector] Launched: {detectorPath}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[NotesDetector] Failed to launch '{detectorPath}': {ex.Message}");
+        }
+#else
+        Debug.Log("[NotesDetector] Auto-launch is currently only enabled on Windows.");
+#endif
+    }
+
+    private void ShutdownNotesDetectorIfRunning()
+    {
+        if (notesDetectorProcess == null)
+            return;
+
+        try
+        {
+            if (!notesDetectorProcess.HasExited)
+                notesDetectorProcess.Kill();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[NotesDetector] Failed to stop process cleanly: {ex.Message}");
+        }
+        finally
+        {
+            notesDetectorProcess.Dispose();
+            notesDetectorProcess = null;
+        }
     }
 
     public Color GetStringColor(int stringIdx)
