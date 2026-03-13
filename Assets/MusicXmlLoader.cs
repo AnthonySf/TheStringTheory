@@ -92,8 +92,8 @@ public static class MusicXmlLoader
 
             Debug.Log($"MusicXML selected part: {chosenPartIndex} ('{chosenPartName}')");
 
-            List<TempoEvent> tempoMap;
-            List<ParsedNote> parsed = ParsePart(chosenPart, out tempoMap);
+            List<TempoEvent> tempoMap = BuildGlobalTempoMap(parts);
+            List<ParsedNote> parsed = ParsePart(chosenPart);
 
             if (parsed.Count == 0)
             {
@@ -264,10 +264,9 @@ public static class MusicXmlLoader
         return bestIndex;
     }
 
-    private static List<ParsedNote> ParsePart(XElement part, out List<TempoEvent> tempoMap)
+    private static List<ParsedNote> ParsePart(XElement part)
     {
         var notes = new List<ParsedNote>();
-        tempoMap = new List<TempoEvent> { new TempoEvent(0.0, 120.0) };
 
         double divisions = 1.0;
         double currentMeasureStartQuarter = 0.0;
@@ -297,19 +296,6 @@ public static class MusicXmlLoader
                     XElement transposeNode = child.Elements().FirstOrDefault(e => e.Name.LocalName == "transpose");
                     if (transposeNode != null)
                         chromaticTranspose = ParseInt(ChildValue(transposeNode, "chromatic"), chromaticTranspose);
-                }
-                else if (local == "direction")
-                {
-                    double? tempo = TryReadTempoFromDirection(child);
-                    if (tempo.HasValue && tempo.Value > 0.0)
-                    {
-                        if (tempoMap.Count == 0 ||
-                            Math.Abs(tempoMap[tempoMap.Count - 1].quarterPos - cursorQuarter) > 1e-6 ||
-                            Math.Abs(tempoMap[tempoMap.Count - 1].bpm - tempo.Value) > 1e-6)
-                        {
-                            tempoMap.Add(new TempoEvent(cursorQuarter, tempo.Value));
-                        }
-                    }
                 }
                 else if (local == "backup")
                 {
@@ -412,16 +398,87 @@ public static class MusicXmlLoader
             currentMeasureStartQuarter = measureMaxQuarter;
         }
 
-        tempoMap = tempoMap
+        return notes;
+    }
+
+    private static List<TempoEvent> BuildGlobalTempoMap(List<XElement> parts)
+    {
+        var tempoCandidates = new List<TempoEvent> { new TempoEvent(0.0, 120.0) };
+
+        for (int partIndex = 0; partIndex < parts.Count; partIndex++)
+        {
+            XElement part = parts[partIndex];
+            double divisions = 1.0;
+            double currentMeasureStartQuarter = 0.0;
+
+            foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
+            {
+                double cursorQuarter = currentMeasureStartQuarter;
+                double measureMaxQuarter = currentMeasureStartQuarter;
+
+                foreach (XElement child in measure.Elements())
+                {
+                    string local = child.Name.LocalName;
+
+                    if (local == "attributes")
+                    {
+                        XElement divNode = child.Elements().FirstOrDefault(e => e.Name.LocalName == "divisions");
+                        if (divNode != null)
+                        {
+                            double parsedDiv;
+                            if (double.TryParse(divNode.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out parsedDiv) && parsedDiv > 0)
+                                divisions = parsedDiv;
+                        }
+                    }
+                    else if (local == "direction")
+                    {
+                        double? tempo = TryReadTempoFromDirection(child);
+                        if (tempo.HasValue && tempo.Value > 0.0)
+                            tempoCandidates.Add(new TempoEvent(cursorQuarter, tempo.Value));
+                    }
+                    else if (local == "backup")
+                    {
+                        double durQuarter = DurationNodeToQuarter(child, divisions);
+                        cursorQuarter -= durQuarter;
+                        if (cursorQuarter < currentMeasureStartQuarter)
+                            cursorQuarter = currentMeasureStartQuarter;
+                    }
+                    else if (local == "forward")
+                    {
+                        double durQuarter = DurationNodeToQuarter(child, divisions);
+                        cursorQuarter += durQuarter;
+                        if (cursorQuarter > measureMaxQuarter)
+                            measureMaxQuarter = cursorQuarter;
+                    }
+                    else if (local == "note")
+                    {
+                        bool isChordTone = child.Elements().Any(e => e.Name.LocalName == "chord");
+                        bool isGrace = child.Elements().Any(e => e.Name.LocalName == "grace");
+
+                        if (!isChordTone)
+                        {
+                            double durQuarter = isGrace ? 0.0 : DurationNodeToQuarter(child, divisions);
+                            cursorQuarter += durQuarter;
+                            if (cursorQuarter > measureMaxQuarter)
+                                measureMaxQuarter = cursorQuarter;
+                        }
+                    }
+                }
+
+                currentMeasureStartQuarter = measureMaxQuarter;
+            }
+        }
+
+        List<TempoEvent> tempoMap = tempoCandidates
             .OrderBy(t => t.quarterPos)
             .GroupBy(t => t.quarterPos)
             .Select(g => g.Last())
             .ToList();
 
-        foreach (var t in tempoMap)
-            Debug.Log($"MusicXML Tempo: quarter={t.quarterPos:F3} -> {t.bpm:F2} BPM");
+        foreach (TempoEvent t in tempoMap)
+            Debug.Log($"MusicXML Tempo (global): quarter={t.quarterPos:F3} -> {t.bpm:F2} BPM");
 
-        return notes;
+        return tempoMap;
     }
 
     private static List<ParsedNote> NormalizeParsedNotes(List<ParsedNote> notes)
