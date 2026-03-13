@@ -230,6 +230,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
     private bool useAutoTrackSelection = true;
     private string selectedMusicXmlPartId = string.Empty;
+    private float lastLeftArrowTapTime = -10f;
+    private float lastRightArrowTapTime = -10f;
+    private const float ArrowDoubleTapThreshold = 0.35f;
 
     private void Start()
     {
@@ -260,7 +263,7 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: !isPaused);
 
         if (midiTrackIndex != currentLoadedTrackIndex)
-            LoadTestSong();
+            LoadTestSong(preservePauseUiState: isPaused || showSongSettings || showSongSelection);
 
         if (!isPaused)
         {
@@ -348,6 +351,28 @@ public class GuitarBridgeServer : MonoBehaviour
             SeekSongTime(loopEndTime, false);
         }
 
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            if (Time.unscaledTime - lastLeftArrowTapTime <= ArrowDoubleTapThreshold)
+            {
+                JumpToAdjacentNote(false);
+                lastLeftArrowTapTime = -10f;
+                return;
+            }
+            lastLeftArrowTapTime = Time.unscaledTime;
+        }
+
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            if (Time.unscaledTime - lastRightArrowTapTime <= ArrowDoubleTapThreshold)
+            {
+                JumpToAdjacentNote(true);
+                lastRightArrowTapTime = -10f;
+                return;
+            }
+            lastRightArrowTapTime = Time.unscaledTime;
+        }
+
         float seekDirection = 0f;
         if (Input.GetKey(KeyCode.LeftArrow))
             seekDirection -= 1f;
@@ -358,6 +383,52 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
+    }
+
+    private void JumpToAdjacentNote(bool moveForward)
+    {
+        if (chartNotes == null || chartNotes.Count == 0)
+            return;
+
+        const float epsilon = 0.0001f;
+        float targetTime = songTimer;
+        bool found = false;
+
+        if (moveForward)
+        {
+            float best = float.MaxValue;
+            for (int i = 0; i < chartNotes.Count; i++)
+            {
+                float t = chartNotes[i].time;
+                if (t > songTimer + epsilon && t < best)
+                {
+                    best = t;
+                    found = true;
+                }
+            }
+            if (found)
+                targetTime = best;
+        }
+        else
+        {
+            float best = float.MinValue;
+            for (int i = 0; i < chartNotes.Count; i++)
+            {
+                float t = chartNotes[i].time;
+                if (t < songTimer - epsilon && t > best)
+                {
+                    best = t;
+                    found = true;
+                }
+            }
+            if (found)
+                targetTime = best;
+        }
+
+        if (!found)
+            return;
+
+        SeekSongTime(targetTime, false);
     }
 
     private void HandleSongSelectionControls()
@@ -437,6 +508,28 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             isPaused = false;
             SyncAudioToSongTimer(playImmediately: true);
+        }
+
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            if (Time.unscaledTime - lastLeftArrowTapTime <= ArrowDoubleTapThreshold)
+            {
+                JumpToAdjacentNote(false);
+                lastLeftArrowTapTime = -10f;
+                return;
+            }
+            lastLeftArrowTapTime = Time.unscaledTime;
+        }
+
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            if (Time.unscaledTime - lastRightArrowTapTime <= ArrowDoubleTapThreshold)
+            {
+                JumpToAdjacentNote(true);
+                lastRightArrowTapTime = -10f;
+                return;
+            }
+            lastRightArrowTapTime = Time.unscaledTime;
         }
 
         float seekDirection = 0f;
@@ -1584,15 +1677,19 @@ private void ParseUdpState()
     // =========================================================
     // SONG LOADING AND TAB GENERATION
     // =========================================================
-    private void LoadTestSong()
+    private void LoadTestSong(bool preservePauseUiState = false)
     {
         currentLoadedTrackIndex = midiTrackIndex;
         latestDetectedPitches.Clear();
         recentNoteEvents.Clear();
         latestNoteEventId = 0;
+        bool wasPaused = isPaused;
+        bool wasShowingSongSettings = showSongSettings;
+        bool wasShowingSongSelection = showSongSelection;
+
         songTimer = 0f;
         audioSongTimer = 0f;
-        isPaused = false;
+        isPaused = preservePauseUiState ? wasPaused : false;
 
         float sectionDuration = GetEffectiveTabSectionDuration();
         loopStartTime = Mathf.Max(0.2f, sectionDuration * 0.40f);
@@ -1600,8 +1697,8 @@ private void ParseUdpState()
         loopEnabled = false;
         selectedLoopMarker = 1;
         playbackSpeedPercent = 100f;
-        showSongSettings = false;
-        showSongSelection = false;
+        showSongSettings = preservePauseUiState ? wasShowingSongSettings : false;
+        showSongSelection = preservePauseUiState ? wasShowingSongSelection : false;
         tabSpeedOffsetPercent = 100f;
 
         List<NoteData> loadedNotes = null;

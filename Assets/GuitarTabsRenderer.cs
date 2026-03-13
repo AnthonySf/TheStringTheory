@@ -473,7 +473,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         helpObj.transform.SetParent(songSettingsRoot.transform, false);
         helpObj.transform.localPosition = new Vector3(0f, 0.24f, -0.05f);
         songSettingsHelpText = helpObj.AddComponent<TextMeshPro>();
-        songSettingsHelpText.text = "Space: Play/Pause  |  Left/Right: Seek  |  Enter: Play  |  Esc: Back";
+        songSettingsHelpText.text = "Space: Play/Pause  |  Left/Right: Seek (Double-tap: Prev/Next note)  |  Q/E: Track  |  Esc: Back";
         songSettingsHelpText.fontSize = owner.tabLabelFontSize * 0.48f;
         songSettingsHelpText.alignment = TextAlignmentOptions.Center;
         songSettingsHelpText.color = new Color(0.86f, 0.91f, 1f);
