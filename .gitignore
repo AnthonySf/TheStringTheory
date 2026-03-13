@@ -44,3 +44,12 @@ node_modules/
 *.pem
 *.key
 serviceAccount*.json
+
+# Python / packaged app output
+Assets/StreamingAssets/ToneLab/dist/
+Assets/StreamingAssets/ToneLab/build/
+Assets/StreamingAssets/ToneLab/*.log
+Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
+
+# General
+*.log
