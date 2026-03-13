@@ -1303,7 +1303,7 @@ private void OpenOrFocusToneLab()
                 startInfo = new System.Diagnostics.ProcessStartInfo
                 {
                     FileName = "cmd.exe",
-                    Arguments = $"/k ""{detectorPath}""",
+                    Arguments = $"/k \"{detectorPath}\"",
                     WorkingDirectory = detectorWorkingDirectory,
                     UseShellExecute = true,
                     CreateNoWindow = false,
