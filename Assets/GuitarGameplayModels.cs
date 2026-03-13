@@ -135,6 +135,8 @@ public sealed class GuitarGameplaySnapshot
     public float songStartDelaySeconds;
     public string selectedTrackDisplayName;
     public string trackSelectionHint;
+    public string offsetScopeLabel;
+    public string offsetScopeHint;
     public bool hasBackingTrack;
     public bool isBackingTrackPlaying;
     public float backingTrackTime;

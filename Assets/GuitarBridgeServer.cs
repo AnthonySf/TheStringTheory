@@ -203,6 +203,14 @@ public class GuitarBridgeServer : MonoBehaviour
     [Min(0f)] public float defaultSongStartDelaySeconds = 2.0f;
 
     [Serializable]
+    private class TrackOffsetOverride
+    {
+        public string partId;
+        public bool useTrackOffset;
+        public float offsetMs;
+    }
+
+    [Serializable]
     private class SongMetadata
     {
         public string songFileName;
@@ -211,6 +219,7 @@ public class GuitarBridgeServer : MonoBehaviour
         public float songStartDelaySeconds = 2.0f;
         public bool useAutoTrackSelection = true;
         public string selectedMusicXmlPartId;
+        public List<TrackOffsetOverride> trackOffsetOverrides = new List<TrackOffsetOverride>();
     }
 
     private string currentSongFileName = "song.mp3";
@@ -221,6 +230,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private int songListScrollOffset;
     private readonly List<SongLibraryEntry> availableSongs = new List<SongLibraryEntry>();
     private float audioOffsetMs;
+    private float globalAudioOffsetMs;
+    private bool useTrackOffsetForCurrentTrack;
     private float tabSpeedOffsetPercent = 100f;
     private float songStartDelaySeconds = 2.0f;
     private SongMetadata songMetadata = new SongMetadata();
@@ -479,7 +490,14 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (TryReadOffsetSliderMs(out float sliderOffsetMs))
         {
-            audioOffsetMs = sliderOffsetMs;
+            SetEffectiveOffsetForCurrentScope(sliderOffsetMs);
+            SaveSongMetadata();
+            SyncAudioToSongTimer(playImmediately: !isPaused);
+        }
+
+        if (Input.GetKeyDown(KeyCode.O))
+        {
+            ToggleOffsetScope();
             SaveSongMetadata();
             SyncAudioToSongTimer(playImmediately: !isPaused);
         }
@@ -614,6 +632,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         ApplyTrackSelectionPreference();
+        RefreshEffectiveAudioOffset();
         SaveSongMetadata();
     }
 
@@ -981,6 +1000,91 @@ private void OpenOrFocusToneLab()
         float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
         speedPercent = Mathf.Lerp(1f, 200f, t);
         return true;
+    }
+
+    private string GetCurrentOffsetPartId()
+    {
+        if (useAutoTrackSelection)
+        {
+            if (currentSongPartSummaries.Count == 0)
+                return string.Empty;
+
+            MusicXmlLoader.MusicXmlPartSummary best = currentSongPartSummaries.OrderByDescending(s => s.Score).FirstOrDefault();
+            return best != null ? (best.PartId ?? string.Empty) : string.Empty;
+        }
+
+        return selectedMusicXmlPartId ?? string.Empty;
+    }
+
+    private TrackOffsetOverride GetOrCreateTrackOffsetOverride(string partId)
+    {
+        if (songMetadata.trackOffsetOverrides == null)
+            songMetadata.trackOffsetOverrides = new List<TrackOffsetOverride>();
+
+        TrackOffsetOverride existing = songMetadata.trackOffsetOverrides.FirstOrDefault(o => string.Equals(o.partId ?? string.Empty, partId ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+        if (existing != null)
+            return existing;
+
+        TrackOffsetOverride created = new TrackOffsetOverride
+        {
+            partId = partId ?? string.Empty,
+            useTrackOffset = false,
+            offsetMs = globalAudioOffsetMs
+        };
+
+        songMetadata.trackOffsetOverrides.Add(created);
+        return created;
+    }
+
+    private void RefreshEffectiveAudioOffset()
+    {
+        string partId = GetCurrentOffsetPartId();
+        TrackOffsetOverride entry = null;
+
+        if (!string.IsNullOrEmpty(partId) && songMetadata.trackOffsetOverrides != null)
+            entry = songMetadata.trackOffsetOverrides.FirstOrDefault(o => string.Equals(o.partId ?? string.Empty, partId, StringComparison.OrdinalIgnoreCase));
+
+        useTrackOffsetForCurrentTrack = entry != null && entry.useTrackOffset;
+        audioOffsetMs = useTrackOffsetForCurrentTrack ? entry.offsetMs : globalAudioOffsetMs;
+    }
+
+    private void SetEffectiveOffsetForCurrentScope(float offsetMs)
+    {
+        if (useTrackOffsetForCurrentTrack)
+        {
+            string partId = GetCurrentOffsetPartId();
+            TrackOffsetOverride entry = GetOrCreateTrackOffsetOverride(partId);
+            entry.useTrackOffset = true;
+            entry.offsetMs = offsetMs;
+            audioOffsetMs = offsetMs;
+            return;
+        }
+
+        globalAudioOffsetMs = offsetMs;
+        audioOffsetMs = offsetMs;
+    }
+
+    private void ToggleOffsetScope()
+    {
+        string partId = GetCurrentOffsetPartId();
+        if (string.IsNullOrEmpty(partId))
+            return;
+
+        TrackOffsetOverride entry = GetOrCreateTrackOffsetOverride(partId);
+        entry.useTrackOffset = !entry.useTrackOffset;
+
+        if (entry.useTrackOffset)
+        {
+            if (Mathf.Abs(entry.offsetMs) < 0.0001f)
+                entry.offsetMs = globalAudioOffsetMs;
+            useTrackOffsetForCurrentTrack = true;
+            audioOffsetMs = entry.offsetMs;
+        }
+        else
+        {
+            useTrackOffsetForCurrentTrack = false;
+            audioOffsetMs = globalAudioOffsetMs;
+        }
     }
 
     private bool TryReadOffsetSliderMs(out float offsetMs)
@@ -1633,6 +1737,8 @@ private void ParseUdpState()
             songStartDelaySeconds = songStartDelaySeconds,
             selectedTrackDisplayName = GetTrackDisplayName(GetCurrentTrackOptionIndex()),
             trackSelectionHint = GetTrackOptionCount() > 1 ? "Track: click row or Q/E" : "Track: single detected part",
+            offsetScopeLabel = useTrackOffsetForCurrentTrack ? "Track" : "Song",
+            offsetScopeHint = "Offset scope: O toggles Song/Track",
             hasBackingTrack = hasBackingTrack,
             isBackingTrackPlaying = backingTrackSource != null && backingTrackSource.isPlaying,
             backingTrackTime = backingTrackSource != null ? backingTrackSource.time : 0f
@@ -1848,11 +1954,13 @@ private void ParseUdpState()
         currentSongFileName = Path.GetFileName(songPath);
 
         songMetadata = LoadSongMetadata(currentSongFileName);
-        audioOffsetMs = songMetadata.audioOffsetMs;
+        globalAudioOffsetMs = songMetadata.audioOffsetMs;
+        audioOffsetMs = globalAudioOffsetMs;
         tabSpeedOffsetPercent = Mathf.Clamp(songMetadata.tabSpeedOffsetPercent <= 0f ? 100f : songMetadata.tabSpeedOffsetPercent, 50f, 150f);
         songStartDelaySeconds = Mathf.Clamp(songMetadata.songStartDelaySeconds <= 0f ? defaultSongStartDelaySeconds : songMetadata.songStartDelaySeconds, 0f, 8f);
         useAutoTrackSelection = songMetadata.useAutoTrackSelection;
         selectedMusicXmlPartId = string.IsNullOrEmpty(songMetadata.selectedMusicXmlPartId) ? string.Empty : songMetadata.selectedMusicXmlPartId;
+        RefreshEffectiveAudioOffset();
 
         backingTrackLoadError = string.Empty;
         isLoadingBackingTrack = false;
@@ -1926,7 +2034,8 @@ private void ParseUdpState()
             tabSpeedOffsetPercent = 100f,
             songStartDelaySeconds = defaultSongStartDelaySeconds,
             useAutoTrackSelection = true,
-            selectedMusicXmlPartId = string.Empty
+            selectedMusicXmlPartId = string.Empty,
+            trackOffsetOverrides = new List<TrackOffsetOverride>()
         };
         string path = GetMetadataPath(songFileName);
 
@@ -1939,6 +2048,9 @@ private void ParseUdpState()
                 SongMetadata loaded = JsonUtility.FromJson<SongMetadata>(json);
                 if (loaded != null)
                     data = loaded;
+
+                if (data.trackOffsetOverrides == null)
+                    data.trackOffsetOverrides = new List<TrackOffsetOverride>();
             }
             else
             {
@@ -1959,7 +2071,7 @@ private void ParseUdpState()
             return;
 
         songMetadata.songFileName = currentSongFileName;
-        songMetadata.audioOffsetMs = audioOffsetMs;
+        songMetadata.audioOffsetMs = globalAudioOffsetMs;
         songMetadata.tabSpeedOffsetPercent = tabSpeedOffsetPercent;
         songMetadata.songStartDelaySeconds = songStartDelaySeconds;
         songMetadata.useAutoTrackSelection = useAutoTrackSelection;
