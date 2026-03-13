@@ -7,17 +7,20 @@ public static class ToneLabService
     {
         ExternalContentBootstrap.EnsureRuntimeContentReady();
 
-        if (!File.Exists(ExternalContentPaths.PersistentToneLabScriptPath))
-        {
-            Debug.LogWarning($"[ToneLabService] Tone Lab script not found at runtime path: {ExternalContentPaths.PersistentToneLabScriptPath}");
-            return false;
-        }
+        bool hasScript = File.Exists(ExternalContentPaths.PersistentToneLabScriptPath);
+        bool hasExe = File.Exists(ExternalContentPaths.PersistentToneLabExePath);
 
-        return true;
+        if (!hasScript)
+            Debug.LogWarning($"[ToneLabService] Tone Lab script not found at runtime path: {ExternalContentPaths.PersistentToneLabScriptPath}");
+
+        if (!hasExe)
+            Debug.LogWarning($"[ToneLabService] Tone Lab executable not found at runtime path: {ExternalContentPaths.PersistentToneLabExePath}");
+
+        return hasScript && hasExe;
     }
 
-    public static string GetToneLabScriptPath()
+    public static string GetToneLabExecutablePath()
     {
-        return ExternalContentPaths.PersistentToneLabScriptPath;
+        return ExternalContentPaths.PersistentToneLabExePath;
     }
 }

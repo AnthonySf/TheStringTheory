@@ -471,9 +471,9 @@ private void OpenOrFocusToneLab()
     if (!ToneLabService.EnsureToneLabRuntimeFiles())
         return;
 
-    string toneLabPath = ToneLabService.GetToneLabScriptPath();
+    string toneLabPath = ToneLabService.GetToneLabExecutablePath();
     string toneLabWorkingDirectory = Path.GetDirectoryName(toneLabPath);
-    Debug.Log($"[ToneLab] Launch requested. Runtime script path: {toneLabPath}");
+    Debug.Log($"[ToneLab] Launch requested. Runtime executable path: {toneLabPath}");
 
     try
     {
@@ -488,20 +488,17 @@ private void OpenOrFocusToneLab()
 
         if (!File.Exists(toneLabPath))
         {
-            Debug.LogWarning($"Tone Lab script not found at runtime path '{toneLabPath}'.");
+            Debug.LogWarning($"Tone Lab executable not found at runtime path '{toneLabPath}'.");
             return;
         }
 
-        foreach (var launchAttempt in BuildToneLabLaunchAttempts(toneLabPath))
+        if (TryStartToneLabProcess(toneLabPath, string.Empty, toneLabWorkingDirectory, true))
         {
-            if (TryStartToneLabProcess(launchAttempt.fileName, launchAttempt.arguments, toneLabWorkingDirectory, launchAttempt.useShellExecute))
-            {
-                StartCoroutine(FocusToneLabWindowWhenReady(toneLabWindowTitle));
-                return;
-            }
+            StartCoroutine(FocusToneLabWindowWhenReady(toneLabWindowTitle));
+            return;
         }
 
-        Debug.LogWarning("[ToneLab] Failed to launch Tone Lab with all launch strategies.");
+        Debug.LogWarning("[ToneLab] Failed to launch Tone Lab executable.");
     }
     catch (Exception ex)
     {
@@ -513,24 +510,6 @@ private void OpenOrFocusToneLab()
 }
 
 #if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-    private IEnumerable<(string fileName, string arguments, bool useShellExecute)> BuildToneLabLaunchAttempts(string toneLabPath)
-    {
-        string projectRoot = Directory.GetParent(Application.dataPath).FullName;
-        string venvPython = Path.Combine(projectRoot, ".venv", "Scripts", "python.exe");
-
-        if (File.Exists(venvPython))
-            yield return (venvPython, $"\"{toneLabPath}\"", false);
-
-        // Python launcher on Windows, if installed.
-        yield return ("py", $"\"{toneLabPath}\"", true);
-
-        // Python from PATH.
-        yield return ("python", $"\"{toneLabPath}\"", true);
-
-        // Last fallback: rely on file association for .py.
-        yield return (toneLabPath, string.Empty, true);
-    }
-
     private bool TryStartToneLabProcess(string fileName, string arguments, string workingDirectory, bool useShellExecute)
     {
         try
