@@ -1,0 +1,8 @@
+=== ToneLab launch ===
+Python exe: C:\Users\Anthony\GuitarProject\Assets\StreamingAssets\ToneLab\dist\ToneLab\ToneLab.exe
+Script path: C:\Users\Anthony\GuitarProject\Assets\StreamingAssets\ToneLab\dist\ToneLab\_internal\ToneLab.py
+CWD: C:\Users\Anthony\GuitarProject\Assets\StreamingAssets\ToneLab\dist\ToneLab
+All imports succeeded
+Creating app...
+Entering mainloop
+Mainloop ended normally
