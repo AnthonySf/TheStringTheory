@@ -92,8 +92,9 @@ public static class MusicXmlLoader
 
             Debug.Log($"MusicXML selected part: {chosenPartIndex} ('{chosenPartName}')");
 
-            List<TempoEvent> tempoMap = BuildGlobalTempoMap(parts);
-            List<ParsedNote> parsed = ParsePart(chosenPart);
+            List<double> canonicalMeasureStarts = BuildCanonicalMeasureStarts(parts);
+            List<TempoEvent> tempoMap = BuildGlobalTempoMap(parts, canonicalMeasureStarts);
+            List<ParsedNote> parsed = ParsePart(chosenPart, canonicalMeasureStarts);
 
             if (parsed.Count == 0)
             {
@@ -264,19 +265,22 @@ public static class MusicXmlLoader
         return bestIndex;
     }
 
-    private static List<ParsedNote> ParsePart(XElement part)
+    private static List<ParsedNote> ParsePart(XElement part, List<double> canonicalMeasureStarts)
     {
         var notes = new List<ParsedNote>();
 
         double divisions = 1.0;
-        double currentMeasureStartQuarter = 0.0;
         int chromaticTranspose = 0;
         int sourceIndex = 0;
+        int measureIndex = 0;
 
         foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
         {
+            double currentMeasureStartQuarter = measureIndex < canonicalMeasureStarts.Count
+                ? canonicalMeasureStarts[measureIndex]
+                : (canonicalMeasureStarts.Count > 0 ? canonicalMeasureStarts[canonicalMeasureStarts.Count - 1] : 0.0);
+
             double cursorQuarter = currentMeasureStartQuarter;
-            double measureMaxQuarter = currentMeasureStartQuarter;
             double lastNoteStartQuarter = currentMeasureStartQuarter;
 
             foreach (XElement child in measure.Elements())
@@ -308,8 +312,6 @@ public static class MusicXmlLoader
                 {
                     double durQuarter = DurationNodeToQuarter(child, divisions);
                     cursorQuarter += durQuarter;
-                    if (cursorQuarter > measureMaxQuarter)
-                        measureMaxQuarter = cursorQuarter;
                 }
                 else if (local == "note")
                 {
@@ -389,19 +391,117 @@ public static class MusicXmlLoader
                     if (!isChordTone)
                     {
                         cursorQuarter += durQuarter;
-                        if (cursorQuarter > measureMaxQuarter)
-                            measureMaxQuarter = cursorQuarter;
                     }
                 }
             }
-
-            currentMeasureStartQuarter = measureMaxQuarter;
+            measureIndex++;
         }
 
         return notes;
     }
 
-    private static List<TempoEvent> BuildGlobalTempoMap(List<XElement> parts)
+    private static List<double> BuildCanonicalMeasureStarts(List<XElement> parts)
+    {
+        var perPartDurations = new List<List<double>>();
+        int maxMeasureCount = 0;
+
+        for (int partIndex = 0; partIndex < parts.Count; partIndex++)
+        {
+            XElement part = parts[partIndex];
+            List<double> durations = new List<double>();
+            double divisions = 1.0;
+
+            foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
+            {
+                double cursorQuarter = 0.0;
+                double measureMaxQuarter = 0.0;
+                double timeSigQuarter = 0.0;
+
+                foreach (XElement child in measure.Elements())
+                {
+                    string local = child.Name.LocalName;
+
+                    if (local == "attributes")
+                    {
+                        XElement divNode = child.Elements().FirstOrDefault(e => e.Name.LocalName == "divisions");
+                        if (divNode != null)
+                        {
+                            double parsedDiv;
+                            if (double.TryParse(divNode.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out parsedDiv) && parsedDiv > 0)
+                                divisions = parsedDiv;
+                        }
+
+                        XElement timeNode = child.Elements().FirstOrDefault(e => e.Name.LocalName == "time");
+                        if (timeNode != null)
+                        {
+                            int beats = ParseInt(ChildValue(timeNode, "beats"), 0);
+                            int beatType = ParseInt(ChildValue(timeNode, "beat-type"), 0);
+                            if (beats > 0 && beatType > 0)
+                                timeSigQuarter = beats * (4.0 / beatType);
+                        }
+                    }
+                    else if (local == "backup")
+                    {
+                        cursorQuarter -= DurationNodeToQuarter(child, divisions);
+                        if (cursorQuarter < 0.0)
+                            cursorQuarter = 0.0;
+                    }
+                    else if (local == "forward")
+                    {
+                        cursorQuarter += DurationNodeToQuarter(child, divisions);
+                        if (cursorQuarter > measureMaxQuarter)
+                            measureMaxQuarter = cursorQuarter;
+                    }
+                    else if (local == "note")
+                    {
+                        bool isChordTone = child.Elements().Any(e => e.Name.LocalName == "chord");
+                        bool isGrace = child.Elements().Any(e => e.Name.LocalName == "grace");
+                        if (!isChordTone)
+                        {
+                            cursorQuarter += isGrace ? 0.0 : DurationNodeToQuarter(child, divisions);
+                            if (cursorQuarter > measureMaxQuarter)
+                                measureMaxQuarter = cursorQuarter;
+                        }
+                    }
+                }
+
+                double durationQuarter = Math.Max(measureMaxQuarter, timeSigQuarter);
+                if (durationQuarter <= 0.0)
+                    durationQuarter = 4.0;
+
+                durations.Add(durationQuarter);
+            }
+
+            perPartDurations.Add(durations);
+            if (durations.Count > maxMeasureCount)
+                maxMeasureCount = durations.Count;
+        }
+
+        List<double> measureDurations = new List<double>(Math.Max(1, maxMeasureCount));
+        for (int m = 0; m < Math.Max(1, maxMeasureCount); m++)
+        {
+            double best = 0.0;
+            for (int p = 0; p < perPartDurations.Count; p++)
+            {
+                List<double> durations = perPartDurations[p];
+                if (m < durations.Count && durations[m] > best)
+                    best = durations[m];
+            }
+
+            if (best <= 0.0)
+                best = 4.0;
+
+            measureDurations.Add(best);
+        }
+
+        List<double> measureStarts = new List<double>(measureDurations.Count + 1) { 0.0 };
+        for (int m = 0; m < measureDurations.Count; m++)
+            measureStarts.Add(measureStarts[m] + measureDurations[m]);
+
+        return measureStarts;
+    }
+
+    private static List<TempoEvent> BuildGlobalTempoMap(List<XElement> parts, List<double> canonicalMeasureStarts)
     {
         var tempoCandidates = new List<TempoEvent> { new TempoEvent(0.0, 120.0) };
 
@@ -409,12 +509,15 @@ public static class MusicXmlLoader
         {
             XElement part = parts[partIndex];
             double divisions = 1.0;
-            double currentMeasureStartQuarter = 0.0;
+            int measureIndex = 0;
 
             foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
             {
+                double currentMeasureStartQuarter = measureIndex < canonicalMeasureStarts.Count
+                    ? canonicalMeasureStarts[measureIndex]
+                    : (canonicalMeasureStarts.Count > 0 ? canonicalMeasureStarts[canonicalMeasureStarts.Count - 1] : 0.0);
+
                 double cursorQuarter = currentMeasureStartQuarter;
-                double measureMaxQuarter = currentMeasureStartQuarter;
 
                 foreach (XElement child in measure.Elements())
                 {
@@ -447,8 +550,6 @@ public static class MusicXmlLoader
                     {
                         double durQuarter = DurationNodeToQuarter(child, divisions);
                         cursorQuarter += durQuarter;
-                        if (cursorQuarter > measureMaxQuarter)
-                            measureMaxQuarter = cursorQuarter;
                     }
                     else if (local == "note")
                     {
@@ -459,13 +560,10 @@ public static class MusicXmlLoader
                         {
                             double durQuarter = isGrace ? 0.0 : DurationNodeToQuarter(child, divisions);
                             cursorQuarter += durQuarter;
-                            if (cursorQuarter > measureMaxQuarter)
-                                measureMaxQuarter = cursorQuarter;
                         }
                     }
                 }
-
-                currentMeasureStartQuarter = measureMaxQuarter;
+                measureIndex++;
             }
         }
 
