@@ -1794,12 +1794,28 @@ private void ParseUdpState()
 
         // 4. GENERATE THE SECTIONS (This is what brings the renderer back to life!)
         GenerateTabSections();
+        ResetActiveRendererContent();
 
         songTimer = -songStartDelaySeconds;
         audioSongTimer = -songStartDelaySeconds;
         currentLoadedTrackIndex = midiTrackIndex;
         ApplyPlaybackSpeedToAudio();
         SyncAudioToSongTimer(playImmediately: !isPaused);
+    }
+
+    private void ResetActiveRendererContent()
+    {
+        if (activeRenderer == null)
+            return;
+
+        if (activeRenderer is GuitarTabsRenderer tabsRenderer)
+        {
+            tabsRenderer.ResetRenderer(chartNotes, tabSections);
+            return;
+        }
+
+        if (activeRenderer is GuitarHighway3DRenderer highwayRenderer)
+            highwayRenderer.ResetRenderer(chartNotes, tabSections);
     }
 
     private void EnsureBackingTrackSource()
