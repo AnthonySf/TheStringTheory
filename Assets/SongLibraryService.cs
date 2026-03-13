@@ -60,6 +60,8 @@ public static class SongLibraryService
 
     private static bool TryBuildEntry(string songDirectory, out SongLibraryEntry entry)
     {
+        entry = null;
+
         string mp3Path = FindFirstFile(songDirectory, "*.mp3");
         string xmlPath = FindFirstFile(songDirectory, "*.musicxml") ?? FindFirstFile(songDirectory, "*.xml");
 
