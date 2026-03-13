@@ -8,6 +8,16 @@ using System.Xml.Linq;
 
 public static class MusicXmlLoader
 {
+    public sealed class MusicXmlPartSummary
+    {
+        public int Index;
+        public string PartId;
+        public string Name;
+        public int NoteCount;
+        public int TabCount;
+        public int Score;
+    }
+
     private static readonly int[] stringBasePitches = { 40, 45, 50, 55, 59, 64 }; // E2 A2 D3 G3 B3 E4
     private static readonly string[] noteNames = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 
@@ -70,9 +80,11 @@ public static class MusicXmlLoader
                 return null;
             }
 
+            List<MusicXmlPartSummary> summaries = BuildPartSummaries(parts, partNames);
+
             int chosenPartIndex = (targetPartIndex >= 0 && targetPartIndex < parts.Count)
                 ? targetPartIndex
-                : ChooseBestPart(parts, partNames);
+                : ChooseBestPart(summaries);
 
             XElement chosenPart = parts[chosenPartIndex];
             string chosenPartId = Attr(chosenPart, "id");
@@ -80,8 +92,9 @@ public static class MusicXmlLoader
 
             Debug.Log($"MusicXML selected part: {chosenPartIndex} ('{chosenPartName}')");
 
-            List<TempoEvent> tempoMap;
-            List<ParsedNote> parsed = ParsePart(chosenPart, out tempoMap);
+            List<double> canonicalMeasureStarts = BuildCanonicalMeasureStarts(parts);
+            List<TempoEvent> tempoMap = BuildGlobalTempoMap(parts, canonicalMeasureStarts);
+            List<ParsedNote> parsed = ParsePart(chosenPart, canonicalMeasureStarts);
 
             if (parsed.Count == 0)
             {
@@ -126,6 +139,32 @@ public static class MusicXmlLoader
         }
     }
 
+    public static List<MusicXmlPartSummary> GetPartSummaries(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            Debug.LogError("MusicXML file not found: " + filePath);
+            return new List<MusicXmlPartSummary>();
+        }
+
+        try
+        {
+            XDocument doc = XDocument.Load(filePath);
+            XElement root = doc.Root;
+            if (root == null)
+                return new List<MusicXmlPartSummary>();
+
+            Dictionary<string, string> partNames = ReadPartNames(root);
+            List<XElement> parts = root.Elements().Where(e => e.Name.LocalName == "part").ToList();
+            return BuildPartSummaries(parts, partNames);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("Failed to read MusicXML part summaries: " + ex.Message);
+            return new List<MusicXmlPartSummary>();
+        }
+    }
+
     private static Dictionary<string, string> ReadPartNames(XElement root)
     {
         var result = new Dictionary<string, string>();
@@ -145,10 +184,9 @@ public static class MusicXmlLoader
         return result;
     }
 
-    private static int ChooseBestPart(List<XElement> parts, Dictionary<string, string> partNames)
+    private static List<MusicXmlPartSummary> BuildPartSummaries(List<XElement> parts, Dictionary<string, string> partNames)
     {
-        int bestIndex = 0;
-        int bestScore = int.MinValue;
+        var summaries = new List<MusicXmlPartSummary>();
 
         for (int i = 0; i < parts.Count; i++)
         {
@@ -190,33 +228,61 @@ public static class MusicXmlLoader
             if (lower.Contains("vocal")) score -= 200;
             if (lower.Contains("piano")) score -= 100;
 
-            Debug.Log($"MusicXML part {i}: '{name}' noteCount={noteCount} tabCount={tabCount} score={score}");
-
-            if (score > bestScore)
+            summaries.Add(new MusicXmlPartSummary
             {
-                bestScore = score;
-                bestIndex = i;
+                Index = i,
+                PartId = id,
+                Name = name,
+                NoteCount = noteCount,
+                TabCount = tabCount,
+                Score = score
+            });
+        }
+
+        foreach (MusicXmlPartSummary summary in summaries)
+            Debug.Log($"MusicXML part {summary.Index}: '{summary.Name}' noteCount={summary.NoteCount} tabCount={summary.TabCount} score={summary.Score}");
+
+        return summaries;
+    }
+
+    private static int ChooseBestPart(List<MusicXmlPartSummary> summaries)
+    {
+        if (summaries == null || summaries.Count == 0)
+            return 0;
+
+        int bestIndex = summaries[0].Index;
+        int bestScore = int.MinValue;
+
+        foreach (MusicXmlPartSummary summary in summaries)
+        {
+            if (summary.Score > bestScore)
+            {
+                bestScore = summary.Score;
+                bestIndex = summary.Index;
             }
         }
 
         return bestIndex;
     }
 
-    private static List<ParsedNote> ParsePart(XElement part, out List<TempoEvent> tempoMap)
+    private static List<ParsedNote> ParsePart(XElement part, List<double> canonicalMeasureStarts)
     {
         var notes = new List<ParsedNote>();
-        tempoMap = new List<TempoEvent> { new TempoEvent(0.0, 120.0) };
 
         double divisions = 1.0;
-        double currentMeasureStartQuarter = 0.0;
         int chromaticTranspose = 0;
         int sourceIndex = 0;
+        int measureIndex = 0;
 
         foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
         {
-            double cursorQuarter = currentMeasureStartQuarter;
-            double measureMaxQuarter = currentMeasureStartQuarter;
-            double lastNoteStartQuarter = currentMeasureStartQuarter;
+            double currentMeasureStartQuarter = measureIndex < canonicalMeasureStarts.Count
+                ? canonicalMeasureStarts[measureIndex]
+                : (canonicalMeasureStarts.Count > 0 ? canonicalMeasureStarts[canonicalMeasureStarts.Count - 1] : 0.0);
+
+            var voiceCursorOffsets = new Dictionary<string, double>();
+            var lastNoteStartByVoice = new Dictionary<string, double>();
+            string activeVoiceKey = "1:1";
 
             foreach (XElement child in measure.Elements())
             {
@@ -236,32 +302,17 @@ public static class MusicXmlLoader
                     if (transposeNode != null)
                         chromaticTranspose = ParseInt(ChildValue(transposeNode, "chromatic"), chromaticTranspose);
                 }
-                else if (local == "direction")
-                {
-                    double? tempo = TryReadTempoFromDirection(child);
-                    if (tempo.HasValue && tempo.Value > 0.0)
-                    {
-                        if (tempoMap.Count == 0 ||
-                            Math.Abs(tempoMap[tempoMap.Count - 1].quarterPos - cursorQuarter) > 1e-6 ||
-                            Math.Abs(tempoMap[tempoMap.Count - 1].bpm - tempo.Value) > 1e-6)
-                        {
-                            tempoMap.Add(new TempoEvent(cursorQuarter, tempo.Value));
-                        }
-                    }
-                }
                 else if (local == "backup")
                 {
                     double durQuarter = DurationNodeToQuarter(child, divisions);
-                    cursorQuarter -= durQuarter;
-                    if (cursorQuarter < currentMeasureStartQuarter)
-                        cursorQuarter = currentMeasureStartQuarter;
+                    double currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                    voiceCursorOffsets[activeVoiceKey] = Math.Max(0.0, currentOffset - durQuarter);
                 }
                 else if (local == "forward")
                 {
                     double durQuarter = DurationNodeToQuarter(child, divisions);
-                    cursorQuarter += durQuarter;
-                    if (cursorQuarter > measureMaxQuarter)
-                        measureMaxQuarter = cursorQuarter;
+                    double currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                    voiceCursorOffsets[activeVoiceKey] = currentOffset + durQuarter;
                 }
                 else if (local == "note")
                 {
@@ -269,15 +320,33 @@ public static class MusicXmlLoader
                     bool isChordTone = child.Elements().Any(e => e.Name.LocalName == "chord");
                     bool isGrace = child.Elements().Any(e => e.Name.LocalName == "grace");
 
-                    double noteStartQuarter = isChordTone ? lastNoteStartQuarter : cursorQuarter;
-                    if (!isChordTone)
-                        lastNoteStartQuarter = noteStartQuarter;
+                    int staff = ParseInt(ChildValue(child, "staff"), 1);
+                    int voice = ParseInt(ChildValue(child, "voice"), 1);
+                    string voiceKey = voice.ToString(CultureInfo.InvariantCulture) + ":" + staff.ToString(CultureInfo.InvariantCulture);
+
+                    double currentOffset;
+                    if (!voiceCursorOffsets.TryGetValue(voiceKey, out currentOffset))
+                    {
+                        currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                        voiceCursorOffsets[voiceKey] = currentOffset;
+                    }
+
+                    double noteStartQuarter;
+                    if (isChordTone)
+                    {
+                        if (!lastNoteStartByVoice.TryGetValue(voiceKey, out noteStartQuarter))
+                            noteStartQuarter = currentMeasureStartQuarter + currentOffset;
+                    }
+                    else
+                    {
+                        noteStartQuarter = currentMeasureStartQuarter + currentOffset;
+                        lastNoteStartByVoice[voiceKey] = noteStartQuarter;
+                    }
 
                     double durQuarter = isGrace ? 0.0 : DurationNodeToQuarter(child, divisions);
 
                     if (!isRest)
                     {
-                        int staff = ParseInt(ChildValue(child, "staff"), 1);
                         int stringIdx;
                         int fret;
                         int midi;
@@ -339,27 +408,215 @@ public static class MusicXmlLoader
                     }
 
                     if (!isChordTone)
+                        voiceCursorOffsets[voiceKey] = currentOffset + durQuarter;
+
+                    activeVoiceKey = voiceKey;
+                }
+            }
+            measureIndex++;
+        }
+
+        return notes;
+    }
+
+    private static List<double> BuildCanonicalMeasureStarts(List<XElement> parts)
+    {
+        var perPartDurations = new List<List<double>>();
+        int maxMeasureCount = 0;
+
+        for (int partIndex = 0; partIndex < parts.Count; partIndex++)
+        {
+            XElement part = parts[partIndex];
+            List<double> durations = new List<double>();
+            double divisions = 1.0;
+
+            foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
+            {
+                double cursorQuarter = 0.0;
+                double measureMaxQuarter = 0.0;
+                double timeSigQuarter = 0.0;
+
+                foreach (XElement child in measure.Elements())
+                {
+                    string local = child.Name.LocalName;
+
+                    if (local == "attributes")
                     {
-                        cursorQuarter += durQuarter;
+                        XElement divNode = child.Elements().FirstOrDefault(e => e.Name.LocalName == "divisions");
+                        if (divNode != null)
+                        {
+                            double parsedDiv;
+                            if (double.TryParse(divNode.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out parsedDiv) && parsedDiv > 0)
+                                divisions = parsedDiv;
+                        }
+
+                        XElement timeNode = child.Elements().FirstOrDefault(e => e.Name.LocalName == "time");
+                        if (timeNode != null)
+                        {
+                            int beats = ParseInt(ChildValue(timeNode, "beats"), 0);
+                            int beatType = ParseInt(ChildValue(timeNode, "beat-type"), 0);
+                            if (beats > 0 && beatType > 0)
+                                timeSigQuarter = beats * (4.0 / beatType);
+                        }
+                    }
+                    else if (local == "backup")
+                    {
+                        cursorQuarter -= DurationNodeToQuarter(child, divisions);
+                        if (cursorQuarter < 0.0)
+                            cursorQuarter = 0.0;
+                    }
+                    else if (local == "forward")
+                    {
+                        cursorQuarter += DurationNodeToQuarter(child, divisions);
                         if (cursorQuarter > measureMaxQuarter)
                             measureMaxQuarter = cursorQuarter;
                     }
+                    else if (local == "note")
+                    {
+                        bool isChordTone = child.Elements().Any(e => e.Name.LocalName == "chord");
+                        bool isGrace = child.Elements().Any(e => e.Name.LocalName == "grace");
+                        if (!isChordTone)
+                        {
+                            cursorQuarter += isGrace ? 0.0 : DurationNodeToQuarter(child, divisions);
+                            if (cursorQuarter > measureMaxQuarter)
+                                measureMaxQuarter = cursorQuarter;
+                        }
+                    }
                 }
+
+                double durationQuarter = Math.Max(measureMaxQuarter, timeSigQuarter);
+                if (durationQuarter <= 0.0)
+                    durationQuarter = 4.0;
+
+                durations.Add(durationQuarter);
             }
 
-            currentMeasureStartQuarter = measureMaxQuarter;
+            perPartDurations.Add(durations);
+            if (durations.Count > maxMeasureCount)
+                maxMeasureCount = durations.Count;
         }
 
-        tempoMap = tempoMap
+        List<double> measureDurations = new List<double>(Math.Max(1, maxMeasureCount));
+        for (int m = 0; m < Math.Max(1, maxMeasureCount); m++)
+        {
+            double best = 0.0;
+            for (int p = 0; p < perPartDurations.Count; p++)
+            {
+                List<double> durations = perPartDurations[p];
+                if (m < durations.Count && durations[m] > best)
+                    best = durations[m];
+            }
+
+            if (best <= 0.0)
+                best = 4.0;
+
+            measureDurations.Add(best);
+        }
+
+        List<double> measureStarts = new List<double>(measureDurations.Count + 1) { 0.0 };
+        for (int m = 0; m < measureDurations.Count; m++)
+            measureStarts.Add(measureStarts[m] + measureDurations[m]);
+
+        return measureStarts;
+    }
+
+    private static List<TempoEvent> BuildGlobalTempoMap(List<XElement> parts, List<double> canonicalMeasureStarts)
+    {
+        var tempoCandidates = new List<TempoEvent> { new TempoEvent(0.0, 120.0) };
+
+        for (int partIndex = 0; partIndex < parts.Count; partIndex++)
+        {
+            XElement part = parts[partIndex];
+            double divisions = 1.0;
+            int measureIndex = 0;
+
+            foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
+            {
+                double currentMeasureStartQuarter = measureIndex < canonicalMeasureStarts.Count
+                    ? canonicalMeasureStarts[measureIndex]
+                    : (canonicalMeasureStarts.Count > 0 ? canonicalMeasureStarts[canonicalMeasureStarts.Count - 1] : 0.0);
+
+                var voiceCursorOffsets = new Dictionary<string, double>();
+                string activeVoiceKey = "1:1";
+
+                foreach (XElement child in measure.Elements())
+                {
+                    string local = child.Name.LocalName;
+
+                    if (local == "attributes")
+                    {
+                        XElement divNode = child.Elements().FirstOrDefault(e => e.Name.LocalName == "divisions");
+                        if (divNode != null)
+                        {
+                            double parsedDiv;
+                            if (double.TryParse(divNode.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out parsedDiv) && parsedDiv > 0)
+                                divisions = parsedDiv;
+                        }
+                    }
+                    else if (local == "direction")
+                    {
+                        double? tempo = TryReadTempoFromDirection(child);
+                        if (tempo.HasValue && tempo.Value > 0.0)
+                        {
+                            double offsetQuarter = 0.0;
+                            TryReadDirectionOffsetQuarter(child, divisions, out offsetQuarter);
+
+                            double baseOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                            double tempoQuarter = currentMeasureStartQuarter + baseOffset + offsetQuarter;
+                            if (tempoQuarter < currentMeasureStartQuarter)
+                                tempoQuarter = currentMeasureStartQuarter;
+
+                            tempoCandidates.Add(new TempoEvent(tempoQuarter, tempo.Value));
+                        }
+                    }
+                    else if (local == "backup")
+                    {
+                        double durQuarter = DurationNodeToQuarter(child, divisions);
+                        double currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                        voiceCursorOffsets[activeVoiceKey] = Math.Max(0.0, currentOffset - durQuarter);
+                    }
+                    else if (local == "forward")
+                    {
+                        double durQuarter = DurationNodeToQuarter(child, divisions);
+                        double currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                        voiceCursorOffsets[activeVoiceKey] = currentOffset + durQuarter;
+                    }
+                    else if (local == "note")
+                    {
+                        bool isChordTone = child.Elements().Any(e => e.Name.LocalName == "chord");
+                        bool isGrace = child.Elements().Any(e => e.Name.LocalName == "grace");
+                        int staff = ParseInt(ChildValue(child, "staff"), 1);
+                        int voice = ParseInt(ChildValue(child, "voice"), 1);
+                        string voiceKey = voice.ToString(CultureInfo.InvariantCulture) + ":" + staff.ToString(CultureInfo.InvariantCulture);
+
+                        double currentOffset;
+                        if (!voiceCursorOffsets.TryGetValue(voiceKey, out currentOffset))
+                        {
+                            currentOffset = voiceCursorOffsets.ContainsKey(activeVoiceKey) ? voiceCursorOffsets[activeVoiceKey] : 0.0;
+                            voiceCursorOffsets[voiceKey] = currentOffset;
+                        }
+
+                        if (!isChordTone)
+                            voiceCursorOffsets[voiceKey] = currentOffset + (isGrace ? 0.0 : DurationNodeToQuarter(child, divisions));
+
+                        activeVoiceKey = voiceKey;
+                    }
+                }
+
+                measureIndex++;
+            }
+        }
+
+        List<TempoEvent> tempoMap = tempoCandidates
             .OrderBy(t => t.quarterPos)
             .GroupBy(t => t.quarterPos)
             .Select(g => g.Last())
             .ToList();
 
-        foreach (var t in tempoMap)
-            Debug.Log($"MusicXML Tempo: quarter={t.quarterPos:F3} -> {t.bpm:F2} BPM");
+        foreach (TempoEvent t in tempoMap)
+            Debug.Log($"MusicXML Tempo (global): quarter={t.quarterPos:F3} -> {t.bpm:F2} BPM");
 
-        return notes;
+        return tempoMap;
     }
 
     private static List<ParsedNote> NormalizeParsedNotes(List<ParsedNote> notes)
@@ -553,6 +810,24 @@ public static class MusicXmlLoader
                     bendStep = 1f;
             }
         }
+    }
+
+    private static bool TryReadDirectionOffsetQuarter(XElement directionNode, double divisions, out double offsetQuarter)
+    {
+        offsetQuarter = 0.0;
+        XElement offsetNode = directionNode.Elements().FirstOrDefault(e => e.Name.LocalName == "offset");
+        if (offsetNode == null)
+            return false;
+
+        if (divisions <= 0.0)
+            divisions = 1.0;
+
+        double offsetDivisions;
+        if (!double.TryParse(offsetNode.Value, NumberStyles.Any, CultureInfo.InvariantCulture, out offsetDivisions))
+            return false;
+
+        offsetQuarter = offsetDivisions / divisions;
+        return true;
     }
 
     private static double? TryReadTempoFromDirection(XElement directionNode)
