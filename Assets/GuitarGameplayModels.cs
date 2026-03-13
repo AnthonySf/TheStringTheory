@@ -126,6 +126,10 @@ public sealed class GuitarGameplaySnapshot
     public List<TabSectionData> sections;
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
+    public bool showSongSelection;
+    public List<string> availableSongNames;
+    public int selectedSongIndex;
+    public int songListScrollOffset;
     public float audioOffsetMs;
     public float tabSpeedOffsetPercent;
     public float songStartDelaySeconds;
