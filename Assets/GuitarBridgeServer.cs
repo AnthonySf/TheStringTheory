@@ -209,6 +209,8 @@ public class GuitarBridgeServer : MonoBehaviour
         public float audioOffsetMs = 0f;
         public float tabSpeedOffsetPercent = 100f;
         public float songStartDelaySeconds = 2.0f;
+        public bool useAutoTrackSelection = true;
+        public string selectedMusicXmlPartId;
     }
 
     private string currentSongFileName = "song.mp3";
@@ -225,6 +227,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
     private SongLibraryEntry currentSongEntry;
+    private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
+    private bool useAutoTrackSelection = true;
+    private string selectedMusicXmlPartId = string.Empty;
 
     private void Start()
     {
@@ -420,6 +425,14 @@ public class GuitarBridgeServer : MonoBehaviour
             SaveSongMetadata();
         }
 
+        if (TryReadTrackSelectionOption(out int selectedTrackOption))
+            SetTrackSelectionByOption(selectedTrackOption);
+
+        if (Input.GetKeyDown(KeyCode.Q) || Input.GetKeyDown(KeyCode.Comma))
+            MoveTrackSelection(-1);
+        else if (Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Period))
+            MoveTrackSelection(1);
+
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
             isPaused = false;
@@ -434,6 +447,103 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (!Mathf.Approximately(seekDirection, 0f))
             SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
+    }
+
+    private int GetTrackOptionCount()
+    {
+        return 1 + currentSongPartSummaries.Count;
+    }
+
+    private int GetCurrentTrackOptionIndex()
+    {
+        if (useAutoTrackSelection)
+            return 0;
+
+        if (string.IsNullOrEmpty(selectedMusicXmlPartId))
+            return 0;
+
+        for (int i = 0; i < currentSongPartSummaries.Count; i++)
+        {
+            if (string.Equals(currentSongPartSummaries[i].PartId, selectedMusicXmlPartId, StringComparison.OrdinalIgnoreCase))
+                return i + 1;
+        }
+
+        return 0;
+    }
+
+    private string GetTrackDisplayName(int optionIndex)
+    {
+        if (optionIndex <= 0)
+        {
+            if (currentSongPartSummaries.Count == 0)
+                return "Auto";
+
+            MusicXmlLoader.MusicXmlPartSummary best = currentSongPartSummaries.OrderByDescending(s => s.Score).First();
+            return $"Auto ({best.Name})";
+        }
+
+        int summaryIndex = optionIndex - 1;
+        if (summaryIndex < 0 || summaryIndex >= currentSongPartSummaries.Count)
+            return "Auto";
+
+        MusicXmlLoader.MusicXmlPartSummary summary = currentSongPartSummaries[summaryIndex];
+        return $"{summary.Name}  [notes:{summary.NoteCount} tab:{summary.TabCount}]";
+    }
+
+    private void MoveTrackSelection(int delta)
+    {
+        int optionCount = GetTrackOptionCount();
+        if (optionCount <= 1)
+            return;
+
+        int currentOption = GetCurrentTrackOptionIndex();
+        int nextOption = Mathf.Clamp(currentOption + delta, 0, optionCount - 1);
+        SetTrackSelectionByOption(nextOption);
+    }
+
+    private void SetTrackSelectionByOption(int optionIndex)
+    {
+        int clampedOption = Mathf.Clamp(optionIndex, 0, Mathf.Max(0, GetTrackOptionCount() - 1));
+
+        if (clampedOption == 0)
+        {
+            useAutoTrackSelection = true;
+            selectedMusicXmlPartId = string.Empty;
+        }
+        else
+        {
+            int summaryIndex = clampedOption - 1;
+            if (summaryIndex < 0 || summaryIndex >= currentSongPartSummaries.Count)
+                return;
+
+            useAutoTrackSelection = false;
+            selectedMusicXmlPartId = currentSongPartSummaries[summaryIndex].PartId;
+        }
+
+        ApplyTrackSelectionPreference();
+        SaveSongMetadata();
+    }
+
+    private void ApplyTrackSelectionPreference()
+    {
+        int resolvedTrackIndex = -1;
+
+        if (!useAutoTrackSelection && !string.IsNullOrEmpty(selectedMusicXmlPartId))
+        {
+            int matchedIndex = currentSongPartSummaries.FindIndex(summary => string.Equals(summary.PartId, selectedMusicXmlPartId, StringComparison.OrdinalIgnoreCase));
+            if (matchedIndex >= 0)
+            {
+                resolvedTrackIndex = currentSongPartSummaries[matchedIndex].Index;
+            }
+            else
+            {
+                Debug.LogWarning($"[GuitarBridgeServer] Saved MusicXML part '{selectedMusicXmlPartId}' was not found in current score. Falling back to auto track selection.");
+                useAutoTrackSelection = true;
+                selectedMusicXmlPartId = string.Empty;
+            }
+        }
+
+        midiTrackIndex = resolvedTrackIndex;
     }
 
     private void OpenSongSelectionMenu()
@@ -852,6 +962,35 @@ private void OpenOrFocusToneLab()
         float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
         float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
         delaySeconds = Mathf.Lerp(0f, 8f, t);
+        return true;
+    }
+
+    private bool TryReadTrackSelectionOption(out int optionIndex)
+    {
+        optionIndex = GetCurrentTrackOptionIndex();
+
+        if (!showSongSettings || renderMode != GuitarRenderMode.Tabs)
+            return false;
+
+        if (!Input.GetMouseButton(0) || Camera.main == null)
+            return false;
+
+        int optionCount = GetTrackOptionCount();
+        if (optionCount <= 1)
+            return false;
+
+        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) + 0.06f, tabZDepth - 0.35f);
+        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
+        float halfWidth = 180f;
+        float halfHeight = 26f;
+
+        Vector3 mouse = Input.mousePosition;
+        if (mouse.y < screenCenter.y - halfHeight || mouse.y > screenCenter.y + halfHeight)
+            return false;
+
+        float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
+        float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
+        optionIndex = Mathf.RoundToInt(Mathf.Lerp(0f, optionCount - 1, t));
         return true;
     }
 
@@ -1399,6 +1538,8 @@ private void ParseUdpState()
             audioOffsetMs = audioOffsetMs,
             tabSpeedOffsetPercent = tabSpeedOffsetPercent,
             songStartDelaySeconds = songStartDelaySeconds,
+            selectedTrackDisplayName = GetTrackDisplayName(GetCurrentTrackOptionIndex()),
+            trackSelectionHint = GetTrackOptionCount() > 1 ? "Track: click row or Q/E" : "Track: single detected part",
             hasBackingTrack = hasBackingTrack,
             isBackingTrackPlaying = backingTrackSource != null && backingTrackSource.isPlaying,
             backingTrackTime = backingTrackSource != null ? backingTrackSource.time : 0f
@@ -1435,6 +1576,7 @@ private void ParseUdpState()
             $"SPEED: <color=white>{playbackSpeedPercent:F0}%</color>\n" +
             $"AUDIO: <color=white>{(isLoadingBackingTrack ? "LOADING" : (hasBackingTrack ? "READY" : "MISSING"))}</color>  OFFSET:<color=cyan>{audioOffsetMs:F0}ms</color>\n" +
             $"TAB SPEED OFFSET: <color=cyan>{tabSpeedOffsetPercent:F0}%</color>\n" +
+            $"TRACK: <color=cyan>{GetTrackDisplayName(GetCurrentTrackOptionIndex())}</color>\n" +
             $"START DELAY: <color=cyan>{songStartDelaySeconds:F2}s</color>\n" +
             $"AUDIO SRC: <color=grey>{(string.IsNullOrEmpty(backingTrackLoadError) ? currentSongFileName : backingTrackLoadError)}</color>";
     }
@@ -1468,6 +1610,7 @@ private void ParseUdpState()
         if (!useBuiltInDemoSong)
         {
             RefreshAvailableSongs();
+            currentSongPartSummaries.Clear();
 
             if (currentSongEntry == null || !availableSongs.Any(song => string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase)))
                 currentSongEntry = availableSongs.FirstOrDefault();
@@ -1475,6 +1618,14 @@ private void ParseUdpState()
             if (currentSongEntry != null)
             {
                 Debug.Log($"[GuitarBridgeServer] Selected runtime song '{currentSongEntry.SongId}' from {currentSongEntry.SongDirectory}");
+                currentSongFileName = !string.IsNullOrEmpty(currentSongEntry.Mp3Path) ? Path.GetFileName(currentSongEntry.Mp3Path) : backingTrackFileName;
+                SongMetadata trackMetadata = LoadSongMetadata(currentSongFileName);
+                useAutoTrackSelection = trackMetadata.useAutoTrackSelection;
+                selectedMusicXmlPartId = string.IsNullOrEmpty(trackMetadata.selectedMusicXmlPartId) ? string.Empty : trackMetadata.selectedMusicXmlPartId;
+
+                currentSongPartSummaries.AddRange(MusicXmlLoader.GetPartSummaries(currentSongEntry.XmlPath));
+                ApplyTrackSelectionPreference();
+
                 try
                 {
                     loadedNotes = MusicXmlLoader.LoadMusicXmlSong(currentSongEntry.XmlPath, midiTrackIndex);
@@ -1499,6 +1650,7 @@ private void ParseUdpState()
             }
             else
             {
+                currentSongPartSummaries.Clear();
                 Debug.LogWarning("[GuitarBridgeServer] No valid runtime songs were found in persistent storage.");
             }
         }
@@ -1548,6 +1700,7 @@ private void ParseUdpState()
 
         songTimer = -songStartDelaySeconds;
         audioSongTimer = -songStartDelaySeconds;
+        currentLoadedTrackIndex = midiTrackIndex;
         ApplyPlaybackSpeedToAudio();
         SyncAudioToSongTimer(playImmediately: !isPaused);
     }
@@ -1585,6 +1738,8 @@ private void ParseUdpState()
         audioOffsetMs = songMetadata.audioOffsetMs;
         tabSpeedOffsetPercent = Mathf.Clamp(songMetadata.tabSpeedOffsetPercent <= 0f ? 100f : songMetadata.tabSpeedOffsetPercent, 50f, 150f);
         songStartDelaySeconds = Mathf.Clamp(songMetadata.songStartDelaySeconds <= 0f ? defaultSongStartDelaySeconds : songMetadata.songStartDelaySeconds, 0f, 8f);
+        useAutoTrackSelection = songMetadata.useAutoTrackSelection;
+        selectedMusicXmlPartId = string.IsNullOrEmpty(songMetadata.selectedMusicXmlPartId) ? string.Empty : songMetadata.selectedMusicXmlPartId;
 
         backingTrackLoadError = string.Empty;
         isLoadingBackingTrack = false;
@@ -1651,7 +1806,15 @@ private void ParseUdpState()
 
     private SongMetadata LoadSongMetadata(string songFileName)
     {
-        SongMetadata data = new SongMetadata { songFileName = songFileName, audioOffsetMs = 0f, tabSpeedOffsetPercent = 100f, songStartDelaySeconds = defaultSongStartDelaySeconds };
+        SongMetadata data = new SongMetadata
+        {
+            songFileName = songFileName,
+            audioOffsetMs = 0f,
+            tabSpeedOffsetPercent = 100f,
+            songStartDelaySeconds = defaultSongStartDelaySeconds,
+            useAutoTrackSelection = true,
+            selectedMusicXmlPartId = string.Empty
+        };
         string path = GetMetadataPath(songFileName);
 
         try
@@ -1686,6 +1849,8 @@ private void ParseUdpState()
         songMetadata.audioOffsetMs = audioOffsetMs;
         songMetadata.tabSpeedOffsetPercent = tabSpeedOffsetPercent;
         songMetadata.songStartDelaySeconds = songStartDelaySeconds;
+        songMetadata.useAutoTrackSelection = useAutoTrackSelection;
+        songMetadata.selectedMusicXmlPartId = selectedMusicXmlPartId;
 
         try
         {

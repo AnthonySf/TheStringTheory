@@ -133,6 +133,8 @@ public sealed class GuitarGameplaySnapshot
     public float audioOffsetMs;
     public float tabSpeedOffsetPercent;
     public float songStartDelaySeconds;
+    public string selectedTrackDisplayName;
+    public string trackSelectionHint;
     public bool hasBackingTrack;
     public bool isBackingTrackPlaying;
     public float backingTrackTime;

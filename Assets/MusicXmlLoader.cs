@@ -8,6 +8,16 @@ using System.Xml.Linq;
 
 public static class MusicXmlLoader
 {
+    public sealed class MusicXmlPartSummary
+    {
+        public int Index;
+        public string PartId;
+        public string Name;
+        public int NoteCount;
+        public int TabCount;
+        public int Score;
+    }
+
     private static readonly int[] stringBasePitches = { 40, 45, 50, 55, 59, 64 }; // E2 A2 D3 G3 B3 E4
     private static readonly string[] noteNames = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 
@@ -70,9 +80,11 @@ public static class MusicXmlLoader
                 return null;
             }
 
+            List<MusicXmlPartSummary> summaries = BuildPartSummaries(parts, partNames);
+
             int chosenPartIndex = (targetPartIndex >= 0 && targetPartIndex < parts.Count)
                 ? targetPartIndex
-                : ChooseBestPart(parts, partNames);
+                : ChooseBestPart(summaries);
 
             XElement chosenPart = parts[chosenPartIndex];
             string chosenPartId = Attr(chosenPart, "id");
@@ -126,6 +138,32 @@ public static class MusicXmlLoader
         }
     }
 
+    public static List<MusicXmlPartSummary> GetPartSummaries(string filePath)
+    {
+        if (!File.Exists(filePath))
+        {
+            Debug.LogError("MusicXML file not found: " + filePath);
+            return new List<MusicXmlPartSummary>();
+        }
+
+        try
+        {
+            XDocument doc = XDocument.Load(filePath);
+            XElement root = doc.Root;
+            if (root == null)
+                return new List<MusicXmlPartSummary>();
+
+            Dictionary<string, string> partNames = ReadPartNames(root);
+            List<XElement> parts = root.Elements().Where(e => e.Name.LocalName == "part").ToList();
+            return BuildPartSummaries(parts, partNames);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning("Failed to read MusicXML part summaries: " + ex.Message);
+            return new List<MusicXmlPartSummary>();
+        }
+    }
+
     private static Dictionary<string, string> ReadPartNames(XElement root)
     {
         var result = new Dictionary<string, string>();
@@ -145,10 +183,9 @@ public static class MusicXmlLoader
         return result;
     }
 
-    private static int ChooseBestPart(List<XElement> parts, Dictionary<string, string> partNames)
+    private static List<MusicXmlPartSummary> BuildPartSummaries(List<XElement> parts, Dictionary<string, string> partNames)
     {
-        int bestIndex = 0;
-        int bestScore = int.MinValue;
+        var summaries = new List<MusicXmlPartSummary>();
 
         for (int i = 0; i < parts.Count; i++)
         {
@@ -190,12 +227,37 @@ public static class MusicXmlLoader
             if (lower.Contains("vocal")) score -= 200;
             if (lower.Contains("piano")) score -= 100;
 
-            Debug.Log($"MusicXML part {i}: '{name}' noteCount={noteCount} tabCount={tabCount} score={score}");
-
-            if (score > bestScore)
+            summaries.Add(new MusicXmlPartSummary
             {
-                bestScore = score;
-                bestIndex = i;
+                Index = i,
+                PartId = id,
+                Name = name,
+                NoteCount = noteCount,
+                TabCount = tabCount,
+                Score = score
+            });
+        }
+
+        foreach (MusicXmlPartSummary summary in summaries)
+            Debug.Log($"MusicXML part {summary.Index}: '{summary.Name}' noteCount={summary.NoteCount} tabCount={summary.TabCount} score={summary.Score}");
+
+        return summaries;
+    }
+
+    private static int ChooseBestPart(List<MusicXmlPartSummary> summaries)
+    {
+        if (summaries == null || summaries.Count == 0)
+            return 0;
+
+        int bestIndex = summaries[0].Index;
+        int bestScore = int.MinValue;
+
+        foreach (MusicXmlPartSummary summary in summaries)
+        {
+            if (summary.Score > bestScore)
+            {
+                bestScore = summary.Score;
+                bestIndex = summary.Index;
             }
         }
 

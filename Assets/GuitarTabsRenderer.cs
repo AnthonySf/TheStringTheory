@@ -812,7 +812,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             string status = snapshot.hasBackingTrack ? "Loaded" : "Missing";
             string play = snapshot.isBackingTrackPlaying ? "Playing" : "Paused";
             string notesState = snapshot.isPaused ? "Notes paused" : "Notes moving";
-            songStatusText.text = $"Track: {status}   Audio: {play}   {notesState}   T={snapshot.backingTrackTime:F2}s";
+            songStatusText.text =
+                $"Track: {status}   Audio: {play}   {notesState}   T={snapshot.backingTrackTime:F2}s\n" +
+                $"PART: {snapshot.selectedTrackDisplayName}\n" +
+                snapshot.trackSelectionHint;
             songStatusText.color = snapshot.hasBackingTrack ? new Color(0.88f, 1f, 0.9f) : new Color(1f, 0.75f, 0.75f);
         }
     }
