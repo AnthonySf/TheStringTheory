@@ -1,24 +1,53 @@
-import json
 import os
-import threading
+import sys
 import traceback
-import numpy as np
-import sounddevice as sd
-import customtkinter as ctk
+from pathlib import Path
 
-from pedalboard import (
-    Pedalboard,
-    Distortion,
-    Chorus,
-    Phaser,
-    Delay,
-    Reverb,
-    Compressor,
-    Gain,
-)
+APP_DIR = Path(__file__).resolve().parent
+LOG_FILE = APP_DIR / "tonelab_log.txt"
+SETTINGS_FILE = APP_DIR / "tone.json"
 
-SETTINGS_FILE = "tone.json"
+def log(msg: str):
+    try:
+        print(msg, flush=True)
+    except Exception:
+        pass
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(msg + "\n")
+    except Exception:
+        pass
 
+log("=== ToneLab launch ===")
+log(f"Python exe: {sys.executable}")
+log(f"Script path: {__file__}")
+log(f"CWD: {os.getcwd()}")
+
+try:
+    import json
+    import threading
+    import numpy as np
+    import sounddevice as sd
+    import customtkinter as ctk
+
+    from pedalboard import (
+        Pedalboard,
+        Distortion,
+        Chorus,
+        Phaser,
+        Delay,
+        Reverb,
+        Compressor,
+        Gain,
+    )
+
+    log("All imports succeeded")
+
+except Exception:
+    log("Import failure:")
+    log(traceback.format_exc())
+    raise
+    
 
 # ----------------------------
 # Settings
@@ -807,6 +836,14 @@ class GuitarRigApp(ctk.CTk):
 
 
 if __name__ == "__main__":
-    app = GuitarRigApp()
-    app.protocol("WM_DELETE_WINDOW", app.on_close)
-    app.mainloop()
+    try:
+        log("Creating app...")
+        app = GuitarRigApp()
+        app.protocol("WM_DELETE_WINDOW", app.on_close)
+        log("Entering mainloop")
+        app.mainloop()
+        log("Mainloop ended normally")
+    except Exception:
+        log("Fatal startup/runtime error:")
+        log(traceback.format_exc())
+        raise
