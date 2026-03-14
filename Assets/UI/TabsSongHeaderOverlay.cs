@@ -1,5 +1,6 @@
 using System.Linq;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
 public sealed class TabsSongHeaderOverlay
@@ -24,6 +25,7 @@ public sealed class TabsSongHeaderOverlay
         panelSettings.scale = 1f;
         panelSettings.targetDisplay = 0;
         panelSettings.sortingOrder = 220;
+        EnsurePanelSettingsSupportAssets(panelSettings);
 
         document.panelSettings = panelSettings;
 
@@ -58,16 +60,22 @@ public sealed class TabsSongHeaderOverlay
         card.style.maxWidth = 980f;
         card.style.unityTextAlign = TextAnchor.UpperLeft;
 
-        songNameLabel = new Label("Song");
+        Font dynamicFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+        songNameLabel = new Label("Song Header Placeholder");
         songNameLabel.style.color = new Color(0.95f, 0.98f, 1f, 1f);
         songNameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
         songNameLabel.style.fontSize = 40f;
         songNameLabel.style.letterSpacing = 0.5f;
         songNameLabel.style.marginBottom = 6f;
+        if (dynamicFont != null)
+            songNameLabel.style.unityFontDefinition = FontDefinition.FromFont(dynamicFont);
 
-        trackNameLabel = new Label("Track");
+        trackNameLabel = new Label("XML Track Placeholder");
         trackNameLabel.style.color = new Color(0.71f, 0.88f, 1f, 1f);
         trackNameLabel.style.fontSize = 24f;
+        if (dynamicFont != null)
+            trackNameLabel.style.unityFontDefinition = FontDefinition.FromFont(dynamicFont);
 
         card.Add(songNameLabel);
         card.Add(trackNameLabel);
@@ -78,10 +86,10 @@ public sealed class TabsSongHeaderOverlay
 
     public void UpdateFromSnapshot(GuitarGameplaySnapshot snapshot)
     {
+        ApplyResponsiveSizing(force: false);
+
         if (snapshot == null)
             return;
-
-        ApplyResponsiveSizing(force: false);
 
         string songName = "No song loaded";
         if (snapshot.availableSongNames != null && snapshot.selectedSongIndex >= 0 && snapshot.selectedSongIndex < snapshot.availableSongNames.Count)
@@ -104,11 +112,14 @@ public sealed class TabsSongHeaderOverlay
             Object.Destroy(panelSettings);
     }
 
-
     private static PanelSettings ResolvePanelSettings(out bool ownsInstance)
     {
         PanelSettings existing = Resources.FindObjectsOfTypeAll<PanelSettings>()
-            .FirstOrDefault(candidate => candidate != null && candidate.name == "PanelSettings");
+            .Where(candidate => candidate != null)
+            .OrderByDescending(candidate => candidate.themeStyleSheet != null)
+            .ThenByDescending(candidate => candidate.textSettings != null)
+            .ThenByDescending(candidate => candidate.name == "PanelSettings")
+            .FirstOrDefault();
 
         if (existing != null)
         {
@@ -118,6 +129,18 @@ public sealed class TabsSongHeaderOverlay
 
         ownsInstance = true;
         return ScriptableObject.CreateInstance<PanelSettings>();
+    }
+
+    private static void EnsurePanelSettingsSupportAssets(PanelSettings settings)
+    {
+        if (settings == null)
+            return;
+
+        if (settings.themeStyleSheet == null)
+            settings.themeStyleSheet = Resources.FindObjectsOfTypeAll<ThemeStyleSheet>().FirstOrDefault();
+
+        if (settings.textSettings == null)
+            settings.textSettings = Resources.FindObjectsOfTypeAll<PanelTextSettings>().FirstOrDefault();
     }
 
     private void ApplyResponsiveSizing(bool force)
