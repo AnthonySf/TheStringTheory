@@ -211,9 +211,9 @@ public class GuitarBridgeServer : MonoBehaviour
     [Header("Tabs Background FX - Nebula")]
     public bool tabNebulaEnabled = true;
     [Range(1, 4)] public int tabNebulaLayerCount = 2;
-    [Range(0f, 1f)] public float tabNebulaOpacity = 0.16f;
+    [Range(0f, 1f)] public float tabNebulaOpacity = 0.09f;
     [Min(0f)] public float tabNebulaScrollSpeed = 0.05f;
-    [Min(1f)] public float tabNebulaScale = 28f;
+    [Min(1f)] public float tabNebulaScale = 20f;
     public Color tabNebulaColorA = new Color(0.14f, 0.20f, 0.35f, 0.16f);
     public Color tabNebulaColorB = new Color(0.20f, 0.11f, 0.32f, 0.14f);
 
