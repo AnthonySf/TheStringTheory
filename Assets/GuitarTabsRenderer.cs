@@ -28,6 +28,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private bool transitionIsReverse;
 
     private TabsSongHeaderOverlay songHeaderOverlay;
+    private ITabsBackgroundEffect backgroundEffect;
+    private GameObject backgroundRoot;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -35,6 +37,11 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         mainCamera = Camera.main;
 
         root = new GameObject("TabsRendererRoot");
+        backgroundRoot = new GameObject("TabsBackgroundRoot");
+        backgroundRoot.transform.SetParent(root.transform, false);
+
+        InitializeBackgroundEffect();
+
         topPanel = new TabPanelView(root.transform, "TopTabPanel", owner, true);
         bottomPanel = new TabPanelView(root.transform, "BottomTabPanel", owner, false);
 
@@ -100,6 +107,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         UpdatePanelColors(bottomPanel);
         UpdatePlayhead(snapshot);
         UpdateLoopMarkers(snapshot);
+        backgroundEffect?.Tick(Time.deltaTime);
         songHeaderOverlay?.UpdateFromSnapshot(snapshot);
     }
 
@@ -108,8 +116,13 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         songHeaderOverlay?.Dispose();
         songHeaderOverlay = null;
 
+        backgroundEffect?.Dispose();
+        backgroundEffect = null;
+
         if (root != null)
             Object.Destroy(root);
+
+        backgroundRoot = null;
     }
 
     private void RebuildCaches(List<TabSectionData> sections)
@@ -144,6 +157,27 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         mainCamera.transform.position = new Vector3(0f, 0f, owner.tabCameraZ);
         mainCamera.transform.rotation = Quaternion.identity;
         mainCamera.backgroundColor = owner.tabBackgroundColor;
+    }
+
+    private void InitializeBackgroundEffect()
+    {
+        backgroundEffect?.Dispose();
+        backgroundEffect = null;
+
+        if (backgroundRoot == null)
+            return;
+
+        switch (owner.tabBackgroundMode)
+        {
+            case GuitarBridgeServer.TabsBackgroundMode.Starfield:
+                backgroundEffect = new TabsStarfieldBackground();
+                break;
+            case GuitarBridgeServer.TabsBackgroundMode.SolidColor:
+            default:
+                return;
+        }
+
+        backgroundEffect.Initialize(backgroundRoot.transform, owner);
     }
 
     private void BuildInitialPanels(GuitarGameplaySnapshot snapshot)

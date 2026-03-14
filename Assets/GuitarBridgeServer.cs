@@ -14,6 +14,12 @@ using UnityEngine.Networking;
 
 public class GuitarBridgeServer : MonoBehaviour
 {
+    public enum TabsBackgroundMode
+    {
+        SolidColor = 0,
+        Starfield = 1
+    }
+
     [Header("Render Mode")]
     public GuitarRenderMode renderMode = GuitarRenderMode.Tabs;
 
@@ -145,6 +151,27 @@ public class GuitarBridgeServer : MonoBehaviour
     public float tabZDepth = 0f;
     public float tabStringThickness = 0.03f;
     public float tabStringDepth = 0.01f;
+
+    [Header("Tabs Background FX")]
+    public TabsBackgroundMode tabBackgroundMode = TabsBackgroundMode.Starfield;
+
+    [Header("Tabs Background FX - Starfield")]
+    [Range(16, 2000)] public int tabStarCount = 320;
+    public int tabStarSeed = 1337;
+    [Min(0.01f)] public float tabStarfieldWidth = 46f;
+    public float tabStarfieldNearZ = -2.8f;
+    public float tabStarfieldFarZ = -7.5f;
+    public float tabStarfieldMinY = -6.6f;
+    public float tabStarfieldMaxY = 6.6f;
+    [Min(0.001f)] public float tabStarSizeMin = 0.03f;
+    [Min(0.001f)] public float tabStarSizeMax = 0.11f;
+    [Min(0f)] public float tabStarDriftSpeed = 0.55f;
+    [Range(0f, 1f)] public float tabStarAlphaMin = 0.20f;
+    [Range(0f, 1f)] public float tabStarAlphaMax = 0.92f;
+    [Range(0f, 1f)] public float tabStarTwinkleStrength = 0.25f;
+    [Range(0f, 1f)] public float tabStarSubtleVerticalWave = 0.05f;
+    public Color tabStarColor = new Color(0.74f, 0.85f, 1f, 0.9f);
+    [Range(0f, 8f)] public float tabStarEmission = 0.35f;
 
     [Header("Tabs Header")]
     public float tabLabelFontSize = 3f;
