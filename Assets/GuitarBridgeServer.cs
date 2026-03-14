@@ -14,6 +14,19 @@ using UnityEngine.Networking;
 
 public class GuitarBridgeServer : MonoBehaviour
 {
+    public enum TabsBackgroundMode
+    {
+        SolidColor = 0,
+        Starfield = 1
+    }
+
+    public enum TabsStarStyle
+    {
+        SoftDots = 0,
+        Crystal = 1,
+        Neon = 2
+    }
+
     [Header("Render Mode")]
     public GuitarRenderMode renderMode = GuitarRenderMode.Tabs;
 
@@ -145,6 +158,64 @@ public class GuitarBridgeServer : MonoBehaviour
     public float tabZDepth = 0f;
     public float tabStringThickness = 0.03f;
     public float tabStringDepth = 0.01f;
+
+    [Header("Tabs Background FX")]
+    public TabsBackgroundMode tabBackgroundMode = TabsBackgroundMode.Starfield;
+
+    [Header("Tabs Background FX - Starfield Core")]
+    public TabsStarStyle tabStarStyle = TabsStarStyle.SoftDots;
+    public int tabStarSeed = 1337;
+    [Min(0.01f)] public float tabStarfieldWidth = 46f;
+    public float tabStarfieldNearZ = -2.6f;
+    public float tabStarfieldFarZ = -8.2f;
+    public float tabStarfieldMinY = -6.6f;
+    public float tabStarfieldMaxY = 6.6f;
+    [Min(0f)] public float tabStarDriftSpeed = 0.55f;
+    [Range(0f, 1f)] public float tabStarTwinkleStrength = 0.25f;
+    [Range(0f, 1f)] public float tabStarSubtleVerticalWave = 0.05f;
+
+    [Header("Tabs Background FX - Star Layers")]
+    [Range(8, 1200)] public int tabNearStarCount = 130;
+    [Range(8, 1200)] public int tabMidStarCount = 170;
+    [Range(8, 1200)] public int tabFarStarCount = 220;
+    [Min(0.001f)] public float tabNearStarSizeMin = 0.06f;
+    [Min(0.001f)] public float tabNearStarSizeMax = 0.16f;
+    [Min(0.001f)] public float tabMidStarSizeMin = 0.04f;
+    [Min(0.001f)] public float tabMidStarSizeMax = 0.11f;
+    [Min(0.001f)] public float tabFarStarSizeMin = 0.02f;
+    [Min(0.001f)] public float tabFarStarSizeMax = 0.07f;
+    [Range(0f, 1f)] public float tabNearStarAlphaMin = 0.35f;
+    [Range(0f, 1f)] public float tabNearStarAlphaMax = 0.95f;
+    [Range(0f, 1f)] public float tabMidStarAlphaMin = 0.22f;
+    [Range(0f, 1f)] public float tabMidStarAlphaMax = 0.8f;
+    [Range(0f, 1f)] public float tabFarStarAlphaMin = 0.15f;
+    [Range(0f, 1f)] public float tabFarStarAlphaMax = 0.55f;
+    [Min(0f)] public float tabNearLayerSpeedMultiplier = 1.35f;
+    [Min(0f)] public float tabMidLayerSpeedMultiplier = 0.95f;
+    [Min(0f)] public float tabFarLayerSpeedMultiplier = 0.60f;
+    public Color tabNearStarColor = new Color(0.95f, 0.96f, 1f, 0.95f);
+    public Color tabMidStarColor = new Color(0.74f, 0.85f, 1f, 0.85f);
+    public Color tabFarStarColor = new Color(0.56f, 0.70f, 0.96f, 0.7f);
+    [Range(0f, 8f)] public float tabStarEmission = 0.35f;
+
+    [Header("Tabs Background FX - Shooting Stars")]
+    public bool tabShootingStarsEnabled = true;
+    [Range(1, 8)] public int tabShootingStarMaxConcurrent = 2;
+    [Min(0.1f)] public float tabShootingStarIntervalMin = 2.2f;
+    [Min(0.1f)] public float tabShootingStarIntervalMax = 6.5f;
+    [Min(0.1f)] public float tabShootingStarSpeed = 8.5f;
+    [Min(0.05f)] public float tabShootingStarLength = 0.9f;
+    [Range(0f, 1f)] public float tabShootingStarAlpha = 0.9f;
+    public Color tabShootingStarColor = new Color(0.95f, 0.97f, 1f, 0.9f);
+
+    [Header("Tabs Background FX - Nebula")]
+    public bool tabNebulaEnabled = false;
+    [Range(1, 4)] public int tabNebulaLayerCount = 2;
+    [Range(0f, 1f)] public float tabNebulaOpacity = 0.05f;
+    [Min(0f)] public float tabNebulaScrollSpeed = 0.05f;
+    [Min(1f)] public float tabNebulaScale = 8f;
+    public Color tabNebulaColorA = new Color(0.08f, 0.12f, 0.22f, 0.08f);
+    public Color tabNebulaColorB = new Color(0.12f, 0.08f, 0.20f, 0.07f);
 
     [Header("Tabs Header")]
     public float tabLabelFontSize = 3f;
