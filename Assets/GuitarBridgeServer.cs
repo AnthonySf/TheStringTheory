@@ -233,7 +233,6 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool hasBackingTrack;
     private bool showSongSettings;
     private bool showSongSelection;
-    private bool showLegacyPauseUi;
     private int selectedSongListIndex;
     private int songListScrollOffset;
     private readonly List<SongLibraryEntry> availableSongs = new List<SongLibraryEntry>();
@@ -307,9 +306,6 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandlePauseControls()
     {
-        if (renderMode == GuitarRenderMode.Tabs && Input.GetKeyDown(KeyCode.P))
-            showLegacyPauseUi = !showLegacyPauseUi;
-
         if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
             showSongSettings = !showSongSettings;
 
@@ -336,33 +332,25 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!isPaused)
             return;
 
-        if (Input.GetKeyDown(KeyCode.L) || (showLegacyPauseUi && IsSongSelectionClicked()))
+        if (Input.GetKeyDown(KeyCode.L))
         {
             OpenSongSelectionMenu();
             return;
         }
 
-        if (showLegacyPauseUi && IsSongSettingsClicked())
-        {
-            showSongSettings = true;
-            return;
-        }
-
-        if (Input.GetKeyDown(KeyCode.T) || (showLegacyPauseUi && IsToneLabButtonClicked()))
+        if (Input.GetKeyDown(KeyCode.T))
         {
             OpenOrFocusToneLab();
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || (showLegacyPauseUi && IsLoopToggleClicked()))
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
             loopEnabled = !loopEnabled;
             if (loopEnabled && loopEndTime <= loopStartTime)
                 loopEndTime = loopStartTime + 0.25f;
         }
 
-        if (showLegacyPauseUi && TryReadSpeedSliderPercent(out float sliderPercent))
-            playbackSpeedPercent = sliderPercent;
 
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
         {
@@ -473,14 +461,6 @@ public class GuitarBridgeServer : MonoBehaviour
         else if (Input.GetKeyDown(KeyCode.DownArrow))
             MoveSongSelection(1);
 
-        if (TryGetSongSelectionClickIndex(out int clickedIndex))
-        {
-            selectedSongListIndex = clickedIndex;
-            EnsureSongSelectionVisible();
-            SelectSongByIndex(selectedSongListIndex);
-            return;
-        }
-
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             SelectSongByIndex(selectedSongListIndex);
     }
@@ -501,34 +481,12 @@ public class GuitarBridgeServer : MonoBehaviour
             SyncAudioToSongTimer(playImmediately: !isPaused);
         }
 
-        if (TryReadOffsetSliderMs(out float sliderOffsetMs))
-        {
-            SetEffectiveOffsetForCurrentScope(sliderOffsetMs);
-            SaveSongMetadata();
-            SyncAudioToSongTimer(playImmediately: !isPaused);
-        }
-
         if (Input.GetKeyDown(KeyCode.O))
         {
             ToggleOffsetScope();
             SaveSongMetadata();
             SyncAudioToSongTimer(playImmediately: !isPaused);
         }
-
-        if (TryReadTabSpeedOffsetSliderPercent(out float tabSpeedOffsetSlider))
-        {
-            tabSpeedOffsetPercent = tabSpeedOffsetSlider;
-            SaveSongMetadata();
-        }
-
-        if (TryReadSongStartDelaySliderSeconds(out float songStartDelaySlider))
-        {
-            songStartDelaySeconds = songStartDelaySlider;
-            SaveSongMetadata();
-        }
-
-        if (TryReadTrackSelectionOption(out int selectedTrackOption))
-            SetTrackSelectionByOption(selectedTrackOption);
 
         if (Input.GetKeyDown(KeyCode.Q) || Input.GetKeyDown(KeyCode.Comma))
             MoveTrackSelection(-1);
@@ -725,41 +683,6 @@ public class GuitarBridgeServer : MonoBehaviour
         songListScrollOffset = Mathf.Clamp(songListScrollOffset, 0, Mathf.Max(0, availableSongs.Count - visibleCount));
     }
 
-    private bool TryGetSongSelectionClickIndex(out int index)
-    {
-        index = -1;
-
-        if (!showSongSelection || !Input.GetMouseButtonDown(0) || Camera.main == null || renderMode != GuitarRenderMode.Tabs)
-            return false;
-
-        const int visibleCount = 8;
-        float menuCenterY = TabTopPanelY + (tabPanelHeight * 1.08f);
-        float topLocalY = -0.35f;
-        float rowHeight = 0.26f;
-        Vector3 mouse = Input.mousePosition;
-
-        for (int row = 0; row < visibleCount; row++)
-        {
-            int songIndex = songListScrollOffset + row;
-            if (songIndex >= availableSongs.Count)
-                break;
-
-            float rowLocalY = topLocalY - (row * rowHeight);
-            Vector3 world = new Vector3(tabPanelCenterX, menuCenterY + rowLocalY, tabZDepth - 0.35f);
-            Vector3 screen = Camera.main.WorldToScreenPoint(world);
-            float halfWidth = 180f;
-            float halfHeight = 16f;
-
-            if (mouse.x >= screen.x - halfWidth && mouse.x <= screen.x + halfWidth &&
-                mouse.y >= screen.y - halfHeight && mouse.y <= screen.y + halfHeight)
-            {
-                index = songIndex;
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     private void SelectSongByIndex(int songIndex)
     {
@@ -893,42 +816,10 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: true);
     }
 
-    private bool IsLoopToggleClicked()
-    {
-        return IsPauseMenuButtonClicked(-0.62f, 180f, 42f);
-    }
 
-    private bool IsSongSelectionClicked()
-    {
-        return IsPauseMenuButtonClicked(-1.02f, 180f, 26f);
-    }
 
-    private bool IsSongSettingsClicked()
-    {
-        return IsPauseMenuButtonClicked(-1.38f, 180f, 26f);
-    }
 
-    private bool IsToneLabButtonClicked()
-    {
-        return IsPauseMenuButtonClicked(-1.74f, 180f, 26f);
-    }
 
-    private bool IsPauseMenuButtonClicked(float localYOffset, float halfWidth, float halfHeight)
-    {
-        if (renderMode != GuitarRenderMode.Tabs)
-            return false;
-
-        if (!Input.GetMouseButtonDown(0) || Camera.main == null)
-            return false;
-
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) + localYOffset, tabZDepth - 0.35f);
-        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        Vector3 mouse = Input.mousePosition;
-        return mouse.x >= screenCenter.x - halfWidth &&
-               mouse.x <= screenCenter.x + halfWidth &&
-               mouse.y >= screenCenter.y - halfHeight &&
-               mouse.y <= screenCenter.y + halfHeight;
-    }
 
 private void OpenOrFocusToneLab()
 {
@@ -1083,33 +974,6 @@ private void OpenOrFocusToneLab()
     }
 #endif
 
-    private bool TryReadSpeedSliderPercent(out float speedPercent)
-    {
-        speedPercent = playbackSpeedPercent;
-
-        if (renderMode != GuitarRenderMode.Tabs)
-            return false;
-
-        if (!Input.GetMouseButton(0))
-            return false;
-
-        if (Camera.main == null)
-            return false;
-
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 0.08f, tabZDepth - 0.35f);
-        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 180f;
-        float halfHeight = 26f;
-
-        Vector3 mouse = Input.mousePosition;
-        if (mouse.y < screenCenter.y - halfHeight || mouse.y > screenCenter.y + halfHeight)
-            return false;
-
-        float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
-        float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
-        speedPercent = Mathf.Lerp(1f, 200f, t);
-        return true;
-    }
 
     private string GetCurrentOffsetPartId()
     {
@@ -1196,109 +1060,9 @@ private void OpenOrFocusToneLab()
         }
     }
 
-    private bool TryReadOffsetSliderMs(out float offsetMs)
-    {
-        offsetMs = audioOffsetMs;
 
-        if (!showSongSettings || renderMode != GuitarRenderMode.Tabs)
-            return false;
 
-        if (!Input.GetMouseButton(0) || Camera.main == null)
-            return false;
 
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 0.30f, tabZDepth - 0.35f);
-        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 180f;
-        float halfHeight = 26f;
-
-        Vector3 mouse = Input.mousePosition;
-        if (mouse.y < screenCenter.y - halfHeight || mouse.y > screenCenter.y + halfHeight)
-            return false;
-
-        float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
-        float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
-        offsetMs = Mathf.Lerp(-2000f, 2000f, t);
-        return true;
-    }
-
-    private bool TryReadTabSpeedOffsetSliderPercent(out float tabSpeedPercent)
-    {
-        tabSpeedPercent = tabSpeedOffsetPercent;
-
-        if (!showSongSettings || renderMode != GuitarRenderMode.Tabs)
-            return false;
-
-        if (!Input.GetMouseButton(0) || Camera.main == null)
-            return false;
-
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 0.74f, tabZDepth - 0.35f);
-        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 180f;
-        float halfHeight = 26f;
-
-        Vector3 mouse = Input.mousePosition;
-        if (mouse.y < screenCenter.y - halfHeight || mouse.y > screenCenter.y + halfHeight)
-            return false;
-
-        float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
-        float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
-        tabSpeedPercent = Mathf.Lerp(50f, 150f, t);
-        return true;
-    }
-
-    private bool TryReadSongStartDelaySliderSeconds(out float delaySeconds)
-    {
-        delaySeconds = songStartDelaySeconds;
-
-        if (!showSongSettings || renderMode != GuitarRenderMode.Tabs)
-            return false;
-
-        if (!Input.GetMouseButton(0) || Camera.main == null)
-            return false;
-
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) - 1.10f, tabZDepth - 0.35f);
-        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 180f;
-        float halfHeight = 26f;
-
-        Vector3 mouse = Input.mousePosition;
-        if (mouse.y < screenCenter.y - halfHeight || mouse.y > screenCenter.y + halfHeight)
-            return false;
-
-        float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
-        float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
-        delaySeconds = Mathf.Lerp(0f, 8f, t);
-        return true;
-    }
-
-    private bool TryReadTrackSelectionOption(out int optionIndex)
-    {
-        optionIndex = GetCurrentTrackOptionIndex();
-
-        if (!showSongSettings || renderMode != GuitarRenderMode.Tabs)
-            return false;
-
-        if (!Input.GetMouseButton(0) || Camera.main == null)
-            return false;
-
-        int optionCount = GetTrackOptionCount();
-        if (optionCount <= 1)
-            return false;
-
-        Vector3 center = new Vector3(tabPanelCenterX, TabTopPanelY + (tabPanelHeight * 1.08f) + 0.06f, tabZDepth - 0.35f);
-        Vector3 screenCenter = Camera.main.WorldToScreenPoint(center);
-        float halfWidth = 180f;
-        float halfHeight = 26f;
-
-        Vector3 mouse = Input.mousePosition;
-        if (mouse.y < screenCenter.y - halfHeight || mouse.y > screenCenter.y + halfHeight)
-            return false;
-
-        float clampedX = Mathf.Clamp(mouse.x, screenCenter.x - halfWidth, screenCenter.x + halfWidth);
-        float t = Mathf.InverseLerp(screenCenter.x - halfWidth, screenCenter.x + halfWidth, clampedX);
-        optionIndex = Mathf.RoundToInt(Mathf.Lerp(0f, optionCount - 1, t));
-        return true;
-    }
 
     private float GetPlaybackSpeedScale()
     {
@@ -1935,7 +1699,6 @@ private void ParseUdpState()
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
             showSongSelection = showSongSelection,
-            showLegacyPauseUi = showLegacyPauseUi,
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
             selectedSongIndex = selectedSongListIndex,
             songListScrollOffset = songListScrollOffset,
