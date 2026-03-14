@@ -16,6 +16,9 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label songNameLabel;
     private readonly Label trackNameLabel;
     private readonly Label speedBadgeLabel;
+    private readonly Label scorePercentLabel;
+    private readonly Label noteTallyLabel;
+    private readonly Label judgePopupLabel;
 
     private readonly VisualElement pauseOverlay;
     private readonly Label pauseTitleLabel;
@@ -44,6 +47,9 @@ public sealed class TabsSongHeaderOverlay
     private int lastScreenHeight = -1;
     private int currentSongListScrollOffset;
     private bool suppressCallbacks;
+    private bool hasSeenSnapshot;
+    private int lastResolvedCount;
+    private float judgePopupUntilTime = -1f;
 
     public TabsSongHeaderOverlay(GuitarBridgeServer owner)
     {
@@ -115,6 +121,24 @@ public sealed class TabsSongHeaderOverlay
         speedBadgeLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
         StyleCard(speedBadgeLabel, new Color(0.22f, 0.10f, 0.28f, 0.95f), radius: 999f);
 
+        scorePercentLabel = CreateLabel("SCORE 100.0%", 26f, new Color(1f, 0.85f, 0.49f, 1f), true);
+        scorePercentLabel.style.marginTop = 12f;
+        scorePercentLabel.style.letterSpacing = 0.65f;
+
+        noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 22f, new Color(0.79f, 0.93f, 1f, 0.96f), false);
+        noteTallyLabel.style.marginTop = 2f;
+        noteTallyLabel.style.letterSpacing = 0.35f;
+
+        judgePopupLabel = CreateLabel("SUCCESS", 72f, new Color(1f, 0.82f, 0.36f, 0.98f), true, TextAnchor.MiddleCenter);
+        judgePopupLabel.style.position = Position.Absolute;
+        judgePopupLabel.style.top = 165f;
+        judgePopupLabel.style.left = 0f;
+        judgePopupLabel.style.right = 0f;
+        judgePopupLabel.style.paddingTop = 8f;
+        judgePopupLabel.style.paddingBottom = 8f;
+        judgePopupLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        judgePopupLabel.style.letterSpacing = 1.6f;
+        judgePopupLabel.style.display = DisplayStyle.None;
         pauseOverlay = CreateFullscreenOverlay();
         Label pauseStarsLabel = CreateLabel("★ ★ ★", 34f, new Color(1f, 0.74f, 0.32f, 0.95f), true, TextAnchor.MiddleCenter);
         pauseStarsLabel.style.marginBottom = 8f;
@@ -306,11 +330,14 @@ public sealed class TabsSongHeaderOverlay
 
         songCard.Add(songNameLabel);
         songCard.Add(trackNameLabel);
+        songCard.Add(scorePercentLabel);
+        songCard.Add(noteTallyLabel);
         root.Add(hudStripe);
         root.Add(marqueeLabel);
         root.Add(vibeLabel);
         root.Add(songCard);
         root.Add(speedBadgeLabel);
+        root.Add(judgePopupLabel);
         root.Add(pauseOverlay);
         root.Add(settingsOverlay);
         root.Add(selectionOverlay);
@@ -331,6 +358,59 @@ public sealed class TabsSongHeaderOverlay
         string trackName = FormatTrackName(snapshot.selectedTrackDisplayName);
         songNameLabel.text = songName;
         trackNameLabel.text = trackName;
+
+        int hitCount = 0;
+        int missCount = 0;
+        int resolvedCount = 0;
+        GameplayNoteState latestResolved = null;
+
+        if (snapshot.noteStates != null)
+        {
+            foreach (GameplayNoteState noteState in snapshot.noteStates)
+            {
+                if (noteState == null || !noteState.IsResolved)
+                    continue;
+
+                resolvedCount++;
+                if (noteState.IsHit)
+                    hitCount++;
+                else if (noteState.IsMissed)
+                    missCount++;
+
+                if (latestResolved == null || noteState.resolvedAt > latestResolved.resolvedAt)
+                    latestResolved = noteState;
+            }
+        }
+
+        float scorePercent = resolvedCount > 0
+            ? (100f * hitCount / resolvedCount)
+            : 100f;
+        scorePercentLabel.text = $"SCORE {scorePercent:F1}%";
+        noteTallyLabel.text = $"HITS {hitCount}  •  MISS {missCount}";
+
+        if (!hasSeenSnapshot)
+        {
+            hasSeenSnapshot = true;
+            lastResolvedCount = resolvedCount;
+        }
+        else if (resolvedCount > lastResolvedCount && latestResolved != null)
+        {
+            bool success = latestResolved.IsHit;
+            judgePopupLabel.text = success ? "SUCCESS" : "FAIL";
+            judgePopupLabel.style.color = success
+                ? new Color(1f, 0.86f, 0.43f, 0.99f)
+                : new Color(1f, 0.45f, 0.62f, 0.99f);
+            judgePopupUntilTime = Time.unscaledTime + 0.52f;
+            lastResolvedCount = resolvedCount;
+        }
+        else if (resolvedCount < lastResolvedCount)
+        {
+            lastResolvedCount = resolvedCount;
+        }
+
+        judgePopupLabel.style.display = Time.unscaledTime <= judgePopupUntilTime
+            ? DisplayStyle.Flex
+            : DisplayStyle.None;
 
         float speedPercent = Mathf.Clamp(snapshot.playbackSpeedPercent, 1f, 200f);
         speedBadgeLabel.text = $"SPEED {speedPercent:F0}%";
@@ -559,6 +639,9 @@ public sealed class TabsSongHeaderOverlay
         marqueeLabel.style.fontSize = bodySize * 0.58f;
         vibeLabel.style.fontSize = bodySize * 0.42f;
         speedBadgeLabel.style.fontSize = bodySize;
+        scorePercentLabel.style.fontSize = bodySize * 0.70f;
+        noteTallyLabel.style.fontSize = bodySize * 0.52f;
+        judgePopupLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.072f, 64f, 108f);
         pauseTitleLabel.style.fontSize = pauseSize;
         pauseHintLabel.style.fontSize = bodySize * 0.85f;
         pauseInfoLabel.style.fontSize = bodySize * 0.80f;
