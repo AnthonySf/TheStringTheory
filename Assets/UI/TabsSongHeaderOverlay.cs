@@ -111,6 +111,7 @@ public sealed class TabsSongHeaderOverlay
 
         speedValueLabel = CreateLabel("Song Speed 100%", 34f, Color.white, true);
         speedSlider = new Slider(1f, 200f);
+        speedSlider.focusable = false;
         speedSlider.style.marginTop = 8f;
         speedSlider.style.marginBottom = 18f;
         speedSlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetPlaybackSpeedPercentFromUi(evt.newValue); });
@@ -159,16 +160,19 @@ public sealed class TabsSongHeaderOverlay
         settingsTrackLabel = CreateLabel("Track", 34f, new Color(0.93f, 0.98f, 1f, 1f), true);
         settingsOffsetLabel = CreateLabel("Offset", 31f, new Color(0.84f, 0.95f, 1f, 1f));
         settingsOffsetSlider = new Slider(-2000f, 2000f);
+        settingsOffsetSlider.focusable = false;
         settingsOffsetSlider.style.marginBottom = 14f;
         settingsOffsetSlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetAudioOffsetMsFromUi(evt.newValue); });
 
         settingsTabSpeedLabel = CreateLabel("Tab Speed", 31f, new Color(0.84f, 0.95f, 1f, 1f));
         settingsTabSpeedSlider = new Slider(50f, 150f);
+        settingsTabSpeedSlider.focusable = false;
         settingsTabSpeedSlider.style.marginBottom = 14f;
         settingsTabSpeedSlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetTabSpeedOffsetPercentFromUi(evt.newValue); });
 
         settingsStartDelayLabel = CreateLabel("Start Delay", 31f, new Color(0.84f, 0.95f, 1f, 1f));
         settingsStartDelaySlider = new Slider(0f, 8f);
+        settingsStartDelaySlider.focusable = false;
         settingsStartDelaySlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetSongStartDelaySecondsFromUi(evt.newValue); });
 
         VisualElement settingsButtons = new VisualElement();
