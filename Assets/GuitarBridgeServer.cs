@@ -826,6 +826,72 @@ public class GuitarBridgeServer : MonoBehaviour
         playbackSpeedPercent = Mathf.Clamp(speedPercent, 1f, 200f);
     }
 
+
+    public void MoveSongSelectionFromUi(int delta)
+    {
+        MoveSongSelection(delta);
+    }
+
+    public void SelectSongByIndexFromUi(int songIndex)
+    {
+        selectedSongListIndex = Mathf.Clamp(songIndex, 0, Mathf.Max(0, availableSongs.Count - 1));
+        EnsureSongSelectionVisible();
+        SelectSongByIndex(selectedSongListIndex);
+    }
+
+    public void CloseSongSelectionFromUi()
+    {
+        showSongSelection = false;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseSongSettingsFromUi()
+    {
+        showSongSettings = false;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void ToggleOffsetScopeFromUi()
+    {
+        ToggleOffsetScope();
+        SaveSongMetadata();
+        SyncAudioToSongTimer(playImmediately: !isPaused);
+    }
+
+    public void SetAudioOffsetMsFromUi(float offsetMs)
+    {
+        SetEffectiveOffsetForCurrentScope(Mathf.Clamp(offsetMs, -2000f, 2000f));
+        SaveSongMetadata();
+        SyncAudioToSongTimer(playImmediately: !isPaused);
+    }
+
+    public void SetTabSpeedOffsetPercentFromUi(float percent)
+    {
+        tabSpeedOffsetPercent = Mathf.Clamp(percent, 50f, 150f);
+        SaveSongMetadata();
+    }
+
+    public void SetSongStartDelaySecondsFromUi(float seconds)
+    {
+        songStartDelaySeconds = Mathf.Clamp(seconds, 0f, 8f);
+        SaveSongMetadata();
+    }
+
+    public void MoveTrackSelectionFromUi(int delta)
+    {
+        MoveTrackSelection(delta);
+    }
+
+    public void ResumePlaybackFromUi()
+    {
+        isPaused = false;
+        showSongSettings = false;
+        showSongSelection = false;
+        SyncAudioToSongTimer(playImmediately: true);
+    }
+
     private bool IsLoopToggleClicked()
     {
         return IsPauseMenuButtonClicked(-0.62f, 180f, 42f);
