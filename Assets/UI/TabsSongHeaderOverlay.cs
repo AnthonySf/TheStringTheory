@@ -1,3 +1,4 @@
+using System.Linq;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -5,7 +6,8 @@ public sealed class TabsSongHeaderOverlay
 {
     private readonly GameObject rootObject;
     private readonly UIDocument document;
-    private readonly PanelSettings runtimePanelSettings;
+    private readonly PanelSettings panelSettings;
+    private readonly bool ownsPanelSettings;
     private readonly VisualElement card;
     private readonly Label songNameLabel;
     private readonly Label trackNameLabel;
@@ -17,13 +19,13 @@ public sealed class TabsSongHeaderOverlay
         rootObject = new GameObject("TabsSongHeaderUI");
         document = rootObject.AddComponent<UIDocument>();
 
-        runtimePanelSettings = ScriptableObject.CreateInstance<PanelSettings>();
-        runtimePanelSettings.scaleMode = PanelScaleMode.ConstantPixelSize;
-        runtimePanelSettings.scale = 1f;
-        runtimePanelSettings.targetDisplay = 0;
-        runtimePanelSettings.sortingOrder = 220;
+        panelSettings = ResolvePanelSettings(out ownsPanelSettings);
+        panelSettings.scaleMode = PanelScaleMode.ConstantPixelSize;
+        panelSettings.scale = 1f;
+        panelSettings.targetDisplay = 0;
+        panelSettings.sortingOrder = 220;
 
-        document.panelSettings = runtimePanelSettings;
+        document.panelSettings = panelSettings;
 
         VisualElement root = document.rootVisualElement;
         root.style.flexGrow = 1f;
@@ -98,8 +100,24 @@ public sealed class TabsSongHeaderOverlay
         if (rootObject != null)
             Object.Destroy(rootObject);
 
-        if (runtimePanelSettings != null)
-            Object.Destroy(runtimePanelSettings);
+        if (ownsPanelSettings && panelSettings != null)
+            Object.Destroy(panelSettings);
+    }
+
+
+    private static PanelSettings ResolvePanelSettings(out bool ownsInstance)
+    {
+        PanelSettings existing = Resources.FindObjectsOfTypeAll<PanelSettings>()
+            .FirstOrDefault(candidate => candidate != null && candidate.name == "PanelSettings");
+
+        if (existing != null)
+        {
+            ownsInstance = false;
+            return existing;
+        }
+
+        ownsInstance = true;
+        return ScriptableObject.CreateInstance<PanelSettings>();
     }
 
     private void ApplyResponsiveSizing(bool force)
