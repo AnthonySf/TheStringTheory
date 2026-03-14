@@ -644,7 +644,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (songSelectionRoot == null)
             return;
 
-        bool visible = snapshot != null && snapshot.showSongSelection;
+        bool visible = snapshot != null && snapshot.showSongSelection && snapshot.showLegacyPauseUi;
         songSelectionRoot.SetActive(visible);
 
         if (!visible)
@@ -760,7 +760,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (songSettingsRoot == null)
             return;
 
-        bool visible = snapshot != null && snapshot.showSongSettings;
+        bool visible = snapshot != null && snapshot.showSongSettings && snapshot.showLegacyPauseUi;
         songSettingsRoot.SetActive(visible);
 
         if (!visible)
