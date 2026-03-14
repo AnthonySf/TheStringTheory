@@ -127,7 +127,6 @@ public sealed class GuitarGameplaySnapshot
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
     public bool showSongSelection;
-    public bool showLegacyPauseUi;
     public List<string> availableSongNames;
     public int selectedSongIndex;
     public int songListScrollOffset;

@@ -93,7 +93,7 @@ public sealed class TabsSongHeaderOverlay
 
         pauseOverlay = CreateFullscreenOverlay();
         pauseTitleLabel = CreateLabel("PAUSE", 132f, Color.white, true, TextAnchor.MiddleCenter);
-        pauseHintLabel = CreateLabel("Space: Resume  •  Left/Right: Seek  •  1/2: Marker  •  P: Legacy UI", 34f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
+        pauseHintLabel = CreateLabel("Space: Resume  •  Left/Right: Seek  •  1/2: Marker", 34f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
         pauseHintLabel.style.marginTop = 10f;
         pauseHintLabel.style.marginBottom = 24f;
 
@@ -296,10 +296,9 @@ public sealed class TabsSongHeaderOverlay
         settingsTabSpeedLabel.text = $"Tab Speed Offset  {snapshot.tabSpeedOffsetPercent:F0}%";
         settingsStartDelayLabel.text = $"Start Delay  {snapshot.songStartDelaySeconds:F2}s";
 
-        bool showModernUi = !snapshot.showLegacyPauseUi;
-        bool showPause = showModernUi && snapshot.isPaused && !snapshot.showSongSettings && !snapshot.showSongSelection;
-        bool showSettings = showModernUi && snapshot.showSongSettings;
-        bool showSelection = showModernUi && snapshot.showSongSelection;
+        bool showPause = snapshot.isPaused && !snapshot.showSongSettings && !snapshot.showSongSelection;
+        bool showSettings = snapshot.showSongSettings;
+        bool showSelection = snapshot.showSongSelection;
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
