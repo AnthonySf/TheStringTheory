@@ -75,12 +75,12 @@ public sealed class TabsSongHeaderOverlay
         songCard.style.paddingBottom = 18f;
         StyleCard(songCard, new Color(0.05f, 0.08f, 0.12f, 0.94f));
 
-        songNameLabel = CreateLabel("Song", 52f, Color.white, bold: true);
+        songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true);
         songNameLabel.style.marginBottom = 6f;
 
-        trackNameLabel = CreateLabel("Lead Guitar", 30f, new Color(0.75f, 0.90f, 1f, 1f), bold: false);
+        trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.75f, 0.90f, 1f, 1f), bold: false);
 
-        speedBadgeLabel = CreateLabel("SPEED 100%", 30f, new Color(0.84f, 0.97f, 1f, 1f), bold: true);
+        speedBadgeLabel = CreateLabel("SPEED 100%", 24f, new Color(0.84f, 0.97f, 1f, 1f), bold: true);
         speedBadgeLabel.style.position = Position.Absolute;
         speedBadgeLabel.style.right = 28f;
         speedBadgeLabel.style.top = 28f;
@@ -93,7 +93,7 @@ public sealed class TabsSongHeaderOverlay
 
         pauseOverlay = CreateFullscreenOverlay();
         pauseTitleLabel = CreateLabel("PAUSE", 132f, Color.white, true, TextAnchor.MiddleCenter);
-        pauseHintLabel = CreateLabel("Space: Resume  •  Left/Right: Seek  •  1/2: Marker  •  P: Legacy UI", 30f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
+        pauseHintLabel = CreateLabel("Space: Resume  •  Left/Right: Seek  •  1/2: Marker  •  P: Legacy UI", 34f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
         pauseHintLabel.style.marginTop = 10f;
         pauseHintLabel.style.marginBottom = 24f;
 
@@ -106,10 +106,10 @@ public sealed class TabsSongHeaderOverlay
         pauseCard.style.paddingBottom = 24f;
         StyleCard(pauseCard, new Color(0.06f, 0.10f, 0.15f, 0.95f));
 
-        pauseInfoLabel = CreateLabel("", 28f, new Color(0.90f, 0.96f, 1f, 1f));
+        pauseInfoLabel = CreateLabel("", 32f, new Color(0.90f, 0.96f, 1f, 1f));
         pauseInfoLabel.style.marginBottom = 12f;
 
-        speedValueLabel = CreateLabel("Song Speed 100%", 30f, Color.white, true);
+        speedValueLabel = CreateLabel("Song Speed 100%", 34f, Color.white, true);
         speedSlider = new Slider(1f, 200f);
         speedSlider.style.marginTop = 8f;
         speedSlider.style.marginBottom = 18f;
@@ -144,7 +144,7 @@ public sealed class TabsSongHeaderOverlay
         settingsOverlay = CreateFullscreenOverlay();
         Label settingsTitle = CreateLabel("SONG SETTINGS", 90f, Color.white, true, TextAnchor.MiddleCenter);
         settingsTitle.style.marginBottom = 8f;
-        Label settingsHelp = CreateLabel("Adjust everything here. Clean UI replacement for the old settings screen.", 24f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
+        Label settingsHelp = CreateLabel("Adjust everything here. Clean UI replacement for the old settings screen.", 28f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
         settingsHelp.style.marginBottom = 18f;
 
         VisualElement settingsCard = new VisualElement();
@@ -156,18 +156,18 @@ public sealed class TabsSongHeaderOverlay
         settingsCard.style.paddingBottom = 24f;
         StyleCard(settingsCard, new Color(0.06f, 0.10f, 0.15f, 0.96f));
 
-        settingsTrackLabel = CreateLabel("Track", 30f, new Color(0.93f, 0.98f, 1f, 1f), true);
-        settingsOffsetLabel = CreateLabel("Offset", 27f, new Color(0.84f, 0.95f, 1f, 1f));
+        settingsTrackLabel = CreateLabel("Track", 34f, new Color(0.93f, 0.98f, 1f, 1f), true);
+        settingsOffsetLabel = CreateLabel("Offset", 31f, new Color(0.84f, 0.95f, 1f, 1f));
         settingsOffsetSlider = new Slider(-2000f, 2000f);
         settingsOffsetSlider.style.marginBottom = 14f;
         settingsOffsetSlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetAudioOffsetMsFromUi(evt.newValue); });
 
-        settingsTabSpeedLabel = CreateLabel("Tab Speed", 27f, new Color(0.84f, 0.95f, 1f, 1f));
+        settingsTabSpeedLabel = CreateLabel("Tab Speed", 31f, new Color(0.84f, 0.95f, 1f, 1f));
         settingsTabSpeedSlider = new Slider(50f, 150f);
         settingsTabSpeedSlider.style.marginBottom = 14f;
         settingsTabSpeedSlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetTabSpeedOffsetPercentFromUi(evt.newValue); });
 
-        settingsStartDelayLabel = CreateLabel("Start Delay", 27f, new Color(0.84f, 0.95f, 1f, 1f));
+        settingsStartDelayLabel = CreateLabel("Start Delay", 31f, new Color(0.84f, 0.95f, 1f, 1f));
         settingsStartDelaySlider = new Slider(0f, 8f);
         settingsStartDelaySlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetSongStartDelaySecondsFromUi(evt.newValue); });
 
@@ -204,7 +204,7 @@ public sealed class TabsSongHeaderOverlay
 
         selectionOverlay = CreateFullscreenOverlay();
         Label selectionTitle = CreateLabel("SONG SELECT", 90f, Color.white, true, TextAnchor.MiddleCenter);
-        selectionSubtitleLabel = CreateLabel("", 25f, new Color(0.84f, 0.94f, 1f, 0.98f), false, TextAnchor.MiddleCenter);
+        selectionSubtitleLabel = CreateLabel("", 30f, new Color(0.84f, 0.94f, 1f, 0.98f), false, TextAnchor.MiddleCenter);
         selectionSubtitleLabel.style.marginBottom = 16f;
 
         VisualElement selectionCard = new VisualElement();
@@ -221,7 +221,7 @@ public sealed class TabsSongHeaderOverlay
         {
             int rowIndex = i;
             Button rowButton = CreateActionButton("", () => OnSongRowClicked(rowIndex));
-            rowButton.style.height = 52f;
+            rowButton.style.height = 74f;
             rowButton.style.marginTop = 6f;
             rowButton.style.marginBottom = 2f;
             rowButton.style.unityTextAlign = TextAnchor.MiddleLeft;
@@ -377,12 +377,13 @@ public sealed class TabsSongHeaderOverlay
     private static Button CreateActionButton(string text, Action onClick)
     {
         Button button = new Button(() => onClick?.Invoke()) { text = text };
-        button.style.height = 48f;
-        button.style.minWidth = 170f;
-        button.style.paddingLeft = 14f;
-        button.style.paddingRight = 14f;
+        button.style.height = 64f;
+        button.style.minWidth = 220f;
+        button.style.paddingLeft = 18f;
+        button.style.paddingRight = 18f;
         button.style.backgroundColor = new Color(0.16f, 0.29f, 0.44f, 0.94f);
         button.style.color = Color.white;
+        button.style.fontSize = 28f;
         button.style.unityFontStyleAndWeight = FontStyle.Bold;
         button.style.borderTopLeftRadius = 9f;
         button.style.borderTopRightRadius = 9f;
@@ -483,10 +484,10 @@ public sealed class TabsSongHeaderOverlay
 
         lastScreenHeight = screenHeight;
 
-        float songSize = Mathf.Clamp(screenHeight * 0.070f, 52f, 90f);
-        float trackSize = Mathf.Clamp(screenHeight * 0.040f, 30f, 52f);
+        float songSize = Mathf.Clamp(screenHeight * 0.052f, 40f, 64f);
+        float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
-        float bodySize = Mathf.Clamp(screenHeight * 0.030f, 24f, 40f);
+        float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
 
         songNameLabel.style.fontSize = songSize;
         trackNameLabel.style.fontSize = trackSize;
@@ -499,6 +500,16 @@ public sealed class TabsSongHeaderOverlay
         settingsOffsetLabel.style.fontSize = bodySize * 0.80f;
         settingsTabSpeedLabel.style.fontSize = bodySize * 0.80f;
         settingsStartDelayLabel.style.fontSize = bodySize * 0.80f;
+
+        float buttonFontSize = Mathf.Clamp(screenHeight * 0.026f, 24f, 38f);
+        float buttonHeight = Mathf.Clamp(screenHeight * 0.070f, 58f, 90f);
+
+        foreach (Button button in document.rootVisualElement.Query<Button>().ToList())
+        {
+            button.style.fontSize = buttonFontSize;
+            if (button.style.height.value.value < buttonHeight)
+                button.style.height = buttonHeight;
+        }
 
         songCard.style.minWidth = Mathf.Clamp(Screen.width * 0.46f, 640f, 1400f);
     }
