@@ -59,6 +59,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("UI & Logs")]
     public TextMeshProUGUI uiText;
+    public bool showCenterDebugOverlay = false;
     private string logNotes = "--";
 
     [Header("Python UDP Config")]
@@ -1969,6 +1970,21 @@ private void ParseUdpState()
     private void UpdateUiText()
     {
         if (uiText == null) return;
+
+        if (!showCenterDebugOverlay)
+        {
+            if (uiText.enabled)
+                uiText.enabled = false;
+
+            if (!string.IsNullOrEmpty(uiText.text))
+                uiText.text = string.Empty;
+
+            return;
+        }
+
+        if (!uiText.enabled)
+            uiText.enabled = true;
+
         List<string> stableNames = latestDetectedPitches.Select(GetNoteNameFromMidi).ToList();
         string eventTxt = latestPacketHadEvent ? "YES" : "NO";
         string loopTxt = loopEnabled ? $"ON ({loopStartTime:F2}s - {loopEndTime:F2}s)" : "OFF";
