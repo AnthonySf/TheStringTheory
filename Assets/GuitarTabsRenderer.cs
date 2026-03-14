@@ -84,7 +84,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         CreateSongSettingsVisuals();
         CreateSongSelectionVisuals();
 
-        songHeaderOverlay = new TabsSongHeaderOverlay();
+        songHeaderOverlay = new TabsSongHeaderOverlay(owner);
 
         loopMarkerStart = GameObject.CreatePrimitive(PrimitiveType.Cube);
         loopMarkerStart.name = "LoopMarkerStart";
@@ -676,7 +676,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (pauseMenuRoot == null)
             return;
 
-        bool visible = snapshot != null && snapshot.isPaused && !snapshot.showSongSettings && !snapshot.showSongSelection;
+        bool visible = snapshot != null && snapshot.isPaused && !snapshot.showSongSettings && !snapshot.showSongSelection && snapshot.showLegacyPauseUi;
         pauseMenuRoot.SetActive(visible);
 
         if (!visible)
