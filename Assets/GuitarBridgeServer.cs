@@ -1859,7 +1859,7 @@ private void ParseUdpState()
         if (renderMode == GuitarRenderMode.Tabs)
             activeRenderer = new GuitarTabsRenderer();
         else
-            activeRenderer = new GuitarTabsRenderer(); 
+            activeRenderer = new GuitarHighway3DRenderer();
 
         activeRenderer.Initialize(this, chartNotes, tabSections);
         activeRendererMode = renderMode;
