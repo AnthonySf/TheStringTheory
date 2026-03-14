@@ -25,8 +25,8 @@ RenderSettings:
   m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
   m_AmbientIntensity: 1
   m_AmbientMode: 0
-  m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SubtractiveShadowColor: {r: 0, g: 0, b: 0, a: 1}
+  m_SkyboxMaterial: {fileID: 0}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -510,6 +510,9 @@ MonoBehaviour:
   judgeableDarkenMultiplier: 0.45
   uiText: {fileID: 735139447}
   udpPort: 9000
+  autoLaunchNotesDetector: 1
+  notesDetectorRelativePath: NotesReader/guitar_ai2_continuous.exe
+  openNotesDetectorConsoleWindowInEditor: 1
   logSpawnedNotes: 1
   useBuiltInDemoSong: 0
   useDemoSongIfMidiMissing: 1
@@ -557,7 +560,7 @@ MonoBehaviour:
   tabCameraSize: 9
   tabCameraZ: -10
   tabBackgroundColor: {r: 0.02, g: 0.03, b: 0.05, a: 1}
-  tabPanelsVerticalOffset: 1
+  tabPanelsVerticalOffset: -2
   tabPanelGap: 0.4
   tabPanelHeight: 4.2
   tabBorderThickness: 0.05
@@ -577,6 +580,9 @@ MonoBehaviour:
   tabPanelSwapDuration: 0.25
   tabPanelLiftDistance: 5
   midiTrackIndex: 2
+  backingTrackSource: {fileID: 0}
+  backingTrackFileName: song.mp3
+  defaultSongStartDelaySeconds: 2
 --- !u!114 &362341494
 MonoBehaviour:
   m_ObjectHideFlags: 0
