@@ -64,6 +64,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private int queuedBottomSectionIndex = -1;
     private bool transitionIsReverse;
 
+    private TabsSongHeaderOverlay songHeaderOverlay;
+
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
         this.owner = owner;
@@ -81,6 +83,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         CreatePauseMenuVisuals();
         CreateSongSettingsVisuals();
         CreateSongSelectionVisuals();
+
+        songHeaderOverlay = new TabsSongHeaderOverlay();
 
         loopMarkerStart = GameObject.CreatePrimitive(PrimitiveType.Cube);
         loopMarkerStart.name = "LoopMarkerStart";
@@ -140,10 +144,14 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         UpdateSongSettings(snapshot);
         UpdateSongSelection(snapshot);
         UpdateLoopMarkers(snapshot);
+        songHeaderOverlay?.UpdateFromSnapshot(snapshot);
     }
 
     public void DisposeRenderer()
     {
+        songHeaderOverlay?.Dispose();
+        songHeaderOverlay = null;
+
         if (root != null)
             Object.Destroy(root);
     }
