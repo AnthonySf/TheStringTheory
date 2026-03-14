@@ -61,55 +61,59 @@ public sealed class TabsSongHeaderOverlay
 
         VisualElement root = document.rootVisualElement;
         root.style.flexGrow = 1f;
-        root.style.paddingTop = 28f;
-        root.style.paddingLeft = 28f;
-        root.style.paddingRight = 28f;
-        root.style.paddingBottom = 28f;
+        root.style.paddingTop = 30f;
+        root.style.paddingLeft = 34f;
+        root.style.paddingRight = 34f;
+        root.style.paddingBottom = 30f;
+        root.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.20f);
 
         songCard = new VisualElement();
         songCard.style.minWidth = 680f;
         songCard.style.maxWidth = 1160f;
-        songCard.style.paddingLeft = 30f;
-        songCard.style.paddingRight = 30f;
-        songCard.style.paddingTop = 20f;
-        songCard.style.paddingBottom = 18f;
-        StyleCard(songCard, new Color(0.05f, 0.08f, 0.12f, 0.94f));
+        songCard.style.paddingLeft = 34f;
+        songCard.style.paddingRight = 34f;
+        songCard.style.paddingTop = 22f;
+        songCard.style.paddingBottom = 22f;
+        StyleCard(songCard, new Color(0.04f, 0.06f, 0.13f, 0.94f), radius: 20f);
 
         songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true);
-        songNameLabel.style.marginBottom = 6f;
+        songNameLabel.style.marginBottom = 8f;
+        songNameLabel.style.letterSpacing = 0.7f;
 
-        trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.75f, 0.90f, 1f, 1f), bold: false);
+        trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
+        trackNameLabel.style.letterSpacing = 0.2f;
 
-        speedBadgeLabel = CreateLabel("SPEED 100%", 24f, new Color(0.84f, 0.97f, 1f, 1f), bold: true);
+        speedBadgeLabel = CreateLabel("SPEED 100%", 24f, new Color(1f, 0.96f, 0.76f, 1f), bold: true);
         speedBadgeLabel.style.position = Position.Absolute;
-        speedBadgeLabel.style.right = 28f;
-        speedBadgeLabel.style.top = 28f;
+        speedBadgeLabel.style.right = 34f;
+        speedBadgeLabel.style.top = 32f;
         speedBadgeLabel.style.paddingLeft = 20f;
         speedBadgeLabel.style.paddingRight = 20f;
-        speedBadgeLabel.style.paddingTop = 12f;
-        speedBadgeLabel.style.paddingBottom = 12f;
+        speedBadgeLabel.style.paddingTop = 10f;
+        speedBadgeLabel.style.paddingBottom = 10f;
         speedBadgeLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        StyleCard(speedBadgeLabel, new Color(0.07f, 0.12f, 0.18f, 0.95f), radius: 14f);
+        StyleCard(speedBadgeLabel, new Color(0.22f, 0.10f, 0.28f, 0.95f), radius: 999f);
 
         pauseOverlay = CreateFullscreenOverlay();
-        pauseTitleLabel = CreateLabel("PAUSE", 132f, Color.white, true, TextAnchor.MiddleCenter);
-        pauseHintLabel = CreateLabel("Space: Resume  •  Left/Right: Seek  •  1/2: Marker", 34f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
+        pauseTitleLabel = CreateLabel("PAUSED", 132f, new Color(0.96f, 0.99f, 1f, 1f), true, TextAnchor.MiddleCenter);
+        pauseTitleLabel.style.letterSpacing = 1.4f;
+        pauseHintLabel = CreateLabel("SPACE Resume   •   ←/→ Seek   •   1/2 Marker", 34f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
         pauseHintLabel.style.marginTop = 10f;
-        pauseHintLabel.style.marginBottom = 24f;
+        pauseHintLabel.style.marginBottom = 22f;
 
         VisualElement pauseCard = new VisualElement();
-        pauseCard.style.width = 1180f;
+        pauseCard.style.width = 1200f;
         pauseCard.style.maxWidth = 1320f;
-        pauseCard.style.paddingLeft = 28f;
-        pauseCard.style.paddingRight = 28f;
-        pauseCard.style.paddingTop = 24f;
-        pauseCard.style.paddingBottom = 24f;
-        StyleCard(pauseCard, new Color(0.06f, 0.10f, 0.15f, 0.95f));
+        pauseCard.style.paddingLeft = 32f;
+        pauseCard.style.paddingRight = 32f;
+        pauseCard.style.paddingTop = 28f;
+        pauseCard.style.paddingBottom = 28f;
+        StyleCard(pauseCard, new Color(0.04f, 0.07f, 0.14f, 0.96f), radius: 20f);
 
         pauseInfoLabel = CreateLabel("", 32f, new Color(0.90f, 0.96f, 1f, 1f));
         pauseInfoLabel.style.marginBottom = 12f;
 
-        speedValueLabel = CreateLabel("Song Speed 100%", 34f, Color.white, true);
+        speedValueLabel = CreateLabel("Song Speed 100%", 34f, new Color(1f, 0.96f, 0.87f, 1f), true);
         speedSlider = new Slider(1f, 200f);
         speedSlider.focusable = false;
         speedSlider.style.marginTop = 8f;
@@ -122,8 +126,8 @@ public sealed class TabsSongHeaderOverlay
         pauseButtons.style.marginTop = 8f;
 
         loopButton = CreateActionButton("Loop", () => owner?.ToggleLoopFromUi());
-        Button songSelectButton = CreateActionButton("Song Select", () => owner?.OpenSongSelectionFromUi());
-        Button settingsButton = CreateActionButton("Song Settings", () => owner?.OpenSongSettingsFromUi());
+        Button songSelectButton = CreateActionButton("Library", () => owner?.OpenSongSelectionFromUi());
+        Button settingsButton = CreateActionButton("Settings", () => owner?.OpenSongSettingsFromUi());
         Button toneLabButton = CreateActionButton("Tone Lab", () => owner?.OpenToneLabFromUi());
         Button resumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
@@ -143,19 +147,20 @@ public sealed class TabsSongHeaderOverlay
         pauseOverlay.Add(pauseCard);
 
         settingsOverlay = CreateFullscreenOverlay();
-        Label settingsTitle = CreateLabel("SONG SETTINGS", 90f, Color.white, true, TextAnchor.MiddleCenter);
+        Label settingsTitle = CreateLabel("SESSION SETTINGS", 88f, Color.white, true, TextAnchor.MiddleCenter);
         settingsTitle.style.marginBottom = 8f;
-        Label settingsHelp = CreateLabel("Adjust everything here. Clean UI replacement for the old settings screen.", 28f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
+        settingsTitle.style.letterSpacing = 1.1f;
+        Label settingsHelp = CreateLabel("Fine tune timing, offsets, and playback behavior.", 28f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
         settingsHelp.style.marginBottom = 18f;
 
         VisualElement settingsCard = new VisualElement();
         settingsCard.style.width = 1220f;
         settingsCard.style.maxWidth = 1360f;
-        settingsCard.style.paddingLeft = 28f;
-        settingsCard.style.paddingRight = 28f;
-        settingsCard.style.paddingTop = 24f;
-        settingsCard.style.paddingBottom = 24f;
-        StyleCard(settingsCard, new Color(0.06f, 0.10f, 0.15f, 0.96f));
+        settingsCard.style.paddingLeft = 32f;
+        settingsCard.style.paddingRight = 32f;
+        settingsCard.style.paddingTop = 26f;
+        settingsCard.style.paddingBottom = 26f;
+        StyleCard(settingsCard, new Color(0.04f, 0.07f, 0.14f, 0.96f), radius: 20f);
 
         settingsTrackLabel = CreateLabel("Track", 34f, new Color(0.93f, 0.98f, 1f, 1f), true);
         settingsOffsetLabel = CreateLabel("Offset", 31f, new Color(0.84f, 0.95f, 1f, 1f));
@@ -182,7 +187,7 @@ public sealed class TabsSongHeaderOverlay
 
         Button prevTrackButton = CreateActionButton("Track -", () => owner?.MoveTrackSelectionFromUi(-1));
         Button nextTrackButton = CreateActionButton("Track +", () => owner?.MoveTrackSelectionFromUi(1));
-        Button offsetScopeButton = CreateActionButton("Toggle Offset Scope", () => owner?.ToggleOffsetScopeFromUi());
+        Button offsetScopeButton = CreateActionButton("Offset Scope", () => owner?.ToggleOffsetScopeFromUi());
         Button backPauseButton = CreateActionButton("Back", () => owner?.CloseSongSettingsFromUi());
         Button resumeFromSettingsButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
@@ -207,28 +212,33 @@ public sealed class TabsSongHeaderOverlay
         settingsOverlay.Add(settingsCard);
 
         selectionOverlay = CreateFullscreenOverlay();
-        Label selectionTitle = CreateLabel("SONG SELECT", 90f, Color.white, true, TextAnchor.MiddleCenter);
+        Label selectionTitle = CreateLabel("TRACK LIBRARY", 90f, Color.white, true, TextAnchor.MiddleCenter);
+        selectionTitle.style.letterSpacing = 1.1f;
         selectionSubtitleLabel = CreateLabel("", 30f, new Color(0.84f, 0.94f, 1f, 0.98f), false, TextAnchor.MiddleCenter);
         selectionSubtitleLabel.style.marginBottom = 16f;
 
         VisualElement selectionCard = new VisualElement();
         selectionCard.style.width = 1120f;
         selectionCard.style.maxWidth = 1300f;
-        selectionCard.style.paddingLeft = 24f;
-        selectionCard.style.paddingRight = 24f;
+        selectionCard.style.paddingLeft = 28f;
+        selectionCard.style.paddingRight = 28f;
         selectionCard.style.paddingTop = 20f;
         selectionCard.style.paddingBottom = 20f;
-        StyleCard(selectionCard, new Color(0.06f, 0.10f, 0.15f, 0.96f));
+        StyleCard(selectionCard, new Color(0.04f, 0.07f, 0.14f, 0.96f), radius: 20f);
 
         selectionRowButtons = new Button[8];
         for (int i = 0; i < selectionRowButtons.Length; i++)
         {
             int rowIndex = i;
             Button rowButton = CreateActionButton("", () => OnSongRowClicked(rowIndex));
-            rowButton.style.height = 74f;
+            rowButton.style.height = 76f;
             rowButton.style.marginTop = 6f;
             rowButton.style.marginBottom = 2f;
             rowButton.style.unityTextAlign = TextAnchor.MiddleLeft;
+            rowButton.style.borderTopLeftRadius = 12f;
+            rowButton.style.borderTopRightRadius = 12f;
+            rowButton.style.borderBottomLeftRadius = 12f;
+            rowButton.style.borderBottomRightRadius = 12f;
             selectionCard.Add(rowButton);
             selectionRowButtons[i] = rowButton;
         }
@@ -353,8 +363,12 @@ public sealed class TabsSongHeaderOverlay
             bool isSelected = songIndex == snapshot.selectedSongIndex;
             button.text = isSelected ? $"> {name}" : $"  {name}";
             button.style.backgroundColor = isSelected
-                ? new Color(0.20f, 0.42f, 0.61f, 0.96f)
-                : new Color(0.10f, 0.20f, 0.30f, 0.90f);
+                ? new Color(0.42f, 0.18f, 0.52f, 0.98f)
+                : new Color(0.08f, 0.15f, 0.24f, 0.93f);
+            button.style.borderTopColor = isSelected ? new Color(1f, 0.54f, 0.80f, 1f) : new Color(0.36f, 0.58f, 1f, 0.75f);
+            button.style.borderRightColor = button.style.borderTopColor;
+            button.style.borderBottomColor = button.style.borderTopColor;
+            button.style.borderLeftColor = button.style.borderTopColor;
         }
     }
 
@@ -384,14 +398,24 @@ public sealed class TabsSongHeaderOverlay
         button.style.minWidth = 220f;
         button.style.paddingLeft = 18f;
         button.style.paddingRight = 18f;
-        button.style.backgroundColor = new Color(0.16f, 0.29f, 0.44f, 0.94f);
+        button.style.backgroundColor = new Color(0.11f, 0.23f, 0.40f, 0.95f);
         button.style.color = Color.white;
         button.style.fontSize = 28f;
         button.style.unityFontStyleAndWeight = FontStyle.Bold;
-        button.style.borderTopLeftRadius = 9f;
-        button.style.borderTopRightRadius = 9f;
-        button.style.borderBottomLeftRadius = 9f;
-        button.style.borderBottomRightRadius = 9f;
+        button.style.borderTopLeftRadius = 12f;
+        button.style.borderTopRightRadius = 12f;
+        button.style.borderBottomLeftRadius = 12f;
+        button.style.borderBottomRightRadius = 12f;
+        button.style.borderTopWidth = 2f;
+        button.style.borderRightWidth = 2f;
+        button.style.borderBottomWidth = 2f;
+        button.style.borderLeftWidth = 2f;
+        button.style.borderTopColor = new Color(0.40f, 0.75f, 1f, 0.95f);
+        button.style.borderRightColor = new Color(0.33f, 0.63f, 0.98f, 0.90f);
+        button.style.borderBottomColor = new Color(0.23f, 0.46f, 0.80f, 0.90f);
+        button.style.borderLeftColor = new Color(0.33f, 0.63f, 0.98f, 0.90f);
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+        button.style.letterSpacing = 0.35f;
         return button;
     }
 
@@ -406,7 +430,7 @@ public sealed class TabsSongHeaderOverlay
         overlay.style.alignItems = Align.Center;
         overlay.style.justifyContent = Justify.FlexStart;
         overlay.style.paddingTop = 66f;
-        overlay.style.backgroundColor = new Color(0f, 0f, 0f, 0.14f);
+        overlay.style.backgroundColor = new Color(0.01f, 0.01f, 0.04f, 0.76f);
         return overlay;
     }
 
@@ -421,10 +445,10 @@ public sealed class TabsSongHeaderOverlay
         element.style.borderBottomWidth = 1f;
         element.style.borderLeftWidth = 1f;
         element.style.borderRightWidth = 1f;
-        element.style.borderTopColor = new Color(0.45f, 0.75f, 1f, 0.95f);
-        element.style.borderBottomColor = new Color(0.20f, 0.32f, 0.46f, 0.90f);
-        element.style.borderLeftColor = new Color(0.20f, 0.32f, 0.46f, 0.90f);
-        element.style.borderRightColor = new Color(0.20f, 0.32f, 0.46f, 0.90f);
+        element.style.borderTopColor = new Color(0.50f, 0.72f, 1f, 0.95f);
+        element.style.borderBottomColor = new Color(0.24f, 0.34f, 0.58f, 0.90f);
+        element.style.borderLeftColor = new Color(0.24f, 0.34f, 0.58f, 0.90f);
+        element.style.borderRightColor = new Color(0.24f, 0.34f, 0.58f, 0.90f);
     }
 
     private static void ApplyFont(VisualElement root, FontDefinition font)
