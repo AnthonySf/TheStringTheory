@@ -232,6 +232,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool hasBackingTrack;
     private bool showSongSettings;
     private bool showSongSelection;
+    private bool showLegacyPauseUi;
     private int selectedSongListIndex;
     private int songListScrollOffset;
     private readonly List<SongLibraryEntry> availableSongs = new List<SongLibraryEntry>();
@@ -305,6 +306,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandlePauseControls()
     {
+        if (renderMode == GuitarRenderMode.Tabs && Input.GetKeyDown(KeyCode.P))
+            showLegacyPauseUi = !showLegacyPauseUi;
+
         if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
             showSongSettings = !showSongSettings;
 
@@ -331,32 +335,32 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!isPaused)
             return;
 
-        if (Input.GetKeyDown(KeyCode.L) || IsSongSelectionClicked())
+        if (Input.GetKeyDown(KeyCode.L) || (showLegacyPauseUi && IsSongSelectionClicked()))
         {
             OpenSongSelectionMenu();
             return;
         }
 
-        if (IsSongSettingsClicked())
+        if (showLegacyPauseUi && IsSongSettingsClicked())
         {
             showSongSettings = true;
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.T) || IsToneLabButtonClicked())
+        if (Input.GetKeyDown(KeyCode.T) || (showLegacyPauseUi && IsToneLabButtonClicked()))
         {
             OpenOrFocusToneLab();
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || IsLoopToggleClicked())
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || (showLegacyPauseUi && IsLoopToggleClicked()))
         {
             loopEnabled = !loopEnabled;
             if (loopEnabled && loopEndTime <= loopStartTime)
                 loopEndTime = loopStartTime + 0.25f;
         }
 
-        if (TryReadSpeedSliderPercent(out float sliderPercent))
+        if (showLegacyPauseUi && TryReadSpeedSliderPercent(out float sliderPercent))
             playbackSpeedPercent = sliderPercent;
 
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
@@ -790,6 +794,36 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         SeekSongTime(loopStartTime, false);
+    }
+
+
+    public void ToggleLoopFromUi()
+    {
+        loopEnabled = !loopEnabled;
+        if (loopEnabled && loopEndTime <= loopStartTime)
+            loopEndTime = loopStartTime + 0.25f;
+    }
+
+    public void OpenSongSelectionFromUi()
+    {
+        OpenSongSelectionMenu();
+    }
+
+    public void OpenSongSettingsFromUi()
+    {
+        showSongSettings = true;
+        showSongSelection = false;
+        isPaused = true;
+    }
+
+    public void OpenToneLabFromUi()
+    {
+        OpenOrFocusToneLab();
+    }
+
+    public void SetPlaybackSpeedPercentFromUi(float speedPercent)
+    {
+        playbackSpeedPercent = Mathf.Clamp(speedPercent, 1f, 200f);
     }
 
     private bool IsLoopToggleClicked()
@@ -1834,6 +1868,7 @@ private void ParseUdpState()
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
             showSongSelection = showSongSelection,
+            showLegacyPauseUi = showLegacyPauseUi,
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
             selectedSongIndex = selectedSongListIndex,
             songListScrollOffset = songListScrollOffset,
