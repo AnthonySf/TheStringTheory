@@ -30,7 +30,7 @@ public sealed class TabsNebulaBackdrop
         int layerCount = Mathf.Clamp(owner.tabNebulaLayerCount, 1, 4);
         float minY = Mathf.Min(owner.tabStarfieldMinY, owner.tabStarfieldMaxY);
         float maxY = Mathf.Max(owner.tabStarfieldMinY, owner.tabStarfieldMaxY);
-        float safeOpacity = Mathf.Clamp(owner.tabNebulaOpacity, 0f, 0.35f);
+        float safeOpacity = Mathf.Clamp(owner.tabNebulaOpacity, 0f, 0.12f);
 
         falloffTexture = CreateRadialFalloffTexture(96);
         sharedNebulaMaterial = CreateTransparentNebulaMaterial(safeOpacity);
@@ -40,9 +40,9 @@ public sealed class TabsNebulaBackdrop
 
         for (int layer = 0; layer < layerCount; layer++)
         {
-            int blobsPerLayer = 9;
+            int blobsPerLayer = 4;
             float layerT = layer / Mathf.Max(1f, layerCount - 1f);
-            float z = Mathf.Lerp(owner.tabStarfieldFarZ - 0.8f, owner.tabStarfieldNearZ - 0.4f, layerT);
+            float z = Mathf.Lerp(owner.tabStarfieldFarZ - 1.2f, owner.tabStarfieldNearZ - 0.9f, layerT);
 
             for (int i = 0; i < blobsPerLayer; i++)
             {
@@ -50,13 +50,13 @@ public sealed class TabsNebulaBackdrop
                 blob.name = $"NebulaBlob_{layer}_{i}";
                 blob.transform.SetParent(root, false);
 
-                float x = Random.Range(-owner.tabStarfieldWidth * 0.55f, owner.tabStarfieldWidth * 0.55f);
+                float x = Random.Range(-owner.tabStarfieldWidth * 0.52f, owner.tabStarfieldWidth * 0.52f);
                 float y = Random.Range(minY, maxY);
                 blob.transform.localPosition = new Vector3(x, y, z);
 
-                float baseScale = owner.tabNebulaScale * Mathf.Lerp(0.10f, 0.22f, Random.value);
-                float stretchX = Mathf.Lerp(0.75f, 1.4f, Random.value);
-                float stretchY = Mathf.Lerp(0.55f, 1.15f, Random.value);
+                float baseScale = owner.tabNebulaScale * Mathf.Lerp(0.06f, 0.14f, Random.value);
+                float stretchX = Mathf.Lerp(0.8f, 1.45f, Random.value);
+                float stretchY = Mathf.Lerp(0.7f, 1.35f, Random.value);
                 blob.transform.localScale = new Vector3(baseScale * stretchX, baseScale * stretchY, 1f);
                 blob.transform.localRotation = Quaternion.Euler(0f, 0f, Random.Range(0f, 360f));
 
@@ -67,7 +67,7 @@ public sealed class TabsNebulaBackdrop
 
                 Material blobMaterial = new Material(sharedNebulaMaterial);
                 Color c = Color.Lerp(owner.tabNebulaColorA, owner.tabNebulaColorB, Random.value);
-                c.a = safeOpacity * Mathf.Lerp(0.20f, 0.50f, 1f - layerT);
+                c.a = safeOpacity * Mathf.Lerp(0.10f, 0.28f, 1f - layerT);
                 blobMaterial.color = c;
                 renderer.material = blobMaterial;
 
@@ -76,9 +76,9 @@ public sealed class TabsNebulaBackdrop
                 blobs.Add(new NebulaBlob
                 {
                     transform = blob.transform,
-                    driftSpeed = owner.tabNebulaScrollSpeed * Mathf.Lerp(0.25f, 0.65f, 1f - layerT),
-                    bobAmplitude = Mathf.Lerp(0.02f, 0.08f, Random.value),
-                    bobFrequency = Mathf.Lerp(0.08f, 0.20f, Random.value),
+                    driftSpeed = owner.tabNebulaScrollSpeed * Mathf.Lerp(0.10f, 0.28f, 1f - layerT),
+                    bobAmplitude = Mathf.Lerp(0.003f, 0.015f, Random.value),
+                    bobFrequency = Mathf.Lerp(0.05f, 0.12f, Random.value),
                     bobPhase = Random.Range(0f, Mathf.PI * 2f)
                 });
             }
@@ -92,8 +92,8 @@ public sealed class TabsNebulaBackdrop
         if (owner == null || !owner.tabNebulaEnabled || blobs.Count == 0)
             return;
 
-        float wrapMin = -owner.tabStarfieldWidth * 0.70f;
-        float wrapMax = owner.tabStarfieldWidth * 0.70f;
+        float wrapMin = -owner.tabStarfieldWidth * 0.62f;
+        float wrapMax = owner.tabStarfieldWidth * 0.62f;
 
         for (int i = 0; i < blobs.Count; i++)
         {

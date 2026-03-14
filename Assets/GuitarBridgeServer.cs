@@ -209,13 +209,13 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabShootingStarColor = new Color(0.95f, 0.97f, 1f, 0.9f);
 
     [Header("Tabs Background FX - Nebula")]
-    public bool tabNebulaEnabled = true;
+    public bool tabNebulaEnabled = false;
     [Range(1, 4)] public int tabNebulaLayerCount = 2;
-    [Range(0f, 1f)] public float tabNebulaOpacity = 0.09f;
+    [Range(0f, 1f)] public float tabNebulaOpacity = 0.05f;
     [Min(0f)] public float tabNebulaScrollSpeed = 0.05f;
-    [Min(1f)] public float tabNebulaScale = 20f;
-    public Color tabNebulaColorA = new Color(0.14f, 0.20f, 0.35f, 0.16f);
-    public Color tabNebulaColorB = new Color(0.20f, 0.11f, 0.32f, 0.14f);
+    [Min(1f)] public float tabNebulaScale = 8f;
+    public Color tabNebulaColorA = new Color(0.08f, 0.12f, 0.22f, 0.08f);
+    public Color tabNebulaColorB = new Color(0.12f, 0.08f, 0.20f, 0.07f);
 
     [Header("Tabs Header")]
     public float tabLabelFontSize = 3f;
