@@ -253,11 +253,16 @@ public class GuitarBridgeServer : MonoBehaviour
     [Min(0.1f)] public float tabSkyCloudScaleMaxMid = 2.8f;
     [Min(0.1f)] public float tabSkyCloudScaleMinFar = 1.0f;
     [Min(0.1f)] public float tabSkyCloudScaleMaxFar = 2.1f;
-    [Min(0.2f)] public float tabSkyCloudGlobalScale = 1.75f;
+    [Min(0.2f)] public float tabSkyCloudGlobalScale = 2.65f;
     public Color tabSkyDayCloudTopTint = new Color(0.98f, 0.99f, 1f, 1f);
     public Color tabSkyDayCloudBottomTint = new Color(0.90f, 0.95f, 1f, 1f);
     public Color tabSkySunsetCloudTopTint = new Color(1f, 0.84f, 0.68f, 1f);
     public Color tabSkySunsetCloudBottomTint = new Color(0.98f, 0.62f, 0.42f, 1f);
+    public bool tabSkyStarsEnabled = false;
+    [Range(8, 600)] public int tabSkyStarCount = 120;
+    [Min(0.001f)] public float tabSkyStarSizeMin = 0.015f;
+    [Min(0.001f)] public float tabSkyStarSizeMax = 0.065f;
+    [Range(0f, 1f)] public float tabSkyStarAlpha = 0.45f;
     [Range(0f, 0.2f)] public float tabSkyCloudVerticalBob = 0.04f;
 
     [Header("Tabs Header")]
@@ -2446,6 +2451,7 @@ private void ParseUdpState()
 
         RegisterEnumSetting("bg.mode", "Tabs Background FX", "Background Mode", "Switches between static and animated tab backdrops.", new []{"SolidColor","Starfield","BlueSky"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
         RegisterEnumSetting("bg.skyMood", "Tabs Background FX - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime and sunset palettes.", new []{"Day","Sunset"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
+        RegisterBoolSetting("bg.skyStars", "Tabs Background FX - Blue Sky", "Static Sky Stars", "Adds non-moving stars behind clouds in BlueSky mode.", () => tabSkyStarsEnabled, v => tabSkyStarsEnabled = v);
         RegisterEnumSetting("bg.starStyle", "Tabs Background FX - Starfield Core", "Star Style", "Visual style used for star sprites in the background.", new []{"SoftDots","Crystal","Neon"}, () => tabStarStyle.ToString(), v => { if (Enum.TryParse(v, out TabsStarStyle style)) tabStarStyle = style; });
         RegisterIntSetting("bg.starSeed", "Tabs Background FX - Starfield Core", "Star Seed", "Changes the procedural star layout while keeping it deterministic.", 0, 99999, 1, () => tabStarSeed, v => tabStarSeed = v);
         RegisterFloatSetting("bg.starDriftSpeed", "Tabs Background FX - Starfield Core", "Star Drift Speed", "Horizontal motion speed of star layers.", 0f, 2.5f, 0.01f, () => tabStarDriftSpeed, v => tabStarDriftSpeed = v);

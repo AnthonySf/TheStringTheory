@@ -25,7 +25,15 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         public float baseAlpha;
     }
 
+    private struct SkyStar
+    {
+        public Transform transform;
+        public Renderer renderer;
+        public float baseAlpha;
+    }
+
     private readonly List<SkyCloud> clouds = new List<SkyCloud>();
+    private readonly List<SkyStar> stars = new List<SkyStar>();
     private readonly List<Sprite> cloudSprites = new List<Sprite>();
 
     private GuitarBridgeServer owner;
@@ -48,6 +56,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
         CreateGradientSky();
         ApplyMoodToSkyIfNeeded();
+        CreateStaticStars();
         LoadCloudSprites();
         CreateCloudLayer(SkyCloudLayer.Far, owner.tabSkyCloudCountFar, owner.tabSkyCloudSpeedFar, owner.tabSkyCloudAlphaFar, owner.tabSkyCloudScaleMinFar, owner.tabSkyCloudScaleMaxFar, 0.65f, 1f);
         CreateCloudLayer(SkyCloudLayer.Mid, owner.tabSkyCloudCountMid, owner.tabSkyCloudSpeedMid, owner.tabSkyCloudAlphaMid, owner.tabSkyCloudScaleMinMid, owner.tabSkyCloudScaleMaxMid, 0.32f, 0.70f);
@@ -56,10 +65,15 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
     public void Tick(float deltaTime)
     {
-        if (root == null || owner == null || clouds.Count == 0)
+        if (root == null || owner == null)
             return;
 
         ApplyMoodToSkyIfNeeded();
+        SyncStaticStarsState();
+        UpdateStarTint();
+
+        if (clouds.Count == 0)
+            return;
 
         GetSkyCoverage(out float width, out float minY, out float maxY);
         float halfWidth = width * 0.5f;
@@ -94,6 +108,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     public void Dispose()
     {
         clouds.Clear();
+        stars.Clear();
 
         for (int i = 0; i < cloudSprites.Count; i++)
         {
@@ -224,7 +239,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             }
 
             texture.wrapMode = TextureWrapMode.Clamp;
-            texture.filterMode = FilterMode.Bilinear;
+            texture.filterMode = FilterMode.Point;
 
             Sprite sprite = Sprite.Create(
                 texture,
@@ -360,13 +375,119 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         return Color.Lerp(owner.tabSkyDayCloudBottomTint, owner.tabSkyDayCloudTopTint, y01);
     }
 
+    private void CreateStaticStars()
+    {
+        if (owner == null || !owner.tabSkyStarsEnabled)
+            return;
+
+        GetSkyCoverage(out float width, out float minY, out float maxY);
+        GetSkyDepthRange(out float nearZ, out float farZ);
+
+        float halfWidth = width * 0.5f;
+        int starCount = Mathf.Clamp(owner.tabSkyStarCount, 8, 600);
+        float sizeMin = Mathf.Max(0.001f, Mathf.Min(owner.tabSkyStarSizeMin, owner.tabSkyStarSizeMax));
+        float sizeMax = Mathf.Max(sizeMin, Mathf.Max(owner.tabSkyStarSizeMin, owner.tabSkyStarSizeMax));
+
+        Random.State oldState = Random.state;
+        Random.InitState(owner.tabStarSeed ^ unchecked((int)0x7A11C0DEu));
+
+        for (int i = 0; i < starCount; i++)
+        {
+            GameObject star = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            star.name = $"SkyStaticStar_{i:000}";
+            star.transform.SetParent(root.transform, false);
+
+            float x = Random.Range(-halfWidth, halfWidth);
+            float y = Random.Range(minY + 0.5f, maxY - 0.5f);
+            float z = Mathf.Lerp(nearZ, farZ, Random.Range(0.78f, 0.98f));
+            star.transform.localPosition = new Vector3(x, y, z);
+
+            float size = Random.Range(sizeMin, sizeMax);
+            star.transform.localScale = new Vector3(size, size, 1f);
+
+            Renderer renderer = star.GetComponent<Renderer>();
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+            renderer.material = CreateUnlitTransparentMaterial(Color.white, CreateSolidTexture(new Color(1f, 1f, 1f, 1f)));
+            renderer.material.renderQueue = (int)RenderQueue.Transparent - 30;
+
+            float alpha = Mathf.Clamp01(owner.tabSkyStarAlpha * Random.Range(0.55f, 1f));
+            Color c = owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset
+                ? new Color(1f, 0.9f, 0.76f, alpha)
+                : new Color(0.92f, 0.97f, 1f, alpha);
+            renderer.material.color = c;
+
+            Object.Destroy(star.GetComponent<Collider>());
+
+            stars.Add(new SkyStar
+            {
+                transform = star.transform,
+                renderer = renderer,
+                baseAlpha = alpha
+            });
+        }
+
+        Random.state = oldState;
+    }
+
+    private void SyncStaticStarsState()
+    {
+        if (!owner.tabSkyStarsEnabled)
+        {
+            for (int i = 0; i < stars.Count; i++)
+            {
+                if (stars[i].transform != null)
+                    Object.Destroy(stars[i].transform.gameObject);
+            }
+
+            stars.Clear();
+            return;
+        }
+
+        if (stars.Count == 0)
+            CreateStaticStars();
+    }
+
+    private void UpdateStarTint()
+    {
+        if (stars.Count == 0)
+            return;
+
+        for (int i = 0; i < stars.Count; i++)
+        {
+            SkyStar star = stars[i];
+            if (star.renderer == null)
+                continue;
+
+            Color c = owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset
+                ? new Color(1f, 0.9f, 0.76f, star.baseAlpha)
+                : new Color(0.92f, 0.97f, 1f, star.baseAlpha);
+            star.renderer.material.color = c;
+        }
+    }
+
+    private static Texture2D CreateSolidTexture(Color color)
+    {
+        Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Point;
+
+        tex.SetPixel(0, 0, color);
+        tex.SetPixel(1, 0, color);
+        tex.SetPixel(0, 1, color);
+        tex.SetPixel(1, 1, color);
+        tex.Apply(false, false);
+        return tex;
+    }
+
     private static Sprite CreateProceduralCloudSprite()
     {
         const int width = 256;
         const int height = 128;
         Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false, true);
         texture.wrapMode = TextureWrapMode.Clamp;
-        texture.filterMode = FilterMode.Bilinear;
+        texture.filterMode = FilterMode.Point;
 
         Vector2[] centers =
         {
