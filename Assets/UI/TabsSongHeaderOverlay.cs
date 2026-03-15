@@ -1775,29 +1775,36 @@ public sealed class TabsSongHeaderOverlay
         inputMeterFace.style.height = meterHeight;
         LayoutInputMeterGraphics(meterWidth, meterHeight);
         scorePedalBody.style.width = pedalWidth;
-        float meterLabelHeight = inputMeterLabel.resolvedStyle.fontSize > 0f
-            ? inputMeterLabel.resolvedStyle.fontSize * 1.35f
-            : Mathf.Clamp(bodySize * 0.58f, 16f, 28f);
-        float requiredScreenHeight = meterHeight + meterLabelHeight + (bodySize * 1.45f) + (bodySize * 0.95f) + 24f;
-        float topRowHeight = Mathf.Max(ledSize, scorePedalBrandLabel.resolvedStyle.fontSize * 1.25f);
+        float meterLabelFont = Mathf.Clamp(bodySize * 0.44f, 13f, 20f);
+        float scoreFont = bodySize * 1.06f;
+        float tallyFont = bodySize * 0.58f;
+        float meterLabelHeight = meterLabelFont * 1.45f;
+        float scoreLineHeight = scoreFont * 1.35f;
+        float tallyLineHeight = tallyFont * 1.35f;
+        float screenPaddingAndSpacing = 10f + 8f + 8f + 1f + 1f;
+        float requiredScreenHeight = meterHeight + meterLabelHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
+
+        float topRowHeight = Mathf.Max(ledSize, Mathf.Clamp(bodySize * 0.33f, 12f, 19f) * 1.25f);
         float fixedPedalContentHeight = 16f + topRowHeight + 6f + knobSize + 7f + 8f + footswitchSize + 16f;
         float minPedalHeightForContent = fixedPedalContentHeight + requiredScreenHeight;
         if (pedalHeight < minPedalHeightForContent)
         {
-            pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 460f);
+            pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 500f);
             knobSize = Mathf.Clamp(pedalHeight * 0.16f, 30f, 54f);
             ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
             footswitchSize = Mathf.Clamp(pedalHeight * 0.20f, 38f, 66f);
-            meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 126f);
+            meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 130f);
             inputMeterFace.style.height = meterHeight;
             LayoutInputMeterGraphics(meterWidth, meterHeight);
-            requiredScreenHeight = meterHeight + meterLabelHeight + (bodySize * 1.45f) + (bodySize * 0.95f) + 24f;
+            requiredScreenHeight = meterHeight + meterLabelHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
         }
 
         scorePlate.style.height = pedalHeight + 44f;
         scorePedalBody.style.height = pedalHeight;
-        scorePedalScreen.style.minHeight = Mathf.Clamp(requiredScreenHeight, 132f, 220f);
-        scorePedalScreen.style.maxHeight = Mathf.Clamp(requiredScreenHeight, 132f, 220f);
+        float screenHeightTarget = Mathf.Clamp(requiredScreenHeight, 140f, 250f);
+        scorePedalScreen.style.height = screenHeightTarget;
+        scorePedalScreen.style.minHeight = screenHeightTarget;
+        scorePedalScreen.style.maxHeight = screenHeightTarget;
 
         float jackHeight = Mathf.Clamp(pedalHeight * 0.24f, 42f, 68f);
         float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 18f, 32f);
