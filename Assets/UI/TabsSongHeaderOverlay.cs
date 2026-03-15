@@ -185,6 +185,10 @@ public sealed class TabsSongHeaderOverlay
     {
         this.owner = owner;
 
+        GameObject existingHeaderUi = GameObject.Find("TabsSongHeaderUI");
+        if (existingHeaderUi != null)
+            UnityEngine.Object.Destroy(existingHeaderUi);
+
         rootObject = new GameObject("TabsSongHeaderUI");
         document = rootObject.AddComponent<UIDocument>();
 
@@ -210,12 +214,14 @@ public sealed class TabsSongHeaderOverlay
         root.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.20f);
 
         songCard = new VisualElement();
-        songCard.style.minWidth = 680f;
-        songCard.style.maxWidth = 1160f;
+        songCard.style.width = 760f;
+        songCard.style.minWidth = 760f;
+        songCard.style.maxWidth = 760f;
         songCard.style.paddingLeft = 34f;
         songCard.style.paddingRight = 34f;
         songCard.style.paddingTop = 22f;
         songCard.style.paddingBottom = 22f;
+        songCard.style.marginBottom = 14f;
         StyleCard(songCard, new Color(0.04f, 0.06f, 0.13f, 0.96f), radius: 18f);
         songCard.style.borderBottomWidth = 5f;
         songCard.style.borderBottomColor = new Color(0.16f, 0.12f, 0.42f, 0.98f);
@@ -223,9 +229,17 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true, useTitleFont: true);
         songNameLabel.style.marginBottom = 8f;
         songNameLabel.style.letterSpacing = 0.7f;
+        songNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        songNameLabel.style.textOverflow = TextOverflow.Ellipsis;
+        songNameLabel.style.overflow = Overflow.Hidden;
+        songNameLabel.style.maxWidth = 680f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
         trackNameLabel.style.letterSpacing = 0.2f;
+        trackNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        trackNameLabel.style.textOverflow = TextOverflow.Ellipsis;
+        trackNameLabel.style.overflow = Overflow.Hidden;
+        trackNameLabel.style.maxWidth = 680f;
 
         VisualElement statusRow = new VisualElement();
         statusRow.style.flexDirection = FlexDirection.Row;
@@ -388,7 +402,7 @@ public sealed class TabsSongHeaderOverlay
         inputMeterWrap.style.marginBottom = 8f;
         inputMeterWrap.style.flexShrink = 0f;
 
-        inputMeterLabel = CreateLabel("INPUT", 16f, new Color(0.08f, 0.28f, 0.29f, 0.9f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        inputMeterLabel = CreateLabel("INPUT", 16f, new Color(0.08f, 0.28f, 0.29f, 0.9f), true, TextAnchor.MiddleCenter, useTitleFont: false);
         inputMeterLabel.style.letterSpacing = 0.9f;
         inputMeterLabel.style.marginBottom = 1f;
 
@@ -1433,15 +1447,18 @@ public sealed class TabsSongHeaderOverlay
     private void LayoutInputMeterGraphics(float meterWidth, float meterHeight)
     {
         float inset = Mathf.Clamp(meterWidth * 0.08f, 10f, 18f);
+        float arcViewportTop = Mathf.Clamp(meterHeight * 0.12f, 8f, 14f);
         float arcViewportHeight = Mathf.Clamp(meterHeight * 0.48f, 28f, 52f);
         float arcHeight = arcViewportHeight * 2f;
+        float arcWidth = Mathf.Max(1f, meterWidth - (inset * 2f));
+        float rx = arcWidth * 0.5f;
+        float ry = arcHeight * 0.5f;
         float centerX = meterWidth * 0.5f;
-        float centerY = meterHeight * 0.78f;
-        float radius = Mathf.Clamp(meterWidth * 0.35f, 56f, 120f);
+        float centerY = arcViewportTop + ry;
 
         inputMeterArcViewport.style.left = inset;
         inputMeterArcViewport.style.right = inset;
-        inputMeterArcViewport.style.top = Mathf.Clamp(meterHeight * 0.12f, 8f, 14f);
+        inputMeterArcViewport.style.top = arcViewportTop;
         inputMeterArcViewport.style.height = arcViewportHeight;
 
         inputMeterArc.style.height = arcHeight;
@@ -1450,22 +1467,24 @@ public sealed class TabsSongHeaderOverlay
         inputMeterArc.style.borderBottomLeftRadius = arcHeight;
         inputMeterArc.style.borderBottomRightRadius = arcHeight;
 
-        for (int i = 0; i < inputMeterTicks.Count; i++)
+        int tickCount = inputMeterTicks.Count;
+        for (int i = 0; i < tickCount; i++)
         {
             VisualElement tick = inputMeterTicks[i];
             if (tick == null)
                 continue;
 
-            float t = inputMeterTicks.Count <= 1 ? 0f : i / (inputMeterTicks.Count - 1f);
-            float angle = Mathf.Lerp(-Mathf.PI * 0.82f, -Mathf.PI * 0.18f, t);
-            float x = centerX + Mathf.Cos(angle) * radius;
-            float y = centerY + Mathf.Sin(angle) * radius;
+            float t = tickCount <= 1 ? 0f : i / (tickCount - 1f);
+            float theta = Mathf.Lerp(Mathf.PI * 0.96f, Mathf.PI * 0.04f, t);
+            float arcX = centerX + Mathf.Cos(theta) * rx;
+            float arcY = centerY + Mathf.Sin(theta) * ry;
             float tickHeight = i % 2 == 0 ? Mathf.Clamp(meterHeight * 0.13f, 8f, 14f) : Mathf.Clamp(meterHeight * 0.08f, 5f, 9f);
             float tickWidth = i % 2 == 0 ? 2f : 1f;
+
             tick.style.width = tickWidth;
             tick.style.height = tickHeight;
-            tick.style.left = x - (tickWidth * 0.5f);
-            tick.style.top = y;
+            tick.style.left = arcX - (tickWidth * 0.5f);
+            tick.style.top = arcY - 1f;
         }
 
         float needleHeight = Mathf.Clamp(meterHeight * 0.42f, 24f, 44f);
@@ -1475,10 +1494,11 @@ public sealed class TabsSongHeaderOverlay
         inputMeterNeedle.style.top = needleTop;
 
         float capSize = Mathf.Clamp(meterHeight * 0.16f, 10f, 16f);
+        float pivotY = arcViewportTop + arcViewportHeight + Mathf.Clamp(meterHeight * 0.10f, 6f, 12f);
         inputMeterNeedleCap.style.width = capSize;
         inputMeterNeedleCap.style.height = capSize;
         inputMeterNeedleCap.style.left = centerX - (capSize * 0.5f);
-        inputMeterNeedleCap.style.top = centerY - (capSize * 0.5f);
+        inputMeterNeedleCap.style.top = pivotY - (capSize * 0.5f);
         inputMeterNeedleCap.style.borderTopLeftRadius = capSize * 0.5f;
         inputMeterNeedleCap.style.borderTopRightRadius = capSize * 0.5f;
         inputMeterNeedleCap.style.borderBottomLeftRadius = capSize * 0.5f;
@@ -1756,9 +1776,9 @@ public sealed class TabsSongHeaderOverlay
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
         float pedalWidth = Mathf.Clamp(Screen.width * 0.38f, 600f, 920f);
         float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
-        float knobSize = Mathf.Clamp(pedalHeight * 0.16f, 30f, 52f);
+        float knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 62f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
-        float footswitchSize = Mathf.Clamp(pedalHeight * 0.20f, 38f, 64f);
+        float footswitchSize = Mathf.Clamp(pedalHeight * 0.23f, 42f, 74f);
         float meterWidth = Mathf.Clamp(pedalWidth * 0.34f, 200f, 300f);
         float meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 120f);
 
@@ -1791,9 +1811,9 @@ public sealed class TabsSongHeaderOverlay
         if (pedalHeight < minPedalHeightForContent)
         {
             pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 640f);
-            knobSize = Mathf.Clamp(pedalHeight * 0.16f, 30f, 54f);
+            knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 64f);
             ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
-            footswitchSize = Mathf.Clamp(pedalHeight * 0.20f, 38f, 66f);
+            footswitchSize = Mathf.Clamp(pedalHeight * 0.23f, 42f, 76f);
             meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 130f);
             inputMeterFace.style.height = meterHeight;
             LayoutInputMeterGraphics(meterWidth, meterHeight);
@@ -1807,8 +1827,8 @@ public sealed class TabsSongHeaderOverlay
         scorePedalScreen.style.minHeight = screenHeightTarget;
         scorePedalScreen.style.maxHeight = screenHeightTarget;
 
-        float jackHeight = Mathf.Clamp(pedalHeight * 0.24f, 42f, 68f);
-        float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 18f, 32f);
+        float jackHeight = Mathf.Clamp(pedalHeight * 0.29f, 52f, 88f);
+        float jackWidth = Mathf.Clamp(jackHeight * 0.48f, 22f, 40f);
         float jackOffset = jackWidth;
         float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
