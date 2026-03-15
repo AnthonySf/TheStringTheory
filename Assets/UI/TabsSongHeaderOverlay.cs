@@ -24,6 +24,9 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label statusDotLabel;
     private readonly Label detectorStatusLabel;
     private readonly VisualElement scorePlate;
+    private readonly VisualElement scorePedalBody;
+    private readonly VisualElement scorePedalScreen;
+    private readonly Label scorePedalBrandLabel;
     private readonly Label scorePercentLabel;
     private readonly Label noteTallyLabel;
     private readonly VisualElement judgePopupLayer;
@@ -236,21 +239,70 @@ public sealed class TabsSongHeaderOverlay
         scorePlate.style.right = 0f;
         scorePlate.style.alignItems = Align.Center;
         scorePlate.style.justifyContent = Justify.Center;
-        scorePlate.style.height = 122f;
+        scorePlate.style.height = 164f;
 
-        scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(1f, 0.85f, 0.49f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
-        scorePercentLabel.style.letterSpacing = 0.7f;
-        scorePercentLabel.style.paddingLeft = 20f;
-        scorePercentLabel.style.paddingRight = 20f;
+        scorePedalBody = new VisualElement();
+        scorePedalBody.style.width = 540f;
+        scorePedalBody.style.height = 150f;
+        scorePedalBody.style.paddingTop = 14f;
+        scorePedalBody.style.paddingBottom = 12f;
+        scorePedalBody.style.paddingLeft = 18f;
+        scorePedalBody.style.paddingRight = 18f;
+        scorePedalBody.style.backgroundColor = new Color(0.33f, 0.17f, 0.10f, 0.98f);
+        scorePedalBody.style.borderTopWidth = 4f;
+        scorePedalBody.style.borderRightWidth = 4f;
+        scorePedalBody.style.borderBottomWidth = 6f;
+        scorePedalBody.style.borderLeftWidth = 4f;
+        scorePedalBody.style.borderTopColor = new Color(0.84f, 0.51f, 0.25f, 1f);
+        scorePedalBody.style.borderRightColor = new Color(0.66f, 0.30f, 0.16f, 1f);
+        scorePedalBody.style.borderBottomColor = new Color(0.21f, 0.08f, 0.04f, 1f);
+        scorePedalBody.style.borderLeftColor = new Color(0.66f, 0.30f, 0.16f, 1f);
+        scorePedalBody.style.borderTopLeftRadius = 14f;
+        scorePedalBody.style.borderTopRightRadius = 14f;
+        scorePedalBody.style.borderBottomLeftRadius = 20f;
+        scorePedalBody.style.borderBottomRightRadius = 20f;
+        scorePedalBody.style.alignItems = Align.Stretch;
+        scorePedalBody.style.justifyContent = Justify.Center;
 
-        noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 22f, new Color(0.79f, 0.93f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
-        noteTallyLabel.style.marginTop = 3f;
-        noteTallyLabel.style.letterSpacing = 0.35f;
-        noteTallyLabel.style.paddingLeft = 20f;
-        noteTallyLabel.style.paddingRight = 20f;
+        scorePedalBrandLabel = CreateLabel("RETRO TONE METER", 14f, new Color(1f, 0.84f, 0.62f, 0.95f), true, TextAnchor.MiddleCenter);
+        scorePedalBrandLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        scorePedalBrandLabel.style.letterSpacing = 0.6f;
+        scorePedalBrandLabel.style.marginBottom = 6f;
 
-        scorePlate.Add(scorePercentLabel);
-        scorePlate.Add(noteTallyLabel);
+        scorePedalScreen = new VisualElement();
+        scorePedalScreen.style.flexGrow = 1f;
+        scorePedalScreen.style.paddingTop = 10f;
+        scorePedalScreen.style.paddingBottom = 8f;
+        scorePedalScreen.style.paddingLeft = 18f;
+        scorePedalScreen.style.paddingRight = 18f;
+        scorePedalScreen.style.borderTopWidth = 3f;
+        scorePedalScreen.style.borderRightWidth = 3f;
+        scorePedalScreen.style.borderBottomWidth = 3f;
+        scorePedalScreen.style.borderLeftWidth = 3f;
+        scorePedalScreen.style.borderTopColor = new Color(0.05f, 0.19f, 0.16f, 1f);
+        scorePedalScreen.style.borderRightColor = new Color(0.02f, 0.10f, 0.08f, 1f);
+        scorePedalScreen.style.borderBottomColor = new Color(0.02f, 0.08f, 0.06f, 1f);
+        scorePedalScreen.style.borderLeftColor = new Color(0.02f, 0.10f, 0.08f, 1f);
+        scorePedalScreen.style.backgroundColor = new Color(0.53f, 0.97f, 0.89f, 0.94f);
+        scorePedalScreen.style.borderTopLeftRadius = 8f;
+        scorePedalScreen.style.borderTopRightRadius = 8f;
+        scorePedalScreen.style.borderBottomLeftRadius = 8f;
+        scorePedalScreen.style.borderBottomRightRadius = 8f;
+        scorePedalScreen.style.alignItems = Align.Center;
+        scorePedalScreen.style.justifyContent = Justify.Center;
+
+        scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(0.05f, 0.27f, 0.22f, 0.98f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        scorePercentLabel.style.letterSpacing = 0.35f;
+
+        noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 22f, new Color(0.05f, 0.22f, 0.18f, 0.92f), true, TextAnchor.MiddleCenter);
+        noteTallyLabel.style.marginTop = 2f;
+        noteTallyLabel.style.letterSpacing = 0.2f;
+
+        scorePedalScreen.Add(scorePercentLabel);
+        scorePedalScreen.Add(noteTallyLabel);
+        scorePedalBody.Add(scorePedalBrandLabel);
+        scorePedalBody.Add(scorePedalScreen);
+        scorePlate.Add(scorePedalBody);
 
         judgePopupLayer = new VisualElement();
         judgePopupLayer.style.position = Position.Absolute;
@@ -1253,14 +1305,20 @@ public sealed class TabsSongHeaderOverlay
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
+        float pedalWidth = Mathf.Clamp(Screen.width * 0.34f, 500f, 780f);
+        float pedalHeight = Mathf.Clamp(screenHeight * 0.165f, 146f, 232f);
 
         songNameLabel.style.fontSize = songSize;
         trackNameLabel.style.fontSize = trackSize;
         speedBadgeLabel.style.fontSize = bodySize * 0.66f;
         detectorStatusLabel.style.fontSize = bodySize * 0.66f;
         statusDotLabel.style.fontSize = bodySize * 0.66f;
-        scorePercentLabel.style.fontSize = bodySize * 1.08f;
-        noteTallyLabel.style.fontSize = bodySize * 0.50f;
+        scorePercentLabel.style.fontSize = bodySize * 0.98f;
+        noteTallyLabel.style.fontSize = bodySize * 0.48f;
+        scorePedalBrandLabel.style.fontSize = Mathf.Clamp(bodySize * 0.34f, 13f, 20f);
+        scorePlate.style.height = pedalHeight + 26f;
+        scorePedalBody.style.width = pedalWidth;
+        scorePedalBody.style.height = pedalHeight;
         judgePopupFontSize = Mathf.Clamp(screenHeight * 0.072f, 64f, 108f);
         pauseTitleLabel.style.fontSize = pauseSize;
         pauseHintLabel.style.fontSize = bodySize * 0.85f;
