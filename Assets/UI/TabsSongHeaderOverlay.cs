@@ -160,36 +160,19 @@ public sealed class TabsSongHeaderOverlay
         scorePlate.style.justifyContent = Justify.Center;
         scorePlate.style.height = 122f;
 
-        VisualElement scorePlateCard = new VisualElement();
-        scorePlateCard.style.minWidth = 520f;
-        scorePlateCard.style.paddingLeft = 30f;
-        scorePlateCard.style.paddingRight = 30f;
-        scorePlateCard.style.paddingTop = 12f;
-        scorePlateCard.style.paddingBottom = 10f;
-        scorePlateCard.style.backgroundColor = new Color(0.08f, 0.13f, 0.19f, 0.96f);
-        scorePlateCard.style.borderTopLeftRadius = 14f;
-        scorePlateCard.style.borderTopRightRadius = 14f;
-        scorePlateCard.style.borderBottomLeftRadius = 14f;
-        scorePlateCard.style.borderBottomRightRadius = 14f;
-        scorePlateCard.style.borderTopWidth = 2f;
-        scorePlateCard.style.borderRightWidth = 2f;
-        scorePlateCard.style.borderBottomWidth = 5f;
-        scorePlateCard.style.borderLeftWidth = 2f;
-        scorePlateCard.style.borderTopColor = new Color(0.66f, 0.83f, 1f, 0.95f);
-        scorePlateCard.style.borderRightColor = new Color(0.43f, 0.66f, 0.95f, 0.90f);
-        scorePlateCard.style.borderBottomColor = new Color(0.18f, 0.32f, 0.52f, 1f);
-        scorePlateCard.style.borderLeftColor = new Color(0.43f, 0.66f, 0.95f, 0.90f);
-
         scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(1f, 0.85f, 0.49f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.7f;
+        scorePercentLabel.style.paddingLeft = 20f;
+        scorePercentLabel.style.paddingRight = 20f;
 
         noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 22f, new Color(0.79f, 0.93f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
         noteTallyLabel.style.marginTop = 3f;
         noteTallyLabel.style.letterSpacing = 0.35f;
+        noteTallyLabel.style.paddingLeft = 20f;
+        noteTallyLabel.style.paddingRight = 20f;
 
-        scorePlateCard.Add(scorePercentLabel);
-        scorePlateCard.Add(noteTallyLabel);
-        scorePlate.Add(scorePlateCard);
+        scorePlate.Add(scorePercentLabel);
+        scorePlate.Add(noteTallyLabel);
 
         judgePopupLayer = new VisualElement();
         judgePopupLayer.style.position = Position.Absolute;
