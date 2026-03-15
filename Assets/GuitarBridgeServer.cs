@@ -221,8 +221,8 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("Tabs Background FX - Blue Sky")]
     [Min(0.01f)] public float tabSkyWidth = 54f;
-    public float tabSkyNearZ = -2.9f;
-    public float tabSkyFarZ = -8.6f;
+    public float tabSkyNearZ = 1.4f;
+    public float tabSkyFarZ = 7.8f;
     public float tabSkyMinY = -7.2f;
     public float tabSkyMaxY = 7.2f;
     public Color tabSkyTopColor = new Color(0.17f, 0.55f, 0.98f, 1f);
