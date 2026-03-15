@@ -177,6 +177,9 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         switch (owner.tabBackgroundMode)
         {
+            case GuitarBridgeServer.TabsBackgroundMode.BlueSky:
+                backgroundEffect = new TabsBlueSkyBackground();
+                break;
             case GuitarBridgeServer.TabsBackgroundMode.Starfield:
                 backgroundEffect = new TabsStarfieldBackground();
                 break;
