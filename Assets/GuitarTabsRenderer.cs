@@ -801,6 +801,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                     c.a = panelAlpha;
                 }
                 r.material.color = c;
+                r.material.SetColor("_Color", c);
+                r.material.SetColor("_BaseColor", c);
             }
 
             if (sectionLabel != null)
@@ -822,6 +824,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             Color c = owner.tabPanelBackdropColor;
             c.a *= panelAlpha;
             backdropRenderer.material.color = c;
+            backdropRenderer.material.SetColor("_Color", c);
+            backdropRenderer.material.SetColor("_BaseColor", c);
         }
 
         private void CreateBackdrop()
@@ -837,7 +841,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             );
 
             backdropRenderer = backdrop.GetComponent<Renderer>();
-            backdropRenderer.material = owner.CreateSharedTransparentMaterial(owner.tabPanelBackdropColor, 0.04f);
+            backdropRenderer.material = owner.CreateSharedTransparentMaterial(owner.tabPanelBackdropColor, 0f);
             ConfigureRendererNoShadows(backdropRenderer);
             staticRenderers.Add(backdropRenderer);
         }
@@ -999,6 +1003,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 Color c = r.material.color;
                 c.a = alpha;
                 r.material.color = c;
+                r.material.SetColor("_Color", c);
+                r.material.SetColor("_BaseColor", c);
             }
 
             for (int i = 0; i < extraTexts.Count; i++)
