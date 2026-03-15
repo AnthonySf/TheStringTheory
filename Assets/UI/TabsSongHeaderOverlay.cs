@@ -379,6 +379,7 @@ public sealed class TabsSongHeaderOverlay
         scorePedalScreen.style.justifyContent = Justify.FlexStart;
         scorePedalScreen.style.minHeight = 120f;
         scorePedalScreen.style.flexShrink = 0f;
+        scorePedalScreen.style.overflow = Overflow.Hidden;
 
         inputMeterWrap = new VisualElement();
         inputMeterWrap.style.width = 240f;
@@ -1754,7 +1755,7 @@ public sealed class TabsSongHeaderOverlay
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
         float pedalWidth = Mathf.Clamp(Screen.width * 0.38f, 600f, 920f);
-        float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 420f);
+        float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
         float knobSize = Mathf.Clamp(pedalHeight * 0.16f, 30f, 52f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
         float footswitchSize = Mathf.Clamp(pedalHeight * 0.20f, 38f, 64f);
@@ -1779,9 +1780,9 @@ public sealed class TabsSongHeaderOverlay
         float scoreFont = bodySize * 1.06f;
         float tallyFont = bodySize * 0.58f;
         float meterLabelHeight = meterLabelFont * 1.45f;
-        float scoreLineHeight = scoreFont * 1.35f;
-        float tallyLineHeight = tallyFont * 1.35f;
-        float screenPaddingAndSpacing = 10f + 8f + 8f + 1f + 1f;
+        float scoreLineHeight = scoreFont * 1.90f;
+        float tallyLineHeight = tallyFont * 1.65f;
+        float screenPaddingAndSpacing = 10f + 8f + 8f + 1f + 1f + 12f;
         float requiredScreenHeight = meterHeight + meterLabelHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
 
         float topRowHeight = Mathf.Max(ledSize, Mathf.Clamp(bodySize * 0.33f, 12f, 19f) * 1.25f);
@@ -1789,7 +1790,7 @@ public sealed class TabsSongHeaderOverlay
         float minPedalHeightForContent = fixedPedalContentHeight + requiredScreenHeight;
         if (pedalHeight < minPedalHeightForContent)
         {
-            pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 500f);
+            pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 640f);
             knobSize = Mathf.Clamp(pedalHeight * 0.16f, 30f, 54f);
             ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
             footswitchSize = Mathf.Clamp(pedalHeight * 0.20f, 38f, 66f);
@@ -1801,7 +1802,7 @@ public sealed class TabsSongHeaderOverlay
 
         scorePlate.style.height = pedalHeight + 44f;
         scorePedalBody.style.height = pedalHeight;
-        float screenHeightTarget = Mathf.Clamp(requiredScreenHeight, 140f, 250f);
+        float screenHeightTarget = Mathf.Max(140f, requiredScreenHeight);
         scorePedalScreen.style.height = screenHeightTarget;
         scorePedalScreen.style.minHeight = screenHeightTarget;
         scorePedalScreen.style.maxHeight = screenHeightTarget;
