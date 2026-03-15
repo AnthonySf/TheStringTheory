@@ -82,6 +82,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     public void ResetRenderer(List<NoteData> chartNotes, List<TabSectionData> sections)
     {
         RebuildCaches(sections);
+        InitializeBackgroundEffect();
 
         displayedTopSectionIndex = -999;
         displayedBottomSectionIndex = -999;
