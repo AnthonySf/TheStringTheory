@@ -141,4 +141,5 @@ public sealed class GuitarGameplaySnapshot
     public bool hasBackingTrack;
     public bool isBackingTrackPlaying;
     public float backingTrackTime;
+    public bool noteDetectorConnected;
 }
