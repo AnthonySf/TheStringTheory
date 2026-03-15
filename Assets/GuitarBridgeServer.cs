@@ -102,12 +102,12 @@ public class GuitarBridgeServer : MonoBehaviour
     [Header("Colors - Strings")]
     public Color[] stringColors = new Color[]
     {
-        Color.red,
-        Color.yellow,
-        Color.cyan,
-        new Color(1f, 0.5f, 0f), 
-        Color.green,
-        Color.magenta
+        new Color(0.91f, 0.30f, 0.24f, 1f), // Low E - Rocksmith red
+        new Color(0.95f, 0.77f, 0.06f, 1f), // A - Rocksmith yellow
+        new Color(0.20f, 0.60f, 0.86f, 1f), // D - Rocksmith blue
+        new Color(0.90f, 0.49f, 0.13f, 1f), // G - Rocksmith orange
+        new Color(0.18f, 0.80f, 0.44f, 1f), // B - Rocksmith green
+        new Color(0.61f, 0.35f, 0.71f, 1f)  // High E - Rocksmith purple
     };
 
     [Header("Colors - Status")]
@@ -388,6 +388,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private const string SelectedSongDirectoryPrefsKey = "guitar_selected_song_directory";
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
+    private bool songHasEnded;
     private SongLibraryEntry currentSongEntry;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
     private bool useAutoTrackSelection = true;
@@ -445,6 +446,8 @@ public class GuitarBridgeServer : MonoBehaviour
             songTimer += Time.deltaTime * GetTabPlaybackSpeedScale();
             HandleLoopPlayback();
         }
+
+        UpdateSongEndState();
 
         ApplyPlaybackSpeedToAudio();
         SyncAudioToSongTimer(playImmediately: !isPaused);
@@ -1058,6 +1061,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void ResumePlaybackFromUi()
     {
+        songHasEnded = false;
         isPaused = false;
         showSongSettings = false;
         showSongSelection = false;
@@ -1355,6 +1359,7 @@ private void OpenOrFocusToneLab()
         latestPacketHadEvent = false;
         Interlocked.Exchange(ref lastUdpPacketUtcTicks, 0L);
         SyncAudioToSongTimer(playImmediately: !isPaused);
+        UpdateSongEndState();
     }
 
     private void UpdateSelectedLoopMarker(float markerTime)
@@ -1376,6 +1381,11 @@ private void OpenOrFocusToneLab()
         isRunning = false;
         if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
         if (udpClient != null) udpClient.Close();
+        ShutdownNotesDetectorIfRunning();
+    }
+
+    private void OnDestroy()
+    {
         ShutdownNotesDetectorIfRunning();
     }
 
@@ -2003,6 +2013,53 @@ private void ParseUdpState()
         smoothedInputLevel = Mathf.MoveTowards(smoothedInputLevel, target, Time.deltaTime * rate);
     }
 
+
+    private float GetSongDurationSeconds()
+    {
+        if (backingTrackSource != null && backingTrackSource.clip != null)
+            return Mathf.Max(0f, backingTrackSource.clip.length);
+
+        if (chartNotes != null && chartNotes.Count > 0)
+            return Mathf.Max(0f, chartNotes.Max(note => note.time + Mathf.Max(0.05f, note.duration)));
+
+        return 0f;
+    }
+
+    private float GetSongProgressNormalized()
+    {
+        float duration = GetSongDurationSeconds();
+        if (duration <= 0.001f)
+            return 0f;
+
+        return Mathf.Clamp01(songTimer / duration);
+    }
+
+    private void UpdateSongEndState()
+    {
+        float duration = GetSongDurationSeconds();
+        if (duration <= 0.001f)
+        {
+            songHasEnded = false;
+            return;
+        }
+
+        if (!loopEnabled && !songHasEnded && songTimer >= duration)
+        {
+            songTimer = duration;
+            audioSongTimer = duration;
+            songHasEnded = true;
+            isPaused = true;
+            showSongSettings = false;
+            showSongSelection = false;
+            showGlobalSettings = false;
+            SyncAudioToSongTimer(playImmediately: false);
+            return;
+        }
+
+        if (songTimer < duration - 0.02f)
+            songHasEnded = false;
+    }
+
     private GuitarGameplaySnapshot BuildSnapshot()
     {
         int currentSectionIndex = GetSectionIndex(songTimer);
@@ -2045,6 +2102,9 @@ private void ParseUdpState()
             backingTrackTime = backingTrackSource != null ? backingTrackSource.time : 0f,
             noteDetectorConnected = IsNoteDetectorConnected(),
             inputLevelNormalized = smoothedInputLevel,
+            songDuration = GetSongDurationSeconds(),
+            songProgressNormalized = GetSongProgressNormalized(),
+            songEnded = songHasEnded,
             runtimeSettingsSections = BuildRuntimeSettingsSnapshot()
         };
     }
@@ -2116,6 +2176,7 @@ private void ParseUdpState()
         songTimer = 0f;
         audioSongTimer = 0f;
         isPaused = preservePauseUiState ? wasPaused : false;
+        songHasEnded = false;
 
         float sectionDuration = GetEffectiveTabSectionDuration();
         loopStartTime = Mathf.Max(0.2f, sectionDuration * 0.40f);
@@ -2518,6 +2579,7 @@ private void ParseUdpState()
         RegisterFloatSetting("layout.tabPanelGap", "Tabs Panels Layout", "Panel Gap", "Vertical spacing between upper and lower tab panels.", 0.3f, 2.2f, 0.01f, () => tabPanelGap, v => tabPanelGap = v);
         RegisterFloatSetting("layout.tabPanelHeight", "Tabs Panels Layout", "Panel Height", "Height of each tab panel lane.", 2f, 7f, 0.05f, () => tabPanelHeight, v => tabPanelHeight = v);
         RegisterFloatSetting("layout.tabLineSpacing", "Tabs Dimensions", "Line Spacing", "Spacing between strings inside a panel.", 0.25f, 1.2f, 0.01f, () => tabLineSpacing, v => tabLineSpacing = v);
+        RegisterFloatSetting("layout.tabNoteCircleDiameter", "Tabs Dimensions", "Note Circle Size", "Diameter of tab note circles.", 0.2f, 1.2f, 0.01f, () => tabNoteCircleDiameter, v => tabNoteCircleDiameter = v);
         RegisterFloatSetting("layout.tabNoteFontSize", "Tabs Dimensions", "Note Font Size", "Size of fret numbers shown on notes.", 1f, 5f, 0.05f, () => tabNoteFontSize, v => tabNoteFontSize = v);
 
         RegisterFloatSetting("layout.tabBackdropOpacity", "Tabs Panels Layout", "Backdrop Opacity", "Opacity for the tab panel backdrop fill.", 0f, 1f, 0.01f, () => tabPanelBackdropColor.a, v => { Color c = tabPanelBackdropColor; c.a = v; tabPanelBackdropColor = c; });

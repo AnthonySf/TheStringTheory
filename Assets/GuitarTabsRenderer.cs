@@ -447,22 +447,22 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
             if (state.IsHit)
             {
-                noteView.SetStateColors(owner.tabHitColor, owner.tabHitColor, Color.white, true);
+                noteView.SetStateColors(owner.tabHitColor, owner.tabHitColor, Color.white, true, null);
             }
             else if (state.IsMissed)
             {
-                noteView.SetStateColors(owner.tabMissColor, owner.tabMissColor, Color.white, false);
+                noteView.SetStateColors(owner.tabMissColor, owner.tabMissColor, Color.white, false, "X");
             }
             else if (state.isJudgeable)
             {
                 Color outline = owner.GetStringColor(state.data.stringIdx);
-                noteView.SetStateColors(outline, owner.tabJudgeableColor, Color.white, true);
+                noteView.SetStateColors(outline, owner.tabJudgeableColor, Color.white, true, null);
             }
             else
             {
                 Color outline = owner.GetStringColor(state.data.stringIdx);
                 Color fill = owner.GetDarkenedStringColor(state.data.stringIdx, owner.tabIdleFillDarken);
-                noteView.SetStateColors(outline, fill, Color.white, false);
+                noteView.SetStateColors(outline, fill, Color.white, false, null);
             }
         }
     }
@@ -971,6 +971,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         private readonly TextMeshPro text;
         private readonly List<Renderer> extraRenderers;
         private readonly List<TextMeshPro> extraTexts;
+        private readonly string defaultLabelText;
 
         public TabNoteView(Renderer outlineRenderer, Renderer fillRenderer, TextMeshPro text, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts)
         {
@@ -979,9 +980,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             this.text = text;
             this.extraRenderers = extraRenderers ?? new List<Renderer>();
             this.extraTexts = extraTexts ?? new List<TextMeshPro>();
+            defaultLabelText = text != null ? text.text : string.Empty;
         }
 
-        public void SetStateColors(Color outlineColor, Color fillColor, Color textColor, bool emphasize)
+        public void SetStateColors(Color outlineColor, Color fillColor, Color textColor, bool emphasize, string textOverride)
         {
             if (outlineRenderer != null)
             {
@@ -998,7 +1000,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             }
 
             if (text != null)
+            {
                 text.color = textColor;
+                text.text = string.IsNullOrEmpty(textOverride) ? defaultLabelText : textOverride;
+            }
 
             for (int i = 0; i < extraRenderers.Count; i++)
             {
