@@ -842,6 +842,12 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
             backdropRenderer = backdrop.GetComponent<Renderer>();
             backdropRenderer.material = owner.CreateSharedTransparentMaterial(owner.tabPanelBackdropColor, 0f);
+            backdropRenderer.material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            backdropRenderer.material.SetInt("_ZWrite", 0);
+            backdropRenderer.material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            backdropRenderer.material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            backdropRenderer.material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            backdropRenderer.material.EnableKeyword("_ALPHABLEND_ON");
             ConfigureRendererNoShadows(backdropRenderer);
             staticRenderers.Add(backdropRenderer);
         }

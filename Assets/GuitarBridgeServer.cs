@@ -1503,8 +1503,8 @@ private void OpenOrFocusToneLab()
     public Material CreateSharedTransparentMaterial(Color c, float emission = 0f)
     {
         Shader shader = Shader.Find("Unlit/Transparent");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
         if (shader == null) shader = Shader.Find("Sprites/Default");
+        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
         if (shader == null) shader = Shader.Find("Standard");
 
         Material m = new Material(shader);
@@ -1518,11 +1518,7 @@ private void OpenOrFocusToneLab()
         m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
         m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
         m.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
-        m.SetFloat("_Surface", 1f);
-        m.SetFloat("_SurfaceType", 1f);
-        m.SetFloat("_AlphaClip", 0f);
         m.EnableKeyword("_ALPHABLEND_ON");
-        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
 
         if (emission > 0f)
         {
