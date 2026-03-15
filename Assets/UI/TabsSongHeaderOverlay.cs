@@ -65,6 +65,13 @@ public sealed class TabsSongHeaderOverlay
     private int hitStreak;
     private float judgePopupFontSize = 82f;
 
+    private readonly HashSet<int> scoredNoteIds = new HashSet<int>();
+    private int scoreHits;
+    private int scoreMisses;
+    private float lastSongTime = -1f;
+    private bool wasLoopEnabled;
+    private string lastLoopSignature = string.Empty;
+
     public TabsSongHeaderOverlay(GuitarBridgeServer owner)
     {
         this.owner = owner;
@@ -389,34 +396,72 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel.text = songName;
         trackNameLabel.text = trackName;
 
-        int hitCount = 0;
-        int missCount = 0;
         int resolvedCount = 0;
         GameplayNoteState latestResolved = null;
 
+        bool loopEnabled = snapshot.loopEnabled;
+        string loopSignature = loopEnabled
+            ? FormattableString.Invariant($"{snapshot.loopStartTime:F3}|{snapshot.loopEndTime:F3}|{snapshot.selectedLoopMarker}")
+            : string.Empty;
+
+        bool loopJustExited = wasLoopEnabled && !loopEnabled;
+        bool loopJustEntered = !wasLoopEnabled && loopEnabled;
+        bool loopDefinitionChanged = loopEnabled && wasLoopEnabled && loopSignature != lastLoopSignature;
+        bool loopWrapped = loopEnabled && wasLoopEnabled && snapshot.songTime + 0.02f < lastSongTime;
+
+        if (loopJustExited || loopJustEntered || loopDefinitionChanged || loopWrapped)
+            ResetScoreCounters();
+
         if (snapshot.noteStates != null)
         {
-            foreach (GameplayNoteState noteState in snapshot.noteStates)
+            for (int i = 0; i < snapshot.noteStates.Count; i++)
             {
-                if (noteState == null || !noteState.IsResolved)
+                GameplayNoteState noteState = snapshot.noteStates[i];
+                if (noteState == null)
+                    continue;
+
+                bool inLoopWindow = !loopEnabled || IsNoteInsideLoopWindow(noteState.data.time, snapshot.loopStartTime, snapshot.loopEndTime);
+                if (!inLoopWindow)
+                    continue;
+
+                if (!noteState.IsResolved)
                     continue;
 
                 resolvedCount++;
-                if (noteState.IsHit)
-                    hitCount++;
-                else if (noteState.IsMissed)
-                    missCount++;
-
                 if (latestResolved == null || noteState.resolvedAt > latestResolved.resolvedAt)
                     latestResolved = noteState;
+
+                int noteKey = noteState.data.id >= 0 ? noteState.data.id : i;
+                if (scoredNoteIds.Contains(noteKey))
+                    continue;
+
+                scoredNoteIds.Add(noteKey);
+                if (noteState.IsHit)
+                    scoreHits++;
+                else if (noteState.IsMissed)
+                    scoreMisses++;
             }
         }
 
-        float scorePercent = resolvedCount > 0
-            ? (100f * hitCount / resolvedCount)
+        int denominator;
+        if (loopEnabled)
+        {
+            denominator = snapshot.noteStates?.Count(state => state != null && IsNoteInsideLoopWindow(state.data.time, snapshot.loopStartTime, snapshot.loopEndTime)) ?? 0;
+        }
+        else
+        {
+            denominator = scoreHits + scoreMisses;
+        }
+
+        float scorePercent = denominator > 0
+            ? (100f * scoreHits / denominator)
             : 100f;
         scorePercentLabel.text = $"SCORE {scorePercent:F1}%";
-        noteTallyLabel.text = $"HITS {hitCount}  •  MISS {missCount}";
+        noteTallyLabel.text = $"HITS {scoreHits}  •  MISS {scoreMisses}";
+
+        wasLoopEnabled = loopEnabled;
+        lastLoopSignature = loopSignature;
+        lastSongTime = snapshot.songTime;
 
         if (!hasSeenSnapshot)
         {
@@ -528,6 +573,21 @@ public sealed class TabsSongHeaderOverlay
         owner.SelectSongByIndexFromUi(rowIndex + currentSongListScrollOffset);
     }
 
+
+    private static bool IsNoteInsideLoopWindow(float noteTime, float loopStart, float loopEnd)
+    {
+        if (loopEnd <= loopStart)
+            return false;
+
+        return noteTime >= loopStart - 0.0001f && noteTime <= loopEnd + 0.0001f;
+    }
+
+    private void ResetScoreCounters()
+    {
+        scoreHits = 0;
+        scoreMisses = 0;
+        scoredNoteIds.Clear();
+    }
 
     private void SpawnJudgePopup(bool success, int streak)
     {
