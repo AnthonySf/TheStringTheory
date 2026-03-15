@@ -808,7 +808,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             );
 
             Renderer renderer = backdrop.GetComponent<Renderer>();
-            renderer.material = owner.CreateSharedGlowMaterial(new Color(0.02f, 0.03f, 0.06f, 0.42f), 0.08f);
+            renderer.material = owner.CreateSharedGlowMaterial(owner.tabPanelBackdropColor, 0.08f);
             ConfigureRendererNoShadows(renderer);
             staticRenderers.Add(renderer);
         }
