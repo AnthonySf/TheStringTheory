@@ -13,6 +13,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private GameObject root;
     private TabPanelView topPanel;
     private TabPanelView bottomPanel;
+    private TabPanelView reservePanel;
     private GameObject playhead;
     private GameObject loopMarkerStart;
     private GameObject loopMarkerEnd;
@@ -25,7 +26,9 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private float transitionElapsed;
     private TabPanelView transitionOutgoingPanel;
     private TabPanelView transitionIncomingPanel;
+    private TabPanelView transitionReservePanel;
     private int queuedBottomSectionIndex = -1;
+    private int queuedTopSectionIndex = -1;
     private bool transitionIsReverse;
 
     private TabsSongHeaderOverlay songHeaderOverlay;
@@ -45,6 +48,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         topPanel = new TabPanelView(root.transform, "TopTabPanel", owner, true);
         bottomPanel = new TabPanelView(root.transform, "BottomTabPanel", owner, false);
+        reservePanel = new TabPanelView(root.transform, "ReserveTabPanel", owner, false);
 
         playhead = GameObject.CreatePrimitive(PrimitiveType.Cube);
         playhead.name = "TabPlayhead";
@@ -89,13 +93,16 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         isTransitioning = false;
         transitionElapsed = 0f;
         queuedBottomSectionIndex = -1;
+        queuedTopSectionIndex = -1;
         transitionIsReverse = false;
 
         topPanel.ClearAndHide();
         bottomPanel.ClearAndHide();
+        reservePanel.ClearAndHide();
 
         SetPanelWorldY(topPanel, owner.TabTopPanelY);
         SetPanelWorldY(bottomPanel, owner.TabBottomPanelY);
+        SetPanelWorldY(reservePanel, GetReserveBelowY());
     }
 
     public void Render(GuitarGameplaySnapshot snapshot)
@@ -195,9 +202,12 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         SetPanelWorldY(topPanel, owner.TabTopPanelY);
         SetPanelWorldY(bottomPanel, owner.TabBottomPanelY);
+        SetPanelWorldY(reservePanel, GetReserveBelowY());
 
         topPanel.Build(GetSection(displayedTopSectionIndex));
         bottomPanel.Build(GetSection(displayedBottomSectionIndex));
+        reservePanel.Build(GetSection(displayedBottomSectionIndex + 1));
+        reservePanel.SetAlpha(1f);
     }
 
     private void HandleSectionPaging(GuitarGameplaySnapshot snapshot)
@@ -215,7 +225,11 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             transitionIsReverse = false;
             transitionOutgoingPanel = topPanel;
             transitionIncomingPanel = bottomPanel;
+            transitionReservePanel = reservePanel;
             queuedBottomSectionIndex = snapshot.currentSectionIndex + 1;
+            SetPanelWorldY(transitionReservePanel, GetReserveBelowY());
+            transitionReservePanel.Build(GetSection(queuedBottomSectionIndex));
+            transitionReservePanel.SetAlpha(1f);
             return;
         }
 
@@ -226,7 +240,11 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             transitionIsReverse = true;
             transitionOutgoingPanel = bottomPanel;
             transitionIncomingPanel = topPanel;
-            queuedBottomSectionIndex = snapshot.currentSectionIndex;
+            transitionReservePanel = reservePanel;
+            queuedTopSectionIndex = snapshot.currentSectionIndex;
+            SetPanelWorldY(transitionReservePanel, GetReserveAboveY());
+            transitionReservePanel.Build(GetSection(queuedTopSectionIndex));
+            transitionReservePanel.SetAlpha(1f);
             return;
         }
 
@@ -235,9 +253,12 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         SetPanelWorldY(topPanel, owner.TabTopPanelY);
         SetPanelWorldY(bottomPanel, owner.TabBottomPanelY);
+        SetPanelWorldY(reservePanel, GetReserveBelowY());
 
         topPanel.Build(GetSection(displayedTopSectionIndex));
         bottomPanel.Build(GetSection(displayedBottomSectionIndex));
+        reservePanel.Build(GetSection(displayedBottomSectionIndex + 1));
+        reservePanel.SetAlpha(1f);
     }
 
     private void UpdateTransition()
@@ -251,13 +272,17 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         float incomingStartY = transitionIsReverse ? owner.TabTopPanelY : owner.TabBottomPanelY;
         float incomingEndY = transitionIsReverse ? owner.TabBottomPanelY : owner.TabTopPanelY;
         float outgoingStartY = transitionIsReverse ? owner.TabBottomPanelY : owner.TabTopPanelY;
-        float outgoingEndY = transitionIsReverse ? owner.TabBottomPanelY - owner.tabPanelLiftDistance : owner.TabTopPanelY + owner.tabPanelLiftDistance;
+        float outgoingEndY = transitionIsReverse ? GetReserveBelowY() : GetReserveAboveY();
+        float reserveStartY = transitionIsReverse ? GetReserveAboveY() : GetReserveBelowY();
+        float reserveEndY = transitionIsReverse ? owner.TabTopPanelY : owner.TabBottomPanelY;
 
         float incomingY = Mathf.Lerp(incomingStartY, incomingEndY, t);
         float outgoingY = Mathf.Lerp(outgoingStartY, outgoingEndY, t);
+        float reserveY = Mathf.Lerp(reserveStartY, reserveEndY, t);
 
         SetPanelWorldY(transitionIncomingPanel, incomingY);
         SetPanelWorldY(transitionOutgoingPanel, outgoingY);
+        SetPanelWorldY(transitionReservePanel, reserveY);
         transitionOutgoingPanel.SetAlpha(1f - t);
 
         if (t < 1f)
@@ -269,39 +294,57 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         {
             TabPanelView oldTop = topPanel;
             topPanel = bottomPanel;
-            bottomPanel = oldTop;
+            bottomPanel = reservePanel;
+            reservePanel = oldTop;
 
             displayedTopSectionIndex = topPanel.SectionIndex;
             displayedBottomSectionIndex = queuedBottomSectionIndex;
 
             SetPanelWorldY(topPanel, owner.TabTopPanelY);
             SetPanelWorldY(bottomPanel, owner.TabBottomPanelY);
+            SetPanelWorldY(reservePanel, GetReserveBelowY());
 
-            bottomPanel.Build(GetSection(displayedBottomSectionIndex));
+            reservePanel.Build(GetSection(displayedBottomSectionIndex + 1));
             bottomPanel.SetAlpha(1f);
+            reservePanel.SetAlpha(1f);
         }
         else
         {
             TabPanelView oldBottom = bottomPanel;
             bottomPanel = topPanel;
-            topPanel = oldBottom;
+            topPanel = reservePanel;
+            reservePanel = oldBottom;
 
-            displayedTopSectionIndex = queuedBottomSectionIndex;
+            displayedTopSectionIndex = queuedTopSectionIndex;
             displayedBottomSectionIndex = bottomPanel.SectionIndex;
 
             SetPanelWorldY(topPanel, owner.TabTopPanelY);
             SetPanelWorldY(bottomPanel, owner.TabBottomPanelY);
+            SetPanelWorldY(reservePanel, GetReserveAboveY());
 
-            topPanel.Build(GetSection(displayedTopSectionIndex));
+            reservePanel.Build(GetSection(displayedTopSectionIndex - 1));
             topPanel.SetAlpha(1f);
+            reservePanel.SetAlpha(1f);
         }
 
         isTransitioning = false;
         transitionElapsed = 0f;
         transitionOutgoingPanel = null;
         transitionIncomingPanel = null;
+        transitionReservePanel = null;
         queuedBottomSectionIndex = -1;
+        queuedTopSectionIndex = -1;
         transitionIsReverse = false;
+    }
+
+    private float GetReserveBelowY()
+    {
+        return owner.TabBottomPanelY - owner.tabPanelLiftDistance;
+    }
+
+    private float GetReserveAboveY()
+    {
+        return owner.TabTopPanelY + owner.tabPanelLiftDistance;
     }
 
     private void UpdatePlayhead(GuitarGameplaySnapshot snapshot)
