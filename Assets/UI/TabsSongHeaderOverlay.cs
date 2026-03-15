@@ -1774,7 +1774,7 @@ public sealed class TabsSongHeaderOverlay
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
-        float pedalWidth = Mathf.Clamp(Screen.width * 0.34f, 560f, 860f);
+        float pedalWidth = Mathf.Clamp(Screen.width * 0.30f, 500f, 760f);
         float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
         float knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 62f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
@@ -1829,7 +1829,7 @@ public sealed class TabsSongHeaderOverlay
 
         float jackHeight = Mathf.Clamp(pedalHeight * 0.34f, 60f, 102f);
         float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 22f, 40f);
-        float jackOffset = jackWidth * 0.58f;
+        float jackOffset = jackWidth;
         float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
         scorePedalInputJack.style.left = -jackOffset;
@@ -1914,14 +1914,14 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
 
         float pedalLeftEdge = (Screen.width - pedalWidth) * 0.5f;
-        float songCardAvailableWidth = pedalLeftEdge - 24f;
-        float songCardWidth = Mathf.Clamp(songCardAvailableWidth, 420f, 1100f);
+        float songCardAvailableWidth = pedalLeftEdge + 24f;
+        float songCardWidth = Mathf.Clamp(songCardAvailableWidth, 520f, 1320f);
         songCard.style.width = songCardWidth;
         songCard.style.minWidth = songCardWidth;
         songCard.style.maxWidth = songCardWidth;
         songCard.style.marginRight = Mathf.Clamp(Screen.width * 0.03f, 24f, 52f);
 
-        float titleMaxWidth = Mathf.Max(280f, songCardWidth - 52f);
+        float titleMaxWidth = Mathf.Max(340f, songCardWidth - 36f);
         songNameLabel.style.maxWidth = titleMaxWidth;
         trackNameLabel.style.maxWidth = titleMaxWidth;
     }
