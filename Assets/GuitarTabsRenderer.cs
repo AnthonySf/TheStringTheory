@@ -830,25 +830,26 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         private void CreateBackdrop()
         {
-            GameObject backdrop = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            GameObject backdrop = GameObject.CreatePrimitive(PrimitiveType.Quad);
             backdrop.name = "TabsBackdrop";
             backdrop.transform.SetParent(Root.transform, false);
             backdrop.transform.localPosition = new Vector3(0f, 0f, owner.tabZDepth + 0.22f);
             backdrop.transform.localScale = new Vector3(
                 owner.tabPanelWidth - 0.18f,
                 owner.tabPanelHeight - 0.16f,
-                0.05f
+                1f
             );
 
             backdropRenderer = backdrop.GetComponent<Renderer>();
             backdropRenderer.material = owner.CreateSharedTransparentMaterial(owner.tabPanelBackdropColor, 0f);
-            backdropRenderer.material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            backdropRenderer.material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 2;
             backdropRenderer.material.SetInt("_ZWrite", 0);
             backdropRenderer.material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
             backdropRenderer.material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
             backdropRenderer.material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
             backdropRenderer.material.EnableKeyword("_ALPHABLEND_ON");
             ConfigureRendererNoShadows(backdropRenderer);
+            Object.Destroy(backdrop.GetComponent<Collider>());
             staticRenderers.Add(backdropRenderer);
         }
 

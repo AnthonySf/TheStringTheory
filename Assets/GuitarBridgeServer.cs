@@ -262,7 +262,7 @@ public class GuitarBridgeServer : MonoBehaviour
     [Range(8, 1200)] public int tabSkyStarCount = 320;
     [Min(0.001f)] public float tabSkyStarSizeMin = 0.015f;
     [Min(0.001f)] public float tabSkyStarSizeMax = 0.065f;
-    [Range(0f, 1f)] public float tabSkyStarAlpha = 0.45f;
+    [Range(0f, 1f)] public float tabSkyStarAlpha = 0.78f;
     [Range(0f, 0.2f)] public float tabSkyCloudVerticalBob = 0.04f;
 
     [Header("Tabs Header")]
@@ -1502,8 +1502,8 @@ private void OpenOrFocusToneLab()
 
     public Material CreateSharedTransparentMaterial(Color c, float emission = 0f)
     {
-        Shader shader = Shader.Find("Unlit/Transparent");
-        if (shader == null) shader = Shader.Find("Sprites/Default");
+        Shader shader = Shader.Find("Sprites/Default");
+        if (shader == null) shader = Shader.Find("Unlit/Transparent");
         if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
         if (shader == null) shader = Shader.Find("Standard");
 

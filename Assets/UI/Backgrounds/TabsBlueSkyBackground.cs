@@ -421,7 +421,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             renderer.sprite = starSprite;
             renderer.sortingOrder = -500;
 
-            float alpha = Mathf.Clamp01(owner.tabSkyStarAlpha * Random.Range(0.55f, 1f));
+            float alpha = Mathf.Clamp01(owner.tabSkyStarAlpha * Random.Range(0.85f, 1f));
             Color c = owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset
                 ? new Color(1f, 0.9f, 0.76f, alpha)
                 : new Color(0.92f, 0.97f, 1f, alpha);
