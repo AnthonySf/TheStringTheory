@@ -94,23 +94,34 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         skyGradient = null;
     }
 
+    private void GetSkyDepthRange(out float nearZ, out float farZ)
+    {
+        float userNear = Mathf.Min(owner.tabSkyNearZ, owner.tabSkyFarZ);
+        float userFar = Mathf.Max(owner.tabSkyNearZ, owner.tabSkyFarZ);
+
+        float minNear = owner.tabZDepth + 0.8f;
+        nearZ = Mathf.Max(userNear, minNear);
+        farZ = Mathf.Max(userFar, nearZ + 0.5f);
+    }
+
     private void CreateGradientSky()
     {
         float width = owner.tabSkyWidth;
         float minY = Mathf.Min(owner.tabSkyMinY, owner.tabSkyMaxY);
         float maxY = Mathf.Max(owner.tabSkyMinY, owner.tabSkyMaxY);
+        GetSkyDepthRange(out _, out float farZ);
 
         GameObject gradientRoot = new GameObject("SkyGradient");
         gradientRoot.transform.SetParent(root.transform, false);
         skyGradient = gradientRoot.transform;
 
-        CreateGradientBand("SkyBandTop", owner.tabSkyTopColor, owner.tabSkyMidColor, (minY + maxY) * 0.5f, maxY, owner.tabSkyFarZ + 0.2f, width);
-        CreateGradientBand("SkyBandBottom", owner.tabSkyMidColor, owner.tabSkyBottomColor, minY, (minY + maxY) * 0.5f, owner.tabSkyFarZ + 0.21f, width);
+        CreateGradientBand("SkyBandTop", owner.tabSkyTopColor, owner.tabSkyMidColor, (minY + maxY) * 0.5f, maxY, farZ - 0.03f, width);
+        CreateGradientBand("SkyBandBottom", owner.tabSkyMidColor, owner.tabSkyBottomColor, minY, (minY + maxY) * 0.5f, farZ - 0.02f, width);
 
         GameObject haze = GameObject.CreatePrimitive(PrimitiveType.Quad);
         haze.name = "SkyHaze";
         haze.transform.SetParent(skyGradient, false);
-        haze.transform.localPosition = new Vector3(0f, minY + (maxY - minY) * 0.26f, owner.tabSkyFarZ + 0.1f);
+        haze.transform.localPosition = new Vector3(0f, minY + (maxY - minY) * 0.26f, farZ - 0.01f);
         haze.transform.localScale = new Vector3(width * 1.06f, (maxY - minY) * 0.45f, 1f);
 
         Renderer hazeRenderer = haze.GetComponent<Renderer>();
@@ -194,8 +205,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         float halfWidth = width * 0.5f;
         float minY = Mathf.Min(owner.tabSkyMinY, owner.tabSkyMaxY);
         float maxY = Mathf.Max(owner.tabSkyMinY, owner.tabSkyMaxY);
-        float nearZ = owner.tabSkyNearZ;
-        float farZ = owner.tabSkyFarZ;
+        GetSkyDepthRange(out float nearZ, out float farZ);
 
         Random.State oldState = Random.state;
         Random.InitState(owner.tabStarSeed ^ (int)layer * 7919);
@@ -216,7 +226,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             SpriteRenderer spriteRenderer = cloudGo.AddComponent<SpriteRenderer>();
             spriteRenderer.sprite = cloudSprites[Random.Range(0, cloudSprites.Count)];
             spriteRenderer.color = new Color(1f, 1f, 1f, alpha * Random.Range(0.82f, 1f));
-            spriteRenderer.sortingOrder = -20;
+            spriteRenderer.sortingOrder = -200;
 
             float scale = Random.Range(Mathf.Min(scaleMin, scaleMax), Mathf.Max(scaleMin, scaleMax));
             float stretchX = Random.Range(0.92f, 1.22f);
