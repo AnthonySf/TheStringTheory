@@ -29,6 +29,10 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private GameObject root;
     private Transform skyGradient;
 
+    private const float SkyWidthOverscan = 1.45f;
+    private const float SkyHeightOverscan = 1.60f;
+    private const float CloudScaleBoost = 1.75f;
+
     public void Initialize(Transform parent, GuitarBridgeServer owner)
     {
         this.owner = owner;
@@ -48,7 +52,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         if (root == null || owner == null || clouds.Count == 0)
             return;
 
-        float width = owner.tabSkyWidth;
+        GetSkyCoverage(out float width, out _, out _);
         float halfWidth = width * 0.5f;
 
         for (int i = 0; i < clouds.Count; i++)
@@ -99,16 +103,31 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         float userNear = Mathf.Min(owner.tabSkyNearZ, owner.tabSkyFarZ);
         float userFar = Mathf.Max(owner.tabSkyNearZ, owner.tabSkyFarZ);
 
-        float minNear = owner.tabZDepth + 0.8f;
+        float minNear = owner.tabZDepth + 2.6f;
         nearZ = Mathf.Max(userNear, minNear);
-        farZ = Mathf.Max(userFar, nearZ + 0.5f);
+        farZ = Mathf.Max(userFar, nearZ + 4.2f);
+    }
+
+    private void GetSkyCoverage(out float width, out float minY, out float maxY)
+    {
+        float baseWidth = Mathf.Max(0.01f, owner.tabSkyWidth);
+        float baseMinY = Mathf.Min(owner.tabSkyMinY, owner.tabSkyMaxY);
+        float baseMaxY = Mathf.Max(owner.tabSkyMinY, owner.tabSkyMaxY);
+
+        float cameraHalfHeight = Mathf.Max(owner.tabCameraSize, (baseMaxY - baseMinY) * 0.5f);
+        float cameraHalfWidth = cameraHalfHeight * Mathf.Max(1f, Camera.main != null ? Camera.main.aspect : 16f / 9f);
+
+        width = Mathf.Max(baseWidth, cameraHalfWidth * 2f) * SkyWidthOverscan;
+
+        float centerY = (baseMinY + baseMaxY) * 0.5f;
+        float halfHeight = Mathf.Max((baseMaxY - baseMinY) * 0.5f, cameraHalfHeight) * SkyHeightOverscan;
+        minY = centerY - halfHeight;
+        maxY = centerY + halfHeight;
     }
 
     private void CreateGradientSky()
     {
-        float width = owner.tabSkyWidth;
-        float minY = Mathf.Min(owner.tabSkyMinY, owner.tabSkyMaxY);
-        float maxY = Mathf.Max(owner.tabSkyMinY, owner.tabSkyMaxY);
+        GetSkyCoverage(out float width, out float minY, out float maxY);
         GetSkyDepthRange(out _, out float farZ);
 
         GameObject gradientRoot = new GameObject("SkyGradient");
@@ -201,10 +220,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         if (cloudSprites.Count == 0)
             return;
 
-        float width = owner.tabSkyWidth;
+        GetSkyCoverage(out float width, out float minY, out float maxY);
         float halfWidth = width * 0.5f;
-        float minY = Mathf.Min(owner.tabSkyMinY, owner.tabSkyMaxY);
-        float maxY = Mathf.Max(owner.tabSkyMinY, owner.tabSkyMaxY);
         GetSkyDepthRange(out float nearZ, out float farZ);
 
         Random.State oldState = Random.state;
@@ -216,7 +233,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             float depth = Random.Range(nearBand, farBand);
             float z = Mathf.Lerp(nearZ, farZ, depth);
             float x = Random.Range(-halfWidth, halfWidth);
-            float y = Random.Range(minY + 0.35f, maxY - 0.45f);
+            float y = Random.Range(minY + 0.6f, maxY - 0.6f);
 
             GameObject cloudGo = new GameObject($"{layer}Cloud_{i:000}");
             cloudGo.transform.SetParent(root.transform, false);
@@ -233,7 +250,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             float scale = Random.Range(Mathf.Min(scaleMin, scaleMax), Mathf.Max(scaleMin, scaleMax));
             float stretchX = Random.Range(0.92f, 1.22f);
             float stretchY = Random.Range(0.85f, 1.15f);
-            cloudGo.transform.localScale = new Vector3(scale * stretchX, scale * stretchY, 1f);
+            cloudGo.transform.localScale = new Vector3(scale * stretchX * CloudScaleBoost, scale * stretchY * CloudScaleBoost, 1f);
 
             clouds.Add(new SkyCloud
             {
