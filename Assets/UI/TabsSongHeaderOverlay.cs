@@ -787,6 +787,8 @@ public sealed class TabsSongHeaderOverlay
 
             globalSettingsScrollView.Add(sectionCard);
         }
+
+        ApplyResponsiveSizing(force: true);
     }
 
     private VisualElement CreateGlobalSettingRow(RuntimeSettingSnapshot setting)
@@ -797,12 +799,12 @@ public sealed class TabsSongHeaderOverlay
         row.style.borderBottomWidth = 1f;
         row.style.borderBottomColor = new Color(0.28f, 0.42f, 0.65f, 0.36f);
 
-        Label label = CreateLabel(setting.label, 25f, Color.white, true);
+        Label label = CreateLabel(setting.label, 34f, Color.white, true);
         label.AddToClassList("global-setting-title");
         label.tooltip = setting.tooltip;
         row.Add(label);
 
-        Label help = CreateLabel(setting.tooltip, 20f, new Color(0.75f, 0.88f, 0.96f, 0.95f));
+        Label help = CreateLabel(setting.tooltip, 28f, new Color(0.75f, 0.88f, 0.96f, 0.95f));
         help.AddToClassList("global-setting-help");
         help.style.marginTop = 2f;
         help.style.marginBottom = 6f;
@@ -844,7 +846,7 @@ public sealed class TabsSongHeaderOverlay
         input.style.marginBottom = 4f;
         row.Add(input);
 
-        Label valueLabel = CreateLabel(setting.value, 18f, new Color(1f, 0.95f, 0.76f, 1f));
+        Label valueLabel = CreateLabel(setting.value, 30f, new Color(1f, 0.95f, 0.76f, 1f));
         valueLabel.AddToClassList("global-setting-value");
         row.Add(valueLabel);
 
