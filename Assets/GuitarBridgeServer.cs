@@ -158,6 +158,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public float tabZDepth = 0f;
     public float tabStringThickness = 0.03f;
     public float tabStringDepth = 0.01f;
+    public Color tabPanelBackdropColor = new Color(0.02f, 0.03f, 0.06f, 0.42f);
 
     [Header("Tabs Background FX")]
     public TabsBackgroundMode tabBackgroundMode = TabsBackgroundMode.Starfield;
