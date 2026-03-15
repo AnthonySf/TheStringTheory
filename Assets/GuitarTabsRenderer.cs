@@ -393,6 +393,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (panel == null)
             return;
 
+        panel.RefreshStaticStyle();
+
         foreach (var kv in panel.NoteViews)
         {
             if (!stateById.TryGetValue(kv.Key, out GameplayNoteState state))
@@ -474,6 +476,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         private readonly float lineSpacing;
         private readonly List<Renderer> staticRenderers = new List<Renderer>();
         private readonly List<GameObject> dynamicObjects = new List<GameObject>();
+        private Renderer backdropRenderer;
+        private float panelAlpha = 1f;
         private readonly TextMeshPro sectionLabel;
         private readonly string headerPrefix;
 
@@ -776,7 +780,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         public void SetAlpha(float alpha)
         {
-            alpha = Mathf.Clamp01(alpha);
+            panelAlpha = Mathf.Clamp01(alpha);
 
             foreach (Renderer r in staticRenderers)
             {
@@ -784,7 +788,18 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                     continue;
 
                 Color c = r.material.color;
-                c.a = alpha;
+                if (r == backdropRenderer)
+                {
+                    Color baseColor = owner.tabPanelBackdropColor;
+                    c.r = baseColor.r;
+                    c.g = baseColor.g;
+                    c.b = baseColor.b;
+                    c.a = baseColor.a * panelAlpha;
+                }
+                else
+                {
+                    c.a = panelAlpha;
+                }
                 r.material.color = c;
             }
 
@@ -799,6 +814,16 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 kv.Value.SetAlpha(alpha);
         }
 
+        public void RefreshStaticStyle()
+        {
+            if (backdropRenderer == null || backdropRenderer.material == null)
+                return;
+
+            Color c = owner.tabPanelBackdropColor;
+            c.a *= panelAlpha;
+            backdropRenderer.material.color = c;
+        }
+
         private void CreateBackdrop()
         {
             GameObject backdrop = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -811,10 +836,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 0.05f
             );
 
-            Renderer renderer = backdrop.GetComponent<Renderer>();
-            renderer.material = owner.CreateSharedGlowMaterial(owner.tabPanelBackdropColor, 0.08f);
-            ConfigureRendererNoShadows(renderer);
-            staticRenderers.Add(renderer);
+            backdropRenderer = backdrop.GetComponent<Renderer>();
+            backdropRenderer.material = owner.CreateSharedTransparentMaterial(owner.tabPanelBackdropColor, 0.04f);
+            ConfigureRendererNoShadows(backdropRenderer);
+            staticRenderers.Add(backdropRenderer);
         }
 
         private void CreateBorder()

@@ -165,7 +165,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public float tabZDepth = 0f;
     public float tabStringThickness = 0.03f;
     public float tabStringDepth = 0.01f;
-    public Color tabPanelBackdropColor = new Color(0.02f, 0.03f, 0.06f, 0.42f);
+    public Color tabPanelBackdropColor = new Color(0.02f, 0.03f, 0.06f, 0.28f);
 
     [Header("Tabs Background FX")]
     public TabsBackgroundMode tabBackgroundMode = TabsBackgroundMode.Starfield;
@@ -258,8 +258,8 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabSkyDayCloudBottomTint = new Color(0.90f, 0.95f, 1f, 1f);
     public Color tabSkySunsetCloudTopTint = new Color(1f, 0.84f, 0.68f, 1f);
     public Color tabSkySunsetCloudBottomTint = new Color(0.98f, 0.62f, 0.42f, 1f);
-    public bool tabSkyStarsEnabled = false;
-    [Range(8, 600)] public int tabSkyStarCount = 120;
+    public bool tabSkyStarsEnabled = true;
+    [Range(8, 1200)] public int tabSkyStarCount = 320;
     [Min(0.001f)] public float tabSkyStarSizeMin = 0.015f;
     [Min(0.001f)] public float tabSkyStarSizeMax = 0.065f;
     [Range(0f, 1f)] public float tabSkyStarAlpha = 0.45f;
@@ -1500,6 +1500,31 @@ private void OpenOrFocusToneLab()
         return m;
     }
 
+    public Material CreateSharedTransparentMaterial(Color c, float emission = 0f)
+    {
+        Shader shader = Shader.Find("Unlit/Transparent");
+        if (shader == null) shader = Shader.Find("Sprites/Default");
+        if (shader == null) shader = Shader.Find("Standard");
+
+        Material m = new Material(shader);
+        m.color = c;
+        m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        m.SetInt("_ZWrite", 0);
+        m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        m.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+        m.EnableKeyword("_ALPHABLEND_ON");
+
+        if (emission > 0f)
+        {
+            m.EnableKeyword("_EMISSION");
+            m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            m.SetColor("_EmissionColor", c * Mathf.Pow(2f, emission));
+        }
+
+        return m;
+    }
+
     public int GetStringBasePitch(int stringIdx)
     {
         if (stringIdx < 0 || stringIdx >= stringBasePitch.Length) return 0;
@@ -2446,12 +2471,18 @@ private void ParseUdpState()
         RegisterFloatSetting("layout.tabLineSpacing", "Tabs Dimensions", "Line Spacing", "Spacing between strings inside a panel.", 0.25f, 1.2f, 0.01f, () => tabLineSpacing, v => tabLineSpacing = v);
         RegisterFloatSetting("layout.tabNoteFontSize", "Tabs Dimensions", "Note Font Size", "Size of fret numbers shown on notes.", 1f, 5f, 0.05f, () => tabNoteFontSize, v => tabNoteFontSize = v);
 
+        RegisterFloatSetting("layout.tabBackdropOpacity", "Tabs Panels Layout", "Backdrop Opacity", "Opacity for the tab panel backdrop fill.", 0f, 1f, 0.01f, () => tabPanelBackdropColor.a, v => { Color c = tabPanelBackdropColor; c.a = v; tabPanelBackdropColor = c; });
+        RegisterFloatSetting("layout.tabBackdropColorR", "Tabs Panels Layout", "Backdrop Color R", "Red channel of the tab panel backdrop color.", 0f, 1f, 0.01f, () => tabPanelBackdropColor.r, v => { Color c = tabPanelBackdropColor; c.r = v; tabPanelBackdropColor = c; });
+        RegisterFloatSetting("layout.tabBackdropColorG", "Tabs Panels Layout", "Backdrop Color G", "Green channel of the tab panel backdrop color.", 0f, 1f, 0.01f, () => tabPanelBackdropColor.g, v => { Color c = tabPanelBackdropColor; c.g = v; tabPanelBackdropColor = c; });
+        RegisterFloatSetting("layout.tabBackdropColorB", "Tabs Panels Layout", "Backdrop Color B", "Blue channel of the tab panel backdrop color.", 0f, 1f, 0.01f, () => tabPanelBackdropColor.b, v => { Color c = tabPanelBackdropColor; c.b = v; tabPanelBackdropColor = c; });
+
         RegisterFloatSetting("fx.judgeableDarkenMultiplier", "Visuals", "Judgeable Darken", "Darkens upcoming notes until they enter the hit window.", 1f, 8f, 0.1f, () => judgeableDarkenMultiplier, v => judgeableDarkenMultiplier = v);
         RegisterFloatSetting("fx.tabIdleFillDarken", "Colors - Status", "Idle Fill Darken", "Controls how muted unresolved tab notes appear.", 0f, 1f, 0.01f, () => tabIdleFillDarken, v => tabIdleFillDarken = v);
 
         RegisterEnumSetting("bg.mode", "Tabs Background FX", "Background Mode", "Switches between static and animated tab backdrops.", new []{"SolidColor","Starfield","BlueSky"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
         RegisterEnumSetting("bg.skyMood", "Tabs Background FX - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime and sunset palettes.", new []{"Day","Sunset"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
         RegisterBoolSetting("bg.skyStars", "Tabs Background FX - Blue Sky", "Static Sky Stars", "Adds non-moving stars behind clouds in BlueSky mode.", () => tabSkyStarsEnabled, v => tabSkyStarsEnabled = v);
+        RegisterIntSetting("bg.skyStarCount", "Tabs Background FX - Blue Sky", "Sky Star Count", "Controls how many static stars are rendered in BlueSky mode.", 8, 1200, 1, () => tabSkyStarCount, v => tabSkyStarCount = v);
         RegisterEnumSetting("bg.starStyle", "Tabs Background FX - Starfield Core", "Star Style", "Visual style used for star sprites in the background.", new []{"SoftDots","Crystal","Neon"}, () => tabStarStyle.ToString(), v => { if (Enum.TryParse(v, out TabsStarStyle style)) tabStarStyle = style; });
         RegisterIntSetting("bg.starSeed", "Tabs Background FX - Starfield Core", "Star Seed", "Changes the procedural star layout while keeping it deterministic.", 0, 99999, 1, () => tabStarSeed, v => tabStarSeed = v);
         RegisterFloatSetting("bg.starDriftSpeed", "Tabs Background FX - Starfield Core", "Star Drift Speed", "Horizontal motion speed of star layers.", 0f, 2.5f, 0.01f, () => tabStarDriftSpeed, v => tabStarDriftSpeed = v);

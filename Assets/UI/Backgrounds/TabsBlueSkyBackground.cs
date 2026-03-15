@@ -384,7 +384,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         GetSkyDepthRange(out float nearZ, out float farZ);
 
         float halfWidth = width * 0.5f;
-        int starCount = Mathf.Clamp(owner.tabSkyStarCount, 8, 600);
+        int starCount = Mathf.Clamp(owner.tabSkyStarCount, 8, 1200);
         float sizeMin = Mathf.Max(0.001f, Mathf.Min(owner.tabSkyStarSizeMin, owner.tabSkyStarSizeMax));
         float sizeMax = Mathf.Max(sizeMin, Mathf.Max(owner.tabSkyStarSizeMin, owner.tabSkyStarSizeMax));
 
@@ -399,7 +399,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
             float x = Random.Range(-halfWidth, halfWidth);
             float y = Random.Range(minY + 0.5f, maxY - 0.5f);
-            float z = Mathf.Lerp(nearZ, farZ, Random.Range(0.78f, 0.98f));
+            float z = Mathf.Lerp(nearZ, farZ, Random.Range(0.92f, 1f));
             star.transform.localPosition = new Vector3(x, y, z);
 
             float size = Random.Range(sizeMin, sizeMax);
