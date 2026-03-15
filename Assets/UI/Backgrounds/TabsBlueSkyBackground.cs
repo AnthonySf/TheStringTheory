@@ -147,7 +147,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         renderer.shadowCastingMode = ShadowCastingMode.Off;
         renderer.receiveShadows = false;
         renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
-        renderer.material = CreateUnlitTransparentMaterial(Color.white, BuildVerticalGradientTexture(topColor, bottomColor));
+        renderer.material = CreateUnlitOpaqueMaterial(Color.white, BuildVerticalGradientTexture(topColor, bottomColor));
 
         Object.Destroy(band.GetComponent<Collider>());
     }
@@ -225,7 +225,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
             SpriteRenderer spriteRenderer = cloudGo.AddComponent<SpriteRenderer>();
             spriteRenderer.sprite = cloudSprites[Random.Range(0, cloudSprites.Count)];
-            spriteRenderer.color = new Color(1f, 1f, 1f, alpha * Random.Range(0.82f, 1f));
+            float layerBrightness = layer == SkyCloudLayer.Far ? 0.94f : 0.98f;
+            float alphaBoost = layer == SkyCloudLayer.Near ? 1f : 0.95f;
+            spriteRenderer.color = new Color(layerBrightness, layerBrightness, 1f, Mathf.Clamp01(alpha * alphaBoost * Random.Range(0.88f, 1f)));
             spriteRenderer.sortingOrder = -200;
 
             float scale = Random.Range(Mathf.Min(scaleMin, scaleMax), Mathf.Max(scaleMin, scaleMax));
@@ -284,6 +286,25 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
         texture.Apply(false, false);
         return Sprite.Create(texture, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    private static Material CreateUnlitOpaqueMaterial(Color tint, Texture2D texture)
+    {
+        Shader shader = Shader.Find("Unlit/Texture");
+        if (shader == null)
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            shader = Shader.Find("Standard");
+
+        Material material = new Material(shader);
+        material.mainTexture = texture;
+        material.color = tint;
+        material.renderQueue = (int)RenderQueue.Geometry - 10;
+        material.SetInt("_ZWrite", 1);
+        material.SetInt("_Cull", (int)CullMode.Off);
+        return material;
     }
 
     private static Material CreateUnlitTransparentMaterial(Color tint, Texture2D texture)
