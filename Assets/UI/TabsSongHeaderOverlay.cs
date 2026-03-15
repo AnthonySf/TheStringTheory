@@ -214,8 +214,8 @@ public sealed class TabsSongHeaderOverlay
         root.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.20f);
 
         songCard = new VisualElement();
-        songCard.style.minWidth = 680f;
-        songCard.style.maxWidth = 1080f;
+        songCard.style.minWidth = 560f;
+        songCard.style.maxWidth = 960f;
         songCard.style.paddingLeft = 34f;
         songCard.style.paddingRight = 34f;
         songCard.style.paddingTop = 22f;
@@ -232,14 +232,14 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
         songNameLabel.style.textOverflow = TextOverflow.Ellipsis;
         songNameLabel.style.overflow = Overflow.Hidden;
-        songNameLabel.style.maxWidth = 980f;
+        songNameLabel.style.maxWidth = 1200f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
         trackNameLabel.style.letterSpacing = 0.2f;
         trackNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
         trackNameLabel.style.textOverflow = TextOverflow.Ellipsis;
         trackNameLabel.style.overflow = Overflow.Hidden;
-        trackNameLabel.style.maxWidth = 980f;
+        trackNameLabel.style.maxWidth = 1200f;
 
         VisualElement statusRow = new VisualElement();
         statusRow.style.flexDirection = FlexDirection.Row;
@@ -1912,6 +1912,17 @@ public sealed class TabsSongHeaderOverlay
             label.style.fontSize = buttonFontSize;
 
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
-        songCard.style.minWidth = Mathf.Clamp(Screen.width * 0.46f, 640f, 1400f);
+
+        float pedalLeftEdge = (Screen.width - pedalWidth) * 0.5f;
+        float songCardAvailableWidth = pedalLeftEdge - 74f;
+        float songCardWidth = Mathf.Clamp(songCardAvailableWidth, 420f, 1100f);
+        songCard.style.width = songCardWidth;
+        songCard.style.minWidth = songCardWidth;
+        songCard.style.maxWidth = songCardWidth;
+        songCard.style.marginRight = Mathf.Clamp(Screen.width * 0.03f, 24f, 52f);
+
+        float titleMaxWidth = Mathf.Max(260f, songCardWidth - 68f);
+        songNameLabel.style.maxWidth = titleMaxWidth;
+        trackNameLabel.style.maxWidth = titleMaxWidth;
     }
 }
