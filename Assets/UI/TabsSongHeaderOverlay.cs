@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
@@ -78,6 +79,8 @@ public sealed class TabsSongHeaderOverlay
     private float lastSongTime = -1f;
     private bool wasLoopEnabled;
     private string lastLoopSignature = string.Empty;
+    private readonly FontDefinition bodyFontDefinition;
+    private readonly FontDefinition titleFontDefinition;
 
     public TabsSongHeaderOverlay(GuitarBridgeServer owner)
     {
@@ -94,7 +97,10 @@ public sealed class TabsSongHeaderOverlay
         EnsurePanelSettingsSupportAssets(panelSettings);
         document.panelSettings = panelSettings;
 
-        Font dynamicFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        Font fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        (Font bodyFont, Font titleFont) = ResolveUiFonts(fallbackFont);
+        bodyFontDefinition = FontDefinition.FromFont(bodyFont);
+        titleFontDefinition = FontDefinition.FromFont(titleFont);
 
         VisualElement root = document.rootVisualElement;
         root.style.flexGrow = 1f;
@@ -114,7 +120,7 @@ public sealed class TabsSongHeaderOverlay
         hudStripe.style.borderBottomLeftRadius = 999f;
         hudStripe.style.borderBottomRightRadius = 999f;
 
-        marqueeLabel = CreateLabel("★  ★  ★  ARCADE SESSION  ★  ★  ★", 24f, new Color(1f, 0.82f, 0.49f, 1f), true);
+        marqueeLabel = CreateLabel("★  ★  ★  ARCADE SESSION  ★  ★  ★", 24f, new Color(1f, 0.82f, 0.49f, 1f), true, useTitleFont: true);
         marqueeLabel.style.marginBottom = 6f;
         marqueeLabel.style.letterSpacing = 0.8f;
 
@@ -131,14 +137,14 @@ public sealed class TabsSongHeaderOverlay
         songCard.style.paddingBottom = 22f;
         StyleCard(songCard, new Color(0.04f, 0.06f, 0.13f, 0.94f), radius: 20f);
 
-        songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true);
+        songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true, useTitleFont: true);
         songNameLabel.style.marginBottom = 8f;
         songNameLabel.style.letterSpacing = 0.7f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
         trackNameLabel.style.letterSpacing = 0.2f;
 
-        speedBadgeLabel = CreateLabel("Speed 100%", 24f, new Color(1f, 0.96f, 0.76f, 1f), bold: true);
+        speedBadgeLabel = CreateLabel("Speed 100%", 24f, new Color(1f, 0.96f, 0.76f, 1f), bold: true, useTitleFont: true);
         speedBadgeLabel.style.marginTop = 8f;
         speedBadgeLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
         speedBadgeLabel.style.letterSpacing = 0.45f;
@@ -160,7 +166,7 @@ public sealed class TabsSongHeaderOverlay
         scorePlateCard.style.paddingBottom = 8f;
         StyleCard(scorePlateCard, new Color(0.06f, 0.07f, 0.20f, 0.92f), radius: 999f);
 
-        scorePercentLabel = CreateLabel("SCORE 100.0%", 38f, new Color(1f, 0.85f, 0.49f, 1f), true, TextAnchor.MiddleCenter);
+        scorePercentLabel = CreateLabel("SCORE 100.0%", 38f, new Color(1f, 0.85f, 0.49f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.7f;
 
         noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 21f, new Color(0.79f, 0.93f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
@@ -179,10 +185,10 @@ public sealed class TabsSongHeaderOverlay
         judgePopupLayer.style.bottom = 0f;
         judgePopupLayer.pickingMode = PickingMode.Ignore;
         pauseOverlay = CreateFullscreenOverlay();
-        Label pauseStarsLabel = CreateLabel("★ ★ ★", 34f, new Color(1f, 0.74f, 0.32f, 0.95f), true, TextAnchor.MiddleCenter);
+        Label pauseStarsLabel = CreateLabel("★ ★ ★", 34f, new Color(1f, 0.74f, 0.32f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         pauseStarsLabel.style.marginBottom = 8f;
         pauseStarsLabel.style.letterSpacing = 2.4f;
-        pauseTitleLabel = CreateLabel("PAUSED", 132f, new Color(0.96f, 0.99f, 1f, 1f), true, TextAnchor.MiddleCenter);
+        pauseTitleLabel = CreateLabel("PAUSED", 132f, new Color(0.96f, 0.99f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         pauseTitleLabel.style.letterSpacing = 1.4f;
         pauseHintLabel = CreateLabel("SPACE Resume   •   ←/→ Seek   •   1/2 Marker", 34f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
         pauseHintLabel.style.marginTop = 10f;
@@ -200,7 +206,7 @@ public sealed class TabsSongHeaderOverlay
         pauseInfoLabel = CreateLabel("", 32f, new Color(0.90f, 0.96f, 1f, 1f));
         pauseInfoLabel.style.marginBottom = 12f;
 
-        speedValueLabel = CreateLabel("Song Speed 100%", 34f, new Color(1f, 0.96f, 0.87f, 1f), true);
+        speedValueLabel = CreateLabel("Song Speed 100%", 34f, new Color(1f, 0.96f, 0.87f, 1f), true, useTitleFont: true);
         speedSlider = new Slider(1f, 200f);
         speedSlider.focusable = false;
         speedSlider.style.marginTop = 8f;
@@ -235,11 +241,11 @@ public sealed class TabsSongHeaderOverlay
         pauseOverlay.Add(pauseCard);
 
         settingsOverlay = CreateFullscreenOverlay();
-        Label settingsTopTag = CreateLabel("◉ TUNE DECK ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter);
+        Label settingsTopTag = CreateLabel("◉ TUNE DECK ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         settingsTopTag.style.marginBottom = 6f;
         settingsTopTag.style.letterSpacing = 1.6f;
 
-        Label settingsTitle = CreateLabel("SESSION SETTINGS", 88f, Color.white, true, TextAnchor.MiddleCenter);
+        Label settingsTitle = CreateLabel("SESSION SETTINGS", 88f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
         settingsTitle.style.marginBottom = 8f;
         settingsTitle.style.letterSpacing = 1.1f;
         Label settingsHelp = CreateLabel("Fine tune timing, offsets, and playback behavior.", 28f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
@@ -305,11 +311,11 @@ public sealed class TabsSongHeaderOverlay
         settingsOverlay.Add(settingsCard);
 
         selectionOverlay = CreateFullscreenOverlay();
-        Label selectionTopTag = CreateLabel("PRESS START TO PICK YOUR TRACK", 28f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter);
+        Label selectionTopTag = CreateLabel("PRESS START TO PICK YOUR TRACK", 28f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         selectionTopTag.style.marginBottom = 6f;
         selectionTopTag.style.letterSpacing = 1f;
 
-        Label selectionTitle = CreateLabel("TRACK LIBRARY", 90f, Color.white, true, TextAnchor.MiddleCenter);
+        Label selectionTitle = CreateLabel("TRACK LIBRARY", 90f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
         selectionTitle.style.letterSpacing = 1.1f;
         selectionSubtitleLabel = CreateLabel("", 30f, new Color(0.84f, 0.94f, 1f, 0.98f), false, TextAnchor.MiddleCenter);
         selectionSubtitleLabel.style.marginBottom = 16f;
@@ -355,8 +361,7 @@ public sealed class TabsSongHeaderOverlay
         selectionOverlay.Add(selectionSubtitleLabel);
         selectionOverlay.Add(selectionCard);
 
-        if (dynamicFont != null)
-            ApplyFont(root, FontDefinition.FromFont(dynamicFont));
+        ApplyFont(root, bodyFontDefinition);
 
         songCard.Add(songNameLabel);
         songCard.Add(trackNameLabel);
@@ -583,11 +588,11 @@ public sealed class TabsSongHeaderOverlay
             content.style.alignItems = Align.Center;
             content.style.flexGrow = 1f;
 
-            Label nameLabel = CreateLabel(string.Empty, 28f, Color.white, true, TextAnchor.MiddleLeft);
+            Label nameLabel = CreateLabel(string.Empty, 28f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: true);
             nameLabel.style.flexGrow = 1f;
             nameLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
 
-            Label scoreLabel = CreateLabel("0%", 26f, new Color(1f, 0.85f, 0.45f, 0.98f), true, TextAnchor.MiddleRight);
+            Label scoreLabel = CreateLabel("0%", 26f, new Color(1f, 0.85f, 0.45f, 0.98f), true, TextAnchor.MiddleRight, useTitleFont: true);
             scoreLabel.style.minWidth = 130f;
             scoreLabel.style.unityTextAlign = TextAnchor.MiddleRight;
 
@@ -650,7 +655,7 @@ public sealed class TabsSongHeaderOverlay
             text = missTexts[UnityEngine.Random.Range(0, missTexts.Length)];
         }
 
-        Label popup = CreateLabel(text, judgePopupFontSize, success ? new Color(1f, 0.90f, 0.46f, 0.99f) : new Color(1f, 0.44f, 0.62f, 0.99f), true, TextAnchor.MiddleCenter);
+        Label popup = CreateLabel(text, judgePopupFontSize, success ? new Color(1f, 0.90f, 0.46f, 0.99f) : new Color(1f, 0.44f, 0.62f, 0.99f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         popup.style.position = Position.Absolute;
         popup.style.left = 0f;
         popup.style.right = 0f;
@@ -717,18 +722,19 @@ public sealed class TabsSongHeaderOverlay
         }
     }
 
-    private static Label CreateLabel(string text, float size, Color color, bool bold = false, TextAnchor anchor = TextAnchor.MiddleLeft)
+    private Label CreateLabel(string text, float size, Color color, bool bold = false, TextAnchor anchor = TextAnchor.MiddleLeft, bool useTitleFont = false)
     {
         Label label = new Label(text);
         label.style.fontSize = size;
         label.style.color = color;
         label.style.unityTextAlign = anchor;
+        label.style.unityFontDefinition = useTitleFont ? titleFontDefinition : bodyFontDefinition;
         if (bold)
             label.style.unityFontStyleAndWeight = FontStyle.Bold;
         return label;
     }
 
-    private static Button CreateActionButton(string text, Action onClick)
+    private Button CreateActionButton(string text, Action onClick)
     {
         Button button = new Button(() => onClick?.Invoke()) { text = text };
         button.style.height = 64f;
@@ -753,6 +759,7 @@ public sealed class TabsSongHeaderOverlay
         button.style.borderLeftColor = new Color(0.66f, 0.54f, 1f, 0.94f);
         button.style.unityTextAlign = TextAnchor.MiddleCenter;
         button.style.letterSpacing = 0.35f;
+        button.style.unityFontDefinition = titleFontDefinition;
         return button;
     }
 
@@ -793,6 +800,82 @@ public sealed class TabsSongHeaderOverlay
         root.style.unityFontDefinition = font;
         foreach (VisualElement child in root.Children())
             ApplyFont(child, font);
+    }
+
+    private static (Font body, Font title) ResolveUiFonts(Font fallbackFont)
+    {
+        Font body = TryFindFontByName("pixelArtFont", "pixel", "pix");
+        Font title = TryFindFontByName("arcade", "arcade", "shadow");
+
+        if (body == null)
+            body = TryLoadFontFromUiFolder("pixelArtFont") ?? fallbackFont;
+        if (title == null)
+            title = TryLoadFontFromUiFolder("arcade") ?? body ?? fallbackFont;
+
+        return (body ?? fallbackFont, title ?? body ?? fallbackFont);
+    }
+
+    private static Font TryFindFontByName(params string[] keywords)
+    {
+        if (keywords == null || keywords.Length == 0)
+            return null;
+
+        Font[] availableFonts = Resources.FindObjectsOfTypeAll<Font>();
+        Font best = null;
+
+        foreach (Font font in availableFonts)
+        {
+            if (font == null || string.IsNullOrWhiteSpace(font.name))
+                continue;
+
+            string normalized = font.name.ToLowerInvariant();
+            for (int i = 0; i < keywords.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(keywords[i]))
+                    continue;
+
+                if (!normalized.Contains(keywords[i].ToLowerInvariant()))
+                    continue;
+
+                if (normalized == keywords[i].ToLowerInvariant())
+                    return font;
+
+                best ??= font;
+            }
+        }
+
+        return best;
+    }
+
+    private static Font TryLoadFontFromUiFolder(string baseName)
+    {
+        if (string.IsNullOrWhiteSpace(baseName))
+            return null;
+
+        string uiFolder = Path.Combine(Application.dataPath, "UI");
+        if (!Directory.Exists(uiFolder))
+            return null;
+
+        foreach (string path in Directory.EnumerateFiles(uiFolder))
+        {
+            string extension = Path.GetExtension(path);
+            if (!string.Equals(extension, ".ttf", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(extension, ".otf", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string fileName = Path.GetFileNameWithoutExtension(path);
+            if (string.IsNullOrWhiteSpace(fileName) ||
+                fileName.IndexOf(baseName, StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                continue;
+            }
+
+            return Font.CreateDynamicFontFromOSFont(path, 16);
+        }
+
+        return null;
     }
 
     private static string FormatTrackName(string trackDisplayName)
