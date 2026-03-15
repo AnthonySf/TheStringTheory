@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
@@ -19,7 +20,18 @@ public sealed class TabsSongHeaderOverlay
     private readonly VisualElement scorePlate;
     private readonly Label scorePercentLabel;
     private readonly Label noteTallyLabel;
-    private readonly Label judgePopupLabel;
+    private readonly VisualElement judgePopupLayer;
+
+    private readonly List<JudgePopupEntry> activeJudgePopups = new List<JudgePopupEntry>();
+
+    private sealed class JudgePopupEntry
+    {
+        public Label label;
+        public float startTime;
+        public float startY;
+        public float endY;
+        public float duration;
+    }
 
     private readonly VisualElement pauseOverlay;
     private readonly Label pauseTitleLabel;
@@ -50,8 +62,8 @@ public sealed class TabsSongHeaderOverlay
     private bool suppressCallbacks;
     private bool hasSeenSnapshot;
     private int lastResolvedCount;
-    private float judgePopupStartTime = -1f;
-    private const float JudgePopupDuration = 0.65f;
+    private int hitStreak;
+    private float judgePopupFontSize = 82f;
 
     public TabsSongHeaderOverlay(GuitarBridgeServer owner)
     {
@@ -151,16 +163,13 @@ public sealed class TabsSongHeaderOverlay
         scorePlateCard.Add(noteTallyLabel);
         scorePlate.Add(scorePlateCard);
 
-        judgePopupLabel = CreateLabel("SUCCESS", 72f, new Color(1f, 0.82f, 0.36f, 0.98f), true, TextAnchor.MiddleCenter);
-        judgePopupLabel.style.position = Position.Absolute;
-        judgePopupLabel.style.top = 230f;
-        judgePopupLabel.style.left = 0f;
-        judgePopupLabel.style.right = 0f;
-        judgePopupLabel.style.paddingTop = 10f;
-        judgePopupLabel.style.paddingBottom = 10f;
-        judgePopupLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        judgePopupLabel.style.letterSpacing = 1.6f;
-        judgePopupLabel.style.display = DisplayStyle.None;
+        judgePopupLayer = new VisualElement();
+        judgePopupLayer.style.position = Position.Absolute;
+        judgePopupLayer.style.left = 0f;
+        judgePopupLayer.style.right = 0f;
+        judgePopupLayer.style.top = 0f;
+        judgePopupLayer.style.bottom = 0f;
+        judgePopupLayer.pickingMode = PickingMode.Ignore;
         pauseOverlay = CreateFullscreenOverlay();
         Label pauseStarsLabel = CreateLabel("★ ★ ★", 34f, new Color(1f, 0.74f, 0.32f, 0.95f), true, TextAnchor.MiddleCenter);
         pauseStarsLabel.style.marginBottom = 8f;
@@ -358,7 +367,7 @@ public sealed class TabsSongHeaderOverlay
         root.Add(songCard);
         root.Add(speedBadgeLabel);
         root.Add(scorePlate);
-        root.Add(judgePopupLabel);
+        root.Add(judgePopupLayer);
         root.Add(pauseOverlay);
         root.Add(settingsOverlay);
         root.Add(selectionOverlay);
@@ -417,34 +426,21 @@ public sealed class TabsSongHeaderOverlay
         else if (resolvedCount > lastResolvedCount && latestResolved != null)
         {
             bool success = latestResolved.IsHit;
-            judgePopupLabel.text = success ? "SUCCESS" : "FAIL";
-            judgePopupLabel.style.color = success
-                ? new Color(1f, 0.90f, 0.46f, 0.99f)
-                : new Color(1f, 0.44f, 0.62f, 0.99f);
-            judgePopupStartTime = Time.unscaledTime;
+            if (success)
+                hitStreak++;
+            else
+                hitStreak = 0;
+
+            SpawnJudgePopup(success, hitStreak);
             lastResolvedCount = resolvedCount;
         }
         else if (resolvedCount < lastResolvedCount)
         {
             lastResolvedCount = resolvedCount;
+            hitStreak = 0;
         }
 
-        float popupElapsed = Time.unscaledTime - judgePopupStartTime;
-        if (popupElapsed >= 0f && popupElapsed <= JudgePopupDuration)
-        {
-            float t = popupElapsed / JudgePopupDuration;
-            float eased = 1f - Mathf.Pow(1f - t, 3f);
-            judgePopupLabel.style.display = DisplayStyle.Flex;
-            judgePopupLabel.style.top = Mathf.Lerp(238f, 148f, eased);
-            judgePopupLabel.style.opacity = Mathf.Lerp(1f, 0f, t);
-            judgePopupLabel.style.scale = new Scale(new Vector3(Mathf.Lerp(1.08f, 0.96f, eased), Mathf.Lerp(1.08f, 0.96f, eased), 1f));
-        }
-        else
-        {
-            judgePopupLabel.style.display = DisplayStyle.None;
-            judgePopupLabel.style.opacity = 1f;
-            judgePopupLabel.style.scale = new Scale(Vector3.one);
-        }
+        UpdateJudgePopups();
 
         float speedPercent = Mathf.Clamp(snapshot.playbackSpeedPercent, 1f, 200f);
         speedBadgeLabel.text = $"SPEED {speedPercent:F0}%";
@@ -530,6 +526,95 @@ public sealed class TabsSongHeaderOverlay
             return;
 
         owner.SelectSongByIndexFromUi(rowIndex + currentSongListScrollOffset);
+    }
+
+
+    private void SpawnJudgePopup(bool success, int streak)
+    {
+        string text;
+        if (success)
+        {
+            if (streak >= 8)
+                text = "UNSTOPPABLE!";
+            else if (streak >= 5)
+                text = "ON FIRE!";
+            else
+            {
+                string[] hitTexts = { "Great!", "Awesome!", "Perfect!", "Nice!" };
+                text = hitTexts[UnityEngine.Random.Range(0, hitTexts.Length)];
+            }
+        }
+        else
+        {
+            string[] missTexts = { "Miss!", "Oops!", "Late!" };
+            text = missTexts[UnityEngine.Random.Range(0, missTexts.Length)];
+        }
+
+        Label popup = CreateLabel(text, judgePopupFontSize, success ? new Color(1f, 0.90f, 0.46f, 0.99f) : new Color(1f, 0.44f, 0.62f, 0.99f), true, TextAnchor.MiddleCenter);
+        popup.style.position = Position.Absolute;
+        popup.style.left = 0f;
+        popup.style.right = 0f;
+        popup.style.unityTextAlign = TextAnchor.MiddleCenter;
+        popup.style.letterSpacing = 1.2f;
+        popup.style.opacity = 1f;
+        popup.style.scale = new Scale(new Vector3(1.14f, 1.14f, 1f));
+
+        float baseY = Mathf.Clamp(Screen.height * 0.34f, 240f, 420f);
+        int layer = Mathf.Min(activeJudgePopups.Count, 4);
+        float startY = baseY + layer * 24f;
+        popup.style.top = startY;
+
+        judgePopupLayer.Add(popup);
+        activeJudgePopups.Add(new JudgePopupEntry
+        {
+            label = popup,
+            startTime = Time.unscaledTime,
+            startY = startY,
+            endY = startY - 150f,
+            duration = 1.05f
+        });
+    }
+
+    private void UpdateJudgePopups()
+    {
+        float now = Time.unscaledTime;
+        for (int i = activeJudgePopups.Count - 1; i >= 0; i--)
+        {
+            JudgePopupEntry popup = activeJudgePopups[i];
+            if (popup == null || popup.label == null)
+            {
+                activeJudgePopups.RemoveAt(i);
+                continue;
+            }
+
+            float elapsed = now - popup.startTime;
+            if (elapsed >= popup.duration)
+            {
+                judgePopupLayer.Remove(popup.label);
+                activeJudgePopups.RemoveAt(i);
+                continue;
+            }
+
+            float t = Mathf.Clamp01(elapsed / popup.duration);
+            float moveEase = 1f - Mathf.Pow(1f - t, 2.2f);
+            popup.label.style.top = Mathf.Lerp(popup.startY, popup.endY, moveEase);
+            popup.label.style.opacity = 1f - Mathf.Pow(t, 1.35f);
+
+            float scale;
+            if (t < 0.16f)
+            {
+                float popT = t / 0.16f;
+                scale = Mathf.Lerp(1.22f, 1.00f, popT);
+            }
+            else
+            {
+                float settleT = (t - 0.16f) / 0.84f;
+                scale = Mathf.Lerp(1.00f, 0.92f, settleT);
+            }
+
+            popup.label.style.scale = new Scale(new Vector3(scale, scale, 1f));
+            popup.label.style.fontSize = judgePopupFontSize;
+        }
     }
 
     private static Label CreateLabel(string text, float size, Color color, bool bold = false, TextAnchor anchor = TextAnchor.MiddleLeft)
@@ -675,7 +760,7 @@ public sealed class TabsSongHeaderOverlay
         speedBadgeLabel.style.fontSize = bodySize;
         scorePercentLabel.style.fontSize = bodySize * 0.88f;
         noteTallyLabel.style.fontSize = bodySize * 0.50f;
-        judgePopupLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.072f, 64f, 108f);
+        judgePopupFontSize = Mathf.Clamp(screenHeight * 0.072f, 64f, 108f);
         pauseTitleLabel.style.fontSize = pauseSize;
         pauseHintLabel.style.fontSize = bodySize * 0.85f;
         pauseInfoLabel.style.fontSize = bodySize * 0.80f;
