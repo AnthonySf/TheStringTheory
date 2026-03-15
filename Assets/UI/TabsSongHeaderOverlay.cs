@@ -170,6 +170,7 @@ public sealed class TabsSongHeaderOverlay
     private int lastResolvedCount;
     private int hitStreak;
     private float judgePopupFontSize = 82f;
+    private float displayedInputMeterLevel;
 
     private readonly HashSet<int> scoredNoteIds = new HashSet<int>();
     private int scoreHits;
@@ -477,6 +478,8 @@ public sealed class TabsSongHeaderOverlay
         inputMeterNeedle.style.borderTopRightRadius = 1f;
         inputMeterNeedle.style.borderBottomLeftRadius = 1f;
         inputMeterNeedle.style.borderBottomRightRadius = 1f;
+        inputMeterNeedle.style.transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(100f), 0f);
+        inputMeterNeedle.style.rotate = new Rotate(new Angle(-65f, AngleUnit.Degree));
 
         inputMeterNeedleCap = new VisualElement();
         inputMeterNeedleCap.style.position = Position.Absolute;
@@ -922,6 +925,11 @@ public sealed class TabsSongHeaderOverlay
         detectorStatusLabel.style.color = detectorConnected
             ? new Color(0.49f, 0.95f, 0.63f, 1f)
             : new Color(1f, 0.47f, 0.53f, 1f);
+
+        float liveInputLevel = detectorConnected ? Mathf.Clamp01(snapshot.inputLevelNormalized) : 0f;
+        displayedInputMeterLevel = Mathf.Lerp(displayedInputMeterLevel, liveInputLevel, 0.22f);
+        float needleAngle = Mathf.Lerp(-65f, 65f, displayedInputMeterLevel);
+        inputMeterNeedle.style.rotate = new Rotate(new Angle(needleAngle, AngleUnit.Degree));
 
         suppressCallbacks = true;
         speedSlider.SetValueWithoutNotify(speedPercent);
@@ -1487,14 +1495,13 @@ public sealed class TabsSongHeaderOverlay
             tick.style.top = arcY - 1f;
         }
 
-        float needleHeight = Mathf.Clamp(meterHeight * 0.42f, 24f, 44f);
-        float needleTop = Mathf.Clamp(meterHeight * 0.30f, 18f, 36f);
-        inputMeterNeedle.style.height = needleHeight;
-        inputMeterNeedle.style.left = centerX - 1f;
-        inputMeterNeedle.style.top = needleTop;
-
         float capSize = Mathf.Clamp(meterHeight * 0.16f, 10f, 16f);
         float pivotY = arcViewportTop + arcViewportHeight + Mathf.Clamp(meterHeight * 0.10f, 6f, 12f);
+        float needleHeight = Mathf.Clamp(meterHeight * 0.42f, 24f, 44f);
+        inputMeterNeedle.style.height = needleHeight;
+        inputMeterNeedle.style.left = centerX - 1.5f;
+        inputMeterNeedle.style.top = pivotY - needleHeight;
+
         inputMeterNeedleCap.style.width = capSize;
         inputMeterNeedleCap.style.height = capSize;
         inputMeterNeedleCap.style.left = centerX - (capSize * 0.5f);
@@ -1829,7 +1836,7 @@ public sealed class TabsSongHeaderOverlay
 
         float jackHeight = Mathf.Clamp(pedalHeight * 0.34f, 60f, 102f);
         float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 22f, 40f);
-        float jackOffset = jackWidth;
+        float jackOffset = Mathf.Max(0f, jackWidth - 1f);
         float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
         scorePedalInputJack.style.left = -jackOffset;

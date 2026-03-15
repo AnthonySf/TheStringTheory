@@ -142,6 +142,7 @@ public sealed class GuitarGameplaySnapshot
     public bool isBackingTrackPlaying;
     public float backingTrackTime;
     public bool noteDetectorConnected;
+    public float inputLevelNormalized;
     public bool showGlobalSettings;
     public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
 }
