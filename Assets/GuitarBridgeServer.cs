@@ -263,6 +263,10 @@ public class GuitarBridgeServer : MonoBehaviour
     [Min(0.001f)] public float tabSkyStarSizeMin = 0.015f;
     [Min(0.001f)] public float tabSkyStarSizeMax = 0.065f;
     [Range(0f, 1f)] public float tabSkyStarAlpha = 0.78f;
+    [Range(0f, 1f)] public float tabSkyStarTwinkleFraction = 0.28f;
+    [Range(0f, 1f)] public float tabSkyStarTwinkleStrength = 0.16f;
+    [Min(0.05f)] public float tabSkyStarTwinkleSpeedMin = 0.45f;
+    [Min(0.05f)] public float tabSkyStarTwinkleSpeedMax = 1.2f;
     [Range(0f, 0.2f)] public float tabSkyCloudVerticalBob = 0.04f;
 
     [Header("Tabs Header")]
@@ -2488,6 +2492,10 @@ private void ParseUdpState()
         RegisterEnumSetting("bg.skyMood", "Tabs Background FX - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime and sunset palettes.", new []{"Day","Sunset"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
         RegisterBoolSetting("bg.skyStars", "Tabs Background FX - Blue Sky", "Static Sky Stars", "Adds non-moving stars behind clouds in BlueSky mode.", () => tabSkyStarsEnabled, v => tabSkyStarsEnabled = v);
         RegisterIntSetting("bg.skyStarCount", "Tabs Background FX - Blue Sky", "Sky Star Count", "Controls how many static stars are rendered in BlueSky mode.", 8, 1200, 1, () => tabSkyStarCount, v => tabSkyStarCount = v);
+        RegisterFloatSetting("bg.skyStarTwinkleFraction", "Tabs Background FX - Blue Sky", "Star Twinkle Fraction", "Percentage of stars allowed to twinkle.", 0f, 1f, 0.01f, () => tabSkyStarTwinkleFraction, v => tabSkyStarTwinkleFraction = v);
+        RegisterFloatSetting("bg.skyStarTwinkleStrength", "Tabs Background FX - Blue Sky", "Star Twinkle Strength", "How much brightness variation twinkling stars receive.", 0f, 0.6f, 0.01f, () => tabSkyStarTwinkleStrength, v => tabSkyStarTwinkleStrength = v);
+        RegisterFloatSetting("bg.skyStarTwinkleSpeedMin", "Tabs Background FX - Blue Sky", "Star Twinkle Speed Min", "Minimum twinkle speed for twinkling stars.", 0.05f, 4f, 0.01f, () => tabSkyStarTwinkleSpeedMin, v => tabSkyStarTwinkleSpeedMin = v);
+        RegisterFloatSetting("bg.skyStarTwinkleSpeedMax", "Tabs Background FX - Blue Sky", "Star Twinkle Speed Max", "Maximum twinkle speed for twinkling stars.", 0.05f, 4f, 0.01f, () => tabSkyStarTwinkleSpeedMax, v => tabSkyStarTwinkleSpeedMax = v);
         RegisterEnumSetting("bg.starStyle", "Tabs Background FX - Starfield Core", "Star Style", "Visual style used for star sprites in the background.", new []{"SoftDots","Crystal","Neon"}, () => tabStarStyle.ToString(), v => { if (Enum.TryParse(v, out TabsStarStyle style)) tabStarStyle = style; });
         RegisterIntSetting("bg.starSeed", "Tabs Background FX - Starfield Core", "Star Seed", "Changes the procedural star layout while keeping it deterministic.", 0, 99999, 1, () => tabStarSeed, v => tabStarSeed = v);
         RegisterFloatSetting("bg.starDriftSpeed", "Tabs Background FX - Starfield Core", "Star Drift Speed", "Horizontal motion speed of star layers.", 0f, 2.5f, 0.01f, () => tabStarDriftSpeed, v => tabStarDriftSpeed = v);
