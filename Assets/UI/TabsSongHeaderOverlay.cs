@@ -487,11 +487,11 @@ public sealed class TabsSongHeaderOverlay
 
         scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(0.07f, 0.23f, 0.24f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.35f;
-        scorePercentLabel.style.marginTop = 4f;
+        scorePercentLabel.style.marginTop = 1f;
         scorePercentLabel.style.flexShrink = 0f;
 
         noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 24f, new Color(0.09f, 0.22f, 0.21f, 0.95f), true, TextAnchor.MiddleCenter);
-        noteTallyLabel.style.marginTop = 3f;
+        noteTallyLabel.style.marginTop = 0f;
         noteTallyLabel.style.flexShrink = 0f;
         noteTallyLabel.style.letterSpacing = 0.2f;
 
@@ -1778,24 +1778,26 @@ public sealed class TabsSongHeaderOverlay
         float meterLabelHeight = inputMeterLabel.resolvedStyle.fontSize > 0f
             ? inputMeterLabel.resolvedStyle.fontSize * 1.35f
             : Mathf.Clamp(bodySize * 0.58f, 16f, 28f);
-        float requiredScreenHeight = meterHeight + meterLabelHeight + (bodySize * 1.15f) + (bodySize * 0.78f) + 26f;
-        float minPedalHeightForContent = requiredScreenHeight + knobSize + footswitchSize + 62f;
+        float requiredScreenHeight = meterHeight + meterLabelHeight + (bodySize * 1.45f) + (bodySize * 0.95f) + 24f;
+        float topRowHeight = Mathf.Max(ledSize, scorePedalBrandLabel.resolvedStyle.fontSize * 1.25f);
+        float fixedPedalContentHeight = 16f + topRowHeight + 6f + knobSize + 7f + 8f + footswitchSize + 16f;
+        float minPedalHeightForContent = fixedPedalContentHeight + requiredScreenHeight;
         if (pedalHeight < minPedalHeightForContent)
         {
-            pedalHeight = Mathf.Clamp(minPedalHeightForContent, 280f, 420f);
-            knobSize = Mathf.Clamp(pedalHeight * 0.16f, 30f, 52f);
+            pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 460f);
+            knobSize = Mathf.Clamp(pedalHeight * 0.16f, 30f, 54f);
             ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
-            footswitchSize = Mathf.Clamp(pedalHeight * 0.20f, 38f, 64f);
-            meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 120f);
+            footswitchSize = Mathf.Clamp(pedalHeight * 0.20f, 38f, 66f);
+            meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 126f);
             inputMeterFace.style.height = meterHeight;
             LayoutInputMeterGraphics(meterWidth, meterHeight);
-            requiredScreenHeight = meterHeight + meterLabelHeight + (bodySize * 1.15f) + (bodySize * 0.78f) + 26f;
+            requiredScreenHeight = meterHeight + meterLabelHeight + (bodySize * 1.45f) + (bodySize * 0.95f) + 24f;
         }
 
-        scorePlate.style.height = pedalHeight + 40f;
+        scorePlate.style.height = pedalHeight + 44f;
         scorePedalBody.style.height = pedalHeight;
-        scorePedalScreen.style.minHeight = Mathf.Clamp(requiredScreenHeight, 126f, 188f);
-        scorePedalScreen.style.maxHeight = Mathf.Clamp(requiredScreenHeight + 2f, 128f, 192f);
+        scorePedalScreen.style.minHeight = Mathf.Clamp(requiredScreenHeight, 132f, 220f);
+        scorePedalScreen.style.maxHeight = Mathf.Clamp(requiredScreenHeight, 132f, 220f);
 
         float jackHeight = Mathf.Clamp(pedalHeight * 0.24f, 42f, 68f);
         float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 18f, 32f);
