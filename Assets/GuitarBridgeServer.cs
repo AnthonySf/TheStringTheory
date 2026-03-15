@@ -344,6 +344,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private const float ArrowDoubleTapThreshold = 0.35f;
     private readonly List<RuntimeSettingDefinition> runtimeSettingDefinitions = new List<RuntimeSettingDefinition>();
     private readonly Dictionary<string, RuntimeSettingDefinition> runtimeSettingById = new Dictionary<string, RuntimeSettingDefinition>();
+    private readonly Dictionary<string, string> runtimeSettingDefaultValues = new Dictionary<string, string>();
     private readonly Dictionary<string, string> pendingGlobalRuntimeSettingValues = new Dictionary<string, string>();
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
 
@@ -964,6 +965,12 @@ public class GuitarBridgeServer : MonoBehaviour
     public void SetGlobalRuntimeSettingFromUi(string settingId, string serializedValue)
     {
         ApplyRuntimeSettingValue(settingId, serializedValue, saveMetadata: true);
+    }
+
+    public void ResetGlobalSettingsToDefaultsFromUi()
+    {
+        ApplyDefaultRuntimeSettings();
+        SaveGlobalRuntimeSettingsMetadata();
     }
 
     public void ToggleOffsetScopeFromUi()
@@ -2375,6 +2382,7 @@ private void ParseUdpState()
     {
         runtimeSettingDefinitions.Clear();
         runtimeSettingById.Clear();
+        runtimeSettingDefaultValues.Clear();
 
         RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
@@ -2488,6 +2496,7 @@ private void ParseUdpState()
 
         runtimeSettingDefinitions.Add(definition);
         runtimeSettingById[definition.Id] = definition;
+        runtimeSettingDefaultValues[definition.Id] = definition.Getter != null ? definition.Getter() : string.Empty;
     }
 
     private List<RuntimeSettingSectionSnapshot> BuildRuntimeSettingsSnapshot()
@@ -2534,6 +2543,7 @@ private void ParseUdpState()
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             if (!File.Exists(path))
             {
+                ApplyDefaultRuntimeSettings();
                 SaveGlobalRuntimeSettingsMetadata();
                 return;
             }
@@ -2582,6 +2592,54 @@ private void ParseUdpState()
         {
             Debug.LogWarning($"Failed to save global settings metadata: {ex.Message}");
         }
+    }
+
+    private void ApplyDefaultRuntimeSettings()
+    {
+        Dictionary<string, string> defaults = LoadRuntimeSettingDefaultsFromFile();
+
+        foreach (RuntimeSettingDefinition definition in runtimeSettingDefinitions)
+        {
+            if (definition == null || string.IsNullOrEmpty(definition.Id))
+                continue;
+
+            string value;
+            if (!defaults.TryGetValue(definition.Id, out value) && !runtimeSettingDefaultValues.TryGetValue(definition.Id, out value))
+                continue;
+
+            ApplyRuntimeSettingValue(definition.Id, value, saveMetadata: false);
+        }
+    }
+
+    private static Dictionary<string, string> LoadRuntimeSettingDefaultsFromFile()
+    {
+        Dictionary<string, string> result = new Dictionary<string, string>();
+        string path = Path.Combine(ExternalContentPaths.StreamingRoot, "runtime_settings_defaults.json");
+
+        try
+        {
+            if (!File.Exists(path))
+                return result;
+
+            string json = File.ReadAllText(path);
+            GlobalRuntimeSettingsMetadata metadata = JsonUtility.FromJson<GlobalRuntimeSettingsMetadata>(json);
+            if (metadata?.values == null)
+                return result;
+
+            foreach (RuntimeSettingValueEntry entry in metadata.values)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.id))
+                    continue;
+
+                result[entry.id] = entry.value ?? string.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to load runtime setting defaults: {ex.Message}");
+        }
+
+        return result;
     }
 
     private void ApplyPlaybackSpeedToAudio()

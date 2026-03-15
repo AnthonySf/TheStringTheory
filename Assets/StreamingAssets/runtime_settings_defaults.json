@@ -1,0 +1,24 @@
+{
+  "values": [
+    { "id": "core.noteSpeed", "value": "12" },
+    { "id": "core.invertStrings", "value": "true" },
+    { "id": "timing.hitWindowEarly", "value": "0.3" },
+    { "id": "timing.hitWindowLate", "value": "0.5" },
+    { "id": "timing.judgmentGrace", "value": "0.75" },
+    { "id": "tabs.tabSectionDuration", "value": "4" },
+    { "id": "tabs.tabSectionLengthMultiplier", "value": "1" },
+    { "id": "layout.tabPanelGap", "value": "0.8" },
+    { "id": "layout.tabPanelHeight", "value": "4.2" },
+    { "id": "layout.tabLineSpacing", "value": "0.5" },
+    { "id": "layout.tabNoteFontSize", "value": "2.5" },
+    { "id": "fx.judgeableDarkenMultiplier", "value": "5" },
+    { "id": "fx.tabIdleFillDarken", "value": "0.4" },
+    { "id": "bg.mode", "value": "Starfield" },
+    { "id": "bg.starStyle", "value": "SoftDots" },
+    { "id": "bg.starSeed", "value": "1337" },
+    { "id": "bg.starDriftSpeed", "value": "0.55" },
+    { "id": "bg.shootingStars", "value": "true" },
+    { "id": "bg.nebula", "value": "false" },
+    { "id": "bg.nebulaOpacity", "value": "0.05" }
+  ]
+}

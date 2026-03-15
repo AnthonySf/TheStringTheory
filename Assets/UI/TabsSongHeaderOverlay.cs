@@ -64,7 +64,9 @@ public sealed class TabsSongHeaderOverlay
     private readonly Slider settingsStartDelaySlider;
 
     private readonly VisualElement globalSettingsOverlay;
+    private readonly VisualElement globalSettingsCard;
     private readonly ScrollView globalSettingsScrollView;
+    private readonly Button resetDefaultsButton;
     private readonly Dictionary<string, VisualElement> globalSettingInputs = new Dictionary<string, VisualElement>();
     private readonly Dictionary<string, Label> globalSettingValueLabels = new Dictionary<string, Label>();
 
@@ -326,20 +328,36 @@ public sealed class TabsSongHeaderOverlay
         Label globalSettingsHelp = CreateLabel("Gameplay and visual tuning for every song.", 28f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
         globalSettingsHelp.style.marginBottom = 18f;
 
-        VisualElement globalSettingsCard = new VisualElement();
-        globalSettingsCard.style.width = 1260f;
-        globalSettingsCard.style.maxWidth = 1400f;
-        globalSettingsCard.style.maxHeight = 760f;
+        globalSettingsCard = new VisualElement();
+        globalSettingsCard.style.width = Length.Percent(94f);
+        globalSettingsCard.style.maxWidth = 1780f;
+        globalSettingsCard.style.height = Length.Percent(90f);
         globalSettingsCard.style.paddingLeft = 24f;
         globalSettingsCard.style.paddingRight = 24f;
         globalSettingsCard.style.paddingTop = 20f;
         globalSettingsCard.style.paddingBottom = 20f;
+        globalSettingsCard.style.flexDirection = FlexDirection.Column;
         StyleCard(globalSettingsCard, new Color(0.04f, 0.07f, 0.14f, 0.96f), radius: 20f);
+
+        VisualElement globalTopButtons = new VisualElement();
+        globalTopButtons.style.flexDirection = FlexDirection.Row;
+        globalTopButtons.style.flexWrap = Wrap.Wrap;
+        globalTopButtons.style.marginBottom = 12f;
+
+        resetDefaultsButton = CreateActionButton("Reset Settings", () => owner?.ResetGlobalSettingsToDefaultsFromUi());
+        resetDefaultsButton.tooltip = "Reload default gameplay and visual tuning values.";
+        resetDefaultsButton.style.backgroundColor = new Color(0.36f, 0.16f, 0.20f, 0.98f);
+        resetDefaultsButton.style.borderTopColor = new Color(0.95f, 0.48f, 0.53f, 0.95f);
+        resetDefaultsButton.style.borderRightColor = new Color(0.80f, 0.35f, 0.39f, 0.95f);
+        resetDefaultsButton.style.borderBottomColor = new Color(0.62f, 0.23f, 0.26f, 0.95f);
+        resetDefaultsButton.style.borderLeftColor = new Color(0.80f, 0.35f, 0.39f, 0.95f);
+        globalTopButtons.Add(resetDefaultsButton);
+        globalSettingsCard.Add(globalTopButtons);
 
         globalSettingsScrollView = new ScrollView(ScrollViewMode.Vertical);
         globalSettingsScrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
         globalSettingsScrollView.style.flexGrow = 1f;
-        globalSettingsScrollView.style.maxHeight = 620f;
+        globalSettingsScrollView.style.minHeight = 0f;
         globalSettingsCard.Add(globalSettingsScrollView);
 
         VisualElement globalButtons = new VisualElement();
@@ -770,10 +788,12 @@ public sealed class TabsSongHeaderOverlay
         row.style.borderBottomColor = new Color(0.28f, 0.42f, 0.65f, 0.36f);
 
         Label label = CreateLabel(setting.label, 25f, Color.white, true);
+        label.AddToClassList("global-setting-title");
         label.tooltip = setting.tooltip;
         row.Add(label);
 
         Label help = CreateLabel(setting.tooltip, 20f, new Color(0.75f, 0.88f, 0.96f, 0.95f));
+        help.AddToClassList("global-setting-help");
         help.style.marginTop = 2f;
         help.style.marginBottom = 6f;
         help.tooltip = setting.tooltip;
@@ -815,6 +835,7 @@ public sealed class TabsSongHeaderOverlay
         row.Add(input);
 
         Label valueLabel = CreateLabel(setting.value, 18f, new Color(1f, 0.95f, 0.76f, 1f));
+        valueLabel.AddToClassList("global-setting-value");
         row.Add(valueLabel);
 
         globalSettingInputs[setting.id] = input;
@@ -1167,6 +1188,7 @@ public sealed class TabsSongHeaderOverlay
 
         float buttonFontSize = Mathf.Clamp(screenHeight * 0.026f, 24f, 38f);
         float buttonHeight = Mathf.Clamp(screenHeight * 0.070f, 58f, 90f);
+        float globalCardHeight = Mathf.Clamp(screenHeight * 0.90f, 560f, 1700f);
 
         foreach (SongSelectionRow row in selectionRows)
         {
@@ -1186,6 +1208,16 @@ public sealed class TabsSongHeaderOverlay
                 button.style.height = buttonHeight;
         }
 
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-title").ToList())
+            label.style.fontSize = buttonFontSize;
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-help").ToList())
+            label.style.fontSize = buttonFontSize;
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-value").ToList())
+            label.style.fontSize = buttonFontSize;
+
+        globalSettingsCard.style.height = globalCardHeight;
         songCard.style.minWidth = Mathf.Clamp(Screen.width * 0.46f, 640f, 1400f);
     }
 }
