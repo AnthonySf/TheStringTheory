@@ -30,6 +30,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         public Transform transform;
         public SpriteRenderer renderer;
         public float baseAlpha;
+        public bool twinkles;
+        public float twinkleSpeed;
+        public float twinklePhase;
     }
 
     private readonly List<SkyCloud> clouds = new List<SkyCloud>();
@@ -421,34 +424,53 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             renderer.sprite = starSprite;
             renderer.sortingOrder = -500;
 
-            float alpha = Mathf.Clamp01(owner.tabSkyStarAlpha * Random.Range(0.85f, 1f));
-            Color c = owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset
-                ? new Color(1f, 0.9f, 0.76f, alpha)
-                : new Color(0.92f, 0.97f, 1f, alpha);
-            renderer.color = c;
+            float depthT = Mathf.InverseLerp(nearZ, farZ, z);
+            float distanceFade = Mathf.Lerp(1f, 0.62f, depthT);
+            float alpha = Mathf.Clamp01(owner.tabSkyStarAlpha * Random.Range(0.88f, 1f) * distanceFade);
+            renderer.color = new Color(1f, 1f, 1f, alpha);
+
+            bool twinkles = Random.value < Mathf.Clamp01(owner.tabSkyStarTwinkleFraction);
+            float speedMin = Mathf.Max(0.05f, owner.tabSkyStarTwinkleSpeedMin);
+            float speedMax = Mathf.Max(speedMin, owner.tabSkyStarTwinkleSpeedMax);
 
             stars.Add(new SkyStar
             {
                 transform = star.transform,
                 renderer = renderer,
-                baseAlpha = alpha
+                baseAlpha = alpha,
+                twinkles = twinkles,
+                twinkleSpeed = twinkles ? Random.Range(speedMin, speedMax) : 0f,
+                twinklePhase = twinkles ? Random.Range(0f, Mathf.PI * 2f) : 0f
             });
         }
 
         Random.state = oldState;
     }
 
+    private void ClearStaticStars()
+    {
+        for (int i = 0; i < stars.Count; i++)
+        {
+            if (stars[i].transform != null)
+                Object.Destroy(stars[i].transform.gameObject);
+        }
+
+        stars.Clear();
+    }
+
     private void SyncStaticStarsState()
     {
         if (!owner.tabSkyStarsEnabled)
         {
-            for (int i = 0; i < stars.Count; i++)
-            {
-                if (stars[i].transform != null)
-                    Object.Destroy(stars[i].transform.gameObject);
-            }
+            ClearStaticStars();
+            return;
+        }
 
-            stars.Clear();
+        int targetCount = Mathf.Clamp(owner.tabSkyStarCount, 8, 1200);
+        if (stars.Count != targetCount)
+        {
+            ClearStaticStars();
+            CreateStaticStars();
             return;
         }
 
@@ -467,10 +489,15 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             if (star.renderer == null)
                 continue;
 
-            Color c = owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset
-                ? new Color(1f, 0.9f, 0.76f, star.baseAlpha)
-                : new Color(0.92f, 0.97f, 1f, star.baseAlpha);
-            star.renderer.color = c;
+            float alpha = star.baseAlpha;
+            if (star.twinkles && owner.tabSkyStarTwinkleStrength > 0.0001f)
+            {
+                float pulse = Mathf.Sin((Time.time * star.twinkleSpeed) + star.twinklePhase) * 0.5f + 0.5f;
+                float twinkle = (pulse - 0.5f) * 2f * owner.tabSkyStarTwinkleStrength;
+                alpha = Mathf.Clamp01(star.baseAlpha * (1f + twinkle));
+            }
+
+            star.renderer.color = new Color(1f, 1f, 1f, alpha);
         }
     }
 
