@@ -20,6 +20,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label songNameLabel;
     private readonly Label trackNameLabel;
     private readonly Label speedBadgeLabel;
+    private readonly Label detectorStatusLabel;
     private readonly VisualElement scorePlate;
     private readonly Label scorePercentLabel;
     private readonly Label noteTallyLabel;
@@ -65,7 +66,6 @@ public sealed class TabsSongHeaderOverlay
     private readonly ScrollView selectionScrollView;
     private readonly List<SongSelectionRow> selectionRows = new List<SongSelectionRow>();
 
-    private readonly Label marqueeLabel;
     private readonly Label vibeLabel;
 
     private int lastScreenHeight = -1;
@@ -122,12 +122,8 @@ public sealed class TabsSongHeaderOverlay
         hudStripe.style.borderBottomLeftRadius = 999f;
         hudStripe.style.borderBottomRightRadius = 999f;
 
-        marqueeLabel = CreateLabel("★  ★  ★  ARCADE SESSION  ★  ★  ★", 24f, new Color(1f, 0.82f, 0.49f, 1f), true, useTitleFont: false);
-        marqueeLabel.style.marginBottom = 6f;
-        marqueeLabel.style.letterSpacing = 0.8f;
-
         vibeLabel = CreateLabel("NEON RHYTHM // LIVE INPUT // HIGH SCORE ENERGY", 19f, new Color(0.64f, 0.87f, 1f, 0.95f), false);
-        vibeLabel.style.marginBottom = 16f;
+        vibeLabel.style.marginBottom = 14f;
         vibeLabel.style.letterSpacing = 0.5f;
 
         songCard = new VisualElement();
@@ -146,10 +142,26 @@ public sealed class TabsSongHeaderOverlay
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
         trackNameLabel.style.letterSpacing = 0.2f;
 
+        VisualElement statusRow = new VisualElement();
+        statusRow.style.flexDirection = FlexDirection.Row;
+        statusRow.style.alignItems = Align.Center;
+        statusRow.style.marginTop = 8f;
+
         speedBadgeLabel = CreateLabel("Speed 100%", 24f, new Color(1f, 0.96f, 0.76f, 1f), bold: true, useTitleFont: false);
-        speedBadgeLabel.style.marginTop = 8f;
         speedBadgeLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
         speedBadgeLabel.style.letterSpacing = 0.45f;
+
+        Label statusDotLabel = CreateLabel(" • ", 24f, new Color(0.78f, 0.86f, 1f, 0.85f), bold: true, useTitleFont: false);
+        statusDotLabel.style.marginLeft = 8f;
+        statusDotLabel.style.marginRight = 8f;
+
+        detectorStatusLabel = CreateLabel("Instrument Detector: DISCONNECTED", 24f, new Color(1f, 0.47f, 0.53f, 1f), bold: true, useTitleFont: false);
+        detectorStatusLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        detectorStatusLabel.style.letterSpacing = 0.2f;
+
+        statusRow.Add(speedBadgeLabel);
+        statusRow.Add(statusDotLabel);
+        statusRow.Add(detectorStatusLabel);
 
         scorePlate = new VisualElement();
         scorePlate.style.position = Position.Absolute;
@@ -367,9 +379,8 @@ public sealed class TabsSongHeaderOverlay
 
         songCard.Add(songNameLabel);
         songCard.Add(trackNameLabel);
-        songCard.Add(speedBadgeLabel);
+        songCard.Add(statusRow);
         root.Add(hudStripe);
-        root.Add(marqueeLabel);
         root.Add(vibeLabel);
         root.Add(songCard);
         root.Add(scorePlate);
@@ -489,6 +500,14 @@ public sealed class TabsSongHeaderOverlay
         float speedPercent = Mathf.Clamp(snapshot.playbackSpeedPercent, 1f, 200f);
         speedBadgeLabel.text = $"Speed {speedPercent:F0}%";
         speedValueLabel.text = $"Song Speed {speedPercent:F0}%";
+
+        bool detectorConnected = snapshot.noteDetectorConnected;
+        detectorStatusLabel.text = detectorConnected
+            ? "Instrument Detector: CONNECTED"
+            : "Instrument Detector: DISCONNECTED";
+        detectorStatusLabel.style.color = detectorConnected
+            ? new Color(0.49f, 0.95f, 0.63f, 1f)
+            : new Color(1f, 0.47f, 0.53f, 1f);
 
         suppressCallbacks = true;
         speedSlider.SetValueWithoutNotify(speedPercent);
@@ -924,9 +943,9 @@ public sealed class TabsSongHeaderOverlay
 
         songNameLabel.style.fontSize = songSize;
         trackNameLabel.style.fontSize = trackSize;
-        marqueeLabel.style.fontSize = bodySize * 0.58f;
-        vibeLabel.style.fontSize = bodySize * 0.42f;
+        vibeLabel.style.fontSize = bodySize * 0.48f;
         speedBadgeLabel.style.fontSize = bodySize * 0.70f;
+        detectorStatusLabel.style.fontSize = bodySize * 0.62f;
         scorePercentLabel.style.fontSize = bodySize * 0.88f;
         noteTallyLabel.style.fontSize = bodySize * 0.50f;
         judgePopupFontSize = Mathf.Clamp(screenHeight * 0.072f, 64f, 108f);
