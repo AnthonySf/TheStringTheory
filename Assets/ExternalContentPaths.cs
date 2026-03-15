@@ -12,7 +12,6 @@ public static class ExternalContentPaths
     public const string ToneLabConfigFileName = "tone.json";
     public const string SongMetadataFileName = "metadata.json";
     public const string SongSaveDataFileName = "saveData.json";
-    public const string SongCalibrationFileName = "calibration.json";
 
     public static string StreamingRoot => Application.streamingAssetsPath;
     public static string PersistentRoot => Application.persistentDataPath;
