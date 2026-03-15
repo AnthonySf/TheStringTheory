@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 {
@@ -48,19 +49,25 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         playhead = GameObject.CreatePrimitive(PrimitiveType.Cube);
         playhead.name = "TabPlayhead";
         playhead.transform.SetParent(root.transform, false);
-        playhead.GetComponent<Renderer>().material = CreateGlowMaterial(owner.tabPlayheadColor, 4f);
+        Renderer playheadRenderer = playhead.GetComponent<Renderer>();
+        playheadRenderer.material = CreateGlowMaterial(owner.tabPlayheadColor, 4f);
+        ConfigureRendererNoShadows(playheadRenderer);
 
         songHeaderOverlay = new TabsSongHeaderOverlay(owner);
 
         loopMarkerStart = GameObject.CreatePrimitive(PrimitiveType.Cube);
         loopMarkerStart.name = "LoopMarkerStart";
         loopMarkerStart.transform.SetParent(root.transform, false);
-        loopMarkerStart.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(1f, 0.2f, 0.2f, 0.95f), 4f);
+        Renderer loopStartRenderer = loopMarkerStart.GetComponent<Renderer>();
+        loopStartRenderer.material = CreateGlowMaterial(new Color(1f, 0.2f, 0.2f, 0.95f), 4f);
+        ConfigureRendererNoShadows(loopStartRenderer);
 
         loopMarkerEnd = GameObject.CreatePrimitive(PrimitiveType.Cube);
         loopMarkerEnd.name = "LoopMarkerEnd";
         loopMarkerEnd.transform.SetParent(root.transform, false);
-        loopMarkerEnd.GetComponent<Renderer>().material = CreateGlowMaterial(new Color(1f, 0.2f, 0.2f, 0.95f), 4f);
+        Renderer loopEndRenderer = loopMarkerEnd.GetComponent<Renderer>();
+        loopEndRenderer.material = CreateGlowMaterial(new Color(1f, 0.2f, 0.2f, 0.95f), 4f);
+        ConfigureRendererNoShadows(loopEndRenderer);
 
         RebuildCaches(sections);
         ConfigureCamera();
@@ -448,6 +455,15 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         return material;
     }
 
+    private static void ConfigureRendererNoShadows(Renderer renderer)
+    {
+        if (renderer == null)
+            return;
+
+        renderer.shadowCastingMode = ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+    }
+
     private sealed class TabPanelView
     {
         private readonly GuitarBridgeServer owner;
@@ -474,6 +490,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             Root = new GameObject(name);
             Root.transform.SetParent(parent, false);
 
+            CreateBackdrop();
             CreateBorder();
             CreateStrings();
 
@@ -544,7 +561,9 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 Renderer outlineRenderer = outlineDisc.GetComponent<Renderer>();
                 Renderer fillRenderer = fillDisc.GetComponent<Renderer>();
                 outlineRenderer.material = owner.CreateSharedGlowMaterial(owner.GetStringColor(note.stringIdx), 1.0f);
+                ConfigureRendererNoShadows(outlineRenderer);
                 fillRenderer.material = owner.CreateSharedGlowMaterial(owner.GetDarkenedStringColor(note.stringIdx, owner.tabIdleFillDarken), 0.3f);
+                ConfigureRendererNoShadows(fillRenderer);
 
                 GameObject textObj = new GameObject($"Label_{note.id}");
                 textObj.transform.SetParent(markerRoot.transform, false);
@@ -720,6 +739,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             go.transform.localScale = scale;
             Renderer renderer = go.GetComponent<Renderer>();
             renderer.material = owner.CreateSharedGlowMaterial(color, emission);
+            ConfigureRendererNoShadows(renderer);
             extraRenderers.Add(renderer);
         }
 
@@ -775,6 +795,24 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 kv.Value.SetAlpha(alpha);
         }
 
+        private void CreateBackdrop()
+        {
+            GameObject backdrop = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            backdrop.name = "TabsBackdrop";
+            backdrop.transform.SetParent(Root.transform, false);
+            backdrop.transform.localPosition = new Vector3(0f, 0f, owner.tabZDepth + 0.22f);
+            backdrop.transform.localScale = new Vector3(
+                owner.tabPanelWidth - 0.18f,
+                owner.tabPanelHeight - 0.16f,
+                0.05f
+            );
+
+            Renderer renderer = backdrop.GetComponent<Renderer>();
+            renderer.material = owner.CreateSharedGlowMaterial(owner.tabPanelBackdropColor, 0.08f);
+            ConfigureRendererNoShadows(renderer);
+            staticRenderers.Add(renderer);
+        }
+
         private void CreateBorder()
         {
             CreateBorderSegment(new Vector3(0f, owner.tabPanelHeight * 0.5f, 0f), new Vector3(owner.tabPanelWidth, owner.tabBorderThickness, owner.tabBorderDepth));
@@ -791,6 +829,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             border.transform.localScale = localScale;
             Renderer renderer = border.GetComponent<Renderer>();
             renderer.material = owner.CreateSharedGlowMaterial(owner.tabBorderColor, 0.4f);
+            ConfigureRendererNoShadows(renderer);
             staticRenderers.Add(renderer);
         }
 
@@ -812,6 +851,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
                 Renderer renderer = line.GetComponent<Renderer>();
                 renderer.material = owner.CreateSharedGlowMaterial(owner.GetStringColor(i), 0.25f);
+                ConfigureRendererNoShadows(renderer);
 
                 staticRenderers.Add(renderer);
             }
