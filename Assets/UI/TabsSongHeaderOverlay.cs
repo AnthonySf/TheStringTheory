@@ -273,13 +273,13 @@ public sealed class TabsSongHeaderOverlay
 
         scorePedalInputJack = CreatePedalJack();
         scorePedalInputJack.style.position = Position.Absolute;
-        scorePedalInputJack.style.left = -10f;
+        scorePedalInputJack.style.left = -24f;
         scorePedalInputJack.style.top = 102f;
 
         scorePedalOutputJack = CreatePedalJack();
         scorePedalOutputJack.style.position = Position.Absolute;
         scorePedalOutputJack.style.scale = new Scale(new Vector3(-1f, 1f, 1f));
-        scorePedalOutputJack.style.right = -10f;
+        scorePedalOutputJack.style.right = -24f;
         scorePedalOutputJack.style.top = 102f;
 
         VisualElement pedalFace = new VisualElement();
@@ -349,11 +349,11 @@ public sealed class TabsSongHeaderOverlay
 
         scorePedalScreen = new VisualElement();
         scorePedalScreen.style.flexGrow = 1f;
-        scorePedalScreen.style.paddingTop = 8f;
-        scorePedalScreen.style.paddingBottom = 6f;
+        scorePedalScreen.style.paddingTop = 10f;
+        scorePedalScreen.style.paddingBottom = 8f;
         scorePedalScreen.style.paddingLeft = 20f;
         scorePedalScreen.style.paddingRight = 20f;
-        scorePedalScreen.style.marginBottom = 8f;
+        scorePedalScreen.style.marginBottom = 10f;
         scorePedalScreen.style.borderTopWidth = 3f;
         scorePedalScreen.style.borderRightWidth = 3f;
         scorePedalScreen.style.borderBottomWidth = 5f;
@@ -369,11 +369,12 @@ public sealed class TabsSongHeaderOverlay
         scorePedalScreen.style.borderBottomRightRadius = 8f;
         scorePedalScreen.style.alignItems = Align.Center;
         scorePedalScreen.style.justifyContent = Justify.Center;
+        scorePedalScreen.style.minHeight = 78f;
 
-        scorePercentLabel = CreateLabel("SCORE 100.0%", 42f, new Color(0.07f, 0.23f, 0.24f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(0.07f, 0.23f, 0.24f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.35f;
 
-        noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 20f, new Color(0.09f, 0.22f, 0.21f, 0.95f), true, TextAnchor.MiddleCenter);
+        noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 24f, new Color(0.09f, 0.22f, 0.21f, 0.95f), true, TextAnchor.MiddleCenter);
         noteTallyLabel.style.marginTop = 2f;
         noteTallyLabel.style.letterSpacing = 0.2f;
 
@@ -1358,7 +1359,7 @@ public sealed class TabsSongHeaderOverlay
         jackInner.name = "pedal-jack-inner";
         jackInner.style.width = 12f;
         jackInner.style.height = 40f;
-        jackInner.style.marginLeft = 2f;
+        jackInner.style.marginLeft = 0f;
         jackInner.style.backgroundColor = new Color(0.64f, 0.69f, 0.75f, 1f);
         jackInner.style.borderTopWidth = 1f;
         jackInner.style.borderRightWidth = 1f;
@@ -1378,9 +1379,9 @@ public sealed class TabsSongHeaderOverlay
         jackReflection.style.height = 16f;
         jackReflection.style.backgroundColor = new Color(1f, 1f, 1f, 0.46f);
 
+        jackOuter.Add(jackReflection);
         jack.Add(jackOuter);
         jack.Add(jackInner);
-        jack.Add(jackReflection);
         return jack;
     }
 
@@ -1408,16 +1409,18 @@ public sealed class TabsSongHeaderOverlay
             float innerHeight = Mathf.Clamp(height * 0.94f, 24f, 64f);
             jackInner.style.width = innerWidth;
             jackInner.style.height = innerHeight;
-            jackInner.style.marginLeft = Mathf.Clamp(width * 0.08f, 1f, 4f);
+            jackInner.style.marginLeft = 0f;
         }
 
         VisualElement jackReflection = jack.Q<VisualElement>("pedal-jack-reflection");
         if (jackReflection != null)
         {
-            jackReflection.style.left = Mathf.Clamp(width * 0.06f, 1f, 3f);
-            jackReflection.style.top = Mathf.Clamp(height * 0.10f, 2f, 7f);
-            jackReflection.style.width = Mathf.Clamp(width * 0.10f, 2f, 4f);
-            jackReflection.style.height = Mathf.Clamp(height * 0.42f, 10f, 24f);
+            float outerWidth = jackOuter != null ? jackOuter.resolvedStyle.width : width * 0.34f;
+            float outerHeight = jackOuter != null ? jackOuter.resolvedStyle.height : height * 0.74f;
+            jackReflection.style.left = Mathf.Clamp(outerWidth * 0.16f, 1f, 4f);
+            jackReflection.style.top = Mathf.Clamp(outerHeight * 0.12f, 1f, 7f);
+            jackReflection.style.width = Mathf.Clamp(outerWidth * 0.22f, 2f, 5f);
+            jackReflection.style.height = Mathf.Clamp(outerHeight * 0.44f, 10f, 26f);
         }
     }
 
@@ -1588,19 +1591,20 @@ public sealed class TabsSongHeaderOverlay
         speedBadgeLabel.style.fontSize = bodySize * 0.66f;
         detectorStatusLabel.style.fontSize = bodySize * 0.66f;
         statusDotLabel.style.fontSize = bodySize * 0.66f;
-        scorePercentLabel.style.fontSize = bodySize * 0.94f;
-        noteTallyLabel.style.fontSize = bodySize * 0.45f;
+        scorePercentLabel.style.fontSize = bodySize * 1.06f;
+        noteTallyLabel.style.fontSize = bodySize * 0.58f;
         scorePedalBrandLabel.style.fontSize = Mathf.Clamp(bodySize * 0.33f, 12f, 19f);
-        scorePlate.style.height = pedalHeight + 24f;
+        scorePlate.style.height = pedalHeight + 34f;
         scorePedalBody.style.width = pedalWidth;
         scorePedalBody.style.height = pedalHeight;
         float jackHeight = Mathf.Clamp(pedalHeight * 0.24f, 42f, 68f);
         float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 18f, 32f);
-        float jackOffset = jackWidth * 0.74f;
-        float jackTop = pedalHeight * 0.38f;
+        float jackOffset = jackWidth;
+        float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
         scorePedalInputJack.style.left = -jackOffset;
         scorePedalInputJack.style.top = jackTop;
+        scorePedalScreen.style.minHeight = Mathf.Clamp(pedalHeight * 0.36f, 78f, 136f);
         SetPedalJackSize(scorePedalOutputJack, jackWidth, jackHeight);
         scorePedalOutputJack.style.right = -jackOffset;
         scorePedalOutputJack.style.top = jackTop;
