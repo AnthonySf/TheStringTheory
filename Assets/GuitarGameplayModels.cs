@@ -128,6 +128,7 @@ public sealed class GuitarGameplaySnapshot
     public bool showSongSettings;
     public bool showSongSelection;
     public List<string> availableSongNames;
+    public List<float> availableSongScores;
     public int selectedSongIndex;
     public int songListScrollOffset;
     public float audioOffsetMs;
