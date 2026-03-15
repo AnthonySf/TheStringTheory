@@ -325,6 +325,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private long lastUdpPacketUtcTicks;
     private const float DetectorConnectionTimeoutSeconds = 1.5f;
     private string latestEventNotesText = "--";
+    private float latestParsedInputLevel = -1f;
+    private float smoothedInputLevel;
 
     public int midiTrackIndex = -1;
     private int currentLoadedTrackIndex = -999;
@@ -450,17 +452,16 @@ public class GuitarBridgeServer : MonoBehaviour
         if (midiTrackIndex != currentLoadedTrackIndex)
             LoadTestSong(preservePauseUiState: isPaused || showSongSettings || showSongSelection);
 
+        ParseUdpState();
+
         if (!isPaused)
         {
-            ParseUdpState();
             PruneHistory();
             UpdateGameplayStates();
             UpdateAndPersistSongBestScore();
         }
-        else
-        {
-            latestPacketHadEvent = false;
-        }
+
+        UpdateInputLevelEstimate();
 
         EnsureRenderer();
 
@@ -1809,6 +1810,7 @@ private void ParseUdpState()
         latestDetectedPitches.Clear();
         latestPacketHadEvent = false;
         latestEventNotesText = "--";
+        latestParsedInputLevel = -1f;
 
         if (string.IsNullOrEmpty(logNotes) || logNotes == "--") return;
 
@@ -1822,6 +1824,12 @@ private void ParseUdpState()
             int.TryParse(parts[2], out int eventId);
             float.TryParse(parts[3], NumberStyles.Float, CultureInfo.InvariantCulture, out float eventAge);
             string eventCsv = parts[4];
+            if (parts.Length >= 6 && float.TryParse(parts[5], NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedLevel))
+            {
+                if (parsedLevel > 1f)
+                    parsedLevel /= 100f;
+                latestParsedInputLevel = Mathf.Clamp01(parsedLevel);
+            }
             
             latestEventNotesText = string.IsNullOrWhiteSpace(eventCsv) ? "--" : eventCsv;
 
@@ -1964,6 +1972,37 @@ private void ParseUdpState()
         return (DateTime.UtcNow - lastUtc).TotalSeconds <= DetectorConnectionTimeoutSeconds;
     }
 
+    private void UpdateInputLevelEstimate()
+    {
+        float target = 0f;
+
+        if (IsNoteDetectorConnected())
+        {
+            float derived = Mathf.Clamp01(latestDetectedPitches.Count / 6f);
+
+            if (latestPacketHadEvent)
+                derived = Mathf.Max(derived, 0.95f);
+
+            if (recentNoteEvents.Count > 0)
+            {
+                NoteEvent lastEvent = recentNoteEvents[recentNoteEvents.Count - 1];
+                float age = Mathf.Max(0f, songTimer - lastEvent.time);
+                float transient = Mathf.Clamp01(1f - (age / 0.35f));
+                if (transient > 0f)
+                    derived = Mathf.Max(derived, Mathf.Lerp(0.22f, 0.9f, transient));
+            }
+
+            target = latestParsedInputLevel >= 0f
+                ? Mathf.Max(latestParsedInputLevel, derived)
+                : derived;
+        }
+
+        float rise = 6.5f;
+        float fall = 2.0f;
+        float rate = target > smoothedInputLevel ? rise : fall;
+        smoothedInputLevel = Mathf.MoveTowards(smoothedInputLevel, target, Time.deltaTime * rate);
+    }
+
     private GuitarGameplaySnapshot BuildSnapshot()
     {
         int currentSectionIndex = GetSectionIndex(songTimer);
@@ -2005,6 +2044,7 @@ private void ParseUdpState()
             isBackingTrackPlaying = backingTrackSource != null && backingTrackSource.isPlaying,
             backingTrackTime = backingTrackSource != null ? backingTrackSource.time : 0f,
             noteDetectorConnected = IsNoteDetectorConnected(),
+            inputLevelNormalized = smoothedInputLevel,
             runtimeSettingsSections = BuildRuntimeSettingsSnapshot()
         };
     }
