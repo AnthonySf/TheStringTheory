@@ -37,6 +37,12 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label scorePedalBrandLabel;
     private readonly Label scorePercentLabel;
     private readonly Label noteTallyLabel;
+    private readonly VisualElement inputMeterWrap;
+    private readonly Label inputMeterLabel;
+    private readonly VisualElement inputMeterFace;
+    private readonly VisualElement inputMeterArc;
+    private readonly VisualElement inputMeterNeedlePivot;
+    private readonly VisualElement inputMeterNeedle;
     private readonly VisualElement judgePopupLayer;
 
     private readonly List<JudgePopupEntry> activeJudgePopups = new List<JudgePopupEntry>();
@@ -371,8 +377,121 @@ public sealed class TabsSongHeaderOverlay
         scorePedalScreen.style.justifyContent = Justify.Center;
         scorePedalScreen.style.minHeight = 78f;
 
+        inputMeterWrap = new VisualElement();
+        inputMeterWrap.style.width = 240f;
+        inputMeterWrap.style.alignItems = Align.Center;
+        inputMeterWrap.style.justifyContent = Justify.Center;
+        inputMeterWrap.style.marginBottom = 5f;
+
+        inputMeterLabel = CreateLabel("INPUT", 16f, new Color(0.08f, 0.28f, 0.29f, 0.9f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        inputMeterLabel.style.letterSpacing = 0.9f;
+        inputMeterLabel.style.marginBottom = 2f;
+
+        inputMeterFace = new VisualElement();
+        inputMeterFace.style.width = 220f;
+        inputMeterFace.style.height = 82f;
+        inputMeterFace.style.position = Position.Relative;
+        inputMeterFace.style.backgroundColor = new Color(0.11f, 0.38f, 0.40f, 0.72f);
+        inputMeterFace.style.borderTopWidth = 2f;
+        inputMeterFace.style.borderRightWidth = 2f;
+        inputMeterFace.style.borderBottomWidth = 3f;
+        inputMeterFace.style.borderLeftWidth = 2f;
+        inputMeterFace.style.borderTopColor = new Color(0.71f, 0.89f, 0.85f, 0.95f);
+        inputMeterFace.style.borderRightColor = new Color(0.10f, 0.22f, 0.23f, 0.95f);
+        inputMeterFace.style.borderBottomColor = new Color(0.06f, 0.16f, 0.17f, 0.98f);
+        inputMeterFace.style.borderLeftColor = new Color(0.10f, 0.22f, 0.23f, 0.95f);
+        inputMeterFace.style.borderTopLeftRadius = 6f;
+        inputMeterFace.style.borderTopRightRadius = 6f;
+        inputMeterFace.style.borderBottomLeftRadius = 4f;
+        inputMeterFace.style.borderBottomRightRadius = 4f;
+        inputMeterFace.style.overflow = Overflow.Hidden;
+
+        inputMeterArc = new VisualElement();
+        inputMeterArc.style.position = Position.Absolute;
+        inputMeterArc.style.left = -8f;
+        inputMeterArc.style.right = -8f;
+        inputMeterArc.style.top = 10f;
+        inputMeterArc.style.bottom = -24f;
+        inputMeterArc.style.borderTopWidth = 2f;
+        inputMeterArc.style.borderLeftWidth = 2f;
+        inputMeterArc.style.borderRightWidth = 2f;
+        inputMeterArc.style.borderBottomWidth = 0f;
+        inputMeterArc.style.borderTopColor = new Color(0.83f, 0.95f, 0.89f, 0.88f);
+        inputMeterArc.style.borderLeftColor = new Color(0.83f, 0.95f, 0.89f, 0.88f);
+        inputMeterArc.style.borderRightColor = new Color(0.83f, 0.95f, 0.89f, 0.88f);
+        inputMeterArc.style.borderTopLeftRadius = 140f;
+        inputMeterArc.style.borderTopRightRadius = 140f;
+        inputMeterArc.style.borderBottomLeftRadius = 0f;
+        inputMeterArc.style.borderBottomRightRadius = 0f;
+
+        for (int i = 0; i <= 8; i++)
+        {
+            float t = i / 8f;
+            float angle = Mathf.Lerp(-62f, 62f, t);
+            bool major = i % 2 == 0;
+            VisualElement tick = new VisualElement();
+            tick.style.position = Position.Absolute;
+            tick.style.left = 108f;
+            tick.style.top = 64f;
+            tick.style.width = major ? 2f : 1f;
+            tick.style.height = major ? 13f : 8f;
+            tick.style.backgroundColor = major ? new Color(0.90f, 0.98f, 0.94f, 0.9f) : new Color(0.78f, 0.90f, 0.85f, 0.72f);
+            tick.style.transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(100f), 0f);
+            tick.style.rotate = new Rotate(new Angle(angle));
+            inputMeterFace.Add(tick);
+        }
+
+        inputMeterNeedlePivot = new VisualElement();
+        inputMeterNeedlePivot.style.position = Position.Absolute;
+        inputMeterNeedlePivot.style.left = 108f;
+        inputMeterNeedlePivot.style.top = 66f;
+        inputMeterNeedlePivot.style.width = 4f;
+        inputMeterNeedlePivot.style.height = 4f;
+        inputMeterNeedlePivot.style.rotate = new Rotate(new Angle(-24f));
+        inputMeterNeedlePivot.style.transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(100f), 0f);
+
+        inputMeterNeedle = new VisualElement();
+        inputMeterNeedle.style.position = Position.Absolute;
+        inputMeterNeedle.style.left = 1f;
+        inputMeterNeedle.style.bottom = 2f;
+        inputMeterNeedle.style.width = 2f;
+        inputMeterNeedle.style.height = 52f;
+        inputMeterNeedle.style.backgroundColor = new Color(0.98f, 0.43f, 0.26f, 0.96f);
+        inputMeterNeedle.style.borderTopLeftRadius = 1f;
+        inputMeterNeedle.style.borderTopRightRadius = 1f;
+        inputMeterNeedle.style.borderBottomLeftRadius = 1f;
+        inputMeterNeedle.style.borderBottomRightRadius = 1f;
+
+        VisualElement inputMeterNeedleCap = new VisualElement();
+        inputMeterNeedleCap.style.position = Position.Absolute;
+        inputMeterNeedleCap.style.left = 103f;
+        inputMeterNeedleCap.style.top = 61f;
+        inputMeterNeedleCap.style.width = 14f;
+        inputMeterNeedleCap.style.height = 14f;
+        inputMeterNeedleCap.style.backgroundColor = new Color(0.17f, 0.40f, 0.39f, 0.97f);
+        inputMeterNeedleCap.style.borderTopWidth = 1f;
+        inputMeterNeedleCap.style.borderRightWidth = 1f;
+        inputMeterNeedleCap.style.borderBottomWidth = 2f;
+        inputMeterNeedleCap.style.borderLeftWidth = 1f;
+        inputMeterNeedleCap.style.borderTopColor = new Color(0.86f, 0.95f, 0.90f, 0.9f);
+        inputMeterNeedleCap.style.borderRightColor = new Color(0.10f, 0.20f, 0.21f, 0.95f);
+        inputMeterNeedleCap.style.borderBottomColor = new Color(0.07f, 0.14f, 0.15f, 0.95f);
+        inputMeterNeedleCap.style.borderLeftColor = new Color(0.10f, 0.20f, 0.21f, 0.95f);
+        inputMeterNeedleCap.style.borderTopLeftRadius = 7f;
+        inputMeterNeedleCap.style.borderTopRightRadius = 7f;
+        inputMeterNeedleCap.style.borderBottomLeftRadius = 7f;
+        inputMeterNeedleCap.style.borderBottomRightRadius = 7f;
+
+        inputMeterNeedlePivot.Add(inputMeterNeedle);
+        inputMeterFace.Add(inputMeterArc);
+        inputMeterFace.Add(inputMeterNeedlePivot);
+        inputMeterFace.Add(inputMeterNeedleCap);
+        inputMeterWrap.Add(inputMeterLabel);
+        inputMeterWrap.Add(inputMeterFace);
+
         scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(0.07f, 0.23f, 0.24f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.35f;
+        scorePercentLabel.style.marginTop = 2f;
 
         noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 24f, new Color(0.09f, 0.22f, 0.21f, 0.95f), true, TextAnchor.MiddleCenter);
         noteTallyLabel.style.marginTop = 2f;
@@ -387,6 +506,7 @@ public sealed class TabsSongHeaderOverlay
         scorePedalFootswitch.style.marginRight = 36f;
         scorePedalFootswitchRight.style.marginLeft = 36f;
 
+        scorePedalScreen.Add(inputMeterWrap);
         scorePedalScreen.Add(scorePercentLabel);
         scorePedalScreen.Add(noteTallyLabel);
         pedalFooter.Add(scorePedalFootswitch);
@@ -1585,6 +1705,8 @@ public sealed class TabsSongHeaderOverlay
         float knobSize = Mathf.Clamp(pedalHeight * 0.17f, 28f, 48f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
         float footswitchSize = Mathf.Clamp(pedalHeight * 0.24f, 36f, 64f);
+        float meterWidth = Mathf.Clamp(pedalWidth * 0.34f, 200f, 300f);
+        float meterHeight = Mathf.Clamp(pedalHeight * 0.34f, 70f, 110f);
 
         songNameLabel.style.fontSize = songSize;
         trackNameLabel.style.fontSize = trackSize;
@@ -1594,6 +1716,10 @@ public sealed class TabsSongHeaderOverlay
         scorePercentLabel.style.fontSize = bodySize * 1.06f;
         noteTallyLabel.style.fontSize = bodySize * 0.58f;
         scorePedalBrandLabel.style.fontSize = Mathf.Clamp(bodySize * 0.33f, 12f, 19f);
+        inputMeterLabel.style.fontSize = Mathf.Clamp(bodySize * 0.44f, 13f, 20f);
+        inputMeterWrap.style.width = meterWidth;
+        inputMeterFace.style.width = meterWidth;
+        inputMeterFace.style.height = meterHeight;
         scorePlate.style.height = pedalHeight + 34f;
         scorePedalBody.style.width = pedalWidth;
         scorePedalBody.style.height = pedalHeight;
