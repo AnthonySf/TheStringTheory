@@ -339,6 +339,9 @@ public sealed class TabsSongHeaderOverlay
         scorePedalKnobLeft = CreatePedalKnob();
         scorePedalKnobMid = CreatePedalKnob();
         scorePedalKnobRight = CreatePedalKnob();
+        SetKnobIndicatorAngle(scorePedalKnobLeft, -28f);
+        SetKnobIndicatorAngle(scorePedalKnobMid, -8f);
+        SetKnobIndicatorAngle(scorePedalKnobRight, 22f);
         pedalKnobRow.Add(scorePedalKnobLeft);
         pedalKnobRow.Add(scorePedalKnobMid);
         pedalKnobRow.Add(scorePedalKnobRight);
@@ -1260,7 +1263,50 @@ public sealed class TabsSongHeaderOverlay
         knob.style.borderBottomRightRadius = 15f;
         knob.style.marginLeft = 10f;
         knob.style.marginRight = 10f;
+
+        VisualElement indicator = new VisualElement();
+        indicator.name = "knob-indicator";
+        indicator.style.position = Position.Absolute;
+        indicator.style.width = 3f;
+        indicator.style.height = 11f;
+        indicator.style.left = 13f;
+        indicator.style.top = 4f;
+        indicator.style.backgroundColor = new Color(0.96f, 0.98f, 1f, 0.98f);
+        indicator.style.borderTopLeftRadius = 2f;
+        indicator.style.borderTopRightRadius = 2f;
+        indicator.style.borderBottomLeftRadius = 2f;
+        indicator.style.borderBottomRightRadius = 2f;
+        knob.Add(indicator);
         return knob;
+    }
+
+    private static void SetKnobIndicatorAngle(VisualElement knob, float degrees)
+    {
+        if (knob == null)
+            return;
+
+        VisualElement indicator = knob.Q<VisualElement>("knob-indicator");
+        if (indicator == null)
+            return;
+
+        indicator.style.rotate = new Rotate(new Angle(degrees, AngleUnit.Degree));
+    }
+
+    private static void SetKnobIndicatorSize(VisualElement knob, float knobSize)
+    {
+        if (knob == null)
+            return;
+
+        VisualElement indicator = knob.Q<VisualElement>("knob-indicator");
+        if (indicator == null)
+            return;
+
+        float indicatorWidth = Mathf.Clamp(knobSize * 0.10f, 2f, 5f);
+        float indicatorHeight = Mathf.Clamp(knobSize * 0.35f, 8f, 16f);
+        indicator.style.width = indicatorWidth;
+        indicator.style.height = indicatorHeight;
+        indicator.style.left = (knobSize - indicatorWidth) * 0.5f;
+        indicator.style.top = Mathf.Clamp(knobSize * 0.12f, 3f, 8f);
     }
 
     private static VisualElement CreateFootswitch()
@@ -1287,33 +1333,34 @@ public sealed class TabsSongHeaderOverlay
     private static VisualElement CreatePedalJack()
     {
         VisualElement jack = new VisualElement();
-        jack.style.width = 20f;
+        jack.style.width = 9f;
         jack.style.height = 20f;
-        jack.style.backgroundColor = new Color(0.16f, 0.19f, 0.24f, 1f);
+        jack.style.backgroundColor = new Color(0.15f, 0.17f, 0.21f, 1f);
         jack.style.borderTopWidth = 2f;
-        jack.style.borderRightWidth = 2f;
-        jack.style.borderBottomWidth = 3f;
-        jack.style.borderLeftWidth = 2f;
-        jack.style.borderTopColor = new Color(0.56f, 0.63f, 0.71f, 1f);
+        jack.style.borderRightWidth = 1f;
+        jack.style.borderBottomWidth = 2f;
+        jack.style.borderLeftWidth = 1f;
+        jack.style.borderTopColor = new Color(0.50f, 0.58f, 0.66f, 1f);
         jack.style.borderRightColor = new Color(0.06f, 0.08f, 0.12f, 1f);
         jack.style.borderBottomColor = new Color(0.03f, 0.04f, 0.06f, 1f);
         jack.style.borderLeftColor = new Color(0.06f, 0.08f, 0.12f, 1f);
-        jack.style.borderTopLeftRadius = 10f;
-        jack.style.borderTopRightRadius = 10f;
-        jack.style.borderBottomLeftRadius = 10f;
-        jack.style.borderBottomRightRadius = 10f;
-        jack.style.alignItems = Align.Center;
-        jack.style.justifyContent = Justify.Center;
+        jack.style.borderTopLeftRadius = 5f;
+        jack.style.borderTopRightRadius = 5f;
+        jack.style.borderBottomLeftRadius = 5f;
+        jack.style.borderBottomRightRadius = 5f;
 
-        VisualElement jackHole = new VisualElement();
-        jackHole.style.width = 8f;
-        jackHole.style.height = 8f;
-        jackHole.style.backgroundColor = new Color(0.02f, 0.03f, 0.05f, 1f);
-        jackHole.style.borderTopLeftRadius = 4f;
-        jackHole.style.borderTopRightRadius = 4f;
-        jackHole.style.borderBottomLeftRadius = 4f;
-        jackHole.style.borderBottomRightRadius = 4f;
-        jack.Add(jackHole);
+        VisualElement jackSlot = new VisualElement();
+        jackSlot.style.position = Position.Absolute;
+        jackSlot.style.left = 2f;
+        jackSlot.style.top = 6f;
+        jackSlot.style.width = 3f;
+        jackSlot.style.height = 8f;
+        jackSlot.style.backgroundColor = new Color(0.02f, 0.03f, 0.05f, 1f);
+        jackSlot.style.borderTopLeftRadius = 2f;
+        jackSlot.style.borderTopRightRadius = 2f;
+        jackSlot.style.borderBottomLeftRadius = 2f;
+        jackSlot.style.borderBottomRightRadius = 2f;
+        jack.Add(jackSlot);
         return jack;
     }
 
@@ -1490,15 +1537,16 @@ public sealed class TabsSongHeaderOverlay
         scorePlate.style.height = pedalHeight + 24f;
         scorePedalBody.style.width = pedalWidth;
         scorePedalBody.style.height = pedalHeight;
-        float jackSize = Mathf.Clamp(pedalHeight * 0.085f, 16f, 26f);
-        float jackOffset = jackSize * 0.5f;
+        float jackHeight = Mathf.Clamp(pedalHeight * 0.11f, 16f, 30f);
+        float jackWidth = Mathf.Clamp(jackHeight * 0.42f, 7f, 12f);
+        float jackOffset = jackWidth * 0.7f;
         float jackTop = pedalHeight * 0.45f;
-        scorePedalInputJack.style.width = jackSize;
-        scorePedalInputJack.style.height = jackSize;
+        scorePedalInputJack.style.width = jackWidth;
+        scorePedalInputJack.style.height = jackHeight;
         scorePedalInputJack.style.left = -jackOffset;
         scorePedalInputJack.style.top = jackTop;
-        scorePedalOutputJack.style.width = jackSize;
-        scorePedalOutputJack.style.height = jackSize;
+        scorePedalOutputJack.style.width = jackWidth;
+        scorePedalOutputJack.style.height = jackHeight;
         scorePedalOutputJack.style.right = -jackOffset;
         scorePedalOutputJack.style.top = jackTop;
         scorePedalKnobLeft.style.width = knobSize;
@@ -1507,6 +1555,9 @@ public sealed class TabsSongHeaderOverlay
         scorePedalKnobMid.style.height = knobSize;
         scorePedalKnobRight.style.width = knobSize;
         scorePedalKnobRight.style.height = knobSize;
+        SetKnobIndicatorSize(scorePedalKnobLeft, knobSize);
+        SetKnobIndicatorSize(scorePedalKnobMid, knobSize);
+        SetKnobIndicatorSize(scorePedalKnobRight, knobSize);
         scorePedalLed.style.width = ledSize;
         scorePedalLed.style.height = ledSize;
         scorePedalLed.style.borderTopLeftRadius = ledSize * 0.5f;
