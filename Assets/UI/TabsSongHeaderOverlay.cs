@@ -376,14 +376,15 @@ public sealed class TabsSongHeaderOverlay
         scorePedalScreen.style.borderBottomLeftRadius = 8f;
         scorePedalScreen.style.borderBottomRightRadius = 8f;
         scorePedalScreen.style.alignItems = Align.Center;
-        scorePedalScreen.style.justifyContent = Justify.Center;
+        scorePedalScreen.style.justifyContent = Justify.FlexStart;
         scorePedalScreen.style.minHeight = 78f;
 
         inputMeterWrap = new VisualElement();
         inputMeterWrap.style.width = 240f;
         inputMeterWrap.style.alignItems = Align.Center;
         inputMeterWrap.style.justifyContent = Justify.Center;
-        inputMeterWrap.style.marginBottom = 6f;
+        inputMeterWrap.style.marginBottom = 8f;
+        inputMeterWrap.style.flexShrink = 0f;
 
         inputMeterLabel = CreateLabel("INPUT", 16f, new Color(0.08f, 0.28f, 0.29f, 0.9f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         inputMeterLabel.style.letterSpacing = 0.9f;
@@ -406,6 +407,7 @@ public sealed class TabsSongHeaderOverlay
         inputMeterFace.style.borderTopRightRadius = 6f;
         inputMeterFace.style.borderBottomLeftRadius = 4f;
         inputMeterFace.style.borderBottomRightRadius = 4f;
+        inputMeterFace.style.flexShrink = 0f;
 
         inputMeterArcViewport = new VisualElement();
         inputMeterArcViewport.style.position = Position.Absolute;
@@ -484,10 +486,12 @@ public sealed class TabsSongHeaderOverlay
 
         scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(0.07f, 0.23f, 0.24f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.35f;
-        scorePercentLabel.style.marginTop = 2f;
+        scorePercentLabel.style.marginTop = 4f;
+        scorePercentLabel.style.flexShrink = 0f;
 
         noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 24f, new Color(0.09f, 0.22f, 0.21f, 0.95f), true, TextAnchor.MiddleCenter);
-        noteTallyLabel.style.marginTop = 2f;
+        noteTallyLabel.style.marginTop = 3f;
+        noteTallyLabel.style.flexShrink = 0f;
         noteTallyLabel.style.letterSpacing = 0.2f;
 
         VisualElement pedalFooter = new VisualElement();
@@ -1749,7 +1753,7 @@ public sealed class TabsSongHeaderOverlay
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
         float pedalWidth = Mathf.Clamp(Screen.width * 0.38f, 600f, 920f);
-        float pedalHeight = Mathf.Clamp(screenHeight * 0.235f, 204f, 302f);
+        float pedalHeight = Mathf.Clamp(screenHeight * 0.255f, 228f, 336f);
         float knobSize = Mathf.Clamp(pedalHeight * 0.17f, 28f, 48f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
         float footswitchSize = Mathf.Clamp(pedalHeight * 0.24f, 36f, 64f);
@@ -1779,7 +1783,11 @@ public sealed class TabsSongHeaderOverlay
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
         scorePedalInputJack.style.left = -jackOffset;
         scorePedalInputJack.style.top = jackTop;
-        scorePedalScreen.style.minHeight = Mathf.Clamp(pedalHeight * 0.36f, 78f, 136f);
+        float meterLabelHeight = inputMeterLabel.resolvedStyle.fontSize > 0f
+            ? inputMeterLabel.resolvedStyle.fontSize * 1.35f
+            : Mathf.Clamp(bodySize * 0.58f, 16f, 28f);
+        float requiredScreenHeight = meterHeight + meterLabelHeight + (bodySize * 1.15f) + (bodySize * 0.78f) + 34f;
+        scorePedalScreen.style.minHeight = Mathf.Clamp(requiredScreenHeight, 124f, 212f);
         SetPedalJackSize(scorePedalOutputJack, jackWidth, jackHeight);
         scorePedalOutputJack.style.right = -jackOffset;
         scorePedalOutputJack.style.top = jackTop;
