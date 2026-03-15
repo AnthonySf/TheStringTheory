@@ -28,6 +28,12 @@ public class GuitarBridgeServer : MonoBehaviour
         Neon = 2
     }
 
+    public enum TabsSkyMood
+    {
+        Day = 0,
+        Sunset = 1
+    }
+
     [Header("Render Mode")]
     public GuitarRenderMode renderMode = GuitarRenderMode.Tabs;
 
@@ -220,6 +226,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabNebulaColorB = new Color(0.12f, 0.08f, 0.20f, 0.07f);
 
     [Header("Tabs Background FX - Blue Sky")]
+    public TabsSkyMood tabSkyMood = TabsSkyMood.Day;
     [Min(0.01f)] public float tabSkyWidth = 54f;
     public float tabSkyNearZ = 1.4f;
     public float tabSkyFarZ = 7.8f;
@@ -228,6 +235,9 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabSkyTopColor = new Color(0.17f, 0.55f, 0.98f, 1f);
     public Color tabSkyMidColor = new Color(0.38f, 0.72f, 0.99f, 1f);
     public Color tabSkyBottomColor = new Color(0.76f, 0.90f, 1f, 1f);
+    public Color tabSkySunsetTopColor = new Color(0.96f, 0.50f, 0.22f, 1f);
+    public Color tabSkySunsetMidColor = new Color(0.98f, 0.66f, 0.30f, 1f);
+    public Color tabSkySunsetBottomColor = new Color(1f, 0.84f, 0.52f, 1f);
     [Range(8, 220)] public int tabSkyCloudCountNear = 42;
     [Range(8, 220)] public int tabSkyCloudCountMid = 30;
     [Range(8, 220)] public int tabSkyCloudCountFar = 18;
@@ -243,6 +253,11 @@ public class GuitarBridgeServer : MonoBehaviour
     [Min(0.1f)] public float tabSkyCloudScaleMaxMid = 2.8f;
     [Min(0.1f)] public float tabSkyCloudScaleMinFar = 1.0f;
     [Min(0.1f)] public float tabSkyCloudScaleMaxFar = 2.1f;
+    [Min(0.2f)] public float tabSkyCloudGlobalScale = 1.75f;
+    public Color tabSkyDayCloudTopTint = new Color(0.98f, 0.99f, 1f, 1f);
+    public Color tabSkyDayCloudBottomTint = new Color(0.90f, 0.95f, 1f, 1f);
+    public Color tabSkySunsetCloudTopTint = new Color(1f, 0.84f, 0.68f, 1f);
+    public Color tabSkySunsetCloudBottomTint = new Color(0.98f, 0.62f, 0.42f, 1f);
     [Range(0f, 0.2f)] public float tabSkyCloudVerticalBob = 0.04f;
 
     [Header("Tabs Header")]
@@ -2430,6 +2445,7 @@ private void ParseUdpState()
         RegisterFloatSetting("fx.tabIdleFillDarken", "Colors - Status", "Idle Fill Darken", "Controls how muted unresolved tab notes appear.", 0f, 1f, 0.01f, () => tabIdleFillDarken, v => tabIdleFillDarken = v);
 
         RegisterEnumSetting("bg.mode", "Tabs Background FX", "Background Mode", "Switches between static and animated tab backdrops.", new []{"SolidColor","Starfield","BlueSky"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
+        RegisterEnumSetting("bg.skyMood", "Tabs Background FX - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime and sunset palettes.", new []{"Day","Sunset"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
         RegisterEnumSetting("bg.starStyle", "Tabs Background FX - Starfield Core", "Star Style", "Visual style used for star sprites in the background.", new []{"SoftDots","Crystal","Neon"}, () => tabStarStyle.ToString(), v => { if (Enum.TryParse(v, out TabsStarStyle style)) tabStarStyle = style; });
         RegisterIntSetting("bg.starSeed", "Tabs Background FX - Starfield Core", "Star Seed", "Changes the procedural star layout while keeping it deterministic.", 0, 99999, 1, () => tabStarSeed, v => tabStarSeed = v);
         RegisterFloatSetting("bg.starDriftSpeed", "Tabs Background FX - Starfield Core", "Star Drift Speed", "Horizontal motion speed of star layers.", 0f, 2.5f, 0.01f, () => tabStarDriftSpeed, v => tabStarDriftSpeed = v);
@@ -2439,6 +2455,7 @@ private void ParseUdpState()
         RegisterFloatSetting("bg.skyCloudNearSpeed", "Tabs Background FX - Blue Sky", "Cloud Speed (Near)", "Horizontal drift speed for the nearest cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedNear, v => tabSkyCloudSpeedNear = v);
         RegisterFloatSetting("bg.skyCloudMidSpeed", "Tabs Background FX - Blue Sky", "Cloud Speed (Mid)", "Horizontal drift speed for the middle cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedMid, v => tabSkyCloudSpeedMid = v);
         RegisterFloatSetting("bg.skyCloudFarSpeed", "Tabs Background FX - Blue Sky", "Cloud Speed (Far)", "Horizontal drift speed for the far cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedFar, v => tabSkyCloudSpeedFar = v);
+        RegisterFloatSetting("bg.skyCloudGlobalScale", "Tabs Background FX - Blue Sky", "Cloud Global Scale", "Scales all BlueSky clouds live without restarting.", 0.2f, 6f, 0.05f, () => tabSkyCloudGlobalScale, v => tabSkyCloudGlobalScale = v);
     }
 
     private void RegisterFloatSetting(string id, string section, string label, string tooltip, float min, float max, float step, Func<float> getter, Action<float> setter)
