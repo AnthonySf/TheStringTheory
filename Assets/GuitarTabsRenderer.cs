@@ -474,6 +474,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             Root = new GameObject(name);
             Root.transform.SetParent(parent, false);
 
+            CreateBackdrop();
             CreateBorder();
             CreateStrings();
 
@@ -773,6 +774,23 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
             foreach (var kv in NoteViews)
                 kv.Value.SetAlpha(alpha);
+        }
+
+        private void CreateBackdrop()
+        {
+            GameObject backdrop = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            backdrop.name = "TabsBackdrop";
+            backdrop.transform.SetParent(Root.transform, false);
+            backdrop.transform.localPosition = new Vector3(0f, 0f, owner.tabZDepth + 0.22f);
+            backdrop.transform.localScale = new Vector3(
+                owner.tabPanelWidth - 0.18f,
+                owner.tabPanelHeight - 0.16f,
+                0.05f
+            );
+
+            Renderer renderer = backdrop.GetComponent<Renderer>();
+            renderer.material = owner.CreateSharedGlowMaterial(new Color(0.02f, 0.03f, 0.06f, 0.42f), 0.08f);
+            staticRenderers.Add(renderer);
         }
 
         private void CreateBorder()
