@@ -2528,9 +2528,29 @@ private void ParseUdpState()
             return;
 
         definition.Setter(serializedValue ?? string.Empty);
+        RefreshRuntimeSettingVisuals(settingId);
 
         if (saveMetadata)
             SaveGlobalRuntimeSettingsMetadata();
+    }
+
+    private void RefreshRuntimeSettingVisuals(string settingId)
+    {
+        if (string.IsNullOrEmpty(settingId))
+            return;
+
+        bool requiresSectionRebuild = settingId.StartsWith("tabs.tabSection", StringComparison.OrdinalIgnoreCase);
+        bool requiresRendererRefresh =
+            requiresSectionRebuild ||
+            settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase) ||
+            settingId.StartsWith("layout.", StringComparison.OrdinalIgnoreCase) ||
+            settingId.StartsWith("fx.", StringComparison.OrdinalIgnoreCase);
+
+        if (requiresSectionRebuild)
+            GenerateTabSections();
+
+        if (requiresRendererRefresh)
+            ResetActiveRendererContent();
     }
 
     private void LoadGlobalRuntimeSettingsMetadata()

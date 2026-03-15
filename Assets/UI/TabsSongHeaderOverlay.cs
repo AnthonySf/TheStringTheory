@@ -46,6 +46,75 @@ public sealed class TabsSongHeaderOverlay
         public float duration;
     }
 
+    private sealed class EnumCycleControl : VisualElement
+    {
+        private readonly List<string> options;
+        private readonly Label valueLabel;
+        private bool suppress;
+
+        public Action<string> OnValueChanged;
+
+        public EnumCycleControl(IEnumerable<string> enumOptions, string initialValue, Func<string, float, Color, bool, TextAnchor, bool, Label> createLabel, Func<string, Action, Button> createButton)
+        {
+            options = enumOptions?.Where(option => !string.IsNullOrWhiteSpace(option)).Distinct().ToList() ?? new List<string>();
+            style.flexDirection = FlexDirection.Row;
+            style.alignItems = Align.Center;
+            style.marginBottom = 6f;
+
+            Button prev = createButton("◀", () => Shift(-1));
+            prev.style.minWidth = 90f;
+            prev.style.height = 58f;
+            prev.style.marginRight = 8f;
+
+            valueLabel = createLabel(string.Empty, 34f, new Color(0.90f, 0.96f, 1f, 1f), true, TextAnchor.MiddleCenter, false);
+            valueLabel.style.flexGrow = 1f;
+            valueLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            valueLabel.AddToClassList("global-setting-enum-value");
+
+            Button next = createButton("▶", () => Shift(1));
+            next.style.minWidth = 90f;
+            next.style.height = 58f;
+            next.style.marginLeft = 8f;
+
+            Add(prev);
+            Add(valueLabel);
+            Add(next);
+
+            SetValueWithoutNotify(initialValue);
+        }
+
+        public void SetValueWithoutNotify(string value)
+        {
+            if (options.Count == 0)
+            {
+                valueLabel.text = string.IsNullOrEmpty(value) ? "--" : value;
+                return;
+            }
+
+            string resolved = options.FirstOrDefault(option => string.Equals(option, value, StringComparison.OrdinalIgnoreCase)) ?? options[0];
+            suppress = true;
+            valueLabel.text = resolved;
+            suppress = false;
+        }
+
+        private void Shift(int delta)
+        {
+            if (options.Count == 0)
+                return;
+
+            string current = valueLabel.text;
+            int currentIndex = options.FindIndex(option => string.Equals(option, current, StringComparison.OrdinalIgnoreCase));
+            if (currentIndex < 0)
+                currentIndex = 0;
+
+            int nextIndex = (currentIndex + delta + options.Count) % options.Count;
+            string next = options[nextIndex];
+            valueLabel.text = next;
+            if (!suppress)
+                OnValueChanged?.Invoke(next);
+        }
+    }
+
     private readonly VisualElement pauseOverlay;
     private readonly Label pauseTitleLabel;
     private readonly Label pauseHintLabel;
@@ -734,10 +803,10 @@ public sealed class TabsSongHeaderOverlay
                     if (float.TryParse(setting.value, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
                         slider.SetValueWithoutNotify(parsed);
                 }
-                else if (input is DropdownField dropdown)
+                else if (input is EnumCycleControl enumCycle)
                 {
                     if (!string.IsNullOrEmpty(setting.value))
-                        dropdown.SetValueWithoutNotify(setting.value);
+                        enumCycle.SetValueWithoutNotify(setting.value);
                 }
 
                 if (globalSettingValueLabels.TryGetValue(setting.id, out Label valueLabel))
@@ -821,9 +890,13 @@ public sealed class TabsSongHeaderOverlay
         }
         else if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase))
         {
-            DropdownField dropdown = new DropdownField(setting.enumOptions ?? new List<string>(), setting.value);
-            dropdown.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetGlobalRuntimeSettingFromUi(setting.id, evt.newValue); });
-            input = dropdown;
+            EnumCycleControl enumCycle = new EnumCycleControl(setting.enumOptions, setting.value, CreateLabel, CreateActionButton);
+            enumCycle.OnValueChanged += value =>
+            {
+                if (!suppressCallbacks)
+                    owner?.SetGlobalRuntimeSettingFromUi(setting.id, value);
+            };
+            input = enumCycle;
         }
         else
         {
@@ -1231,6 +1304,9 @@ public sealed class TabsSongHeaderOverlay
 
         foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-value").ToList())
             label.style.fontSize = buttonFontSize * 0.82f;
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-enum-value").ToList())
+            label.style.fontSize = buttonFontSize;
 
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
         songCard.style.minWidth = Mathf.Clamp(Screen.width * 0.46f, 640f, 1400f);
