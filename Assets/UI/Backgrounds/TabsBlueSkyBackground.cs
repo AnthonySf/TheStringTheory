@@ -20,6 +20,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         public float bobAmplitude;
         public float bobFrequency;
         public float bobPhase;
+        public float baseScaleX;
+        public float baseScaleY;
+        public float baseAlpha;
     }
 
     private readonly List<SkyCloud> clouds = new List<SkyCloud>();
@@ -28,10 +31,13 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private GuitarBridgeServer owner;
     private GameObject root;
     private Transform skyGradient;
+    private Renderer skyTopRenderer;
+    private Renderer skyBottomRenderer;
+    private Renderer hazeRenderer;
 
     private const float SkyWidthOverscan = 1.45f;
     private const float SkyHeightOverscan = 1.60f;
-    private const float CloudScaleBoost = 1.75f;
+    private GuitarBridgeServer.TabsSkyMood appliedMood = (GuitarBridgeServer.TabsSkyMood)(-1);
 
     public void Initialize(Transform parent, GuitarBridgeServer owner)
     {
@@ -41,6 +47,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         root.transform.SetParent(parent, false);
 
         CreateGradientSky();
+        ApplyMoodToSkyIfNeeded();
         LoadCloudSprites();
         CreateCloudLayer(SkyCloudLayer.Far, owner.tabSkyCloudCountFar, owner.tabSkyCloudSpeedFar, owner.tabSkyCloudAlphaFar, owner.tabSkyCloudScaleMinFar, owner.tabSkyCloudScaleMaxFar, 0.65f, 1f);
         CreateCloudLayer(SkyCloudLayer.Mid, owner.tabSkyCloudCountMid, owner.tabSkyCloudSpeedMid, owner.tabSkyCloudAlphaMid, owner.tabSkyCloudScaleMinMid, owner.tabSkyCloudScaleMaxMid, 0.32f, 0.70f);
@@ -52,8 +59,11 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         if (root == null || owner == null || clouds.Count == 0)
             return;
 
-        GetSkyCoverage(out float width, out _, out _);
+        ApplyMoodToSkyIfNeeded();
+
+        GetSkyCoverage(out float width, out float minY, out float maxY);
         float halfWidth = width * 0.5f;
+        float safeGlobalScale = Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale);
 
         for (int i = 0; i < clouds.Count; i++)
         {
@@ -68,6 +78,16 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
             p.y += Mathf.Sin((Time.time * cloud.bobFrequency) + cloud.bobPhase) * cloud.bobAmplitude * deltaTime;
             cloud.transform.localPosition = p;
+
+            cloud.transform.localScale = new Vector3(cloud.baseScaleX * safeGlobalScale, cloud.baseScaleY * safeGlobalScale, 1f);
+
+            if (cloud.renderer != null)
+            {
+                float yT = Mathf.InverseLerp(minY, maxY, p.y);
+                Color cloudTint = GetCloudTint(yT);
+                cloudTint.a = cloud.baseAlpha;
+                cloud.renderer.color = cloudTint;
+            }
         }
     }
 
@@ -96,6 +116,10 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         owner = null;
         root = null;
         skyGradient = null;
+        skyTopRenderer = null;
+        skyBottomRenderer = null;
+        hazeRenderer = null;
+        appliedMood = (GuitarBridgeServer.TabsSkyMood)(-1);
     }
 
     private void GetSkyDepthRange(out float nearZ, out float farZ)
@@ -143,7 +167,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         haze.transform.localPosition = new Vector3(0f, minY + (maxY - minY) * 0.26f, farZ - 0.01f);
         haze.transform.localScale = new Vector3(width * 1.06f, (maxY - minY) * 0.45f, 1f);
 
-        Renderer hazeRenderer = haze.GetComponent<Renderer>();
+        hazeRenderer = haze.GetComponent<Renderer>();
         hazeRenderer.shadowCastingMode = ShadowCastingMode.Off;
         hazeRenderer.receiveShadows = false;
         hazeRenderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
@@ -167,6 +191,11 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         renderer.receiveShadows = false;
         renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
         renderer.material = CreateUnlitOpaqueMaterial(Color.white, BuildVerticalGradientTexture(topColor, bottomColor));
+
+        if (name == "SkyBandTop")
+            skyTopRenderer = renderer;
+        else if (name == "SkyBandBottom")
+            skyBottomRenderer = renderer;
 
         Object.Destroy(band.GetComponent<Collider>());
     }
@@ -242,15 +271,16 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
             SpriteRenderer spriteRenderer = cloudGo.AddComponent<SpriteRenderer>();
             spriteRenderer.sprite = cloudSprites[Random.Range(0, cloudSprites.Count)];
-            float layerBrightness = layer == SkyCloudLayer.Far ? 0.94f : 0.98f;
             float alphaBoost = layer == SkyCloudLayer.Near ? 1f : 0.95f;
-            spriteRenderer.color = new Color(layerBrightness, layerBrightness, 1f, Mathf.Clamp01(alpha * alphaBoost * Random.Range(0.88f, 1f)));
+            float cloudAlpha = Mathf.Clamp01(alpha * alphaBoost * Random.Range(0.88f, 1f));
             spriteRenderer.sortingOrder = -200;
 
             float scale = Random.Range(Mathf.Min(scaleMin, scaleMax), Mathf.Max(scaleMin, scaleMax));
             float stretchX = Random.Range(0.92f, 1.22f);
             float stretchY = Random.Range(0.85f, 1.15f);
-            cloudGo.transform.localScale = new Vector3(scale * stretchX * CloudScaleBoost, scale * stretchY * CloudScaleBoost, 1f);
+            float baseScaleX = scale * stretchX;
+            float baseScaleY = scale * stretchY;
+            cloudGo.transform.localScale = new Vector3(baseScaleX * Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale), baseScaleY * Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale), 1f);
 
             clouds.Add(new SkyCloud
             {
@@ -259,11 +289,75 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
                 speed = baseSpeed * Random.Range(0.85f, 1.2f) * Mathf.Lerp(0.82f, 1.2f, 1f - depth),
                 bobAmplitude = owner.tabSkyCloudVerticalBob * Random.Range(0.3f, 1f),
                 bobFrequency = Random.Range(0.06f, 0.18f),
-                bobPhase = Random.Range(0f, Mathf.PI * 2f)
+                bobPhase = Random.Range(0f, Mathf.PI * 2f),
+                baseScaleX = baseScaleX,
+                baseScaleY = baseScaleY,
+                baseAlpha = cloudAlpha
             });
         }
 
         Random.state = oldState;
+    }
+
+    private void ApplyMoodToSkyIfNeeded()
+    {
+        if (owner == null || (appliedMood == owner.tabSkyMood && skyTopRenderer != null && skyBottomRenderer != null))
+            return;
+
+        GetSkyColors(out Color top, out Color mid, out Color bottom);
+
+        if (skyTopRenderer != null)
+            ReplaceMaterialTexture(skyTopRenderer, BuildVerticalGradientTexture(top, mid));
+
+        if (skyBottomRenderer != null)
+            ReplaceMaterialTexture(skyBottomRenderer, BuildVerticalGradientTexture(mid, bottom));
+
+        if (hazeRenderer != null)
+        {
+            Color hazeColor = owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset
+                ? new Color(1f, 0.74f, 0.50f, 0.18f)
+                : new Color(0.95f, 0.98f, 1f, 0.14f);
+            hazeRenderer.material.color = hazeColor;
+        }
+
+        appliedMood = owner.tabSkyMood;
+    }
+
+    private static void ReplaceMaterialTexture(Renderer renderer, Texture2D newTexture)
+    {
+        if (renderer == null || renderer.material == null)
+            return;
+
+        Texture oldTexture = renderer.material.mainTexture;
+        renderer.material.mainTexture = newTexture;
+
+        if (oldTexture != null && oldTexture != newTexture)
+            Object.Destroy(oldTexture);
+    }
+
+    private void GetSkyColors(out Color top, out Color mid, out Color bottom)
+    {
+        if (owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset)
+        {
+            top = owner.tabSkySunsetTopColor;
+            mid = owner.tabSkySunsetMidColor;
+            bottom = owner.tabSkySunsetBottomColor;
+            return;
+        }
+
+        top = owner.tabSkyTopColor;
+        mid = owner.tabSkyMidColor;
+        bottom = owner.tabSkyBottomColor;
+    }
+
+    private Color GetCloudTint(float y01)
+    {
+        y01 = Mathf.Clamp01(y01);
+
+        if (owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset)
+            return Color.Lerp(owner.tabSkySunsetCloudBottomTint, owner.tabSkySunsetCloudTopTint, y01);
+
+        return Color.Lerp(owner.tabSkyDayCloudBottomTint, owner.tabSkyDayCloudTopTint, y01);
     }
 
     private static Sprite CreateProceduralCloudSprite()
