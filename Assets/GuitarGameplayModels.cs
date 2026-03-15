@@ -142,4 +142,25 @@ public sealed class GuitarGameplaySnapshot
     public bool isBackingTrackPlaying;
     public float backingTrackTime;
     public bool noteDetectorConnected;
+    public bool showGlobalSettings;
+    public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
+}
+
+public sealed class RuntimeSettingSectionSnapshot
+{
+    public string title;
+    public List<RuntimeSettingSnapshot> settings;
+}
+
+public sealed class RuntimeSettingSnapshot
+{
+    public string id;
+    public string label;
+    public string tooltip;
+    public string valueType;
+    public string value;
+    public float min;
+    public float max;
+    public float step;
+    public List<string> enumOptions;
 }
