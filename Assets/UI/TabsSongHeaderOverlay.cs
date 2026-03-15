@@ -357,7 +357,7 @@ public sealed class TabsSongHeaderOverlay
         pedalKnobRow.style.flexDirection = FlexDirection.Row;
         pedalKnobRow.style.justifyContent = Justify.SpaceAround;
         pedalKnobRow.style.alignItems = Align.Center;
-        pedalKnobRow.style.marginBottom = 12f;
+        pedalKnobRow.style.marginBottom = 16f;
 
         scorePedalKnobLeft = CreatePedalKnob();
         scorePedalKnobMid = CreatePedalKnob();
@@ -371,7 +371,7 @@ public sealed class TabsSongHeaderOverlay
 
         scorePedalScreen = new VisualElement();
         scorePedalScreen.style.flexGrow = 0f;
-        scorePedalScreen.style.paddingTop = 14f;
+        scorePedalScreen.style.paddingTop = 18f;
         scorePedalScreen.style.paddingBottom = 8f;
         scorePedalScreen.style.paddingLeft = 20f;
         scorePedalScreen.style.paddingRight = 20f;
@@ -439,10 +439,10 @@ public sealed class TabsSongHeaderOverlay
         inputMeterArc.style.right = 0f;
         inputMeterArc.style.top = 0f;
         inputMeterArc.style.height = 72f;
-        inputMeterArc.style.borderTopWidth = 2f;
-        inputMeterArc.style.borderRightWidth = 2f;
-        inputMeterArc.style.borderBottomWidth = 2f;
-        inputMeterArc.style.borderLeftWidth = 2f;
+        inputMeterArc.style.borderTopWidth = 3f;
+        inputMeterArc.style.borderRightWidth = 3f;
+        inputMeterArc.style.borderBottomWidth = 3f;
+        inputMeterArc.style.borderLeftWidth = 3f;
         inputMeterArc.style.borderTopColor = new Color(0.07f, 0.23f, 0.24f, 0.94f);
         inputMeterArc.style.borderRightColor = new Color(0.07f, 0.23f, 0.24f, 0.94f);
         inputMeterArc.style.borderBottomColor = new Color(0.07f, 0.23f, 0.24f, 0.94f);
@@ -457,7 +457,7 @@ public sealed class TabsSongHeaderOverlay
             VisualElement tick = new VisualElement();
             bool major = i % 2 == 0;
             tick.style.position = Position.Absolute;
-            tick.style.width = major ? 2f : 1f;
+            tick.style.width = major ? 3f : 2f;
             tick.style.height = major ? 10f : 6f;
             tick.style.backgroundColor = major ? new Color(0.08f, 0.24f, 0.25f, 0.95f) : new Color(0.09f, 0.26f, 0.27f, 0.82f);
             tick.style.borderTopLeftRadius = 1f;
@@ -470,7 +470,7 @@ public sealed class TabsSongHeaderOverlay
 
         inputMeterNeedle = new VisualElement();
         inputMeterNeedle.style.position = Position.Absolute;
-        inputMeterNeedle.style.width = 2f;
+        inputMeterNeedle.style.width = 3f;
         inputMeterNeedle.style.height = 30f;
         inputMeterNeedle.style.backgroundColor = new Color(0.05f, 0.19f, 0.20f, 0.98f);
         inputMeterNeedle.style.borderTopLeftRadius = 1f;
@@ -483,10 +483,10 @@ public sealed class TabsSongHeaderOverlay
         inputMeterNeedleCap.style.width = 12f;
         inputMeterNeedleCap.style.height = 12f;
         inputMeterNeedleCap.style.backgroundColor = new Color(0.07f, 0.23f, 0.24f, 0.98f);
-        inputMeterNeedleCap.style.borderTopWidth = 1f;
-        inputMeterNeedleCap.style.borderRightWidth = 1f;
-        inputMeterNeedleCap.style.borderBottomWidth = 2f;
-        inputMeterNeedleCap.style.borderLeftWidth = 1f;
+        inputMeterNeedleCap.style.borderTopWidth = 2f;
+        inputMeterNeedleCap.style.borderRightWidth = 2f;
+        inputMeterNeedleCap.style.borderBottomWidth = 3f;
+        inputMeterNeedleCap.style.borderLeftWidth = 2f;
         inputMeterNeedleCap.style.borderTopColor = new Color(0.12f, 0.30f, 0.31f, 0.92f);
         inputMeterNeedleCap.style.borderRightColor = new Color(0.04f, 0.15f, 0.16f, 0.95f);
         inputMeterNeedleCap.style.borderBottomColor = new Color(0.03f, 0.12f, 0.13f, 0.95f);
@@ -1479,7 +1479,7 @@ public sealed class TabsSongHeaderOverlay
             float arcX = centerX + Mathf.Cos(theta) * rx;
             float arcY = centerY - Mathf.Sin(theta) * ry;
             float tickHeight = i % 2 == 0 ? Mathf.Clamp(meterHeight * 0.13f, 8f, 14f) : Mathf.Clamp(meterHeight * 0.08f, 5f, 9f);
-            float tickWidth = i % 2 == 0 ? 2f : 1f;
+            float tickWidth = i % 2 == 0 ? 3f : 2f;
 
             tick.style.width = tickWidth;
             tick.style.height = tickHeight;
@@ -1829,7 +1829,7 @@ public sealed class TabsSongHeaderOverlay
 
         float jackHeight = Mathf.Clamp(pedalHeight * 0.34f, 60f, 102f);
         float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 22f, 40f);
-        float jackOffset = jackWidth;
+        float jackOffset = jackWidth * 0.58f;
         float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
         scorePedalInputJack.style.left = -jackOffset;
@@ -1914,14 +1914,14 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
 
         float pedalLeftEdge = (Screen.width - pedalWidth) * 0.5f;
-        float songCardAvailableWidth = pedalLeftEdge - 56f;
+        float songCardAvailableWidth = pedalLeftEdge - 24f;
         float songCardWidth = Mathf.Clamp(songCardAvailableWidth, 420f, 1100f);
         songCard.style.width = songCardWidth;
         songCard.style.minWidth = songCardWidth;
         songCard.style.maxWidth = songCardWidth;
         songCard.style.marginRight = Mathf.Clamp(Screen.width * 0.03f, 24f, 52f);
 
-        float titleMaxWidth = Mathf.Max(260f, songCardWidth - 68f);
+        float titleMaxWidth = Mathf.Max(280f, songCardWidth - 52f);
         songNameLabel.style.maxWidth = titleMaxWidth;
         trackNameLabel.style.maxWidth = titleMaxWidth;
     }
