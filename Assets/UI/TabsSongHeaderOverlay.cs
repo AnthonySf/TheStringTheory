@@ -4,6 +4,9 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public sealed class TabsSongHeaderOverlay
 {
@@ -803,8 +806,11 @@ public sealed class TabsSongHeaderOverlay
 
     private static (Font body, Font title) ResolveUiFonts(Font fallbackFont)
     {
-        Font body = TryFindFontByName("pixelArtFont", "pixelartfont", "pixel_art", "pixel");
-        Font title = TryFindFontByName("arcade", "arcadefont", "arcade_font", "shadow");
+        Font body = LoadProjectFont("Assets/UI/PixelArtFont.TTF");
+        Font title = LoadProjectFont("Assets/UI/ArcadeFont.ttf");
+
+        body ??= TryFindFontByName("pixelartfont", "pixel_art", "pixel");
+        title ??= TryFindFontByName("arcadefont", "arcade", "shadow");
 
         body ??= fallbackFont;
         title ??= body ?? fallbackFont;
@@ -844,6 +850,18 @@ public sealed class TabsSongHeaderOverlay
         }
 
         return best;
+    }
+
+    private static Font LoadProjectFont(string assetPath)
+    {
+#if UNITY_EDITOR
+        if (string.IsNullOrWhiteSpace(assetPath))
+            return null;
+
+        return AssetDatabase.LoadAssetAtPath<Font>(assetPath);
+#else
+        return null;
+#endif
     }
 
     private static string FormatTrackName(string trackDisplayName)
