@@ -411,10 +411,10 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
             float x = Random.Range(-halfWidth, halfWidth);
             float y = Random.Range(minY + 0.5f, maxY - 0.5f);
-            float z = Mathf.Lerp(nearZ, farZ, Random.Range(0.95f, 1f));
+            float z = Mathf.Clamp(farZ - Random.Range(0.45f, 1.15f), nearZ + 0.05f, farZ - 0.06f);
             star.transform.localPosition = new Vector3(x, y, z);
 
-            float size = Random.Range(sizeMin, sizeMax);
+            float size = Random.Range(sizeMin, sizeMax) * 1.75f;
             star.transform.localScale = new Vector3(size, size, 1f);
 
             SpriteRenderer renderer = star.AddComponent<SpriteRenderer>();
