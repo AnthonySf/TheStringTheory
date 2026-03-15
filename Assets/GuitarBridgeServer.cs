@@ -270,6 +270,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private int selectedLoopMarker = 1;
     private int latestNoteEventId;
     private bool latestPacketHadEvent;
+    private long lastUdpPacketUtcTicks;
+    private const float DetectorConnectionTimeoutSeconds = 1.5f;
     private string latestEventNotesText = "--";
 
     public int midiTrackIndex = -1;
@@ -1190,6 +1192,7 @@ private void OpenOrFocusToneLab()
         latestEventNotesText = "--";
         latestNoteEventId = 0;
         latestPacketHadEvent = false;
+        Interlocked.Exchange(ref lastUdpPacketUtcTicks, 0L);
         SyncAudioToSongTimer(playImmediately: !isPaused);
     }
 
@@ -1600,6 +1603,7 @@ private void OpenOrFocusToneLab()
                     IPEndPoint anyIP = new IPEndPoint(IPAddress.Any, 0);
                     byte[] data = udpClient.Receive(ref anyIP);
                     logNotes = Encoding.UTF8.GetString(data);
+                    Interlocked.Exchange(ref lastUdpPacketUtcTicks, DateTime.UtcNow.Ticks);
                 }
                 else
                 {
@@ -1760,6 +1764,16 @@ private void ParseUdpState()
         return Mathf.FloorToInt(time / sectionDuration);
     }
 
+    private bool IsNoteDetectorConnected()
+    {
+        long lastTicks = Interlocked.Read(ref lastUdpPacketUtcTicks);
+        if (lastTicks <= 0)
+            return false;
+
+        DateTime lastUtc = new DateTime(lastTicks, DateTimeKind.Utc);
+        return (DateTime.UtcNow - lastUtc).TotalSeconds <= DetectorConnectionTimeoutSeconds;
+    }
+
     private GuitarGameplaySnapshot BuildSnapshot()
     {
         int currentSectionIndex = GetSectionIndex(songTimer);
@@ -1798,7 +1812,8 @@ private void ParseUdpState()
             offsetScopeHint = "Offset scope: O toggles Song/Track",
             hasBackingTrack = hasBackingTrack,
             isBackingTrackPlaying = backingTrackSource != null && backingTrackSource.isPlaying,
-            backingTrackTime = backingTrackSource != null ? backingTrackSource.time : 0f
+            backingTrackTime = backingTrackSource != null ? backingTrackSource.time : 0f,
+            noteDetectorConnected = IsNoteDetectorConnected()
         };
     }
 
