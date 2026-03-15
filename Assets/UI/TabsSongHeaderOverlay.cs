@@ -329,7 +329,7 @@ public sealed class TabsSongHeaderOverlay
         pedalTopRow.style.justifyContent = Justify.SpaceBetween;
         pedalTopRow.style.marginBottom = 6f;
 
-        scorePedalBrandLabel = CreateLabel("HONDA STAGE", 14f, new Color(0.95f, 0.99f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: true);
+        scorePedalBrandLabel = CreateLabel("STRING THEORY", 14f, new Color(0.95f, 0.99f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: true);
         scorePedalBrandLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
         scorePedalBrandLabel.style.letterSpacing = 0.8f;
 
@@ -357,7 +357,7 @@ public sealed class TabsSongHeaderOverlay
         pedalKnobRow.style.flexDirection = FlexDirection.Row;
         pedalKnobRow.style.justifyContent = Justify.SpaceAround;
         pedalKnobRow.style.alignItems = Align.Center;
-        pedalKnobRow.style.marginBottom = 7f;
+        pedalKnobRow.style.marginBottom = 12f;
 
         scorePedalKnobLeft = CreatePedalKnob();
         scorePedalKnobMid = CreatePedalKnob();
@@ -371,7 +371,7 @@ public sealed class TabsSongHeaderOverlay
 
         scorePedalScreen = new VisualElement();
         scorePedalScreen.style.flexGrow = 0f;
-        scorePedalScreen.style.paddingTop = 10f;
+        scorePedalScreen.style.paddingTop = 14f;
         scorePedalScreen.style.paddingBottom = 8f;
         scorePedalScreen.style.paddingLeft = 20f;
         scorePedalScreen.style.paddingRight = 20f;
@@ -1531,14 +1531,14 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jack = new VisualElement();
         jack.name = "pedal-jack";
         jack.style.width = 24f;
-        jack.style.height = 42f;
+        jack.style.height = 52f;
         jack.style.flexDirection = FlexDirection.Row;
         jack.style.alignItems = Align.Center;
 
         VisualElement jackOuter = new VisualElement();
         jackOuter.name = "pedal-jack-outer";
         jackOuter.style.width = 8f;
-        jackOuter.style.height = 30f;
+        jackOuter.style.height = 38f;
         jackOuter.style.backgroundColor = new Color(0.83f, 0.86f, 0.90f, 1f);
         jackOuter.style.borderTopWidth = 2f;
         jackOuter.style.borderRightWidth = 1f;
@@ -1552,7 +1552,7 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jackInner = new VisualElement();
         jackInner.name = "pedal-jack-inner";
         jackInner.style.width = 12f;
-        jackInner.style.height = 40f;
+        jackInner.style.height = 50f;
         jackInner.style.marginLeft = 0f;
         jackInner.style.backgroundColor = new Color(0.64f, 0.69f, 0.75f, 1f);
         jackInner.style.borderTopWidth = 1f;
@@ -1774,7 +1774,7 @@ public sealed class TabsSongHeaderOverlay
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
-        float pedalWidth = Mathf.Clamp(Screen.width * 0.38f, 600f, 920f);
+        float pedalWidth = Mathf.Clamp(Screen.width * 0.34f, 560f, 860f);
         float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
         float knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 62f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
@@ -1827,8 +1827,8 @@ public sealed class TabsSongHeaderOverlay
         scorePedalScreen.style.minHeight = screenHeightTarget;
         scorePedalScreen.style.maxHeight = screenHeightTarget;
 
-        float jackHeight = Mathf.Clamp(pedalHeight * 0.29f, 52f, 88f);
-        float jackWidth = Mathf.Clamp(jackHeight * 0.48f, 22f, 40f);
+        float jackHeight = Mathf.Clamp(pedalHeight * 0.34f, 60f, 102f);
+        float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 22f, 40f);
         float jackOffset = jackWidth;
         float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
@@ -1914,7 +1914,7 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
 
         float pedalLeftEdge = (Screen.width - pedalWidth) * 0.5f;
-        float songCardAvailableWidth = pedalLeftEdge - 74f;
+        float songCardAvailableWidth = pedalLeftEdge - 56f;
         float songCardWidth = Mathf.Clamp(songCardAvailableWidth, 420f, 1100f);
         songCard.style.width = songCardWidth;
         songCard.style.minWidth = songCardWidth;
