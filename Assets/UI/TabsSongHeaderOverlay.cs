@@ -112,16 +112,6 @@ public sealed class TabsSongHeaderOverlay
         root.style.paddingBottom = 30f;
         root.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.20f);
 
-        VisualElement hudStripe = new VisualElement();
-        hudStripe.style.height = 8f;
-        hudStripe.style.width = 480f;
-        hudStripe.style.marginBottom = 12f;
-        hudStripe.style.backgroundColor = new Color(1f, 0.32f, 0.69f, 0.80f);
-        hudStripe.style.borderTopLeftRadius = 999f;
-        hudStripe.style.borderTopRightRadius = 999f;
-        hudStripe.style.borderBottomLeftRadius = 999f;
-        hudStripe.style.borderBottomRightRadius = 999f;
-
         songCard = new VisualElement();
         songCard.style.minWidth = 680f;
         songCard.style.maxWidth = 1160f;
@@ -176,9 +166,19 @@ public sealed class TabsSongHeaderOverlay
         scorePlateCard.style.paddingRight = 30f;
         scorePlateCard.style.paddingTop = 12f;
         scorePlateCard.style.paddingBottom = 10f;
-        StyleCard(scorePlateCard, new Color(0.06f, 0.07f, 0.20f, 0.95f), radius: 16f);
-        scorePlateCard.style.borderBottomWidth = 6f;
-        scorePlateCard.style.borderBottomColor = new Color(0.18f, 0.14f, 0.46f, 1f);
+        scorePlateCard.style.backgroundColor = new Color(0.08f, 0.13f, 0.19f, 0.96f);
+        scorePlateCard.style.borderTopLeftRadius = 14f;
+        scorePlateCard.style.borderTopRightRadius = 14f;
+        scorePlateCard.style.borderBottomLeftRadius = 14f;
+        scorePlateCard.style.borderBottomRightRadius = 14f;
+        scorePlateCard.style.borderTopWidth = 2f;
+        scorePlateCard.style.borderRightWidth = 2f;
+        scorePlateCard.style.borderBottomWidth = 5f;
+        scorePlateCard.style.borderLeftWidth = 2f;
+        scorePlateCard.style.borderTopColor = new Color(0.66f, 0.83f, 1f, 0.95f);
+        scorePlateCard.style.borderRightColor = new Color(0.43f, 0.66f, 0.95f, 0.90f);
+        scorePlateCard.style.borderBottomColor = new Color(0.18f, 0.32f, 0.52f, 1f);
+        scorePlateCard.style.borderLeftColor = new Color(0.43f, 0.66f, 0.95f, 0.90f);
 
         scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(1f, 0.85f, 0.49f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.7f;
@@ -380,7 +380,6 @@ public sealed class TabsSongHeaderOverlay
         songCard.Add(songNameLabel);
         songCard.Add(trackNameLabel);
         songCard.Add(statusRow);
-        root.Add(hudStripe);
         root.Add(songCard);
         root.Add(scorePlate);
         root.Add(judgePopupLayer);
@@ -761,7 +760,7 @@ public sealed class TabsSongHeaderOverlay
         button.style.minWidth = 220f;
         button.style.paddingLeft = 18f;
         button.style.paddingRight = 18f;
-        button.style.backgroundColor = new Color(0.24f, 0.15f, 0.44f, 0.98f);
+        button.style.backgroundColor = new Color(0.08f, 0.15f, 0.24f, 0.96f);
         button.style.color = Color.white;
         button.style.fontSize = 28f;
         button.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -773,10 +772,10 @@ public sealed class TabsSongHeaderOverlay
         button.style.borderRightWidth = 2f;
         button.style.borderBottomWidth = 6f;
         button.style.borderLeftWidth = 2f;
-        button.style.borderTopColor = new Color(1f, 0.56f, 0.87f, 0.96f);
-        button.style.borderRightColor = new Color(0.66f, 0.54f, 1f, 0.94f);
-        button.style.borderBottomColor = new Color(0.26f, 0.20f, 0.56f, 1f);
-        button.style.borderLeftColor = new Color(0.66f, 0.54f, 1f, 0.94f);
+        button.style.borderTopColor = new Color(0.36f, 0.58f, 1f, 0.88f);
+        button.style.borderRightColor = new Color(0.30f, 0.50f, 0.90f, 0.82f);
+        button.style.borderBottomColor = new Color(0.20f, 0.36f, 0.65f, 0.96f);
+        button.style.borderLeftColor = new Color(0.30f, 0.50f, 0.90f, 0.82f);
         button.style.unityTextAlign = TextAnchor.MiddleCenter;
         button.style.letterSpacing = 0.35f;
         button.style.marginBottom = 3f;
