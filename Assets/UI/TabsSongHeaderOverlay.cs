@@ -24,6 +24,13 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly List<JudgePopupEntry> activeJudgePopups = new List<JudgePopupEntry>();
 
+    private sealed class SongSelectionRow
+    {
+        public Button button;
+        public Label nameLabel;
+        public Label scoreLabel;
+    }
+
     private sealed class JudgePopupEntry
     {
         public Label label;
@@ -52,13 +59,13 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly VisualElement selectionOverlay;
     private readonly Label selectionSubtitleLabel;
-    private readonly Button[] selectionRowButtons;
+    private readonly ScrollView selectionScrollView;
+    private readonly List<SongSelectionRow> selectionRows = new List<SongSelectionRow>();
 
     private readonly Label marqueeLabel;
     private readonly Label vibeLabel;
 
     private int lastScreenHeight = -1;
-    private int currentSongListScrollOffset;
     private bool suppressCallbacks;
     private bool hasSeenSnapshot;
     private int lastResolvedCount;
@@ -131,16 +138,10 @@ public sealed class TabsSongHeaderOverlay
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
         trackNameLabel.style.letterSpacing = 0.2f;
 
-        speedBadgeLabel = CreateLabel("SPEED 100%", 24f, new Color(1f, 0.96f, 0.76f, 1f), bold: true);
-        speedBadgeLabel.style.position = Position.Absolute;
-        speedBadgeLabel.style.right = 34f;
-        speedBadgeLabel.style.top = 32f;
-        speedBadgeLabel.style.paddingLeft = 20f;
-        speedBadgeLabel.style.paddingRight = 20f;
-        speedBadgeLabel.style.paddingTop = 10f;
-        speedBadgeLabel.style.paddingBottom = 10f;
-        speedBadgeLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        StyleCard(speedBadgeLabel, new Color(0.22f, 0.10f, 0.28f, 0.95f), radius: 999f);
+        speedBadgeLabel = CreateLabel("Speed 100%", 24f, new Color(1f, 0.96f, 0.76f, 1f), bold: true);
+        speedBadgeLabel.style.marginTop = 8f;
+        speedBadgeLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        speedBadgeLabel.style.letterSpacing = 0.45f;
 
         scorePlate = new VisualElement();
         scorePlate.style.position = Position.Absolute;
@@ -322,22 +323,13 @@ public sealed class TabsSongHeaderOverlay
         selectionCard.style.paddingBottom = 20f;
         StyleCard(selectionCard, new Color(0.04f, 0.07f, 0.14f, 0.96f), radius: 20f);
 
-        selectionRowButtons = new Button[8];
-        for (int i = 0; i < selectionRowButtons.Length; i++)
-        {
-            int rowIndex = i;
-            Button rowButton = CreateActionButton("", () => OnSongRowClicked(rowIndex));
-            rowButton.style.height = 76f;
-            rowButton.style.marginTop = 6f;
-            rowButton.style.marginBottom = 2f;
-            rowButton.style.unityTextAlign = TextAnchor.MiddleLeft;
-            rowButton.style.borderTopLeftRadius = 12f;
-            rowButton.style.borderTopRightRadius = 12f;
-            rowButton.style.borderBottomLeftRadius = 12f;
-            rowButton.style.borderBottomRightRadius = 12f;
-            selectionCard.Add(rowButton);
-            selectionRowButtons[i] = rowButton;
-        }
+        selectionScrollView = new ScrollView(ScrollViewMode.Vertical);
+        selectionScrollView.style.maxHeight = 620f;
+        selectionScrollView.style.minHeight = 360f;
+        selectionScrollView.style.marginTop = 4f;
+        selectionScrollView.style.marginBottom = 4f;
+        selectionScrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        selectionCard.Add(selectionScrollView);
 
         VisualElement selectionButtons = new VisualElement();
         selectionButtons.style.flexDirection = FlexDirection.Row;
@@ -368,11 +360,11 @@ public sealed class TabsSongHeaderOverlay
 
         songCard.Add(songNameLabel);
         songCard.Add(trackNameLabel);
+        songCard.Add(speedBadgeLabel);
         root.Add(hudStripe);
         root.Add(marqueeLabel);
         root.Add(vibeLabel);
         root.Add(songCard);
-        root.Add(speedBadgeLabel);
         root.Add(scorePlate);
         root.Add(judgePopupLayer);
         root.Add(pauseOverlay);
@@ -488,7 +480,7 @@ public sealed class TabsSongHeaderOverlay
         UpdateJudgePopups();
 
         float speedPercent = Mathf.Clamp(snapshot.playbackSpeedPercent, 1f, 200f);
-        speedBadgeLabel.text = $"SPEED {speedPercent:F0}%";
+        speedBadgeLabel.text = $"Speed {speedPercent:F0}%";
         speedValueLabel.text = $"Song Speed {speedPercent:F0}%";
 
         suppressCallbacks = true;
@@ -536,32 +528,80 @@ public sealed class TabsSongHeaderOverlay
     private void UpdateSongSelectionRows(GuitarGameplaySnapshot snapshot)
     {
         int total = snapshot.availableSongNames?.Count ?? 0;
-        int scroll = Mathf.Max(0, snapshot.songListScrollOffset);
-        currentSongListScrollOffset = scroll;
         selectionSubtitleLabel.text = $"{total} songs  •  Selected #{snapshot.selectedSongIndex + 1}";
 
-        for (int row = 0; row < selectionRowButtons.Length; row++)
+        EnsureSongSelectionRows(total);
+
+        for (int songIndex = 0; songIndex < selectionRows.Count; songIndex++)
         {
-            Button button = selectionRowButtons[row];
-            int songIndex = scroll + row;
-
-            if (snapshot.availableSongNames == null || songIndex >= snapshot.availableSongNames.Count)
-            {
-                button.style.display = DisplayStyle.None;
-                continue;
-            }
-
-            button.style.display = DisplayStyle.Flex;
-            string name = snapshot.availableSongNames[songIndex];
+            SongSelectionRow row = selectionRows[songIndex];
             bool isSelected = songIndex == snapshot.selectedSongIndex;
-            button.text = isSelected ? $"> {name}" : $"  {name}";
-            button.style.backgroundColor = isSelected
+            string name = snapshot.availableSongNames[songIndex];
+            float score = (snapshot.availableSongScores != null && songIndex < snapshot.availableSongScores.Count)
+                ? snapshot.availableSongScores[songIndex]
+                : 0f;
+
+            row.nameLabel.text = isSelected ? $"> {name}" : $"  {name}";
+            row.scoreLabel.text = $"{score:F1}%";
+
+            row.button.style.backgroundColor = isSelected
                 ? new Color(0.42f, 0.18f, 0.52f, 0.98f)
                 : new Color(0.08f, 0.15f, 0.24f, 0.93f);
-            button.style.borderTopColor = isSelected ? new Color(1f, 0.54f, 0.80f, 1f) : new Color(0.36f, 0.58f, 1f, 0.75f);
-            button.style.borderRightColor = button.style.borderTopColor;
-            button.style.borderBottomColor = button.style.borderTopColor;
-            button.style.borderLeftColor = button.style.borderTopColor;
+            row.button.style.borderTopColor = isSelected ? new Color(1f, 0.54f, 0.80f, 1f) : new Color(0.36f, 0.58f, 1f, 0.75f);
+            row.button.style.borderRightColor = row.button.style.borderTopColor;
+            row.button.style.borderBottomColor = row.button.style.borderTopColor;
+            row.button.style.borderLeftColor = row.button.style.borderTopColor;
+        }
+
+        if (snapshot.selectedSongIndex >= 0 && snapshot.selectedSongIndex < selectionRows.Count)
+            selectionScrollView.ScrollTo(selectionRows[snapshot.selectedSongIndex].button);
+    }
+
+    private void EnsureSongSelectionRows(int count)
+    {
+        if (selectionRows.Count == count)
+            return;
+
+        selectionScrollView.Clear();
+        selectionRows.Clear();
+
+        for (int i = 0; i < count; i++)
+        {
+            int songIndex = i;
+            Button rowButton = CreateActionButton(string.Empty, () => OnSongRowClicked(songIndex));
+            rowButton.style.height = 76f;
+            rowButton.style.marginTop = 6f;
+            rowButton.style.marginBottom = 2f;
+            rowButton.style.borderTopLeftRadius = 12f;
+            rowButton.style.borderTopRightRadius = 12f;
+            rowButton.style.borderBottomLeftRadius = 12f;
+            rowButton.style.borderBottomRightRadius = 12f;
+
+            VisualElement content = new VisualElement();
+            content.style.flexDirection = FlexDirection.Row;
+            content.style.justifyContent = Justify.SpaceBetween;
+            content.style.alignItems = Align.Center;
+            content.style.flexGrow = 1f;
+
+            Label nameLabel = CreateLabel(string.Empty, 28f, Color.white, true, TextAnchor.MiddleLeft);
+            nameLabel.style.flexGrow = 1f;
+            nameLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+
+            Label scoreLabel = CreateLabel("0%", 26f, new Color(1f, 0.85f, 0.45f, 0.98f), true, TextAnchor.MiddleRight);
+            scoreLabel.style.minWidth = 130f;
+            scoreLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+
+            content.Add(nameLabel);
+            content.Add(scoreLabel);
+            rowButton.Add(content);
+            selectionScrollView.Add(rowButton);
+
+            selectionRows.Add(new SongSelectionRow
+            {
+                button = rowButton,
+                nameLabel = nameLabel,
+                scoreLabel = scoreLabel
+            });
         }
     }
 
@@ -570,7 +610,7 @@ public sealed class TabsSongHeaderOverlay
         if (owner == null)
             return;
 
-        owner.SelectSongByIndexFromUi(rowIndex + currentSongListScrollOffset);
+        owner.SelectSongByIndexFromUi(rowIndex);
     }
 
 
@@ -817,7 +857,7 @@ public sealed class TabsSongHeaderOverlay
         trackNameLabel.style.fontSize = trackSize;
         marqueeLabel.style.fontSize = bodySize * 0.58f;
         vibeLabel.style.fontSize = bodySize * 0.42f;
-        speedBadgeLabel.style.fontSize = bodySize;
+        speedBadgeLabel.style.fontSize = bodySize * 0.70f;
         scorePercentLabel.style.fontSize = bodySize * 0.88f;
         noteTallyLabel.style.fontSize = bodySize * 0.50f;
         judgePopupFontSize = Mathf.Clamp(screenHeight * 0.072f, 64f, 108f);
@@ -832,6 +872,17 @@ public sealed class TabsSongHeaderOverlay
 
         float buttonFontSize = Mathf.Clamp(screenHeight * 0.026f, 24f, 38f);
         float buttonHeight = Mathf.Clamp(screenHeight * 0.070f, 58f, 90f);
+
+        foreach (SongSelectionRow row in selectionRows)
+        {
+            if (row == null)
+                continue;
+
+            if (row.nameLabel != null)
+                row.nameLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.030f, 22f, 34f);
+            if (row.scoreLabel != null)
+                row.scoreLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.027f, 20f, 30f);
+        }
 
         foreach (Button button in document.rootVisualElement.Query<Button>().ToList())
         {

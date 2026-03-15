@@ -297,6 +297,7 @@ public class GuitarBridgeServer : MonoBehaviour
         public float songStartDelaySeconds = 2.0f;
         public bool useAutoTrackSelection = true;
         public string selectedMusicXmlPartId;
+        public float bestScorePercent = 0f;
         public List<TrackOffsetOverride> trackOffsetOverrides = new List<TrackOffsetOverride>();
     }
 
@@ -313,6 +314,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private float tabSpeedOffsetPercent = 100f;
     private float songStartDelaySeconds = 2.0f;
     private SongMetadata songMetadata = new SongMetadata();
+    private float currentSongBestScorePercent;
+    private const string SelectedSongDirectoryPrefsKey = "guitar_selected_song_directory";
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
     private SongLibraryEntry currentSongEntry;
@@ -361,6 +364,7 @@ public class GuitarBridgeServer : MonoBehaviour
             ParseUdpState();
             PruneHistory();
             UpdateGameplayStates();
+            UpdateAndPersistSongBestScore();
         }
         else
         {
@@ -728,6 +732,16 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         availableSongs.Clear();
         availableSongs.AddRange(SongLibraryService.GetAvailableSongs());
+        availableSongs.Sort((a, b) =>
+        {
+            float scoreA = GetStoredSongBestScorePercent(a);
+            float scoreB = GetStoredSongBestScorePercent(b);
+            int scoreCompare = scoreB.CompareTo(scoreA);
+            if (scoreCompare != 0)
+                return scoreCompare;
+
+            return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
+        });
 
         if (selectedSongListIndex >= availableSongs.Count)
             selectedSongListIndex = Mathf.Max(0, availableSongs.Count - 1);
@@ -744,7 +758,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void EnsureSongSelectionVisible()
     {
-        const int visibleCount = 8;
+        const int visibleCount = 12;
         if (selectedSongListIndex < songListScrollOffset)
             songListScrollOffset = selectedSongListIndex;
 
@@ -774,6 +788,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private void LoadSongFromEntry(SongLibraryEntry entry)
     {
         currentSongEntry = entry;
+        SaveSelectedSongPreference(entry);
         LoadTestSong();
         isPaused = true;
         SeekSongTime(-songStartDelaySeconds, false);
@@ -1771,6 +1786,7 @@ private void ParseUdpState()
             showSongSettings = showSongSettings,
             showSongSelection = showSongSelection,
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
+            availableSongScores = availableSongs.Select(GetStoredSongBestScorePercent).ToList(),
             selectedSongIndex = selectedSongListIndex,
             songListScrollOffset = songListScrollOffset,
             audioOffsetMs = audioOffsetMs,
@@ -1872,11 +1888,18 @@ private void ParseUdpState()
             currentSongPartSummaries.Clear();
 
             if (currentSongEntry == null || !availableSongs.Any(song => string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase)))
-                currentSongEntry = availableSongs.FirstOrDefault();
+            {
+                string preferredSongDirectory = LoadSelectedSongPreference();
+                currentSongEntry = availableSongs.FirstOrDefault(song =>
+                    !string.IsNullOrEmpty(preferredSongDirectory) &&
+                    string.Equals(song.SongDirectory, preferredSongDirectory, StringComparison.OrdinalIgnoreCase))
+                    ?? availableSongs.FirstOrDefault();
+            }
 
             if (currentSongEntry != null)
             {
                 Debug.Log($"[GuitarBridgeServer] Selected runtime song '{currentSongEntry.SongId}' from {currentSongEntry.SongDirectory}");
+                SaveSelectedSongPreference(currentSongEntry);
                 currentSongFileName = !string.IsNullOrEmpty(currentSongEntry.Mp3Path) ? Path.GetFileName(currentSongEntry.Mp3Path) : backingTrackFileName;
                 SongMetadata trackMetadata = LoadSongMetadata(currentSongFileName);
                 useAutoTrackSelection = trackMetadata.useAutoTrackSelection;
@@ -2016,6 +2039,7 @@ private void ParseUdpState()
         songStartDelaySeconds = Mathf.Clamp(songMetadata.songStartDelaySeconds <= 0f ? defaultSongStartDelaySeconds : songMetadata.songStartDelaySeconds, 0f, 8f);
         useAutoTrackSelection = songMetadata.useAutoTrackSelection;
         selectedMusicXmlPartId = string.IsNullOrEmpty(songMetadata.selectedMusicXmlPartId) ? string.Empty : songMetadata.selectedMusicXmlPartId;
+        currentSongBestScorePercent = Mathf.Clamp(songMetadata.bestScorePercent, 0f, 100f);
         RefreshEffectiveAudioOffset();
 
         backingTrackLoadError = string.Empty;
@@ -2081,6 +2105,77 @@ private void ParseUdpState()
         isLoadingBackingTrack = false;
     }
 
+    private static string BuildSongMetadataPath(SongLibraryEntry entry)
+    {
+        if (entry != null && !string.IsNullOrEmpty(entry.MetadataPath))
+            return entry.MetadataPath;
+
+        string fallbackFileName = entry != null && !string.IsNullOrEmpty(entry.Mp3Path)
+            ? Path.GetFileName(entry.Mp3Path)
+            : "song.mp3";
+        string safeName = Regex.Replace(Path.GetFileNameWithoutExtension(fallbackFileName), "[^a-zA-Z0-9_-]", "_");
+        return Path.Combine(ExternalContentPaths.PersistentSongsDirectory, safeName, ExternalContentPaths.SongMetadataFileName);
+    }
+
+    private float GetStoredSongBestScorePercent(SongLibraryEntry entry)
+    {
+        if (entry == null)
+            return 0f;
+
+        if (currentSongEntry != null && string.Equals(currentSongEntry.SongDirectory, entry.SongDirectory, StringComparison.OrdinalIgnoreCase))
+            return Mathf.Clamp(currentSongBestScorePercent, 0f, 100f);
+
+        string metadataPath = BuildSongMetadataPath(entry);
+        try
+        {
+            if (!File.Exists(metadataPath))
+                return 0f;
+
+            string json = File.ReadAllText(metadataPath);
+            SongMetadata loaded = JsonUtility.FromJson<SongMetadata>(json);
+            return loaded != null ? Mathf.Clamp(loaded.bestScorePercent, 0f, 100f) : 0f;
+        }
+        catch
+        {
+            return 0f;
+        }
+    }
+
+    private void SaveSelectedSongPreference(SongLibraryEntry entry)
+    {
+        if (entry == null || string.IsNullOrEmpty(entry.SongDirectory))
+            return;
+
+        PlayerPrefs.SetString(SelectedSongDirectoryPrefsKey, entry.SongDirectory);
+        PlayerPrefs.Save();
+    }
+
+    private static string LoadSelectedSongPreference()
+    {
+        return PlayerPrefs.GetString(SelectedSongDirectoryPrefsKey, string.Empty);
+    }
+
+    private void UpdateAndPersistSongBestScore()
+    {
+        if (loopEnabled || currentSongEntry == null || noteStates == null || noteStates.Count == 0)
+            return;
+
+        int total = noteStates.Count;
+        int hits = 0;
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            if (noteStates[i] != null && noteStates[i].IsHit)
+                hits++;
+        }
+
+        float percent = total > 0 ? (100f * hits / total) : 0f;
+        if (percent <= currentSongBestScorePercent + 0.01f)
+            return;
+
+        currentSongBestScorePercent = Mathf.Clamp(percent, 0f, 100f);
+        SaveSongMetadata();
+    }
+
     private SongMetadata LoadSongMetadata(string songFileName)
     {
         SongMetadata data = new SongMetadata
@@ -2132,6 +2227,7 @@ private void ParseUdpState()
         songMetadata.songStartDelaySeconds = songStartDelaySeconds;
         songMetadata.useAutoTrackSelection = useAutoTrackSelection;
         songMetadata.selectedMusicXmlPartId = selectedMusicXmlPartId;
+        songMetadata.bestScorePercent = Mathf.Clamp(currentSongBestScorePercent, 0f, 100f);
 
         try
         {
