@@ -214,14 +214,14 @@ public sealed class TabsSongHeaderOverlay
         root.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.20f);
 
         songCard = new VisualElement();
-        songCard.style.width = 760f;
-        songCard.style.minWidth = 760f;
-        songCard.style.maxWidth = 760f;
+        songCard.style.minWidth = 680f;
+        songCard.style.maxWidth = 1080f;
         songCard.style.paddingLeft = 34f;
         songCard.style.paddingRight = 34f;
         songCard.style.paddingTop = 22f;
         songCard.style.paddingBottom = 22f;
         songCard.style.marginBottom = 14f;
+        songCard.style.marginRight = 24f;
         StyleCard(songCard, new Color(0.04f, 0.06f, 0.13f, 0.96f), radius: 18f);
         songCard.style.borderBottomWidth = 5f;
         songCard.style.borderBottomColor = new Color(0.16f, 0.12f, 0.42f, 0.98f);
@@ -232,14 +232,14 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
         songNameLabel.style.textOverflow = TextOverflow.Ellipsis;
         songNameLabel.style.overflow = Overflow.Hidden;
-        songNameLabel.style.maxWidth = 680f;
+        songNameLabel.style.maxWidth = 980f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
         trackNameLabel.style.letterSpacing = 0.2f;
         trackNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
         trackNameLabel.style.textOverflow = TextOverflow.Ellipsis;
         trackNameLabel.style.overflow = Overflow.Hidden;
-        trackNameLabel.style.maxWidth = 680f;
+        trackNameLabel.style.maxWidth = 980f;
 
         VisualElement statusRow = new VisualElement();
         statusRow.style.flexDirection = FlexDirection.Row;
@@ -1477,7 +1477,7 @@ public sealed class TabsSongHeaderOverlay
             float t = tickCount <= 1 ? 0f : i / (tickCount - 1f);
             float theta = Mathf.Lerp(Mathf.PI * 0.96f, Mathf.PI * 0.04f, t);
             float arcX = centerX + Mathf.Cos(theta) * rx;
-            float arcY = centerY + Mathf.Sin(theta) * ry;
+            float arcY = centerY - Mathf.Sin(theta) * ry;
             float tickHeight = i % 2 == 0 ? Mathf.Clamp(meterHeight * 0.13f, 8f, 14f) : Mathf.Clamp(meterHeight * 0.08f, 5f, 9f);
             float tickWidth = i % 2 == 0 ? 2f : 1f;
 
