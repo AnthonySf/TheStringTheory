@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
@@ -804,15 +803,13 @@ public sealed class TabsSongHeaderOverlay
 
     private static (Font body, Font title) ResolveUiFonts(Font fallbackFont)
     {
-        Font body = TryFindFontByName("pixelArtFont", "pixel", "pix");
-        Font title = TryFindFontByName("arcade", "arcade", "shadow");
+        Font body = TryFindFontByName("pixelArtFont", "pixelartfont", "pixel_art", "pixel");
+        Font title = TryFindFontByName("arcade", "arcadefont", "arcade_font", "shadow");
 
-        if (body == null)
-            body = TryLoadFontFromUiFolder("pixelArtFont") ?? fallbackFont;
-        if (title == null)
-            title = TryLoadFontFromUiFolder("arcade") ?? body ?? fallbackFont;
+        body ??= fallbackFont;
+        title ??= body ?? fallbackFont;
 
-        return (body ?? fallbackFont, title ?? body ?? fallbackFont);
+        return (body, title);
     }
 
     private static Font TryFindFontByName(params string[] keywords)
@@ -831,13 +828,15 @@ public sealed class TabsSongHeaderOverlay
             string normalized = font.name.ToLowerInvariant();
             for (int i = 0; i < keywords.Length; i++)
             {
-                if (string.IsNullOrWhiteSpace(keywords[i]))
+                string keyword = keywords[i];
+                if (string.IsNullOrWhiteSpace(keyword))
                     continue;
 
-                if (!normalized.Contains(keywords[i].ToLowerInvariant()))
+                string normalizedKeyword = keyword.ToLowerInvariant();
+                if (!normalized.Contains(normalizedKeyword))
                     continue;
 
-                if (normalized == keywords[i].ToLowerInvariant())
+                if (normalized == normalizedKeyword)
                     return font;
 
                 best ??= font;
@@ -845,37 +844,6 @@ public sealed class TabsSongHeaderOverlay
         }
 
         return best;
-    }
-
-    private static Font TryLoadFontFromUiFolder(string baseName)
-    {
-        if (string.IsNullOrWhiteSpace(baseName))
-            return null;
-
-        string uiFolder = Path.Combine(Application.dataPath, "UI");
-        if (!Directory.Exists(uiFolder))
-            return null;
-
-        foreach (string path in Directory.EnumerateFiles(uiFolder))
-        {
-            string extension = Path.GetExtension(path);
-            if (!string.Equals(extension, ".ttf", StringComparison.OrdinalIgnoreCase) &&
-                !string.Equals(extension, ".otf", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            string fileName = Path.GetFileNameWithoutExtension(path);
-            if (string.IsNullOrWhiteSpace(fileName) ||
-                fileName.IndexOf(baseName, StringComparison.OrdinalIgnoreCase) < 0)
-            {
-                continue;
-            }
-
-            return Font.CreateDynamicFontFromOSFont(path, 16);
-        }
-
-        return null;
     }
 
     private static string FormatTrackName(string trackDisplayName)
