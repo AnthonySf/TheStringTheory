@@ -20,6 +20,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label songNameLabel;
     private readonly Label trackNameLabel;
     private readonly Label speedBadgeLabel;
+    private readonly Label statusDotLabel;
     private readonly Label detectorStatusLabel;
     private readonly VisualElement scorePlate;
     private readonly Label scorePercentLabel;
@@ -66,7 +67,6 @@ public sealed class TabsSongHeaderOverlay
     private readonly ScrollView selectionScrollView;
     private readonly List<SongSelectionRow> selectionRows = new List<SongSelectionRow>();
 
-    private readonly Label vibeLabel;
 
     private int lastScreenHeight = -1;
     private bool suppressCallbacks;
@@ -122,10 +122,6 @@ public sealed class TabsSongHeaderOverlay
         hudStripe.style.borderBottomLeftRadius = 999f;
         hudStripe.style.borderBottomRightRadius = 999f;
 
-        vibeLabel = CreateLabel("NEON RHYTHM // LIVE INPUT // HIGH SCORE ENERGY", 19f, new Color(0.64f, 0.87f, 1f, 0.95f), false);
-        vibeLabel.style.marginBottom = 14f;
-        vibeLabel.style.letterSpacing = 0.5f;
-
         songCard = new VisualElement();
         songCard.style.minWidth = 680f;
         songCard.style.maxWidth = 1160f;
@@ -133,7 +129,9 @@ public sealed class TabsSongHeaderOverlay
         songCard.style.paddingRight = 34f;
         songCard.style.paddingTop = 22f;
         songCard.style.paddingBottom = 22f;
-        StyleCard(songCard, new Color(0.04f, 0.06f, 0.13f, 0.94f), radius: 20f);
+        StyleCard(songCard, new Color(0.04f, 0.06f, 0.13f, 0.96f), radius: 18f);
+        songCard.style.borderBottomWidth = 5f;
+        songCard.style.borderBottomColor = new Color(0.16f, 0.12f, 0.42f, 0.98f);
 
         songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true, useTitleFont: true);
         songNameLabel.style.marginBottom = 8f;
@@ -151,7 +149,7 @@ public sealed class TabsSongHeaderOverlay
         speedBadgeLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
         speedBadgeLabel.style.letterSpacing = 0.45f;
 
-        Label statusDotLabel = CreateLabel(" • ", 24f, new Color(0.78f, 0.86f, 1f, 0.85f), bold: true, useTitleFont: false);
+        statusDotLabel = CreateLabel(" • ", 24f, new Color(0.78f, 0.86f, 1f, 0.85f), bold: true, useTitleFont: false);
         statusDotLabel.style.marginLeft = 8f;
         statusDotLabel.style.marginRight = 8f;
 
@@ -170,21 +168,23 @@ public sealed class TabsSongHeaderOverlay
         scorePlate.style.right = 0f;
         scorePlate.style.alignItems = Align.Center;
         scorePlate.style.justifyContent = Justify.Center;
-        scorePlate.style.height = 90f;
+        scorePlate.style.height = 122f;
 
         VisualElement scorePlateCard = new VisualElement();
-        scorePlateCard.style.minWidth = 380f;
-        scorePlateCard.style.paddingLeft = 24f;
-        scorePlateCard.style.paddingRight = 24f;
-        scorePlateCard.style.paddingTop = 10f;
-        scorePlateCard.style.paddingBottom = 8f;
-        StyleCard(scorePlateCard, new Color(0.06f, 0.07f, 0.20f, 0.92f), radius: 999f);
+        scorePlateCard.style.minWidth = 520f;
+        scorePlateCard.style.paddingLeft = 30f;
+        scorePlateCard.style.paddingRight = 30f;
+        scorePlateCard.style.paddingTop = 12f;
+        scorePlateCard.style.paddingBottom = 10f;
+        StyleCard(scorePlateCard, new Color(0.06f, 0.07f, 0.20f, 0.95f), radius: 16f);
+        scorePlateCard.style.borderBottomWidth = 6f;
+        scorePlateCard.style.borderBottomColor = new Color(0.18f, 0.14f, 0.46f, 1f);
 
-        scorePercentLabel = CreateLabel("SCORE 100.0%", 38f, new Color(1f, 0.85f, 0.49f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(1f, 0.85f, 0.49f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.7f;
 
-        noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 21f, new Color(0.79f, 0.93f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
-        noteTallyLabel.style.marginTop = 2f;
+        noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 22f, new Color(0.79f, 0.93f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
+        noteTallyLabel.style.marginTop = 3f;
         noteTallyLabel.style.letterSpacing = 0.35f;
 
         scorePlateCard.Add(scorePercentLabel);
@@ -381,7 +381,6 @@ public sealed class TabsSongHeaderOverlay
         songCard.Add(trackNameLabel);
         songCard.Add(statusRow);
         root.Add(hudStripe);
-        root.Add(vibeLabel);
         root.Add(songCard);
         root.Add(scorePlate);
         root.Add(judgePopupLayer);
@@ -762,7 +761,7 @@ public sealed class TabsSongHeaderOverlay
         button.style.minWidth = 220f;
         button.style.paddingLeft = 18f;
         button.style.paddingRight = 18f;
-        button.style.backgroundColor = new Color(0.16f, 0.11f, 0.33f, 0.95f);
+        button.style.backgroundColor = new Color(0.24f, 0.15f, 0.44f, 0.98f);
         button.style.color = Color.white;
         button.style.fontSize = 28f;
         button.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -772,14 +771,15 @@ public sealed class TabsSongHeaderOverlay
         button.style.borderBottomRightRadius = 12f;
         button.style.borderTopWidth = 2f;
         button.style.borderRightWidth = 2f;
-        button.style.borderBottomWidth = 2f;
+        button.style.borderBottomWidth = 6f;
         button.style.borderLeftWidth = 2f;
         button.style.borderTopColor = new Color(1f, 0.56f, 0.87f, 0.96f);
         button.style.borderRightColor = new Color(0.66f, 0.54f, 1f, 0.94f);
-        button.style.borderBottomColor = new Color(0.45f, 0.34f, 0.85f, 0.92f);
+        button.style.borderBottomColor = new Color(0.26f, 0.20f, 0.56f, 1f);
         button.style.borderLeftColor = new Color(0.66f, 0.54f, 1f, 0.94f);
         button.style.unityTextAlign = TextAnchor.MiddleCenter;
         button.style.letterSpacing = 0.35f;
+        button.style.marginBottom = 3f;
         button.style.unityFontDefinition = bodyFontDefinition;
         return button;
     }
@@ -943,10 +943,10 @@ public sealed class TabsSongHeaderOverlay
 
         songNameLabel.style.fontSize = songSize;
         trackNameLabel.style.fontSize = trackSize;
-        vibeLabel.style.fontSize = bodySize * 0.48f;
-        speedBadgeLabel.style.fontSize = bodySize * 0.70f;
-        detectorStatusLabel.style.fontSize = bodySize * 0.62f;
-        scorePercentLabel.style.fontSize = bodySize * 0.88f;
+        speedBadgeLabel.style.fontSize = bodySize * 0.66f;
+        detectorStatusLabel.style.fontSize = bodySize * 0.66f;
+        statusDotLabel.style.fontSize = bodySize * 0.66f;
+        scorePercentLabel.style.fontSize = bodySize * 1.08f;
         noteTallyLabel.style.fontSize = bodySize * 0.50f;
         judgePopupFontSize = Mathf.Clamp(screenHeight * 0.072f, 64f, 108f);
         pauseTitleLabel.style.fontSize = pauseSize;
