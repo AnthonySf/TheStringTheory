@@ -37,6 +37,14 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label scorePedalBrandLabel;
     private readonly Label scorePercentLabel;
     private readonly Label noteTallyLabel;
+    private readonly VisualElement inputMeterWrap;
+    private readonly Label inputMeterLabel;
+    private readonly VisualElement inputMeterFace;
+    private readonly VisualElement inputMeterArcViewport;
+    private readonly VisualElement inputMeterArc;
+    private readonly VisualElement inputMeterNeedle;
+    private readonly VisualElement inputMeterNeedleCap;
+    private readonly List<VisualElement> inputMeterTicks = new List<VisualElement>();
     private readonly VisualElement judgePopupLayer;
 
     private readonly List<JudgePopupEntry> activeJudgePopups = new List<JudgePopupEntry>();
@@ -162,6 +170,7 @@ public sealed class TabsSongHeaderOverlay
     private int lastResolvedCount;
     private int hitStreak;
     private float judgePopupFontSize = 82f;
+    private float displayedInputMeterLevel;
 
     private readonly HashSet<int> scoredNoteIds = new HashSet<int>();
     private int scoreHits;
@@ -176,6 +185,10 @@ public sealed class TabsSongHeaderOverlay
     public TabsSongHeaderOverlay(GuitarBridgeServer owner)
     {
         this.owner = owner;
+
+        GameObject existingHeaderUi = GameObject.Find("TabsSongHeaderUI");
+        if (existingHeaderUi != null)
+            UnityEngine.Object.Destroy(existingHeaderUi);
 
         rootObject = new GameObject("TabsSongHeaderUI");
         document = rootObject.AddComponent<UIDocument>();
@@ -202,12 +215,14 @@ public sealed class TabsSongHeaderOverlay
         root.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.20f);
 
         songCard = new VisualElement();
-        songCard.style.minWidth = 680f;
-        songCard.style.maxWidth = 1160f;
+        songCard.style.minWidth = 560f;
+        songCard.style.maxWidth = 960f;
         songCard.style.paddingLeft = 34f;
         songCard.style.paddingRight = 34f;
         songCard.style.paddingTop = 22f;
         songCard.style.paddingBottom = 22f;
+        songCard.style.marginBottom = 14f;
+        songCard.style.marginRight = 24f;
         StyleCard(songCard, new Color(0.04f, 0.06f, 0.13f, 0.96f), radius: 18f);
         songCard.style.borderBottomWidth = 5f;
         songCard.style.borderBottomColor = new Color(0.16f, 0.12f, 0.42f, 0.98f);
@@ -215,9 +230,17 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true, useTitleFont: true);
         songNameLabel.style.marginBottom = 8f;
         songNameLabel.style.letterSpacing = 0.7f;
+        songNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        songNameLabel.style.textOverflow = TextOverflow.Ellipsis;
+        songNameLabel.style.overflow = Overflow.Hidden;
+        songNameLabel.style.maxWidth = 1200f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
         trackNameLabel.style.letterSpacing = 0.2f;
+        trackNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        trackNameLabel.style.textOverflow = TextOverflow.Ellipsis;
+        trackNameLabel.style.overflow = Overflow.Hidden;
+        trackNameLabel.style.maxWidth = 1200f;
 
         VisualElement statusRow = new VisualElement();
         statusRow.style.flexDirection = FlexDirection.Row;
@@ -307,7 +330,7 @@ public sealed class TabsSongHeaderOverlay
         pedalTopRow.style.justifyContent = Justify.SpaceBetween;
         pedalTopRow.style.marginBottom = 6f;
 
-        scorePedalBrandLabel = CreateLabel("HONDA STAGE", 14f, new Color(0.95f, 0.99f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: true);
+        scorePedalBrandLabel = CreateLabel("STRING THEORY", 14f, new Color(0.95f, 0.99f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: true);
         scorePedalBrandLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
         scorePedalBrandLabel.style.letterSpacing = 0.8f;
 
@@ -335,7 +358,7 @@ public sealed class TabsSongHeaderOverlay
         pedalKnobRow.style.flexDirection = FlexDirection.Row;
         pedalKnobRow.style.justifyContent = Justify.SpaceAround;
         pedalKnobRow.style.alignItems = Align.Center;
-        pedalKnobRow.style.marginBottom = 7f;
+        pedalKnobRow.style.marginBottom = 16f;
 
         scorePedalKnobLeft = CreatePedalKnob();
         scorePedalKnobMid = CreatePedalKnob();
@@ -348,12 +371,12 @@ public sealed class TabsSongHeaderOverlay
         pedalKnobRow.Add(scorePedalKnobRight);
 
         scorePedalScreen = new VisualElement();
-        scorePedalScreen.style.flexGrow = 1f;
-        scorePedalScreen.style.paddingTop = 10f;
+        scorePedalScreen.style.flexGrow = 0f;
+        scorePedalScreen.style.paddingTop = 18f;
         scorePedalScreen.style.paddingBottom = 8f;
         scorePedalScreen.style.paddingLeft = 20f;
         scorePedalScreen.style.paddingRight = 20f;
-        scorePedalScreen.style.marginBottom = 10f;
+        scorePedalScreen.style.marginBottom = 8f;
         scorePedalScreen.style.borderTopWidth = 3f;
         scorePedalScreen.style.borderRightWidth = 3f;
         scorePedalScreen.style.borderBottomWidth = 5f;
@@ -368,14 +391,126 @@ public sealed class TabsSongHeaderOverlay
         scorePedalScreen.style.borderBottomLeftRadius = 8f;
         scorePedalScreen.style.borderBottomRightRadius = 8f;
         scorePedalScreen.style.alignItems = Align.Center;
-        scorePedalScreen.style.justifyContent = Justify.Center;
-        scorePedalScreen.style.minHeight = 78f;
+        scorePedalScreen.style.justifyContent = Justify.FlexStart;
+        scorePedalScreen.style.minHeight = 120f;
+        scorePedalScreen.style.flexShrink = 0f;
+        scorePedalScreen.style.overflow = Overflow.Hidden;
+
+        inputMeterWrap = new VisualElement();
+        inputMeterWrap.style.width = 240f;
+        inputMeterWrap.style.alignItems = Align.Center;
+        inputMeterWrap.style.justifyContent = Justify.Center;
+        inputMeterWrap.style.marginBottom = 8f;
+        inputMeterWrap.style.flexShrink = 0f;
+
+        inputMeterLabel = CreateLabel("INPUT", 16f, new Color(0.08f, 0.28f, 0.29f, 0.9f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        inputMeterLabel.style.letterSpacing = 0.9f;
+        inputMeterLabel.style.marginBottom = 1f;
+
+        inputMeterFace = new VisualElement();
+        inputMeterFace.style.width = 220f;
+        inputMeterFace.style.height = 84f;
+        inputMeterFace.style.position = Position.Relative;
+        inputMeterFace.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        inputMeterFace.style.borderTopWidth = 0f;
+        inputMeterFace.style.borderRightWidth = 0f;
+        inputMeterFace.style.borderBottomWidth = 0f;
+        inputMeterFace.style.borderLeftWidth = 0f;
+        inputMeterFace.style.borderTopColor = new Color(0f, 0f, 0f, 0f);
+        inputMeterFace.style.borderRightColor = new Color(0f, 0f, 0f, 0f);
+        inputMeterFace.style.borderBottomColor = new Color(0f, 0f, 0f, 0f);
+        inputMeterFace.style.borderLeftColor = new Color(0f, 0f, 0f, 0f);
+        inputMeterFace.style.borderTopLeftRadius = 6f;
+        inputMeterFace.style.borderTopRightRadius = 6f;
+        inputMeterFace.style.borderBottomLeftRadius = 4f;
+        inputMeterFace.style.borderBottomRightRadius = 4f;
+        inputMeterFace.style.flexShrink = 0f;
+
+        inputMeterArcViewport = new VisualElement();
+        inputMeterArcViewport.style.position = Position.Absolute;
+        inputMeterArcViewport.style.left = 12f;
+        inputMeterArcViewport.style.right = 12f;
+        inputMeterArcViewport.style.top = 10f;
+        inputMeterArcViewport.style.height = 36f;
+        inputMeterArcViewport.style.overflow = Overflow.Hidden;
+
+        inputMeterArc = new VisualElement();
+        inputMeterArc.style.position = Position.Absolute;
+        inputMeterArc.style.left = 0f;
+        inputMeterArc.style.right = 0f;
+        inputMeterArc.style.top = 0f;
+        inputMeterArc.style.height = 72f;
+        inputMeterArc.style.borderTopWidth = 3f;
+        inputMeterArc.style.borderRightWidth = 3f;
+        inputMeterArc.style.borderBottomWidth = 3f;
+        inputMeterArc.style.borderLeftWidth = 3f;
+        inputMeterArc.style.borderTopColor = new Color(0.07f, 0.23f, 0.24f, 0.94f);
+        inputMeterArc.style.borderRightColor = new Color(0.07f, 0.23f, 0.24f, 0.94f);
+        inputMeterArc.style.borderBottomColor = new Color(0.07f, 0.23f, 0.24f, 0.94f);
+        inputMeterArc.style.borderLeftColor = new Color(0.07f, 0.23f, 0.24f, 0.94f);
+        inputMeterArc.style.borderTopLeftRadius = 120f;
+        inputMeterArc.style.borderTopRightRadius = 120f;
+        inputMeterArc.style.borderBottomLeftRadius = 120f;
+        inputMeterArc.style.borderBottomRightRadius = 120f;
+
+        for (int i = 0; i <= 10; i++)
+        {
+            VisualElement tick = new VisualElement();
+            bool major = i % 2 == 0;
+            tick.style.position = Position.Absolute;
+            tick.style.width = major ? 3f : 2f;
+            tick.style.height = major ? 10f : 6f;
+            tick.style.backgroundColor = major ? new Color(0.08f, 0.24f, 0.25f, 0.95f) : new Color(0.09f, 0.26f, 0.27f, 0.82f);
+            tick.style.borderTopLeftRadius = 1f;
+            tick.style.borderTopRightRadius = 1f;
+            tick.style.borderBottomLeftRadius = 1f;
+            tick.style.borderBottomRightRadius = 1f;
+            inputMeterTicks.Add(tick);
+            inputMeterFace.Add(tick);
+        }
+
+        inputMeterNeedle = new VisualElement();
+        inputMeterNeedle.style.position = Position.Absolute;
+        inputMeterNeedle.style.width = 3f;
+        inputMeterNeedle.style.height = 30f;
+        inputMeterNeedle.style.backgroundColor = new Color(0.05f, 0.19f, 0.20f, 0.98f);
+        inputMeterNeedle.style.borderTopLeftRadius = 1f;
+        inputMeterNeedle.style.borderTopRightRadius = 1f;
+        inputMeterNeedle.style.borderBottomLeftRadius = 1f;
+        inputMeterNeedle.style.borderBottomRightRadius = 1f;
+        inputMeterNeedle.style.transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(100f), 0f);
+        inputMeterNeedle.style.rotate = new Rotate(new Angle(-65f, AngleUnit.Degree));
+
+        inputMeterNeedleCap = new VisualElement();
+        inputMeterNeedleCap.style.position = Position.Absolute;
+        inputMeterNeedleCap.style.width = 12f;
+        inputMeterNeedleCap.style.height = 12f;
+        inputMeterNeedleCap.style.backgroundColor = new Color(0.07f, 0.23f, 0.24f, 0.98f);
+        inputMeterNeedleCap.style.borderTopWidth = 2f;
+        inputMeterNeedleCap.style.borderRightWidth = 2f;
+        inputMeterNeedleCap.style.borderBottomWidth = 3f;
+        inputMeterNeedleCap.style.borderLeftWidth = 2f;
+        inputMeterNeedleCap.style.borderTopColor = new Color(0.12f, 0.30f, 0.31f, 0.92f);
+        inputMeterNeedleCap.style.borderRightColor = new Color(0.04f, 0.15f, 0.16f, 0.95f);
+        inputMeterNeedleCap.style.borderBottomColor = new Color(0.03f, 0.12f, 0.13f, 0.95f);
+        inputMeterNeedleCap.style.borderLeftColor = new Color(0.04f, 0.15f, 0.16f, 0.95f);
+
+        inputMeterArcViewport.Add(inputMeterArc);
+        inputMeterFace.Add(inputMeterArcViewport);
+        inputMeterFace.Add(inputMeterNeedle);
+        inputMeterFace.Add(inputMeterNeedleCap);
+        inputMeterWrap.Add(inputMeterLabel);
+        inputMeterWrap.Add(inputMeterFace);
+        LayoutInputMeterGraphics(220f, 84f);
 
         scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(0.07f, 0.23f, 0.24f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.35f;
+        scorePercentLabel.style.marginTop = 1f;
+        scorePercentLabel.style.flexShrink = 0f;
 
         noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 24f, new Color(0.09f, 0.22f, 0.21f, 0.95f), true, TextAnchor.MiddleCenter);
-        noteTallyLabel.style.marginTop = 2f;
+        noteTallyLabel.style.marginTop = 0f;
+        noteTallyLabel.style.flexShrink = 0f;
         noteTallyLabel.style.letterSpacing = 0.2f;
 
         VisualElement pedalFooter = new VisualElement();
@@ -387,6 +522,7 @@ public sealed class TabsSongHeaderOverlay
         scorePedalFootswitch.style.marginRight = 36f;
         scorePedalFootswitchRight.style.marginLeft = 36f;
 
+        scorePedalScreen.Add(inputMeterWrap);
         scorePedalScreen.Add(scorePercentLabel);
         scorePedalScreen.Add(noteTallyLabel);
         pedalFooter.Add(scorePedalFootswitch);
@@ -789,6 +925,11 @@ public sealed class TabsSongHeaderOverlay
         detectorStatusLabel.style.color = detectorConnected
             ? new Color(0.49f, 0.95f, 0.63f, 1f)
             : new Color(1f, 0.47f, 0.53f, 1f);
+
+        float liveInputLevel = detectorConnected ? Mathf.Clamp01(snapshot.inputLevelNormalized) : 0f;
+        displayedInputMeterLevel = Mathf.Lerp(displayedInputMeterLevel, liveInputLevel, 0.22f);
+        float needleAngle = Mathf.Lerp(-65f, 65f, displayedInputMeterLevel);
+        inputMeterNeedle.style.rotate = new Rotate(new Angle(needleAngle, AngleUnit.Degree));
 
         suppressCallbacks = true;
         speedSlider.SetValueWithoutNotify(speedPercent);
@@ -1311,6 +1452,66 @@ public sealed class TabsSongHeaderOverlay
         indicator.style.top = Mathf.Clamp(knobSize * 0.12f, 3f, 8f);
     }
 
+    private void LayoutInputMeterGraphics(float meterWidth, float meterHeight)
+    {
+        float inset = Mathf.Clamp(meterWidth * 0.08f, 10f, 18f);
+        float arcViewportTop = Mathf.Clamp(meterHeight * 0.12f, 8f, 14f);
+        float arcViewportHeight = Mathf.Clamp(meterHeight * 0.48f, 28f, 52f);
+        float arcHeight = arcViewportHeight * 2f;
+        float arcWidth = Mathf.Max(1f, meterWidth - (inset * 2f));
+        float rx = arcWidth * 0.5f;
+        float ry = arcHeight * 0.5f;
+        float centerX = meterWidth * 0.5f;
+        float centerY = arcViewportTop + ry;
+
+        inputMeterArcViewport.style.left = inset;
+        inputMeterArcViewport.style.right = inset;
+        inputMeterArcViewport.style.top = arcViewportTop;
+        inputMeterArcViewport.style.height = arcViewportHeight;
+
+        inputMeterArc.style.height = arcHeight;
+        inputMeterArc.style.borderTopLeftRadius = arcHeight;
+        inputMeterArc.style.borderTopRightRadius = arcHeight;
+        inputMeterArc.style.borderBottomLeftRadius = arcHeight;
+        inputMeterArc.style.borderBottomRightRadius = arcHeight;
+
+        int tickCount = inputMeterTicks.Count;
+        for (int i = 0; i < tickCount; i++)
+        {
+            VisualElement tick = inputMeterTicks[i];
+            if (tick == null)
+                continue;
+
+            float t = tickCount <= 1 ? 0f : i / (tickCount - 1f);
+            float theta = Mathf.Lerp(Mathf.PI * 0.96f, Mathf.PI * 0.04f, t);
+            float arcX = centerX + Mathf.Cos(theta) * rx;
+            float arcY = centerY - Mathf.Sin(theta) * ry;
+            float tickHeight = i % 2 == 0 ? Mathf.Clamp(meterHeight * 0.13f, 8f, 14f) : Mathf.Clamp(meterHeight * 0.08f, 5f, 9f);
+            float tickWidth = i % 2 == 0 ? 3f : 2f;
+
+            tick.style.width = tickWidth;
+            tick.style.height = tickHeight;
+            tick.style.left = arcX - (tickWidth * 0.5f);
+            tick.style.top = arcY - 1f;
+        }
+
+        float capSize = Mathf.Clamp(meterHeight * 0.16f, 10f, 16f);
+        float pivotY = arcViewportTop + arcViewportHeight + Mathf.Clamp(meterHeight * 0.10f, 6f, 12f);
+        float needleHeight = Mathf.Clamp(meterHeight * 0.42f, 24f, 44f);
+        inputMeterNeedle.style.height = needleHeight;
+        inputMeterNeedle.style.left = centerX - 1.5f;
+        inputMeterNeedle.style.top = pivotY - needleHeight;
+
+        inputMeterNeedleCap.style.width = capSize;
+        inputMeterNeedleCap.style.height = capSize;
+        inputMeterNeedleCap.style.left = centerX - (capSize * 0.5f);
+        inputMeterNeedleCap.style.top = pivotY - (capSize * 0.5f);
+        inputMeterNeedleCap.style.borderTopLeftRadius = capSize * 0.5f;
+        inputMeterNeedleCap.style.borderTopRightRadius = capSize * 0.5f;
+        inputMeterNeedleCap.style.borderBottomLeftRadius = capSize * 0.5f;
+        inputMeterNeedleCap.style.borderBottomRightRadius = capSize * 0.5f;
+    }
+
     private static VisualElement CreateFootswitch()
     {
         VisualElement footswitch = new VisualElement();
@@ -1337,14 +1538,14 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jack = new VisualElement();
         jack.name = "pedal-jack";
         jack.style.width = 24f;
-        jack.style.height = 42f;
+        jack.style.height = 52f;
         jack.style.flexDirection = FlexDirection.Row;
         jack.style.alignItems = Align.Center;
 
         VisualElement jackOuter = new VisualElement();
         jackOuter.name = "pedal-jack-outer";
         jackOuter.style.width = 8f;
-        jackOuter.style.height = 30f;
+        jackOuter.style.height = 38f;
         jackOuter.style.backgroundColor = new Color(0.83f, 0.86f, 0.90f, 1f);
         jackOuter.style.borderTopWidth = 2f;
         jackOuter.style.borderRightWidth = 1f;
@@ -1358,7 +1559,7 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jackInner = new VisualElement();
         jackInner.name = "pedal-jack-inner";
         jackInner.style.width = 12f;
-        jackInner.style.height = 40f;
+        jackInner.style.height = 50f;
         jackInner.style.marginLeft = 0f;
         jackInner.style.backgroundColor = new Color(0.64f, 0.69f, 0.75f, 1f);
         jackInner.style.borderTopWidth = 1f;
@@ -1580,11 +1781,13 @@ public sealed class TabsSongHeaderOverlay
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
-        float pedalWidth = Mathf.Clamp(Screen.width * 0.38f, 600f, 920f);
-        float pedalHeight = Mathf.Clamp(screenHeight * 0.235f, 204f, 302f);
-        float knobSize = Mathf.Clamp(pedalHeight * 0.17f, 28f, 48f);
+        float pedalWidth = Mathf.Clamp(Screen.width * 0.30f, 500f, 760f);
+        float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
+        float knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 62f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
-        float footswitchSize = Mathf.Clamp(pedalHeight * 0.24f, 36f, 64f);
+        float footswitchSize = Mathf.Clamp(pedalHeight * 0.23f, 42f, 74f);
+        float meterWidth = Mathf.Clamp(pedalWidth * 0.34f, 200f, 300f);
+        float meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 120f);
 
         songNameLabel.style.fontSize = songSize;
         trackNameLabel.style.fontSize = trackSize;
@@ -1594,17 +1797,50 @@ public sealed class TabsSongHeaderOverlay
         scorePercentLabel.style.fontSize = bodySize * 1.06f;
         noteTallyLabel.style.fontSize = bodySize * 0.58f;
         scorePedalBrandLabel.style.fontSize = Mathf.Clamp(bodySize * 0.33f, 12f, 19f);
-        scorePlate.style.height = pedalHeight + 34f;
+        inputMeterLabel.style.fontSize = Mathf.Clamp(bodySize * 0.44f, 13f, 20f);
+        inputMeterWrap.style.width = meterWidth;
+        inputMeterFace.style.width = meterWidth;
+        inputMeterFace.style.height = meterHeight;
+        LayoutInputMeterGraphics(meterWidth, meterHeight);
         scorePedalBody.style.width = pedalWidth;
+        float meterLabelFont = Mathf.Clamp(bodySize * 0.44f, 13f, 20f);
+        float scoreFont = bodySize * 1.06f;
+        float tallyFont = bodySize * 0.58f;
+        float meterLabelHeight = meterLabelFont * 1.45f;
+        float scoreLineHeight = scoreFont * 1.90f;
+        float tallyLineHeight = tallyFont * 1.65f;
+        float screenPaddingAndSpacing = 10f + 8f + 8f + 1f + 1f + 12f;
+        float requiredScreenHeight = meterHeight + meterLabelHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
+
+        float topRowHeight = Mathf.Max(ledSize, Mathf.Clamp(bodySize * 0.33f, 12f, 19f) * 1.25f);
+        float fixedPedalContentHeight = 16f + topRowHeight + 6f + knobSize + 7f + 8f + footswitchSize + 16f;
+        float minPedalHeightForContent = fixedPedalContentHeight + requiredScreenHeight;
+        if (pedalHeight < minPedalHeightForContent)
+        {
+            pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 640f);
+            knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 64f);
+            ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
+            footswitchSize = Mathf.Clamp(pedalHeight * 0.23f, 42f, 76f);
+            meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 130f);
+            inputMeterFace.style.height = meterHeight;
+            LayoutInputMeterGraphics(meterWidth, meterHeight);
+            requiredScreenHeight = meterHeight + meterLabelHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
+        }
+
+        scorePlate.style.height = pedalHeight + 44f;
         scorePedalBody.style.height = pedalHeight;
-        float jackHeight = Mathf.Clamp(pedalHeight * 0.24f, 42f, 68f);
-        float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 18f, 32f);
-        float jackOffset = jackWidth;
+        float screenHeightTarget = Mathf.Max(140f, requiredScreenHeight);
+        scorePedalScreen.style.height = screenHeightTarget;
+        scorePedalScreen.style.minHeight = screenHeightTarget;
+        scorePedalScreen.style.maxHeight = screenHeightTarget;
+
+        float jackHeight = Mathf.Clamp(pedalHeight * 0.34f, 60f, 102f);
+        float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 22f, 40f);
+        float jackOffset = Mathf.Max(0f, jackWidth - 1f);
         float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
         scorePedalInputJack.style.left = -jackOffset;
         scorePedalInputJack.style.top = jackTop;
-        scorePedalScreen.style.minHeight = Mathf.Clamp(pedalHeight * 0.36f, 78f, 136f);
         SetPedalJackSize(scorePedalOutputJack, jackWidth, jackHeight);
         scorePedalOutputJack.style.right = -jackOffset;
         scorePedalOutputJack.style.top = jackTop;
@@ -1683,6 +1919,17 @@ public sealed class TabsSongHeaderOverlay
             label.style.fontSize = buttonFontSize;
 
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
-        songCard.style.minWidth = Mathf.Clamp(Screen.width * 0.46f, 640f, 1400f);
+
+        float pedalLeftEdge = (Screen.width - pedalWidth) * 0.5f;
+        float songCardAvailableWidth = pedalLeftEdge + 24f;
+        float songCardWidth = Mathf.Clamp(songCardAvailableWidth, 520f, 1320f);
+        songCard.style.width = songCardWidth;
+        songCard.style.minWidth = songCardWidth;
+        songCard.style.maxWidth = songCardWidth;
+        songCard.style.marginRight = Mathf.Clamp(Screen.width * 0.03f, 24f, 52f);
+
+        float titleMaxWidth = Mathf.Max(340f, songCardWidth - 36f);
+        songNameLabel.style.maxWidth = titleMaxWidth;
+        trackNameLabel.style.maxWidth = titleMaxWidth;
     }
 }
