@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
@@ -45,6 +46,75 @@ public sealed class TabsSongHeaderOverlay
         public float duration;
     }
 
+    private sealed class EnumCycleControl : VisualElement
+    {
+        private readonly List<string> options;
+        private readonly Label valueLabel;
+        private bool suppress;
+
+        public Action<string> OnValueChanged;
+
+        public EnumCycleControl(IEnumerable<string> enumOptions, string initialValue, Func<string, float, Color, bool, TextAnchor, bool, Label> createLabel, Func<string, Action, Button> createButton)
+        {
+            options = enumOptions?.Where(option => !string.IsNullOrWhiteSpace(option)).Distinct().ToList() ?? new List<string>();
+            style.flexDirection = FlexDirection.Row;
+            style.alignItems = Align.Center;
+            style.marginBottom = 6f;
+
+            Button prev = createButton("◀", () => Shift(-1));
+            prev.style.minWidth = 90f;
+            prev.style.height = 58f;
+            prev.style.marginRight = 8f;
+
+            valueLabel = createLabel(string.Empty, 34f, new Color(0.90f, 0.96f, 1f, 1f), true, TextAnchor.MiddleCenter, false);
+            valueLabel.style.flexGrow = 1f;
+            valueLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            valueLabel.AddToClassList("global-setting-enum-value");
+
+            Button next = createButton("▶", () => Shift(1));
+            next.style.minWidth = 90f;
+            next.style.height = 58f;
+            next.style.marginLeft = 8f;
+
+            Add(prev);
+            Add(valueLabel);
+            Add(next);
+
+            SetValueWithoutNotify(initialValue);
+        }
+
+        public void SetValueWithoutNotify(string value)
+        {
+            if (options.Count == 0)
+            {
+                valueLabel.text = string.IsNullOrEmpty(value) ? "--" : value;
+                return;
+            }
+
+            string resolved = options.FirstOrDefault(option => string.Equals(option, value, StringComparison.OrdinalIgnoreCase)) ?? options[0];
+            suppress = true;
+            valueLabel.text = resolved;
+            suppress = false;
+        }
+
+        private void Shift(int delta)
+        {
+            if (options.Count == 0)
+                return;
+
+            string current = valueLabel.text;
+            int currentIndex = options.FindIndex(option => string.Equals(option, current, StringComparison.OrdinalIgnoreCase));
+            if (currentIndex < 0)
+                currentIndex = 0;
+
+            int nextIndex = (currentIndex + delta + options.Count) % options.Count;
+            string next = options[nextIndex];
+            valueLabel.text = next;
+            if (!suppress)
+                OnValueChanged?.Invoke(next);
+        }
+    }
+
     private readonly VisualElement pauseOverlay;
     private readonly Label pauseTitleLabel;
     private readonly Label pauseHintLabel;
@@ -61,6 +131,13 @@ public sealed class TabsSongHeaderOverlay
     private readonly Slider settingsTabSpeedSlider;
     private readonly Label settingsStartDelayLabel;
     private readonly Slider settingsStartDelaySlider;
+
+    private readonly VisualElement globalSettingsOverlay;
+    private readonly VisualElement globalSettingsCard;
+    private readonly ScrollView globalSettingsScrollView;
+    private readonly Button resetDefaultsButton;
+    private readonly Dictionary<string, VisualElement> globalSettingInputs = new Dictionary<string, VisualElement>();
+    private readonly Dictionary<string, Label> globalSettingValueLabels = new Dictionary<string, Label>();
 
     private readonly VisualElement selectionOverlay;
     private readonly Label selectionSubtitleLabel;
@@ -83,6 +160,7 @@ public sealed class TabsSongHeaderOverlay
     private string lastLoopSignature = string.Empty;
     private readonly FontDefinition bodyFontDefinition;
     private readonly FontDefinition titleFontDefinition;
+    private string globalSettingsLayoutSignature = string.Empty;
 
     public TabsSongHeaderOverlay(GuitarBridgeServer owner)
     {
@@ -217,11 +295,12 @@ public sealed class TabsSongHeaderOverlay
 
         loopButton = CreateActionButton("Loop", () => owner?.ToggleLoopFromUi());
         Button songSelectButton = CreateActionButton("Library", () => owner?.OpenSongSelectionFromUi());
-        Button settingsButton = CreateActionButton("Settings", () => owner?.OpenSongSettingsFromUi());
+        Button songSettingsButton = CreateActionButton("Song Settings", () => owner?.OpenSongSettingsFromUi());
+        Button globalSettingsButton = CreateActionButton("Settings", () => owner?.OpenGlobalSettingsFromUi());
         Button toneLabButton = CreateActionButton("Tone Lab", () => owner?.OpenToneLabFromUi());
         Button resumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
-        foreach (Button button in new[] { loopButton, songSelectButton, settingsButton, toneLabButton, resumeButton })
+        foreach (Button button in new[] { loopButton, songSelectButton, songSettingsButton, globalSettingsButton, toneLabButton, resumeButton })
         {
             button.style.marginRight = 10f;
             button.style.marginTop = 8f;
@@ -242,7 +321,7 @@ public sealed class TabsSongHeaderOverlay
         settingsTopTag.style.marginBottom = 6f;
         settingsTopTag.style.letterSpacing = 1.6f;
 
-        Label settingsTitle = CreateLabel("SESSION SETTINGS", 88f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        Label settingsTitle = CreateLabel("SONG SETTINGS", 88f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
         settingsTitle.style.marginBottom = 8f;
         settingsTitle.style.letterSpacing = 1.1f;
         Label settingsHelp = CreateLabel("Fine tune timing, offsets, and playback behavior.", 28f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
@@ -307,6 +386,78 @@ public sealed class TabsSongHeaderOverlay
         settingsOverlay.Add(settingsHelp);
         settingsOverlay.Add(settingsCard);
 
+        globalSettingsOverlay = CreateFullscreenOverlay();
+        globalSettingsOverlay.style.paddingTop = 34f;
+        globalSettingsOverlay.style.paddingBottom = 20f;
+        Label globalSettingsTopTag = CreateLabel("◉ PERFORMANCE SETUP ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        globalSettingsTopTag.style.marginBottom = 6f;
+        globalSettingsTopTag.style.letterSpacing = 1.6f;
+
+        Label globalSettingsTitle = CreateLabel("SETTINGS", 88f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        globalSettingsTitle.style.marginBottom = 8f;
+        globalSettingsTitle.style.letterSpacing = 1.1f;
+        Label globalSettingsHelp = CreateLabel("Gameplay and visual tuning for every song.", 28f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
+        globalSettingsHelp.style.marginBottom = 18f;
+
+        globalSettingsCard = new VisualElement();
+        globalSettingsCard.style.width = Length.Percent(96f);
+        globalSettingsCard.style.maxWidth = 1860f;
+        globalSettingsCard.style.flexGrow = 1f;
+        globalSettingsCard.style.minHeight = 540f;
+        globalSettingsCard.style.paddingLeft = 24f;
+        globalSettingsCard.style.paddingRight = 24f;
+        globalSettingsCard.style.paddingTop = 20f;
+        globalSettingsCard.style.paddingBottom = 20f;
+        globalSettingsCard.style.flexDirection = FlexDirection.Column;
+        StyleCard(globalSettingsCard, new Color(0.04f, 0.07f, 0.14f, 0.96f), radius: 20f);
+
+        VisualElement globalTopButtons = new VisualElement();
+        globalTopButtons.style.flexDirection = FlexDirection.Row;
+        globalTopButtons.style.flexWrap = Wrap.Wrap;
+        globalTopButtons.style.marginBottom = 12f;
+        globalTopButtons.style.flexShrink = 0f;
+
+        resetDefaultsButton = CreateActionButton("Reset Settings", () => owner?.ResetGlobalSettingsToDefaultsFromUi());
+        resetDefaultsButton.tooltip = "Reload default gameplay and visual tuning values.";
+        resetDefaultsButton.style.backgroundColor = new Color(0.36f, 0.16f, 0.20f, 0.98f);
+        resetDefaultsButton.style.borderTopColor = new Color(0.95f, 0.48f, 0.53f, 0.95f);
+        resetDefaultsButton.style.borderRightColor = new Color(0.80f, 0.35f, 0.39f, 0.95f);
+        resetDefaultsButton.style.borderBottomColor = new Color(0.62f, 0.23f, 0.26f, 0.95f);
+        resetDefaultsButton.style.borderLeftColor = new Color(0.80f, 0.35f, 0.39f, 0.95f);
+        globalTopButtons.Add(resetDefaultsButton);
+        globalSettingsCard.Add(globalTopButtons);
+
+        globalSettingsScrollView = new ScrollView(ScrollViewMode.Vertical);
+        globalSettingsScrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        globalSettingsScrollView.style.flexGrow = 1f;
+        globalSettingsScrollView.style.flexShrink = 1f;
+        globalSettingsScrollView.style.position = Position.Relative;
+        globalSettingsScrollView.style.minHeight = 0f;
+        globalSettingsScrollView.style.marginTop = 8f;
+        globalSettingsScrollView.style.marginBottom = 8f;
+        globalSettingsCard.Add(globalSettingsScrollView);
+
+        VisualElement globalButtons = new VisualElement();
+        globalButtons.style.flexDirection = FlexDirection.Row;
+        globalButtons.style.flexWrap = Wrap.Wrap;
+        globalButtons.style.marginTop = 10f;
+        globalButtons.style.flexShrink = 0f;
+
+        Button globalBackButton = CreateActionButton("Back", () => owner?.CloseGlobalSettingsFromUi());
+        Button globalResumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
+        foreach (Button button in new[] { globalBackButton, globalResumeButton })
+        {
+            button.style.marginRight = 10f;
+            button.style.marginTop = 8f;
+            globalButtons.Add(button);
+        }
+
+        globalSettingsCard.Add(globalButtons);
+        globalSettingsOverlay.Add(globalSettingsTopTag);
+        globalSettingsOverlay.Add(globalSettingsTitle);
+        globalSettingsOverlay.Add(globalSettingsHelp);
+        globalSettingsOverlay.Add(globalSettingsCard);
+
         selectionOverlay = CreateFullscreenOverlay();
         Label selectionTopTag = CreateLabel("PRESS START TO PICK YOUR TRACK", 28f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         selectionTopTag.style.marginBottom = 6f;
@@ -368,6 +519,7 @@ public sealed class TabsSongHeaderOverlay
         root.Add(judgePopupLayer);
         root.Add(pauseOverlay);
         root.Add(settingsOverlay);
+        root.Add(globalSettingsOverlay);
         root.Add(selectionOverlay);
 
         ApplyResponsiveSizing(force: true);
@@ -502,13 +654,15 @@ public sealed class TabsSongHeaderOverlay
         settingsTabSpeedLabel.text = $"Tab Speed Offset  {snapshot.tabSpeedOffsetPercent:F0}%";
         settingsStartDelayLabel.text = $"Start Delay  {snapshot.songStartDelaySeconds:F2}s";
 
-        bool showPause = snapshot.isPaused && !snapshot.showSongSettings && !snapshot.showSongSelection;
+        bool showPause = snapshot.isPaused && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showGlobalSettings;
         bool showSettings = snapshot.showSongSettings;
         bool showSelection = snapshot.showSongSelection;
+        bool showGlobalSettings = snapshot.showGlobalSettings;
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
+        globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
 
         if (showPause)
         {
@@ -521,6 +675,9 @@ public sealed class TabsSongHeaderOverlay
 
         if (showSelection)
             UpdateSongSelectionRows(snapshot);
+
+        if (showGlobalSettings)
+            UpdateGlobalSettings(snapshot);
     }
 
     public void Dispose()
@@ -620,6 +777,180 @@ public sealed class TabsSongHeaderOverlay
         owner.SelectSongByIndexFromUi(rowIndex);
     }
 
+
+    private void UpdateGlobalSettings(GuitarGameplaySnapshot snapshot)
+    {
+        BuildGlobalSettingsUi(snapshot.runtimeSettingsSections);
+
+        if (snapshot.runtimeSettingsSections == null)
+            return;
+
+        suppressCallbacks = true;
+        foreach (RuntimeSettingSectionSnapshot section in snapshot.runtimeSettingsSections)
+        {
+            if (section?.settings == null)
+                continue;
+
+            foreach (RuntimeSettingSnapshot setting in section.settings)
+            {
+                if (setting == null || string.IsNullOrEmpty(setting.id) || !globalSettingInputs.TryGetValue(setting.id, out VisualElement input))
+                    continue;
+
+                if (input is Toggle toggle)
+                    toggle.SetValueWithoutNotify(string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase));
+                else if (input is Slider slider)
+                {
+                    if (float.TryParse(setting.value, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
+                        slider.SetValueWithoutNotify(parsed);
+                }
+                else if (input is EnumCycleControl enumCycle)
+                {
+                    if (!string.IsNullOrEmpty(setting.value))
+                        enumCycle.SetValueWithoutNotify(setting.value);
+                }
+
+                if (globalSettingValueLabels.TryGetValue(setting.id, out Label valueLabel))
+                    valueLabel.text = setting.value;
+            }
+        }
+        suppressCallbacks = false;
+    }
+
+    private void BuildGlobalSettingsUi(List<RuntimeSettingSectionSnapshot> sections)
+    {
+        if (sections == null)
+            return;
+
+        string signature = BuildGlobalSettingsLayoutSignature(sections);
+        if (signature == globalSettingsLayoutSignature && globalSettingInputs.Count > 0)
+            return;
+
+        globalSettingsLayoutSignature = signature;
+        globalSettingsScrollView.Clear();
+        globalSettingInputs.Clear();
+        globalSettingValueLabels.Clear();
+
+        foreach (RuntimeSettingSectionSnapshot section in sections)
+        {
+            if (section == null)
+                continue;
+
+            VisualElement sectionCard = new VisualElement();
+            sectionCard.style.marginBottom = 12f;
+            sectionCard.style.paddingLeft = 18f;
+            sectionCard.style.paddingRight = 18f;
+            sectionCard.style.paddingTop = 14f;
+            sectionCard.style.paddingBottom = 14f;
+            StyleCard(sectionCard, new Color(0.06f, 0.10f, 0.18f, 0.94f), 14f);
+
+            Label sectionTitle = CreateLabel(section.title, 30f, new Color(1f, 0.87f, 0.62f, 1f), true);
+            sectionTitle.AddToClassList("global-section-title");
+            sectionTitle.style.marginBottom = 10f;
+            sectionCard.Add(sectionTitle);
+
+            if (section.settings != null)
+            {
+                foreach (RuntimeSettingSnapshot setting in section.settings)
+                    sectionCard.Add(CreateGlobalSettingRow(setting));
+            }
+
+            globalSettingsScrollView.Add(sectionCard);
+        }
+
+        ApplyResponsiveSizing(force: true);
+    }
+
+    private VisualElement CreateGlobalSettingRow(RuntimeSettingSnapshot setting)
+    {
+        VisualElement row = new VisualElement();
+        row.style.marginBottom = 10f;
+        row.style.paddingBottom = 10f;
+        row.style.borderBottomWidth = 1f;
+        row.style.borderBottomColor = new Color(0.28f, 0.42f, 0.65f, 0.36f);
+
+        Label label = CreateLabel(setting.label, 34f, Color.white, true);
+        label.AddToClassList("global-setting-title");
+        label.tooltip = setting.tooltip;
+        row.Add(label);
+
+        Label help = CreateLabel(setting.tooltip, 28f, new Color(0.75f, 0.88f, 0.96f, 0.95f));
+        help.AddToClassList("global-setting-help");
+        help.style.marginTop = 2f;
+        help.style.marginBottom = 6f;
+        help.tooltip = setting.tooltip;
+        row.Add(help);
+
+        VisualElement input = null;
+        if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
+        {
+            Toggle toggle = new Toggle();
+            toggle.value = string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase);
+            toggle.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetGlobalRuntimeSettingFromUi(setting.id, evt.newValue ? "true" : "false"); });
+            input = toggle;
+        }
+        else if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase))
+        {
+            EnumCycleControl enumCycle = new EnumCycleControl(setting.enumOptions, setting.value, CreateLabel, CreateActionButton);
+            enumCycle.OnValueChanged += value =>
+            {
+                if (!suppressCallbacks)
+                    owner?.SetGlobalRuntimeSettingFromUi(setting.id, value);
+            };
+            input = enumCycle;
+        }
+        else
+        {
+            Slider slider = new Slider(setting.min, setting.max) { value = ParseFloat(setting.value, setting.min) };
+            slider.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressCallbacks)
+                    return;
+
+                float snapped = setting.step > 0.0001f ? Mathf.Round(evt.newValue / setting.step) * setting.step : evt.newValue;
+                string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase)
+                    ? Mathf.RoundToInt(snapped).ToString(CultureInfo.InvariantCulture)
+                    : snapped.ToString("0.###", CultureInfo.InvariantCulture);
+                owner?.SetGlobalRuntimeSettingFromUi(setting.id, serialized);
+            });
+            input = slider;
+        }
+
+        input.tooltip = setting.tooltip;
+        input.style.marginBottom = 4f;
+        row.Add(input);
+
+        Label valueLabel = CreateLabel(setting.value, 30f, new Color(1f, 0.95f, 0.76f, 1f));
+        valueLabel.AddToClassList("global-setting-value");
+        row.Add(valueLabel);
+
+        globalSettingInputs[setting.id] = input;
+        globalSettingValueLabels[setting.id] = valueLabel;
+        return row;
+    }
+
+    private static string BuildGlobalSettingsLayoutSignature(List<RuntimeSettingSectionSnapshot> sections)
+    {
+        if (sections == null)
+            return string.Empty;
+
+        List<string> tokens = new List<string>();
+        foreach (RuntimeSettingSectionSnapshot section in sections)
+        {
+            tokens.Add(section?.title ?? string.Empty);
+            if (section?.settings == null)
+                continue;
+
+            foreach (RuntimeSettingSnapshot setting in section.settings)
+                tokens.Add($"{setting?.id}:{setting?.valueType}");
+        }
+
+        return string.Join("|", tokens);
+    }
+
+    private static float ParseFloat(string value, float fallback)
+    {
+        return float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed) ? parsed : fallback;
+    }
 
     private static bool IsNoteInsideLoopWindow(float noteTime, float loopStart, float loopEnd)
     {
@@ -940,8 +1271,9 @@ public sealed class TabsSongHeaderOverlay
         settingsTabSpeedLabel.style.fontSize = bodySize * 0.80f;
         settingsStartDelayLabel.style.fontSize = bodySize * 0.80f;
 
-        float buttonFontSize = Mathf.Clamp(screenHeight * 0.026f, 24f, 38f);
-        float buttonHeight = Mathf.Clamp(screenHeight * 0.070f, 58f, 90f);
+        float buttonFontSize = Mathf.Clamp(screenHeight * 0.030f, 28f, 44f);
+        float buttonHeight = Mathf.Clamp(screenHeight * 0.078f, 64f, 98f);
+        float globalCardMaxHeight = Mathf.Clamp(screenHeight * 0.90f, 580f, 1720f);
 
         foreach (SongSelectionRow row in selectionRows)
         {
@@ -961,6 +1293,22 @@ public sealed class TabsSongHeaderOverlay
                 button.style.height = buttonHeight;
         }
 
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-section-title").ToList())
+            label.style.fontSize = buttonFontSize * 0.95f;
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-title").ToList())
+            label.style.fontSize = buttonFontSize;
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-help").ToList())
+            label.style.fontSize = buttonFontSize * 0.78f;
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-value").ToList())
+            label.style.fontSize = buttonFontSize * 0.82f;
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-enum-value").ToList())
+            label.style.fontSize = buttonFontSize;
+
+        globalSettingsCard.style.maxHeight = globalCardMaxHeight;
         songCard.style.minWidth = Mathf.Clamp(Screen.width * 0.46f, 640f, 1400f);
     }
 }
