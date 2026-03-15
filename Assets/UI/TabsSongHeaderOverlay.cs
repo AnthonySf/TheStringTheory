@@ -1342,8 +1342,8 @@ public sealed class TabsSongHeaderOverlay
 
         VisualElement jackOuter = new VisualElement();
         jackOuter.name = "pedal-jack-outer";
-        jackOuter.style.width = 12f;
-        jackOuter.style.height = 40f;
+        jackOuter.style.width = 8f;
+        jackOuter.style.height = 30f;
         jackOuter.style.backgroundColor = new Color(0.83f, 0.86f, 0.90f, 1f);
         jackOuter.style.borderTopWidth = 2f;
         jackOuter.style.borderRightWidth = 1f;
@@ -1356,9 +1356,9 @@ public sealed class TabsSongHeaderOverlay
 
         VisualElement jackInner = new VisualElement();
         jackInner.name = "pedal-jack-inner";
-        jackInner.style.width = 9f;
-        jackInner.style.height = 30f;
-        jackInner.style.marginLeft = 1f;
+        jackInner.style.width = 12f;
+        jackInner.style.height = 40f;
+        jackInner.style.marginLeft = 2f;
         jackInner.style.backgroundColor = new Color(0.64f, 0.69f, 0.75f, 1f);
         jackInner.style.borderTopWidth = 1f;
         jackInner.style.borderRightWidth = 1f;
@@ -1395,19 +1395,20 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jackOuter = jack.Q<VisualElement>("pedal-jack-outer");
         if (jackOuter != null)
         {
-            float outerWidth = Mathf.Clamp(width * 0.55f, 10f, 20f);
+            float outerWidth = Mathf.Clamp(width * 0.34f, 6f, 13f);
+            float outerHeight = Mathf.Clamp(height * 0.74f, 18f, 50f);
             jackOuter.style.width = outerWidth;
-            jackOuter.style.height = height;
+            jackOuter.style.height = outerHeight;
         }
 
         VisualElement jackInner = jack.Q<VisualElement>("pedal-jack-inner");
         if (jackInner != null)
         {
-            float innerWidth = Mathf.Clamp(width * 0.38f, 7f, 14f);
-            float innerHeight = Mathf.Clamp(height * 0.72f, 20f, 44f);
+            float innerWidth = Mathf.Clamp(width * 0.54f, 10f, 20f);
+            float innerHeight = Mathf.Clamp(height * 0.94f, 24f, 64f);
             jackInner.style.width = innerWidth;
             jackInner.style.height = innerHeight;
-            jackInner.style.marginLeft = Mathf.Clamp(width * 0.05f, 1f, 3f);
+            jackInner.style.marginLeft = Mathf.Clamp(width * 0.08f, 1f, 4f);
         }
 
         VisualElement jackReflection = jack.Q<VisualElement>("pedal-jack-reflection");
