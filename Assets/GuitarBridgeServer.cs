@@ -304,10 +304,24 @@ public class GuitarBridgeServer : MonoBehaviour
         public List<TrackOffsetOverride> trackOffsetOverrides = new List<TrackOffsetOverride>();
     }
 
+    [Serializable]
+    private class GlobalRuntimeSettingsMetadata
+    {
+        public List<RuntimeSettingValueEntry> values = new List<RuntimeSettingValueEntry>();
+    }
+
+    [Serializable]
+    private class RuntimeSettingValueEntry
+    {
+        public string id;
+        public string value;
+    }
+
     private string currentSongFileName = "song.mp3";
     private bool hasBackingTrack;
     private bool showSongSettings;
     private bool showSongSelection;
+    private bool showGlobalSettings;
     private int selectedSongListIndex;
     private int songListScrollOffset;
     private readonly List<SongLibraryEntry> availableSongs = new List<SongLibraryEntry>();
@@ -328,6 +342,26 @@ public class GuitarBridgeServer : MonoBehaviour
     private float lastLeftArrowTapTime = -10f;
     private float lastRightArrowTapTime = -10f;
     private const float ArrowDoubleTapThreshold = 0.35f;
+    private readonly List<RuntimeSettingDefinition> runtimeSettingDefinitions = new List<RuntimeSettingDefinition>();
+    private readonly Dictionary<string, RuntimeSettingDefinition> runtimeSettingById = new Dictionary<string, RuntimeSettingDefinition>();
+    private readonly Dictionary<string, string> pendingGlobalRuntimeSettingValues = new Dictionary<string, string>();
+    private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
+
+
+    private sealed class RuntimeSettingDefinition
+    {
+        public string Id;
+        public string Section;
+        public string Label;
+        public string Tooltip;
+        public string ValueType;
+        public float Min;
+        public float Max;
+        public float Step;
+        public Func<string> Getter;
+        public Action<string> Setter;
+        public List<string> EnumOptions;
+    }
 
     private void Start()
     {
@@ -340,6 +374,8 @@ public class GuitarBridgeServer : MonoBehaviour
         BuildNoteIndices();
         StartUdpThread();
         EnsureBackingTrackSource();
+        RegisterRuntimeSettings();
+        LoadGlobalRuntimeSettingsMetadata();
         LoadTestSong();
         EnsureRenderer();
         SyncAudioToSongTimer(playImmediately: !isPaused);
@@ -385,7 +421,16 @@ public class GuitarBridgeServer : MonoBehaviour
     private void HandlePauseControls()
     {
         if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
+        {
             showSongSettings = !showSongSettings;
+            showGlobalSettings = false;
+        }
+
+        if (Input.GetKeyDown(KeyCode.G) && renderMode == GuitarRenderMode.Tabs && (isPaused || showGlobalSettings))
+        {
+            showGlobalSettings = !showGlobalSettings;
+            showSongSettings = false;
+        }
 
         if (showSongSelection)
         {
@@ -399,11 +444,18 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (showGlobalSettings)
+        {
+            HandleGlobalSettingsControls();
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.Space))
         {
             isPaused = !isPaused;
             showSongSettings = false;
             showSongSelection = false;
+            showGlobalSettings = false;
             SyncAudioToSongTimer(playImmediately: !isPaused);
         }
 
@@ -609,6 +661,32 @@ public class GuitarBridgeServer : MonoBehaviour
             SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
     }
 
+    private void HandleGlobalSettingsControls()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.G))
+        {
+            showGlobalSettings = false;
+            isPaused = true;
+            SyncAudioToSongTimer(playImmediately: false);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            isPaused = !isPaused;
+            if (!isPaused)
+                showGlobalSettings = false;
+            SyncAudioToSongTimer(playImmediately: !isPaused);
+        }
+
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            isPaused = false;
+            showGlobalSettings = false;
+            SyncAudioToSongTimer(playImmediately: true);
+        }
+    }
+
     private int GetTrackOptionCount()
     {
         return 1 + currentSongPartSummaries.Count;
@@ -712,6 +790,7 @@ public class GuitarBridgeServer : MonoBehaviour
         RefreshAvailableSongs();
         showSongSelection = true;
         showSongSettings = false;
+        showGlobalSettings = false;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
 
@@ -826,6 +905,15 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showSongSettings = true;
         showSongSelection = false;
+        showGlobalSettings = false;
+        isPaused = true;
+    }
+
+    public void OpenGlobalSettingsFromUi()
+    {
+        showGlobalSettings = true;
+        showSongSettings = false;
+        showSongSelection = false;
         isPaused = true;
     }
 
@@ -866,6 +954,18 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: false);
     }
 
+    public void CloseGlobalSettingsFromUi()
+    {
+        showGlobalSettings = false;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void SetGlobalRuntimeSettingFromUi(string settingId, string serializedValue)
+    {
+        ApplyRuntimeSettingValue(settingId, serializedValue, saveMetadata: true);
+    }
+
     public void ToggleOffsetScopeFromUi()
     {
         ToggleOffsetScope();
@@ -902,6 +1002,7 @@ public class GuitarBridgeServer : MonoBehaviour
         isPaused = false;
         showSongSettings = false;
         showSongSelection = false;
+        showGlobalSettings = false;
         SyncAudioToSongTimer(playImmediately: true);
     }
 
@@ -1800,6 +1901,7 @@ private void ParseUdpState()
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
             showSongSelection = showSongSelection,
+            showGlobalSettings = showGlobalSettings,
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
             availableSongScores = availableSongs.Select(GetStoredSongBestScorePercent).ToList(),
             selectedSongIndex = selectedSongListIndex,
@@ -1814,7 +1916,8 @@ private void ParseUdpState()
             hasBackingTrack = hasBackingTrack,
             isBackingTrackPlaying = backingTrackSource != null && backingTrackSource.isPlaying,
             backingTrackTime = backingTrackSource != null ? backingTrackSource.time : 0f,
-            noteDetectorConnected = IsNoteDetectorConnected()
+            noteDetectorConnected = IsNoteDetectorConnected(),
+            runtimeSettingsSections = BuildRuntimeSettingsSnapshot()
         };
     }
 
@@ -1880,6 +1983,7 @@ private void ParseUdpState()
         bool wasPaused = isPaused;
         bool wasShowingSongSettings = showSongSettings;
         bool wasShowingSongSelection = showSongSelection;
+        bool wasShowingGlobalSettings = showGlobalSettings;
 
         songTimer = 0f;
         audioSongTimer = 0f;
@@ -1893,6 +1997,7 @@ private void ParseUdpState()
         playbackSpeedPercent = 100f;
         showSongSettings = preservePauseUiState ? wasShowingSongSettings : false;
         showSongSelection = preservePauseUiState ? wasShowingSongSelection : false;
+        showGlobalSettings = preservePauseUiState ? wasShowingGlobalSettings : false;
         tabSpeedOffsetPercent = 100f;
 
         List<NoteData> loadedNotes = null;
@@ -2264,6 +2369,219 @@ private void ParseUdpState()
 
         string safeName = Regex.Replace(Path.GetFileNameWithoutExtension(songFileName), "[^a-zA-Z0-9_-]", "_");
         return Path.Combine(ExternalContentPaths.PersistentSongsDirectory, safeName, ExternalContentPaths.SongMetadataFileName);
+    }
+
+    private void RegisterRuntimeSettings()
+    {
+        runtimeSettingDefinitions.Clear();
+        runtimeSettingById.Clear();
+
+        RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
+        RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
+
+        RegisterFloatSetting("timing.hitWindowEarly", "Timing & Forgiveness", "Hit Window Early", "How far before a note you can strike and still get credit.", 0.05f, 0.6f, 0.005f, () => hitWindowEarly, v => hitWindowEarly = v);
+        RegisterFloatSetting("timing.hitWindowLate", "Timing & Forgiveness", "Hit Window Late", "How far after a note you can strike and still get credit.", 0.05f, 0.8f, 0.005f, () => hitWindowLate, v => hitWindowLate = v);
+        RegisterFloatSetting("timing.judgmentGrace", "Timing & Forgiveness", "Judgment Grace", "Extends visibility for judged notes so feedback is easier to read.", 0.1f, 1.2f, 0.01f, () => judgmentGrace, v => judgmentGrace = v);
+
+        RegisterFloatSetting("tabs.tabSectionDuration", "Tabs Sections", "Section Duration", "Length of each tab panel section in seconds.", 1f, 12f, 0.1f, () => tabSectionDuration, v => tabSectionDuration = v);
+        RegisterFloatSetting("tabs.tabSectionLengthMultiplier", "Tabs Sections", "Section Length Multiplier", "Scales section length without changing beat timing.", 0.5f, 3f, 0.05f, () => tabSectionLengthMultiplier, v => tabSectionLengthMultiplier = v);
+
+        RegisterFloatSetting("layout.tabPanelGap", "Tabs Panels Layout", "Panel Gap", "Vertical spacing between upper and lower tab panels.", 0.3f, 2.2f, 0.01f, () => tabPanelGap, v => tabPanelGap = v);
+        RegisterFloatSetting("layout.tabPanelHeight", "Tabs Panels Layout", "Panel Height", "Height of each tab panel lane.", 2f, 7f, 0.05f, () => tabPanelHeight, v => tabPanelHeight = v);
+        RegisterFloatSetting("layout.tabLineSpacing", "Tabs Dimensions", "Line Spacing", "Spacing between strings inside a panel.", 0.25f, 1.2f, 0.01f, () => tabLineSpacing, v => tabLineSpacing = v);
+        RegisterFloatSetting("layout.tabNoteFontSize", "Tabs Dimensions", "Note Font Size", "Size of fret numbers shown on notes.", 1f, 5f, 0.05f, () => tabNoteFontSize, v => tabNoteFontSize = v);
+
+        RegisterFloatSetting("fx.judgeableDarkenMultiplier", "Visuals", "Judgeable Darken", "Darkens upcoming notes until they enter the hit window.", 1f, 8f, 0.1f, () => judgeableDarkenMultiplier, v => judgeableDarkenMultiplier = v);
+        RegisterFloatSetting("fx.tabIdleFillDarken", "Colors - Status", "Idle Fill Darken", "Controls how muted unresolved tab notes appear.", 0f, 1f, 0.01f, () => tabIdleFillDarken, v => tabIdleFillDarken = v);
+
+        RegisterEnumSetting("bg.mode", "Tabs Background FX", "Background Mode", "Switches between static and animated tab backdrops.", new []{"SolidColor","Starfield"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
+        RegisterEnumSetting("bg.starStyle", "Tabs Background FX - Starfield Core", "Star Style", "Visual style used for star sprites in the background.", new []{"SoftDots","Crystal","Neon"}, () => tabStarStyle.ToString(), v => { if (Enum.TryParse(v, out TabsStarStyle style)) tabStarStyle = style; });
+        RegisterIntSetting("bg.starSeed", "Tabs Background FX - Starfield Core", "Star Seed", "Changes the procedural star layout while keeping it deterministic.", 0, 99999, 1, () => tabStarSeed, v => tabStarSeed = v);
+        RegisterFloatSetting("bg.starDriftSpeed", "Tabs Background FX - Starfield Core", "Star Drift Speed", "Horizontal motion speed of star layers.", 0f, 2.5f, 0.01f, () => tabStarDriftSpeed, v => tabStarDriftSpeed = v);
+        RegisterBoolSetting("bg.shootingStars", "Tabs Background FX - Shooting Stars", "Shooting Stars", "Turns occasional shooting star streaks on or off.", () => tabShootingStarsEnabled, v => tabShootingStarsEnabled = v);
+        RegisterBoolSetting("bg.nebula", "Tabs Background FX - Nebula", "Nebula Overlay", "Adds a soft moving nebula layer behind the tabs.", () => tabNebulaEnabled, v => tabNebulaEnabled = v);
+        RegisterFloatSetting("bg.nebulaOpacity", "Tabs Background FX - Nebula", "Nebula Opacity", "Strength of the nebula tint over the background.", 0f, 0.35f, 0.005f, () => tabNebulaOpacity, v => tabNebulaOpacity = v);
+    }
+
+    private void RegisterFloatSetting(string id, string section, string label, string tooltip, float min, float max, float step, Func<float> getter, Action<float> setter)
+    {
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = id,
+            Section = section,
+            Label = label,
+            Tooltip = tooltip,
+            ValueType = "float",
+            Min = min,
+            Max = max,
+            Step = step,
+            Getter = () => getter().ToString("0.###", CultureInfo.InvariantCulture),
+            Setter = value =>
+            {
+                if (!float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
+                    return;
+                setter(Mathf.Clamp(parsed, min, max));
+            }
+        });
+    }
+
+    private void RegisterIntSetting(string id, string section, string label, string tooltip, int min, int max, int step, Func<int> getter, Action<int> setter)
+    {
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = id,
+            Section = section,
+            Label = label,
+            Tooltip = tooltip,
+            ValueType = "int",
+            Min = min,
+            Max = max,
+            Step = Mathf.Max(1, step),
+            Getter = () => getter().ToString(CultureInfo.InvariantCulture),
+            Setter = value =>
+            {
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+                    return;
+                setter(Mathf.Clamp(parsed, min, max));
+            }
+        });
+    }
+
+    private void RegisterBoolSetting(string id, string section, string label, string tooltip, Func<bool> getter, Action<bool> setter)
+    {
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = id,
+            Section = section,
+            Label = label,
+            Tooltip = tooltip,
+            ValueType = "bool",
+            Getter = () => getter() ? "true" : "false",
+            Setter = value =>
+            {
+                if (!bool.TryParse(value, out bool parsed))
+                    return;
+                setter(parsed);
+            }
+        });
+    }
+
+    private void RegisterEnumSetting(string id, string section, string label, string tooltip, IEnumerable<string> options, Func<string> getter, Action<string> setter)
+    {
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = id,
+            Section = section,
+            Label = label,
+            Tooltip = tooltip,
+            ValueType = "enum",
+            EnumOptions = options.ToList(),
+            Getter = getter,
+            Setter = setter
+        });
+    }
+
+    private void RegisterSetting(RuntimeSettingDefinition definition)
+    {
+        if (definition == null || string.IsNullOrEmpty(definition.Id))
+            return;
+
+        runtimeSettingDefinitions.Add(definition);
+        runtimeSettingById[definition.Id] = definition;
+    }
+
+    private List<RuntimeSettingSectionSnapshot> BuildRuntimeSettingsSnapshot()
+    {
+        return runtimeSettingDefinitions
+            .GroupBy(def => def.Section)
+            .Select(group => new RuntimeSettingSectionSnapshot
+            {
+                title = group.Key,
+                settings = group.Select(def => new RuntimeSettingSnapshot
+                {
+                    id = def.Id,
+                    label = def.Label,
+                    tooltip = def.Tooltip,
+                    valueType = def.ValueType,
+                    value = def.Getter != null ? def.Getter() : string.Empty,
+                    min = def.Min,
+                    max = def.Max,
+                    step = def.Step,
+                    enumOptions = def.EnumOptions != null ? new List<string>(def.EnumOptions) : new List<string>()
+                }).ToList()
+            })
+            .ToList();
+    }
+
+    private void ApplyRuntimeSettingValue(string settingId, string serializedValue, bool saveMetadata)
+    {
+        if (string.IsNullOrEmpty(settingId) || !runtimeSettingById.TryGetValue(settingId, out RuntimeSettingDefinition definition) || definition.Setter == null)
+            return;
+
+        definition.Setter(serializedValue ?? string.Empty);
+
+        if (saveMetadata)
+            SaveGlobalRuntimeSettingsMetadata();
+    }
+
+    private void LoadGlobalRuntimeSettingsMetadata()
+    {
+        pendingGlobalRuntimeSettingValues.Clear();
+        string path = Path.Combine(ExternalContentPaths.PersistentRoot, GlobalRuntimeSettingsFileName);
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            if (!File.Exists(path))
+            {
+                SaveGlobalRuntimeSettingsMetadata();
+                return;
+            }
+
+            string json = File.ReadAllText(path);
+            GlobalRuntimeSettingsMetadata metadata = JsonUtility.FromJson<GlobalRuntimeSettingsMetadata>(json);
+            if (metadata?.values == null)
+                return;
+
+            foreach (RuntimeSettingValueEntry entry in metadata.values)
+            {
+                if (entry == null || string.IsNullOrEmpty(entry.id))
+                    continue;
+
+                pendingGlobalRuntimeSettingValues[entry.id] = entry.value ?? string.Empty;
+            }
+
+            foreach (KeyValuePair<string, string> pair in pendingGlobalRuntimeSettingValues)
+                ApplyRuntimeSettingValue(pair.Key, pair.Value, saveMetadata: false);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to load global settings metadata: {ex.Message}");
+        }
+    }
+
+    private void SaveGlobalRuntimeSettingsMetadata()
+    {
+        string path = Path.Combine(ExternalContentPaths.PersistentRoot, GlobalRuntimeSettingsFileName);
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            GlobalRuntimeSettingsMetadata metadata = new GlobalRuntimeSettingsMetadata
+            {
+                values = runtimeSettingDefinitions.Select(def => new RuntimeSettingValueEntry
+                {
+                    id = def.Id,
+                    value = def.Getter != null ? def.Getter() : string.Empty
+                }).ToList()
+            };
+
+            File.WriteAllText(path, JsonUtility.ToJson(metadata, true));
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to save global settings metadata: {ex.Message}");
+        }
     }
 
     private void ApplyPlaybackSpeedToAudio()
