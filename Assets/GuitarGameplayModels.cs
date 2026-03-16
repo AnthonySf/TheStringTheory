@@ -127,9 +127,13 @@ public sealed class GuitarGameplaySnapshot
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
     public bool showSongSelection;
+    public bool showTrackSelection;
     public List<string> availableSongNames;
     public List<float> availableSongScores;
     public int selectedSongIndex;
+    public List<string> availableTrackNames;
+    public List<float> availableTrackScores;
+    public int selectedTrackIndex;
     public string currentSongDisplayName;
     public int songListScrollOffset;
     public float audioOffsetMs;
@@ -147,6 +151,7 @@ public sealed class GuitarGameplaySnapshot
     public float songDuration;
     public float songProgressNormalized;
     public bool songEnded;
+    public float currentTrackBestScorePercent;
     public bool showGlobalSettings;
     public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
 }
