@@ -2500,8 +2500,8 @@ public sealed class TabsSongHeaderOverlay
 
     private static (Font body, Font title) ResolveUiFonts(Font fallbackFont)
     {
-        Font body = LoadRuntimeFont("Fonts/PixelArtFont");
-        Font title = LoadRuntimeFont("Fonts/ArcadeFont");
+        Font body = LoadRuntimeFont("Fonts/PixelArtFont") ?? LoadRuntimeFont("PixelArtFont");
+        Font title = LoadRuntimeFont("Fonts/ArcadeFont") ?? LoadRuntimeFont("ArcadeFont");
 
         body ??= LoadProjectFont("Assets/UI/PixelArtFont.TTF");
         title ??= LoadProjectFont("Assets/UI/ArcadeFont.ttf");
