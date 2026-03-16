@@ -346,7 +346,6 @@ GameObject:
   - component: {fileID: 362341491}
   - component: {fileID: 362341492}
   - component: {fileID: 362341493}
-  - component: {fileID: 362341494}
   m_Layer: 0
   m_Name: GameManager
   m_TagString: Untagged
@@ -582,18 +581,6 @@ MonoBehaviour:
   backingTrackSource: {fileID: 0}
   backingTrackFileName: song.mp3
   defaultSongStartDelaySeconds: 2
---- !u!114 &362341494
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 362341489}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8a9b42a50952c7840a93f937b966b63f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NoteHighway
 --- !u!1 &410087039
 GameObject:
   m_ObjectHideFlags: 0
