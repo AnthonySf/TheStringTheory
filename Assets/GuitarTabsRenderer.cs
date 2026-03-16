@@ -35,6 +35,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private TabsSongHeaderOverlay songHeaderOverlay;
     private ITabsBackgroundEffect backgroundEffect;
     private GameObject backgroundRoot;
+    private bool gameplayVisualsVisible = true;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -114,17 +115,54 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         ConfigureCamera();
         RefreshStateCache(snapshot.noteStates);
 
-        if (displayedTopSectionIndex == -999)
-            BuildInitialPanels(snapshot);
+        bool suppressGameplay = snapshot.showMainMenu;
+        SetGameplayVisualsVisible(!suppressGameplay);
 
-        HandleSectionPaging(snapshot);
-        UpdateTransition();
-        UpdatePanelColors(topPanel);
-        UpdatePanelColors(bottomPanel);
-        UpdatePlayhead(snapshot);
-        UpdateLoopMarkers(snapshot);
+        if (!suppressGameplay)
+        {
+            if (displayedTopSectionIndex == -999)
+                BuildInitialPanels(snapshot);
+
+            HandleSectionPaging(snapshot);
+            UpdateTransition();
+            UpdatePanelColors(topPanel);
+            UpdatePanelColors(bottomPanel);
+            UpdatePlayhead(snapshot);
+            UpdateLoopMarkers(snapshot);
+        }
+
         backgroundEffect?.Tick(Time.deltaTime);
         songHeaderOverlay?.UpdateFromSnapshot(snapshot);
+    }
+
+    private void SetGameplayVisualsVisible(bool visible)
+    {
+        if (gameplayVisualsVisible == visible)
+            return;
+
+        gameplayVisualsVisible = visible;
+
+        if (!visible)
+        {
+            topPanel?.Root?.SetActive(false);
+            bottomPanel?.Root?.SetActive(false);
+            reservePanel?.Root?.SetActive(false);
+            if (playhead != null)
+                playhead.SetActive(false);
+            if (loopMarkerStart != null)
+                loopMarkerStart.SetActive(false);
+            if (loopMarkerEnd != null)
+                loopMarkerEnd.SetActive(false);
+            return;
+        }
+
+        displayedTopSectionIndex = -999;
+        displayedBottomSectionIndex = -999;
+        isTransitioning = false;
+        transitionElapsed = 0f;
+        queuedBottomSectionIndex = -1;
+        queuedTopSectionIndex = -1;
+        transitionIsReverse = false;
     }
 
     public void DisposeRenderer()
