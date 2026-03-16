@@ -735,13 +735,13 @@ public sealed class TabsSongHeaderOverlay
         Button continueButton = CreateActionButton("Continue", () => owner?.ContinueFromMainMenuFromUi());
         Button libraryButton = CreateActionButton("Song Selection", () => owner?.OpenSongSelectionFromUi());
         Button settingsButton = CreateActionButton("Settings", () => owner?.OpenGlobalSettingsFromUi());
-        Button toneLabButton = CreateActionButton("Tone Lab", () => owner?.OpenToneLabFromUi());
+        Button mainMenuToneLabButton = CreateActionButton("Tone Lab", () => owner?.OpenToneLabFromUi());
         Button tunerButton = CreateActionButton("Tuner (Coming Soon)", null);
         tunerButton.SetEnabled(false);
         tunerButton.style.opacity = 0.60f;
         Button exitButton = CreateActionButton("Exit", () => owner?.ExitGameFromUi());
 
-        foreach (Button button in new[] { continueButton, libraryButton, settingsButton, toneLabButton, tunerButton, exitButton })
+        foreach (Button button in new[] { continueButton, libraryButton, settingsButton, mainMenuToneLabButton, tunerButton, exitButton })
         {
             button.style.width = 620f;
             button.style.maxWidth = Length.Percent(94f);
