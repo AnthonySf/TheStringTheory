@@ -232,6 +232,39 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     {
         cloudSprites.Clear();
 
+                LoadCloudSpritesFromResources("Cloud Pack");
+        LoadCloudSpritesFromResources("Clouds");
+
+#if UNITY_EDITOR
+        if (cloudSprites.Count == 0)
+            LoadCloudSpritesFromProjectFiles();
+#endif
+
+        if (cloudSprites.Count == 0)
+            cloudSprites.Add(CreateProceduralCloudSprite());
+    }
+
+    private void LoadCloudSpritesFromResources(string resourcesPath)
+    {
+        if (string.IsNullOrWhiteSpace(resourcesPath))
+            return;
+
+        Sprite[] loadedSprites = Resources.LoadAll<Sprite>(resourcesPath);
+        if (loadedSprites == null || loadedSprites.Length == 0)
+            return;
+
+        for (int i = 0; i < loadedSprites.Length; i++)
+        {
+            Sprite sprite = loadedSprites[i];
+            if (sprite != null)
+                cloudSprites.Add(sprite);
+        }
+    }
+
+#if UNITY_EDITOR
+    private void LoadCloudSpritesFromProjectFiles()
+    {
+
         string cloudDirectory = Path.Combine(Application.dataPath, "Art", "Cloud Pack");
 
         for (int i = 1; i <= 20; i++)
@@ -268,9 +301,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
                 Object.Destroy(texture);
         }
 
-        if (cloudSprites.Count == 0)
-            cloudSprites.Add(CreateProceduralCloudSprite());
     }
+
+    #endif
 
     private void CreateCloudLayer(SkyCloudLayer layer, int count, float baseSpeed, float alpha, float scaleMin, float scaleMax, float nearBand, float farBand)
     {
