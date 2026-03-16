@@ -498,8 +498,7 @@ public class GuitarBridgeServer : MonoBehaviour
             if (Input.GetKeyDown(KeyCode.Space) ||
                 Input.GetKeyDown(KeyCode.Return) ||
                 Input.GetKeyDown(KeyCode.KeypadEnter) ||
-                Input.GetKeyDown(KeyCode.Escape) ||
-                Input.GetMouseButtonDown(0))
+                Input.GetKeyDown(KeyCode.Escape))
             {
                 DismissStartupTuningReminderFromUi();
             }
