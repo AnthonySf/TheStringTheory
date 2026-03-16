@@ -1967,10 +1967,7 @@ private void OpenOrFocusToneLab()
                     "Hidden/InternalErrorShader"
                 });
 
-        if (shader == null)
-            throw new InvalidOperationException("Unable to create glow material because no compatible shader was found in the player build.");
-
-        Material m = new Material(shader);
+        Material m = shader != null ? new Material(shader) : CreateMaterialFromPrimitiveFallback("glow");
         m.color = c;
         m.EnableKeyword("_EMISSION");
         m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
@@ -1988,10 +1985,7 @@ private void OpenOrFocusToneLab()
             "Standard",
             "Hidden/InternalErrorShader");
 
-        if (shader == null)
-            throw new InvalidOperationException("Unable to create transparent material because no compatible shader was found in the player build.");
-
-        Material m = new Material(shader);
+        Material m = shader != null ? new Material(shader) : CreateMaterialFromPrimitiveFallback("transparent");
         m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
 
         m.SetColor("_Color", c);
@@ -2012,6 +2006,30 @@ private void OpenOrFocusToneLab()
         }
 
         return m;
+    }
+
+
+    private static Material CreateMaterialFromPrimitiveFallback(string materialKind)
+    {
+        GameObject primitive = null;
+        try
+        {
+            primitive = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Renderer renderer = primitive.GetComponent<Renderer>();
+            Material source = renderer != null ? renderer.sharedMaterial : null;
+            if (source != null)
+            {
+                Debug.LogWarning($"[GuitarBridgeServer] Falling back to primitive default shader for {materialKind} material.");
+                return new Material(source);
+            }
+        }
+        finally
+        {
+            if (primitive != null)
+                UnityEngine.Object.Destroy(primitive);
+        }
+
+        throw new InvalidOperationException($"Unable to create {materialKind} material because no shader and no primitive fallback material were available.");
     }
 
     private static Shader ResolveFirstAvailableShader(params string[] shaderNames)
