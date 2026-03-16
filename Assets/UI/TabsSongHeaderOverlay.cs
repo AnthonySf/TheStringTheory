@@ -1843,39 +1843,40 @@ public sealed class TabsSongHeaderOverlay
     {
         VisualElement jack = new VisualElement();
         jack.name = "pedal-jack";
-        jack.style.width = 24f;
+        jack.style.width = 20f;
         jack.style.height = 52f;
         jack.style.flexDirection = FlexDirection.Row;
         jack.style.alignItems = Align.Center;
+        jack.style.justifyContent = Justify.FlexStart;
 
         VisualElement jackOuter = new VisualElement();
         jackOuter.name = "pedal-jack-outer";
         jackOuter.style.width = 8f;
         jackOuter.style.height = 38f;
-        jackOuter.style.backgroundColor = new Color(0.83f, 0.86f, 0.90f, 1f);
+        jackOuter.style.backgroundColor = new Color(0.33f, 0.36f, 0.40f, 1f);
         jackOuter.style.borderTopWidth = 2f;
         jackOuter.style.borderRightWidth = 1f;
         jackOuter.style.borderBottomWidth = 3f;
         jackOuter.style.borderLeftWidth = 2f;
-        jackOuter.style.borderTopColor = new Color(0.98f, 0.99f, 1f, 1f);
-        jackOuter.style.borderRightColor = new Color(0.58f, 0.64f, 0.72f, 1f);
-        jackOuter.style.borderBottomColor = new Color(0.27f, 0.32f, 0.39f, 1f);
-        jackOuter.style.borderLeftColor = new Color(0.64f, 0.70f, 0.78f, 1f);
+        jackOuter.style.borderTopColor = new Color(0.54f, 0.58f, 0.64f, 1f);
+        jackOuter.style.borderRightColor = new Color(0.22f, 0.25f, 0.29f, 1f);
+        jackOuter.style.borderBottomColor = new Color(0.12f, 0.14f, 0.17f, 1f);
+        jackOuter.style.borderLeftColor = new Color(0.26f, 0.30f, 0.34f, 1f);
 
         VisualElement jackInner = new VisualElement();
         jackInner.name = "pedal-jack-inner";
         jackInner.style.width = 12f;
         jackInner.style.height = 50f;
         jackInner.style.marginLeft = 0f;
-        jackInner.style.backgroundColor = new Color(0.64f, 0.69f, 0.75f, 1f);
+        jackInner.style.backgroundColor = new Color(0.27f, 0.30f, 0.34f, 1f);
         jackInner.style.borderTopWidth = 1f;
         jackInner.style.borderRightWidth = 1f;
         jackInner.style.borderBottomWidth = 2f;
         jackInner.style.borderLeftWidth = 1f;
-        jackInner.style.borderTopColor = new Color(0.94f, 0.96f, 0.99f, 1f);
-        jackInner.style.borderRightColor = new Color(0.44f, 0.50f, 0.57f, 1f);
-        jackInner.style.borderBottomColor = new Color(0.22f, 0.26f, 0.31f, 1f);
-        jackInner.style.borderLeftColor = new Color(0.50f, 0.56f, 0.63f, 1f);
+        jackInner.style.borderTopColor = new Color(0.47f, 0.52f, 0.58f, 1f);
+        jackInner.style.borderRightColor = new Color(0.17f, 0.20f, 0.24f, 1f);
+        jackInner.style.borderBottomColor = new Color(0.09f, 0.11f, 0.14f, 1f);
+        jackInner.style.borderLeftColor = new Color(0.20f, 0.24f, 0.28f, 1f);
 
         VisualElement jackReflection = new VisualElement();
         jackReflection.name = "pedal-jack-reflection";
@@ -1884,7 +1885,7 @@ public sealed class TabsSongHeaderOverlay
         jackReflection.style.top = 4f;
         jackReflection.style.width = 2f;
         jackReflection.style.height = 16f;
-        jackReflection.style.backgroundColor = new Color(1f, 1f, 1f, 0.46f);
+        jackReflection.style.backgroundColor = new Color(0.80f, 0.86f, 0.92f, 0.30f);
 
         jackOuter.Add(jackReflection);
         jack.Add(jackOuter);
@@ -1903,7 +1904,7 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jackOuter = jack.Q<VisualElement>("pedal-jack-outer");
         if (jackOuter != null)
         {
-            float outerWidth = Mathf.Clamp(width * 0.34f, 6f, 13f);
+            float outerWidth = Mathf.Clamp(width * 0.40f, 6f, 16f);
             float outerHeight = Mathf.Clamp(height * 0.74f, 18f, 50f);
             jackOuter.style.width = outerWidth;
             jackOuter.style.height = outerHeight;
@@ -1912,7 +1913,7 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jackInner = jack.Q<VisualElement>("pedal-jack-inner");
         if (jackInner != null)
         {
-            float innerWidth = Mathf.Clamp(width * 0.54f, 10f, 20f);
+            float innerWidth = Mathf.Clamp(width * 0.60f, 10f, 22f);
             float innerHeight = Mathf.Clamp(height * 0.94f, 24f, 64f);
             jackInner.style.width = innerWidth;
             jackInner.style.height = innerHeight;
@@ -2147,7 +2148,7 @@ public sealed class TabsSongHeaderOverlay
 
         float jackHeight = Mathf.Clamp(pedalHeight * 0.34f, 60f, 102f);
         float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 22f, 40f);
-        float jackOffset = Mathf.Max(0f, jackWidth - 1f);
+        float jackOffset = Mathf.Max(0f, jackWidth);
         float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
         scorePedalInputJack.style.left = -jackOffset;
