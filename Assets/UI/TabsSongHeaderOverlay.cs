@@ -195,7 +195,6 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label songEndStatsLabel;
 
     private readonly VisualElement startupTuningReminderOverlay;
-    private bool wasShowingStartupTuningReminder;
 
     private int lastScreenHeight = -1;
     private bool suppressCallbacks;
@@ -1333,10 +1332,6 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
         startupTuningReminderOverlay.style.display = showStartupTuningReminder ? DisplayStyle.Flex : DisplayStyle.None;
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
-
-        if (showStartupTuningReminder && !wasShowingStartupTuningReminder)
-            owner?.DismissStartupTuningReminderFromUi();
-        wasShowingStartupTuningReminder = showStartupTuningReminder;
 
         // Keep the startup/main-menu presentation clean: only main menu + background should be visible.
         songCard.style.display = snapshot.mainMenuFlowActive ? DisplayStyle.None : DisplayStyle.Flex;

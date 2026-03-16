@@ -399,6 +399,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool songHasEnded;
     private bool songSelectionOpenedFromSongEnd;
     private bool showStartupTuningReminder;
+    private float startupTuningReminderHideAt = -1f;
+    private const float StartupTuningReminderDurationSeconds = 2.5f;
     private SongLibraryEntry currentSongEntry;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
     private bool useAutoTrackSelection = true;
@@ -455,6 +457,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private void Update()
     {
         HandlePauseControls();
+        UpdateStartupTuningReminderState();
 
         if (!isPaused)
         {
@@ -1154,7 +1157,7 @@ public class GuitarBridgeServer : MonoBehaviour
         bool autoplay = autoplayFromSongEnd || autoplayFromMainMenuFlow;
         isPaused = !autoplay;
         if (autoplayFromMainMenuFlow)
-            showStartupTuningReminder = true;
+            ShowStartupTuningReminder();
         SeekSongTime(-songStartDelaySeconds, false);
         SyncAudioToSongTimer(playImmediately: autoplay);
     }
@@ -1190,6 +1193,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songHasEnded = false;
         songSelectionOpenedFromSongEnd = false;
         showStartupTuningReminder = false;
+        startupTuningReminderHideAt = -1f;
         SyncAudioToSongTimer(playImmediately: false);
     }
 
@@ -1203,7 +1207,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showTrackSelection = false;
         showGlobalSettings = false;
         isPaused = false;
-        showStartupTuningReminder = true;
+        ShowStartupTuningReminder();
         SyncAudioToSongTimer(playImmediately: true);
     }
 
@@ -1215,10 +1219,24 @@ public class GuitarBridgeServer : MonoBehaviour
         OpenSongSelectionMenu();
     }
 
-    public void DismissStartupTuningReminderFromUi()
+    private void ShowStartupTuningReminder()
     {
-        showStartupTuningReminder = false;
+        showStartupTuningReminder = true;
+        startupTuningReminderHideAt = Time.unscaledTime + StartupTuningReminderDurationSeconds;
     }
+
+    private void UpdateStartupTuningReminderState()
+    {
+        if (!showStartupTuningReminder || startupTuningReminderHideAt < 0f)
+            return;
+
+        if (Time.unscaledTime >= startupTuningReminderHideAt)
+        {
+            showStartupTuningReminder = false;
+            startupTuningReminderHideAt = -1f;
+        }
+    }
+
     public void OpenSongSelectionFromSongEndFromUi()
     {
         songHasEnded = false;
