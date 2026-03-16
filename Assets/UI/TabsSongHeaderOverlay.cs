@@ -847,12 +847,12 @@ public sealed class TabsSongHeaderOverlay
         songEndOverlay.style.paddingBottom = 26f;
 
         songEndCard = new VisualElement();
-        songEndCard.style.width = Length.Percent(90f);
-        songEndCard.style.maxWidth = 1500f;
-        songEndCard.style.paddingLeft = 52f;
-        songEndCard.style.paddingRight = 52f;
-        songEndCard.style.paddingTop = 34f;
-        songEndCard.style.paddingBottom = 26f;
+        songEndCard.style.width = Length.Percent(94f);
+        songEndCard.style.maxWidth = 1720f;
+        songEndCard.style.paddingLeft = 64f;
+        songEndCard.style.paddingRight = 64f;
+        songEndCard.style.paddingTop = 42f;
+        songEndCard.style.paddingBottom = 34f;
         songEndCard.style.flexDirection = FlexDirection.Column;
         songEndCard.style.justifyContent = Justify.SpaceBetween;
         StyleCard(songEndCard, new Color(0.04f, 0.07f, 0.14f, 0.985f), radius: 22f);
@@ -871,6 +871,8 @@ public sealed class TabsSongHeaderOverlay
         songEndMain.style.flexDirection = FlexDirection.Column;
         songEndMain.style.alignItems = Align.Center;
         songEndMain.style.width = Length.Percent(100f);
+        songEndMain.style.flexGrow = 1f;
+        songEndMain.style.justifyContent = Justify.Center;
 
         songEndTitleLabel = CreateLabel("SONG COMPLETE", 106f, new Color(0.94f, 0.97f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         songEndTitleLabel.style.marginBottom = 20f;
@@ -924,7 +926,7 @@ public sealed class TabsSongHeaderOverlay
         songEndButtons.style.flexDirection = FlexDirection.Row;
         songEndButtons.style.width = Length.Percent(100f);
         songEndButtons.style.justifyContent = Justify.Center;
-        songEndButtons.style.marginTop = 24f;
+        songEndButtons.style.marginTop = 28f;
 
         Button retryButton = CreateActionButton("Retry", () => owner?.RetrySongFromUi());
         Button selectionButton = CreateActionButton("Song Selection", () => owner?.OpenSongSelectionFromSongEndFromUi());
@@ -1017,7 +1019,7 @@ public sealed class TabsSongHeaderOverlay
         float scorePercent = denominator > 0
             ? (100f * scoreHits / denominator)
             : 0f;
-        scorePercentLabel.text = $"SCORE {scorePercent:F1}%";
+        scorePercentLabel.text = $"SCORE {scorePercent:F1} %";
         noteTallyLabel.text = $"HITS {scoreHits}  •  MISS {scoreMisses}";
 
         wasLoopEnabled = loopEnabled;
@@ -1099,7 +1101,7 @@ public sealed class TabsSongHeaderOverlay
             songEndSongLabel.text = songName;
             songEndMetaLabel.text = $"Track: {trackName}  •  Speed";
             songEndSpeedValueLabel.text = $"{speedPercent:F0}%";
-            songEndScoreLabel.text = $"Score {scorePercent:F1}%";
+            songEndScoreLabel.text = $"Score {scorePercent:F1} %";
             songEndRatingLabel.text = rating;
             songEndStatsLabel.text = $"Hits {scoreHits}  •  Misses {scoreMisses}";
 
@@ -2074,8 +2076,8 @@ public sealed class TabsSongHeaderOverlay
         pauseHintLabel.style.fontSize = bodySize * 0.85f;
         pauseInfoLabel.style.fontSize = bodySize * 0.80f;
         speedValueLabel.style.fontSize = bodySize * 0.85f;
-        songEndTitleLabel.style.fontSize = pauseSize * 0.78f;
-        songEndSongLabel.style.fontSize = bodySize * 1.08f;
+        songEndTitleLabel.style.fontSize = pauseSize * 0.82f;
+        songEndSongLabel.style.fontSize = bodySize * 1.14f;
         songEndMetaLabel.style.fontSize = bodySize * 0.82f;
         songEndSpeedValueLabel.style.fontSize = bodySize * 0.86f;
         songEndScoreLabel.style.fontSize = bodySize * 1.20f;
@@ -2089,7 +2091,7 @@ public sealed class TabsSongHeaderOverlay
         float buttonFontSize = Mathf.Clamp(screenHeight * 0.030f, 28f, 44f);
         float buttonHeight = Mathf.Clamp(screenHeight * 0.078f, 64f, 98f);
         float globalCardMaxHeight = Mathf.Clamp(screenHeight * 0.90f, 580f, 1720f);
-        songEndCard.style.minHeight = Mathf.Clamp(screenHeight * 0.64f, 560f, 1040f);
+        songEndCard.style.minHeight = Mathf.Clamp(screenHeight * 0.74f, 640f, 1180f);
 
         foreach (SongSelectionRow row in selectionRows)
         {
