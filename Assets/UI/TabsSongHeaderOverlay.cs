@@ -1132,12 +1132,12 @@ public sealed class TabsSongHeaderOverlay
         startupTuningReminderTitle.style.unityTextAlign = TextAnchor.MiddleCenter;
         startupTuningReminderTitle.style.whiteSpace = WhiteSpace.Normal;
 
-        Label startupTuningReminderNote = CreateLabel("Tuner coming soon.", 30f, new Color(0.79f, 0.90f, 1f, 0.97f), false, TextAnchor.MiddleCenter);
+        Label startupTuningReminderNote = CreateLabel("Tuner coming soon.", 36f, new Color(0.79f, 0.90f, 1f, 0.97f), false, TextAnchor.MiddleCenter);
         startupTuningReminderNote.style.marginTop = 12f;
         startupTuningReminderNote.style.unityTextAlign = TextAnchor.MiddleCenter;
 
-        Label startupTuningReminderDensityHint = CreateLabel("If notes look too close or too far apart, adjust Tabs Sections duration settings.", 22f, new Color(0.73f, 0.84f, 0.98f, 0.95f), false, TextAnchor.MiddleCenter);
-        startupTuningReminderDensityHint.style.marginTop = 8f;
+        Label startupTuningReminderDensityHint = CreateLabel("If notes look too close or too far apart, adjust Tabs Sections duration settings.", 27f, new Color(0.73f, 0.84f, 0.98f, 0.95f), false, TextAnchor.MiddleCenter);
+        startupTuningReminderDensityHint.style.marginTop = 10f;
         startupTuningReminderDensityHint.style.unityTextAlign = TextAnchor.MiddleCenter;
         startupTuningReminderDensityHint.style.whiteSpace = WhiteSpace.Normal;
 
