@@ -280,7 +280,7 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel.style.maxWidth = 1200f;
 
         VisualElement compactSongCardLogo = CreateStringTheoryLogo(34f, 32f, 22f, 0.7f, -4f, 1f);
-        compactSongCardLogo.style.alignSelf = Align.FlexStart;
+        compactSongCardLogo.style.alignSelf = Align.FlexEnd;
         compactSongCardLogo.style.marginBottom = 6f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
