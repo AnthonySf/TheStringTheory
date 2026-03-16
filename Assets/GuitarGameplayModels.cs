@@ -126,6 +126,8 @@ public sealed class GuitarGameplaySnapshot
     public List<TabSectionData> sections;
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
+    public bool showMainMenu;
+    public bool mainMenuFlowActive;
     public bool showSongSelection;
     public bool showTrackSelection;
     public List<string> availableSongNames;
