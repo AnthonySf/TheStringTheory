@@ -671,6 +671,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
                 List<Renderer> extraRenderers = new List<Renderer>();
                 List<TextMeshPro> extraTexts = new List<TextMeshPro>();
+                AddCornerTechniqueGlyph(markerRoot.transform, note, extraTexts);
                 GameObject tunnelRoot = BuildTechniqueTunnel(note, section, x, y, extraRenderers, extraTexts);
                 if (tunnelRoot != null)
                     dynamicObjects.Add(tunnelRoot);
@@ -760,22 +761,27 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             CreateCapsulePiece(root.transform, new Vector3(-(innerWidth * 0.5f) + innerRadius, 0f, -0.015f), new Vector3(innerRadius, depth * 0.28f, innerRadius), PrimitiveType.Cylinder, fillColor, 0.2f, extraRenderers);
             CreateCapsulePiece(root.transform, new Vector3((innerWidth * 0.5f) - innerRadius, 0f, -0.015f), new Vector3(innerRadius, depth * 0.28f, innerRadius), PrimitiveType.Cylinder, fillColor, 0.2f, extraRenderers);
 
+            if (note.technique == NoteTechnique.Slide)
+                CreateSlideDirectionLine(root.transform, width, height, depth, note, extraRenderers);
+
             string glyph = GetTechniqueGlyph(note);
-            if (!string.IsNullOrEmpty(glyph))
+            if (!string.IsNullOrEmpty(glyph) && note.technique != NoteTechnique.Bend && note.technique != NoteTechnique.Vibrato)
             {
                 GameObject glyphObj = new GameObject($"TechniqueGlyph_{note.id}");
                 glyphObj.transform.SetParent(root.transform, false);
 
                 float visibleMiddleX = 0f;
-                float glyphYOffset = Mathf.Max(height * 0.82f, owner.tabTechniqueGlyphFontSize * 0.08f);
+                float maxYOffsetBeforeNextString = lineSpacing * 0.33f;
+                float glyphYOffset = Mathf.Min(Mathf.Max(height * 0.72f, owner.tabTechniqueGlyphFontSize * 0.10f), maxYOffsetBeforeNextString);
                 glyphObj.transform.localPosition = new Vector3(visibleMiddleX, glyphYOffset, -0.08f);
 
                 TextMeshPro glyphText = glyphObj.AddComponent<TextMeshPro>();
                 glyphText.text = glyph;
-                glyphText.fontSize = owner.tabTechniqueGlyphFontSize;
+                glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.35f;
                 glyphText.alignment = TextAlignmentOptions.Center;
                 glyphText.color = owner.tabTechniqueGlyphColor;
                 glyphText.enableAutoSizing = false;
+                glyphText.fontStyle = FontStyles.Bold;
                 glyphText.sortingOrder = 28;
                 extraTexts.Add(glyphText);
             }
@@ -844,6 +850,55 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             renderer.material = owner.CreateSharedGlowMaterial(color, emission);
             ConfigureRendererNoShadows(renderer);
             extraRenderers.Add(renderer);
+        }
+
+        private void CreateSlideDirectionLine(Transform parent, float width, float height, float depth, NoteData note, List<Renderer> extraRenderers)
+        {
+            GameObject lineObj = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            lineObj.name = $"SlideDirection_{note.id}";
+            lineObj.transform.SetParent(parent, false);
+
+            float xSpan = Mathf.Max(0.08f, width - Mathf.Max(0.08f, height * 0.35f));
+            float ySpan = Mathf.Max(0.03f, height * 0.62f);
+            float lineLength = Mathf.Sqrt(xSpan * xSpan + ySpan * ySpan);
+            float angle = Mathf.Atan2(ySpan, xSpan) * Mathf.Rad2Deg;
+            bool descending = note.slideTargetFret >= 0 && note.slideTargetFret < note.fret;
+
+            lineObj.transform.localRotation = Quaternion.Euler(0f, 0f, descending ? -angle : angle);
+            lineObj.transform.localPosition = new Vector3(0f, 0f, -0.04f);
+            lineObj.transform.localScale = new Vector3(lineLength, Mathf.Max(0.05f, height * 0.20f), Mathf.Max(0.03f, depth * 0.35f));
+
+            Renderer lineRenderer = lineObj.GetComponent<Renderer>();
+            lineRenderer.material = owner.CreateSharedGlowMaterial(new Color(1f, 1f, 1f, 0.95f), 1.4f);
+            ConfigureRendererNoShadows(lineRenderer);
+            extraRenderers.Add(lineRenderer);
+        }
+
+        private void AddCornerTechniqueGlyph(Transform noteRoot, NoteData note, List<TextMeshPro> extraTexts)
+        {
+            if (note.technique != NoteTechnique.Bend && note.technique != NoteTechnique.Vibrato)
+                return;
+
+            string glyph = GetTechniqueGlyph(note);
+            if (string.IsNullOrEmpty(glyph))
+                return;
+
+            GameObject glyphObj = new GameObject($"NoteCornerTechnique_{note.id}");
+            glyphObj.transform.SetParent(noteRoot, false);
+
+            float xOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.24f, 0.11f);
+            float yOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.18f, 0.08f);
+            glyphObj.transform.localPosition = new Vector3(xOffset, yOffset, -0.09f);
+
+            TextMeshPro glyphText = glyphObj.AddComponent<TextMeshPro>();
+            glyphText.text = glyph;
+            glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.48f;
+            glyphText.alignment = TextAlignmentOptions.Center;
+            glyphText.color = owner.tabTechniqueGlyphColor;
+            glyphText.enableAutoSizing = false;
+            glyphText.fontStyle = FontStyles.Bold;
+            glyphText.sortingOrder = 31;
+            extraTexts?.Add(glyphText);
         }
 
         private string GetTechniqueGlyph(NoteData note)
