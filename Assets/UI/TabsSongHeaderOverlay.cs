@@ -973,8 +973,11 @@ public sealed class TabsSongHeaderOverlay
         if (snapshot == null)
             return;
 
-        string songName = "No song loaded";
-        if (snapshot.availableSongNames != null && snapshot.selectedSongIndex >= 0 && snapshot.selectedSongIndex < snapshot.availableSongNames.Count)
+        string songName = string.IsNullOrWhiteSpace(snapshot.currentSongDisplayName)
+            ? "No song loaded"
+            : snapshot.currentSongDisplayName;
+
+        if (string.IsNullOrWhiteSpace(songName) && snapshot.availableSongNames != null && snapshot.selectedSongIndex >= 0 && snapshot.selectedSongIndex < snapshot.availableSongNames.Count)
             songName = snapshot.availableSongNames[snapshot.selectedSongIndex];
 
         string trackName = FormatTrackName(snapshot.selectedTrackDisplayName);

@@ -879,6 +879,16 @@ public class GuitarBridgeServer : MonoBehaviour
             return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
         });
 
+        if (currentSongEntry != null)
+        {
+            int currentIndex = availableSongs.FindIndex(song =>
+                song != null &&
+                string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase));
+
+            if (currentIndex >= 0)
+                selectedSongListIndex = currentIndex;
+        }
+
         if (selectedSongListIndex >= availableSongs.Count)
             selectedSongListIndex = Mathf.Max(0, availableSongs.Count - 1);
     }
@@ -929,6 +939,18 @@ public class GuitarBridgeServer : MonoBehaviour
     private void LoadSongFromEntry(SongLibraryEntry entry)
     {
         currentSongEntry = entry;
+        if (entry != null)
+        {
+            int selectedIndex = availableSongs.FindIndex(song =>
+                song != null &&
+                string.Equals(song.SongDirectory, entry.SongDirectory, StringComparison.OrdinalIgnoreCase));
+            if (selectedIndex >= 0)
+            {
+                selectedSongListIndex = selectedIndex;
+                EnsureSongSelectionVisible();
+            }
+        }
+
         SaveSelectedSongPreference(entry);
         LoadTestSong();
         bool autoplayFromSongEnd = songSelectionOpenedFromSongEnd;
@@ -2166,6 +2188,7 @@ private void ParseUdpState()
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
             availableSongScores = availableSongs.Select(GetStoredSongBestScorePercent).ToList(),
             selectedSongIndex = selectedSongListIndex,
+            currentSongDisplayName = currentSongEntry != null ? currentSongEntry.DisplayName : string.Empty,
             songListScrollOffset = songListScrollOffset,
             audioOffsetMs = audioOffsetMs,
             tabSpeedOffsetPercent = tabSpeedOffsetPercent,
