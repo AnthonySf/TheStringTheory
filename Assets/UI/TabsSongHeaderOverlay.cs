@@ -194,6 +194,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label songEndRatingLabel;
     private readonly Label songEndStatsLabel;
 
+    private readonly VisualElement startupTuningReminderOverlay;
 
     private int lastScreenHeight = -1;
     private bool suppressCallbacks;
@@ -676,7 +677,7 @@ public sealed class TabsSongHeaderOverlay
         pauseOverlay.Add(pauseCard);
 
         mainMenuOverlay = CreateFullscreenOverlay();
-        Label mainMenuTopTag = CreateLabel("◉ RETRO ARCADE JAM ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        Label mainMenuTopTag = CreateLabel("◉ INTERACTIVE MUSIC EXPERIENCE ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         mainMenuTopTag.style.marginBottom = 6f;
         mainMenuTopTag.style.letterSpacing = 1.4f;
 
@@ -1134,6 +1135,36 @@ public sealed class TabsSongHeaderOverlay
         songEndButtons.Add(retryButton);
         songEndButtons.Add(selectionButton);
 
+        startupTuningReminderOverlay = CreateFullscreenOverlay();
+        startupTuningReminderOverlay.style.display = DisplayStyle.None;
+        startupTuningReminderOverlay.style.justifyContent = Justify.Center;
+
+        VisualElement startupTuningReminderCard = new VisualElement();
+        startupTuningReminderCard.style.width = 1040f;
+        startupTuningReminderCard.style.maxWidth = 1100f;
+        startupTuningReminderCard.style.paddingLeft = 30f;
+        startupTuningReminderCard.style.paddingRight = 30f;
+        startupTuningReminderCard.style.paddingTop = 34f;
+        startupTuningReminderCard.style.paddingBottom = 28f;
+        startupTuningReminderCard.style.alignItems = Align.Center;
+        StyleCard(startupTuningReminderCard, new Color(0.05f, 0.09f, 0.16f, 0.97f), radius: 20f);
+
+        Label startupTuningReminderTitle = CreateLabel("Please make sure your strings are tuned.", 60f, new Color(1f, 0.95f, 0.72f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        startupTuningReminderTitle.style.unityTextAlign = TextAnchor.MiddleCenter;
+        startupTuningReminderTitle.style.whiteSpace = WhiteSpace.Normal;
+
+        Label startupTuningReminderNote = CreateLabel("Tuner coming soon.", 30f, new Color(0.79f, 0.90f, 1f, 0.97f), false, TextAnchor.MiddleCenter);
+        startupTuningReminderNote.style.marginTop = 12f;
+        startupTuningReminderNote.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        Button startupTuningReminderContinueButton = CreateActionButton("Continue", () => owner?.DismissStartupTuningReminderFromUi());
+        startupTuningReminderContinueButton.style.marginTop = 18f;
+
+        startupTuningReminderCard.Add(startupTuningReminderTitle);
+        startupTuningReminderCard.Add(startupTuningReminderNote);
+        startupTuningReminderCard.Add(startupTuningReminderContinueButton);
+        startupTuningReminderOverlay.Add(startupTuningReminderCard);
+
         songCard.Add(songNameLabel);
         songCard.Add(trackNameLabel);
         songCard.Add(statusRow);
@@ -1146,6 +1177,7 @@ public sealed class TabsSongHeaderOverlay
         root.Add(globalSettingsOverlay);
         root.Add(selectionOverlay);
         root.Add(trackSelectionOverlay);
+        root.Add(startupTuningReminderOverlay);
         songEndCard.Add(songEndMain);
         songEndCard.Add(songEndButtons);
         songEndOverlay.Add(songEndCard);
@@ -1289,11 +1321,12 @@ public sealed class TabsSongHeaderOverlay
 
         bool showEnd = snapshot.songEnded;
         bool showMainMenu = snapshot.showMainMenu && !showEnd;
-        bool showPause = snapshot.isPaused && !showEnd && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showEnd && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
         bool showSettings = snapshot.showSongSettings && !showEnd;
         bool showSelection = snapshot.showSongSelection && !showEnd;
         bool showTrackSelection = snapshot.showTrackSelection && !showEnd;
         bool showGlobalSettings = snapshot.showGlobalSettings && !showEnd;
+        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showEnd && !showMainMenu && !showSelection && !showTrackSelection;
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
@@ -1301,6 +1334,7 @@ public sealed class TabsSongHeaderOverlay
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
         trackSelectionOverlay.style.display = showTrackSelection ? DisplayStyle.Flex : DisplayStyle.None;
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
+        startupTuningReminderOverlay.style.display = showStartupTuningReminder ? DisplayStyle.Flex : DisplayStyle.None;
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
 
         // Keep the startup/main-menu presentation clean: only main menu + background should be visible.
