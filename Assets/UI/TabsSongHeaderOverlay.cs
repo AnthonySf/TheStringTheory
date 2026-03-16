@@ -1157,8 +1157,12 @@ public sealed class TabsSongHeaderOverlay
         startupTuningReminderNote.style.marginTop = 12f;
         startupTuningReminderNote.style.unityTextAlign = TextAnchor.MiddleCenter;
 
+        Button startupTuningReminderContinueButton = CreateActionButton("Continue", () => owner?.DismissStartupTuningReminderFromUi());
+        startupTuningReminderContinueButton.style.marginTop = 18f;
+
         startupTuningReminderCard.Add(startupTuningReminderTitle);
         startupTuningReminderCard.Add(startupTuningReminderNote);
+        startupTuningReminderCard.Add(startupTuningReminderContinueButton);
         startupTuningReminderOverlay.Add(startupTuningReminderCard);
 
         songCard.Add(songNameLabel);
@@ -1317,7 +1321,7 @@ public sealed class TabsSongHeaderOverlay
 
         bool showEnd = snapshot.songEnded;
         bool showMainMenu = snapshot.showMainMenu && !showEnd;
-        bool showPause = snapshot.isPaused && !showEnd && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showEnd && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
         bool showSettings = snapshot.showSongSettings && !showEnd;
         bool showSelection = snapshot.showSongSelection && !showEnd;
         bool showTrackSelection = snapshot.showTrackSelection && !showEnd;
