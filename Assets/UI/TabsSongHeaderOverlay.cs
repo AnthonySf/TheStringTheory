@@ -169,10 +169,11 @@ public sealed class TabsSongHeaderOverlay
     private readonly VisualElement songEndCard;
     private readonly Label songEndTitleLabel;
     private readonly Label songEndSongLabel;
-    private readonly Label songEndTrackLabel;
-    private readonly Label songEndSpeedLabel;
+    private readonly Label songEndMetaLabel;
+    private readonly Label songEndSpeedValueLabel;
     private readonly Label songEndScoreLabel;
     private readonly Label songEndRatingLabel;
+    private readonly Label songEndStatsLabel;
 
 
     private int lastScreenHeight = -1;
@@ -880,17 +881,21 @@ public sealed class TabsSongHeaderOverlay
         songEndSongLabel.style.maxWidth = Length.Percent(100f);
         songEndSongLabel.style.marginBottom = 14f;
 
-        songEndTrackLabel = CreateLabel("Track", 42f, new Color(0.83f, 0.90f, 1f, 1f), true, TextAnchor.MiddleCenter);
-        songEndTrackLabel.style.whiteSpace = WhiteSpace.Normal;
-        songEndTrackLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        songEndTrackLabel.style.maxWidth = Length.Percent(100f);
-        songEndTrackLabel.style.marginBottom = 8f;
+        VisualElement songEndMetaRow = new VisualElement();
+        songEndMetaRow.style.flexDirection = FlexDirection.Row;
+        songEndMetaRow.style.alignItems = Align.Center;
+        songEndMetaRow.style.justifyContent = Justify.Center;
+        songEndMetaRow.style.marginBottom = 16f;
 
-        songEndSpeedLabel = CreateLabel("Speed 100%", 40f, new Color(0.83f, 0.90f, 1f, 0.95f), true, TextAnchor.MiddleCenter);
-        songEndSpeedLabel.style.whiteSpace = WhiteSpace.Normal;
-        songEndSpeedLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        songEndSpeedLabel.style.maxWidth = Length.Percent(100f);
-        songEndSpeedLabel.style.marginBottom = 18f;
+        songEndMetaLabel = CreateLabel("Track: Lead  •  Speed", 40f, new Color(0.83f, 0.90f, 1f, 1f), true, TextAnchor.MiddleCenter);
+        songEndMetaLabel.style.whiteSpace = WhiteSpace.Normal;
+        songEndMetaLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        songEndSpeedValueLabel = CreateLabel("100%", 40f, new Color(1f, 0.86f, 0.45f, 1f), true, TextAnchor.MiddleCenter);
+        songEndSpeedValueLabel.style.marginLeft = 10f;
+
+        songEndMetaRow.Add(songEndMetaLabel);
+        songEndMetaRow.Add(songEndSpeedValueLabel);
 
         songEndScoreLabel = CreateLabel("SCORE 100.0%", 62f, new Color(1f, 0.94f, 0.76f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         songEndScoreLabel.style.whiteSpace = WhiteSpace.Normal;
@@ -902,14 +907,18 @@ public sealed class TabsSongHeaderOverlay
         songEndRatingLabel.style.whiteSpace = WhiteSpace.Normal;
         songEndRatingLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
         songEndRatingLabel.style.maxWidth = Length.Percent(100f);
-        songEndRatingLabel.style.marginBottom = 4f;
+        songEndRatingLabel.style.marginBottom = 10f;
+
+        songEndStatsLabel = CreateLabel("Hits 0  •  Misses 0", 34f, new Color(0.83f, 0.90f, 1f, 0.95f), true, TextAnchor.MiddleCenter);
+        songEndStatsLabel.style.whiteSpace = WhiteSpace.Normal;
+        songEndStatsLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
 
         songEndMain.Add(songEndTitleLabel);
         songEndMain.Add(songEndSongLabel);
-        songEndMain.Add(songEndTrackLabel);
-        songEndMain.Add(songEndSpeedLabel);
+        songEndMain.Add(songEndMetaRow);
         songEndMain.Add(songEndScoreLabel);
         songEndMain.Add(songEndRatingLabel);
+        songEndMain.Add(songEndStatsLabel);
 
         VisualElement songEndButtons = new VisualElement();
         songEndButtons.style.flexDirection = FlexDirection.Row;
@@ -1003,19 +1012,11 @@ public sealed class TabsSongHeaderOverlay
             }
         }
 
-        int denominator;
-        if (loopEnabled)
-        {
-            denominator = snapshot.noteStates?.Count(state => state != null && IsNoteInsideLoopWindow(state.data.time, snapshot.loopStartTime, snapshot.loopEndTime)) ?? 0;
-        }
-        else
-        {
-            denominator = scoreHits + scoreMisses;
-        }
+        int denominator = snapshot.noteStates?.Count(state => state != null && (!loopEnabled || IsNoteInsideLoopWindow(state.data.time, snapshot.loopStartTime, snapshot.loopEndTime))) ?? 0;
 
         float scorePercent = denominator > 0
             ? (100f * scoreHits / denominator)
-            : 100f;
+            : 0f;
         scorePercentLabel.text = $"SCORE {scorePercent:F1}%";
         noteTallyLabel.text = $"HITS {scoreHits}  •  MISS {scoreMisses}";
 
@@ -1096,14 +1097,15 @@ public sealed class TabsSongHeaderOverlay
         {
             string rating = GetScoreRating(scorePercent);
             songEndSongLabel.text = songName;
-            songEndTrackLabel.text = $"Track: {trackName}";
-            songEndSpeedLabel.text = $"Speed: {speedPercent:F0}%";
-            songEndScoreLabel.text = $"Score: {scorePercent:F1}%";
+            songEndMetaLabel.text = $"Track: {trackName}  •  Speed";
+            songEndSpeedValueLabel.text = $"{speedPercent:F0}%";
+            songEndScoreLabel.text = $"Score {scorePercent:F1}%";
             songEndRatingLabel.text = rating;
+            songEndStatsLabel.text = $"Hits {scoreHits}  •  Misses {scoreMisses}";
 
             songEndSongLabel.style.color = Color.white;
-            songEndTrackLabel.style.color = new Color(0.83f, 0.90f, 1f, 1f);
-            songEndSpeedLabel.style.color = new Color(0.83f, 0.90f, 1f, 0.95f);
+            songEndMetaLabel.style.color = new Color(0.83f, 0.90f, 1f, 1f);
+            songEndSpeedValueLabel.style.color = new Color(1f, 0.86f, 0.45f, 1f);
             songEndScoreLabel.style.color = new Color(1f, 0.94f, 0.76f, 1f);
             songEndRatingLabel.style.color = scorePercent >= 95f
                 ? new Color(0.58f, 0.96f, 0.68f, 1f)
@@ -2072,12 +2074,13 @@ public sealed class TabsSongHeaderOverlay
         pauseHintLabel.style.fontSize = bodySize * 0.85f;
         pauseInfoLabel.style.fontSize = bodySize * 0.80f;
         speedValueLabel.style.fontSize = bodySize * 0.85f;
-        songEndTitleLabel.style.fontSize = pauseSize * 0.64f;
-        songEndSongLabel.style.fontSize = bodySize * 1.00f;
-        songEndTrackLabel.style.fontSize = bodySize * 0.80f;
-        songEndSpeedLabel.style.fontSize = bodySize * 0.76f;
-        songEndScoreLabel.style.fontSize = bodySize * 0.98f;
-        songEndRatingLabel.style.fontSize = bodySize * 1.00f;
+        songEndTitleLabel.style.fontSize = pauseSize * 0.78f;
+        songEndSongLabel.style.fontSize = bodySize * 1.08f;
+        songEndMetaLabel.style.fontSize = bodySize * 0.82f;
+        songEndSpeedValueLabel.style.fontSize = bodySize * 0.86f;
+        songEndScoreLabel.style.fontSize = bodySize * 1.20f;
+        songEndRatingLabel.style.fontSize = bodySize * 0.96f;
+        songEndStatsLabel.style.fontSize = bodySize * 0.74f;
         settingsTrackLabel.style.fontSize = bodySize * 0.90f;
         settingsOffsetLabel.style.fontSize = bodySize * 0.80f;
         settingsTabSpeedLabel.style.fontSize = bodySize * 0.80f;

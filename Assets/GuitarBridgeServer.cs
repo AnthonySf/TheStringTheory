@@ -507,6 +507,12 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (songHasEnded)
+        {
+            isPaused = true;
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.Space))
         {
             isPaused = !isPaused;
