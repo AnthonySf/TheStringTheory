@@ -398,6 +398,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private string backingTrackLoadError = string.Empty;
     private bool songHasEnded;
     private bool songSelectionOpenedFromSongEnd;
+    private bool songSelectionOpenedFromMainMenu;
+    private bool showStartupTuningReminder;
+    private bool resumeGameplayAfterStartupTuningReminder;
     private SongLibraryEntry currentSongEntry;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
     private bool useAutoTrackSelection = true;
@@ -491,6 +494,19 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandlePauseControls()
     {
+        if (showStartupTuningReminder)
+        {
+            if (Input.GetKeyDown(KeyCode.Space) ||
+                Input.GetKeyDown(KeyCode.Return) ||
+                Input.GetKeyDown(KeyCode.KeypadEnter) ||
+                Input.GetKeyDown(KeyCode.Escape))
+            {
+                DismissStartupTuningReminderFromUi();
+            }
+
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
         {
             showSongSettings = !showSongSettings;
@@ -1108,6 +1124,13 @@ public class GuitarBridgeServer : MonoBehaviour
                 songSelectionOpenedFromSongEnd = false;
                 RetrySongFromUi();
             }
+            else if (songSelectionOpenedFromMainMenu || mainMenuFlowActive)
+            {
+                showMainMenu = false;
+                mainMenuFlowActive = false;
+                songSelectionOpenedFromMainMenu = false;
+                ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
+            }
             return;
         }
 
@@ -1146,14 +1169,17 @@ public class GuitarBridgeServer : MonoBehaviour
 
         LoadTestSong();
         bool autoplayFromSongEnd = songSelectionOpenedFromSongEnd;
-        bool autoplayFromMainMenuFlow = mainMenuFlowActive;
+        bool autoplayFromMainMenuFlow = mainMenuFlowActive || songSelectionOpenedFromMainMenu;
         songSelectionOpenedFromSongEnd = false;
+        songSelectionOpenedFromMainMenu = false;
         showMainMenu = false;
         mainMenuFlowActive = false;
         bool autoplay = autoplayFromSongEnd || autoplayFromMainMenuFlow;
         isPaused = !autoplay;
+        if (autoplayFromMainMenuFlow)
+            ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
         SeekSongTime(-songStartDelaySeconds, false);
-        SyncAudioToSongTimer(playImmediately: autoplay);
+        SyncAudioToSongTimer(playImmediately: autoplay && !showStartupTuningReminder);
     }
 
     private void HandleLoopPlayback()
@@ -1186,6 +1212,9 @@ public class GuitarBridgeServer : MonoBehaviour
         isPaused = true;
         songHasEnded = false;
         songSelectionOpenedFromSongEnd = false;
+        songSelectionOpenedFromMainMenu = false;
+        showStartupTuningReminder = false;
+        resumeGameplayAfterStartupTuningReminder = false;
         SyncAudioToSongTimer(playImmediately: false);
     }
 
@@ -1198,21 +1227,47 @@ public class GuitarBridgeServer : MonoBehaviour
         showSongSelection = false;
         showTrackSelection = false;
         showGlobalSettings = false;
-        isPaused = false;
-        SyncAudioToSongTimer(playImmediately: true);
+        ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
     }
 
     public void OpenSongSelectionFromUi()
     {
         songSelectionOpenedFromSongEnd = false;
+        songSelectionOpenedFromMainMenu = showMainMenu || mainMenuFlowActive;
         if (!showMainMenu)
             mainMenuFlowActive = false;
         OpenSongSelectionMenu();
     }
+
+    private void ShowStartupTuningReminder(bool resumePlaybackAfterDismiss)
+    {
+        showStartupTuningReminder = true;
+        resumeGameplayAfterStartupTuningReminder = resumePlaybackAfterDismiss;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void DismissStartupTuningReminderFromUi()
+    {
+        if (!showStartupTuningReminder)
+            return;
+
+        showStartupTuningReminder = false;
+        bool shouldResume = resumeGameplayAfterStartupTuningReminder;
+        resumeGameplayAfterStartupTuningReminder = false;
+
+        if (shouldResume)
+        {
+            isPaused = false;
+            SyncAudioToSongTimer(playImmediately: true);
+        }
+    }
+
     public void OpenSongSelectionFromSongEndFromUi()
     {
         songHasEnded = false;
         songSelectionOpenedFromSongEnd = true;
+        songSelectionOpenedFromMainMenu = false;
         mainMenuFlowActive = false;
         OpenSongSelectionMenu();
     }
@@ -1338,6 +1393,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showSongSelection = false;
         showTrackSelection = false;
         showMainMenu = mainMenuFlowActive;
+        songSelectionOpenedFromMainMenu = false;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
     }
@@ -2505,6 +2561,7 @@ private void ParseUdpState()
             songProgressNormalized = GetSongProgressNormalized(),
             songEnded = songHasEnded,
             currentTrackBestScorePercent = Mathf.Clamp(currentTrackBestScorePercent, 0f, 100f),
+            showStartupTuningReminder = showStartupTuningReminder,
             runtimeSettingsSections = BuildRuntimeSettingsSnapshot()
         };
     }
