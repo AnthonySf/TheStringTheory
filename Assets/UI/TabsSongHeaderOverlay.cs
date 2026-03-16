@@ -2500,8 +2500,11 @@ public sealed class TabsSongHeaderOverlay
 
     private static (Font body, Font title) ResolveUiFonts(Font fallbackFont)
     {
-        Font body = LoadProjectFont("Assets/UI/PixelArtFont.TTF");
-        Font title = LoadProjectFont("Assets/UI/ArcadeFont.ttf");
+        Font body = LoadRuntimeFont("Fonts/PixelArtFont");
+        Font title = LoadRuntimeFont("Fonts/ArcadeFont");
+
+        body ??= LoadProjectFont("Assets/UI/PixelArtFont.TTF");
+        title ??= LoadProjectFont("Assets/UI/ArcadeFont.ttf");
 
         body ??= TryFindFontByName("pixelartfont", "pixel_art", "pixel");
         title ??= TryFindFontByName("arcadefont", "arcade", "shadow");
@@ -2556,6 +2559,14 @@ public sealed class TabsSongHeaderOverlay
 #else
         return null;
 #endif
+    }
+
+    private static Font LoadRuntimeFont(string resourcesPath)
+    {
+        if (string.IsNullOrWhiteSpace(resourcesPath))
+            return null;
+
+        return Resources.Load<Font>(resourcesPath);
     }
 
     private static string FormatTrackName(string trackDisplayName)
