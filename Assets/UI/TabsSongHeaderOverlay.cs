@@ -159,6 +159,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button resetDefaultsButton;
     private readonly Dictionary<string, VisualElement> globalSettingInputs = new Dictionary<string, VisualElement>();
     private readonly Dictionary<string, Label> globalSettingValueLabels = new Dictionary<string, Label>();
+    private readonly Dictionary<string, VisualElement> globalSettingsColumns = new Dictionary<string, VisualElement>();
 
     private readonly VisualElement selectionOverlay;
     private readonly Label selectionSubtitleLabel;
@@ -729,7 +730,8 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsCard = new VisualElement();
         globalSettingsCard.style.width = Length.Percent(96f);
-        globalSettingsCard.style.maxWidth = 1860f;
+        globalSettingsCard.style.maxWidth = 2340f;
+        globalSettingsCard.style.minWidth = 1500f;
         globalSettingsCard.style.flexGrow = 1f;
         globalSettingsCard.style.minHeight = 540f;
         globalSettingsCard.style.paddingLeft = 24f;
@@ -1291,6 +1293,22 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsScrollView.Clear();
         globalSettingInputs.Clear();
         globalSettingValueLabels.Clear();
+        globalSettingsColumns.Clear();
+
+        VisualElement columnsWrapper = new VisualElement();
+        columnsWrapper.style.flexDirection = FlexDirection.Row;
+        columnsWrapper.style.alignItems = Align.FlexStart;
+        columnsWrapper.style.justifyContent = Justify.SpaceBetween;
+        columnsWrapper.style.flexWrap = Wrap.NoWrap;
+        columnsWrapper.style.columnGap = 14f;
+        columnsWrapper.style.minWidth = 1380f;
+        columnsWrapper.style.width = Length.Percent(100f);
+
+        AddGlobalSettingsColumn(columnsWrapper, "Gameplay Mechanics");
+        AddGlobalSettingsColumn(columnsWrapper, "Tabs Visuals");
+        AddGlobalSettingsColumn(columnsWrapper, "General Visuals");
+
+        globalSettingsScrollView.Add(columnsWrapper);
 
         foreach (RuntimeSettingSectionSnapshot section in sections)
         {
@@ -1325,10 +1343,75 @@ public sealed class TabsSongHeaderOverlay
                     sectionCard.Add(CreateGlobalSettingRow(setting));
             }
 
-            globalSettingsScrollView.Add(sectionCard);
+            string category = CategorizeGlobalSettingsSection(section);
+            if (globalSettingsColumns.TryGetValue(category, out VisualElement column))
+                column.Add(sectionCard);
+            else
+                globalSettingsScrollView.Add(sectionCard);
         }
 
         ApplyResponsiveSizing(force: true);
+    }
+
+    private void AddGlobalSettingsColumn(VisualElement parent, string title)
+    {
+        VisualElement column = new VisualElement();
+        column.style.flexGrow = 1f;
+        column.style.flexShrink = 1f;
+        column.style.flexBasis = 0f;
+        column.style.minWidth = 420f;
+
+        Label columnTitle = CreateLabel(title, 34f, new Color(1f, 0.92f, 0.73f, 0.98f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        columnTitle.style.marginBottom = 10f;
+        columnTitle.style.unityTextAlign = TextAnchor.MiddleCenter;
+        columnTitle.style.paddingTop = 6f;
+        columnTitle.style.paddingBottom = 6f;
+        columnTitle.style.backgroundColor = new Color(0.13f, 0.19f, 0.30f, 0.88f);
+        columnTitle.style.borderTopLeftRadius = 8f;
+        columnTitle.style.borderTopRightRadius = 8f;
+        columnTitle.style.borderBottomLeftRadius = 8f;
+        columnTitle.style.borderBottomRightRadius = 8f;
+        columnTitle.style.borderTopWidth = 2f;
+        columnTitle.style.borderRightWidth = 2f;
+        columnTitle.style.borderBottomWidth = 2f;
+        columnTitle.style.borderLeftWidth = 2f;
+        Color titleBorder = new Color(0.83f, 0.90f, 1f, 0.78f);
+        columnTitle.style.borderTopColor = titleBorder;
+        columnTitle.style.borderRightColor = titleBorder;
+        columnTitle.style.borderBottomColor = titleBorder;
+        columnTitle.style.borderLeftColor = titleBorder;
+        column.Add(columnTitle);
+
+        parent.Add(column);
+        globalSettingsColumns[title] = column;
+    }
+
+    private static string CategorizeGlobalSettingsSection(RuntimeSettingSectionSnapshot section)
+    {
+        string normalizedTitle = section.title?.ToLowerInvariant() ?? string.Empty;
+        List<RuntimeSettingSnapshot> sectionSettings = section.settings;
+
+        if (normalizedTitle.Contains("timing") || normalizedTitle.Contains("forgiveness") || normalizedTitle.Contains("settings") || IsSectionIdPrefix(sectionSettings, "core.") || IsSectionIdPrefix(sectionSettings, "timing."))
+            return "Gameplay Mechanics";
+
+        if (normalizedTitle.Contains("tab") || normalizedTitle.Contains("layout") || normalizedTitle.Contains("background") || IsSectionIdPrefix(sectionSettings, "layout.") || IsSectionIdPrefix(sectionSettings, "bg."))
+            return "Tabs Visuals";
+
+        if (normalizedTitle.Contains("visual") || normalizedTitle.Contains("color") || IsSectionIdPrefix(sectionSettings, "fx."))
+            return "General Visuals";
+
+        return "Gameplay Mechanics";
+    }
+
+    private static bool IsSectionIdPrefix(List<RuntimeSettingSnapshot> settings, string prefix)
+    {
+        if (settings == null || string.IsNullOrEmpty(prefix))
+            return false;
+
+        return settings.Any(setting =>
+            setting != null &&
+            !string.IsNullOrEmpty(setting.id) &&
+            setting.id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 
     private VisualElement CreateGlobalSettingRow(RuntimeSettingSnapshot setting)
