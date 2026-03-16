@@ -2088,7 +2088,7 @@ public sealed class TabsSongHeaderOverlay
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
-        float pedalWidth = Mathf.Clamp(Screen.width * 0.25f, 430f, 620f);
+        float pedalWidth = Mathf.Clamp(Screen.width * 0.15f, 430f, 620f);
         float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
         float knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 62f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
