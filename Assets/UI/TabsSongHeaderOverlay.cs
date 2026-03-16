@@ -667,12 +667,11 @@ public sealed class TabsSongHeaderOverlay
             pauseButtons.Add(button);
         }
 
-        AddBottomRightPrimaryButtons(pauseCard, mainMenuButton, resumeButton);
-
         pauseCard.Add(pauseInfoLabel);
         pauseCard.Add(speedValueLabel);
         pauseCard.Add(speedSlider);
         pauseCard.Add(pauseButtons);
+        AddBottomRightPrimaryButtons(pauseCard, mainMenuButton, resumeButton);
         pauseOverlay.Add(pauseStarsLabel);
         pauseOverlay.Add(pauseTitleLabel);
         pauseOverlay.Add(pauseHintLabel);
@@ -816,8 +815,6 @@ public sealed class TabsSongHeaderOverlay
             settingsButtons.Add(button);
         }
 
-        AddBottomRightPrimaryButtons(settingsCard, backPauseButton, resumeFromSettingsButton);
-
         settingsCard.Add(settingsTrackLabel);
         settingsCard.Add(settingsOffsetLabel);
         settingsCard.Add(settingsOffsetSlider);
@@ -826,6 +823,7 @@ public sealed class TabsSongHeaderOverlay
         settingsCard.Add(settingsStartDelayLabel);
         settingsCard.Add(settingsStartDelaySlider);
         settingsCard.Add(settingsButtons);
+        AddBottomRightPrimaryButtons(settingsCard, backPauseButton, resumeFromSettingsButton);
 
         settingsOverlay.Add(settingsTopTag);
         settingsOverlay.Add(settingsTitle);
@@ -938,9 +936,8 @@ public sealed class TabsSongHeaderOverlay
             selectionButtons.Add(button);
         }
 
-        AddBottomRightPrimaryButtons(selectionCard, closeSelectionButton, resumeSelectionButton);
-
         selectionCard.Add(selectionButtons);
+        AddBottomRightPrimaryButtons(selectionCard, closeSelectionButton, resumeSelectionButton);
 
         selectionOverlay.Add(selectionTopTag);
         selectionOverlay.Add(selectionTitle);
@@ -993,9 +990,8 @@ public sealed class TabsSongHeaderOverlay
             trackSelectionButtons.Add(button);
         }
 
-        AddBottomRightPrimaryButtons(trackSelectionCard, trackSelectionBackButton, trackSelectionResumeButton);
-
         trackSelectionCard.Add(trackSelectionButtons);
+        AddBottomRightPrimaryButtons(trackSelectionCard, trackSelectionBackButton, trackSelectionResumeButton);
         trackSelectionOverlay.Add(trackSelectionTopTag);
         trackSelectionOverlay.Add(trackSelectionTitleLabel);
         trackSelectionOverlay.Add(trackSelectionSubtitleLabel);
@@ -2038,11 +2034,15 @@ public sealed class TabsSongHeaderOverlay
             return;
 
         VisualElement dock = new VisualElement();
+        container.style.position = Position.Relative;
+        dock.style.position = Position.Absolute;
+        dock.style.right = 0f;
+        dock.style.bottom = 0f;
         dock.style.flexDirection = FlexDirection.Row;
         dock.style.justifyContent = Justify.FlexEnd;
         dock.style.alignItems = Align.Center;
-        dock.style.alignSelf = Align.FlexEnd;
-        dock.style.marginTop = 16f;
+        dock.style.paddingRight = 8f;
+        dock.style.paddingBottom = 8f;
 
         foreach (Button button in buttons)
         {
