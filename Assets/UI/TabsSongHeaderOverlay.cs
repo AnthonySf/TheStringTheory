@@ -1136,11 +1136,17 @@ public sealed class TabsSongHeaderOverlay
         startupTuningReminderNote.style.marginTop = 12f;
         startupTuningReminderNote.style.unityTextAlign = TextAnchor.MiddleCenter;
 
+        Label startupTuningReminderDensityHint = CreateLabel("If notes look too close or too far apart, adjust Tabs Sections duration settings.", 22f, new Color(0.73f, 0.84f, 0.98f, 0.95f), false, TextAnchor.MiddleCenter);
+        startupTuningReminderDensityHint.style.marginTop = 8f;
+        startupTuningReminderDensityHint.style.unityTextAlign = TextAnchor.MiddleCenter;
+        startupTuningReminderDensityHint.style.whiteSpace = WhiteSpace.Normal;
+
         Button startupTuningReminderContinueButton = CreateActionButton("Continue", () => owner?.DismissStartupTuningReminderFromUi());
         startupTuningReminderContinueButton.style.marginTop = 18f;
 
         startupTuningReminderCard.Add(startupTuningReminderTitle);
         startupTuningReminderCard.Add(startupTuningReminderNote);
+        startupTuningReminderCard.Add(startupTuningReminderDensityHint);
         startupTuningReminderCard.Add(startupTuningReminderContinueButton);
         startupTuningReminderOverlay.Add(startupTuningReminderCard);
 
