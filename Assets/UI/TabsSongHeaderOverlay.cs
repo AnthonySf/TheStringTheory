@@ -198,6 +198,8 @@ public sealed class TabsSongHeaderOverlay
     private int hitStreak;
     private float judgePopupFontSize = 82f;
     private float displayedInputMeterLevel;
+    private int lastAutoScrolledSongIndex = -1;
+    private int lastAutoScrolledTrackIndex = -1;
 
     private readonly HashSet<int> scoredNoteIds = new HashSet<int>();
     private int scoreHits;
@@ -1264,8 +1266,11 @@ public sealed class TabsSongHeaderOverlay
             row.button.style.borderLeftColor = row.button.style.borderTopColor;
         }
 
-        if (snapshot.selectedSongIndex >= 0 && snapshot.selectedSongIndex < selectionRows.Count)
+        if (snapshot.selectedSongIndex != lastAutoScrolledSongIndex && snapshot.selectedSongIndex >= 0 && snapshot.selectedSongIndex < selectionRows.Count)
+        {
             selectionScrollView.ScrollTo(selectionRows[snapshot.selectedSongIndex].button);
+            lastAutoScrolledSongIndex = snapshot.selectedSongIndex;
+        }
     }
 
     private void EnsureSongSelectionRows(int count)
@@ -1275,12 +1280,13 @@ public sealed class TabsSongHeaderOverlay
 
         selectionScrollView.Clear();
         selectionRows.Clear();
+        lastAutoScrolledSongIndex = -1;
 
         for (int i = 0; i < count; i++)
         {
             int songIndex = i;
             Button rowButton = CreateActionButton(string.Empty, () => OnSongRowClicked(songIndex));
-            rowButton.style.height = 76f;
+            rowButton.style.height = 98f;
             rowButton.style.marginTop = 6f;
             rowButton.style.marginBottom = 2f;
             rowButton.style.borderTopLeftRadius = 12f;
@@ -1294,11 +1300,11 @@ public sealed class TabsSongHeaderOverlay
             content.style.alignItems = Align.Center;
             content.style.flexGrow = 1f;
 
-            Label nameLabel = CreateLabel(string.Empty, 28f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+            Label nameLabel = CreateLabel(string.Empty, 36f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
             nameLabel.style.flexGrow = 1f;
             nameLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
 
-            Label scoreLabel = CreateLabel("0%", 26f, new Color(1f, 0.85f, 0.45f, 0.98f), true, TextAnchor.MiddleRight, useTitleFont: false);
+            Label scoreLabel = CreateLabel("0%", 34f, new Color(1f, 0.85f, 0.45f, 0.98f), true, TextAnchor.MiddleRight, useTitleFont: false);
             scoreLabel.style.minWidth = 130f;
             scoreLabel.style.unityTextAlign = TextAnchor.MiddleRight;
 
@@ -1354,8 +1360,11 @@ public sealed class TabsSongHeaderOverlay
             row.button.style.borderLeftColor = row.button.style.borderTopColor;
         }
 
-        if (snapshot.selectedTrackIndex >= 0 && snapshot.selectedTrackIndex < trackSelectionRows.Count)
+        if (snapshot.selectedTrackIndex != lastAutoScrolledTrackIndex && snapshot.selectedTrackIndex >= 0 && snapshot.selectedTrackIndex < trackSelectionRows.Count)
+        {
             trackSelectionScrollView.ScrollTo(trackSelectionRows[snapshot.selectedTrackIndex].button);
+            lastAutoScrolledTrackIndex = snapshot.selectedTrackIndex;
+        }
     }
 
     private void EnsureTrackSelectionRows(int count)
@@ -1365,12 +1374,13 @@ public sealed class TabsSongHeaderOverlay
 
         trackSelectionScrollView.Clear();
         trackSelectionRows.Clear();
+        lastAutoScrolledTrackIndex = -1;
 
         for (int i = 0; i < count; i++)
         {
             int trackIndex = i;
             Button rowButton = CreateActionButton(string.Empty, () => OnTrackRowClicked(trackIndex));
-            rowButton.style.height = 80f;
+            rowButton.style.height = 102f;
             rowButton.style.marginTop = 6f;
             rowButton.style.marginBottom = 2f;
             rowButton.style.borderTopLeftRadius = 14f;
@@ -1384,9 +1394,9 @@ public sealed class TabsSongHeaderOverlay
             content.style.alignItems = Align.Center;
             content.style.flexGrow = 1f;
 
-            Label nameLabel = CreateLabel(string.Empty, 28f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+            Label nameLabel = CreateLabel(string.Empty, 36f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
             nameLabel.style.flexGrow = 1f;
-            Label scoreLabel = CreateLabel("0%", 26f, new Color(0.54f, 0.92f, 1f, 0.99f), true, TextAnchor.MiddleRight, useTitleFont: false);
+            Label scoreLabel = CreateLabel("0%", 34f, new Color(0.54f, 0.92f, 1f, 0.99f), true, TextAnchor.MiddleRight, useTitleFont: false);
             scoreLabel.style.minWidth = 130f;
 
             content.Add(nameLabel);
