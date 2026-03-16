@@ -1021,6 +1021,7 @@ public sealed class TabsSongHeaderOverlay
         root.Add(settingsOverlay);
         root.Add(globalSettingsOverlay);
         root.Add(selectionOverlay);
+        root.Add(trackSelectionOverlay);
         songEndCard.Add(songEndMain);
         songEndCard.Add(songEndButtons);
         songEndOverlay.Add(songEndCard);
