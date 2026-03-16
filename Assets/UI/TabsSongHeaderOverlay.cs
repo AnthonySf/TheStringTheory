@@ -1334,6 +1334,8 @@ public sealed class TabsSongHeaderOverlay
             Label sectionTitle = CreateLabel(section.title, 30f, new Color(1f, 0.87f, 0.62f, 1f), true);
             sectionTitle.AddToClassList("global-section-title");
             sectionTitle.style.marginBottom = 10f;
+            sectionTitle.style.whiteSpace = WhiteSpace.Normal;
+            sectionTitle.style.flexShrink = 1f;
             sectionCard.Add(sectionTitle);
 
             if (section.settings != null)
@@ -1395,10 +1397,10 @@ public sealed class TabsSongHeaderOverlay
         if (normalizedTitle.Contains("timing") || normalizedTitle.Contains("forgiveness") || normalizedTitle.Contains("settings") || IsSectionIdPrefix(sectionSettings, "core.") || IsSectionIdPrefix(sectionSettings, "timing."))
             return "Gameplay Mechanics";
 
-        if (normalizedTitle.Contains("tab") || normalizedTitle.Contains("layout") || normalizedTitle.Contains("background") || IsSectionIdPrefix(sectionSettings, "layout.") || IsSectionIdPrefix(sectionSettings, "bg."))
+        if (normalizedTitle.Contains("tab") || normalizedTitle.Contains("layout") || IsSectionIdPrefix(sectionSettings, "layout."))
             return "Tabs Visuals";
 
-        if (normalizedTitle.Contains("visual") || normalizedTitle.Contains("color") || IsSectionIdPrefix(sectionSettings, "fx."))
+        if (normalizedTitle.Contains("visual") || normalizedTitle.Contains("color") || normalizedTitle.Contains("background") || IsSectionIdPrefix(sectionSettings, "fx.") || IsSectionIdPrefix(sectionSettings, "bg."))
             return "General Visuals";
 
         return "Gameplay Mechanics";
@@ -1437,10 +1439,13 @@ public sealed class TabsSongHeaderOverlay
         row.style.borderTopRightRadius = 10f;
         row.style.borderBottomLeftRadius = 10f;
         row.style.borderBottomRightRadius = 10f;
+        row.style.width = Length.Percent(100f);
 
         Label label = CreateLabel(setting.label, 34f, Color.white, true);
         label.AddToClassList("global-setting-title");
         label.tooltip = setting.tooltip;
+        label.style.whiteSpace = WhiteSpace.Normal;
+        label.style.flexShrink = 1f;
         row.Add(label);
 
         Label help = CreateLabel(setting.tooltip, 28f, new Color(0.75f, 0.88f, 0.96f, 0.95f));
@@ -1448,6 +1453,8 @@ public sealed class TabsSongHeaderOverlay
         help.style.marginTop = 2f;
         help.style.marginBottom = 6f;
         help.tooltip = setting.tooltip;
+        help.style.whiteSpace = WhiteSpace.Normal;
+        help.style.flexShrink = 1f;
         row.Add(help);
 
         VisualElement input = null;
@@ -1490,6 +1497,8 @@ public sealed class TabsSongHeaderOverlay
         row.Add(input);
 
         Label valueLabel = CreateLabel(setting.value, 30f, new Color(1f, 0.95f, 0.76f, 1f));
+        valueLabel.style.whiteSpace = WhiteSpace.Normal;
+        valueLabel.style.flexShrink = 1f;
         valueLabel.AddToClassList("global-setting-value");
         row.Add(valueLabel);
 
