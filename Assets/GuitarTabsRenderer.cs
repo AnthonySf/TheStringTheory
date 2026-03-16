@@ -532,15 +532,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
     private Material CreateGlowMaterial(Color c, float intensity)
     {
-        bool isURP = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
-        string shaderName = isURP ? "Universal Render Pipeline/Lit" : "Standard";
+        if (owner == null)
+            throw new InvalidOperationException("Cannot create glow material because renderer owner is missing.");
 
-        Material material = new Material(Shader.Find(shaderName));
-        material.color = c;
-        material.EnableKeyword("_EMISSION");
-        material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
-        material.SetColor("_EmissionColor", c * Mathf.Pow(2f, intensity));
-        return material;
+        return owner.CreateSharedGlowMaterial(c, intensity);
     }
 
     private static void ConfigureRendererNoShadows(Renderer renderer)

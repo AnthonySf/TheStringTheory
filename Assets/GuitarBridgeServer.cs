@@ -1946,12 +1946,28 @@ private void OpenOrFocusToneLab()
     public Material CreateSharedGlowMaterial(Color c, float intensity)
     {
         bool isURP = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
-        string shaderName = isURP ? "Universal Render Pipeline/Lit" : "Standard";
+        Shader shader = ResolveFirstAvailableShader(
+            isURP
+                ? new[]
+                {
+                    "Universal Render Pipeline/Lit",
+                    "Universal Render Pipeline/Simple Lit",
+                    "Universal Render Pipeline/Unlit",
+                    "Unlit/Color",
+                    "Sprites/Default",
+                    "Standard",
+                    "Hidden/InternalErrorShader"
+                }
+                : new[]
+                {
+                    "Standard",
+                    "Legacy Shaders/Diffuse",
+                    "Unlit/Color",
+                    "Sprites/Default",
+                    "Hidden/InternalErrorShader"
+                });
 
-        Shader shader = Shader.Find(shaderName);
-        if (shader == null) shader = Shader.Find("Standard"); 
-
-        Material m = new Material(shader);
+        Material m = shader != null ? new Material(shader) : CreateMaterialFromPrimitiveFallback("glow");
         m.color = c;
         m.EnableKeyword("_EMISSION");
         m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
@@ -1961,12 +1977,15 @@ private void OpenOrFocusToneLab()
 
     public Material CreateSharedTransparentMaterial(Color c, float emission = 0f)
     {
-        Shader shader = Shader.Find("Sprites/Default");
-        if (shader == null) shader = Shader.Find("Unlit/Transparent");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (shader == null) shader = Shader.Find("Standard");
+        Shader shader = ResolveFirstAvailableShader(
+            "Sprites/Default",
+            "Unlit/Transparent",
+            "Universal Render Pipeline/Unlit",
+            "Unlit/Color",
+            "Standard",
+            "Hidden/InternalErrorShader");
 
-        Material m = new Material(shader);
+        Material m = shader != null ? new Material(shader) : CreateMaterialFromPrimitiveFallback("transparent");
         m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
 
         m.SetColor("_Color", c);
@@ -1987,6 +2006,49 @@ private void OpenOrFocusToneLab()
         }
 
         return m;
+    }
+
+
+    private static Material CreateMaterialFromPrimitiveFallback(string materialKind)
+    {
+        GameObject primitive = null;
+        try
+        {
+            primitive = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Renderer renderer = primitive.GetComponent<Renderer>();
+            Material source = renderer != null ? renderer.sharedMaterial : null;
+            if (source != null)
+            {
+                Debug.LogWarning($"[GuitarBridgeServer] Falling back to primitive default shader for {materialKind} material.");
+                return new Material(source);
+            }
+        }
+        finally
+        {
+            if (primitive != null)
+                UnityEngine.Object.Destroy(primitive);
+        }
+
+        throw new InvalidOperationException($"Unable to create {materialKind} material because no shader and no primitive fallback material were available.");
+    }
+
+    private static Shader ResolveFirstAvailableShader(params string[] shaderNames)
+    {
+        if (shaderNames == null)
+            return null;
+
+        for (int i = 0; i < shaderNames.Length; i++)
+        {
+            string shaderName = shaderNames[i];
+            if (string.IsNullOrWhiteSpace(shaderName))
+                continue;
+
+            Shader found = Shader.Find(shaderName);
+            if (found != null)
+                return found;
+        }
+
+        return null;
     }
 
     public int GetStringBasePitch(int stringIdx)
