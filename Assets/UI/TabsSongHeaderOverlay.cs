@@ -1302,6 +1302,11 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
 
+        // Keep the startup/main-menu presentation clean: only main menu + background should be visible.
+        songCard.style.display = showMainMenu ? DisplayStyle.None : DisplayStyle.Flex;
+        scorePlate.style.display = showMainMenu ? DisplayStyle.None : DisplayStyle.Flex;
+        judgePopupLayer.style.display = showMainMenu ? DisplayStyle.None : DisplayStyle.Flex;
+
         if (showEnd)
         {
             string rating = GetScoreRating(scorePercent);
