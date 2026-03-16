@@ -136,7 +136,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         backgroundEffect = null;
 
         if (root != null)
-            Object.Destroy(root);
+            UnityEngine.Object.Destroy(root);
 
         backgroundRoot = null;
     }
@@ -906,7 +906,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             backdropRenderer.material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
             backdropRenderer.material.EnableKeyword("_ALPHABLEND_ON");
             ConfigureRendererNoShadows(backdropRenderer);
-            Object.Destroy(backdrop.GetComponent<Collider>());
+            UnityEngine.Object.Destroy(backdrop.GetComponent<Collider>());
             staticRenderers.Add(backdropRenderer);
         }
 
@@ -971,7 +971,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             for (int i = 0; i < dynamicObjects.Count; i++)
             {
                 if (dynamicObjects[i] != null)
-                    Object.Destroy(dynamicObjects[i]);
+                    UnityEngine.Object.Destroy(dynamicObjects[i]);
             }
 
             dynamicObjects.Clear();
