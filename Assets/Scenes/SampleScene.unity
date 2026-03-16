@@ -508,6 +508,7 @@ MonoBehaviour:
   hideOpenFretNumber: 1
   judgeableDarkenMultiplier: 0.45
   uiText: {fileID: 735139447}
+  showCenterDebugOverlay: 0
   udpPort: 9000
   autoLaunchNotesDetector: 1
   notesDetectorRelativePath: NotesReader/guitar_ai2_continuous.exe
@@ -545,7 +546,7 @@ MonoBehaviour:
   tabNoteCircleDiameter: 1
   tabNoteCircleDepth: 0.09
   tabNoteOutlineThickness: 0.1
-  tabNoteFontSize: 3
+  tabNoteFontSize: 4
   tabSustainThickness: 0.05
   tabSustainDepth: 0.06
   tabSustainMinWidth: 0.25
@@ -568,6 +569,97 @@ MonoBehaviour:
   tabZDepth: 1
   tabStringThickness: 0.035
   tabStringDepth: 0.08
+  tabPanelBackdropColor: {r: 0.02, g: 0.03, b: 0.06, a: 0.42}
+  tabBackgroundMode: 1
+  tabStarStyle: 0
+  tabStarSeed: 1337
+  tabStarfieldWidth: 46
+  tabStarfieldNearZ: -2.6
+  tabStarfieldFarZ: -8.2
+  tabStarfieldMinY: -6.6
+  tabStarfieldMaxY: 6.6
+  tabStarDriftSpeed: 0.55
+  tabStarTwinkleStrength: 0.25
+  tabStarSubtleVerticalWave: 0.05
+  tabNearStarCount: 130
+  tabMidStarCount: 170
+  tabFarStarCount: 220
+  tabNearStarSizeMin: 0.06
+  tabNearStarSizeMax: 0.16
+  tabMidStarSizeMin: 0.04
+  tabMidStarSizeMax: 0.11
+  tabFarStarSizeMin: 0.02
+  tabFarStarSizeMax: 0.07
+  tabNearStarAlphaMin: 0.35
+  tabNearStarAlphaMax: 0.95
+  tabMidStarAlphaMin: 0.22
+  tabMidStarAlphaMax: 0.8
+  tabFarStarAlphaMin: 0.15
+  tabFarStarAlphaMax: 0.55
+  tabNearLayerSpeedMultiplier: 1.35
+  tabMidLayerSpeedMultiplier: 0.95
+  tabFarLayerSpeedMultiplier: 0.6
+  tabNearStarColor: {r: 0.95, g: 0.96, b: 1, a: 0.95}
+  tabMidStarColor: {r: 0.74, g: 0.85, b: 1, a: 0.85}
+  tabFarStarColor: {r: 0.56, g: 0.7, b: 0.96, a: 0.7}
+  tabStarEmission: 0.35
+  tabShootingStarsEnabled: 1
+  tabShootingStarMaxConcurrent: 2
+  tabShootingStarIntervalMin: 2.2
+  tabShootingStarIntervalMax: 6.5
+  tabShootingStarSpeed: 8.5
+  tabShootingStarLength: 0.9
+  tabShootingStarAlpha: 0.9
+  tabShootingStarColor: {r: 0.95, g: 0.97, b: 1, a: 0.9}
+  tabNebulaEnabled: 0
+  tabNebulaLayerCount: 2
+  tabNebulaOpacity: 0.05
+  tabNebulaScrollSpeed: 0.05
+  tabNebulaScale: 8
+  tabNebulaColorA: {r: 0.08, g: 0.12, b: 0.22, a: 0.08}
+  tabNebulaColorB: {r: 0.12, g: 0.08, b: 0.2, a: 0.07}
+  tabSkyMood: 0
+  tabSkyWidth: 54
+  tabSkyNearZ: 1.4
+  tabSkyFarZ: 7.8
+  tabSkyMinY: -7.2
+  tabSkyMaxY: 7.2
+  tabSkyTopColor: {r: 0.17, g: 0.55, b: 0.98, a: 1}
+  tabSkyMidColor: {r: 0.38, g: 0.72, b: 0.99, a: 1}
+  tabSkyBottomColor: {r: 0.76, g: 0.9, b: 1, a: 1}
+  tabSkySunsetTopColor: {r: 0.96, g: 0.5, b: 0.22, a: 1}
+  tabSkySunsetMidColor: {r: 0.98, g: 0.66, b: 0.3, a: 1}
+  tabSkySunsetBottomColor: {r: 1, g: 0.84, b: 0.52, a: 1}
+  tabSkyCloudCountNear: 42
+  tabSkyCloudCountMid: 30
+  tabSkyCloudCountFar: 18
+  tabSkyCloudSpeedNear: 0.34
+  tabSkyCloudSpeedMid: 0.2
+  tabSkyCloudSpeedFar: 0.11
+  tabSkyCloudAlphaNear: 0.92
+  tabSkyCloudAlphaMid: 0.78
+  tabSkyCloudAlphaFar: 0.62
+  tabSkyCloudScaleMinNear: 1.8
+  tabSkyCloudScaleMaxNear: 3.6
+  tabSkyCloudScaleMinMid: 1.3
+  tabSkyCloudScaleMaxMid: 2.8
+  tabSkyCloudScaleMinFar: 1
+  tabSkyCloudScaleMaxFar: 2.1
+  tabSkyCloudGlobalScale: 2.65
+  tabSkyDayCloudTopTint: {r: 0.98, g: 0.99, b: 1, a: 1}
+  tabSkyDayCloudBottomTint: {r: 0.9, g: 0.95, b: 1, a: 1}
+  tabSkySunsetCloudTopTint: {r: 1, g: 0.84, b: 0.68, a: 1}
+  tabSkySunsetCloudBottomTint: {r: 1, g: 0.55996835, b: 0.3160377, a: 1}
+  tabSkyStarsEnabled: 1
+  tabSkyStarCount: 320
+  tabSkyStarSizeMin: 0.015
+  tabSkyStarSizeMax: 0.065
+  tabSkyStarAlpha: 0.78
+  tabSkyStarTwinkleFraction: 0.28
+  tabSkyStarTwinkleStrength: 0.16
+  tabSkyStarTwinkleSpeedMin: 0.45
+  tabSkyStarTwinkleSpeedMax: 1.2
+  tabSkyCloudVerticalBob: 0.04
   tabLabelFontSize: 2.2
   tabHeaderCurrentColor: {r: 1, g: 0.88, b: 0.32, a: 1}
   tabHeaderNextColor: {r: 0.65, g: 0.85, b: 1, a: 1}
