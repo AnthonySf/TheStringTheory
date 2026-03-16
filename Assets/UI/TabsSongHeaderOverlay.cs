@@ -187,6 +187,8 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label songEndMetaLabel;
     private readonly Label songEndSpeedValueLabel;
     private readonly Label songEndScoreLabel;
+    private readonly Label songEndBestLabel;
+    private readonly Label songEndDeltaLabel;
     private readonly Label songEndRatingLabel;
     private readonly Label songEndStatsLabel;
 
@@ -977,11 +979,44 @@ public sealed class TabsSongHeaderOverlay
         songEndMetaRow.Add(songEndMetaLabel);
         songEndMetaRow.Add(songEndSpeedValueLabel);
 
-        songEndScoreLabel = CreateLabel("SCORE 100.0%", 62f, new Color(1f, 0.94f, 0.76f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        songEndScoreLabel = CreateLabel("RUN SCORE 100.0%", 62f, new Color(1f, 0.94f, 0.76f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         songEndScoreLabel.style.whiteSpace = WhiteSpace.Normal;
         songEndScoreLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
         songEndScoreLabel.style.maxWidth = Length.Percent(100f);
-        songEndScoreLabel.style.marginBottom = 12f;
+        songEndScoreLabel.style.marginBottom = 10f;
+
+        VisualElement songEndBestPanel = new VisualElement();
+        songEndBestPanel.style.flexDirection = FlexDirection.Column;
+        songEndBestPanel.style.alignItems = Align.Center;
+        songEndBestPanel.style.justifyContent = Justify.Center;
+        songEndBestPanel.style.width = Length.Percent(72f);
+        songEndBestPanel.style.maxWidth = 1020f;
+        songEndBestPanel.style.paddingTop = 16f;
+        songEndBestPanel.style.paddingBottom = 14f;
+        songEndBestPanel.style.paddingLeft = 20f;
+        songEndBestPanel.style.paddingRight = 20f;
+        songEndBestPanel.style.marginBottom = 12f;
+        StyleCard(songEndBestPanel, new Color(0.06f, 0.13f, 0.22f, 0.96f), radius: 16f);
+        songEndBestPanel.style.borderTopWidth = 2f;
+        songEndBestPanel.style.borderRightWidth = 2f;
+        songEndBestPanel.style.borderBottomWidth = 2f;
+        songEndBestPanel.style.borderLeftWidth = 2f;
+        Color bestPanelBorder = new Color(0.52f, 0.84f, 1f, 0.92f);
+        songEndBestPanel.style.borderTopColor = bestPanelBorder;
+        songEndBestPanel.style.borderRightColor = bestPanelBorder;
+        songEndBestPanel.style.borderBottomColor = bestPanelBorder;
+        songEndBestPanel.style.borderLeftColor = bestPanelBorder;
+
+        songEndBestLabel = CreateLabel("TRACK BEST 100.0%", 44f, new Color(0.72f, 0.94f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        songEndBestLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        songEndBestLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        songEndDeltaLabel = CreateLabel("New record +0.0%", 30f, new Color(0.66f, 0.95f, 0.76f, 0.98f), true, TextAnchor.MiddleCenter);
+        songEndDeltaLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        songEndDeltaLabel.style.marginTop = 4f;
+
+        songEndBestPanel.Add(songEndBestLabel);
+        songEndBestPanel.Add(songEndDeltaLabel);
 
         songEndRatingLabel = CreateLabel("Perfect!", 54f, new Color(0.62f, 0.90f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         songEndRatingLabel.style.whiteSpace = WhiteSpace.Normal;
@@ -997,6 +1032,7 @@ public sealed class TabsSongHeaderOverlay
         songEndMain.Add(songEndSongLabel);
         songEndMain.Add(songEndMetaRow);
         songEndMain.Add(songEndScoreLabel);
+        songEndMain.Add(songEndBestPanel);
         songEndMain.Add(songEndRatingLabel);
         songEndMain.Add(songEndStatsLabel);
 
@@ -1182,10 +1218,18 @@ public sealed class TabsSongHeaderOverlay
         if (showEnd)
         {
             string rating = GetScoreRating(scorePercent);
+            float savedTrackBest = Mathf.Clamp(snapshot.currentTrackBestScorePercent, 0f, 100f);
+            float deltaToBest = scorePercent - savedTrackBest;
+            bool newRecord = deltaToBest >= -0.05f;
+
             songEndSongLabel.text = songName;
             songEndMetaLabel.text = $"Track: {trackName}  •  Speed";
             songEndSpeedValueLabel.text = $"{speedPercent:F0}%";
-            songEndScoreLabel.text = $"Score {scorePercent:F1} %";
+            songEndScoreLabel.text = $"RUN SCORE {scorePercent:F1}%";
+            songEndBestLabel.text = $"TRACK BEST {savedTrackBest:F1}%";
+            songEndDeltaLabel.text = newRecord
+                ? "NEW RECORD!"
+                : $"Need {Mathf.Abs(deltaToBest):F1}% to beat your best";
             songEndRatingLabel.text = rating;
             songEndStatsLabel.text = $"Hits {scoreHits}  •  Misses {scoreMisses}";
 
@@ -1193,6 +1237,10 @@ public sealed class TabsSongHeaderOverlay
             songEndMetaLabel.style.color = new Color(0.83f, 0.90f, 1f, 1f);
             songEndSpeedValueLabel.style.color = new Color(1f, 0.86f, 0.45f, 1f);
             songEndScoreLabel.style.color = new Color(1f, 0.94f, 0.76f, 1f);
+            songEndBestLabel.style.color = new Color(0.70f, 0.94f, 1f, 1f);
+            songEndDeltaLabel.style.color = newRecord
+                ? new Color(0.58f, 0.96f, 0.68f, 1f)
+                : new Color(1f, 0.84f, 0.54f, 1f);
             songEndRatingLabel.style.color = scorePercent >= 95f
                 ? new Color(0.58f, 0.96f, 0.68f, 1f)
                 : scorePercent >= 80f
