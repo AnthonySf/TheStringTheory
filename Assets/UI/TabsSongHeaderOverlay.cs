@@ -983,7 +983,7 @@ public sealed class TabsSongHeaderOverlay
         songEndScoreLabel.style.whiteSpace = WhiteSpace.Normal;
         songEndScoreLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
         songEndScoreLabel.style.maxWidth = Length.Percent(100f);
-        songEndScoreLabel.style.marginBottom = 10f;
+        songEndScoreLabel.style.marginBottom = 6f;
 
         VisualElement songEndBestPanel = new VisualElement();
         songEndBestPanel.style.flexDirection = FlexDirection.Column;
@@ -1022,19 +1022,20 @@ public sealed class TabsSongHeaderOverlay
         songEndRatingLabel.style.whiteSpace = WhiteSpace.Normal;
         songEndRatingLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
         songEndRatingLabel.style.maxWidth = Length.Percent(100f);
-        songEndRatingLabel.style.marginBottom = 10f;
+        songEndRatingLabel.style.marginBottom = 6f;
 
         songEndStatsLabel = CreateLabel("Hits 0  •  Misses 0", 34f, new Color(0.83f, 0.90f, 1f, 0.95f), true, TextAnchor.MiddleCenter);
         songEndStatsLabel.style.whiteSpace = WhiteSpace.Normal;
         songEndStatsLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        songEndStatsLabel.style.marginBottom = 10f;
 
         songEndMain.Add(songEndTitleLabel);
         songEndMain.Add(songEndSongLabel);
         songEndMain.Add(songEndMetaRow);
         songEndMain.Add(songEndScoreLabel);
-        songEndMain.Add(songEndBestPanel);
         songEndMain.Add(songEndRatingLabel);
         songEndMain.Add(songEndStatsLabel);
+        songEndMain.Add(songEndBestPanel);
 
         VisualElement songEndButtons = new VisualElement();
         songEndButtons.style.flexDirection = FlexDirection.Row;
