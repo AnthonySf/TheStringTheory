@@ -33,6 +33,9 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label speedBadgeLabel;
     private readonly Label statusDotLabel;
     private readonly Label detectorStatusLabel;
+    private readonly VisualElement techniqueLegendCard;
+    private readonly List<Label> techniqueLegendIconLabels = new List<Label>();
+    private readonly List<Label> techniqueLegendTextLabels = new List<Label>();
     private readonly VisualElement scorePlate;
     private readonly VisualElement scorePedalBody;
     private readonly VisualElement scorePedalScreen;
@@ -310,6 +313,35 @@ public sealed class TabsSongHeaderOverlay
         statusRow.Add(speedBadgeLabel);
         statusRow.Add(statusDotLabel);
         statusRow.Add(detectorStatusLabel);
+
+        techniqueLegendCard = new VisualElement();
+        techniqueLegendCard.style.position = Position.Absolute;
+        techniqueLegendCard.style.top = 24f;
+        techniqueLegendCard.style.right = 24f;
+        techniqueLegendCard.style.paddingLeft = 16f;
+        techniqueLegendCard.style.paddingRight = 16f;
+        techniqueLegendCard.style.paddingTop = 12f;
+        techniqueLegendCard.style.paddingBottom = 12f;
+        techniqueLegendCard.style.alignItems = Align.FlexStart;
+        techniqueLegendCard.style.minWidth = 255f;
+        techniqueLegendCard.style.display = DisplayStyle.None;
+        StyleCard(techniqueLegendCard, new Color(0.03f, 0.07f, 0.14f, 0.90f), radius: 14f);
+        techniqueLegendCard.style.borderTopWidth = 1f;
+        techniqueLegendCard.style.borderRightWidth = 1f;
+        techniqueLegendCard.style.borderBottomWidth = 1f;
+        techniqueLegendCard.style.borderLeftWidth = 1f;
+        Color legendBorder = new Color(0.41f, 0.65f, 0.93f, 0.55f);
+        techniqueLegendCard.style.borderTopColor = legendBorder;
+        techniqueLegendCard.style.borderRightColor = legendBorder;
+        techniqueLegendCard.style.borderBottomColor = legendBorder;
+        techniqueLegendCard.style.borderLeftColor = legendBorder;
+
+        AddTechniqueLegendRow("H", "Hammer-on", new Color(0.55f, 0.91f, 1f, 1f));
+        AddTechniqueLegendRow("P", "Pull-off", new Color(0.57f, 1f, 0.74f, 1f));
+        AddTechniqueLegendRow("/", "Slide up", new Color(1f, 0.89f, 0.48f, 1f));
+        AddTechniqueLegendRow("\\", "Slide down", new Color(1f, 0.78f, 0.48f, 1f));
+        AddTechniqueLegendRow("^", "Bend", new Color(1f, 0.66f, 0.73f, 1f));
+        AddTechniqueLegendRow("~", "Vibrato", new Color(0.83f, 0.73f, 1f, 1f));
 
         scorePlate = new VisualElement();
         scorePlate.style.position = Position.Absolute;
@@ -1132,15 +1164,21 @@ public sealed class TabsSongHeaderOverlay
         startupTuningReminderTitle.style.unityTextAlign = TextAnchor.MiddleCenter;
         startupTuningReminderTitle.style.whiteSpace = WhiteSpace.Normal;
 
-        Label startupTuningReminderNote = CreateLabel("Tuner coming soon.", 30f, new Color(0.79f, 0.90f, 1f, 0.97f), false, TextAnchor.MiddleCenter);
+        Label startupTuningReminderNote = CreateLabel("Tuner coming soon.", 36f, new Color(0.79f, 0.90f, 1f, 0.97f), false, TextAnchor.MiddleCenter);
         startupTuningReminderNote.style.marginTop = 12f;
         startupTuningReminderNote.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        Label startupTuningReminderDensityHint = CreateLabel("If notes look too close or too far apart, adjust Tabs Sections duration settings.", 27f, new Color(0.73f, 0.84f, 0.98f, 0.95f), false, TextAnchor.MiddleCenter);
+        startupTuningReminderDensityHint.style.marginTop = 10f;
+        startupTuningReminderDensityHint.style.unityTextAlign = TextAnchor.MiddleCenter;
+        startupTuningReminderDensityHint.style.whiteSpace = WhiteSpace.Normal;
 
         Button startupTuningReminderContinueButton = CreateActionButton("Continue", () => owner?.DismissStartupTuningReminderFromUi());
         startupTuningReminderContinueButton.style.marginTop = 18f;
 
         startupTuningReminderCard.Add(startupTuningReminderTitle);
         startupTuningReminderCard.Add(startupTuningReminderNote);
+        startupTuningReminderCard.Add(startupTuningReminderDensityHint);
         startupTuningReminderCard.Add(startupTuningReminderContinueButton);
         startupTuningReminderOverlay.Add(startupTuningReminderCard);
 
@@ -1149,6 +1187,7 @@ public sealed class TabsSongHeaderOverlay
         songCard.Add(trackNameLabel);
         songCard.Add(statusRow);
         root.Add(songCard);
+        root.Add(techniqueLegendCard);
         root.Add(scorePlate);
         root.Add(judgePopupLayer);
         root.Add(pauseOverlay);
@@ -1307,6 +1346,7 @@ public sealed class TabsSongHeaderOverlay
         bool showTrackSelection = snapshot.showTrackSelection && !showEnd;
         bool showGlobalSettings = snapshot.showGlobalSettings && !showEnd;
         bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showEnd && !showMainMenu && !showSelection && !showTrackSelection;
+        bool showTechniqueLegend = !showEnd && !showPause && !showMainMenu && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
@@ -1316,6 +1356,7 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
         startupTuningReminderOverlay.style.display = showStartupTuningReminder ? DisplayStyle.Flex : DisplayStyle.None;
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
+        techniqueLegendCard.style.display = showTechniqueLegend ? DisplayStyle.Flex : DisplayStyle.None;
 
         // Keep the startup/main-menu presentation clean: only main menu + background should be visible.
         songCard.style.display = snapshot.mainMenuFlowActive ? DisplayStyle.None : DisplayStyle.Flex;
@@ -1986,6 +2027,32 @@ public sealed class TabsSongHeaderOverlay
         return label;
     }
 
+    private void AddTechniqueLegendRow(string icon, string description, Color iconColor)
+    {
+        if (techniqueLegendCard == null)
+            return;
+
+        VisualElement row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.Center;
+        row.style.marginTop = 1f;
+        row.style.marginBottom = 1f;
+
+        Label iconLabel = CreateLabel(icon, 24f, iconColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        iconLabel.style.minWidth = 26f;
+        iconLabel.style.marginRight = 8f;
+        iconLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        Label textLabel = CreateLabel($": {description}", 24f, new Color(0.90f, 0.96f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+        textLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+
+        techniqueLegendIconLabels.Add(iconLabel);
+        techniqueLegendTextLabels.Add(textLabel);
+        row.Add(iconLabel);
+        row.Add(textLabel);
+        techniqueLegendCard.Add(row);
+    }
+
     private VisualElement CreateStringTheoryLogo(float stringSize, float theorySize, float theoryShiftLeft, float theoryLetterSpacing, float rowBottomMargin, float stringLetterMargin)
     {
         VisualElement logoWrap = new VisualElement();
@@ -2563,6 +2630,11 @@ public sealed class TabsSongHeaderOverlay
         speedBadgeLabel.style.fontSize = bodySize * 0.66f;
         detectorStatusLabel.style.fontSize = bodySize * 0.66f;
         statusDotLabel.style.fontSize = bodySize * 0.66f;
+        float techniqueLegendSize = bodySize * 0.66f;
+        foreach (Label iconLabel in techniqueLegendIconLabels)
+            iconLabel.style.fontSize = techniqueLegendSize;
+        foreach (Label textLabel in techniqueLegendTextLabels)
+            textLabel.style.fontSize = techniqueLegendSize;
         scoreTitleLabel.style.fontSize = bodySize * 0.48f;
         scorePercentLabel.style.fontSize = bodySize * 1.30f;
         noteTallyLabel.style.fontSize = bodySize * 0.58f;
