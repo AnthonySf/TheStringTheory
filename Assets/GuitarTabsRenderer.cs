@@ -772,12 +772,12 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
                 float visibleMiddleX = 0f;
                 float maxYOffsetBeforeNextString = lineSpacing * 0.33f;
-                float glyphYOffset = Mathf.Min(Mathf.Max(height * 0.78f, owner.tabTechniqueGlyphFontSize * 0.08f), maxYOffsetBeforeNextString);
+                float glyphYOffset = Mathf.Min(Mathf.Max(height * 0.72f, owner.tabTechniqueGlyphFontSize * 0.10f), maxYOffsetBeforeNextString);
                 glyphObj.transform.localPosition = new Vector3(visibleMiddleX, glyphYOffset, -0.08f);
 
                 TextMeshPro glyphText = glyphObj.AddComponent<TextMeshPro>();
                 glyphText.text = glyph;
-                glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.20f;
+                glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.35f;
                 glyphText.alignment = TextAlignmentOptions.Center;
                 glyphText.color = owner.tabTechniqueGlyphColor;
                 glyphText.enableAutoSizing = false;
@@ -886,13 +886,13 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             GameObject glyphObj = new GameObject($"NoteCornerTechnique_{note.id}");
             glyphObj.transform.SetParent(noteRoot, false);
 
-            float xOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.30f, 0.12f);
-            float yOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.30f, 0.12f);
+            float xOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.24f, 0.11f);
+            float yOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.18f, 0.08f);
             glyphObj.transform.localPosition = new Vector3(xOffset, yOffset, -0.09f);
 
             TextMeshPro glyphText = glyphObj.AddComponent<TextMeshPro>();
             glyphText.text = glyph;
-            glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.28f;
+            glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.48f;
             glyphText.alignment = TextAlignmentOptions.Center;
             glyphText.color = owner.tabTechniqueGlyphColor;
             glyphText.enableAutoSizing = false;
