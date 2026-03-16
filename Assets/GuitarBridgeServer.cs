@@ -392,6 +392,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private readonly Dictionary<string, RuntimeSettingDefinition> runtimeSettingById = new Dictionary<string, RuntimeSettingDefinition>();
     private readonly Dictionary<string, string> runtimeSettingDefaultValues = new Dictionary<string, string>();
     private readonly Dictionary<string, string> pendingGlobalRuntimeSettingValues = new Dictionary<string, string>();
+    private List<RuntimeSettingSectionSnapshot> cachedRuntimeSettingsSnapshot = new List<RuntimeSettingSectionSnapshot>();
+    private bool runtimeSettingsSnapshotDirty = true;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
 
 
@@ -1488,6 +1490,11 @@ private void OpenOrFocusToneLab()
         ShutdownNotesDetectorIfRunning();
     }
 
+    private void OnDisable()
+    {
+        ShutdownNotesDetectorIfRunning();
+    }
+
     private void TryLaunchNotesDetector()
     {
         Debug.Log("[NotesDetector] TryLaunchNotesDetector() invoked.");
@@ -1571,7 +1578,7 @@ private void OpenOrFocusToneLab()
         try
         {
             if (!notesDetectorProcess.HasExited)
-                notesDetectorProcess.Kill();
+                TryKillProcessTree(notesDetectorProcess);
         }
         catch (Exception ex)
         {
@@ -1582,6 +1589,28 @@ private void OpenOrFocusToneLab()
             notesDetectorProcess.Dispose();
             notesDetectorProcess = null;
         }
+    }
+
+    private static void TryKillProcessTree(System.Diagnostics.Process process)
+    {
+        if (process == null)
+            return;
+
+        try
+        {
+            process.Kill(entireProcessTree: true);
+            return;
+        }
+        catch (MissingMethodException)
+        {
+            // Fallback for older runtimes where Kill(entireProcessTree) is unavailable.
+        }
+        catch (NotSupportedException)
+        {
+            // Fallback for platforms that do not support process-tree termination.
+        }
+
+        process.Kill();
     }
 
     public Color GetStringColor(int stringIdx)
@@ -2665,6 +2694,7 @@ private void ParseUdpState()
         runtimeSettingDefinitions.Clear();
         runtimeSettingById.Clear();
         runtimeSettingDefaultValues.Clear();
+        runtimeSettingsSnapshotDirty = true;
 
         RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
@@ -2794,11 +2824,15 @@ private void ParseUdpState()
         runtimeSettingDefinitions.Add(definition);
         runtimeSettingById[definition.Id] = definition;
         runtimeSettingDefaultValues[definition.Id] = definition.Getter != null ? definition.Getter() : string.Empty;
+        runtimeSettingsSnapshotDirty = true;
     }
 
     private List<RuntimeSettingSectionSnapshot> BuildRuntimeSettingsSnapshot()
     {
-        return runtimeSettingDefinitions
+        if (!runtimeSettingsSnapshotDirty && cachedRuntimeSettingsSnapshot != null)
+            return cachedRuntimeSettingsSnapshot;
+
+        cachedRuntimeSettingsSnapshot = runtimeSettingDefinitions
             .GroupBy(def => def.Section)
             .Select(group => new RuntimeSettingSectionSnapshot
             {
@@ -2817,6 +2851,9 @@ private void ParseUdpState()
                 }).ToList()
             })
             .ToList();
+
+        runtimeSettingsSnapshotDirty = false;
+        return cachedRuntimeSettingsSnapshot;
     }
 
     private void ApplyRuntimeSettingValue(string settingId, string serializedValue, bool saveMetadata)
@@ -2825,6 +2862,7 @@ private void ParseUdpState()
             return;
 
         definition.Setter(serializedValue ?? string.Empty);
+        runtimeSettingsSnapshotDirty = true;
         RefreshRuntimeSettingVisuals(settingId);
 
         if (saveMetadata)
