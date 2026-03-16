@@ -2043,7 +2043,7 @@ public sealed class TabsSongHeaderOverlay
         dock.style.flexDirection = FlexDirection.Row;
         dock.style.justifyContent = Justify.FlexEnd;
         dock.style.alignItems = Align.Center;
-        dock.style.zIndex = 25;
+        // z-index is not available on this Unity UI Toolkit version; rely on add order instead.
 
         foreach (Button button in buttons)
         {
