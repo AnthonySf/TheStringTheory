@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -135,7 +136,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         backgroundEffect = null;
 
         if (root != null)
-            Object.Destroy(root);
+            UnityEngine.Object.Destroy(root);
 
         backgroundRoot = null;
     }
@@ -447,22 +448,22 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
             if (state.IsHit)
             {
-                noteView.SetStateColors(owner.tabHitColor, owner.tabHitColor, Color.white, true);
+                noteView.SetStateColors(owner.tabHitColor, owner.tabHitColor, Color.white, true, null);
             }
             else if (state.IsMissed)
             {
-                noteView.SetStateColors(owner.tabMissColor, owner.tabMissColor, Color.white, false);
+                noteView.SetStateColors(owner.tabMissColor, owner.tabMissColor, Color.white, false, null);
             }
             else if (state.isJudgeable)
             {
                 Color outline = owner.GetStringColor(state.data.stringIdx);
-                noteView.SetStateColors(outline, owner.tabJudgeableColor, Color.white, true);
+                noteView.SetStateColors(outline, owner.tabJudgeableColor, Color.white, true, null);
             }
             else
             {
                 Color outline = owner.GetStringColor(state.data.stringIdx);
                 Color fill = owner.GetDarkenedStringColor(state.data.stringIdx, owner.tabIdleFillDarken);
-                noteView.SetStateColors(outline, fill, Color.white, false);
+                noteView.SetStateColors(outline, fill, Color.white, false, null);
             }
         }
     }
@@ -621,7 +622,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 textObj.transform.localPosition = new Vector3(0f, 0f, -0.08f);
 
                 TextMeshPro text = textObj.AddComponent<TextMeshPro>();
-                text.text = Mathf.Max(0, note.fret).ToString();
+                text.text = GetNoteLabelText(note);
                 text.fontSize = owner.tabNoteFontSize;
                 text.alignment = TextAlignmentOptions.Center;
                 text.color = Color.white;
@@ -638,6 +639,19 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
                 NoteViews[note.id] = new TabNoteView(outlineRenderer, fillRenderer, text, extraRenderers, extraTexts);
             }
+        }
+
+
+        private static string GetNoteLabelText(NoteData note)
+        {
+            if (note.fret < 0)
+                return "X";
+
+            string noteName = note.note ?? string.Empty;
+            if (noteName.Equals("x", StringComparison.OrdinalIgnoreCase) || noteName.Equals("mute", StringComparison.OrdinalIgnoreCase) || noteName.Equals("muted", StringComparison.OrdinalIgnoreCase))
+                return "X";
+
+            return Mathf.Max(0, note.fret).ToString();
         }
 
         private GameObject BuildTechniqueTunnel(NoteData note, TabSectionData section, float x, float y, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts)
@@ -892,7 +906,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             backdropRenderer.material.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
             backdropRenderer.material.EnableKeyword("_ALPHABLEND_ON");
             ConfigureRendererNoShadows(backdropRenderer);
-            Object.Destroy(backdrop.GetComponent<Collider>());
+            UnityEngine.Object.Destroy(backdrop.GetComponent<Collider>());
             staticRenderers.Add(backdropRenderer);
         }
 
@@ -957,7 +971,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             for (int i = 0; i < dynamicObjects.Count; i++)
             {
                 if (dynamicObjects[i] != null)
-                    Object.Destroy(dynamicObjects[i]);
+                    UnityEngine.Object.Destroy(dynamicObjects[i]);
             }
 
             dynamicObjects.Clear();
@@ -971,6 +985,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         private readonly TextMeshPro text;
         private readonly List<Renderer> extraRenderers;
         private readonly List<TextMeshPro> extraTexts;
+        private readonly string defaultLabelText;
 
         public TabNoteView(Renderer outlineRenderer, Renderer fillRenderer, TextMeshPro text, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts)
         {
@@ -979,9 +994,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             this.text = text;
             this.extraRenderers = extraRenderers ?? new List<Renderer>();
             this.extraTexts = extraTexts ?? new List<TextMeshPro>();
+            defaultLabelText = text != null ? text.text : string.Empty;
         }
 
-        public void SetStateColors(Color outlineColor, Color fillColor, Color textColor, bool emphasize)
+        public void SetStateColors(Color outlineColor, Color fillColor, Color textColor, bool emphasize, string textOverride)
         {
             if (outlineRenderer != null)
             {
@@ -998,7 +1014,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             }
 
             if (text != null)
+            {
                 text.color = textColor;
+                text.text = string.IsNullOrEmpty(textOverride) ? defaultLabelText : textOverride;
+            }
 
             for (int i = 0; i < extraRenderers.Count; i++)
             {
