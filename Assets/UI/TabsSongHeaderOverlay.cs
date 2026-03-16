@@ -59,6 +59,13 @@ public sealed class TabsSongHeaderOverlay
         public Label scoreLabel;
     }
 
+    private sealed class TrackSelectionRow
+    {
+        public Button button;
+        public Label nameLabel;
+        public Label scoreLabel;
+    }
+
     private sealed class JudgePopupEntry
     {
         public Label label;
@@ -166,6 +173,12 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label selectionSubtitleLabel;
     private readonly ScrollView selectionScrollView;
     private readonly List<SongSelectionRow> selectionRows = new List<SongSelectionRow>();
+
+    private readonly VisualElement trackSelectionOverlay;
+    private readonly Label trackSelectionTitleLabel;
+    private readonly Label trackSelectionSubtitleLabel;
+    private readonly ScrollView trackSelectionScrollView;
+    private readonly List<TrackSelectionRow> trackSelectionRows = new List<TrackSelectionRow>();
 
     private readonly VisualElement songEndOverlay;
     private readonly VisualElement songEndCard;
@@ -851,6 +864,55 @@ public sealed class TabsSongHeaderOverlay
         selectionOverlay.Add(selectionSubtitleLabel);
         selectionOverlay.Add(selectionCard);
 
+        trackSelectionOverlay = CreateFullscreenOverlay();
+        Label trackSelectionTopTag = CreateLabel("CHOOSE YOUR ARRANGEMENT", 28f, new Color(0.58f, 0.86f, 1f, 0.98f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        trackSelectionTopTag.style.marginBottom = 6f;
+        trackSelectionTopTag.style.letterSpacing = 1f;
+
+        trackSelectionTitleLabel = CreateLabel("TRACKS", 88f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        trackSelectionTitleLabel.style.letterSpacing = 1.2f;
+        trackSelectionSubtitleLabel = CreateLabel("", 30f, new Color(0.86f, 0.95f, 1f, 0.98f), false, TextAnchor.MiddleCenter);
+        trackSelectionSubtitleLabel.style.marginBottom = 16f;
+
+        VisualElement trackSelectionCard = new VisualElement();
+        trackSelectionCard.style.width = 1240f;
+        trackSelectionCard.style.maxWidth = 1440f;
+        trackSelectionCard.style.paddingLeft = 30f;
+        trackSelectionCard.style.paddingRight = 30f;
+        trackSelectionCard.style.paddingTop = 24f;
+        trackSelectionCard.style.paddingBottom = 24f;
+        StyleCard(trackSelectionCard, new Color(0.03f, 0.10f, 0.18f, 0.98f), radius: 24f);
+
+        trackSelectionScrollView = new ScrollView(ScrollViewMode.Vertical);
+        trackSelectionScrollView.style.maxHeight = 640f;
+        trackSelectionScrollView.style.minHeight = 380f;
+        trackSelectionScrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        trackSelectionCard.Add(trackSelectionScrollView);
+
+        VisualElement trackSelectionButtons = new VisualElement();
+        trackSelectionButtons.style.flexDirection = FlexDirection.Row;
+        trackSelectionButtons.style.flexWrap = Wrap.Wrap;
+        trackSelectionButtons.style.marginTop = 14f;
+
+        foreach (Button button in new[]
+        {
+            CreateActionButton("Up", () => owner?.MoveTrackSelectionFromUiList(-1)),
+            CreateActionButton("Down", () => owner?.MoveTrackSelectionFromUiList(1)),
+            CreateActionButton("Back", () => owner?.BackToSongSelectionFromUi()),
+            CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi())
+        })
+        {
+            button.style.marginRight = 10f;
+            button.style.marginTop = 8f;
+            trackSelectionButtons.Add(button);
+        }
+
+        trackSelectionCard.Add(trackSelectionButtons);
+        trackSelectionOverlay.Add(trackSelectionTopTag);
+        trackSelectionOverlay.Add(trackSelectionTitleLabel);
+        trackSelectionOverlay.Add(trackSelectionSubtitleLabel);
+        trackSelectionOverlay.Add(trackSelectionCard);
+
         ApplyFont(root, bodyFontDefinition);
 
 
@@ -1101,14 +1163,16 @@ public sealed class TabsSongHeaderOverlay
         settingsStartDelayLabel.text = $"Start Delay  {snapshot.songStartDelaySeconds:F2}s";
 
         bool showEnd = snapshot.songEnded;
-        bool showPause = snapshot.isPaused && !showEnd && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showEnd && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
         bool showSettings = snapshot.showSongSettings && !showEnd;
         bool showSelection = snapshot.showSongSelection && !showEnd;
+        bool showTrackSelection = snapshot.showTrackSelection && !showEnd;
         bool showGlobalSettings = snapshot.showGlobalSettings && !showEnd;
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
+        trackSelectionOverlay.style.display = showTrackSelection ? DisplayStyle.Flex : DisplayStyle.None;
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -1144,6 +1208,9 @@ public sealed class TabsSongHeaderOverlay
 
         if (showSelection)
             UpdateSongSelectionRows(snapshot);
+
+        if (showTrackSelection)
+            UpdateTrackSelectionRows(snapshot);
 
         if (showGlobalSettings)
             UpdateGlobalSettings(snapshot);
@@ -1254,6 +1321,93 @@ public sealed class TabsSongHeaderOverlay
             return;
 
         owner.SelectSongByIndexFromUi(rowIndex);
+    }
+
+
+    private void UpdateTrackSelectionRows(GuitarGameplaySnapshot snapshot)
+    {
+        int total = snapshot.availableTrackNames?.Count ?? 0;
+        trackSelectionTitleLabel.text = "TRACKS";
+        trackSelectionSubtitleLabel.text = $"{total} arrangements  •  Sorted by best score";
+
+        EnsureTrackSelectionRows(total);
+
+        for (int trackIndex = 0; trackIndex < trackSelectionRows.Count; trackIndex++)
+        {
+            TrackSelectionRow row = trackSelectionRows[trackIndex];
+            bool isSelected = trackIndex == snapshot.selectedTrackIndex;
+            string name = snapshot.availableTrackNames[trackIndex];
+            float score = (snapshot.availableTrackScores != null && trackIndex < snapshot.availableTrackScores.Count)
+                ? snapshot.availableTrackScores[trackIndex]
+                : 0f;
+
+            row.nameLabel.text = isSelected ? $"> {name}" : $"  {name}";
+            row.scoreLabel.text = $"{score:F1}%";
+
+            row.button.style.backgroundColor = isSelected
+                ? new Color(0.14f, 0.28f, 0.46f, 0.99f)
+                : new Color(0.05f, 0.12f, 0.20f, 0.95f);
+            row.button.style.borderTopColor = isSelected ? new Color(0.56f, 0.88f, 1f, 1f) : new Color(0.35f, 0.66f, 0.94f, 0.74f);
+            row.button.style.borderRightColor = row.button.style.borderTopColor;
+            row.button.style.borderBottomColor = row.button.style.borderTopColor;
+            row.button.style.borderLeftColor = row.button.style.borderTopColor;
+        }
+
+        if (snapshot.selectedTrackIndex >= 0 && snapshot.selectedTrackIndex < trackSelectionRows.Count)
+            trackSelectionScrollView.ScrollTo(trackSelectionRows[snapshot.selectedTrackIndex].button);
+    }
+
+    private void EnsureTrackSelectionRows(int count)
+    {
+        if (trackSelectionRows.Count == count)
+            return;
+
+        trackSelectionScrollView.Clear();
+        trackSelectionRows.Clear();
+
+        for (int i = 0; i < count; i++)
+        {
+            int trackIndex = i;
+            Button rowButton = CreateActionButton(string.Empty, () => OnTrackRowClicked(trackIndex));
+            rowButton.style.height = 80f;
+            rowButton.style.marginTop = 6f;
+            rowButton.style.marginBottom = 2f;
+            rowButton.style.borderTopLeftRadius = 14f;
+            rowButton.style.borderTopRightRadius = 14f;
+            rowButton.style.borderBottomLeftRadius = 14f;
+            rowButton.style.borderBottomRightRadius = 14f;
+
+            VisualElement content = new VisualElement();
+            content.style.flexDirection = FlexDirection.Row;
+            content.style.justifyContent = Justify.SpaceBetween;
+            content.style.alignItems = Align.Center;
+            content.style.flexGrow = 1f;
+
+            Label nameLabel = CreateLabel(string.Empty, 28f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+            nameLabel.style.flexGrow = 1f;
+            Label scoreLabel = CreateLabel("0%", 26f, new Color(0.54f, 0.92f, 1f, 0.99f), true, TextAnchor.MiddleRight, useTitleFont: false);
+            scoreLabel.style.minWidth = 130f;
+
+            content.Add(nameLabel);
+            content.Add(scoreLabel);
+            rowButton.Add(content);
+            trackSelectionScrollView.Add(rowButton);
+
+            trackSelectionRows.Add(new TrackSelectionRow
+            {
+                button = rowButton,
+                nameLabel = nameLabel,
+                scoreLabel = scoreLabel
+            });
+        }
+    }
+
+    private void OnTrackRowClicked(int rowIndex)
+    {
+        if (owner == null)
+            return;
+
+        owner.SelectTrackByIndexFromUi(rowIndex);
     }
 
 
