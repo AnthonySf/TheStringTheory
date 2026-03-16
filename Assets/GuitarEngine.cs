@@ -52,7 +52,6 @@ public class GuitarEngine : MonoBehaviour
         }
         if (string.IsNullOrEmpty(selectedDevice)) selectedDevice = Microphone.devices[0];
 
-        // Start Mic at 48000Hz (Match Rocksmith Cable hardware)
         audioSource.clip = Microphone.Start(selectedDevice, true, 1, 48000);
         audioSource.loop = true;
         

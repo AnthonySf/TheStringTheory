@@ -46,7 +46,6 @@ public class UnityUdpReceiver : MonoBehaviour
 
     void Update()
     {
-        // Check if we heard anything
         if (!string.IsNullOrEmpty(lastReceived) && lastReceived != "--")
         {
             Debug.Log("<color=green>AI HEARD: </color>" + lastReceived);
