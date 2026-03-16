@@ -151,6 +151,7 @@ public sealed class GuitarGameplaySnapshot
     public float songDuration;
     public float songProgressNormalized;
     public bool songEnded;
+    public float currentTrackBestScorePercent;
     public bool showGlobalSettings;
     public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
 }

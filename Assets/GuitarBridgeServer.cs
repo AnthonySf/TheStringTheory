@@ -2382,6 +2382,7 @@ private void ParseUdpState()
             songDuration = GetSongDurationSeconds(),
             songProgressNormalized = GetSongProgressNormalized(),
             songEnded = songHasEnded,
+            currentTrackBestScorePercent = Mathf.Clamp(currentTrackBestScorePercent, 0f, 100f),
             runtimeSettingsSections = BuildRuntimeSettingsSnapshot()
         };
     }
