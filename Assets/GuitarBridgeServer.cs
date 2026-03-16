@@ -398,6 +398,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private string backingTrackLoadError = string.Empty;
     private bool songHasEnded;
     private bool songSelectionOpenedFromSongEnd;
+    private bool songSelectionOpenedFromMainMenu;
     private bool showStartupTuningReminder;
     private bool resumeGameplayAfterStartupTuningReminder;
     private SongLibraryEntry currentSongEntry;
@@ -1123,10 +1124,11 @@ public class GuitarBridgeServer : MonoBehaviour
                 songSelectionOpenedFromSongEnd = false;
                 RetrySongFromUi();
             }
-            else if (mainMenuFlowActive)
+            else if (songSelectionOpenedFromMainMenu || mainMenuFlowActive)
             {
                 showMainMenu = false;
                 mainMenuFlowActive = false;
+                songSelectionOpenedFromMainMenu = false;
                 ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
             }
             return;
@@ -1167,8 +1169,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
         LoadTestSong();
         bool autoplayFromSongEnd = songSelectionOpenedFromSongEnd;
-        bool autoplayFromMainMenuFlow = mainMenuFlowActive;
+        bool autoplayFromMainMenuFlow = mainMenuFlowActive || songSelectionOpenedFromMainMenu;
         songSelectionOpenedFromSongEnd = false;
+        songSelectionOpenedFromMainMenu = false;
         showMainMenu = false;
         mainMenuFlowActive = false;
         bool autoplay = autoplayFromSongEnd || autoplayFromMainMenuFlow;
@@ -1209,6 +1212,7 @@ public class GuitarBridgeServer : MonoBehaviour
         isPaused = true;
         songHasEnded = false;
         songSelectionOpenedFromSongEnd = false;
+        songSelectionOpenedFromMainMenu = false;
         showStartupTuningReminder = false;
         resumeGameplayAfterStartupTuningReminder = false;
         SyncAudioToSongTimer(playImmediately: false);
@@ -1229,6 +1233,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public void OpenSongSelectionFromUi()
     {
         songSelectionOpenedFromSongEnd = false;
+        songSelectionOpenedFromMainMenu = showMainMenu || mainMenuFlowActive;
         if (!showMainMenu)
             mainMenuFlowActive = false;
         OpenSongSelectionMenu();
@@ -1262,6 +1267,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         songHasEnded = false;
         songSelectionOpenedFromSongEnd = true;
+        songSelectionOpenedFromMainMenu = false;
         mainMenuFlowActive = false;
         OpenSongSelectionMenu();
     }
@@ -1387,6 +1393,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showSongSelection = false;
         showTrackSelection = false;
         showMainMenu = mainMenuFlowActive;
+        songSelectionOpenedFromMainMenu = false;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
     }
