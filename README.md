@@ -50,7 +50,11 @@ Use a free tool such as TuxGuitar, open the `.gp` file, then export it as MusicX
 
 The exported file works directly in StringTheory and loads tracks and guitar techniques automatically.
 
+## Download
 
+A prebuilt version of the game is available in the releases section. 
+It is a first test of the build and is likely outdated.
+You can unzip it and run the .exe to test.
 
 ## License
 
