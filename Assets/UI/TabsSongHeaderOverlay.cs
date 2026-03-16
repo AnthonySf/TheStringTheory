@@ -35,6 +35,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly VisualElement scorePedalInputJack;
     private readonly VisualElement scorePedalOutputJack;
     private readonly Label scorePedalBrandLabel;
+    private readonly Label scoreTitleLabel;
     private readonly Label scorePercentLabel;
     private readonly Label noteTallyLabel;
     private readonly VisualElement inputMeterWrap;
@@ -159,6 +160,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button resetDefaultsButton;
     private readonly Dictionary<string, VisualElement> globalSettingInputs = new Dictionary<string, VisualElement>();
     private readonly Dictionary<string, Label> globalSettingValueLabels = new Dictionary<string, Label>();
+    private readonly Dictionary<string, VisualElement> globalSettingsColumns = new Dictionary<string, VisualElement>();
 
     private readonly VisualElement selectionOverlay;
     private readonly Label selectionSubtitleLabel;
@@ -242,9 +244,9 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true, useTitleFont: true);
         songNameLabel.style.marginBottom = 8f;
         songNameLabel.style.letterSpacing = 0.7f;
-        songNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
-        songNameLabel.style.textOverflow = TextOverflow.Ellipsis;
-        songNameLabel.style.overflow = Overflow.Hidden;
+        songNameLabel.style.whiteSpace = WhiteSpace.Normal;
+        songNameLabel.style.textOverflow = TextOverflow.Clip;
+        songNameLabel.style.overflow = Overflow.Visible;
         songNameLabel.style.maxWidth = 1200f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
@@ -285,7 +287,7 @@ public sealed class TabsSongHeaderOverlay
         scorePlate.style.height = 252f;
 
         scorePedalBody = new VisualElement();
-        scorePedalBody.style.width = 680f;
+        scorePedalBody.style.width = 600f;
         scorePedalBody.style.height = 226f;
         scorePedalBody.style.paddingTop = 10f;
         scorePedalBody.style.paddingBottom = 12f;
@@ -341,11 +343,12 @@ public sealed class TabsSongHeaderOverlay
         pedalTopRow.style.flexDirection = FlexDirection.Row;
         pedalTopRow.style.alignItems = Align.Center;
         pedalTopRow.style.justifyContent = Justify.SpaceBetween;
-        pedalTopRow.style.marginBottom = 6f;
+        pedalTopRow.style.marginBottom = 12f;
 
-        scorePedalBrandLabel = CreateLabel("STRING THEORY", 14f, new Color(0.95f, 0.99f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: true);
+        scorePedalBrandLabel = CreateLabel("STRING THEORY", 18f, new Color(0.95f, 0.99f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: true);
         scorePedalBrandLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
-        scorePedalBrandLabel.style.letterSpacing = 0.8f;
+        scorePedalBrandLabel.style.letterSpacing = 0.9f;
+        scorePedalBrandLabel.style.marginBottom = 4f;
 
         scorePedalLed = new VisualElement();
         scorePedalLed.style.width = 14f;
@@ -371,7 +374,7 @@ public sealed class TabsSongHeaderOverlay
         pedalKnobRow.style.flexDirection = FlexDirection.Row;
         pedalKnobRow.style.justifyContent = Justify.SpaceAround;
         pedalKnobRow.style.alignItems = Align.Center;
-        pedalKnobRow.style.marginBottom = 16f;
+        pedalKnobRow.style.marginBottom = 24f;
 
         scorePedalKnobLeft = CreatePedalKnob();
         scorePedalKnobMid = CreatePedalKnob();
@@ -547,9 +550,16 @@ public sealed class TabsSongHeaderOverlay
         inputMeterWrap.Add(songProgressTrack);
         LayoutInputMeterGraphics(220f, 84f);
 
-        scorePercentLabel = CreateLabel("SCORE 100.0%", 46f, new Color(0.07f, 0.23f, 0.24f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
-        scorePercentLabel.style.letterSpacing = 0.35f;
-        scorePercentLabel.style.marginTop = 1f;
+        scoreTitleLabel = CreateLabel("SCORE", 20f, new Color(0.08f, 0.25f, 0.26f, 0.88f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        scoreTitleLabel.style.letterSpacing = 1.6f;
+        scoreTitleLabel.style.marginTop = 0f;
+        scoreTitleLabel.style.marginBottom = 0f;
+        scoreTitleLabel.style.flexShrink = 0f;
+
+        scorePercentLabel = CreateLabel("0.0", 58f, new Color(0.06f, 0.20f, 0.21f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        scorePercentLabel.style.letterSpacing = 0.25f;
+        scorePercentLabel.style.marginTop = -2f;
+        scorePercentLabel.style.marginBottom = 1f;
         scorePercentLabel.style.flexShrink = 0f;
 
         noteTallyLabel = CreateLabel("HITS 0  •  MISS 0", 24f, new Color(0.09f, 0.22f, 0.21f, 0.95f), true, TextAnchor.MiddleCenter);
@@ -567,6 +577,7 @@ public sealed class TabsSongHeaderOverlay
         scorePedalFootswitchRight.style.marginLeft = 36f;
 
         scorePedalScreen.Add(inputMeterWrap);
+        scorePedalScreen.Add(scoreTitleLabel);
         scorePedalScreen.Add(scorePercentLabel);
         scorePedalScreen.Add(noteTallyLabel);
         pedalFooter.Add(scorePedalFootswitch);
@@ -729,7 +740,8 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsCard = new VisualElement();
         globalSettingsCard.style.width = Length.Percent(96f);
-        globalSettingsCard.style.maxWidth = 1860f;
+        globalSettingsCard.style.maxWidth = 2340f;
+        globalSettingsCard.style.minWidth = 1500f;
         globalSettingsCard.style.flexGrow = 1f;
         globalSettingsCard.style.minHeight = 540f;
         globalSettingsCard.style.paddingLeft = 24f;
@@ -820,10 +832,12 @@ public sealed class TabsSongHeaderOverlay
 
         Button upButton = CreateActionButton("Up", () => owner?.MoveSongSelectionFromUi(-1));
         Button downButton = CreateActionButton("Down", () => owner?.MoveSongSelectionFromUi(1));
+        Button openSongsFolderButton = CreateActionButton("Songs Folder", () => owner?.OpenSongsFolderFromUi());
+        Button refreshSongsButton = CreateActionButton("Refresh", () => owner?.RefreshSongsFromUi());
         Button closeSelectionButton = CreateActionButton("Back", () => owner?.CloseSongSelectionFromUi());
         Button resumeSelectionButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
-        foreach (Button button in new[] { upButton, downButton, closeSelectionButton, resumeSelectionButton })
+        foreach (Button button in new[] { upButton, downButton, openSongsFolderButton, refreshSongsButton, closeSelectionButton, resumeSelectionButton })
         {
             button.style.marginRight = 10f;
             button.style.marginTop = 8f;
@@ -959,8 +973,11 @@ public sealed class TabsSongHeaderOverlay
         if (snapshot == null)
             return;
 
-        string songName = "No song loaded";
-        if (snapshot.availableSongNames != null && snapshot.selectedSongIndex >= 0 && snapshot.selectedSongIndex < snapshot.availableSongNames.Count)
+        string songName = string.IsNullOrWhiteSpace(snapshot.currentSongDisplayName)
+            ? "No song loaded"
+            : snapshot.currentSongDisplayName;
+
+        if (string.IsNullOrWhiteSpace(songName) && snapshot.availableSongNames != null && snapshot.selectedSongIndex >= 0 && snapshot.selectedSongIndex < snapshot.availableSongNames.Count)
             songName = snapshot.availableSongNames[snapshot.selectedSongIndex];
 
         string trackName = FormatTrackName(snapshot.selectedTrackDisplayName);
@@ -1019,7 +1036,7 @@ public sealed class TabsSongHeaderOverlay
         float scorePercent = denominator > 0
             ? (100f * scoreHits / denominator)
             : 0f;
-        scorePercentLabel.text = $"SCORE {scorePercent:F1} %";
+        scorePercentLabel.text = $"{scorePercent:F1}";
         noteTallyLabel.text = $"HITS {scoreHits}  •  MISS {scoreMisses}";
 
         wasLoopEnabled = loopEnabled;
@@ -1291,6 +1308,21 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsScrollView.Clear();
         globalSettingInputs.Clear();
         globalSettingValueLabels.Clear();
+        globalSettingsColumns.Clear();
+
+        VisualElement columnsWrapper = new VisualElement();
+        columnsWrapper.style.flexDirection = FlexDirection.Row;
+        columnsWrapper.style.alignItems = Align.FlexStart;
+        columnsWrapper.style.justifyContent = Justify.SpaceBetween;
+        columnsWrapper.style.flexWrap = Wrap.NoWrap;
+        columnsWrapper.style.minWidth = 1380f;
+        columnsWrapper.style.width = Length.Percent(100f);
+
+        AddGlobalSettingsColumn(columnsWrapper, "Gameplay Mechanics", addRightSpacing: true);
+        AddGlobalSettingsColumn(columnsWrapper, "Tabs Visuals", addRightSpacing: true);
+        AddGlobalSettingsColumn(columnsWrapper, "General Visuals", addRightSpacing: false);
+
+        globalSettingsScrollView.Add(columnsWrapper);
 
         foreach (RuntimeSettingSectionSnapshot section in sections)
         {
@@ -1317,6 +1349,8 @@ public sealed class TabsSongHeaderOverlay
             Label sectionTitle = CreateLabel(section.title, 30f, new Color(1f, 0.87f, 0.62f, 1f), true);
             sectionTitle.AddToClassList("global-section-title");
             sectionTitle.style.marginBottom = 10f;
+            sectionTitle.style.whiteSpace = WhiteSpace.Normal;
+            sectionTitle.style.flexShrink = 1f;
             sectionCard.Add(sectionTitle);
 
             if (section.settings != null)
@@ -1325,10 +1359,77 @@ public sealed class TabsSongHeaderOverlay
                     sectionCard.Add(CreateGlobalSettingRow(setting));
             }
 
-            globalSettingsScrollView.Add(sectionCard);
+            string category = CategorizeGlobalSettingsSection(section);
+            if (globalSettingsColumns.TryGetValue(category, out VisualElement column))
+                column.Add(sectionCard);
+            else
+                globalSettingsScrollView.Add(sectionCard);
         }
 
         ApplyResponsiveSizing(force: true);
+    }
+
+    private void AddGlobalSettingsColumn(VisualElement parent, string title, bool addRightSpacing)
+    {
+        VisualElement column = new VisualElement();
+        column.style.flexGrow = 1f;
+        column.style.flexShrink = 1f;
+        column.style.flexBasis = 0f;
+        column.style.minWidth = 420f;
+        if (addRightSpacing)
+            column.style.marginRight = 14f;
+
+        Label columnTitle = CreateLabel(title, 34f, new Color(1f, 0.92f, 0.73f, 0.98f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        columnTitle.style.marginBottom = 10f;
+        columnTitle.style.unityTextAlign = TextAnchor.MiddleCenter;
+        columnTitle.style.paddingTop = 6f;
+        columnTitle.style.paddingBottom = 6f;
+        columnTitle.style.backgroundColor = new Color(0.13f, 0.19f, 0.30f, 0.88f);
+        columnTitle.style.borderTopLeftRadius = 8f;
+        columnTitle.style.borderTopRightRadius = 8f;
+        columnTitle.style.borderBottomLeftRadius = 8f;
+        columnTitle.style.borderBottomRightRadius = 8f;
+        columnTitle.style.borderTopWidth = 2f;
+        columnTitle.style.borderRightWidth = 2f;
+        columnTitle.style.borderBottomWidth = 2f;
+        columnTitle.style.borderLeftWidth = 2f;
+        Color titleBorder = new Color(0.83f, 0.90f, 1f, 0.78f);
+        columnTitle.style.borderTopColor = titleBorder;
+        columnTitle.style.borderRightColor = titleBorder;
+        columnTitle.style.borderBottomColor = titleBorder;
+        columnTitle.style.borderLeftColor = titleBorder;
+        column.Add(columnTitle);
+
+        parent.Add(column);
+        globalSettingsColumns[title] = column;
+    }
+
+    private static string CategorizeGlobalSettingsSection(RuntimeSettingSectionSnapshot section)
+    {
+        string normalizedTitle = section.title?.ToLowerInvariant() ?? string.Empty;
+        List<RuntimeSettingSnapshot> sectionSettings = section.settings;
+
+        if (normalizedTitle.Contains("timing") || normalizedTitle.Contains("forgiveness") || normalizedTitle.Contains("settings") || IsSectionIdPrefix(sectionSettings, "core.") || IsSectionIdPrefix(sectionSettings, "timing."))
+            return "Gameplay Mechanics";
+
+        if (normalizedTitle.Contains("tab") || normalizedTitle.Contains("layout") || IsSectionIdPrefix(sectionSettings, "layout."))
+            return "Tabs Visuals";
+
+        if (normalizedTitle.Contains("visual") || normalizedTitle.Contains("color") || normalizedTitle.Contains("background") || IsSectionIdPrefix(sectionSettings, "fx.") || IsSectionIdPrefix(sectionSettings, "bg."))
+            return "General Visuals";
+
+        return "Gameplay Mechanics";
+    }
+
+    private static bool IsSectionIdPrefix(List<RuntimeSettingSnapshot> settings, string prefix)
+    {
+        if (settings == null || string.IsNullOrEmpty(prefix))
+            return false;
+
+        return settings.Any(setting =>
+            setting != null &&
+            !string.IsNullOrEmpty(setting.id) &&
+            setting.id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 
     private VisualElement CreateGlobalSettingRow(RuntimeSettingSnapshot setting)
@@ -1353,10 +1454,13 @@ public sealed class TabsSongHeaderOverlay
         row.style.borderTopRightRadius = 10f;
         row.style.borderBottomLeftRadius = 10f;
         row.style.borderBottomRightRadius = 10f;
+        row.style.width = Length.Percent(100f);
 
         Label label = CreateLabel(setting.label, 34f, Color.white, true);
         label.AddToClassList("global-setting-title");
         label.tooltip = setting.tooltip;
+        label.style.whiteSpace = WhiteSpace.Normal;
+        label.style.flexShrink = 1f;
         row.Add(label);
 
         Label help = CreateLabel(setting.tooltip, 28f, new Color(0.75f, 0.88f, 0.96f, 0.95f));
@@ -1364,6 +1468,8 @@ public sealed class TabsSongHeaderOverlay
         help.style.marginTop = 2f;
         help.style.marginBottom = 6f;
         help.tooltip = setting.tooltip;
+        help.style.whiteSpace = WhiteSpace.Normal;
+        help.style.flexShrink = 1f;
         row.Add(help);
 
         VisualElement input = null;
@@ -1406,6 +1512,8 @@ public sealed class TabsSongHeaderOverlay
         row.Add(input);
 
         Label valueLabel = CreateLabel(setting.value, 30f, new Color(1f, 0.95f, 0.76f, 1f));
+        valueLabel.style.whiteSpace = WhiteSpace.Normal;
+        valueLabel.style.flexShrink = 1f;
         valueLabel.AddToClassList("global-setting-value");
         row.Add(valueLabel);
 
@@ -1474,7 +1582,12 @@ public sealed class TabsSongHeaderOverlay
             text = missTexts[UnityEngine.Random.Range(0, missTexts.Length)];
         }
 
-        Label popup = CreateLabel(text, judgePopupFontSize, success ? new Color(1f, 0.90f, 0.46f, 0.99f) : new Color(1f, 0.44f, 0.62f, 0.99f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        // Hit uses cool cyan for contrast on warm skies; miss uses coral red to read clearly as negative feedback.
+        Color popupColor = success
+            ? new Color(0.46f, 0.88f, 1f, 0.99f)
+            : new Color(1f, 0.36f, 0.33f, 0.99f);
+
+        Label popup = CreateLabel(text, judgePopupFontSize, popupColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
         popup.style.position = Position.Absolute;
         popup.style.left = 0f;
         popup.style.right = 0f;
@@ -1598,10 +1711,10 @@ public sealed class TabsSongHeaderOverlay
         knob.style.borderRightColor = new Color(0.06f, 0.16f, 0.23f, 1f);
         knob.style.borderBottomColor = new Color(0.03f, 0.11f, 0.16f, 1f);
         knob.style.borderLeftColor = new Color(0.06f, 0.16f, 0.23f, 1f);
-        knob.style.borderTopLeftRadius = 15f;
-        knob.style.borderTopRightRadius = 15f;
-        knob.style.borderBottomLeftRadius = 15f;
-        knob.style.borderBottomRightRadius = 15f;
+        knob.style.borderTopLeftRadius = 999f;
+        knob.style.borderTopRightRadius = 999f;
+        knob.style.borderBottomLeftRadius = 999f;
+        knob.style.borderBottomRightRadius = 999f;
         knob.style.marginLeft = 10f;
         knob.style.marginRight = 10f;
 
@@ -1735,39 +1848,40 @@ public sealed class TabsSongHeaderOverlay
     {
         VisualElement jack = new VisualElement();
         jack.name = "pedal-jack";
-        jack.style.width = 24f;
+        jack.style.width = 20f;
         jack.style.height = 52f;
         jack.style.flexDirection = FlexDirection.Row;
         jack.style.alignItems = Align.Center;
+        jack.style.justifyContent = Justify.FlexStart;
 
         VisualElement jackOuter = new VisualElement();
         jackOuter.name = "pedal-jack-outer";
         jackOuter.style.width = 8f;
         jackOuter.style.height = 38f;
-        jackOuter.style.backgroundColor = new Color(0.83f, 0.86f, 0.90f, 1f);
+        jackOuter.style.backgroundColor = new Color(0.33f, 0.36f, 0.40f, 1f);
         jackOuter.style.borderTopWidth = 2f;
         jackOuter.style.borderRightWidth = 1f;
         jackOuter.style.borderBottomWidth = 3f;
         jackOuter.style.borderLeftWidth = 2f;
-        jackOuter.style.borderTopColor = new Color(0.98f, 0.99f, 1f, 1f);
-        jackOuter.style.borderRightColor = new Color(0.58f, 0.64f, 0.72f, 1f);
-        jackOuter.style.borderBottomColor = new Color(0.27f, 0.32f, 0.39f, 1f);
-        jackOuter.style.borderLeftColor = new Color(0.64f, 0.70f, 0.78f, 1f);
+        jackOuter.style.borderTopColor = new Color(0.54f, 0.58f, 0.64f, 1f);
+        jackOuter.style.borderRightColor = new Color(0.22f, 0.25f, 0.29f, 1f);
+        jackOuter.style.borderBottomColor = new Color(0.12f, 0.14f, 0.17f, 1f);
+        jackOuter.style.borderLeftColor = new Color(0.26f, 0.30f, 0.34f, 1f);
 
         VisualElement jackInner = new VisualElement();
         jackInner.name = "pedal-jack-inner";
         jackInner.style.width = 12f;
         jackInner.style.height = 50f;
         jackInner.style.marginLeft = 0f;
-        jackInner.style.backgroundColor = new Color(0.64f, 0.69f, 0.75f, 1f);
+        jackInner.style.backgroundColor = new Color(0.27f, 0.30f, 0.34f, 1f);
         jackInner.style.borderTopWidth = 1f;
         jackInner.style.borderRightWidth = 1f;
         jackInner.style.borderBottomWidth = 2f;
         jackInner.style.borderLeftWidth = 1f;
-        jackInner.style.borderTopColor = new Color(0.94f, 0.96f, 0.99f, 1f);
-        jackInner.style.borderRightColor = new Color(0.44f, 0.50f, 0.57f, 1f);
-        jackInner.style.borderBottomColor = new Color(0.22f, 0.26f, 0.31f, 1f);
-        jackInner.style.borderLeftColor = new Color(0.50f, 0.56f, 0.63f, 1f);
+        jackInner.style.borderTopColor = new Color(0.47f, 0.52f, 0.58f, 1f);
+        jackInner.style.borderRightColor = new Color(0.17f, 0.20f, 0.24f, 1f);
+        jackInner.style.borderBottomColor = new Color(0.09f, 0.11f, 0.14f, 1f);
+        jackInner.style.borderLeftColor = new Color(0.20f, 0.24f, 0.28f, 1f);
 
         VisualElement jackReflection = new VisualElement();
         jackReflection.name = "pedal-jack-reflection";
@@ -1776,7 +1890,7 @@ public sealed class TabsSongHeaderOverlay
         jackReflection.style.top = 4f;
         jackReflection.style.width = 2f;
         jackReflection.style.height = 16f;
-        jackReflection.style.backgroundColor = new Color(1f, 1f, 1f, 0.46f);
+        jackReflection.style.backgroundColor = new Color(0.80f, 0.86f, 0.92f, 0.30f);
 
         jackOuter.Add(jackReflection);
         jack.Add(jackOuter);
@@ -1795,7 +1909,7 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jackOuter = jack.Q<VisualElement>("pedal-jack-outer");
         if (jackOuter != null)
         {
-            float outerWidth = Mathf.Clamp(width * 0.34f, 6f, 13f);
+            float outerWidth = Mathf.Clamp(width * 0.40f, 6f, 16f);
             float outerHeight = Mathf.Clamp(height * 0.74f, 18f, 50f);
             jackOuter.style.width = outerWidth;
             jackOuter.style.height = outerHeight;
@@ -1804,7 +1918,7 @@ public sealed class TabsSongHeaderOverlay
         VisualElement jackInner = jack.Q<VisualElement>("pedal-jack-inner");
         if (jackInner != null)
         {
-            float innerWidth = Mathf.Clamp(width * 0.54f, 10f, 20f);
+            float innerWidth = Mathf.Clamp(width * 0.60f, 10f, 22f);
             float innerHeight = Mathf.Clamp(height * 0.94f, 24f, 64f);
             jackInner.style.width = innerWidth;
             jackInner.style.height = innerHeight;
@@ -1980,9 +2094,9 @@ public sealed class TabsSongHeaderOverlay
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
-        float pedalWidth = Mathf.Clamp(Screen.width * 0.30f, 500f, 760f);
+        float pedalWidth = Mathf.Clamp(Screen.width * 0.15f, 430f, 620f);
         float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
-        float knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 62f);
+        float knobSize = Mathf.Clamp(pedalHeight * 0.24f, 42f, 78f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
         float footswitchSize = Mathf.Clamp(pedalHeight * 0.23f, 42f, 74f);
         float meterWidth = Mathf.Clamp(pedalWidth * 0.34f, 200f, 300f);
@@ -1993,9 +2107,10 @@ public sealed class TabsSongHeaderOverlay
         speedBadgeLabel.style.fontSize = bodySize * 0.66f;
         detectorStatusLabel.style.fontSize = bodySize * 0.66f;
         statusDotLabel.style.fontSize = bodySize * 0.66f;
-        scorePercentLabel.style.fontSize = bodySize * 1.06f;
+        scoreTitleLabel.style.fontSize = bodySize * 0.48f;
+        scorePercentLabel.style.fontSize = bodySize * 1.30f;
         noteTallyLabel.style.fontSize = bodySize * 0.58f;
-        scorePedalBrandLabel.style.fontSize = Mathf.Clamp(bodySize * 0.33f, 12f, 19f);
+        scorePedalBrandLabel.style.fontSize = Mathf.Clamp(bodySize * 0.43f, 14f, 24f);
         inputMeterLabel.style.fontSize = Mathf.Clamp(bodySize * 0.44f, 13f, 20f);
         inputMeterWrap.style.width = meterWidth;
         inputMeterFace.style.width = meterWidth;
@@ -2004,13 +2119,15 @@ public sealed class TabsSongHeaderOverlay
         LayoutInputMeterGraphics(meterWidth, meterHeight);
         scorePedalBody.style.width = pedalWidth;
         float meterLabelFont = Mathf.Clamp(bodySize * 0.44f, 13f, 20f);
-        float scoreFont = bodySize * 1.06f;
+        float scoreTitleFont = bodySize * 0.48f;
+        float scoreFont = bodySize * 1.30f;
         float tallyFont = bodySize * 0.58f;
         float meterLabelHeight = meterLabelFont * 1.45f;
-        float scoreLineHeight = scoreFont * 1.90f;
+        float scoreTitleLineHeight = scoreTitleFont * 1.35f;
+        float scoreLineHeight = scoreFont * 1.35f;
         float tallyLineHeight = tallyFont * 1.65f;
         float screenPaddingAndSpacing = 10f + 8f + 8f + 1f + 1f + 12f;
-        float requiredScreenHeight = meterHeight + meterLabelHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
+        float requiredScreenHeight = meterHeight + meterLabelHeight + scoreTitleLineHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
 
         float topRowHeight = Mathf.Max(ledSize, Mathf.Clamp(bodySize * 0.33f, 12f, 19f) * 1.25f);
         float fixedPedalContentHeight = 16f + topRowHeight + 6f + knobSize + 7f + 8f + footswitchSize + 16f;
@@ -2018,13 +2135,13 @@ public sealed class TabsSongHeaderOverlay
         if (pedalHeight < minPedalHeightForContent)
         {
             pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 640f);
-            knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 64f);
+            knobSize = Mathf.Clamp(pedalHeight * 0.24f, 42f, 80f);
             ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
             footswitchSize = Mathf.Clamp(pedalHeight * 0.23f, 42f, 76f);
             meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 130f);
             inputMeterFace.style.height = meterHeight;
             LayoutInputMeterGraphics(meterWidth, meterHeight);
-            requiredScreenHeight = meterHeight + meterLabelHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
+            requiredScreenHeight = meterHeight + meterLabelHeight + scoreTitleLineHeight + scoreLineHeight + tallyLineHeight + screenPaddingAndSpacing;
         }
 
         scorePlate.style.height = pedalHeight + 44f;
@@ -2036,7 +2153,7 @@ public sealed class TabsSongHeaderOverlay
 
         float jackHeight = Mathf.Clamp(pedalHeight * 0.34f, 60f, 102f);
         float jackWidth = Mathf.Clamp(jackHeight * 0.44f, 22f, 40f);
-        float jackOffset = Mathf.Max(0f, jackWidth - 1f);
+        float jackOffset = Mathf.Max(0f, jackWidth);
         float jackTop = pedalHeight * 0.36f;
         SetPedalJackSize(scorePedalInputJack, jackWidth, jackHeight);
         scorePedalInputJack.style.left = -jackOffset;
@@ -2046,10 +2163,22 @@ public sealed class TabsSongHeaderOverlay
         scorePedalOutputJack.style.top = jackTop;
         scorePedalKnobLeft.style.width = knobSize;
         scorePedalKnobLeft.style.height = knobSize;
+        scorePedalKnobLeft.style.borderTopLeftRadius = knobSize * 0.5f;
+        scorePedalKnobLeft.style.borderTopRightRadius = knobSize * 0.5f;
+        scorePedalKnobLeft.style.borderBottomLeftRadius = knobSize * 0.5f;
+        scorePedalKnobLeft.style.borderBottomRightRadius = knobSize * 0.5f;
         scorePedalKnobMid.style.width = knobSize;
         scorePedalKnobMid.style.height = knobSize;
+        scorePedalKnobMid.style.borderTopLeftRadius = knobSize * 0.5f;
+        scorePedalKnobMid.style.borderTopRightRadius = knobSize * 0.5f;
+        scorePedalKnobMid.style.borderBottomLeftRadius = knobSize * 0.5f;
+        scorePedalKnobMid.style.borderBottomRightRadius = knobSize * 0.5f;
         scorePedalKnobRight.style.width = knobSize;
         scorePedalKnobRight.style.height = knobSize;
+        scorePedalKnobRight.style.borderTopLeftRadius = knobSize * 0.5f;
+        scorePedalKnobRight.style.borderTopRightRadius = knobSize * 0.5f;
+        scorePedalKnobRight.style.borderBottomLeftRadius = knobSize * 0.5f;
+        scorePedalKnobRight.style.borderBottomRightRadius = knobSize * 0.5f;
         SetKnobIndicatorSize(scorePedalKnobLeft, knobSize);
         SetKnobIndicatorSize(scorePedalKnobMid, knobSize);
         SetKnobIndicatorSize(scorePedalKnobRight, knobSize);

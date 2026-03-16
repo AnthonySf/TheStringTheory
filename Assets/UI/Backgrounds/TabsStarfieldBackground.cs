@@ -40,7 +40,6 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
     private Material starMaterial;
     private Material shootingStarMaterial;
     private float shootingStarSpawnTimer;
-    private TabsNebulaBackdrop nebulaBackdrop;
 
     public void Initialize(Transform parent, GuitarBridgeServer owner)
     {
@@ -51,9 +50,6 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
 
         starMaterial = owner.CreateSharedGlowMaterial(owner.tabMidStarColor, owner.tabStarEmission);
         shootingStarMaterial = owner.CreateSharedGlowMaterial(owner.tabShootingStarColor, owner.tabStarEmission * 1.35f);
-
-        nebulaBackdrop = new TabsNebulaBackdrop();
-        nebulaBackdrop.Initialize(root.transform, owner);
 
         CreateStars();
         CreateShootingStarPool();
@@ -66,7 +62,6 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
             return;
 
         UpdateStars(deltaTime);
-        nebulaBackdrop?.Tick(deltaTime);
         UpdateShootingStars(deltaTime);
 
         if (owner.tabStarSubtleVerticalWave > 0.0001f)
@@ -82,9 +77,6 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
     {
         stars.Clear();
         shootingStars.Clear();
-
-        nebulaBackdrop?.Dispose();
-        nebulaBackdrop = null;
 
         if (root != null)
             Object.Destroy(root);
