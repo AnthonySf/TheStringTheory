@@ -2081,7 +2081,7 @@ private void ParseUdpState()
             return;
         }
 
-        if (!loopEnabled && !songHasEnded && songTimer >= duration)
+        if (!loopEnabled && !songHasEnded && !showSongSelection && songTimer >= duration)
         {
             songTimer = duration;
             audioSongTimer = duration;
