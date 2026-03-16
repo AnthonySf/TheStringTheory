@@ -1,0 +1,55 @@
+# Unity generated folders
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+MemoryCaptures/
+UserSettings/
+
+# Asset meta backup / crash
+sysinfo.txt
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+
+# Node
+node_modules/
+
+# Secrets / local config
+.env
+*.pem
+*.key
+serviceAccount*.json
+
+# Python / packaged app output
+Assets/StreamingAssets/ToneLab/dist/
+Assets/StreamingAssets/ToneLab/build/
+Assets/StreamingAssets/ToneLab/*.log
+Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
+
+# General
+*.log

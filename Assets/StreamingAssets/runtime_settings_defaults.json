@@ -1,0 +1,140 @@
+{
+  "values": [
+    {
+      "id": "core.noteSpeed",
+      "value": "22"
+    },
+    {
+      "id": "core.invertStrings",
+      "value": "false"
+    },
+    {
+      "id": "timing.hitWindowEarly",
+      "value": "0.3"
+    },
+    {
+      "id": "timing.hitWindowLate",
+      "value": "0.35"
+    },
+    {
+      "id": "timing.judgmentGrace",
+      "value": "0.85"
+    },
+    {
+      "id": "tabs.tabSectionDuration",
+      "value": "4.5"
+    },
+    {
+      "id": "tabs.tabSectionLengthMultiplier",
+      "value": "1.5"
+    },
+    {
+      "id": "layout.tabPanelGap",
+      "value": "0.4"
+    },
+    {
+      "id": "layout.tabPanelHeight",
+      "value": "4.2"
+    },
+    {
+      "id": "layout.tabLineSpacing",
+      "value": "0.53"
+    },
+    {
+      "id": "layout.tabNoteCircleDiameter",
+      "value": "1"
+    },
+    {
+      "id": "layout.tabNoteFontSize",
+      "value": "3.6"
+    },
+    {
+      "id": "layout.tabBackdropOpacity",
+      "value": "0.85"
+    },
+    {
+      "id": "layout.tabBackdropColorR",
+      "value": "0.02"
+    },
+    {
+      "id": "layout.tabBackdropColorG",
+      "value": "0.03"
+    },
+    {
+      "id": "layout.tabBackdropColorB",
+      "value": "0.06"
+    },
+    {
+      "id": "fx.judgeableDarkenMultiplier",
+      "value": "1"
+    },
+    {
+      "id": "fx.tabIdleFillDarken",
+      "value": "0.33"
+    },
+    {
+      "id": "bg.mode",
+      "value": "BlueSky"
+    },
+    {
+      "id": "bg.skyMood",
+      "value": "Sunset"
+    },
+    {
+      "id": "bg.skyStars",
+      "value": "true"
+    },
+    {
+      "id": "bg.skyStarCount",
+      "value": "1200"
+    },
+    {
+      "id": "bg.skyStarTwinkleFraction",
+      "value": "0.83"
+    },
+    {
+      "id": "bg.skyStarTwinkleStrength",
+      "value": "0.6"
+    },
+    {
+      "id": "bg.skyStarTwinkleSpeedMin",
+      "value": "0.57"
+    },
+    {
+      "id": "bg.skyStarTwinkleSpeedMax",
+      "value": "1.8"
+    },
+    {
+      "id": "bg.starStyle",
+      "value": "SoftDots"
+    },
+    {
+      "id": "bg.starSeed",
+      "value": "1337"
+    },
+    {
+      "id": "bg.starDriftSpeed",
+      "value": "0.55"
+    },
+    {
+      "id": "bg.shootingStars",
+      "value": "true"
+    },
+    {
+      "id": "bg.skyCloudNearSpeed",
+      "value": "0.34"
+    },
+    {
+      "id": "bg.skyCloudMidSpeed",
+      "value": "0.2"
+    },
+    {
+      "id": "bg.skyCloudFarSpeed",
+      "value": "0.11"
+    },
+    {
+      "id": "bg.skyCloudGlobalScale",
+      "value": "3"
+    }
+  ]
+}

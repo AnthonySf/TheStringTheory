@@ -1,0 +1,47 @@
+.hud-root {
+    flex-grow: 1;
+    padding-top: 34px;
+    padding-left: 34px;
+    padding-right: 24px;
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.song-card {
+    min-width: 620px;
+    max-width: 980px;
+    padding-top: 18px;
+    padding-right: 24px;
+    padding-bottom: 16px;
+    padding-left: 24px;
+
+    border-top-left-radius: 16px;
+    border-top-right-radius: 16px;
+    border-bottom-right-radius: 16px;
+    border-bottom-left-radius: 16px;
+
+    border-top-width: 2px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+
+    border-top-color: rgba(117, 191, 255, 0.92);
+    border-right-color: rgba(51, 77, 110, 0.90);
+    border-bottom-color: rgba(51, 77, 110, 0.90);
+    border-left-color: rgba(51, 77, 110, 0.90);
+
+    background-color: rgba(13, 20, 31, 0.90);
+}
+
+.song-name {
+    color: rgba(242, 250, 255, 1);
+    font-size: 40px;
+    -unity-font-style: bold;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.track-name {
+    color: rgba(181, 224, 255, 1);
+    font-size: 24px;
+}

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Guitar Bridge - Extreme Stability</title>
+    <style>
+        body { background: #000; color: #1DB954; font-family: 'Courier New', monospace; text-align: center; padding: 40px; }
+        .terminal { background: #111; border: 2px solid #333; padding: 30px; border-radius: 20px; display: inline-block; min-width: 450px; }
+        #output { font-size: 48px; font-weight: bold; margin: 20px 0; color: #fff; text-shadow: 0 0 15px #1DB954; }
+        #status { color: #f39c12; font-size: 14px; margin-bottom: 10px; font-weight: bold; text-transform: uppercase; }
+        #health { font-size: 10px; color: #444; margin-top: 20px; }
+        button { padding: 25px 60px; font-size: 22px; background: #1DB954; color: black; border: none; cursor: pointer; border-radius: 50px; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="terminal">
+        <h1>🎸 PROTOTYPE v8</h1>
+        <div id="status">INITIALIZING...</div>
+        <div id="output">--</div>
+        <button id="startBtn">START ENGINE</button>
+        <div id="health">Memory Pooling: ACTIVE | Auto-Heal: STANDBY</div>
+    </div>
+
+    <script type="module">
+        import { BasicPitch } from 'https://esm.sh/@spotify/basic-pitch@1.0.1';
+
+        const SEMITONE_OFFSET = -3;
+        const CONFIDENCE_THRESHOLD = 0.5;
+        
+        let socket, audioCtx, stream, processor, bp;
+        let isEvaluating = false;
+        let lastSentString = "";
+        let lastProcessTime = Date.now();
+
+        // --- PRE-ALLOCATED MEMORY (The "Pool") ---
+        let resampledData; 
+
+        const output = document.getElementById('output');
+        const statusDiv = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+
+        // 1. STABLE WEBSOCKET
+        function connectToUnity() {
+            socket = new WebSocket('ws://127.0.0.1:9000');
+            socket.onopen = () => { statusDiv.innerText = "UNITY CONNECTED ✅"; };
+            socket.onclose = () => { 
+                statusDiv.innerText = "RECONNECTING UNITY... 🔍";
+                setTimeout(connectToUnity, 2000); 
+            };
+        }
+
+        // 2. THE AUTO-HEALER
+        // If the AI stops sending data for 5 seconds, restart everything.
+        setInterval(() => {
+            if (audioCtx && Date.now() - lastProcessTime > 5000) {
+                console.warn("System Stalled. Auto-healing...");
+                location.reload(); // The nuclear option for stability
+            }
+        }, 3000);
+
+        async function initAI() {
+            try {
+                startBtn.style.display = 'none';
+                statusDiv.innerText = "CALIBRATING ENGINE...";
+
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const nativeRes = audioCtx.sampleRate;
+                await audioCtx.resume();
+
+                bp = new BasicPitch("https://unpkg.com/@spotify/basic-pitch@1.0.1/model/model.json");
+                
+                stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } 
+                });
+                
+                const source = audioCtx.createMediaStreamSource(stream);
+                
+                // 3. LARGE BUFFER (Increases stability on slower CPUs)
+                processor = audioCtx.createScriptProcessor(16384, 1, 1);
+                
+                // Pre-calculate resampling ratio and pool size
+                const ratio = nativeRes / 22050;
+                resampledData = new Float32Array(Math.floor(16384 / ratio));
+
+                source.connect(processor);
+                processor.connect(audioCtx.destination);
+
+                statusDiv.innerText = "AI ONLINE ✅";
+
+                processor.onaudioprocess = async (e) => {
+                    lastProcessTime = Date.now(); // Update "heartbeat"
+                    if (isEvaluating) return;
+
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    
+                    // REUSE THE POOLED ARRAY (No new memory created)
+                    for (let i = 0; i < resampledData.length; i++) {
+                        let pos = i * ratio; let idx = Math.floor(pos); let w = pos - idx;
+                        resampledData[i] = inputData[idx] * (1 - w) + (inputData[idx + 1] || inputData[idx]) * w;
+                    }
+
+                    isEvaluating = true;
+                    try {
+                        await bp.evaluateModel(resampledData, (pitchFrames) => {
+                            const latest = pitchFrames[pitchFrames.length - 1];
+                            let detected = [];
+                            
+                            latest.forEach((conf, midiIndex) => {
+                                if (conf > CONFIDENCE_THRESHOLD) {
+                                    const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+                                    const correctedMidi = midiIndex + SEMITONE_OFFSET;
+                                    const note = names[((correctedMidi % 12) + 12) % 12];
+                                    const octave = Math.floor(correctedMidi / 12) - 1;
+                                    detected.push(note + octave);
+                                }
+                            });
+
+                            const currentStr = detected.join(", ");
+                            output.innerText = currentStr || "--";
+
+                            if (currentStr !== lastSentString && socket && socket.readyState === WebSocket.OPEN) {
+                                socket.send(`NOTES: ${currentStr || "--"}`);
+                                lastSentString = currentStr;
+                            }
+                        }, () => {}, () => {});
+                    } catch (err) {
+                        console.error("Inference Error:", err);
+                    } finally {
+                        isEvaluating = false;
+                    }
+                };
+            } catch (err) {
+                statusDiv.innerText = "ERROR: " + err.message;
+            }
+        }
+
+        connectToUnity();
+        startBtn.onclick = initAI;
+    </script>
+</body>
+</html>
