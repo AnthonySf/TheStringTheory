@@ -244,9 +244,9 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel = CreateLabel("Song", 42f, Color.white, bold: true, useTitleFont: true);
         songNameLabel.style.marginBottom = 8f;
         songNameLabel.style.letterSpacing = 0.7f;
-        songNameLabel.style.whiteSpace = WhiteSpace.NoWrap;
-        songNameLabel.style.textOverflow = TextOverflow.Ellipsis;
-        songNameLabel.style.overflow = Overflow.Hidden;
+        songNameLabel.style.whiteSpace = WhiteSpace.Normal;
+        songNameLabel.style.textOverflow = TextOverflow.Clip;
+        songNameLabel.style.overflow = Overflow.Visible;
         songNameLabel.style.maxWidth = 1200f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
@@ -832,10 +832,12 @@ public sealed class TabsSongHeaderOverlay
 
         Button upButton = CreateActionButton("Up", () => owner?.MoveSongSelectionFromUi(-1));
         Button downButton = CreateActionButton("Down", () => owner?.MoveSongSelectionFromUi(1));
+        Button openSongsFolderButton = CreateActionButton("Songs Folder", () => owner?.OpenSongsFolderFromUi());
+        Button refreshSongsButton = CreateActionButton("Refresh", () => owner?.RefreshSongsFromUi());
         Button closeSelectionButton = CreateActionButton("Back", () => owner?.CloseSongSelectionFromUi());
         Button resumeSelectionButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
-        foreach (Button button in new[] { upButton, downButton, closeSelectionButton, resumeSelectionButton })
+        foreach (Button button in new[] { upButton, downButton, openSongsFolderButton, refreshSongsButton, closeSelectionButton, resumeSelectionButton })
         {
             button.style.marginRight = 10f;
             button.style.marginTop = 8f;

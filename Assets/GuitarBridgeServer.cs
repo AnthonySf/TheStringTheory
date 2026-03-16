@@ -1013,6 +1013,54 @@ public class GuitarBridgeServer : MonoBehaviour
     }
 
 
+
+    public void OpenSongsFolderFromUi()
+    {
+        string songsDirectory = ExternalContentPaths.PersistentSongsDirectory;
+
+        try
+        {
+            Directory.CreateDirectory(songsDirectory);
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            System.Diagnostics.Process.Start("explorer.exe", songsDirectory.Replace('/', '\\'));
+#else
+            Application.OpenURL($"file://{songsDirectory}");
+#endif
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to open songs folder: {ex.Message}");
+            Application.OpenURL($"file://{songsDirectory}");
+        }
+    }
+
+    public void RefreshSongsFromUi()
+    {
+        string selectedDirectory =
+            selectedSongListIndex >= 0 &&
+            selectedSongListIndex < availableSongs.Count
+                ? availableSongs[selectedSongListIndex]?.SongDirectory
+                : null;
+
+        RefreshAvailableSongs();
+
+        if (!string.IsNullOrEmpty(selectedDirectory))
+        {
+            int idx = availableSongs.FindIndex(song =>
+                song != null &&
+                string.Equals(song.SongDirectory, selectedDirectory, StringComparison.OrdinalIgnoreCase));
+
+            if (idx >= 0)
+                selectedSongListIndex = idx;
+        }
+
+        if (selectedSongListIndex >= availableSongs.Count)
+            selectedSongListIndex = Mathf.Max(0, availableSongs.Count - 1);
+
+        EnsureSongSelectionVisible();
+    }
+
     public void MoveSongSelectionFromUi(int delta)
     {
         MoveSongSelection(delta);
