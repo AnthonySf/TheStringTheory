@@ -1946,10 +1946,29 @@ private void OpenOrFocusToneLab()
     public Material CreateSharedGlowMaterial(Color c, float intensity)
     {
         bool isURP = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline != null;
-        string shaderName = isURP ? "Universal Render Pipeline/Lit" : "Standard";
+        Shader shader = ResolveFirstAvailableShader(
+            isURP
+                ? new[]
+                {
+                    "Universal Render Pipeline/Lit",
+                    "Universal Render Pipeline/Simple Lit",
+                    "Universal Render Pipeline/Unlit",
+                    "Unlit/Color",
+                    "Sprites/Default",
+                    "Standard",
+                    "Hidden/InternalErrorShader"
+                }
+                : new[]
+                {
+                    "Standard",
+                    "Legacy Shaders/Diffuse",
+                    "Unlit/Color",
+                    "Sprites/Default",
+                    "Hidden/InternalErrorShader"
+                });
 
-        Shader shader = Shader.Find(shaderName);
-        if (shader == null) shader = Shader.Find("Standard"); 
+        if (shader == null)
+            throw new InvalidOperationException("Unable to create glow material because no compatible shader was found in the player build.");
 
         Material m = new Material(shader);
         m.color = c;
@@ -1961,10 +1980,16 @@ private void OpenOrFocusToneLab()
 
     public Material CreateSharedTransparentMaterial(Color c, float emission = 0f)
     {
-        Shader shader = Shader.Find("Sprites/Default");
-        if (shader == null) shader = Shader.Find("Unlit/Transparent");
-        if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
-        if (shader == null) shader = Shader.Find("Standard");
+        Shader shader = ResolveFirstAvailableShader(
+            "Sprites/Default",
+            "Unlit/Transparent",
+            "Universal Render Pipeline/Unlit",
+            "Unlit/Color",
+            "Standard",
+            "Hidden/InternalErrorShader");
+
+        if (shader == null)
+            throw new InvalidOperationException("Unable to create transparent material because no compatible shader was found in the player build.");
 
         Material m = new Material(shader);
         m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
@@ -1987,6 +2012,25 @@ private void OpenOrFocusToneLab()
         }
 
         return m;
+    }
+
+    private static Shader ResolveFirstAvailableShader(params string[] shaderNames)
+    {
+        if (shaderNames == null)
+            return null;
+
+        for (int i = 0; i < shaderNames.Length; i++)
+        {
+            string shaderName = shaderNames[i];
+            if (string.IsNullOrWhiteSpace(shaderName))
+                continue;
+
+            Shader found = Shader.Find(shaderName);
+            if (found != null)
+                return found;
+        }
+
+        return null;
     }
 
     public int GetStringBasePitch(int stringIdx)
