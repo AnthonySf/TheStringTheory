@@ -1598,16 +1598,16 @@ private void OpenOrFocusToneLab()
 
         try
         {
-            process.Kill(entireProcessTree: true);
-            return;
+            System.Reflection.MethodInfo killTreeMethod = typeof(System.Diagnostics.Process).GetMethod("Kill", new[] { typeof(bool) });
+            if (killTreeMethod != null)
+            {
+                killTreeMethod.Invoke(process, new object[] { true });
+                return;
+            }
         }
-        catch (MissingMethodException)
+        catch (Exception)
         {
-            // Fallback for older runtimes where Kill(entireProcessTree) is unavailable.
-        }
-        catch (NotSupportedException)
-        {
-            // Fallback for platforms that do not support process-tree termination.
+            // Fall back to regular kill when process-tree termination is unavailable or unsupported.
         }
 
         process.Kill();
