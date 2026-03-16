@@ -389,6 +389,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
     private bool songHasEnded;
+    private bool songSelectionOpenedFromSongEnd;
     private SongLibraryEntry currentSongEntry;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
     private bool useAutoTrackSelection = true;
@@ -916,6 +917,11 @@ public class GuitarBridgeServer : MonoBehaviour
         if (currentSongEntry != null && string.Equals(currentSongEntry.SongDirectory, selected.SongDirectory, StringComparison.OrdinalIgnoreCase))
         {
             showSongSelection = false;
+            if (songSelectionOpenedFromSongEnd)
+            {
+                songSelectionOpenedFromSongEnd = false;
+                RetrySongFromUi();
+            }
             return;
         }
 
@@ -928,9 +934,11 @@ public class GuitarBridgeServer : MonoBehaviour
         currentSongEntry = entry;
         SaveSelectedSongPreference(entry);
         LoadTestSong();
-        isPaused = true;
+        bool autoplayFromSongEnd = songSelectionOpenedFromSongEnd;
+        songSelectionOpenedFromSongEnd = false;
+        isPaused = !autoplayFromSongEnd;
         SeekSongTime(-songStartDelaySeconds, false);
-        SyncAudioToSongTimer(playImmediately: false);
+        SyncAudioToSongTimer(playImmediately: autoplayFromSongEnd);
     }
 
     private void HandleLoopPlayback()
@@ -954,7 +962,31 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void OpenSongSelectionFromUi()
     {
+        songSelectionOpenedFromSongEnd = false;
         OpenSongSelectionMenu();
+    }
+
+    public void OpenSongSelectionFromSongEndFromUi()
+    {
+        songHasEnded = false;
+        songSelectionOpenedFromSongEnd = true;
+        showSongSelection = true;
+        showSongSettings = false;
+        showGlobalSettings = false;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void RetrySongFromUi()
+    {
+        songHasEnded = false;
+        songSelectionOpenedFromSongEnd = false;
+        showSongSelection = false;
+        showSongSettings = false;
+        showGlobalSettings = false;
+        isPaused = false;
+        SeekSongTime(-songStartDelaySeconds, false);
+        SyncAudioToSongTimer(playImmediately: true);
     }
 
     public void OpenSongSettingsFromUi()
