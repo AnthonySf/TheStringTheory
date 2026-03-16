@@ -451,7 +451,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             }
             else if (state.IsMissed)
             {
-                noteView.SetStateColors(owner.tabMissColor, owner.tabMissColor, Color.white, false, "X");
+                noteView.SetStateColors(owner.tabMissColor, owner.tabMissColor, Color.white, false, null);
             }
             else if (state.isJudgeable)
             {
@@ -621,7 +621,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 textObj.transform.localPosition = new Vector3(0f, 0f, -0.08f);
 
                 TextMeshPro text = textObj.AddComponent<TextMeshPro>();
-                text.text = Mathf.Max(0, note.fret).ToString();
+                text.text = GetNoteLabelText(note);
                 text.fontSize = owner.tabNoteFontSize;
                 text.alignment = TextAlignmentOptions.Center;
                 text.color = Color.white;
@@ -638,6 +638,19 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
                 NoteViews[note.id] = new TabNoteView(outlineRenderer, fillRenderer, text, extraRenderers, extraTexts);
             }
+        }
+
+
+        private static string GetNoteLabelText(NoteData note)
+        {
+            if (note.fret < 0)
+                return "X";
+
+            string noteName = note.note ?? string.Empty;
+            if (noteName.Equals("x", StringComparison.OrdinalIgnoreCase) || noteName.Equals("mute", StringComparison.OrdinalIgnoreCase) || noteName.Equals("muted", StringComparison.OrdinalIgnoreCase))
+                return "X";
+
+            return Mathf.Max(0, note.fret).ToString();
         }
 
         private GameObject BuildTechniqueTunnel(NoteData note, TabSectionData section, float x, float y, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts)
