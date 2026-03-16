@@ -1288,7 +1288,7 @@ public sealed class TabsSongHeaderOverlay
 
         bool showEnd = snapshot.songEnded;
         bool showMainMenu = snapshot.showMainMenu && !showEnd;
-        bool showPause = snapshot.isPaused && !showEnd && !showMainMenu && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showEnd && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
         bool showSettings = snapshot.showSongSettings && !showEnd;
         bool showSelection = snapshot.showSongSelection && !showEnd;
         bool showTrackSelection = snapshot.showTrackSelection && !showEnd;
@@ -1303,9 +1303,9 @@ public sealed class TabsSongHeaderOverlay
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
 
         // Keep the startup/main-menu presentation clean: only main menu + background should be visible.
-        songCard.style.display = showMainMenu ? DisplayStyle.None : DisplayStyle.Flex;
-        scorePlate.style.display = showMainMenu ? DisplayStyle.None : DisplayStyle.Flex;
-        judgePopupLayer.style.display = showMainMenu ? DisplayStyle.None : DisplayStyle.Flex;
+        songCard.style.display = snapshot.mainMenuFlowActive ? DisplayStyle.None : DisplayStyle.Flex;
+        scorePlate.style.display = snapshot.mainMenuFlowActive ? DisplayStyle.None : DisplayStyle.Flex;
+        judgePopupLayer.style.display = snapshot.mainMenuFlowActive ? DisplayStyle.None : DisplayStyle.Flex;
 
         if (showEnd)
         {
