@@ -1,5 +1,7 @@
 # StringTheory
 
+<img width="1730" height="959" alt="image" src="https://github.com/user-attachments/assets/b35a2f5e-64b5-48b0-81a7-d8d23a79169a" />
+
 StringTheory is a guitar game built in Unity that turns practice into something closer to a rhythm game.
 
 You can load basically any song, pick the track you want, and play along while the game listens in real time.
@@ -9,12 +11,21 @@ Live note and chord detection powers the scoring system, so your performance is 
 ## What it does today
 
 - Live note detection and chord detection while you play
+ 
 - A scoring system so you can track how well you are doing
+  
 - Looping for any section you select
+  <img width="909" height="297" alt="image" src="https://github.com/user-attachments/assets/beb40feb-fdd1-4906-b701-f17a2d88745e" />
+
 - Slow down playback so hard parts are easier to learn
+  
 - Timing offset controls by track and by full song
+  
 - Instant track switching inside the same song
+  <img width="565" height="539" alt="image" src="https://github.com/user-attachments/assets/5c3100e5-9cd2-4a56-a0ea-2a1fc824ddd6" />
+  
 - Lots of settings for gameplay and practice behavior
+  
 - Early 3D view work has started, but it is still incomplete
 
 There is also a simple amp simulator app included in the project.
