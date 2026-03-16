@@ -2,7 +2,6 @@ using UnityEngine;
 
 public class NoteHighway : MonoBehaviour
 {
-    // Rocksmith String Colors: E (Red), A (Yellow), D (Blue), G (Orange), B (Green), e (Purple)
     public static Color[] StringColors = {
         new Color(0.5f, 0, 1),      // High E (Purple)
         Color.green,                // B
