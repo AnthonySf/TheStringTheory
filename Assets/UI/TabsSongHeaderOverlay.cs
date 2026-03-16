@@ -2033,23 +2033,44 @@ public sealed class TabsSongHeaderOverlay
         if (container == null || buttons == null || buttons.Length == 0)
             return;
 
-        VisualElement dock = new VisualElement();
+        const string spacerName = "primary-actions-dock-spacer";
+        const string dockName = "primary-actions-dock";
+
         container.style.position = Position.Relative;
+
+        VisualElement existingDock = container.Q<VisualElement>(dockName);
+        if (existingDock != null)
+            existingDock.RemoveFromHierarchy();
+
+        VisualElement spacer = container.Q<VisualElement>(spacerName);
+        if (spacer == null)
+        {
+            spacer = new VisualElement();
+            spacer.name = spacerName;
+            spacer.style.height = 96f;
+            spacer.style.flexShrink = 0f;
+            spacer.style.marginTop = 18f;
+            spacer.pickingMode = PickingMode.Ignore;
+            container.Add(spacer);
+        }
+
+        VisualElement dock = new VisualElement();
+        dock.name = dockName;
         dock.style.position = Position.Absolute;
         dock.style.right = 0f;
         dock.style.bottom = 0f;
         dock.style.flexDirection = FlexDirection.Row;
         dock.style.justifyContent = Justify.FlexEnd;
         dock.style.alignItems = Align.Center;
-        dock.style.paddingRight = 8f;
-        dock.style.paddingBottom = 8f;
+        dock.style.paddingRight = 12f;
+        dock.style.paddingBottom = 12f;
 
         foreach (Button button in buttons)
         {
             if (button == null)
                 continue;
 
-            button.style.marginLeft = 10f;
+            button.style.marginLeft = 12f;
             button.style.marginTop = 0f;
             button.style.marginBottom = 0f;
             dock.Add(button);
