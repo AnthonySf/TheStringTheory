@@ -17,8 +17,6 @@
     { "id": "bg.starStyle", "value": "SoftDots" },
     { "id": "bg.starSeed", "value": "1337" },
     { "id": "bg.starDriftSpeed", "value": "0.55" },
-    { "id": "bg.shootingStars", "value": "true" },
-    { "id": "bg.nebula", "value": "false" },
-    { "id": "bg.nebulaOpacity", "value": "0.05" }
+    { "id": "bg.shootingStars", "value": "true" }
   ]
 }

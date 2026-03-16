@@ -130,6 +130,7 @@ public sealed class GuitarGameplaySnapshot
     public List<string> availableSongNames;
     public List<float> availableSongScores;
     public int selectedSongIndex;
+    public string currentSongDisplayName;
     public int songListScrollOffset;
     public float audioOffsetMs;
     public float tabSpeedOffsetPercent;

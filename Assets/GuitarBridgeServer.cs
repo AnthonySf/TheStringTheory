@@ -167,10 +167,10 @@ public class GuitarBridgeServer : MonoBehaviour
     public float tabStringDepth = 0.01f;
     public Color tabPanelBackdropColor = new Color(0.02f, 0.03f, 0.06f, 0.28f);
 
-    [Header("Tabs Background FX")]
+    [Header("Background")]
     public TabsBackgroundMode tabBackgroundMode = TabsBackgroundMode.Starfield;
 
-    [Header("Tabs Background FX - Starfield Core")]
+    [Header("Background - Starfield Core")]
     public TabsStarStyle tabStarStyle = TabsStarStyle.SoftDots;
     public int tabStarSeed = 1337;
     [Min(0.01f)] public float tabStarfieldWidth = 46f;
@@ -182,7 +182,7 @@ public class GuitarBridgeServer : MonoBehaviour
     [Range(0f, 1f)] public float tabStarTwinkleStrength = 0.25f;
     [Range(0f, 1f)] public float tabStarSubtleVerticalWave = 0.05f;
 
-    [Header("Tabs Background FX - Star Layers")]
+    [Header("Background - Star Layers")]
     [Range(8, 1200)] public int tabNearStarCount = 130;
     [Range(8, 1200)] public int tabMidStarCount = 170;
     [Range(8, 1200)] public int tabFarStarCount = 220;
@@ -206,7 +206,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabFarStarColor = new Color(0.56f, 0.70f, 0.96f, 0.7f);
     [Range(0f, 8f)] public float tabStarEmission = 0.35f;
 
-    [Header("Tabs Background FX - Shooting Stars")]
+    [Header("Background - Shooting Stars")]
     public bool tabShootingStarsEnabled = true;
     [Range(1, 8)] public int tabShootingStarMaxConcurrent = 2;
     [Min(0.1f)] public float tabShootingStarIntervalMin = 2.2f;
@@ -216,16 +216,7 @@ public class GuitarBridgeServer : MonoBehaviour
     [Range(0f, 1f)] public float tabShootingStarAlpha = 0.9f;
     public Color tabShootingStarColor = new Color(0.95f, 0.97f, 1f, 0.9f);
 
-    [Header("Tabs Background FX - Nebula")]
-    public bool tabNebulaEnabled = false;
-    [Range(1, 4)] public int tabNebulaLayerCount = 2;
-    [Range(0f, 1f)] public float tabNebulaOpacity = 0.05f;
-    [Min(0f)] public float tabNebulaScrollSpeed = 0.05f;
-    [Min(1f)] public float tabNebulaScale = 8f;
-    public Color tabNebulaColorA = new Color(0.08f, 0.12f, 0.22f, 0.08f);
-    public Color tabNebulaColorB = new Color(0.12f, 0.08f, 0.20f, 0.07f);
-
-    [Header("Tabs Background FX - Blue Sky")]
+    [Header("Background - Blue Sky")]
     public TabsSkyMood tabSkyMood = TabsSkyMood.Day;
     [Min(0.01f)] public float tabSkyWidth = 54f;
     public float tabSkyNearZ = 1.4f;
@@ -888,6 +879,16 @@ public class GuitarBridgeServer : MonoBehaviour
             return string.Compare(a.DisplayName, b.DisplayName, StringComparison.OrdinalIgnoreCase);
         });
 
+        if (currentSongEntry != null)
+        {
+            int currentIndex = availableSongs.FindIndex(song =>
+                song != null &&
+                string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase));
+
+            if (currentIndex >= 0)
+                selectedSongListIndex = currentIndex;
+        }
+
         if (selectedSongListIndex >= availableSongs.Count)
             selectedSongListIndex = Mathf.Max(0, availableSongs.Count - 1);
     }
@@ -938,6 +939,18 @@ public class GuitarBridgeServer : MonoBehaviour
     private void LoadSongFromEntry(SongLibraryEntry entry)
     {
         currentSongEntry = entry;
+        if (entry != null)
+        {
+            int selectedIndex = availableSongs.FindIndex(song =>
+                song != null &&
+                string.Equals(song.SongDirectory, entry.SongDirectory, StringComparison.OrdinalIgnoreCase));
+            if (selectedIndex >= 0)
+            {
+                selectedSongListIndex = selectedIndex;
+                EnsureSongSelectionVisible();
+            }
+        }
+
         SaveSelectedSongPreference(entry);
         LoadTestSong();
         bool autoplayFromSongEnd = songSelectionOpenedFromSongEnd;
@@ -1021,6 +1034,54 @@ public class GuitarBridgeServer : MonoBehaviour
         playbackSpeedPercent = Mathf.Clamp(speedPercent, 1f, 200f);
     }
 
+
+
+    public void OpenSongsFolderFromUi()
+    {
+        string songsDirectory = ExternalContentPaths.PersistentSongsDirectory;
+
+        try
+        {
+            Directory.CreateDirectory(songsDirectory);
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+            System.Diagnostics.Process.Start("explorer.exe", songsDirectory.Replace('/', '\\'));
+#else
+            Application.OpenURL($"file://{songsDirectory}");
+#endif
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to open songs folder: {ex.Message}");
+            Application.OpenURL($"file://{songsDirectory}");
+        }
+    }
+
+    public void RefreshSongsFromUi()
+    {
+        string selectedDirectory =
+            selectedSongListIndex >= 0 &&
+            selectedSongListIndex < availableSongs.Count
+                ? availableSongs[selectedSongListIndex]?.SongDirectory
+                : null;
+
+        RefreshAvailableSongs();
+
+        if (!string.IsNullOrEmpty(selectedDirectory))
+        {
+            int idx = availableSongs.FindIndex(song =>
+                song != null &&
+                string.Equals(song.SongDirectory, selectedDirectory, StringComparison.OrdinalIgnoreCase));
+
+            if (idx >= 0)
+                selectedSongListIndex = idx;
+        }
+
+        if (selectedSongListIndex >= availableSongs.Count)
+            selectedSongListIndex = Mathf.Max(0, availableSongs.Count - 1);
+
+        EnsureSongSelectionVisible();
+    }
 
     public void MoveSongSelectionFromUi(int delta)
     {
@@ -2127,6 +2188,7 @@ private void ParseUdpState()
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
             availableSongScores = availableSongs.Select(GetStoredSongBestScorePercent).ToList(),
             selectedSongIndex = selectedSongListIndex,
+            currentSongDisplayName = currentSongEntry != null ? currentSongEntry.DisplayName : string.Empty,
             songListScrollOffset = songListScrollOffset,
             audioOffsetMs = audioOffsetMs,
             tabSpeedOffsetPercent = tabSpeedOffsetPercent,
@@ -2628,24 +2690,22 @@ private void ParseUdpState()
         RegisterFloatSetting("fx.judgeableDarkenMultiplier", "Visuals", "Judgeable Darken", "Darkens upcoming notes until they enter the hit window.", 1f, 8f, 0.1f, () => judgeableDarkenMultiplier, v => judgeableDarkenMultiplier = v);
         RegisterFloatSetting("fx.tabIdleFillDarken", "Colors - Status", "Idle Fill Darken", "Controls how muted unresolved tab notes appear.", 0f, 1f, 0.01f, () => tabIdleFillDarken, v => tabIdleFillDarken = v);
 
-        RegisterEnumSetting("bg.mode", "Tabs Background FX", "Background Mode", "Switches between static and animated tab backdrops.", new []{"SolidColor","Starfield","BlueSky"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
-        RegisterEnumSetting("bg.skyMood", "Tabs Background FX - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime and sunset palettes.", new []{"Day","Sunset"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
-        RegisterBoolSetting("bg.skyStars", "Tabs Background FX - Blue Sky", "Static Sky Stars", "Adds non-moving stars behind clouds in BlueSky mode.", () => tabSkyStarsEnabled, v => tabSkyStarsEnabled = v);
-        RegisterIntSetting("bg.skyStarCount", "Tabs Background FX - Blue Sky", "Sky Star Count", "Controls how many static stars are rendered in BlueSky mode.", 8, 1200, 1, () => tabSkyStarCount, v => tabSkyStarCount = v);
-        RegisterFloatSetting("bg.skyStarTwinkleFraction", "Tabs Background FX - Blue Sky", "Star Twinkle Fraction", "Percentage of stars allowed to twinkle.", 0f, 1f, 0.01f, () => tabSkyStarTwinkleFraction, v => tabSkyStarTwinkleFraction = v);
-        RegisterFloatSetting("bg.skyStarTwinkleStrength", "Tabs Background FX - Blue Sky", "Star Twinkle Strength", "How much brightness variation twinkling stars receive.", 0f, 0.6f, 0.01f, () => tabSkyStarTwinkleStrength, v => tabSkyStarTwinkleStrength = v);
-        RegisterFloatSetting("bg.skyStarTwinkleSpeedMin", "Tabs Background FX - Blue Sky", "Star Twinkle Speed Min", "Minimum twinkle speed for twinkling stars.", 0.05f, 4f, 0.01f, () => tabSkyStarTwinkleSpeedMin, v => tabSkyStarTwinkleSpeedMin = v);
-        RegisterFloatSetting("bg.skyStarTwinkleSpeedMax", "Tabs Background FX - Blue Sky", "Star Twinkle Speed Max", "Maximum twinkle speed for twinkling stars.", 0.05f, 4f, 0.01f, () => tabSkyStarTwinkleSpeedMax, v => tabSkyStarTwinkleSpeedMax = v);
-        RegisterEnumSetting("bg.starStyle", "Tabs Background FX - Starfield Core", "Star Style", "Visual style used for star sprites in the background.", new []{"SoftDots","Crystal","Neon"}, () => tabStarStyle.ToString(), v => { if (Enum.TryParse(v, out TabsStarStyle style)) tabStarStyle = style; });
-        RegisterIntSetting("bg.starSeed", "Tabs Background FX - Starfield Core", "Star Seed", "Changes the procedural star layout while keeping it deterministic.", 0, 99999, 1, () => tabStarSeed, v => tabStarSeed = v);
-        RegisterFloatSetting("bg.starDriftSpeed", "Tabs Background FX - Starfield Core", "Star Drift Speed", "Horizontal motion speed of star layers.", 0f, 2.5f, 0.01f, () => tabStarDriftSpeed, v => tabStarDriftSpeed = v);
-        RegisterBoolSetting("bg.shootingStars", "Tabs Background FX - Shooting Stars", "Shooting Stars", "Turns occasional shooting star streaks on or off.", () => tabShootingStarsEnabled, v => tabShootingStarsEnabled = v);
-        RegisterBoolSetting("bg.nebula", "Tabs Background FX - Nebula", "Nebula Overlay", "Adds a soft moving nebula layer behind the tabs.", () => tabNebulaEnabled, v => tabNebulaEnabled = v);
-        RegisterFloatSetting("bg.nebulaOpacity", "Tabs Background FX - Nebula", "Nebula Opacity", "Strength of the nebula tint over the background.", 0f, 0.35f, 0.005f, () => tabNebulaOpacity, v => tabNebulaOpacity = v);
-        RegisterFloatSetting("bg.skyCloudNearSpeed", "Tabs Background FX - Blue Sky", "Cloud Speed (Near)", "Horizontal drift speed for the nearest cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedNear, v => tabSkyCloudSpeedNear = v);
-        RegisterFloatSetting("bg.skyCloudMidSpeed", "Tabs Background FX - Blue Sky", "Cloud Speed (Mid)", "Horizontal drift speed for the middle cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedMid, v => tabSkyCloudSpeedMid = v);
-        RegisterFloatSetting("bg.skyCloudFarSpeed", "Tabs Background FX - Blue Sky", "Cloud Speed (Far)", "Horizontal drift speed for the far cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedFar, v => tabSkyCloudSpeedFar = v);
-        RegisterFloatSetting("bg.skyCloudGlobalScale", "Tabs Background FX - Blue Sky", "Cloud Global Scale", "Scales all BlueSky clouds live without restarting.", 0.2f, 6f, 0.05f, () => tabSkyCloudGlobalScale, v => tabSkyCloudGlobalScale = v);
+        RegisterEnumSetting("bg.mode", "Background", "Background Mode", "Switches between static and animated backgrounds.", new []{"SolidColor","Starfield","BlueSky"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
+        RegisterEnumSetting("bg.skyMood", "Background - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime and sunset palettes.", new []{"Day","Sunset"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
+        RegisterBoolSetting("bg.skyStars", "Background - Blue Sky", "Static Sky Stars", "Adds non-moving stars behind clouds in BlueSky mode.", () => tabSkyStarsEnabled, v => tabSkyStarsEnabled = v);
+        RegisterIntSetting("bg.skyStarCount", "Background - Blue Sky", "Sky Star Count", "Controls how many static stars are rendered in BlueSky mode.", 8, 1200, 1, () => tabSkyStarCount, v => tabSkyStarCount = v);
+        RegisterFloatSetting("bg.skyStarTwinkleFraction", "Background - Blue Sky", "Star Twinkle Fraction", "Percentage of stars allowed to twinkle.", 0f, 1f, 0.01f, () => tabSkyStarTwinkleFraction, v => tabSkyStarTwinkleFraction = v);
+        RegisterFloatSetting("bg.skyStarTwinkleStrength", "Background - Blue Sky", "Star Twinkle Strength", "How much brightness variation twinkling stars receive.", 0f, 0.6f, 0.01f, () => tabSkyStarTwinkleStrength, v => tabSkyStarTwinkleStrength = v);
+        RegisterFloatSetting("bg.skyStarTwinkleSpeedMin", "Background - Blue Sky", "Star Twinkle Speed Min", "Minimum twinkle speed for twinkling stars.", 0.05f, 4f, 0.01f, () => tabSkyStarTwinkleSpeedMin, v => tabSkyStarTwinkleSpeedMin = v);
+        RegisterFloatSetting("bg.skyStarTwinkleSpeedMax", "Background - Blue Sky", "Star Twinkle Speed Max", "Maximum twinkle speed for twinkling stars.", 0.05f, 4f, 0.01f, () => tabSkyStarTwinkleSpeedMax, v => tabSkyStarTwinkleSpeedMax = v);
+        RegisterEnumSetting("bg.starStyle", "Background - Starfield Core", "Star Style", "Visual style used for star sprites in the background.", new []{"SoftDots","Crystal","Neon"}, () => tabStarStyle.ToString(), v => { if (Enum.TryParse(v, out TabsStarStyle style)) tabStarStyle = style; });
+        RegisterIntSetting("bg.starSeed", "Background - Starfield Core", "Star Seed", "Changes the procedural star layout while keeping it deterministic.", 0, 99999, 1, () => tabStarSeed, v => tabStarSeed = v);
+        RegisterFloatSetting("bg.starDriftSpeed", "Background - Starfield Core", "Star Drift Speed", "Horizontal motion speed of star layers.", 0f, 2.5f, 0.01f, () => tabStarDriftSpeed, v => tabStarDriftSpeed = v);
+        RegisterBoolSetting("bg.shootingStars", "Background - Shooting Stars", "Shooting Stars", "Turns occasional shooting star streaks on or off.", () => tabShootingStarsEnabled, v => tabShootingStarsEnabled = v);
+        RegisterFloatSetting("bg.skyCloudNearSpeed", "Background - Blue Sky", "Cloud Speed (Near)", "Horizontal drift speed for the nearest cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedNear, v => tabSkyCloudSpeedNear = v);
+        RegisterFloatSetting("bg.skyCloudMidSpeed", "Background - Blue Sky", "Cloud Speed (Mid)", "Horizontal drift speed for the middle cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedMid, v => tabSkyCloudSpeedMid = v);
+        RegisterFloatSetting("bg.skyCloudFarSpeed", "Background - Blue Sky", "Cloud Speed (Far)", "Horizontal drift speed for the far cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedFar, v => tabSkyCloudSpeedFar = v);
+        RegisterFloatSetting("bg.skyCloudGlobalScale", "Background - Blue Sky", "Cloud Global Scale", "Scales all BlueSky clouds live without restarting.", 0.2f, 6f, 0.05f, () => tabSkyCloudGlobalScale, v => tabSkyCloudGlobalScale = v);
     }
 
     private void RegisterFloatSetting(string id, string section, string label, string tooltip, float min, float max, float step, Func<float> getter, Action<float> setter)
