@@ -1706,10 +1706,10 @@ public sealed class TabsSongHeaderOverlay
         knob.style.borderRightColor = new Color(0.06f, 0.16f, 0.23f, 1f);
         knob.style.borderBottomColor = new Color(0.03f, 0.11f, 0.16f, 1f);
         knob.style.borderLeftColor = new Color(0.06f, 0.16f, 0.23f, 1f);
-        knob.style.borderTopLeftRadius = 15f;
-        knob.style.borderTopRightRadius = 15f;
-        knob.style.borderBottomLeftRadius = 15f;
-        knob.style.borderBottomRightRadius = 15f;
+        knob.style.borderTopLeftRadius = 999f;
+        knob.style.borderTopRightRadius = 999f;
+        knob.style.borderBottomLeftRadius = 999f;
+        knob.style.borderBottomRightRadius = 999f;
         knob.style.marginLeft = 10f;
         knob.style.marginRight = 10f;
 
@@ -2157,10 +2157,22 @@ public sealed class TabsSongHeaderOverlay
         scorePedalOutputJack.style.top = jackTop;
         scorePedalKnobLeft.style.width = knobSize;
         scorePedalKnobLeft.style.height = knobSize;
+        scorePedalKnobLeft.style.borderTopLeftRadius = knobSize * 0.5f;
+        scorePedalKnobLeft.style.borderTopRightRadius = knobSize * 0.5f;
+        scorePedalKnobLeft.style.borderBottomLeftRadius = knobSize * 0.5f;
+        scorePedalKnobLeft.style.borderBottomRightRadius = knobSize * 0.5f;
         scorePedalKnobMid.style.width = knobSize;
         scorePedalKnobMid.style.height = knobSize;
+        scorePedalKnobMid.style.borderTopLeftRadius = knobSize * 0.5f;
+        scorePedalKnobMid.style.borderTopRightRadius = knobSize * 0.5f;
+        scorePedalKnobMid.style.borderBottomLeftRadius = knobSize * 0.5f;
+        scorePedalKnobMid.style.borderBottomRightRadius = knobSize * 0.5f;
         scorePedalKnobRight.style.width = knobSize;
         scorePedalKnobRight.style.height = knobSize;
+        scorePedalKnobRight.style.borderTopLeftRadius = knobSize * 0.5f;
+        scorePedalKnobRight.style.borderTopRightRadius = knobSize * 0.5f;
+        scorePedalKnobRight.style.borderBottomLeftRadius = knobSize * 0.5f;
+        scorePedalKnobRight.style.borderBottomRightRadius = knobSize * 0.5f;
         SetKnobIndicatorSize(scorePedalKnobLeft, knobSize);
         SetKnobIndicatorSize(scorePedalKnobMid, knobSize);
         SetKnobIndicatorSize(scorePedalKnobRight, knobSize);
