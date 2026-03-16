@@ -373,6 +373,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private string currentSongFileName = "song.mp3";
     private bool hasBackingTrack;
     private bool showSongSettings;
+    private bool showMainMenu;
     private bool showSongSelection;
     private bool showTrackSelection;
     private bool showGlobalSettings;
@@ -440,9 +441,12 @@ public class GuitarBridgeServer : MonoBehaviour
         EnsureBackingTrackSource();
         RegisterRuntimeSettings();
         LoadGlobalRuntimeSettingsMetadata();
+        showMainMenu = true;
+        isPaused = true;
         LoadTestSong();
+        isPaused = true;
         EnsureRenderer();
-        SyncAudioToSongTimer(playImmediately: !isPaused);
+        SyncAudioToSongTimer(playImmediately: false);
     }
 
     private void Update()
@@ -462,7 +466,7 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: !isPaused);
 
         if (midiTrackIndex != currentLoadedTrackIndex)
-            LoadTestSong(preservePauseUiState: isPaused || showSongSettings || showSongSelection || showTrackSelection);
+            LoadTestSong(preservePauseUiState: isPaused || showMainMenu || showSongSettings || showSongSelection || showTrackSelection || showGlobalSettings);
 
         ParseUdpState();
 
@@ -495,6 +499,12 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             showGlobalSettings = !showGlobalSettings;
             showSongSettings = false;
+        }
+
+        if (showMainMenu)
+        {
+            HandleMainMenuControls();
+            return;
         }
 
         if (showTrackSelection)
@@ -531,6 +541,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             isPaused = !isPaused;
             showSongSettings = false;
+            showMainMenu = false;
             showSongSelection = false;
             showTrackSelection = false;
             showGlobalSettings = false;
@@ -539,6 +550,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (!isPaused)
             return;
+
+        if (Input.GetKeyDown(KeyCode.M))
+        {
+            OpenMainMenuFromUi();
+            return;
+        }
 
         if (Input.GetKeyDown(KeyCode.L))
         {
@@ -649,6 +666,41 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         SeekSongTime(targetTime, false);
+    }
+
+    private void HandleMainMenuControls()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.M))
+        {
+            showMainMenu = false;
+            isPaused = true;
+            SyncAudioToSongTimer(playImmediately: false);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.C))
+        {
+            ContinueFromMainMenuFromUi();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.L))
+        {
+            OpenSongSelectionFromUi();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.S))
+        {
+            OpenGlobalSettingsFromUi();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.X))
+        {
+            ExitGameFromUi();
+            return;
+        }
     }
 
     private void HandleSongSelectionControls()
@@ -886,6 +938,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private void OpenSongSelectionMenu()
     {
         RefreshAvailableSongs();
+        showMainMenu = false;
         showSongSelection = true;
         showTrackSelection = false;
         pendingTrackSelectionSong = null;
@@ -961,6 +1014,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private void CloseTrackSelection()
     {
         showTrackSelection = false;
+        showMainMenu = false;
         showSongSelection = true;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
@@ -1104,6 +1158,31 @@ public class GuitarBridgeServer : MonoBehaviour
             loopEndTime = loopStartTime + 0.25f;
     }
 
+    public void OpenMainMenuFromUi()
+    {
+        showMainMenu = true;
+        showSongSettings = false;
+        showSongSelection = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        isPaused = true;
+        songHasEnded = false;
+        songSelectionOpenedFromSongEnd = false;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void ContinueFromMainMenuFromUi()
+    {
+        songHasEnded = false;
+        showMainMenu = false;
+        showSongSettings = false;
+        showSongSelection = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        isPaused = false;
+        SyncAudioToSongTimer(playImmediately: true);
+    }
+
     public void OpenSongSelectionFromUi()
     {
         songSelectionOpenedFromSongEnd = false;
@@ -1121,6 +1200,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         songHasEnded = false;
         songSelectionOpenedFromSongEnd = false;
+        showMainMenu = false;
         showSongSelection = false;
         showTrackSelection = false;
         showSongSettings = false;
@@ -1133,6 +1213,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public void OpenSongSettingsFromUi()
     {
         showSongSettings = true;
+        showMainMenu = false;
         showSongSelection = false;
         showTrackSelection = false;
         showGlobalSettings = false;
@@ -1143,6 +1224,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showGlobalSettings = true;
         showSongSettings = false;
+        showMainMenu = false;
         showSongSelection = false;
         showTrackSelection = false;
         isPaused = true;
@@ -1151,6 +1233,15 @@ public class GuitarBridgeServer : MonoBehaviour
     public void OpenToneLabFromUi()
     {
         OpenOrFocusToneLab();
+    }
+
+    public void ExitGameFromUi()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 
     public void SetPlaybackSpeedPercentFromUi(float speedPercent)
@@ -1221,6 +1312,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void CloseSongSelectionFromUi()
     {
+        showMainMenu = false;
         showSongSelection = false;
         showTrackSelection = false;
         isPaused = true;
@@ -1247,6 +1339,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void CloseSongSettingsFromUi()
     {
+        showMainMenu = false;
         showSongSettings = false;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
@@ -1254,6 +1347,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void CloseGlobalSettingsFromUi()
     {
+        showMainMenu = false;
         showGlobalSettings = false;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
@@ -1306,6 +1400,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songHasEnded = false;
         isPaused = false;
         showSongSettings = false;
+        showMainMenu = false;
         showSongSelection = false;
         showTrackSelection = false;
         showGlobalSettings = false;
@@ -2313,13 +2408,14 @@ private void ParseUdpState()
             return;
         }
 
-        if (!loopEnabled && !songHasEnded && !showSongSelection && !showTrackSelection && songTimer >= duration)
+        if (!loopEnabled && !songHasEnded && !showMainMenu && !showSongSelection && !showTrackSelection && songTimer >= duration)
         {
             songTimer = duration;
             audioSongTimer = duration;
             songHasEnded = true;
             isPaused = true;
             showSongSettings = false;
+            showMainMenu = false;
             showSongSelection = false;
             showTrackSelection = false;
             showGlobalSettings = false;
@@ -2356,6 +2452,7 @@ private void ParseUdpState()
             sections = tabSections,
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
+            showMainMenu = showMainMenu,
             showSongSelection = showSongSelection,
             showTrackSelection = showTrackSelection,
             showGlobalSettings = showGlobalSettings,
@@ -2448,6 +2545,7 @@ private void ParseUdpState()
         latestNoteEventId = 0;
         bool wasPaused = isPaused;
         bool wasShowingSongSettings = showSongSettings;
+        bool wasShowingMainMenu = showMainMenu;
         bool wasShowingSongSelection = showSongSelection;
         bool wasShowingTrackSelection = showTrackSelection;
         bool wasShowingGlobalSettings = showGlobalSettings;
@@ -2464,6 +2562,7 @@ private void ParseUdpState()
         selectedLoopMarker = 1;
         playbackSpeedPercent = 100f;
         showSongSettings = preservePauseUiState ? wasShowingSongSettings : false;
+        showMainMenu = preservePauseUiState ? wasShowingMainMenu : showMainMenu;
         showSongSelection = preservePauseUiState ? wasShowingSongSelection : false;
         showTrackSelection = preservePauseUiState ? wasShowingTrackSelection : false;
         showGlobalSettings = preservePauseUiState ? wasShowingGlobalSettings : false;

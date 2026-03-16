@@ -149,6 +149,8 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label pauseHintLabel;
     private readonly Label pauseInfoLabel;
     private readonly Button loopButton;
+
+    private readonly VisualElement mainMenuOverlay;
     private readonly Slider speedSlider;
     private readonly Label speedValueLabel;
 
@@ -654,9 +656,10 @@ public sealed class TabsSongHeaderOverlay
         Button songSettingsButton = CreateActionButton("Song Settings", () => owner?.OpenSongSettingsFromUi());
         Button globalSettingsButton = CreateActionButton("Settings", () => owner?.OpenGlobalSettingsFromUi());
         Button toneLabButton = CreateActionButton("Tone Lab", () => owner?.OpenToneLabFromUi());
+        Button mainMenuButton = CreateActionButton("Main Menu", () => owner?.OpenMainMenuFromUi());
         Button resumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
-        foreach (Button button in new[] { loopButton, songSelectButton, songSettingsButton, globalSettingsButton, toneLabButton, resumeButton })
+        foreach (Button button in new[] { loopButton, songSelectButton, songSettingsButton, globalSettingsButton, toneLabButton, mainMenuButton, resumeButton })
         {
             button.style.marginRight = 10f;
             button.style.marginTop = 8f;
@@ -671,6 +674,86 @@ public sealed class TabsSongHeaderOverlay
         pauseOverlay.Add(pauseTitleLabel);
         pauseOverlay.Add(pauseHintLabel);
         pauseOverlay.Add(pauseCard);
+
+        mainMenuOverlay = CreateFullscreenOverlay();
+        Label mainMenuTopTag = CreateLabel("◉ RETRO ARCADE JAM ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        mainMenuTopTag.style.marginBottom = 6f;
+        mainMenuTopTag.style.letterSpacing = 1.4f;
+
+        VisualElement logoWrap = new VisualElement();
+        logoWrap.style.alignItems = Align.Center;
+        logoWrap.style.marginBottom = 18f;
+
+        VisualElement stringRow = new VisualElement();
+        stringRow.style.flexDirection = FlexDirection.Row;
+        stringRow.style.justifyContent = Justify.Center;
+        stringRow.style.marginBottom = -8f;
+
+        Color[] logoStringColors =
+        {
+            new Color(0.91f, 0.30f, 0.24f, 1f),
+            new Color(0.95f, 0.77f, 0.06f, 1f),
+            new Color(0.20f, 0.60f, 0.86f, 1f),
+            new Color(0.90f, 0.49f, 0.13f, 1f),
+            new Color(0.18f, 0.80f, 0.44f, 1f),
+            new Color(0.61f, 0.35f, 0.71f, 1f)
+        };
+
+        string stringWord = "STRING";
+        for (int i = 0; i < stringWord.Length; i++)
+        {
+            Label letter = CreateLabel(stringWord[i].ToString(), 132f, logoStringColors[i % logoStringColors.Length], true, TextAnchor.MiddleCenter, useTitleFont: true);
+            letter.style.marginLeft = 2f;
+            letter.style.marginRight = 2f;
+            letter.style.unityFontStyleAndWeight = FontStyle.Bold;
+            stringRow.Add(letter);
+        }
+
+        Label theoryLogo = CreateLabel("THEORY", 124f, new Color(0.87f, 0.95f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        theoryLogo.style.marginLeft = 72f;
+        theoryLogo.style.letterSpacing = 2.2f;
+
+        logoWrap.Add(stringRow);
+        logoWrap.Add(theoryLogo);
+
+        VisualElement mainMenuCard = new VisualElement();
+        mainMenuCard.style.width = 1040f;
+        mainMenuCard.style.maxWidth = 1200f;
+        mainMenuCard.style.paddingLeft = 32f;
+        mainMenuCard.style.paddingRight = 32f;
+        mainMenuCard.style.paddingTop = 26f;
+        mainMenuCard.style.paddingBottom = 26f;
+        StyleCard(mainMenuCard, new Color(0.04f, 0.07f, 0.14f, 0.96f), radius: 20f);
+
+        Label mainMenuHint = CreateLabel("Choose your next move", 30f, new Color(0.82f, 0.92f, 1f, 0.98f), false, TextAnchor.MiddleCenter);
+        mainMenuHint.style.marginBottom = 14f;
+
+        VisualElement mainMenuButtons = new VisualElement();
+        mainMenuButtons.style.flexDirection = FlexDirection.Column;
+        mainMenuButtons.style.alignItems = Align.Center;
+
+        Button continueButton = CreateActionButton("Continue", () => owner?.ContinueFromMainMenuFromUi());
+        Button libraryButton = CreateActionButton("Song Selection", () => owner?.OpenSongSelectionFromUi());
+        Button settingsButton = CreateActionButton("Settings", () => owner?.OpenGlobalSettingsFromUi());
+        Button tunerButton = CreateActionButton("Tuner (Coming Soon)", null);
+        tunerButton.SetEnabled(false);
+        tunerButton.style.opacity = 0.60f;
+        Button exitButton = CreateActionButton("Exit", () => owner?.ExitGameFromUi());
+
+        foreach (Button button in new[] { continueButton, libraryButton, settingsButton, tunerButton, exitButton })
+        {
+            button.style.width = 620f;
+            button.style.maxWidth = Length.Percent(94f);
+            button.style.marginTop = 8f;
+            button.style.marginBottom = 8f;
+            mainMenuButtons.Add(button);
+        }
+
+        mainMenuCard.Add(mainMenuHint);
+        mainMenuCard.Add(mainMenuButtons);
+        mainMenuOverlay.Add(mainMenuTopTag);
+        mainMenuOverlay.Add(logoWrap);
+        mainMenuOverlay.Add(mainMenuCard);
 
         settingsOverlay = CreateFullscreenOverlay();
         Label settingsTopTag = CreateLabel("◉ TUNE DECK ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
@@ -1057,6 +1140,7 @@ public sealed class TabsSongHeaderOverlay
         root.Add(scorePlate);
         root.Add(judgePopupLayer);
         root.Add(pauseOverlay);
+        root.Add(mainMenuOverlay);
         root.Add(settingsOverlay);
         root.Add(globalSettingsOverlay);
         root.Add(selectionOverlay);
@@ -1203,13 +1287,15 @@ public sealed class TabsSongHeaderOverlay
         settingsStartDelayLabel.text = $"Start Delay  {snapshot.songStartDelaySeconds:F2}s";
 
         bool showEnd = snapshot.songEnded;
-        bool showPause = snapshot.isPaused && !showEnd && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showMainMenu = snapshot.showMainMenu && !showEnd;
+        bool showPause = snapshot.isPaused && !showEnd && !showMainMenu && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
         bool showSettings = snapshot.showSongSettings && !showEnd;
         bool showSelection = snapshot.showSongSelection && !showEnd;
         bool showTrackSelection = snapshot.showTrackSelection && !showEnd;
         bool showGlobalSettings = snapshot.showGlobalSettings && !showEnd;
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
+        mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
         trackSelectionOverlay.style.display = showTrackSelection ? DisplayStyle.Flex : DisplayStyle.None;
