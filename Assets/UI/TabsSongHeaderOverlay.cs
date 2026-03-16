@@ -667,7 +667,7 @@ public sealed class TabsSongHeaderOverlay
             pauseButtons.Add(button);
         }
 
-        AddBottomRightPrimaryButtons(pauseOverlay, mainMenuButton, resumeButton);
+        AddBottomRightPrimaryButtons(pauseCard, mainMenuButton, resumeButton);
 
         pauseCard.Add(pauseInfoLabel);
         pauseCard.Add(speedValueLabel);
@@ -750,6 +750,7 @@ public sealed class TabsSongHeaderOverlay
             button.style.maxWidth = Length.Percent(94f);
             button.style.marginTop = 8f;
             button.style.marginBottom = 8f;
+            ApplyDefaultButtonEdgeColor(button);
             mainMenuButtons.Add(button);
         }
 
@@ -815,7 +816,7 @@ public sealed class TabsSongHeaderOverlay
             settingsButtons.Add(button);
         }
 
-        AddBottomRightPrimaryButtons(settingsOverlay, backPauseButton, resumeFromSettingsButton);
+        AddBottomRightPrimaryButtons(settingsCard, backPauseButton, resumeFromSettingsButton);
 
         settingsCard.Add(settingsTrackLabel);
         settingsCard.Add(settingsOffsetLabel);
@@ -885,7 +886,7 @@ public sealed class TabsSongHeaderOverlay
 
         Button globalBackButton = CreateActionButton("Back", () => owner?.CloseGlobalSettingsFromUi());
         Button globalResumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
-        AddBottomRightPrimaryButtons(globalSettingsOverlay, globalBackButton, globalResumeButton);
+        AddBottomRightPrimaryButtons(globalSettingsCard, globalBackButton, globalResumeButton);
         globalSettingsOverlay.Add(globalSettingsTopTag);
         globalSettingsOverlay.Add(globalSettingsTitle);
         globalSettingsOverlay.Add(globalSettingsHelp);
@@ -937,7 +938,7 @@ public sealed class TabsSongHeaderOverlay
             selectionButtons.Add(button);
         }
 
-        AddBottomRightPrimaryButtons(selectionOverlay, closeSelectionButton, resumeSelectionButton);
+        AddBottomRightPrimaryButtons(selectionCard, closeSelectionButton, resumeSelectionButton);
 
         selectionCard.Add(selectionButtons);
 
@@ -992,7 +993,7 @@ public sealed class TabsSongHeaderOverlay
             trackSelectionButtons.Add(button);
         }
 
-        AddBottomRightPrimaryButtons(trackSelectionOverlay, trackSelectionBackButton, trackSelectionResumeButton);
+        AddBottomRightPrimaryButtons(trackSelectionCard, trackSelectionBackButton, trackSelectionResumeButton);
 
         trackSelectionCard.Add(trackSelectionButtons);
         trackSelectionOverlay.Add(trackSelectionTopTag);
@@ -2031,19 +2032,17 @@ public sealed class TabsSongHeaderOverlay
         return button;
     }
 
-    private static void AddBottomRightPrimaryButtons(VisualElement overlay, params Button[] buttons)
+    private static void AddBottomRightPrimaryButtons(VisualElement container, params Button[] buttons)
     {
-        if (overlay == null || buttons == null || buttons.Length == 0)
+        if (container == null || buttons == null || buttons.Length == 0)
             return;
 
         VisualElement dock = new VisualElement();
-        dock.style.position = Position.Absolute;
-        dock.style.right = 36f;
-        dock.style.bottom = 28f;
         dock.style.flexDirection = FlexDirection.Row;
         dock.style.justifyContent = Justify.FlexEnd;
         dock.style.alignItems = Align.Center;
-        // z-index is not available on this Unity UI Toolkit version; rely on add order instead.
+        dock.style.alignSelf = Align.FlexEnd;
+        dock.style.marginTop = 16f;
 
         foreach (Button button in buttons)
         {
@@ -2056,7 +2055,20 @@ public sealed class TabsSongHeaderOverlay
             dock.Add(button);
         }
 
-        overlay.Add(dock);
+        container.Add(dock);
+    }
+
+
+    private static void ApplyDefaultButtonEdgeColor(Button button)
+    {
+        if (button == null)
+            return;
+
+        Color buttonBorderColor = new Color(0.30f, 0.50f, 0.90f, 0.88f);
+        button.style.borderTopColor = buttonBorderColor;
+        button.style.borderRightColor = buttonBorderColor;
+        button.style.borderBottomColor = buttonBorderColor;
+        button.style.borderLeftColor = buttonBorderColor;
     }
 
     private static void ApplyButtonEdgeColorByLabel(Button button, string text)
