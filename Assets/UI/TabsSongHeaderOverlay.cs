@@ -678,7 +678,7 @@ public sealed class TabsSongHeaderOverlay
         pauseOverlay.Add(pauseCard);
 
         mainMenuOverlay = CreateFullscreenOverlay();
-        Label mainMenuTopTag = CreateLabel("◉ INTERACTIVE MUSIC EXPERIENCE ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        Label mainMenuTopTag = CreateLabel("◉ INTERACTIVE MUSIC EXPERIENCE ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: false);
         mainMenuTopTag.style.marginBottom = 6f;
         mainMenuTopTag.style.letterSpacing = 1.4f;
 
@@ -712,7 +712,7 @@ public sealed class TabsSongHeaderOverlay
         }
 
         Label theoryLogo = CreateLabel("THEORY", 124f, new Color(0.87f, 0.95f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
-        theoryLogo.style.marginLeft = 72f;
+        theoryLogo.style.marginLeft = 84f;
         theoryLogo.style.letterSpacing = 2.2f;
 
         logoWrap.Add(stringRow);
