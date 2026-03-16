@@ -677,7 +677,7 @@ public sealed class TabsSongHeaderOverlay
         pauseOverlay.Add(pauseCard);
 
         mainMenuOverlay = CreateFullscreenOverlay();
-        Label mainMenuTopTag = CreateLabel("◉ RETRO ARCADE JAM ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        Label mainMenuTopTag = CreateLabel("◉ INTERACTIVE MUSIC EXPERIENCE ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         mainMenuTopTag.style.marginBottom = 6f;
         mainMenuTopTag.style.letterSpacing = 1.4f;
 
@@ -1149,7 +1149,7 @@ public sealed class TabsSongHeaderOverlay
         startupTuningReminderCard.style.alignItems = Align.Center;
         StyleCard(startupTuningReminderCard, new Color(0.05f, 0.09f, 0.16f, 0.97f), radius: 20f);
 
-        Label startupTuningReminderTitle = CreateLabel("Make sure your strings are tuned.", 60f, new Color(1f, 0.95f, 0.72f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        Label startupTuningReminderTitle = CreateLabel("Please make sure your strings are tuned.", 60f, new Color(1f, 0.95f, 0.72f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         startupTuningReminderTitle.style.unityTextAlign = TextAnchor.MiddleCenter;
         startupTuningReminderTitle.style.whiteSpace = WhiteSpace.Normal;
 
