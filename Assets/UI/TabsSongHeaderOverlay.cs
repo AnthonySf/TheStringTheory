@@ -1577,7 +1577,12 @@ public sealed class TabsSongHeaderOverlay
             text = missTexts[UnityEngine.Random.Range(0, missTexts.Length)];
         }
 
-        Label popup = CreateLabel(text, judgePopupFontSize, success ? new Color(1f, 0.90f, 0.46f, 0.99f) : new Color(1f, 0.44f, 0.62f, 0.99f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        // Use a cool cyan miss color to contrast warm sunset backgrounds while staying in the game's neon palette.
+        Color popupColor = success
+            ? new Color(1f, 0.90f, 0.46f, 0.99f)
+            : new Color(0.46f, 0.88f, 1f, 0.99f);
+
+        Label popup = CreateLabel(text, judgePopupFontSize, popupColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
         popup.style.position = Position.Absolute;
         popup.style.left = 0f;
         popup.style.right = 0f;
