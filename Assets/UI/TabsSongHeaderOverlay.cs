@@ -1358,7 +1358,6 @@ public sealed class TabsSongHeaderOverlay
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
         techniqueLegendCard.style.display = showTechniqueLegend ? DisplayStyle.Flex : DisplayStyle.None;
 
-        // Keep the startup/main-menu presentation clean: only main menu + background should be visible.
         songCard.style.display = snapshot.mainMenuFlowActive ? DisplayStyle.None : DisplayStyle.Flex;
         scorePlate.style.display = snapshot.mainMenuFlowActive ? DisplayStyle.None : DisplayStyle.Flex;
         judgePopupLayer.style.display = snapshot.mainMenuFlowActive ? DisplayStyle.None : DisplayStyle.Flex;
@@ -1943,7 +1942,6 @@ public sealed class TabsSongHeaderOverlay
             text = missTexts[UnityEngine.Random.Range(0, missTexts.Length)];
         }
 
-        // Hit uses cool cyan for contrast on warm skies; miss uses coral red to read clearly as negative feedback.
         Color popupColor = success
             ? new Color(0.46f, 0.88f, 1f, 0.99f)
             : new Color(1f, 0.36f, 0.33f, 0.99f);
