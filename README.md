@@ -49,3 +49,14 @@ If you have a `.gp` file, you can convert it to MusicXML in a minute.
 Use a free tool such as TuxGuitar, open the `.gp` file, then export it as MusicXML.
 
 The exported file works directly in StringTheory and loads tracks and guitar techniques automatically.
+
+
+
+## License
+
+All C# source code in this repository is licensed under the MIT License.
+
+Executable files (such as the note detection listener) are proprietary
+software and are NOT covered by the MIT license. All rights reserved.
+
+PS: notes/chords detection code will be opened for open source as well in a different repository soon.
