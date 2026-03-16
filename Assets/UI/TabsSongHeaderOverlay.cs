@@ -1300,13 +1300,12 @@ public sealed class TabsSongHeaderOverlay
         columnsWrapper.style.alignItems = Align.FlexStart;
         columnsWrapper.style.justifyContent = Justify.SpaceBetween;
         columnsWrapper.style.flexWrap = Wrap.NoWrap;
-        columnsWrapper.style.columnGap = 14f;
         columnsWrapper.style.minWidth = 1380f;
         columnsWrapper.style.width = Length.Percent(100f);
 
-        AddGlobalSettingsColumn(columnsWrapper, "Gameplay Mechanics");
-        AddGlobalSettingsColumn(columnsWrapper, "Tabs Visuals");
-        AddGlobalSettingsColumn(columnsWrapper, "General Visuals");
+        AddGlobalSettingsColumn(columnsWrapper, "Gameplay Mechanics", addRightSpacing: true);
+        AddGlobalSettingsColumn(columnsWrapper, "Tabs Visuals", addRightSpacing: true);
+        AddGlobalSettingsColumn(columnsWrapper, "General Visuals", addRightSpacing: false);
 
         globalSettingsScrollView.Add(columnsWrapper);
 
@@ -1353,13 +1352,15 @@ public sealed class TabsSongHeaderOverlay
         ApplyResponsiveSizing(force: true);
     }
 
-    private void AddGlobalSettingsColumn(VisualElement parent, string title)
+    private void AddGlobalSettingsColumn(VisualElement parent, string title, bool addRightSpacing)
     {
         VisualElement column = new VisualElement();
         column.style.flexGrow = 1f;
         column.style.flexShrink = 1f;
         column.style.flexBasis = 0f;
         column.style.minWidth = 420f;
+        if (addRightSpacing)
+            column.style.marginRight = 14f;
 
         Label columnTitle = CreateLabel(title, 34f, new Color(1f, 0.92f, 0.73f, 0.98f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         columnTitle.style.marginBottom = 10f;
