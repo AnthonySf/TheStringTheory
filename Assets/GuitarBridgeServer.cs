@@ -399,8 +399,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool songHasEnded;
     private bool songSelectionOpenedFromSongEnd;
     private bool showStartupTuningReminder;
-    private float startupTuningReminderHideAt = -1f;
-    private const float StartupTuningReminderDurationSeconds = 2.5f;
+    private bool resumeGameplayAfterStartupTuningReminder;
     private SongLibraryEntry currentSongEntry;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
     private bool useAutoTrackSelection = true;
@@ -457,7 +456,6 @@ public class GuitarBridgeServer : MonoBehaviour
     private void Update()
     {
         HandlePauseControls();
-        UpdateStartupTuningReminderState();
 
         if (!isPaused)
         {
@@ -495,6 +493,20 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandlePauseControls()
     {
+        if (showStartupTuningReminder)
+        {
+            if (Input.GetKeyDown(KeyCode.Space) ||
+                Input.GetKeyDown(KeyCode.Return) ||
+                Input.GetKeyDown(KeyCode.KeypadEnter) ||
+                Input.GetKeyDown(KeyCode.Escape) ||
+                Input.GetMouseButtonDown(0))
+            {
+                DismissStartupTuningReminderFromUi();
+            }
+
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
         {
             showSongSettings = !showSongSettings;
@@ -1112,6 +1124,12 @@ public class GuitarBridgeServer : MonoBehaviour
                 songSelectionOpenedFromSongEnd = false;
                 RetrySongFromUi();
             }
+            else if (mainMenuFlowActive)
+            {
+                showMainMenu = false;
+                mainMenuFlowActive = false;
+                ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
+            }
             return;
         }
 
@@ -1157,9 +1175,9 @@ public class GuitarBridgeServer : MonoBehaviour
         bool autoplay = autoplayFromSongEnd || autoplayFromMainMenuFlow;
         isPaused = !autoplay;
         if (autoplayFromMainMenuFlow)
-            ShowStartupTuningReminder();
+            ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
         SeekSongTime(-songStartDelaySeconds, false);
-        SyncAudioToSongTimer(playImmediately: autoplay);
+        SyncAudioToSongTimer(playImmediately: autoplay && !showStartupTuningReminder);
     }
 
     private void HandleLoopPlayback()
@@ -1193,7 +1211,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songHasEnded = false;
         songSelectionOpenedFromSongEnd = false;
         showStartupTuningReminder = false;
-        startupTuningReminderHideAt = -1f;
+        resumeGameplayAfterStartupTuningReminder = false;
         SyncAudioToSongTimer(playImmediately: false);
     }
 
@@ -1206,9 +1224,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showSongSelection = false;
         showTrackSelection = false;
         showGlobalSettings = false;
-        isPaused = false;
-        ShowStartupTuningReminder();
-        SyncAudioToSongTimer(playImmediately: true);
+        ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
     }
 
     public void OpenSongSelectionFromUi()
@@ -1219,21 +1235,27 @@ public class GuitarBridgeServer : MonoBehaviour
         OpenSongSelectionMenu();
     }
 
-    private void ShowStartupTuningReminder()
+    private void ShowStartupTuningReminder(bool resumePlaybackAfterDismiss)
     {
         showStartupTuningReminder = true;
-        startupTuningReminderHideAt = Time.unscaledTime + StartupTuningReminderDurationSeconds;
+        resumeGameplayAfterStartupTuningReminder = resumePlaybackAfterDismiss;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
     }
 
-    private void UpdateStartupTuningReminderState()
+    public void DismissStartupTuningReminderFromUi()
     {
-        if (!showStartupTuningReminder || startupTuningReminderHideAt < 0f)
+        if (!showStartupTuningReminder)
             return;
 
-        if (Time.unscaledTime >= startupTuningReminderHideAt)
+        showStartupTuningReminder = false;
+        bool shouldResume = resumeGameplayAfterStartupTuningReminder;
+        resumeGameplayAfterStartupTuningReminder = false;
+
+        if (shouldResume)
         {
-            showStartupTuningReminder = false;
-            startupTuningReminderHideAt = -1f;
+            isPaused = false;
+            SyncAudioToSongTimer(playImmediately: true);
         }
     }
 
