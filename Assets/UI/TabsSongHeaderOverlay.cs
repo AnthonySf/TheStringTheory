@@ -11,6 +11,16 @@ using UnityEditor;
 
 public sealed class TabsSongHeaderOverlay
 {
+    private static readonly Color[] LogoStringColors =
+    {
+        new Color(0.91f, 0.30f, 0.24f, 1f),
+        new Color(0.95f, 0.77f, 0.06f, 1f),
+        new Color(0.20f, 0.60f, 0.86f, 1f),
+        new Color(0.90f, 0.49f, 0.13f, 1f),
+        new Color(0.18f, 0.80f, 0.44f, 1f),
+        new Color(0.61f, 0.35f, 0.71f, 1f)
+    };
+
     private readonly GuitarBridgeServer owner;
     private readonly GameObject rootObject;
     private readonly UIDocument document;
@@ -268,6 +278,10 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel.style.textOverflow = TextOverflow.Clip;
         songNameLabel.style.overflow = Overflow.Visible;
         songNameLabel.style.maxWidth = 1200f;
+
+        VisualElement compactSongCardLogo = CreateStringTheoryLogo(34f, 32f, 22f, 0.7f, -4f, 1f);
+        compactSongCardLogo.style.alignSelf = Align.FlexEnd;
+        compactSongCardLogo.style.marginBottom = 6f;
 
         trackNameLabel = CreateLabel("Lead Guitar", 26f, new Color(0.72f, 0.93f, 1f, 1f), bold: false);
         trackNameLabel.style.letterSpacing = 0.2f;
@@ -686,37 +700,7 @@ public sealed class TabsSongHeaderOverlay
         logoWrap.style.alignItems = Align.Center;
         logoWrap.style.marginBottom = 18f;
 
-        VisualElement stringRow = new VisualElement();
-        stringRow.style.flexDirection = FlexDirection.Row;
-        stringRow.style.justifyContent = Justify.Center;
-        stringRow.style.marginBottom = -8f;
-
-        Color[] logoStringColors =
-        {
-            new Color(0.91f, 0.30f, 0.24f, 1f),
-            new Color(0.95f, 0.77f, 0.06f, 1f),
-            new Color(0.20f, 0.60f, 0.86f, 1f),
-            new Color(0.90f, 0.49f, 0.13f, 1f),
-            new Color(0.18f, 0.80f, 0.44f, 1f),
-            new Color(0.61f, 0.35f, 0.71f, 1f)
-        };
-
-        string stringWord = "STRING";
-        for (int i = 0; i < stringWord.Length; i++)
-        {
-            Label letter = CreateLabel(stringWord[i].ToString(), 132f, logoStringColors[i % logoStringColors.Length], true, TextAnchor.MiddleCenter, useTitleFont: true);
-            letter.style.marginLeft = 2f;
-            letter.style.marginRight = 2f;
-            letter.style.unityFontStyleAndWeight = FontStyle.Bold;
-            stringRow.Add(letter);
-        }
-
-        Label theoryLogo = CreateLabel("THEORY", 124f, new Color(0.87f, 0.95f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
-        theoryLogo.style.marginLeft = 84f;
-        theoryLogo.style.letterSpacing = 2.2f;
-
-        logoWrap.Add(stringRow);
-        logoWrap.Add(theoryLogo);
+        logoWrap.Add(CreateStringTheoryLogo(132f, 124f, 84f, 2.2f, -8f, 2f));
 
         VisualElement mainMenuCard = new VisualElement();
         mainMenuCard.style.width = 1040f;
@@ -1160,6 +1144,7 @@ public sealed class TabsSongHeaderOverlay
         startupTuningReminderCard.Add(startupTuningReminderContinueButton);
         startupTuningReminderOverlay.Add(startupTuningReminderCard);
 
+        songCard.Add(compactSongCardLogo);
         songCard.Add(songNameLabel);
         songCard.Add(trackNameLabel);
         songCard.Add(statusRow);
@@ -1999,6 +1984,35 @@ public sealed class TabsSongHeaderOverlay
         if (bold)
             label.style.unityFontStyleAndWeight = FontStyle.Bold;
         return label;
+    }
+
+    private VisualElement CreateStringTheoryLogo(float stringSize, float theorySize, float theoryShiftLeft, float theoryLetterSpacing, float rowBottomMargin, float stringLetterMargin)
+    {
+        VisualElement logoWrap = new VisualElement();
+        logoWrap.style.alignItems = Align.Center;
+
+        VisualElement stringRow = new VisualElement();
+        stringRow.style.flexDirection = FlexDirection.Row;
+        stringRow.style.justifyContent = Justify.Center;
+        stringRow.style.marginBottom = rowBottomMargin;
+
+        const string stringWord = "STRING";
+        for (int i = 0; i < stringWord.Length; i++)
+        {
+            Label letter = CreateLabel(stringWord[i].ToString(), stringSize, LogoStringColors[i % LogoStringColors.Length], true, TextAnchor.MiddleCenter, useTitleFont: true);
+            letter.style.marginLeft = stringLetterMargin;
+            letter.style.marginRight = stringLetterMargin;
+            letter.style.unityFontStyleAndWeight = FontStyle.Bold;
+            stringRow.Add(letter);
+        }
+
+        Label theoryLabel = CreateLabel("THEORY", theorySize, new Color(0.87f, 0.95f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        theoryLabel.style.marginLeft = theoryShiftLeft;
+        theoryLabel.style.letterSpacing = theoryLetterSpacing;
+
+        logoWrap.Add(stringRow);
+        logoWrap.Add(theoryLabel);
+        return logoWrap;
     }
 
     private Button CreateActionButton(string text, Action onClick)
