@@ -398,6 +398,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private string backingTrackLoadError = string.Empty;
     private bool songHasEnded;
     private bool songSelectionOpenedFromSongEnd;
+    private bool showStartupTuningReminder;
     private SongLibraryEntry currentSongEntry;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
     private bool useAutoTrackSelection = true;
@@ -1152,6 +1153,8 @@ public class GuitarBridgeServer : MonoBehaviour
         mainMenuFlowActive = false;
         bool autoplay = autoplayFromSongEnd || autoplayFromMainMenuFlow;
         isPaused = !autoplay;
+        if (autoplayFromMainMenuFlow)
+            showStartupTuningReminder = true;
         SeekSongTime(-songStartDelaySeconds, false);
         SyncAudioToSongTimer(playImmediately: autoplay);
     }
@@ -1186,6 +1189,7 @@ public class GuitarBridgeServer : MonoBehaviour
         isPaused = true;
         songHasEnded = false;
         songSelectionOpenedFromSongEnd = false;
+        showStartupTuningReminder = false;
         SyncAudioToSongTimer(playImmediately: false);
     }
 
@@ -1199,6 +1203,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showTrackSelection = false;
         showGlobalSettings = false;
         isPaused = false;
+        showStartupTuningReminder = true;
         SyncAudioToSongTimer(playImmediately: true);
     }
 
@@ -1208,6 +1213,11 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!showMainMenu)
             mainMenuFlowActive = false;
         OpenSongSelectionMenu();
+    }
+
+    public void DismissStartupTuningReminderFromUi()
+    {
+        showStartupTuningReminder = false;
     }
     public void OpenSongSelectionFromSongEndFromUi()
     {
@@ -2505,6 +2515,7 @@ private void ParseUdpState()
             songProgressNormalized = GetSongProgressNormalized(),
             songEnded = songHasEnded,
             currentTrackBestScorePercent = Mathf.Clamp(currentTrackBestScorePercent, 0f, 100f),
+            showStartupTuningReminder = showStartupTuningReminder,
             runtimeSettingsSections = BuildRuntimeSettingsSnapshot()
         };
     }
