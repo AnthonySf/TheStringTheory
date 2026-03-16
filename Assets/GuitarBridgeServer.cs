@@ -102,12 +102,12 @@ public class GuitarBridgeServer : MonoBehaviour
     [Header("Colors - Strings")]
     public Color[] stringColors = new Color[]
     {
-        new Color(0.91f, 0.30f, 0.24f, 1f), // Low E - Rocksmith red
-        new Color(0.95f, 0.77f, 0.06f, 1f), // A - Rocksmith yellow
-        new Color(0.20f, 0.60f, 0.86f, 1f), // D - Rocksmith blue
-        new Color(0.90f, 0.49f, 0.13f, 1f), // G - Rocksmith orange
-        new Color(0.18f, 0.80f, 0.44f, 1f), // B - Rocksmith green
-        new Color(0.61f, 0.35f, 0.71f, 1f)  // High E - Rocksmith purple
+        new Color(0.91f, 0.30f, 0.24f, 1f),
+        new Color(0.95f, 0.77f, 0.06f, 1f),
+        new Color(0.20f, 0.60f, 0.86f, 1f),
+        new Color(0.90f, 0.49f, 0.13f, 1f),
+        new Color(0.18f, 0.80f, 0.44f, 1f),
+        new Color(0.61f, 0.35f, 0.71f, 1f)
     };
 
     [Header("Colors - Status")]
