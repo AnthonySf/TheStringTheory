@@ -2090,7 +2090,7 @@ public sealed class TabsSongHeaderOverlay
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
         float pedalWidth = Mathf.Clamp(Screen.width * 0.25f, 430f, 620f);
         float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
-        float knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 62f);
+        float knobSize = Mathf.Clamp(pedalHeight * 0.24f, 42f, 78f);
         float ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
         float footswitchSize = Mathf.Clamp(pedalHeight * 0.23f, 42f, 74f);
         float meterWidth = Mathf.Clamp(pedalWidth * 0.34f, 200f, 300f);
@@ -2129,7 +2129,7 @@ public sealed class TabsSongHeaderOverlay
         if (pedalHeight < minPedalHeightForContent)
         {
             pedalHeight = Mathf.Clamp(minPedalHeightForContent, 300f, 640f);
-            knobSize = Mathf.Clamp(pedalHeight * 0.19f, 34f, 64f);
+            knobSize = Mathf.Clamp(pedalHeight * 0.24f, 42f, 80f);
             ledSize = Mathf.Clamp(knobSize * 0.42f, 12f, 20f);
             footswitchSize = Mathf.Clamp(pedalHeight * 0.23f, 42f, 76f);
             meterHeight = Mathf.Clamp(pedalHeight * 0.30f, 72f, 130f);
