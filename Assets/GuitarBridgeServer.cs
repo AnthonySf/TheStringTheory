@@ -2589,7 +2589,7 @@ private void ParseUdpState()
         playbackSpeedPercent = 100f;
         showSongSettings = preservePauseUiState ? wasShowingSongSettings : false;
         showMainMenu = preservePauseUiState ? wasShowingMainMenu : showMainMenu;
-        mainMenuFlowActive = preservePauseUiState ? wasMainMenuFlowActive : false;
+        mainMenuFlowActive = preservePauseUiState ? wasMainMenuFlowActive : showMainMenu;
         showSongSelection = preservePauseUiState ? wasShowingSongSelection : false;
         showTrackSelection = preservePauseUiState ? wasShowingTrackSelection : false;
         showGlobalSettings = preservePauseUiState ? wasShowingGlobalSettings : false;
