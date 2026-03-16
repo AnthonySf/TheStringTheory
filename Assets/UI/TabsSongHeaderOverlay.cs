@@ -166,8 +166,11 @@ public sealed class TabsSongHeaderOverlay
     private readonly List<SongSelectionRow> selectionRows = new List<SongSelectionRow>();
 
     private readonly VisualElement songEndOverlay;
+    private readonly VisualElement songEndCard;
     private readonly Label songEndTitleLabel;
-    private readonly Label songEndSummaryLabel;
+    private readonly Label songEndSongLabel;
+    private readonly Label songEndTrackLabel;
+    private readonly Label songEndSpeedLabel;
     private readonly Label songEndScoreLabel;
     private readonly Label songEndRatingLabel;
 
@@ -838,13 +841,55 @@ public sealed class TabsSongHeaderOverlay
 
         songEndOverlay = CreateFullscreenOverlay();
         songEndOverlay.style.display = DisplayStyle.None;
+
+        songEndCard = new VisualElement();
+        songEndCard.style.width = 1340f;
+        songEndCard.style.maxWidth = 1540f;
+        songEndCard.style.paddingLeft = 44f;
+        songEndCard.style.paddingRight = 44f;
+        songEndCard.style.paddingTop = 34f;
+        songEndCard.style.paddingBottom = 34f;
+        StyleCard(songEndCard, new Color(0.03f, 0.06f, 0.14f, 0.985f), radius: 24f);
+        songEndCard.style.borderTopWidth = 4f;
+        songEndCard.style.borderRightWidth = 4f;
+        songEndCard.style.borderBottomWidth = 4f;
+        songEndCard.style.borderLeftWidth = 4f;
+        Color endCardBorder = new Color(0.92f, 0.96f, 1f, 0.94f);
+        songEndCard.style.borderTopColor = endCardBorder;
+        songEndCard.style.borderRightColor = endCardBorder;
+        songEndCard.style.borderBottomColor = endCardBorder;
+        songEndCard.style.borderLeftColor = endCardBorder;
+        songEndCard.style.alignItems = Align.Center;
+
         songEndTitleLabel = CreateLabel("SONG COMPLETE", 106f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
-        songEndTitleLabel.style.marginBottom = 10f;
-        songEndSummaryLabel = CreateLabel(string.Empty, 34f, new Color(0.88f, 0.95f, 1f, 1f), false, TextAnchor.MiddleCenter);
-        songEndSummaryLabel.style.marginBottom = 8f;
-        songEndScoreLabel = CreateLabel("SCORE 100.0%", 54f, new Color(1f, 0.95f, 0.78f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
-        songEndScoreLabel.style.marginBottom = 8f;
-        songEndRatingLabel = CreateLabel("Perfect!", 48f, new Color(0.57f, 0.95f, 0.67f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        songEndTitleLabel.style.marginBottom = 12f;
+
+        songEndSongLabel = CreateLabel("Song", 74f, new Color(1f, 0.98f, 0.86f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        songEndSongLabel.style.marginBottom = 10f;
+
+        songEndTrackLabel = CreateLabel("Track", 44f, new Color(0.82f, 0.93f, 1f, 1f), true, TextAnchor.MiddleCenter);
+        songEndTrackLabel.style.marginBottom = 6f;
+
+        songEndSpeedLabel = CreateLabel("Speed 100%", 40f, new Color(0.84f, 0.94f, 1f, 1f), true, TextAnchor.MiddleCenter);
+        songEndSpeedLabel.style.marginBottom = 18f;
+
+        songEndScoreLabel = CreateLabel("SCORE 100.0%", 64f, new Color(1f, 0.95f, 0.78f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        songEndScoreLabel.style.marginBottom = 12f;
+
+        songEndRatingLabel = CreateLabel("Perfect!", 58f, new Color(0.57f, 0.95f, 0.67f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        songEndRatingLabel.style.marginBottom = 20f;
+
+        VisualElement songEndButtons = new VisualElement();
+        songEndButtons.style.flexDirection = FlexDirection.Row;
+        songEndButtons.style.flexWrap = Wrap.Wrap;
+        songEndButtons.style.justifyContent = Justify.Center;
+
+        Button retryButton = CreateActionButton("Retry", () => owner?.RetrySongFromUi());
+        Button selectionButton = CreateActionButton("Song Selection", () => owner?.OpenSongSelectionFromSongEndFromUi());
+        retryButton.style.marginRight = 12f;
+        selectionButton.style.marginLeft = 12f;
+        songEndButtons.Add(retryButton);
+        songEndButtons.Add(selectionButton);
 
         songCard.Add(songNameLabel);
         songCard.Add(trackNameLabel);
@@ -856,10 +901,14 @@ public sealed class TabsSongHeaderOverlay
         root.Add(settingsOverlay);
         root.Add(globalSettingsOverlay);
         root.Add(selectionOverlay);
-        songEndOverlay.Add(songEndTitleLabel);
-        songEndOverlay.Add(songEndSummaryLabel);
-        songEndOverlay.Add(songEndScoreLabel);
-        songEndOverlay.Add(songEndRatingLabel);
+        songEndCard.Add(songEndTitleLabel);
+        songEndCard.Add(songEndSongLabel);
+        songEndCard.Add(songEndTrackLabel);
+        songEndCard.Add(songEndSpeedLabel);
+        songEndCard.Add(songEndScoreLabel);
+        songEndCard.Add(songEndRatingLabel);
+        songEndCard.Add(songEndButtons);
+        songEndOverlay.Add(songEndCard);
         root.Add(songEndOverlay);
 
         ApplyResponsiveSizing(force: true);
@@ -1018,8 +1067,10 @@ public sealed class TabsSongHeaderOverlay
         if (showEnd)
         {
             string rating = GetScoreRating(scorePercent);
-            songEndSummaryLabel.text = $"{songName}  •  {trackName}  •  Speed {speedPercent:F0}%";
-            songEndScoreLabel.text = $"SCORE {scorePercent:F1}%";
+            songEndSongLabel.text = songName;
+            songEndTrackLabel.text = $"Track: {trackName}";
+            songEndSpeedLabel.text = $"Speed: {speedPercent:F0}%";
+            songEndScoreLabel.text = $"Score: {scorePercent:F1}%";
             songEndRatingLabel.text = rating;
             songEndRatingLabel.style.color = scorePercent >= 95f
                 ? new Color(0.58f, 0.96f, 0.68f, 1f)
@@ -1237,10 +1288,25 @@ public sealed class TabsSongHeaderOverlay
     private VisualElement CreateGlobalSettingRow(RuntimeSettingSnapshot setting)
     {
         VisualElement row = new VisualElement();
-        row.style.marginBottom = 10f;
+        row.style.marginBottom = 12f;
+        row.style.paddingLeft = 12f;
+        row.style.paddingRight = 12f;
+        row.style.paddingTop = 10f;
         row.style.paddingBottom = 10f;
-        row.style.borderBottomWidth = 1f;
-        row.style.borderBottomColor = new Color(0.28f, 0.42f, 0.65f, 0.36f);
+        row.style.backgroundColor = new Color(0.09f, 0.14f, 0.24f, 0.84f);
+        row.style.borderTopWidth = 2f;
+        row.style.borderRightWidth = 2f;
+        row.style.borderBottomWidth = 2f;
+        row.style.borderLeftWidth = 2f;
+        Color rowBorderColor = new Color(0.90f, 0.95f, 1f, 0.84f);
+        row.style.borderTopColor = rowBorderColor;
+        row.style.borderRightColor = rowBorderColor;
+        row.style.borderBottomColor = rowBorderColor;
+        row.style.borderLeftColor = rowBorderColor;
+        row.style.borderTopLeftRadius = 10f;
+        row.style.borderTopRightRadius = 10f;
+        row.style.borderBottomLeftRadius = 10f;
+        row.style.borderBottomRightRadius = 10f;
 
         Label label = CreateLabel(setting.label, 34f, Color.white, true);
         label.AddToClassList("global-setting-title");
@@ -1371,7 +1437,7 @@ public sealed class TabsSongHeaderOverlay
         popup.style.opacity = 1f;
         popup.style.scale = new Scale(new Vector3(1.14f, 1.14f, 1f));
 
-        float baseY = Mathf.Clamp(Screen.height * 0.34f, 240f, 420f);
+        float baseY = Mathf.Clamp(Screen.height * 0.62f, 430f, 780f);
         int layer = Mathf.Min(activeJudgePopups.Count, 4);
         float startY = baseY + layer * 24f;
         popup.style.top = startY;
@@ -1959,15 +2025,17 @@ public sealed class TabsSongHeaderOverlay
         scorePedalFootswitchRight.style.borderTopRightRadius = footswitchSize * 0.5f;
         scorePedalFootswitchRight.style.borderBottomLeftRadius = footswitchSize * 0.5f;
         scorePedalFootswitchRight.style.borderBottomRightRadius = footswitchSize * 0.5f;
-        judgePopupFontSize = Mathf.Clamp(screenHeight * 0.072f, 64f, 108f);
+        judgePopupFontSize = Mathf.Clamp(screenHeight * 0.046f, 38f, 66f);
         pauseTitleLabel.style.fontSize = pauseSize;
         pauseHintLabel.style.fontSize = bodySize * 0.85f;
         pauseInfoLabel.style.fontSize = bodySize * 0.80f;
         speedValueLabel.style.fontSize = bodySize * 0.85f;
-        songEndTitleLabel.style.fontSize = pauseSize * 0.78f;
-        songEndSummaryLabel.style.fontSize = bodySize * 0.78f;
-        songEndScoreLabel.style.fontSize = bodySize * 1.04f;
-        songEndRatingLabel.style.fontSize = bodySize * 0.95f;
+        songEndTitleLabel.style.fontSize = pauseSize * 0.70f;
+        songEndSongLabel.style.fontSize = bodySize * 1.30f;
+        songEndTrackLabel.style.fontSize = bodySize * 0.92f;
+        songEndSpeedLabel.style.fontSize = bodySize * 0.84f;
+        songEndScoreLabel.style.fontSize = bodySize * 1.16f;
+        songEndRatingLabel.style.fontSize = bodySize * 1.00f;
         settingsTrackLabel.style.fontSize = bodySize * 0.90f;
         settingsOffsetLabel.style.fontSize = bodySize * 0.80f;
         settingsTabSpeedLabel.style.fontSize = bodySize * 0.80f;
