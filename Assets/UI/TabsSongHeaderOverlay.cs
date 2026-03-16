@@ -343,11 +343,12 @@ public sealed class TabsSongHeaderOverlay
         pedalTopRow.style.flexDirection = FlexDirection.Row;
         pedalTopRow.style.alignItems = Align.Center;
         pedalTopRow.style.justifyContent = Justify.SpaceBetween;
-        pedalTopRow.style.marginBottom = 6f;
+        pedalTopRow.style.marginBottom = 12f;
 
-        scorePedalBrandLabel = CreateLabel("STRING THEORY", 14f, new Color(0.95f, 0.99f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: true);
+        scorePedalBrandLabel = CreateLabel("STRING THEORY", 18f, new Color(0.95f, 0.99f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: true);
         scorePedalBrandLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
-        scorePedalBrandLabel.style.letterSpacing = 0.8f;
+        scorePedalBrandLabel.style.letterSpacing = 0.9f;
+        scorePedalBrandLabel.style.marginBottom = 4f;
 
         scorePedalLed = new VisualElement();
         scorePedalLed.style.width = 14f;
@@ -373,7 +374,7 @@ public sealed class TabsSongHeaderOverlay
         pedalKnobRow.style.flexDirection = FlexDirection.Row;
         pedalKnobRow.style.justifyContent = Justify.SpaceAround;
         pedalKnobRow.style.alignItems = Align.Center;
-        pedalKnobRow.style.marginBottom = 16f;
+        pedalKnobRow.style.marginBottom = 24f;
 
         scorePedalKnobLeft = CreatePedalKnob();
         scorePedalKnobMid = CreatePedalKnob();
@@ -2098,7 +2099,7 @@ public sealed class TabsSongHeaderOverlay
         scoreTitleLabel.style.fontSize = bodySize * 0.48f;
         scorePercentLabel.style.fontSize = bodySize * 1.30f;
         noteTallyLabel.style.fontSize = bodySize * 0.58f;
-        scorePedalBrandLabel.style.fontSize = Mathf.Clamp(bodySize * 0.33f, 12f, 19f);
+        scorePedalBrandLabel.style.fontSize = Mathf.Clamp(bodySize * 0.43f, 14f, 24f);
         inputMeterLabel.style.fontSize = Mathf.Clamp(bodySize * 0.44f, 13f, 20f);
         inputMeterWrap.style.width = meterWidth;
         inputMeterFace.style.width = meterWidth;
