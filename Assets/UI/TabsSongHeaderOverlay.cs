@@ -660,7 +660,7 @@ public sealed class TabsSongHeaderOverlay
         Button mainMenuButton = CreateActionButton("Main Menu", () => owner?.OpenMainMenuFromUi());
         Button resumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
-        foreach (Button button in new[] { loopButton, songSelectButton, songSettingsButton, globalSettingsButton, toneLabButton, mainMenuButton, resumeButton })
+        foreach (Button button in new[] { loopButton, songSelectButton, songSettingsButton, globalSettingsButton, toneLabButton })
         {
             button.style.marginRight = 10f;
             button.style.marginTop = 8f;
@@ -671,13 +671,14 @@ public sealed class TabsSongHeaderOverlay
         pauseCard.Add(speedValueLabel);
         pauseCard.Add(speedSlider);
         pauseCard.Add(pauseButtons);
+        AddBottomRightPrimaryButtons(pauseCard, mainMenuButton, resumeButton);
         pauseOverlay.Add(pauseStarsLabel);
         pauseOverlay.Add(pauseTitleLabel);
         pauseOverlay.Add(pauseHintLabel);
         pauseOverlay.Add(pauseCard);
 
         mainMenuOverlay = CreateFullscreenOverlay();
-        Label mainMenuTopTag = CreateLabel("◉ INTERACTIVE MUSIC EXPERIENCE ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        Label mainMenuTopTag = CreateLabel("◉ INTERACTIVE MUSIC EXPERIENCE ◉", 30f, new Color(1f, 0.73f, 0.33f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: false);
         mainMenuTopTag.style.marginBottom = 6f;
         mainMenuTopTag.style.letterSpacing = 1.4f;
 
@@ -711,7 +712,7 @@ public sealed class TabsSongHeaderOverlay
         }
 
         Label theoryLogo = CreateLabel("THEORY", 124f, new Color(0.87f, 0.95f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
-        theoryLogo.style.marginLeft = 72f;
+        theoryLogo.style.marginLeft = 84f;
         theoryLogo.style.letterSpacing = 2.2f;
 
         logoWrap.Add(stringRow);
@@ -748,6 +749,7 @@ public sealed class TabsSongHeaderOverlay
             button.style.maxWidth = Length.Percent(94f);
             button.style.marginTop = 8f;
             button.style.marginBottom = 8f;
+            ApplyDefaultButtonEdgeColor(button);
             mainMenuButtons.Add(button);
         }
 
@@ -806,7 +808,7 @@ public sealed class TabsSongHeaderOverlay
         Button backPauseButton = CreateActionButton("Back", () => owner?.CloseSongSettingsFromUi());
         Button resumeFromSettingsButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
-        foreach (Button button in new[] { prevTrackButton, nextTrackButton, offsetScopeButton, backPauseButton, resumeFromSettingsButton })
+        foreach (Button button in new[] { prevTrackButton, nextTrackButton, offsetScopeButton })
         {
             button.style.marginRight = 10f;
             button.style.marginTop = 8f;
@@ -821,6 +823,7 @@ public sealed class TabsSongHeaderOverlay
         settingsCard.Add(settingsStartDelayLabel);
         settingsCard.Add(settingsStartDelaySlider);
         settingsCard.Add(settingsButtons);
+        AddBottomRightPrimaryButtons(settingsCard, backPauseButton, resumeFromSettingsButton);
 
         settingsOverlay.Add(settingsTopTag);
         settingsOverlay.Add(settingsTitle);
@@ -879,22 +882,9 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsScrollView.style.marginBottom = 8f;
         globalSettingsCard.Add(globalSettingsScrollView);
 
-        VisualElement globalButtons = new VisualElement();
-        globalButtons.style.flexDirection = FlexDirection.Row;
-        globalButtons.style.flexWrap = Wrap.Wrap;
-        globalButtons.style.marginTop = 10f;
-        globalButtons.style.flexShrink = 0f;
-
         Button globalBackButton = CreateActionButton("Back", () => owner?.CloseGlobalSettingsFromUi());
         Button globalResumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
-        foreach (Button button in new[] { globalBackButton, globalResumeButton })
-        {
-            button.style.marginRight = 10f;
-            button.style.marginTop = 8f;
-            globalButtons.Add(button);
-        }
-
-        globalSettingsCard.Add(globalButtons);
+        AddBottomRightPrimaryButtons(globalSettingsCard, globalBackButton, globalResumeButton);
         globalSettingsOverlay.Add(globalSettingsTopTag);
         globalSettingsOverlay.Add(globalSettingsTitle);
         globalSettingsOverlay.Add(globalSettingsHelp);
@@ -939,7 +929,7 @@ public sealed class TabsSongHeaderOverlay
         Button closeSelectionButton = CreateActionButton("Back", () => owner?.CloseSongSelectionFromUi());
         Button resumeSelectionButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
 
-        foreach (Button button in new[] { upButton, downButton, openSongsFolderButton, refreshSongsButton, closeSelectionButton, resumeSelectionButton })
+        foreach (Button button in new[] { upButton, downButton, openSongsFolderButton, refreshSongsButton })
         {
             button.style.marginRight = 10f;
             button.style.marginTop = 8f;
@@ -947,6 +937,7 @@ public sealed class TabsSongHeaderOverlay
         }
 
         selectionCard.Add(selectionButtons);
+        AddBottomRightPrimaryButtons(selectionCard, closeSelectionButton, resumeSelectionButton);
 
         selectionOverlay.Add(selectionTopTag);
         selectionOverlay.Add(selectionTitle);
@@ -983,12 +974,15 @@ public sealed class TabsSongHeaderOverlay
         trackSelectionButtons.style.flexWrap = Wrap.Wrap;
         trackSelectionButtons.style.marginTop = 14f;
 
+        Button trackSelectionUpButton = CreateActionButton("Up", () => owner?.MoveTrackSelectionFromUiList(-1));
+        Button trackSelectionDownButton = CreateActionButton("Down", () => owner?.MoveTrackSelectionFromUiList(1));
+        Button trackSelectionBackButton = CreateActionButton("Back", () => owner?.BackToSongSelectionFromUi());
+        Button trackSelectionResumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
+
         foreach (Button button in new[]
         {
-            CreateActionButton("Up", () => owner?.MoveTrackSelectionFromUiList(-1)),
-            CreateActionButton("Down", () => owner?.MoveTrackSelectionFromUiList(1)),
-            CreateActionButton("Back", () => owner?.BackToSongSelectionFromUi()),
-            CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi())
+            trackSelectionUpButton,
+            trackSelectionDownButton
         })
         {
             button.style.marginRight = 10f;
@@ -997,6 +991,7 @@ public sealed class TabsSongHeaderOverlay
         }
 
         trackSelectionCard.Add(trackSelectionButtons);
+        AddBottomRightPrimaryButtons(trackSelectionCard, trackSelectionBackButton, trackSelectionResumeButton);
         trackSelectionOverlay.Add(trackSelectionTopTag);
         trackSelectionOverlay.Add(trackSelectionTitleLabel);
         trackSelectionOverlay.Add(trackSelectionSubtitleLabel);
@@ -2025,16 +2020,123 @@ public sealed class TabsSongHeaderOverlay
         button.style.borderRightWidth = 2f;
         button.style.borderBottomWidth = 6f;
         button.style.borderLeftWidth = 2f;
-        Color buttonBorderColor = new Color(0.30f, 0.50f, 0.90f, 0.88f);
-        button.style.borderTopColor = buttonBorderColor;
-        button.style.borderRightColor = buttonBorderColor;
-        button.style.borderBottomColor = buttonBorderColor;
-        button.style.borderLeftColor = buttonBorderColor;
+        ApplyButtonEdgeColorByLabel(button, text);
         button.style.unityTextAlign = TextAnchor.MiddleCenter;
         button.style.letterSpacing = 0.35f;
         button.style.marginBottom = 3f;
         button.style.unityFontDefinition = bodyFontDefinition;
         return button;
+    }
+
+    private static void AddBottomRightPrimaryButtons(VisualElement container, params Button[] buttons)
+    {
+        if (container == null || buttons == null || buttons.Length == 0)
+            return;
+
+        const string spacerName = "primary-actions-dock-spacer";
+        const string dockName = "primary-actions-dock";
+
+        container.style.position = Position.Relative;
+
+        VisualElement existingDock = container.Q<VisualElement>(dockName);
+        if (existingDock != null)
+            existingDock.RemoveFromHierarchy();
+
+        VisualElement spacer = container.Q<VisualElement>(spacerName);
+        if (spacer == null)
+        {
+            spacer = new VisualElement();
+            spacer.name = spacerName;
+            spacer.style.height = 96f;
+            spacer.style.flexShrink = 0f;
+            spacer.style.marginTop = 18f;
+            spacer.pickingMode = PickingMode.Ignore;
+            container.Add(spacer);
+        }
+
+        VisualElement dock = new VisualElement();
+        dock.name = dockName;
+        dock.style.position = Position.Absolute;
+        dock.style.right = 0f;
+        dock.style.bottom = 0f;
+        dock.style.flexDirection = FlexDirection.Row;
+        dock.style.justifyContent = Justify.FlexEnd;
+        dock.style.alignItems = Align.Center;
+        dock.style.paddingRight = 12f;
+        dock.style.paddingBottom = 12f;
+
+        foreach (Button button in buttons)
+        {
+            if (button == null)
+                continue;
+
+            button.style.marginLeft = 12f;
+            button.style.marginTop = 0f;
+            button.style.marginBottom = 0f;
+            dock.Add(button);
+        }
+
+        container.Add(dock);
+    }
+
+
+    private static void ApplyDefaultButtonEdgeColor(Button button)
+    {
+        if (button == null)
+            return;
+
+        Color buttonBorderColor = new Color(0.30f, 0.50f, 0.90f, 0.88f);
+        button.style.borderTopColor = buttonBorderColor;
+        button.style.borderRightColor = buttonBorderColor;
+        button.style.borderBottomColor = buttonBorderColor;
+        button.style.borderLeftColor = buttonBorderColor;
+    }
+
+    private static void ApplyButtonEdgeColorByLabel(Button button, string text)
+    {
+        if (button == null)
+            return;
+
+        string normalized = (text ?? string.Empty).Trim();
+        Color accent = new Color(0.30f, 0.50f, 0.90f, 0.88f);
+
+        if (normalized.StartsWith("Loop", StringComparison.OrdinalIgnoreCase))
+            accent = new Color(1.00f, 0.20f, 0.20f, 0.94f);
+        else if (ContainsIgnoreCase(normalized, "Resume") || ContainsIgnoreCase(normalized, "Continue"))
+            accent = new Color(0.19f, 0.81f, 0.55f, 0.94f);
+        else if (ContainsIgnoreCase(normalized, "Back") || ContainsIgnoreCase(normalized, "Main Menu"))
+            accent = new Color(0.57f, 0.67f, 0.94f, 0.92f);
+        else if (ContainsIgnoreCase(normalized, "Song Selection") || ContainsIgnoreCase(normalized, "Library"))
+            accent = new Color(0.31f, 0.79f, 0.94f, 0.92f);
+        else if (ContainsIgnoreCase(normalized, "Song Settings") || ContainsIgnoreCase(normalized, "Settings"))
+            accent = new Color(0.66f, 0.56f, 0.95f, 0.92f);
+        else if (ContainsIgnoreCase(normalized, "Tone Lab"))
+            accent = new Color(0.17f, 0.84f, 0.85f, 0.92f);
+        else if (ContainsIgnoreCase(normalized, "Track") || ContainsIgnoreCase(normalized, "Offset"))
+            accent = new Color(0.95f, 0.74f, 0.33f, 0.92f);
+        else if (ContainsIgnoreCase(normalized, "Up") || ContainsIgnoreCase(normalized, "Down") || ContainsIgnoreCase(normalized, "Refresh"))
+            accent = new Color(0.37f, 0.67f, 0.97f, 0.90f);
+        else if (ContainsIgnoreCase(normalized, "Folder"))
+            accent = new Color(0.41f, 0.81f, 0.58f, 0.92f);
+        else if (ContainsIgnoreCase(normalized, "Exit"))
+            accent = new Color(0.92f, 0.37f, 0.45f, 0.92f);
+
+        Color top = new Color(Mathf.Clamp01(accent.r * 1.12f), Mathf.Clamp01(accent.g * 1.12f), Mathf.Clamp01(accent.b * 1.12f), accent.a);
+        Color side = new Color(Mathf.Clamp01(accent.r * 0.92f), Mathf.Clamp01(accent.g * 0.92f), Mathf.Clamp01(accent.b * 0.92f), accent.a);
+        Color bottom = new Color(Mathf.Clamp01(accent.r * 0.70f), Mathf.Clamp01(accent.g * 0.70f), Mathf.Clamp01(accent.b * 0.70f), accent.a);
+
+        button.style.borderTopColor = top;
+        button.style.borderRightColor = side;
+        button.style.borderBottomColor = bottom;
+        button.style.borderLeftColor = side;
+    }
+
+    private static bool ContainsIgnoreCase(string source, string token)
+    {
+        if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(token))
+            return false;
+
+        return source.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static VisualElement CreatePedalKnob()
