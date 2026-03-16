@@ -555,7 +555,7 @@ public sealed class TabsSongHeaderOverlay
         scoreTitleLabel.style.marginBottom = 0f;
         scoreTitleLabel.style.flexShrink = 0f;
 
-        scorePercentLabel = CreateLabel("0.0%", 58f, new Color(0.06f, 0.20f, 0.21f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        scorePercentLabel = CreateLabel("0.0", 58f, new Color(0.06f, 0.20f, 0.21f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         scorePercentLabel.style.letterSpacing = 0.25f;
         scorePercentLabel.style.marginTop = -2f;
         scorePercentLabel.style.marginBottom = 1f;
@@ -1030,7 +1030,7 @@ public sealed class TabsSongHeaderOverlay
         float scorePercent = denominator > 0
             ? (100f * scoreHits / denominator)
             : 0f;
-        scorePercentLabel.text = $"{scorePercent:F1}%";
+        scorePercentLabel.text = $"{scorePercent:F1}";
         noteTallyLabel.text = $"HITS {scoreHits}  •  MISS {scoreMisses}";
 
         wasLoopEnabled = loopEnabled;
