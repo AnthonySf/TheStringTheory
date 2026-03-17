@@ -30,6 +30,10 @@ Live note and chord detection powers the scoring system, so your performance is 
 
 There is also a simple amp simulator app included in the project.
 
+NOTE:
+The detector uses your system’s default recording device. Please set your guitar interface / mic as the default input before launching. For multi-input interfaces, use input 1.
+Project will be updated to have a special UI to select input device next.
+
 ## Adding songs
 
 Adding songs is intentionally very easy.
