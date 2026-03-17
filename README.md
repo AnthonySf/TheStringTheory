@@ -15,14 +15,14 @@ Live note and chord detection powers the scoring system, so your performance is 
 - A scoring system so you can track how well you are doing
   
 - Looping for any section you select
-![Gameplay](Assets/1.png)
+![Gameplay](Assets/2.png)
 
 - Slow down playback so hard parts are easier to learn
   
 - Timing offset controls by track and by full song
   
 - Instant track switching inside the same song
-![Gameplay](Assets/2.png)
+![Gameplay](Assets/3.png)
   
 - Lots of settings for gameplay and practice behavior
   
