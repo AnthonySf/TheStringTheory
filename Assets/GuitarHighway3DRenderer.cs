@@ -296,7 +296,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             {
                 GameObject textObj = new GameObject("FretNum_" + fret);
                 textObj.transform.SetParent(root.transform, false);
-                textObj.transform.position = new Vector3(wireX - (owner.FretSpacing * 0.5f), 0.45f, owner.StrikeLineZ + 0.12f);
+                textObj.transform.position = new Vector3(wireX - (owner.FretSpacing * 0.5f), owner.highwayFretNumberYOffset, owner.StrikeLineZ + owner.highwayFretNumberZOffset);
                 textObj.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
                 TextMeshPro tm = textObj.AddComponent<TextMeshPro>();
@@ -311,7 +311,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             GameObject openText = new GameObject("FretNum_0");
             openText.transform.SetParent(root.transform, false);
-            openText.transform.position = new Vector3(GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)), 0.45f, owner.StrikeLineZ + 0.12f);
+            openText.transform.position = new Vector3(GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)), owner.highwayFretNumberYOffset, owner.StrikeLineZ + owner.highwayFretNumberZOffset);
             openText.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
             TextMeshPro tm0 = openText.AddComponent<TextMeshPro>();
@@ -419,7 +419,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void GenerateLaneGuides()
     {
         int laneCount = GetFretLightColumnCount();
-        float laneSurfaceY = -1.84f;
+        float laneSurfaceY = owner.highwayLaneGuideYOffset;
         float depth = 150f;
         float centerZ = owner.StrikeLineZ + (depth * 0.5f);
 
