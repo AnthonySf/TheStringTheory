@@ -335,7 +335,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (view.outlineRoot != null)
         {
             view.outlineRoot.transform.position = view.noteRoot.transform.position;
-            view.outlineRoot.transform.localScale = view.noteRoot.transform.localScale;
+            view.outlineRoot.transform.localScale = Vector3.one;
         }
 
         bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
@@ -830,18 +830,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         GameObject outlineRoot = new GameObject("NoteOutline");
         outlineRoot.transform.SetParent(root.transform, false);
 
-        float thickness = Mathf.Max(0.05f, noteScale.y * 0.2f);
+        float thickness = Mathf.Max(0.035f, Mathf.Min(noteScale.x, noteScale.y) * 0.14f);
         float depth = Mathf.Max(0.08f, noteScale.z * 0.45f);
-        float width = noteScale.x + thickness;
-        float height = noteScale.y + thickness;
-        float halfWidth = width * 0.5f;
-        float halfHeight = height * 0.5f;
+        float width = Mathf.Max(thickness * 2f, noteScale.x);
+        float height = Mathf.Max(thickness * 2f, noteScale.y);
+        float insetHalfWidth = Mathf.Max(0f, (width - thickness) * 0.5f);
+        float insetHalfHeight = Mathf.Max(0f, (height - thickness) * 0.5f);
         Material outlineMat = owner.CreateSharedGlowMaterial(color, 0.6f);
 
-        CreateFramePiece(outlineRoot.transform, new Vector3(0f, halfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -halfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(-halfWidth, 0f, 0.02f), new Vector3(thickness, height, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(halfWidth, 0f, 0.02f), new Vector3(thickness, height, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -insetHalfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(-insetHalfWidth, 0f, 0.02f), new Vector3(thickness, height, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(insetHalfWidth, 0f, 0.02f), new Vector3(thickness, height, depth), outlineMat);
         return outlineRoot;
     }
 
