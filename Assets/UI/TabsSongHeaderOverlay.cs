@@ -175,12 +175,6 @@ public sealed class TabsSongHeaderOverlay
     private readonly Slider settingsTabSpeedSlider;
     private readonly Label settingsStartDelayLabel;
     private readonly Slider settingsStartDelaySlider;
-    private readonly Label settingsLaneGuideYOffsetLabel;
-    private readonly Slider settingsLaneGuideYOffsetSlider;
-    private readonly Label settingsFretNumberYOffsetLabel;
-    private readonly Slider settingsFretNumberYOffsetSlider;
-    private readonly Label settingsFretNumberZOffsetLabel;
-    private readonly Slider settingsFretNumberZOffsetSlider;
 
     private readonly VisualElement globalSettingsOverlay;
     private readonly VisualElement globalSettingsCard;
@@ -821,36 +815,6 @@ public sealed class TabsSongHeaderOverlay
         settingsStartDelaySlider.style.marginBottom = 14f;
         settingsStartDelaySlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetSongStartDelaySecondsFromUi(evt.newValue); });
 
-        settingsLaneGuideYOffsetLabel = CreateLabel("Highway Guide Y Offset", 31f, new Color(0.84f, 0.95f, 1f, 1f));
-        settingsLaneGuideYOffsetSlider = new Slider(-3f, 2f);
-        settingsLaneGuideYOffsetSlider.focusable = false;
-        settingsLaneGuideYOffsetSlider.style.marginBottom = 14f;
-        settingsLaneGuideYOffsetSlider.RegisterValueChangedCallback(evt =>
-        {
-            if (!suppressCallbacks)
-                owner?.SetGlobalRuntimeSettingFromUi("highway.laneGuideYOffset", evt.newValue.ToString("0.###", CultureInfo.InvariantCulture));
-        });
-
-        settingsFretNumberYOffsetLabel = CreateLabel("Highway Fret Number Y", 31f, new Color(0.84f, 0.95f, 1f, 1f));
-        settingsFretNumberYOffsetSlider = new Slider(-3f, 3f);
-        settingsFretNumberYOffsetSlider.focusable = false;
-        settingsFretNumberYOffsetSlider.style.marginBottom = 14f;
-        settingsFretNumberYOffsetSlider.RegisterValueChangedCallback(evt =>
-        {
-            if (!suppressCallbacks)
-                owner?.SetGlobalRuntimeSettingFromUi("highway.fretNumberYOffset", evt.newValue.ToString("0.###", CultureInfo.InvariantCulture));
-        });
-
-        settingsFretNumberZOffsetLabel = CreateLabel("Highway Fret Number Z", 31f, new Color(0.84f, 0.95f, 1f, 1f));
-        settingsFretNumberZOffsetSlider = new Slider(-3f, 3f);
-        settingsFretNumberZOffsetSlider.focusable = false;
-        settingsFretNumberZOffsetSlider.style.marginBottom = 14f;
-        settingsFretNumberZOffsetSlider.RegisterValueChangedCallback(evt =>
-        {
-            if (!suppressCallbacks)
-                owner?.SetGlobalRuntimeSettingFromUi("highway.fretNumberZOffset", evt.newValue.ToString("0.###", CultureInfo.InvariantCulture));
-        });
-
         VisualElement settingsButtons = new VisualElement();
         settingsButtons.style.flexDirection = FlexDirection.Row;
         settingsButtons.style.flexWrap = Wrap.Wrap;
@@ -876,12 +840,6 @@ public sealed class TabsSongHeaderOverlay
         settingsCard.Add(settingsTabSpeedSlider);
         settingsCard.Add(settingsStartDelayLabel);
         settingsCard.Add(settingsStartDelaySlider);
-        settingsCard.Add(settingsLaneGuideYOffsetLabel);
-        settingsCard.Add(settingsLaneGuideYOffsetSlider);
-        settingsCard.Add(settingsFretNumberYOffsetLabel);
-        settingsCard.Add(settingsFretNumberYOffsetSlider);
-        settingsCard.Add(settingsFretNumberZOffsetLabel);
-        settingsCard.Add(settingsFretNumberZOffsetSlider);
         settingsCard.Add(settingsButtons);
         AddBottomRightPrimaryButtons(settingsCard, backPauseButton, resumeFromSettingsButton);
 
@@ -1381,9 +1339,6 @@ public sealed class TabsSongHeaderOverlay
         settingsOffsetSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.audioOffsetMs, -2000f, 2000f));
         settingsTabSpeedSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.tabSpeedOffsetPercent, 50f, 150f));
         settingsStartDelaySlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songStartDelaySeconds, 0f, 8f));
-        settingsLaneGuideYOffsetSlider.SetValueWithoutNotify(Mathf.Clamp(owner != null ? owner.highwayLaneGuideYOffset : -1.84f, -3f, 2f));
-        settingsFretNumberYOffsetSlider.SetValueWithoutNotify(Mathf.Clamp(owner != null ? owner.highwayFretNumberYOffset : 0.45f, -3f, 3f));
-        settingsFretNumberZOffsetSlider.SetValueWithoutNotify(Mathf.Clamp(owner != null ? owner.highwayFretNumberZOffset : 0.12f, -3f, 3f));
         suppressCallbacks = false;
 
         settingsTrackLabel.text = $"Track: {trackName}   •   Scope: {snapshot.offsetScopeLabel}";
