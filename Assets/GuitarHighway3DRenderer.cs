@@ -31,6 +31,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float nextPreviewLogTime;
     private bool hasLoggedMissingCamera;
     private const int BackgroundLayer = 2;
+    private const float HighwayBackgroundScaleMultiplier = 3.5f;
+    private const float HighwayBackgroundCameraZoomMultiplier = 0.72f;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -160,6 +162,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return;
 
         backgroundEffect.Initialize(backgroundRoot.transform, owner);
+        backgroundRoot.transform.localScale = Vector3.one * HighwayBackgroundScaleMultiplier;
         SetLayerRecursively(backgroundRoot, BackgroundLayer);
     }
 
@@ -183,7 +186,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         backgroundCamera.clearFlags = CameraClearFlags.SolidColor;
         backgroundCamera.backgroundColor = owner.tabBackgroundColor;
         backgroundCamera.orthographic = true;
-        backgroundCamera.orthographicSize = owner.tabCameraSize;
+        backgroundCamera.orthographicSize = Mathf.Max(0.01f, owner.tabCameraSize * HighwayBackgroundCameraZoomMultiplier);
         backgroundCamera.transform.position = new Vector3(0f, 0f, owner.tabCameraZ);
         backgroundCamera.transform.rotation = Quaternion.identity;
         backgroundCamera.cullingMask = 1 << BackgroundLayer;
