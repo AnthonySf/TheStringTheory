@@ -1915,12 +1915,14 @@ public sealed class TabsSongHeaderOverlay
         {
             Toggle toggle = new Toggle();
             toggle.value = string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase);
+            toggle.focusable = false;
             toggle.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetGlobalRuntimeSettingFromUi(setting.id, evt.newValue ? "true" : "false"); });
             input = toggle;
         }
         else if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase))
         {
             EnumCycleControl enumCycle = new EnumCycleControl(setting.enumOptions, setting.value, CreateLabel, CreateActionButton);
+            enumCycle.focusable = false;
             enumCycle.OnValueChanged += value =>
             {
                 if (!suppressCallbacks)
@@ -1931,6 +1933,7 @@ public sealed class TabsSongHeaderOverlay
         else
         {
             Slider slider = new Slider(setting.min, setting.max) { value = ParseFloat(setting.value, setting.min) };
+            slider.focusable = false;
             slider.RegisterValueChangedCallback(evt =>
             {
                 if (suppressCallbacks)
