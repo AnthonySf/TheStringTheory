@@ -288,19 +288,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             {
                 float leftX = GetHandWindowStartX(GetGroupHandFret(group));
                 float rightX = GetHandWindowEndX(GetGroupHandFret(group));
-                cube.transform.localScale = new Vector3(Mathf.Max(0.5f, rightX - leftX), owner.chordOpenLineHeight, owner.chordOpenLineDepth);
+                cube.transform.localScale = new Vector3(Mathf.Max(owner.FretSpacing * 0.8f, rightX - leftX), GetScaledOpenHeight(), GetScaledOpenDepth());
             }
             else
             {
-                cube.transform.localScale = new Vector3(owner.chordFrettedNoteWidth, owner.chordFrettedNoteHeight, owner.chordFrettedNoteDepth);
+                cube.transform.localScale = GetGroupedFrettedNoteScale();
             }
         }
         else
         {
             if (isOpen)
-                cube.transform.localScale = new Vector3(owner.singleOpenWidth, owner.singleOpenHeight, owner.singleOpenDepth);
+                cube.transform.localScale = GetSingleOpenNoteScale();
             else
-                cube.transform.localScale = new Vector3(3.5f, 0.9f, 0.6f);
+                cube.transform.localScale = GetSingleFrettedNoteScale();
         }
 
         GameObject tail = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -312,7 +312,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         marker.name = "Marker_" + data.id;
         marker.transform.SetParent(root.transform, false);
         marker.transform.position = new Vector3(xPos, yPos, owner.StrikeLineZ);
-        marker.transform.localScale = new Vector3(0.5f, 0.5f, 0.2f);
+        marker.transform.localScale = GetMarkerScale();
         marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 6f);
 
         return new HighwayNoteView
@@ -745,6 +745,43 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         int minString = group.Min(n => n.stringIdx);
         int maxString = group.Max(n => n.stringIdx);
         return (GetStringY(minString) + GetStringY(maxString)) * 0.5f;
+    }
+
+    private Vector3 GetSingleFrettedNoteScale()
+    {
+        return new Vector3(owner.FretSpacing * 0.78f, 0.9f, Mathf.Max(0.6f, owner.FretSpacing * 0.55f));
+    }
+
+    private Vector3 GetGroupedFrettedNoteScale()
+    {
+        return new Vector3(
+            owner.FretSpacing * 0.72f,
+            Mathf.Max(0.7f, owner.chordFrettedNoteHeight),
+            Mathf.Max(0.55f, owner.FretSpacing * 0.48f));
+    }
+
+    private Vector3 GetSingleOpenNoteScale()
+    {
+        return new Vector3(
+            owner.FretSpacing * 1.05f,
+            GetScaledOpenHeight(),
+            GetScaledOpenDepth());
+    }
+
+    private float GetScaledOpenHeight()
+    {
+        return Mathf.Max(0.26f, owner.singleOpenHeight);
+    }
+
+    private float GetScaledOpenDepth()
+    {
+        return Mathf.Max(0.5f, Mathf.Max(owner.singleOpenDepth, owner.FretSpacing * 0.4f));
+    }
+
+    private Vector3 GetMarkerScale()
+    {
+        float diameter = Mathf.Max(0.55f, owner.FretSpacing * 0.28f);
+        return new Vector3(diameter, diameter, Mathf.Max(0.24f, diameter * 0.45f));
     }
 
     private GameObject CreateChordFrame(float leftX, float rightX, float centerY, float height)
