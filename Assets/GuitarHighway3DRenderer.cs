@@ -416,10 +416,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void GenerateLaneGuides()
     {
         int laneCount = GetFretLightColumnCount();
-        float firstStringY = GetStringY(0);
-        float lastStringY = GetStringY(5);
-        float centerY = (firstStringY + lastStringY) * 0.5f;
-        float height = Mathf.Abs(lastStringY - firstStringY) + 1.0f;
+        float laneSurfaceY = -1.93f;
         float depth = Mathf.Max(1f, owner.SpawnZ - owner.StrikeLineZ);
         float centerZ = owner.StrikeLineZ + (depth * 0.5f);
 
@@ -428,9 +425,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             GameObject guide = GameObject.CreatePrimitive(PrimitiveType.Cube);
             guide.name = "LaneGuide_" + lane;
             guide.transform.SetParent(gameplayRoot.transform, false);
-            float xPos = lane == 0 ? GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)) : GetNoteX(lane);
-            guide.transform.position = new Vector3(xPos, centerY, centerZ);
-            guide.transform.localScale = new Vector3(0.05f, height, depth);
+            float xPos = lane * owner.FretSpacing;
+            guide.transform.position = new Vector3(xPos, laneSurfaceY, centerZ);
+            guide.transform.localScale = new Vector3(0.035f, 0.02f, depth);
 
             Color baseColor = new Color(0.18f, 0.45f, 1f, 0.14f);
             Material mat = owner.CreateSharedTransparentMaterial(baseColor, 0.02f);
@@ -463,8 +460,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 if (travelZ > owner.SpawnZ)
                     continue;
 
-                int laneIdx = Mathf.Clamp(state.data.fret, 0, laneHasIncomingNotes.Length - 1);
-                laneHasIncomingNotes[laneIdx] = true;
+                int fret = Mathf.Clamp(state.data.fret, 0, owner.TotalFrets);
+                if (fret <= 0)
+                {
+                    laneHasIncomingNotes[0] = true;
+                    continue;
+                }
+
+                laneHasIncomingNotes[Mathf.Clamp(fret - 1, 0, laneHasIncomingNotes.Length - 1)] = true;
+                laneHasIncomingNotes[Mathf.Clamp(fret, 0, laneHasIncomingNotes.Length - 1)] = true;
             }
         }
 
