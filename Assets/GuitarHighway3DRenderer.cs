@@ -344,7 +344,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             for (int i = 0; i < snapshot.noteStates.Count; i++)
             {
                 GameplayNoteState state = snapshot.noteStates[i];
-                if (state == null || state.IsResolved || state.data == null)
+                if (state == null || state.IsResolved)
                     continue;
 
                 int stringIdx = state.data.stringIdx;
