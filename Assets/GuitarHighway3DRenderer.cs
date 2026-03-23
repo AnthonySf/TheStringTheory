@@ -16,7 +16,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private GameObject root;
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
-    private readonly Material[,] fretLightMats = new Material[6, 24];
+    private Material[,] fretLightMats;
     private float cameraTargetX;
     private float cameraTargetFOV = 60f;
 
@@ -30,6 +30,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         ConfigureCamera();
         GenerateFretboard();
         GenerateStrings();
+        fretLightMats = new Material[6, GetFretLightColumnCount()];
         GenerateFretLightGrid();
     }
 
@@ -174,9 +175,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void GenerateFretLightGrid()
     {
+        int fretLightColumns = GetFretLightColumnCount();
+
         for (int s = 0; s < 6; s++)
         {
-            for (int f = 0; f <= owner.TotalFrets; f++)
+            for (int f = 0; f < fretLightColumns; f++)
             {
                 GameObject light = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 light.transform.SetParent(root.transform, false);
@@ -405,9 +408,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void UpdateFretboardLights(HashSet<int> pitchesToLight)
     {
+        if (fretLightMats == null)
+            return;
+
+        int fretLightColumns = GetFretLightColumnCount();
+
         for (int s = 0; s < 6; s++)
         {
-            for (int f = 0; f <= owner.TotalFrets; f++)
+            for (int f = 0; f < fretLightColumns; f++)
                 fretLightMats[s, f].SetColor("_EmissionColor", Color.black);
         }
 
@@ -418,7 +426,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             for (int s = 0; s < 6; s++)
             {
-                for (int f = 0; f <= owner.TotalFrets; f++)
+                for (int f = 0; f < fretLightColumns; f++)
                 {
                     int exactFretPitch = owner.GetStringBasePitch(s) + f;
                     int genericFretPitch = exactFretPitch % 12;
@@ -624,6 +632,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         piece.transform.localPosition = localPosition;
         piece.transform.localScale = localScale;
         piece.GetComponent<Renderer>().material = material;
+    }
+
+    private int GetFretLightColumnCount()
+    {
+        return Mathf.Max(1, owner.TotalFrets + 1);
     }
 
     private float GetStringY(int stringIdx)
