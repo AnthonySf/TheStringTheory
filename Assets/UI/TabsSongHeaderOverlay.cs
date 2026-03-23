@@ -1956,23 +1956,23 @@ public sealed class TabsSongHeaderOverlay
             float pedalHeight = Mathf.Clamp(Screen.height * 0.30f, 280f, 560f);
             float popupWidth = Mathf.Clamp(Screen.width * 0.18f, 240f, 360f);
             float popupRight = pedalWidth + 88f;
-            float baseY = 8f + pedalHeight - Mathf.Clamp(judgePopupFontSize * 1.15f, 54f, 96f);
-            int layer = Mathf.Min(activeJudgePopups.Count, 4);
-            float startY = baseY - layer * 26f;
+            float highwayPopupBaseY = 8f + pedalHeight - Mathf.Clamp(judgePopupFontSize * 1.15f, 54f, 96f);
+            int highwayPopupLayer = Mathf.Min(activeJudgePopups.Count, 4);
+            float highwayPopupStartY = highwayPopupBaseY - highwayPopupLayer * 26f;
 
             popup.style.left = StyleKeyword.Auto;
             popup.style.right = popupRight;
             popup.style.width = popupWidth;
             popup.style.unityTextAlign = TextAnchor.MiddleRight;
-            popup.style.top = startY;
+            popup.style.top = highwayPopupStartY;
 
             judgePopupLayer.Add(popup);
             activeJudgePopups.Add(new JudgePopupEntry
             {
                 label = popup,
                 startTime = Time.unscaledTime,
-                startY = startY,
-                endY = startY - 120f,
+                startY = highwayPopupStartY,
+                endY = highwayPopupStartY - 120f,
                 duration = 1.05f
             });
             return;
