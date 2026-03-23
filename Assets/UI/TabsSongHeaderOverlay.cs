@@ -234,6 +234,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly FontDefinition bodyFontDefinition;
     private readonly FontDefinition titleFontDefinition;
     private string globalSettingsLayoutSignature = string.Empty;
+    private Vector2 globalSettingsScrollOffset = Vector2.zero;
 
     public TabsSongHeaderOverlay(GuitarBridgeServer owner)
     {
@@ -1672,7 +1673,9 @@ public sealed class TabsSongHeaderOverlay
 
     private void UpdateGlobalSettings(GuitarGameplaySnapshot snapshot)
     {
-        BuildGlobalSettingsUi(snapshot.runtimeSettingsSections);
+        bool rebuilt = BuildGlobalSettingsUi(snapshot.runtimeSettingsSections);
+        if (rebuilt)
+            RestoreGlobalSettingsScrollOffset();
 
         if (snapshot.runtimeSettingsSections == null)
             return;
@@ -1706,17 +1709,19 @@ public sealed class TabsSongHeaderOverlay
             }
         }
         suppressCallbacks = false;
+        globalSettingsScrollOffset = globalSettingsScrollView != null ? globalSettingsScrollView.scrollOffset : globalSettingsScrollOffset;
     }
 
-    private void BuildGlobalSettingsUi(List<RuntimeSettingSectionSnapshot> sections)
+    private bool BuildGlobalSettingsUi(List<RuntimeSettingSectionSnapshot> sections)
     {
         if (sections == null)
-            return;
+            return false;
 
         string signature = BuildGlobalSettingsLayoutSignature(sections);
         if (signature == globalSettingsLayoutSignature && globalSettingInputs.Count > 0)
-            return;
+            return false;
 
+        globalSettingsScrollOffset = globalSettingsScrollView != null ? globalSettingsScrollView.scrollOffset : globalSettingsScrollOffset;
         globalSettingsLayoutSignature = signature;
         globalSettingsScrollView.Clear();
         globalSettingInputs.Clear();
@@ -1781,6 +1786,22 @@ public sealed class TabsSongHeaderOverlay
         }
 
         ApplyResponsiveSizing(force: true);
+        return true;
+    }
+
+    private void RestoreGlobalSettingsScrollOffset()
+    {
+        if (globalSettingsScrollView == null)
+            return;
+
+        Vector2 preservedOffset = globalSettingsScrollOffset;
+        globalSettingsScrollView.schedule.Execute(() =>
+        {
+            if (globalSettingsScrollView == null)
+                return;
+
+            globalSettingsScrollView.scrollOffset = preservedOffset;
+        }).ExecuteLater(0);
     }
 
     private void AddGlobalSettingsColumn(VisualElement parent, string title, bool addRightSpacing)

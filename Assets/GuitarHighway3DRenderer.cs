@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 {
@@ -624,6 +625,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         cube.transform.position = new Vector3(xPos, yPos, owner.SpawnZ);
 
         Material noteMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 0.8f);
+        ConfigureOverlayMaterial(noteMat, 120, true);
         cube.GetComponent<Renderer>().material = noteMat;
 
         GameObject textObj = null;
@@ -652,7 +654,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         GameObject tail = GameObject.CreatePrimitive(PrimitiveType.Cube);
         tail.name = "Tail_" + data.id;
         tail.transform.SetParent(gameplayRoot.transform, false);
-        tail.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx) * 0.4f, 0.2f);
+        Material tailMat = owner.CreateSharedTransparentMaterial(owner.GetStringColor(data.stringIdx) * 0.4f, 0.2f);
+        ConfigureOverlayMaterial(tailMat, 90, true);
+        tail.GetComponent<Renderer>().material = tailMat;
         tail.SetActive(owner.highwayShowApproachLine);
 
         GameObject marker = null;
@@ -663,7 +667,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             marker.transform.SetParent(gameplayRoot.transform, false);
             marker.transform.position = new Vector3(xPos, yPos, owner.StrikeLineZ);
             marker.transform.localScale = GetMarkerScale();
-            marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
+            Material markerMat = owner.CreateSharedTransparentMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
+            ConfigureOverlayMaterial(markerMat, 130, true);
+            marker.GetComponent<Renderer>().material = markerMat;
             marker.SetActive(owner.highwayShowLandingDot);
         }
 
@@ -682,6 +688,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             slideRibbon.transform.SetParent(techniqueRoot.transform, false);
             slideRibbonRenderer = slideRibbon.GetComponent<Renderer>();
             slideRibbonRenderer.material = owner.CreateSharedTransparentMaterial(new Color(owner.GetStringColor(data.stringIdx).r, owner.GetStringColor(data.stringIdx).g, owner.GetStringColor(data.stringIdx).b, 0.32f), 0.16f);
+            ConfigureOverlayMaterial(slideRibbonRenderer.material, 100, true);
             Object.Destroy(slideRibbon.GetComponent<Collider>());
 
         }
@@ -695,6 +702,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             bendRibbon.transform.SetParent(techniqueRoot.transform, false);
             bendRibbonRenderer = bendRibbon.GetComponent<Renderer>();
             bendRibbonRenderer.material = owner.CreateSharedTransparentMaterial(new Color(0.7f, 0.92f, 1f, 0.3f), 0.12f);
+            ConfigureOverlayMaterial(bendRibbonRenderer.material, 100, true);
             Object.Destroy(bendRibbon.GetComponent<Collider>());
 
         }
@@ -1279,6 +1287,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float insetHalfWidth = Mathf.Max(0f, (width - thickness) * 0.5f);
         float insetHalfHeight = Mathf.Max(0f, (height - thickness) * 0.5f);
         Material outlineMat = owner.CreateSharedTransparentMaterial(new Color(color.r, color.g, color.b, 0.38f), 0.12f);
+        ConfigureOverlayMaterial(outlineMat, 110, true);
         float outlinePlaneZ = 0f;
 
         CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, outlinePlaneZ), new Vector3(width, thickness, depth), outlineMat);
@@ -1291,6 +1300,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float GetStuckOutlineCenterZ()
     {
         return owner.StrikeLineZ + (Mathf.Max(0.01f, owner.highwayStuckOutlineDepth) * 0.5f);
+    }
+
+    private static void ConfigureOverlayMaterial(Material material, int renderQueueOffset, bool renderOnTop)
+    {
+        if (material == null)
+            return;
+
+        material.renderQueue = (int)RenderQueue.Transparent + renderQueueOffset;
+        material.SetInt("_ZWrite", 0);
+        material.SetInt("_Cull", (int)CullMode.Off);
+        material.SetInt("_ZTest", (int)(renderOnTop ? CompareFunction.Always : CompareFunction.LessEqual));
     }
 
     private int GetFretLightColumnCount()
