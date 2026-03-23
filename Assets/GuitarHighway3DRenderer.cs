@@ -222,11 +222,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         for (int i = 0; i < snapshot.noteStates.Count; i++)
         {
             GameplayNoteState state = snapshot.noteStates[i];
-            float z = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
+            float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
             bool keepForResult = state.IsResolved && renderSongTime - state.resolvedAt <= owner.highwayResolvedHoldTime;
-            bool visible = z <= owner.SpawnZ && z >= owner.StrikeLineZ - removeDist;
+            bool visible = travelZ <= owner.SpawnZ && (travelZ >= owner.StrikeLineZ || keepForResult);
 
-            if (!visible && !keepForResult)
+            if (!visible)
                 continue;
 
             visibleThisFrame.Add(state.data.id);
@@ -237,7 +237,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 noteViews[state.data.id] = view;
             }
 
-            UpdateNoteView(view, state, z, renderSongTime);
+            float displayZ = Mathf.Max(owner.StrikeLineZ, travelZ);
+            UpdateNoteView(view, state, displayZ, renderSongTime);
         }
 
         foreach (int key in noteViews.Keys.ToList())
@@ -265,22 +266,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         cube.transform.SetParent(root.transform, false);
         cube.transform.position = new Vector3(xPos, yPos, owner.SpawnZ);
 
-        Material noteMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 4f);
+        Material noteMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 0.8f);
         cube.GetComponent<Renderer>().material = noteMat;
 
         GameObject textObj = null;
-        if (!isOpen)
-        {
-            textObj = new GameObject("NoteText");
-            textObj.transform.SetParent(cube.transform, false);
-            textObj.transform.localPosition = new Vector3(0f, 0f, -0.6f);
-
-            TextMeshPro tm = textObj.AddComponent<TextMeshPro>();
-            tm.text = data.fret.ToString();
-            tm.fontSize = isGrouped ? 7 : 8;
-            tm.alignment = TextAlignmentOptions.Center;
-            tm.color = Color.white;
-        }
 
         if (isGrouped)
         {
@@ -306,14 +295,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         GameObject tail = GameObject.CreatePrimitive(PrimitiveType.Cube);
         tail.name = "Tail_" + data.id;
         tail.transform.SetParent(root.transform, false);
-        tail.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx) * 0.5f, 1f);
+        tail.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx) * 0.4f, 0.2f);
 
         GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         marker.name = "Marker_" + data.id;
         marker.transform.SetParent(root.transform, false);
         marker.transform.position = new Vector3(xPos, yPos, owner.StrikeLineZ);
         marker.transform.localScale = GetMarkerScale();
-        marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 6f);
+        marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
 
         return new HighwayNoteView
         {
@@ -341,44 +330,36 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         float tailLength = Mathf.Max(0f, z - owner.StrikeLineZ);
         view.tail.transform.position = new Vector3(x, y, owner.StrikeLineZ + (tailLength * 0.5f));
-        view.tail.transform.localScale = new Vector3(0.1f, 0.1f, tailLength);
-        view.tail.SetActive(tailLength > 0.01f);
+        view.tail.transform.localScale = new Vector3(owner.FretSpacing * 0.06f, 0.06f, tailLength);
+        view.tail.SetActive(tailLength > 0.01f && !state.IsResolved);
 
         view.noteRoot.transform.localScale = view.baseScale;
 
         Color finalColor = view.baseColor;
-        float emission = 4f;
+        float emission = 0.8f;
 
-        if (state.IsHit)
+        if (state.IsHit || state.IsMissed)
         {
-            finalColor = owner.highwayHitColor;
-            emission = 5.5f;
-            float pulse = Mathf.Clamp01((songTime - state.resolvedAt) / Mathf.Max(0.01f, owner.highwayResolvedHoldTime));
-            view.noteRoot.transform.localScale = view.baseScale * Mathf.Lerp(1.08f, 1f, pulse);
-        }
-        else if (state.IsMissed)
-        {
-            finalColor = owner.highwayMissColor;
-            emission = 2f;
+            float fade = Mathf.Clamp01((songTime - state.resolvedAt) / Mathf.Max(0.01f, owner.highwayResolvedHoldTime));
+            Color resolvedColor = state.IsHit ? owner.highwayHitColor : owner.highwayMissColor;
+            finalColor = Color.Lerp(resolvedColor, owner.highwayBackgroundColor, fade);
+            emission = Mathf.Lerp(state.IsHit ? 1.2f : 0.45f, 0f, fade);
         }
         else if (state.isJudgeable)
         {
-            emission = 4f * owner.judgeableDarkenMultiplier;
-            finalColor = Color.Lerp(view.baseColor, Color.white, 0.15f);
+            emission = 0.95f;
+            finalColor = view.baseColor;
         }
 
         view.noteMaterial.color = finalColor;
         view.noteMaterial.EnableKeyword("_EMISSION");
         view.noteMaterial.SetColor("_EmissionColor", finalColor * Mathf.Pow(2f, emission));
 
-        if (view.label != null)
-            view.label.color = state.IsMissed ? owner.highwayMissColor : Color.white;
-
         if (view.marker != null)
         {
             Renderer markerRenderer = view.marker.GetComponent<Renderer>();
             Color markerColor = state.IsHit ? owner.highwayHitColor : (state.IsMissed ? owner.highwayMissColor : view.baseColor);
-            markerRenderer.material.SetColor("_EmissionColor", markerColor * (state.IsHit ? 15f : 6f));
+            markerRenderer.material.SetColor("_EmissionColor", markerColor * (state.IsHit ? 2f : 0.8f));
         }
     }
 
@@ -749,15 +730,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private Vector3 GetSingleFrettedNoteScale()
     {
-        return new Vector3(owner.FretSpacing * 0.78f, 0.9f, Mathf.Max(0.6f, owner.FretSpacing * 0.55f));
+        return new Vector3(owner.FretSpacing * 0.68f, 0.34f, Mathf.Max(0.42f, owner.FretSpacing * 0.34f));
     }
 
     private Vector3 GetGroupedFrettedNoteScale()
     {
         return new Vector3(
-            owner.FretSpacing * 0.72f,
-            Mathf.Max(0.7f, owner.chordFrettedNoteHeight),
-            Mathf.Max(0.55f, owner.FretSpacing * 0.48f));
+            owner.FretSpacing * 0.64f,
+            0.3f,
+            Mathf.Max(0.4f, owner.FretSpacing * 0.3f));
     }
 
     private Vector3 GetSingleOpenNoteScale()
@@ -770,18 +751,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetScaledOpenHeight()
     {
-        return Mathf.Max(0.26f, owner.singleOpenHeight);
+        return 0.16f;
     }
 
     private float GetScaledOpenDepth()
     {
-        return Mathf.Max(0.5f, Mathf.Max(owner.singleOpenDepth, owner.FretSpacing * 0.4f));
+        return Mathf.Max(0.32f, owner.FretSpacing * 0.24f);
     }
 
     private Vector3 GetMarkerScale()
     {
-        float diameter = Mathf.Max(0.55f, owner.FretSpacing * 0.28f);
-        return new Vector3(diameter, diameter, Mathf.Max(0.24f, diameter * 0.45f));
+        float diameter = Mathf.Max(0.38f, owner.FretSpacing * 0.16f);
+        return new Vector3(diameter, diameter, Mathf.Max(0.16f, diameter * 0.35f));
     }
 
     private GameObject CreateChordFrame(float leftX, float rightX, float centerY, float height)
