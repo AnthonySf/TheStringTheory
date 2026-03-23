@@ -259,7 +259,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         cloudSprites.Clear();
 
         LoadCloudSpritesFromResources("Cloud Pack");
+        LoadCloudTexturesFromResources("Cloud Pack");
         LoadCloudSpritesFromResources("Clouds");
+        LoadCloudTexturesFromResources("Clouds");
 
 #if UNITY_EDITOR
         if (cloudSprites.Count == 0)
@@ -292,6 +294,57 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             if (sprite != null)
                 cloudSprites.Add(sprite);
         }
+    }
+
+
+    private void LoadCloudTexturesFromResources(string resourcesPath)
+    {
+        if (string.IsNullOrWhiteSpace(resourcesPath))
+            return;
+
+        Texture2D[] loadedTextures = Resources.LoadAll<Texture2D>(resourcesPath);
+        if (loadedTextures == null || loadedTextures.Length == 0)
+        {
+            Debug.LogWarning($"[BlueSkyBackground] Resources.LoadAll<Texture2D>(\"{resourcesPath}\") returned 0 textures.");
+            return;
+        }
+
+        int createdCount = 0;
+        for (int i = 0; i < loadedTextures.Length; i++)
+        {
+            Texture2D texture = loadedTextures[i];
+            if (texture == null)
+                continue;
+
+            bool alreadyPresent = false;
+            for (int spriteIndex = 0; spriteIndex < cloudSprites.Count; spriteIndex++)
+            {
+                Sprite existing = cloudSprites[spriteIndex];
+                if (existing != null && existing.texture == texture)
+                {
+                    alreadyPresent = true;
+                    break;
+                }
+            }
+
+            if (alreadyPresent)
+                continue;
+
+            Sprite sprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, texture.width, texture.height),
+                new Vector2(0.5f, 0.5f),
+                100f,
+                0,
+                SpriteMeshType.FullRect);
+            if (sprite == null)
+                continue;
+
+            cloudSprites.Add(sprite);
+            createdCount++;
+        }
+
+        Debug.Log($"[BlueSkyBackground] Resources.LoadAll<Texture2D>(\"{resourcesPath}\") loaded {loadedTextures.Length} textures and created {createdCount} sprites.");
     }
 
 #if UNITY_EDITOR
