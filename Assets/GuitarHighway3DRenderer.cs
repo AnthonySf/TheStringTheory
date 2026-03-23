@@ -578,10 +578,23 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             ? $"id={nextPending.data.id} time={nextPending.data.time:F2} string={nextPending.data.stringIdx} fret={nextPending.data.fret}"
             : "none";
 
+        string sampleViewText = "none";
+        if (noteViews.Count > 0)
+        {
+            HighwayNoteView sampleView = noteViews.Values.FirstOrDefault(view => view != null && view.noteRoot != null);
+            if (sampleView != null)
+            {
+                Vector3 worldPos = sampleView.noteRoot.transform.position;
+                Vector3 viewportPos = mainCamera.WorldToViewportPoint(worldPos);
+                sampleViewText = $"world={worldPos} viewport={viewportPos}";
+            }
+        }
+
         Debug.Log(
             $"[Highway3D] Render diag songTime={snapshot.songTime:F2} renderSongTime={renderSongTime:F2} paused={snapshot.isPaused} mainMenu={snapshot.showMainMenu} " +
             $"trackSelect={snapshot.showTrackSelection} songSelect={snapshot.showSongSelection} states={totalStates} visible={visibleCount} upcoming={upcomingCount} " +
-            $"spawnedViews={noteViews.Count} chordFrames={chordFrames.Count} cameraPos={mainCamera.transform.position} fov={mainCamera.fieldOfView:F2} nextPending={nextPendingText}");
+            $"spawnedViews={noteViews.Count} chordFrames={chordFrames.Count} cameraPos={mainCamera.transform.position} cameraRot={mainCamera.transform.rotation.eulerAngles} fov={mainCamera.fieldOfView:F2} " +
+            $"nextPending={nextPendingText} sampleView={sampleViewText}");
     }
 
     private float GetRenderSongTime(GuitarGameplaySnapshot snapshot)
