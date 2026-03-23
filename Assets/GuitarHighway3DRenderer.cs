@@ -427,7 +427,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             guide.transform.SetParent(gameplayRoot.transform, false);
             float xPos = lane * owner.FretSpacing;
             guide.transform.position = new Vector3(xPos, laneSurfaceY, centerZ);
-            guide.transform.localScale = new Vector3(0.08f, 0.02f, depth);
+            guide.transform.localScale = new Vector3(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), 0.02f, depth);
 
             Color baseColor = new Color(0.18f, 0.45f, 1f, 0.14f);
             Material mat = owner.CreateSharedTransparentMaterial(baseColor, 0.02f);
