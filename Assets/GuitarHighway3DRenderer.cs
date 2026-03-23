@@ -269,7 +269,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         Material noteMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 0.8f);
         cube.GetComponent<Renderer>().material = noteMat;
-        Material stuckMat = owner.CreateSharedTransparentMaterial(new Color(owner.GetStringColor(data.stringIdx).r, owner.GetStringColor(data.stringIdx).g, owner.GetStringColor(data.stringIdx).b, 0.22f), 0.08f);
 
         GameObject textObj = null;
 
@@ -314,7 +313,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             noteRoot = cube,
             noteRenderer = cube.GetComponent<Renderer>(),
             noteMaterial = noteMat,
-            stuckMaterial = stuckMat,
             label = textObj != null ? textObj.GetComponent<TextMeshPro>() : null,
             tail = tail,
             marker = marker,
@@ -342,10 +340,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
         if (view.noteRenderer != null)
-        {
-            view.noteRenderer.enabled = true;
-            view.noteRenderer.material = isStuckOnString ? view.stuckMaterial : view.noteMaterial;
-        }
+            view.noteRenderer.enabled = !isStuckOnString;
         if (view.outlineRoot != null)
             view.outlineRoot.SetActive(isStuckOnString);
 
@@ -841,7 +836,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float height = Mathf.Max(thickness * 2f, noteScale.y);
         float insetHalfWidth = Mathf.Max(0f, (width - thickness) * 0.5f);
         float insetHalfHeight = Mathf.Max(0f, (height - thickness) * 0.5f);
-        Material outlineMat = owner.CreateSharedGlowMaterial(color, 0.6f);
+        Material outlineMat = owner.CreateSharedTransparentMaterial(new Color(color.r, color.g, color.b, 0.38f), 0.12f);
 
         CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
         CreateFramePiece(outlineRoot.transform, new Vector3(0f, -insetHalfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
@@ -874,7 +869,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public GameObject noteRoot;
         public Renderer noteRenderer;
         public Material noteMaterial;
-        public Material stuckMaterial;
         public TextMeshPro label;
         public GameObject tail;
         public GameObject marker;
