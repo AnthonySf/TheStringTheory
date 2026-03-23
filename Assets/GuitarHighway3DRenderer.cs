@@ -33,10 +33,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float nextPreviewLogTime;
     private bool hasLoggedMissingCamera;
     private bool gameplayVisualsVisible = true;
+    private bool gameplayBuilt;
     private const int BackgroundLayer = 2;
-    private const float HighwayBackgroundDistance = 1200f;
-    private const float HighwayBackgroundCenterY = 120f;
-    private const float HighwayBackgroundScale = 120f;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -57,11 +55,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         InitializeBackgroundEffect();
         ConfigureCamera();
         songHeaderOverlay = new TabsSongHeaderOverlay(owner);
-        GenerateFretboard();
-        GenerateStrings();
-        fretLightMats = new Material[6, GetFretLightColumnCount()];
-        fretLightRenderers = new Renderer[6, GetFretLightColumnCount()];
-        GenerateFretLightGrid();
+        gameplayBuilt = false;
         LogInitialization(chartNotes, sections);
     }
 
@@ -98,6 +92,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (!suppressGameplay)
         {
+            EnsureGameplayVisualsBuilt();
             UpdateFretboardLights(snapshot.latestDetectedPitches);
             UpdateNotes(snapshot);
             UpdateChordFrames(snapshot);
@@ -175,10 +170,23 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         mainCamera.clearFlags = CameraClearFlags.SolidColor;
         if (originalMainCameraCullingMask >= 0)
             mainCamera.cullingMask = originalMainCameraCullingMask;
-        mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, HighwayBackgroundDistance + 200f);
+        mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, owner.highwayCameraFarClip);
         mainCamera.transform.position = new Vector3(cameraTargetX, owner.highwayCameraY, owner.highwayCameraZ);
         mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
         mainCamera.backgroundColor = owner.highwayBackgroundColor;
+    }
+
+    private void EnsureGameplayVisualsBuilt()
+    {
+        if (gameplayBuilt)
+            return;
+
+        fretLightMats = new Material[6, GetFretLightColumnCount()];
+        fretLightRenderers = new Renderer[6, GetFretLightColumnCount()];
+        GenerateFretboard();
+        GenerateStrings();
+        GenerateFretLightGrid();
+        gameplayBuilt = true;
     }
 
     private void InitializeBackgroundEffect()
@@ -201,9 +209,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         backgroundRoot.transform.position = new Vector3(
             Mathf.Max(0f, owner.TotalFrets * owner.FretSpacing * 0.5f),
-            HighwayBackgroundCenterY,
-            HighwayBackgroundDistance);
-        backgroundRoot.transform.localScale = Vector3.one * HighwayBackgroundScale;
+            owner.highwayBackgroundCenterY,
+            owner.highwayBackgroundDistance);
+        backgroundRoot.transform.localScale = Vector3.one * owner.highwayBackgroundScale;
     }
 
     private static void SetLayerRecursively(GameObject target, int layer)
