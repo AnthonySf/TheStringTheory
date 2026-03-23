@@ -34,12 +34,18 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
 
     private readonly List<Star> stars = new List<Star>();
     private readonly List<ShootingStar> shootingStars = new List<ShootingStar>();
+    private readonly bool applyHighwayOverrides;
 
     private GuitarBridgeServer owner;
     private GameObject root;
     private Material starMaterial;
     private Material shootingStarMaterial;
     private float shootingStarSpawnTimer;
+
+    public TabsStarfieldBackground(bool applyHighwayOverrides = false)
+    {
+        this.applyHighwayOverrides = applyHighwayOverrides;
+    }
 
     public void Initialize(Transform parent, GuitarBridgeServer owner)
     {
@@ -92,7 +98,10 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         if (stars.Count == 0)
             return;
 
-        float width = owner.tabStarfieldWidth;
+        float spreadScale = owner != null && applyHighwayOverrides
+            ? Mathf.Max(0.05f, owner.highwayBackgroundStarSpread)
+            : 1f;
+        float width = owner.tabStarfieldWidth * spreadScale;
         float halfWidth = width * 0.5f;
 
         for (int i = 0; i < stars.Count; i++)
@@ -309,10 +318,18 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         float nearBand,
         float farBand)
     {
-        float width = owner.tabStarfieldWidth;
+        float spreadScale = owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+            ? Mathf.Max(0.05f, owner.highwayBackgroundStarSpread)
+            : 1f;
+
+        float width = owner.tabStarfieldWidth * spreadScale;
         float halfWidth = width * 0.5f;
         float minY = Mathf.Min(owner.tabStarfieldMinY, owner.tabStarfieldMaxY);
         float maxY = Mathf.Max(owner.tabStarfieldMinY, owner.tabStarfieldMaxY);
+        float centerY = (minY + maxY) * 0.5f;
+        float halfHeight = (maxY - minY) * 0.5f * spreadScale;
+        minY = centerY - halfHeight;
+        maxY = centerY + halfHeight;
         float nearZ = owner.tabStarfieldNearZ;
         float farZ = owner.tabStarfieldFarZ;
 
@@ -320,6 +337,9 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         float safeSizeMax = Mathf.Max(safeSizeMin, Mathf.Max(sizeMin, sizeMax));
         float safeAlphaMin = Mathf.Clamp01(Mathf.Min(alphaMin, alphaMax));
         float safeAlphaMax = Mathf.Clamp01(Mathf.Max(alphaMin, alphaMax));
+        float starScale = owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+            ? Mathf.Max(0.05f, owner.highwayBackgroundStarScale)
+            : 1f;
 
         for (int i = 0; i < count; i++)
         {
@@ -336,7 +356,7 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
             go.transform.localRotation = Quaternion.identity;
 
             float size = Mathf.Lerp(safeSizeMin, safeSizeMax, Random.value);
-            go.transform.localScale = GetScaleForStyle(size);
+            go.transform.localScale = GetScaleForStyle(size * starScale);
 
             Renderer renderer = go.GetComponent<Renderer>();
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
