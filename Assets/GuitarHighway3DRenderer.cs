@@ -18,6 +18,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
     private readonly Renderer[] stringVisualRenderers = new Renderer[6];
+    private Material[] fretBoundaryMats;
+    private Renderer[] fretBoundaryRenderers;
     private Material[] laneGuideMats;
     private Renderer[] laneGuideRenderers;
     private Material[,] fretLightMats;
@@ -101,6 +103,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             EnsureGameplayVisualsBuilt();
             UpdateStringVisuals(snapshot);
+            UpdateFretBoundaries(snapshot);
             UpdateLaneGuides(snapshot);
             UpdateFretboardLights(snapshot.latestDetectedPitches);
             UpdateNotes(snapshot);
@@ -206,6 +209,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         fretLightMats = new Material[6, GetFretLightColumnCount()];
         fretLightRenderers = new Renderer[6, GetFretLightColumnCount()];
+        fretBoundaryMats = new Material[GetFretLightColumnCount()];
+        fretBoundaryRenderers = new Renderer[GetFretLightColumnCount()];
         laneGuideMats = new Material[GetFretLightColumnCount()];
         laneGuideRenderers = new Renderer[GetFretLightColumnCount()];
         GenerateFretboard();
@@ -277,7 +282,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         nut.transform.SetParent(gameplayRoot.transform, false);
         nut.transform.position = new Vector3(0f, 3.5f, owner.StrikeLineZ + 0.05f);
         nut.transform.localScale = new Vector3(0.5f, 12f, 0.3f);
-        nut.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(new Color(0.8f, 0.7f, 0.4f), 0.2f);
+        Renderer nutRenderer = nut.GetComponent<Renderer>();
+        Material nutMat = owner.CreateSharedGlowMaterial(new Color(0.22f, 0.23f, 0.27f, 1f), 0f);
+        nutRenderer.material = nutMat;
+        fretBoundaryMats[0] = nutMat;
+        fretBoundaryRenderers[0] = nutRenderer;
 
         for (int fret = 1; fret <= owner.TotalFrets; fret++)
         {
@@ -287,7 +296,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             wire.transform.SetParent(gameplayRoot.transform, false);
             wire.transform.position = new Vector3(wireX, 3.5f, owner.StrikeLineZ + 0.05f);
             wire.transform.localScale = new Vector3(0.15f, 12f, 0.15f);
-            wire.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(new Color(0.30f, 0.32f, 0.36f, 1f), 0.05f);
+            Renderer wireRenderer = wire.GetComponent<Renderer>();
+            Material wireMat = owner.CreateSharedGlowMaterial(new Color(0.22f, 0.23f, 0.27f, 1f), 0f);
+            wireRenderer.material = wireMat;
+            fretBoundaryMats[fret] = wireMat;
+            fretBoundaryRenderers[fret] = wireRenderer;
 
             if (fret % 3 == 0 || fret == 5 || fret == 7 || fret == 9 || fret == 12 || fret == 15)
             {
@@ -437,6 +450,59 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             laneGuideRenderers[lane] = renderer;
 
             Object.Destroy(guide.GetComponent<Collider>());
+        }
+    }
+
+    private void UpdateFretBoundaries(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || fretBoundaryMats == null || fretBoundaryRenderers == null)
+            return;
+
+        float renderSongTime = GetRenderSongTime(snapshot);
+        bool[] boundaryActive = new bool[fretBoundaryMats.Length];
+
+        if (snapshot.noteStates != null)
+        {
+            for (int i = 0; i < snapshot.noteStates.Count; i++)
+            {
+                GameplayNoteState state = snapshot.noteStates[i];
+                if (state == null || state.IsResolved)
+                    continue;
+
+                float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
+                if (travelZ > owner.SpawnZ)
+                    continue;
+
+                int fret = Mathf.Clamp(state.data.fret, 0, owner.TotalFrets);
+                if (fret <= 0)
+                {
+                    boundaryActive[0] = true;
+                    continue;
+                }
+
+                boundaryActive[Mathf.Clamp(fret - 1, 0, boundaryActive.Length - 1)] = true;
+                boundaryActive[Mathf.Clamp(fret, 0, boundaryActive.Length - 1)] = true;
+            }
+        }
+
+        Color activeColor = new Color(0.40f, 0.43f, 0.48f, 1f);
+        Color idleColor = new Color(0.20f, 0.22f, 0.25f, 1f);
+
+        for (int i = 0; i < fretBoundaryMats.Length; i++)
+        {
+            Material mat = fretBoundaryMats[i];
+            Renderer renderer = fretBoundaryRenderers[i];
+            if (mat == null || renderer == null)
+                continue;
+
+            Color color = boundaryActive[i] ? activeColor : idleColor;
+            float emission = boundaryActive[i] ? 0.18f : 0f;
+            mat.color = color;
+            mat.SetColor("_Color", color);
+            mat.SetColor("_BaseColor", color);
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", boundaryActive[i] ? color * Mathf.Pow(2f, emission) : Color.black);
+            renderer.enabled = true;
         }
     }
 
