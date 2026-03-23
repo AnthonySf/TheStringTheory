@@ -757,14 +757,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private Vector3 GetSingleFrettedNoteScale()
     {
-        return new Vector3(owner.FretSpacing * 0.56f, 0.44f, Mathf.Max(0.48f, owner.FretSpacing * 0.28f));
+        return new Vector3(
+            owner.FretSpacing * 0.56f,
+            0.44f * GetNoteHeightScale(),
+            Mathf.Max(0.48f, owner.FretSpacing * 0.28f));
     }
 
     private Vector3 GetGroupedFrettedNoteScale()
     {
         return new Vector3(
             owner.FretSpacing * 0.54f,
-            0.4f,
+            0.4f * GetNoteHeightScale(),
             Mathf.Max(0.44f, owner.FretSpacing * 0.26f));
     }
 
@@ -778,7 +781,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetScaledOpenHeight()
     {
-        return 0.2f;
+        return 0.2f * GetNoteHeightScale();
+    }
+
+    private float GetNoteHeightScale()
+    {
+        return Mathf.Max(0.2f, owner.highwayNoteHeightScale);
     }
 
     private float GetScaledOpenDepth()
@@ -830,18 +838,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         GameObject outlineRoot = new GameObject("NoteOutline");
         outlineRoot.transform.SetParent(root.transform, false);
 
-        float thickness = Mathf.Max(0.035f, Mathf.Min(noteScale.x, noteScale.y) * 0.14f);
-        float depth = Mathf.Max(0.08f, noteScale.z * 0.45f);
+        float thickness = Mathf.Max(0.02f, owner.highwayStuckOutlineThickness);
+        float depth = Mathf.Max(0.01f, owner.highwayStuckOutlineDepth);
         float width = Mathf.Max(thickness * 2f, noteScale.x);
         float height = Mathf.Max(thickness * 2f, noteScale.y);
         float insetHalfWidth = Mathf.Max(0f, (width - thickness) * 0.5f);
         float insetHalfHeight = Mathf.Max(0f, (height - thickness) * 0.5f);
         Material outlineMat = owner.CreateSharedTransparentMaterial(new Color(color.r, color.g, color.b, 0.38f), 0.12f);
+        float frontZ = (noteScale.z * 0.5f) - (depth * 0.5f) + 0.01f;
 
-        CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -insetHalfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(-insetHalfWidth, 0f, 0.02f), new Vector3(thickness, height, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(insetHalfWidth, 0f, 0.02f), new Vector3(thickness, height, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, frontZ), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -insetHalfHeight, frontZ), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(-insetHalfWidth, 0f, frontZ), new Vector3(thickness, height, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(insetHalfWidth, 0f, frontZ), new Vector3(thickness, height, depth), outlineMat);
         return outlineRoot;
     }
 
