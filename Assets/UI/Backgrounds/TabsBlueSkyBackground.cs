@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.IO;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -39,6 +40,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private readonly List<SkyCloud> clouds = new List<SkyCloud>();
     private readonly List<SkyStar> stars = new List<SkyStar>();
     private readonly List<Sprite> cloudSprites = new List<Sprite>();
+    private readonly HashSet<Sprite> ownedCloudSprites = new HashSet<Sprite>();
+    private readonly HashSet<Texture2D> ownedCloudTextures = new HashSet<Texture2D>();
     private readonly bool applyHighwayOverrides;
     private Sprite starSprite;
 
@@ -134,20 +137,15 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             starSprite = null;
         }
 
-        for (int i = 0; i < cloudSprites.Count; i++)
-        {
-            Sprite sprite = cloudSprites[i];
-            if (sprite == null)
-                continue;
-
-            Texture2D texture = sprite.texture;
+        foreach (Sprite sprite in ownedCloudSprites.Where(sprite => sprite != null))
             Object.Destroy(sprite);
 
-            if (texture != null)
-                Object.Destroy(texture);
-        }
+        foreach (Texture2D texture in ownedCloudTextures.Where(texture => texture != null))
+            Object.Destroy(texture);
 
         cloudSprites.Clear();
+        ownedCloudSprites.Clear();
+        ownedCloudTextures.Clear();
 
         if (root != null)
             Object.Destroy(root);
@@ -269,7 +267,13 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 #endif
 
         if (cloudSprites.Count == 0)
-            cloudSprites.Add(CreateProceduralCloudSprite());
+        {
+            Sprite fallbackSprite = CreateProceduralCloudSprite();
+            cloudSprites.Add(fallbackSprite);
+            ownedCloudSprites.Add(fallbackSprite);
+            if (fallbackSprite != null && fallbackSprite.texture != null)
+                ownedCloudTextures.Add(fallbackSprite.texture);
+        }
 
         loadedCloudSpriteCount = cloudSprites.Count;
     }
@@ -341,6 +345,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
                 continue;
 
             cloudSprites.Add(sprite);
+            ownedCloudSprites.Add(sprite);
             createdCount++;
         }
 
@@ -382,7 +387,11 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
                 SpriteMeshType.FullRect);
 
             if (sprite != null)
+            {
                 cloudSprites.Add(sprite);
+                ownedCloudSprites.Add(sprite);
+                ownedCloudTextures.Add(texture);
+            }
             else
                 Object.Destroy(texture);
         }
