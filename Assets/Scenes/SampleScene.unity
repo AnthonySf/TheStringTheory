@@ -537,7 +537,7 @@ MonoBehaviour:
   highwayCameraZ: -22
   highwayCameraPitch: 28
   lookaheadWindow: 5
-  highwayResolvedHoldTime: 0.18
+  highwayResolvedHoldTime: 0.45
   camMoveSpeed: 3
   tabPanelWidth: 26
   tabHorizontalPadding: 1

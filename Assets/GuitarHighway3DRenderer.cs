@@ -223,7 +223,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             GameplayNoteState state = snapshot.noteStates[i];
             float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
-            bool keepForResult = state.IsResolved && renderSongTime - state.resolvedAt <= owner.highwayResolvedHoldTime;
+            bool keepForResult = state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime();
             bool visible = travelZ <= owner.SpawnZ && (travelZ >= owner.StrikeLineZ || keepForResult);
 
             if (!visible)
@@ -276,7 +276,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             if (isOpen)
             {
                 float leftX = GetHandWindowStartX(GetGroupHandFret(group));
-                float rightX = GetHandWindowEndX(GetGroupHandFret(group));
+                float rightX = GetHandWindowEndX(GetGroupHandFret(group), group);
                 cube.transform.localScale = new Vector3(Mathf.Max(owner.FretSpacing * 0.8f, rightX - leftX), GetScaledOpenHeight(), GetScaledOpenDepth());
             }
             else
@@ -340,10 +340,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (state.IsHit || state.IsMissed)
         {
-            float fade = Mathf.Clamp01((songTime - state.resolvedAt) / Mathf.Max(0.01f, owner.highwayResolvedHoldTime));
-            Color resolvedColor = state.IsHit ? owner.highwayHitColor : owner.highwayMissColor;
+            float fade = Mathf.Clamp01((songTime - state.resolvedAt) / Mathf.Max(0.01f, GetResolvedFadeTime()));
+            Color resolvedColor = state.IsHit ? Color.white : owner.highwayMissColor;
             finalColor = Color.Lerp(resolvedColor, owner.highwayBackgroundColor, fade);
-            emission = Mathf.Lerp(state.IsHit ? 1.2f : 0.45f, 0f, fade);
+            emission = Mathf.Lerp(state.IsHit ? 1.8f : 0.45f, 0f, fade);
+            if (state.IsHit)
+                view.noteRoot.transform.localScale = view.baseScale * Mathf.Lerp(1.18f, 1f, fade);
         }
         else if (state.isJudgeable)
         {
@@ -376,7 +378,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             float anchorTime = group[0].time;
             float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * owner.noteSpeed);
-            bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && state.IsResolved && renderSongTime - state.resolvedAt <= owner.highwayResolvedHoldTime);
+            bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime());
             bool visible = z <= owner.SpawnZ && z >= owner.StrikeLineZ - (owner.noteSpeed * (owner.hitWindowLate + owner.judgmentGrace) + 1f);
 
             if (!visible && !anyRecent)
@@ -388,7 +390,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             {
                 int handFret = GetGroupHandFret(group);
                 float leftX = GetHandWindowStartX(handFret);
-                float rightX = GetHandWindowEndX(handFret);
+                float rightX = GetHandWindowEndX(handFret, group);
                 frame = CreateChordFrame(leftX, rightX, GetChordBoxCenterY(group), GetChordBoxHeight(group));
                 chordFrames[pair.Key] = frame;
             }
@@ -667,18 +669,25 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetHandWindowStartX(int handFret)
     {
-        return GetNoteX(handFret - 1) - (owner.FretSpacing * owner.chordSidePaddingFrets);
+        return GetNoteX(handFret - 1) - (owner.FretSpacing * 0.2f);
     }
 
-    private float GetHandWindowEndX(int handFret)
+    private float GetHandWindowEndX(int handFret, List<NoteData> group = null)
     {
-        return GetNoteX(handFret + 3) + (owner.FretSpacing * owner.chordSidePaddingFrets);
+        int furthestFret = handFret + 2;
+        if (group != null)
+        {
+            int highestGroupFret = group.Where(n => n.fret > 0).Select(n => n.fret).DefaultIfEmpty(furthestFret).Max();
+            furthestFret = Mathf.Max(furthestFret, highestGroupFret);
+        }
+
+        return GetNoteX(furthestFret) + (owner.FretSpacing * 0.2f);
     }
 
     private float GetGroupAnchorX(List<NoteData> group)
     {
         int handFret = GetGroupHandFret(group);
-        return (GetHandWindowStartX(handFret) + GetHandWindowEndX(handFret)) * 0.5f;
+        return (GetHandWindowStartX(handFret) + GetHandWindowEndX(handFret, group)) * 0.5f;
     }
 
     private float GetVisualNoteX(NoteData data)
@@ -699,7 +708,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             int handFret = GetGroupHandFret(group);
             minX = GetHandWindowStartX(handFret);
-            maxX = GetHandWindowEndX(handFret);
+            maxX = GetHandWindowEndX(handFret, group);
             return;
         }
 
@@ -730,39 +739,44 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private Vector3 GetSingleFrettedNoteScale()
     {
-        return new Vector3(owner.FretSpacing * 0.68f, 0.34f, Mathf.Max(0.42f, owner.FretSpacing * 0.34f));
+        return new Vector3(owner.FretSpacing * 0.56f, 0.44f, Mathf.Max(0.48f, owner.FretSpacing * 0.28f));
     }
 
     private Vector3 GetGroupedFrettedNoteScale()
     {
         return new Vector3(
-            owner.FretSpacing * 0.64f,
-            0.3f,
-            Mathf.Max(0.4f, owner.FretSpacing * 0.3f));
+            owner.FretSpacing * 0.54f,
+            0.4f,
+            Mathf.Max(0.44f, owner.FretSpacing * 0.26f));
     }
 
     private Vector3 GetSingleOpenNoteScale()
     {
         return new Vector3(
-            owner.FretSpacing * 1.05f,
+            owner.FretSpacing * 2.7f,
             GetScaledOpenHeight(),
             GetScaledOpenDepth());
     }
 
     private float GetScaledOpenHeight()
     {
-        return 0.16f;
+        return 0.2f;
     }
 
     private float GetScaledOpenDepth()
     {
-        return Mathf.Max(0.32f, owner.FretSpacing * 0.24f);
+        return Mathf.Max(0.36f, owner.FretSpacing * 0.22f);
     }
 
     private Vector3 GetMarkerScale()
     {
         float diameter = Mathf.Max(0.38f, owner.FretSpacing * 0.16f);
         return new Vector3(diameter, diameter, Mathf.Max(0.16f, diameter * 0.35f));
+    }
+
+    private float GetResolvedFadeTime()
+    {
+        return Mathf.Max(0.45f, owner.highwayResolvedHoldTime);
     }
 
     private GameObject CreateChordFrame(float leftX, float rightX, float centerY, float height)
