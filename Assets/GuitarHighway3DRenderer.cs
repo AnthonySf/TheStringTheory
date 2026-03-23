@@ -14,6 +14,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private GuitarBridgeServer owner;
     private Camera mainCamera;
     private GameObject root;
+    private GameObject gameplayRoot;
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
     private Material[,] fretLightMats;
@@ -21,6 +22,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private ITabsBackgroundEffect backgroundEffect;
     private GameObject backgroundRoot;
     private Camera backgroundCamera;
+    private TabsSongHeaderOverlay songHeaderOverlay;
     private int originalMainCameraCullingMask = -1;
     private CameraClearFlags originalMainCameraClearFlags;
     private float cameraTargetX;
@@ -30,15 +32,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float nextDiagnosticsLogTime;
     private float nextPreviewLogTime;
     private bool hasLoggedMissingCamera;
+    private bool gameplayVisualsVisible = true;
     private const int BackgroundLayer = 2;
-    private const float HighwayBackgroundScaleMultiplier = 3.5f;
-    private const float HighwayBackgroundCameraZoomMultiplier = 0.72f;
+    private const float HighwayBackgroundScaleMultiplier = 6f;
+    private const float HighwayBackgroundCameraZoomMultiplier = 0.45f;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
         this.owner = owner;
         mainCamera = Camera.main;
         root = new GameObject("Highway3DRendererRoot");
+        gameplayRoot = new GameObject("Highway3DGameplayRoot");
+        gameplayRoot.transform.SetParent(root.transform, false);
         backgroundRoot = new GameObject("Highway3DBackgroundRoot");
         backgroundRoot.transform.SetParent(root.transform, false);
         nextDiagnosticsLogTime = Time.unscaledTime;
@@ -51,6 +56,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         InitializeBackgroundEffect();
         CreateBackgroundCamera();
         ConfigureCamera();
+        songHeaderOverlay = new TabsSongHeaderOverlay(owner);
         GenerateFretboard();
         GenerateStrings();
         fretLightMats = new Material[6, GetFretLightColumnCount()];
@@ -87,16 +93,27 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         ConfigureCamera();
         ConfigureBackgroundCamera();
-        UpdateFretboardLights(snapshot.latestDetectedPitches);
-        UpdateNotes(snapshot);
-        UpdateChordFrames(snapshot);
-        UpdateSectionCamera(snapshot);
+        bool suppressGameplay = snapshot.mainMenuFlowActive;
+        SetGameplayVisualsVisible(!suppressGameplay);
+
+        if (!suppressGameplay)
+        {
+            UpdateFretboardLights(snapshot.latestDetectedPitches);
+            UpdateNotes(snapshot);
+            UpdateChordFrames(snapshot);
+            UpdateSectionCamera(snapshot);
+        }
+
         backgroundEffect?.Tick(Time.deltaTime);
+        songHeaderOverlay?.UpdateFromSnapshot(snapshot);
         LogRenderDiagnostics(snapshot);
     }
 
     public void DisposeRenderer()
     {
+        songHeaderOverlay?.Dispose();
+        songHeaderOverlay = null;
+
         backgroundEffect?.Dispose();
         backgroundEffect = null;
 
@@ -108,6 +125,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (root != null)
             Object.Destroy(root);
+    }
+
+    private void SetGameplayVisualsVisible(bool visible)
+    {
+        if (gameplayVisualsVisible == visible)
+            return;
+
+        gameplayVisualsVisible = visible;
+        if (gameplayRoot != null)
+            gameplayRoot.SetActive(visible);
     }
 
     private void BuildChartCaches(List<NoteData> chartNotes)
@@ -206,13 +233,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         GameObject neck = GameObject.CreatePrimitive(PrimitiveType.Cube);
         float neckWidth = (owner.TotalFrets + 2) * owner.FretSpacing + 10f;
-        neck.transform.SetParent(root.transform, false);
+        neck.transform.SetParent(gameplayRoot.transform, false);
         neck.transform.position = new Vector3(neckWidth / 2f - 10f, -2f, 25f);
         neck.transform.localScale = new Vector3(neckWidth, 0.1f, 150f);
         neck.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(new Color(0.1f, 0.05f, 0.02f), 0f);
 
         GameObject nut = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        nut.transform.SetParent(root.transform, false);
+        nut.transform.SetParent(gameplayRoot.transform, false);
         nut.transform.position = new Vector3(0f, 3.5f, owner.StrikeLineZ + 0.05f);
         nut.transform.localScale = new Vector3(0.5f, 12f, 0.3f);
         nut.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(new Color(0.8f, 0.7f, 0.4f), 0.2f);
@@ -222,7 +249,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float wireX = fret * owner.FretSpacing;
 
             GameObject wire = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            wire.transform.SetParent(root.transform, false);
+            wire.transform.SetParent(gameplayRoot.transform, false);
             wire.transform.position = new Vector3(wireX, 3.5f, owner.StrikeLineZ + 0.05f);
             wire.transform.localScale = new Vector3(0.15f, 12f, 0.15f);
             wire.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(Color.gray, 0.3f);
@@ -263,7 +290,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             GameObject s = GameObject.CreatePrimitive(PrimitiveType.Cube);
             s.name = "String_" + i;
-            s.transform.SetParent(root.transform, false);
+            s.transform.SetParent(gameplayRoot.transform, false);
             s.transform.position = new Vector3(0f, GetStringY(i), owner.StrikeLineZ);
             s.transform.localScale = new Vector3(600f, 0.1f, 0.1f);
             Material mat = owner.CreateSharedGlowMaterial(owner.GetStringColor(i), 2f);
@@ -282,7 +309,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             for (int f = 0; f < fretLightColumns; f++)
             {
                 GameObject light = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                light.transform.SetParent(root.transform, false);
+                light.transform.SetParent(gameplayRoot.transform, false);
                 float xPos = f == 0 ? GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)) : GetNoteX(f);
                 light.transform.position = new Vector3(xPos, GetStringY(s), owner.StrikeLineZ);
                 light.transform.localScale = new Vector3(0.6f, 0.6f, 0.2f);
@@ -346,7 +373,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
         cube.name = "HighwayNote_" + data.id;
-        cube.transform.SetParent(root.transform, false);
+        cube.transform.SetParent(gameplayRoot.transform, false);
         cube.transform.position = new Vector3(xPos, yPos, owner.SpawnZ);
 
         Material noteMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 0.8f);
@@ -377,12 +404,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         GameObject tail = GameObject.CreatePrimitive(PrimitiveType.Cube);
         tail.name = "Tail_" + data.id;
-        tail.transform.SetParent(root.transform, false);
+        tail.transform.SetParent(gameplayRoot.transform, false);
         tail.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx) * 0.4f, 0.2f);
 
         GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         marker.name = "Marker_" + data.id;
-        marker.transform.SetParent(root.transform, false);
+        marker.transform.SetParent(gameplayRoot.transform, false);
         marker.transform.position = new Vector3(xPos, yPos, owner.StrikeLineZ);
         marker.transform.localScale = GetMarkerScale();
         marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
@@ -898,7 +925,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private GameObject CreateChordFrame(float leftX, float rightX, float centerY, float height)
     {
         GameObject parent = new GameObject("ChordFrame");
-        parent.transform.SetParent(root.transform, false);
+        parent.transform.SetParent(gameplayRoot.transform, false);
         float centerX = (leftX + rightX) * 0.5f;
         float width = Mathf.Max(0.5f, rightX - leftX);
         parent.transform.position = new Vector3(centerX, centerY, owner.SpawnZ);
@@ -926,7 +953,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private GameObject CreateNoteOutline(Vector3 noteScale, Color color)
     {
         GameObject outlineRoot = new GameObject("NoteOutline");
-        outlineRoot.transform.SetParent(root.transform, false);
+        outlineRoot.transform.SetParent(gameplayRoot.transform, false);
 
         float thickness = Mathf.Max(0.02f, owner.highwayStuckOutlineThickness);
         float depth = Mathf.Max(0.01f, owner.highwayStuckOutlineDepth);
