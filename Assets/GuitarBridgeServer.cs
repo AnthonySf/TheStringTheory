@@ -445,13 +445,17 @@ public class GuitarBridgeServer : MonoBehaviour
         EnsureBackingTrackSource();
         RegisterRuntimeSettings();
         LoadGlobalRuntimeSettingsMetadata();
-        showMainMenu = true;
-        mainMenuFlowActive = true;
-        isPaused = true;
+        bool startInMainMenu = renderMode != GuitarRenderMode.Highway3D;
+        showMainMenu = startInMainMenu;
+        mainMenuFlowActive = startInMainMenu;
+        isPaused = startInMainMenu;
         LoadTestSong();
-        isPaused = true;
+        isPaused = startInMainMenu;
         EnsureRenderer();
-        SyncAudioToSongTimer(playImmediately: false);
+        if (renderMode == GuitarRenderMode.Highway3D)
+            AutoStartHighway3DIfNeeded();
+        else
+            SyncAudioToSongTimer(playImmediately: false);
     }
 
     private void Update()
@@ -490,6 +494,26 @@ public class GuitarBridgeServer : MonoBehaviour
             activeRenderer.Render(BuildSnapshot());
 
         UpdateUiText();
+    }
+
+    private void AutoStartHighway3DIfNeeded()
+    {
+        if (renderMode != GuitarRenderMode.Highway3D)
+            return;
+
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        showSongSelection = false;
+        showTrackSelection = false;
+        showSongSettings = false;
+        showGlobalSettings = false;
+        showStartupTuningReminder = false;
+        resumeGameplayAfterStartupTuningReminder = false;
+        songHasEnded = false;
+        isPaused = false;
+        songTimer = -songStartDelaySeconds;
+        audioSongTimer = -songStartDelaySeconds;
+        SyncAudioToSongTimer(playImmediately: true);
     }
 
     private void HandlePauseControls()
