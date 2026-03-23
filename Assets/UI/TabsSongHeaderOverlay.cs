@@ -896,6 +896,8 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsScrollView.style.minHeight = 0f;
         globalSettingsScrollView.style.marginTop = 8f;
         globalSettingsScrollView.style.marginBottom = 8f;
+        ConfigureRuntimeScrollView(globalSettingsScrollView);
+        globalSettingsCard.style.overflow = Overflow.Hidden;
         globalSettingsCard.Add(globalSettingsScrollView);
 
         Button globalBackButton = CreateActionButton("Back", () => owner?.CloseGlobalSettingsFromUi());
@@ -931,6 +933,8 @@ public sealed class TabsSongHeaderOverlay
         selectionScrollView.style.marginTop = 4f;
         selectionScrollView.style.marginBottom = 4f;
         selectionScrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        ConfigureRuntimeScrollView(selectionScrollView);
+        selectionCard.style.overflow = Overflow.Hidden;
         selectionCard.Add(selectionScrollView);
 
         VisualElement selectionButtons = new VisualElement();
@@ -983,6 +987,8 @@ public sealed class TabsSongHeaderOverlay
         trackSelectionScrollView.style.maxHeight = 640f;
         trackSelectionScrollView.style.minHeight = 380f;
         trackSelectionScrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        ConfigureRuntimeScrollView(trackSelectionScrollView);
+        trackSelectionCard.style.overflow = Overflow.Hidden;
         trackSelectionCard.Add(trackSelectionScrollView);
 
         VisualElement trackSelectionButtons = new VisualElement();
@@ -1887,6 +1893,18 @@ public sealed class TabsSongHeaderOverlay
         return row;
     }
 
+    private static void ConfigureRuntimeScrollView(ScrollView scrollView)
+    {
+        if (scrollView == null)
+            return;
+
+        scrollView.style.overflow = Overflow.Hidden;
+        scrollView.contentViewport.style.overflow = Overflow.Hidden;
+        scrollView.contentContainer.style.flexShrink = 0f;
+        scrollView.mouseWheelScrollSize = 96f;
+        scrollView.verticalPageSize = 240f;
+    }
+
     private static string BuildGlobalSettingsLayoutSignature(List<RuntimeSettingSectionSnapshot> sections)
     {
         if (sections == null)
@@ -2630,6 +2648,13 @@ public sealed class TabsSongHeaderOverlay
         {
             ownsInstance = false;
             return existing;
+        }
+
+        PanelSettings runtimeAsset = Resources.Load<PanelSettings>("UIToolkitRuntimePanelSettings");
+        if (runtimeAsset != null)
+        {
+            ownsInstance = true;
+            return ScriptableObject.Instantiate(runtimeAsset);
         }
 
         ownsInstance = true;

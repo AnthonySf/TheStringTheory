@@ -296,7 +296,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             {
                 GameObject textObj = new GameObject("FretNum_" + fret);
                 textObj.transform.SetParent(root.transform, false);
-                textObj.transform.position = new Vector3(wireX - (owner.FretSpacing * 0.5f), -1f, owner.StrikeLineZ - 0.45f);
+                textObj.transform.position = new Vector3(wireX - (owner.FretSpacing * 0.5f), 0.45f, owner.StrikeLineZ + 0.12f);
                 textObj.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
                 TextMeshPro tm = textObj.AddComponent<TextMeshPro>();
@@ -311,7 +311,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             GameObject openText = new GameObject("FretNum_0");
             openText.transform.SetParent(root.transform, false);
-            openText.transform.position = new Vector3(GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)), -1f, owner.StrikeLineZ - 0.45f);
+            openText.transform.position = new Vector3(GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)), 0.45f, owner.StrikeLineZ + 0.12f);
             openText.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
             TextMeshPro tm0 = openText.AddComponent<TextMeshPro>();
@@ -419,7 +419,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void GenerateLaneGuides()
     {
         int laneCount = GetFretLightColumnCount();
-        float laneSurfaceY = -1.93f;
+        float laneSurfaceY = -1.84f;
         float depth = 150f;
         float centerZ = owner.StrikeLineZ + (depth * 0.5f);
 
@@ -430,7 +430,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             guide.transform.SetParent(gameplayRoot.transform, false);
             float xPos = lane * owner.FretSpacing;
             guide.transform.position = new Vector3(xPos, laneSurfaceY, centerZ);
-            guide.transform.localScale = new Vector3(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), 0.02f, depth);
+            guide.transform.localScale = new Vector3(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), 0.03f, depth);
 
             Color baseColor = new Color(0.18f, 0.45f, 1f, 0.14f);
             Material mat = owner.CreateSharedTransparentMaterial(baseColor, 0.02f);
