@@ -287,7 +287,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             {
                 GameObject textObj = new GameObject("FretNum_" + fret);
                 textObj.transform.SetParent(root.transform, false);
-                textObj.transform.position = new Vector3(wireX - (owner.FretSpacing * 0.5f), -1f, owner.StrikeLineZ - 5f);
+                textObj.transform.position = new Vector3(wireX - (owner.FretSpacing * 0.5f), 0.25f, owner.StrikeLineZ - 5f);
                 textObj.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
                 TextMeshPro tm = textObj.AddComponent<TextMeshPro>();
@@ -302,7 +302,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             GameObject openText = new GameObject("FretNum_0");
             openText.transform.SetParent(root.transform, false);
-            openText.transform.position = new Vector3(GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)), -1f, owner.StrikeLineZ - 5f);
+            openText.transform.position = new Vector3(GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)), 0.25f, owner.StrikeLineZ - 5f);
             openText.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
             TextMeshPro tm0 = openText.AddComponent<TextMeshPro>();
@@ -491,13 +491,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         tail.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx) * 0.4f, 0.2f);
         tail.SetActive(owner.highwayShowApproachLine);
 
-        GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        marker.name = "Marker_" + data.id;
-        marker.transform.SetParent(gameplayRoot.transform, false);
-        marker.transform.position = new Vector3(xPos, yPos, owner.StrikeLineZ);
-        marker.transform.localScale = GetMarkerScale();
-        marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
-        marker.SetActive(owner.highwayShowLandingDot);
+        GameObject marker = null;
+        if (!isOpen)
+        {
+            marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            marker.name = "Marker_" + data.id;
+            marker.transform.SetParent(gameplayRoot.transform, false);
+            marker.transform.position = new Vector3(xPos, yPos, owner.StrikeLineZ);
+            marker.transform.localScale = GetMarkerScale();
+            marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
+            marker.SetActive(owner.highwayShowLandingDot);
+        }
 
         GameObject outlineRoot = CreateNoteOutline(cube.transform.localScale, owner.GetStringColor(data.stringIdx));
         outlineRoot.SetActive(false);
@@ -668,70 +672,61 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void UpdateSectionCamera(GuitarGameplaySnapshot snapshot)
     {
         float renderSongTime = GetRenderSongTime(snapshot);
-        float activeMin = -1000f;
-        float activeMax = -1000f;
-        bool foundActive = false;
+        float previewWindow = Mathf.Max(1.1f, owner.lookaheadWindow);
+        float weightedCenterSum = 0f;
+        float weightSum = 0f;
+        float requiredMin = 0f;
+        float requiredMax = 0f;
+        bool foundFraming = false;
 
         for (int i = 0; i < snapshot.noteStates.Count; i++)
         {
             GameplayNoteState state = snapshot.noteStates[i];
-            float z = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
-            if (z > owner.SpawnZ || z < owner.StrikeLineZ - 2f)
+            if (state == null || state.IsResolved)
+                continue;
+
+            float timeUntilNote = state.data.time - renderSongTime;
+            if (timeUntilNote < -0.1f || timeUntilNote > previewWindow)
                 continue;
 
             GetFramingRange(state.data, out float minX, out float maxX);
-            if (!foundActive)
+            float noteCenter = (minX + maxX) * 0.5f;
+            float noteWeight = Mathf.Lerp(1.6f, 0.45f, Mathf.Clamp01(timeUntilNote / previewWindow));
+
+            weightedCenterSum += noteCenter * noteWeight;
+            weightSum += noteWeight;
+
+            if (!foundFraming)
             {
-                activeMin = minX;
-                activeMax = maxX;
-                foundActive = true;
+                requiredMin = minX;
+                requiredMax = maxX;
+                foundFraming = true;
             }
             else
             {
-                activeMin = Mathf.Min(activeMin, minX);
-                activeMax = Mathf.Max(activeMax, maxX);
+                requiredMin = Mathf.Min(requiredMin, minX);
+                requiredMax = Mathf.Max(requiredMax, maxX);
             }
         }
 
-        List<NoteData> upcoming = chartById.Values.Where(n => n.time > renderSongTime && n.time < renderSongTime + owner.lookaheadWindow).ToList();
-        float futureMin = activeMin;
-        float futureMax = activeMax;
-        bool foundUpcoming = false;
-
-        for (int i = 0; i < upcoming.Count; i++)
+        if (foundFraming && weightSum > 0.0001f)
         {
-            GetFramingRange(upcoming[i], out float minX, out float maxX);
-            if (!foundUpcoming)
-            {
-                futureMin = minX;
-                futureMax = maxX;
-                foundUpcoming = true;
-            }
-            else
-            {
-                futureMin = Mathf.Min(futureMin, minX);
-                futureMax = Mathf.Max(futureMax, maxX);
-            }
-        }
+            float desiredTargetX = weightedCenterSum / weightSum;
+            float horizontalPadding = Mathf.Max(owner.FretSpacing * 0.8f, 0.8f);
+            float halfSpan = Mathf.Max(
+                desiredTargetX - requiredMin,
+                requiredMax - desiredTargetX) + horizontalPadding;
+            float desiredSpread = (halfSpan * 2f) / Mathf.Max(0.01f, owner.FretSpacing);
+            float desiredFov = Mathf.Clamp(50f + (desiredSpread * 3.0f), 50f, 90f);
 
-        if (foundActive || foundUpcoming)
-        {
-            float finalMin = foundActive ? Mathf.Min(activeMin, futureMin) : futureMin;
-            float finalMax = foundActive ? Mathf.Max(activeMax, futureMax) : futureMax;
-            float desiredTargetX = (finalMin + finalMax) * 0.5f;
-            float spread = (finalMax - finalMin) / owner.FretSpacing;
-            float desiredFov = Mathf.Clamp(50f + (spread * 3.5f), 50f, 95f);
-
-            if (Mathf.Abs(desiredTargetX - cameraTargetX) > owner.FretSpacing * 0.2f)
-                cameraTargetX = desiredTargetX;
-
-            if (Mathf.Abs(desiredFov - cameraTargetFOV) > 1.25f)
-                cameraTargetFOV = desiredFov;
+            float targetBlend = 1f - Mathf.Exp(-Time.deltaTime * 2.2f);
+            cameraTargetX = Mathf.Lerp(cameraTargetX, desiredTargetX, targetBlend);
+            cameraTargetFOV = Mathf.Lerp(cameraTargetFOV, desiredFov, targetBlend * 0.9f);
         }
 
         float smoothedX = Mathf.SmoothDamp(mainCamera.transform.position.x, cameraTargetX, ref cameraXVelocity, 0.28f, Mathf.Infinity, Time.deltaTime);
         mainCamera.transform.position = new Vector3(smoothedX, owner.highwayCameraY, owner.highwayCameraZ);
-        mainCamera.fieldOfView = Mathf.SmoothDamp(mainCamera.fieldOfView, cameraTargetFOV, ref cameraFovVelocity, 0.34f, Mathf.Infinity, Time.deltaTime);
+        mainCamera.fieldOfView = Mathf.SmoothDamp(mainCamera.fieldOfView, cameraTargetFOV, ref cameraFovVelocity, 0.42f, Mathf.Infinity, Time.deltaTime);
     }
 
     private void LogInitialization(List<NoteData> chartNotes, List<TabSectionData> sections)
