@@ -2622,6 +2622,7 @@ public sealed class TabsSongHeaderOverlay
             return;
 
         lastScreenHeight = screenHeight;
+        bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
 
         float songSize = Mathf.Clamp(screenHeight * 0.052f, 40f, 64f);
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
