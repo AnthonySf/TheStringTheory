@@ -1804,6 +1804,15 @@ public sealed class TabsSongHeaderOverlay
         }).ExecuteLater(0);
     }
 
+    private void PreserveGlobalSettingsScrollOffset()
+    {
+        if (globalSettingsScrollView == null)
+            return;
+
+        globalSettingsScrollOffset = globalSettingsScrollView.scrollOffset;
+        RestoreGlobalSettingsScrollOffset();
+    }
+
     private void AddGlobalSettingsColumn(VisualElement parent, string title, bool addRightSpacing)
     {
         VisualElement column = new VisualElement();
@@ -1916,17 +1925,29 @@ public sealed class TabsSongHeaderOverlay
             Toggle toggle = new Toggle();
             toggle.value = string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase);
             toggle.focusable = false;
-            toggle.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetGlobalRuntimeSettingFromUi(setting.id, evt.newValue ? "true" : "false"); });
+            toggle.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
+            toggle.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressCallbacks)
+                    return;
+
+                PreserveGlobalSettingsScrollOffset();
+                owner?.SetGlobalRuntimeSettingFromUi(setting.id, evt.newValue ? "true" : "false");
+            });
             input = toggle;
         }
         else if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase))
         {
             EnumCycleControl enumCycle = new EnumCycleControl(setting.enumOptions, setting.value, CreateLabel, CreateActionButton);
             enumCycle.focusable = false;
+            enumCycle.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
             enumCycle.OnValueChanged += value =>
             {
                 if (!suppressCallbacks)
+                {
+                    PreserveGlobalSettingsScrollOffset();
                     owner?.SetGlobalRuntimeSettingFromUi(setting.id, value);
+                }
             };
             input = enumCycle;
         }
@@ -1934,11 +1955,13 @@ public sealed class TabsSongHeaderOverlay
         {
             Slider slider = new Slider(setting.min, setting.max) { value = ParseFloat(setting.value, setting.min) };
             slider.focusable = false;
+            slider.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
             slider.RegisterValueChangedCallback(evt =>
             {
                 if (suppressCallbacks)
                     return;
 
+                PreserveGlobalSettingsScrollOffset();
                 float snapped = setting.step > 0.0001f ? Mathf.Round(evt.newValue / setting.step) * setting.step : evt.newValue;
                 string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase)
                     ? Mathf.RoundToInt(snapped).ToString(CultureInfo.InvariantCulture)
