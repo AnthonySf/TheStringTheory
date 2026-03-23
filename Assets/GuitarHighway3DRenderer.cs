@@ -22,6 +22,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private ITabsBackgroundEffect backgroundEffect;
     private GameObject backgroundRoot;
     private Camera backgroundCamera;
+    private bool backgroundUsingMenuMode = true;
     private TabsSongHeaderOverlay songHeaderOverlay;
     private int originalMainCameraCullingMask = -1;
     private CameraClearFlags originalMainCameraClearFlags;
@@ -52,7 +53,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         originalMainCameraCullingMask = mainCamera != null ? mainCamera.cullingMask : -1;
 
         BuildChartCaches(chartNotes);
-        InitializeBackgroundEffect();
+        InitializeBackgroundEffect(menuMode: true);
         ConfigureCamera();
         songHeaderOverlay = new TabsSongHeaderOverlay(owner);
         gameplayBuilt = false;
@@ -85,9 +86,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return;
         }
 
-        ConfigureCamera();
-        UpdateBackgroundPlacement();
         bool suppressGameplay = snapshot.mainMenuFlowActive;
+        EnsureBackgroundMode(suppressGameplay);
+        ConfigureCamera();
+
+        if (!suppressGameplay)
+            UpdateBackgroundPlacement();
+
         SetGameplayVisualsVisible(!suppressGameplay);
 
         if (!suppressGameplay)
@@ -111,6 +116,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         backgroundEffect?.Dispose();
         backgroundEffect = null;
+        if (backgroundCamera != null)
+            Object.Destroy(backgroundCamera.gameObject);
+        backgroundCamera = null;
 
         if (mainCamera != null && originalMainCameraCullingMask >= 0)
         {
@@ -167,9 +175,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return;
 
         mainCamera.orthographic = false;
-        mainCamera.clearFlags = CameraClearFlags.SolidColor;
+        mainCamera.clearFlags = backgroundCamera != null ? CameraClearFlags.Depth : CameraClearFlags.SolidColor;
         if (originalMainCameraCullingMask >= 0)
-            mainCamera.cullingMask = originalMainCameraCullingMask;
+            mainCamera.cullingMask = backgroundCamera != null
+                ? originalMainCameraCullingMask & ~(1 << BackgroundLayer)
+                : originalMainCameraCullingMask;
         mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, owner.highwayCameraFarClip);
         mainCamera.transform.position = new Vector3(cameraTargetX, owner.highwayCameraY, owner.highwayCameraZ);
         mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
@@ -189,17 +199,21 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         gameplayBuilt = true;
     }
 
-    private void InitializeBackgroundEffect()
+    private void InitializeBackgroundEffect(bool menuMode)
     {
         backgroundEffect?.Dispose();
         backgroundEffect = TabsBackgroundFactory.Create(owner);
+        backgroundUsingMenuMode = menuMode;
 
         if (backgroundRoot == null || backgroundEffect == null)
             return;
 
         backgroundEffect.Initialize(backgroundRoot.transform, owner);
         SetLayerRecursively(backgroundRoot, BackgroundLayer);
-        UpdateBackgroundPlacement();
+        if (menuMode)
+            CreateOrConfigureMenuBackgroundCamera();
+        else
+            UpdateBackgroundPlacement();
     }
 
     private void UpdateBackgroundPlacement()
@@ -212,6 +226,49 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             owner.highwayBackgroundCenterY,
             owner.highwayBackgroundDistance);
         backgroundRoot.transform.localScale = Vector3.one * owner.highwayBackgroundScale;
+    }
+
+    private void EnsureBackgroundMode(bool menuMode)
+    {
+        if (backgroundEffect == null || menuMode != backgroundUsingMenuMode)
+        {
+            if (backgroundCamera != null)
+            {
+                Object.Destroy(backgroundCamera.gameObject);
+                backgroundCamera = null;
+            }
+
+            InitializeBackgroundEffect(menuMode);
+        }
+
+        if (menuMode)
+            CreateOrConfigureMenuBackgroundCamera();
+    }
+
+    private void CreateOrConfigureMenuBackgroundCamera()
+    {
+        if (mainCamera == null)
+            return;
+
+        if (backgroundCamera == null)
+        {
+            GameObject backgroundCameraObject = new GameObject("HighwayMenuBackgroundCamera");
+            backgroundCameraObject.transform.SetParent(root.transform, false);
+            backgroundCamera = backgroundCameraObject.AddComponent<Camera>();
+        }
+
+        backgroundRoot.transform.localPosition = Vector3.zero;
+        backgroundRoot.transform.localRotation = Quaternion.identity;
+        backgroundRoot.transform.localScale = Vector3.one;
+
+        backgroundCamera.depth = mainCamera.depth - 1f;
+        backgroundCamera.clearFlags = CameraClearFlags.SolidColor;
+        backgroundCamera.backgroundColor = owner.tabBackgroundColor;
+        backgroundCamera.orthographic = true;
+        backgroundCamera.orthographicSize = owner.tabCameraSize;
+        backgroundCamera.transform.position = new Vector3(0f, 0f, owner.tabCameraZ);
+        backgroundCamera.transform.rotation = Quaternion.identity;
+        backgroundCamera.cullingMask = 1 << BackgroundLayer;
     }
 
     private static void SetLayerRecursively(GameObject target, int layer)
