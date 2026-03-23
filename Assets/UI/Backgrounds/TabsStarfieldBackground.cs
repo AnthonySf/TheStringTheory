@@ -92,7 +92,10 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         if (stars.Count == 0)
             return;
 
-        float width = owner.tabStarfieldWidth;
+        float spreadScale = owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+            ? Mathf.Max(0.05f, owner.highwayBackgroundStarSpread)
+            : 1f;
+        float width = owner.tabStarfieldWidth * spreadScale;
         float halfWidth = width * 0.5f;
 
         for (int i = 0; i < stars.Count; i++)
@@ -309,10 +312,18 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         float nearBand,
         float farBand)
     {
-        float width = owner.tabStarfieldWidth;
+        float spreadScale = owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+            ? Mathf.Max(0.05f, owner.highwayBackgroundStarSpread)
+            : 1f;
+
+        float width = owner.tabStarfieldWidth * spreadScale;
         float halfWidth = width * 0.5f;
         float minY = Mathf.Min(owner.tabStarfieldMinY, owner.tabStarfieldMaxY);
         float maxY = Mathf.Max(owner.tabStarfieldMinY, owner.tabStarfieldMaxY);
+        float centerY = (minY + maxY) * 0.5f;
+        float halfHeight = (maxY - minY) * 0.5f * spreadScale;
+        minY = centerY - halfHeight;
+        maxY = centerY + halfHeight;
         float nearZ = owner.tabStarfieldNearZ;
         float farZ = owner.tabStarfieldFarZ;
 
