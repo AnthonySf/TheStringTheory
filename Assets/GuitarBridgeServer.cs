@@ -145,6 +145,9 @@ public class GuitarBridgeServer : MonoBehaviour
     public float highwayBackgroundStarSpread = 1f;
     public float highwayBackgroundCloudSpread = 1f;
     public float highwayLaneGuideThickness = 0.14f;
+    public float highwayLaneGuideYOffset = -1.84f;
+    public float highwayFretNumberYOffset = 0.45f;
+    public float highwayFretNumberZOffset = 0.12f;
     public bool highwayHighlightFretBoundaries = false;
     public bool highwayShowApproachLine = false;
     public bool highwayShowLandingDot = true;
@@ -3303,7 +3306,10 @@ private void ParseUdpState()
         RegisterFloatSetting("highway.backgroundColorA", "Highway 3D - Background", "Background Color A", "Alpha channel of the Highway3D background color.", 0f, 1f, 0.01f, () => highwayBackgroundColor.a, v => { Color c = highwayBackgroundColor; c.a = v; highwayBackgroundColor = c; });
 
         RegisterFloatSetting("highway.laneGuideThickness", "Highway 3D - Lanes", "Lane Guide Thickness", "Thickness of the Highway3D fret-boundary lane guides.", 0.02f, 0.5f, 0.01f, () => highwayLaneGuideThickness, v => highwayLaneGuideThickness = v);
+        RegisterFloatSetting("highway.laneGuideYOffset", "Highway 3D - Lanes", "Lane Guide Y Offset", "Vertical offset for the Highway3D lane guides so you can lift them above or sink them into the board.", -3f, 2f, 0.01f, () => highwayLaneGuideYOffset, v => highwayLaneGuideYOffset = v);
         RegisterBoolSetting("highway.highlightFretBoundaries", "Highway 3D - Lanes", "Highlight Fret Boundaries", "Brightens fret metal boundaries when incoming notes are between them.", () => highwayHighlightFretBoundaries, v => highwayHighlightFretBoundaries = v);
+        RegisterFloatSetting("highway.fretNumberYOffset", "Highway 3D - Layout", "Fret Number Y Offset", "Vertical offset for the Highway3D fret numbers.", -3f, 3f, 0.01f, () => highwayFretNumberYOffset, v => highwayFretNumberYOffset = v);
+        RegisterFloatSetting("highway.fretNumberZOffset", "Highway 3D - Layout", "Fret Number Z Offset", "Depth offset for the Highway3D fret numbers relative to the strike line.", -3f, 3f, 0.01f, () => highwayFretNumberZOffset, v => highwayFretNumberZOffset = v);
     }
 
     private void RegisterFloatSetting(string id, string section, string label, string tooltip, float min, float max, float step, Func<float> getter, Action<float> setter)
