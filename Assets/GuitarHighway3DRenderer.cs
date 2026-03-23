@@ -269,6 +269,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         Material noteMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 0.8f);
         cube.GetComponent<Renderer>().material = noteMat;
+        Material stuckMat = owner.CreateSharedTransparentMaterial(new Color(owner.GetStringColor(data.stringIdx).r, owner.GetStringColor(data.stringIdx).g, owner.GetStringColor(data.stringIdx).b, 0.22f), 0.08f);
 
         GameObject textObj = null;
 
@@ -313,6 +314,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             noteRoot = cube,
             noteRenderer = cube.GetComponent<Renderer>(),
             noteMaterial = noteMat,
+            stuckMaterial = stuckMat,
             label = textObj != null ? textObj.GetComponent<TextMeshPro>() : null,
             tail = tail,
             marker = marker,
@@ -340,7 +342,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
         if (view.noteRenderer != null)
-            view.noteRenderer.enabled = !isStuckOnString;
+        {
+            view.noteRenderer.enabled = true;
+            view.noteRenderer.material = isStuckOnString ? view.stuckMaterial : view.noteMaterial;
+        }
         if (view.outlineRoot != null)
             view.outlineRoot.SetActive(isStuckOnString);
 
@@ -869,6 +874,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public GameObject noteRoot;
         public Renderer noteRenderer;
         public Material noteMaterial;
+        public Material stuckMaterial;
         public TextMeshPro label;
         public GameObject tail;
         public GameObject marker;
