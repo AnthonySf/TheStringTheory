@@ -19,6 +19,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private Material[,] fretLightMats;
     private float cameraTargetX;
     private float cameraTargetFOV = 60f;
+    private float cameraXVelocity;
+    private float cameraFovVelocity;
     private float nextDiagnosticsLogTime;
     private float nextPreviewLogTime;
     private bool hasLoggedMissingCamera;
@@ -303,6 +305,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         marker.transform.localScale = GetMarkerScale();
         marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
 
+        GameObject outlineRoot = CreateNoteOutline(cube.transform, cube.transform.localScale, owner.GetStringColor(data.stringIdx));
+        outlineRoot.SetActive(false);
+
         return new HighwayNoteView
         {
             noteRoot = cube,
@@ -311,6 +316,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             label = textObj != null ? textObj.GetComponent<TextMeshPro>() : null,
             tail = tail,
             marker = marker,
+            outlineRoot = outlineRoot,
             baseColor = owner.GetStringColor(data.stringIdx),
             baseScale = cube.transform.localScale
         };
@@ -326,6 +332,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         view.noteRoot.transform.position = new Vector3(x, y, z);
         view.marker.transform.position = new Vector3(x, y, owner.StrikeLineZ);
+
+        bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
+        if (view.noteRenderer != null)
+            view.noteRenderer.enabled = !isStuckOnString;
+        if (view.outlineRoot != null)
+            view.outlineRoot.SetActive(isStuckOnString);
 
         float tailLength = Mathf.Max(0f, z - owner.StrikeLineZ);
         view.tail.transform.position = new Vector3(x, y, owner.StrikeLineZ + (tailLength * 0.5f));
@@ -493,17 +505,20 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             float finalMin = foundActive ? Mathf.Min(activeMin, futureMin) : futureMin;
             float finalMax = foundActive ? Mathf.Max(activeMax, futureMax) : futureMax;
-            cameraTargetX = (finalMin + finalMax) * 0.5f;
+            float desiredTargetX = (finalMin + finalMax) * 0.5f;
             float spread = (finalMax - finalMin) / owner.FretSpacing;
-            cameraTargetFOV = Mathf.Clamp(50f + (spread * 3.5f), 50f, 95f);
+            float desiredFov = Mathf.Clamp(50f + (spread * 3.5f), 50f, 95f);
+
+            if (Mathf.Abs(desiredTargetX - cameraTargetX) > owner.FretSpacing * 0.2f)
+                cameraTargetX = desiredTargetX;
+
+            if (Mathf.Abs(desiredFov - cameraTargetFOV) > 1.25f)
+                cameraTargetFOV = desiredFov;
         }
 
-        mainCamera.transform.position = Vector3.Lerp(
-            mainCamera.transform.position,
-            new Vector3(cameraTargetX, owner.highwayCameraY, owner.highwayCameraZ),
-            Time.deltaTime * owner.camMoveSpeed);
-
-        mainCamera.fieldOfView = Mathf.Lerp(mainCamera.fieldOfView, cameraTargetFOV, Time.deltaTime * owner.camMoveSpeed);
+        float smoothedX = Mathf.SmoothDamp(mainCamera.transform.position.x, cameraTargetX, ref cameraXVelocity, 0.28f, Mathf.Infinity, Time.deltaTime);
+        mainCamera.transform.position = new Vector3(smoothedX, owner.highwayCameraY, owner.highwayCameraZ);
+        mainCamera.fieldOfView = Mathf.SmoothDamp(mainCamera.fieldOfView, cameraTargetFOV, ref cameraFovVelocity, 0.34f, Mathf.Infinity, Time.deltaTime);
     }
 
     private void LogInitialization(List<NoteData> chartNotes, List<TabSectionData> sections)
@@ -805,6 +820,24 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         piece.GetComponent<Renderer>().material = material;
     }
 
+    private GameObject CreateNoteOutline(Transform parent, Vector3 noteScale, Color color)
+    {
+        GameObject outlineRoot = new GameObject("NoteOutline");
+        outlineRoot.transform.SetParent(parent, false);
+
+        float thickness = Mathf.Max(0.05f, noteScale.y * 0.28f);
+        float depth = Mathf.Max(0.05f, noteScale.z * 0.35f);
+        float halfWidth = noteScale.x * 0.5f;
+        float halfHeight = noteScale.y * 0.5f;
+        Material outlineMat = owner.CreateSharedGlowMaterial(color, 0.35f);
+
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, halfHeight, 0f), new Vector3(noteScale.x, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -halfHeight, 0f), new Vector3(noteScale.x, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(-halfWidth, 0f, 0f), new Vector3(thickness, noteScale.y, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(halfWidth, 0f, 0f), new Vector3(thickness, noteScale.y, depth), outlineMat);
+        return outlineRoot;
+    }
+
     private int GetFretLightColumnCount()
     {
         return Mathf.Max(1, owner.TotalFrets + 1);
@@ -832,6 +865,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public TextMeshPro label;
         public GameObject tail;
         public GameObject marker;
+        public GameObject outlineRoot;
         public Color baseColor;
         public Vector3 baseScale;
 
@@ -843,6 +877,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 Object.Destroy(tail);
             if (marker != null)
                 Object.Destroy(marker);
+            if (outlineRoot != null)
+                Object.Destroy(outlineRoot);
         }
     }
 }
