@@ -423,6 +423,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float laneSurfaceY = owner.highwayLaneGuideYOffset;
         float depth = 150f;
         float centerZ = owner.StrikeLineZ + (depth * 0.5f);
+        const float laneGuideHeight = 0.03f;
+        const float laneGuideLift = 0.055f;
 
         for (int lane = 0; lane < laneCount; lane++)
         {
@@ -430,12 +432,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             guide.name = "LaneGuide_" + lane;
             guide.transform.SetParent(gameplayRoot.transform, false);
             float xPos = lane * owner.FretSpacing;
-            guide.transform.position = new Vector3(xPos, laneSurfaceY, centerZ);
-            guide.transform.localScale = new Vector3(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), 0.03f, depth);
+            guide.transform.position = new Vector3(xPos, laneSurfaceY + laneGuideLift, centerZ);
+            guide.transform.localScale = new Vector3(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), laneGuideHeight, depth);
 
             Color baseColor = new Color(0.18f, 0.45f, 1f, 0.14f);
             Material mat = owner.CreateSharedTransparentMaterial(baseColor, 0.02f);
-            ConfigureOverlayMaterial(mat, 60, true);
+            ConfigureOverlayMaterial(mat, 60, false);
             Renderer renderer = guide.GetComponent<Renderer>();
             renderer.material = mat;
             laneGuideMats[lane] = mat;
