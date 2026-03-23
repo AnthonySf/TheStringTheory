@@ -10,6 +10,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly Dictionary<int, List<NoteData>> chordGroups = new Dictionary<int, List<NoteData>>();
     private readonly Dictionary<int, HighwayNoteView> noteViews = new Dictionary<int, HighwayNoteView>();
     private readonly Dictionary<int, GameObject> chordFrames = new Dictionary<int, GameObject>();
+    private readonly Dictionary<int, int> slideDestinationBySourceId = new Dictionary<int, int>();
     private readonly Dictionary<int, GameplayNoteState> noteStatesById = new Dictionary<int, GameplayNoteState>();
 
     private GuitarBridgeServer owner;
@@ -149,6 +150,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         chartById.Clear();
         chordGroups.Clear();
+        slideDestinationBySourceId.Clear();
 
         if (chartNotes == null)
             return;
@@ -157,6 +159,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             NoteData note = chartNotes[i];
             chartById[note.id] = note;
+
+            if (note.linkedFromNoteId >= 0)
+                slideDestinationBySourceId[note.linkedFromNoteId] = note.id;
 
             if (note.chordId >= 0)
             {
@@ -843,14 +848,21 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             ? Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((anchorState.data.time - songTime) * owner.noteSpeed))
             : z;
 
-        float endX = GetNoteX(targetFret);
-        float endY = startY;
-        float endZ = z;
-        if (noteStatesById.TryGetValue(state.data.id, out GameplayNoteState destinationState))
-            endZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((destinationState.data.time - songTime) * owner.noteSpeed));
+        NoteData destinationData = null;
+        if (slideDestinationBySourceId.TryGetValue(anchorData.id, out int destinationId))
+            chartById.TryGetValue(destinationId, out destinationData);
 
-        if (anchorData.id == state.data.id)
+        float endX = destinationData != null ? GetVisualNoteX(destinationData) : GetNoteX(targetFret);
+        float endY = destinationData != null ? GetStringY(destinationData.stringIdx) : startY;
+        float endZ;
+        if (destinationData != null && noteStatesById.TryGetValue(destinationData.id, out GameplayNoteState destinationState))
+        {
+            endZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((destinationState.data.time - songTime) * owner.noteSpeed));
+        }
+        else
+        {
             endZ = Mathf.Max(startZ + 0.6f, startZ + Mathf.Abs(endX - startX) * 0.35f);
+        }
 
         Vector3 start = new Vector3(startX, startY, startZ);
         Vector3 end = new Vector3(endX, endY, endZ);
