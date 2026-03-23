@@ -687,10 +687,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         GameObject slideRibbon = null;
         Renderer slideRibbonRenderer = null;
-        GameObject slideLeftRail = null;
-        GameObject slideRightRail = null;
-        Renderer slideLeftRailRenderer = null;
-        Renderer slideRightRailRenderer = null;
         if (data.technique == NoteTechnique.Slide || data.slideTargetFret >= 0 || data.linkedFromNoteId >= 0)
         {
             slideRibbon = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -700,24 +696,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             slideRibbonRenderer.material = owner.CreateSharedTransparentMaterial(new Color(owner.GetStringColor(data.stringIdx).r, owner.GetStringColor(data.stringIdx).g, owner.GetStringColor(data.stringIdx).b, 0.32f), 0.16f);
             Object.Destroy(slideRibbon.GetComponent<Collider>());
 
-            slideLeftRail = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            slideLeftRail.name = "SlideRailLeft_" + data.id;
-            slideLeftRail.transform.SetParent(techniqueRoot.transform, false);
-            slideLeftRailRenderer = slideLeftRail.GetComponent<Renderer>();
-            slideLeftRailRenderer.material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.25f);
-            Object.Destroy(slideLeftRail.GetComponent<Collider>());
-
-            slideRightRail = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            slideRightRail.name = "SlideRailRight_" + data.id;
-            slideRightRail.transform.SetParent(techniqueRoot.transform, false);
-            slideRightRailRenderer = slideRightRail.GetComponent<Renderer>();
-            slideRightRailRenderer.material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.25f);
-            Object.Destroy(slideRightRail.GetComponent<Collider>());
         }
 
         GameObject bendRibbon = null;
         Renderer bendRibbonRenderer = null;
-        GameObject bendArrowRoot = null;
         if (data.technique == NoteTechnique.Bend || data.bendStep > 0f)
         {
             bendRibbon = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -727,8 +709,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             bendRibbonRenderer.material = owner.CreateSharedTransparentMaterial(new Color(0.7f, 0.92f, 1f, 0.3f), 0.12f);
             Object.Destroy(bendRibbon.GetComponent<Collider>());
 
-            bendArrowRoot = CreateBendArrow(owner.GetStringColor(data.stringIdx));
-            bendArrowRoot.transform.SetParent(techniqueRoot.transform, false);
         }
 
         return new HighwayNoteView
@@ -743,13 +723,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             techniqueRoot = techniqueRoot,
             slideRibbon = slideRibbon,
             slideRibbonRenderer = slideRibbonRenderer,
-            slideLeftRail = slideLeftRail,
-            slideRightRail = slideRightRail,
-            slideLeftRailRenderer = slideLeftRailRenderer,
-            slideRightRailRenderer = slideRightRailRenderer,
             bendRibbon = bendRibbon,
             bendRibbonRenderer = bendRibbonRenderer,
-            bendArrowRoot = bendArrowRoot,
             baseColor = owner.GetStringColor(data.stringIdx),
             baseScale = cube.transform.localScale
         };
@@ -851,7 +826,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private bool UpdateSlideTechnique(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
     {
-        if (view.slideRibbon == null || view.slideRibbonRenderer == null || view.slideLeftRail == null || view.slideRightRail == null)
+        if (view.slideRibbon == null || view.slideRibbonRenderer == null)
             return false;
 
         NoteData anchorData = state.data;
@@ -879,34 +854,31 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         Vector3 start = new Vector3(startX, startY, startZ);
         Vector3 end = new Vector3(endX, endY, endZ);
+        Vector3 direction = end - start;
+        float length = direction.magnitude;
+        if (length <= 0.01f)
+            return false;
+
         Vector3 center = (start + end) * 0.5f;
-        float width = Mathf.Max(owner.FretSpacing * 0.2f, 0.18f);
-        float depth = Mathf.Max(0.25f, Mathf.Abs(end.z - start.z));
-        float xSpan = Mathf.Abs(end.x - start.x) + owner.FretSpacing * 0.45f;
-        float arch = Mathf.Max(0.08f, Mathf.Abs(end.x - start.x) * 0.08f);
+        float thickness = Mathf.Max(0.08f, owner.FretSpacing * 0.1f);
+        view.techniqueRoot.transform.position = center;
+        view.slideRibbon.transform.position = center;
+        view.slideRibbon.transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
+        view.slideRibbon.transform.localScale = new Vector3(thickness, thickness, length);
 
-        view.techniqueRoot.transform.position = center + new Vector3(0f, 0f, 0f);
-        view.slideRibbon.transform.position = center + new Vector3(0f, arch, 0f);
-        view.slideRibbon.transform.localScale = new Vector3(xSpan, width, depth);
-
-        Color slideColor = new Color(view.baseColor.r, view.baseColor.g, view.baseColor.b, state.IsResolved ? 0.14f : 0.32f);
+        Color slideColor = new Color(view.baseColor.r, view.baseColor.g, view.baseColor.b, state.IsResolved ? 0.2f : 0.88f);
         view.slideRibbonRenderer.material.color = slideColor;
         view.slideRibbonRenderer.material.SetColor("_BaseColor", slideColor);
         view.slideRibbonRenderer.material.SetColor("_Color", slideColor);
-
-        UpdateRailTransform(view.slideLeftRail.transform, start, end, width * 0.32f, -width * 0.65f, arch);
-        UpdateRailTransform(view.slideRightRail.transform, start, end, width * 0.32f, width * 0.65f, arch);
-        view.slideLeftRailRenderer.enabled = true;
-        view.slideRightRailRenderer.enabled = true;
+        view.slideRibbonRenderer.material.EnableKeyword("_EMISSION");
+        view.slideRibbonRenderer.material.SetColor("_EmissionColor", view.baseColor * Mathf.Pow(2f, state.IsResolved ? 0.2f : 1.3f));
         view.slideRibbon.SetActive(true);
-        view.slideLeftRail.SetActive(true);
-        view.slideRightRail.SetActive(true);
         return true;
     }
 
     private bool UpdateBendTechnique(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
     {
-        if (view.bendRibbon == null || view.bendRibbonRenderer == null || view.bendArrowRoot == null)
+        if (view.bendRibbon == null || view.bendRibbonRenderer == null)
             return false;
 
         float bendAmount = Mathf.Max(0f, state.data.bendStep);
@@ -924,30 +896,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         view.bendRibbonRenderer.material.SetColor("_Color", bendColor);
         view.bendRibbon.SetActive(true);
 
-        view.bendArrowRoot.transform.position = new Vector3(x, y + height + 0.42f, z);
-        view.bendArrowRoot.SetActive(!state.IsResolved || songTime - state.resolvedAt <= GetResolvedFadeTime());
         return true;
-    }
-
-    private void UpdateRailTransform(Transform railTransform, Vector3 start, Vector3 end, float thickness, float xOffset, float yOffset)
-    {
-        Vector3 offset = new Vector3(xOffset, yOffset, 0f);
-        Vector3 railStart = start + offset;
-        Vector3 railEnd = end + offset;
-        Vector3 center = (railStart + railEnd) * 0.5f;
-        railTransform.position = center;
-        railTransform.localScale = new Vector3(Mathf.Max(thickness, Mathf.Abs(railEnd.x - railStart.x) + thickness), thickness, Mathf.Max(0.2f, Mathf.Abs(railEnd.z - railStart.z)));
-    }
-
-    private GameObject CreateBendArrow(Color color)
-    {
-        GameObject arrowRoot = new GameObject("BendArrow");
-        Material arrowMat = owner.CreateSharedGlowMaterial(color, 1.7f);
-        CreateFramePiece(arrowRoot.transform, new Vector3(0f, 0f, 0f), new Vector3(0.08f, 0.4f, 0.08f), arrowMat);
-        CreateFramePiece(arrowRoot.transform, new Vector3(-0.12f, 0.18f, 0f), new Vector3(0.12f, 0.08f, 0.08f), arrowMat);
-        CreateFramePiece(arrowRoot.transform, new Vector3(0.12f, 0.18f, 0f), new Vector3(0.12f, 0.08f, 0.08f), arrowMat);
-        CreateFramePiece(arrowRoot.transform, new Vector3(0f, 0.28f, 0f), new Vector3(0.32f, 0.08f, 0.08f), arrowMat);
-        return arrowRoot;
     }
 
     private void UpdateChordFrames(GuitarGameplaySnapshot snapshot)
@@ -1458,13 +1407,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public GameObject techniqueRoot;
         public GameObject slideRibbon;
         public Renderer slideRibbonRenderer;
-        public GameObject slideLeftRail;
-        public GameObject slideRightRail;
-        public Renderer slideLeftRailRenderer;
-        public Renderer slideRightRailRenderer;
         public GameObject bendRibbon;
         public Renderer bendRibbonRenderer;
-        public GameObject bendArrowRoot;
         public Color baseColor;
         public Vector3 baseScale;
 
