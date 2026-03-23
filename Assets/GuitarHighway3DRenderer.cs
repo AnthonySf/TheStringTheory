@@ -202,7 +202,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void InitializeBackgroundEffect(bool menuMode)
     {
         backgroundEffect?.Dispose();
-        backgroundEffect = TabsBackgroundFactory.Create(owner);
+        backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides: !menuMode);
         backgroundUsingMenuMode = menuMode;
 
         if (backgroundRoot == null || backgroundEffect == null)

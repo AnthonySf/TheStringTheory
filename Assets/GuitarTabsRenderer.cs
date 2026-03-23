@@ -216,7 +216,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private void InitializeBackgroundEffect()
     {
         backgroundEffect?.Dispose();
-        backgroundEffect = TabsBackgroundFactory.Create(owner);
+        backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides: false);
 
         if (backgroundRoot == null || backgroundEffect == null)
             return;

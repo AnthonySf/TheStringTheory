@@ -34,12 +34,18 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
 
     private readonly List<Star> stars = new List<Star>();
     private readonly List<ShootingStar> shootingStars = new List<ShootingStar>();
+    private readonly bool applyHighwayOverrides;
 
     private GuitarBridgeServer owner;
     private GameObject root;
     private Material starMaterial;
     private Material shootingStarMaterial;
     private float shootingStarSpawnTimer;
+
+    public TabsStarfieldBackground(bool applyHighwayOverrides = false)
+    {
+        this.applyHighwayOverrides = applyHighwayOverrides;
+    }
 
     public void Initialize(Transform parent, GuitarBridgeServer owner)
     {
@@ -92,7 +98,7 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         if (stars.Count == 0)
             return;
 
-        float spreadScale = owner != null && owner.ShouldApplyHighwayBackgroundOverrides()
+        float spreadScale = owner != null && applyHighwayOverrides
             ? Mathf.Max(0.05f, owner.highwayBackgroundStarSpread)
             : 1f;
         float width = owner.tabStarfieldWidth * spreadScale;
