@@ -417,8 +417,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         int laneCount = GetFretLightColumnCount();
         float laneSurfaceY = -1.93f;
-        float depth = Mathf.Max(1f, owner.SpawnZ - owner.StrikeLineZ);
-        float centerZ = owner.StrikeLineZ + (depth * 0.5f);
+        float depth = 150f;
+        float centerZ = 25f;
 
         for (int lane = 0; lane < laneCount; lane++)
         {
@@ -427,7 +427,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             guide.transform.SetParent(gameplayRoot.transform, false);
             float xPos = lane * owner.FretSpacing;
             guide.transform.position = new Vector3(xPos, laneSurfaceY, centerZ);
-            guide.transform.localScale = new Vector3(0.035f, 0.02f, depth);
+            guide.transform.localScale = new Vector3(0.08f, 0.02f, depth);
 
             Color baseColor = new Color(0.18f, 0.45f, 1f, 0.14f);
             Material mat = owner.CreateSharedTransparentMaterial(baseColor, 0.02f);
