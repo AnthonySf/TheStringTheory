@@ -183,7 +183,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             mainCamera.orthographic = false;
             mainCamera.clearFlags = CameraClearFlags.SolidColor;
             if (originalMainCameraCullingMask >= 0)
-                mainCamera.cullingMask = originalMainCameraCullingMask;
+                mainCamera.cullingMask = originalMainCameraCullingMask | (1 << BackgroundLayer);
             mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, owner.highwayCameraFarClip);
             mainCamera.transform.position = new Vector3(cameraTargetX, owner.highwayCameraY, owner.highwayCameraZ);
             mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
