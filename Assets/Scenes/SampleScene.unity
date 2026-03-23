@@ -530,7 +530,7 @@ MonoBehaviour:
   tabIdleFillDarken: 0.33
   highwayBackgroundColor: {r: 0.02, g: 0.02, b: 0.05, a: 1}
   TotalFrets: 24
-  FretSpacing: 2.2
+  FretSpacing: 3.4
   StrikeLineZ: -5
   SpawnZ: 50
   highwayCameraY: 14
