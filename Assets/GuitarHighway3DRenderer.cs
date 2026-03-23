@@ -17,6 +17,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
     private Material[,] fretLightMats;
+    private Renderer[,] fretLightRenderers;
     private float cameraTargetX;
     private float cameraTargetFOV = 60f;
     private float cameraXVelocity;
@@ -39,6 +40,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         GenerateFretboard();
         GenerateStrings();
         fretLightMats = new Material[6, GetFretLightColumnCount()];
+        fretLightRenderers = new Renderer[6, GetFretLightColumnCount()];
         GenerateFretLightGrid();
         LogInitialization(chartNotes, sections);
     }
@@ -209,8 +211,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 light.transform.localScale = new Vector3(0.6f, 0.6f, 0.2f);
 
                 Material mat = owner.CreateSharedGlowMaterial(Color.black, 0f);
-                light.GetComponent<Renderer>().material = mat;
+                Renderer lightRenderer = light.GetComponent<Renderer>();
+                lightRenderer.material = mat;
+                lightRenderer.enabled = false;
                 fretLightMats[s, f] = mat;
+                fretLightRenderers[s, f] = lightRenderer;
             }
         }
     }
@@ -428,7 +433,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void UpdateFretboardLights(HashSet<int> pitchesToLight)
     {
-        if (fretLightMats == null)
+        if (fretLightMats == null || fretLightRenderers == null)
             return;
 
         int fretLightColumns = GetFretLightColumnCount();
@@ -436,7 +441,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         for (int s = 0; s < 6; s++)
         {
             for (int f = 0; f < fretLightColumns; f++)
+            {
                 fretLightMats[s, f].SetColor("_EmissionColor", Color.black);
+                if (fretLightRenderers[s, f] != null)
+                    fretLightRenderers[s, f].enabled = false;
+            }
         }
 
         if (pitchesToLight == null)
@@ -451,7 +460,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     int exactFretPitch = owner.GetStringBasePitch(s) + f;
                     int genericFretPitch = exactFretPitch % 12;
                     if (exactFretPitch == pitch || (pitch < 12 && genericFretPitch == pitch))
+                    {
                         fretLightMats[s, f].SetColor("_EmissionColor", owner.GetStringColor(s) * 8f);
+                        if (fretLightRenderers[s, f] != null)
+                            fretLightRenderers[s, f].enabled = true;
+                    }
                 }
             }
         }
