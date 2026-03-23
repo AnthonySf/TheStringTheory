@@ -43,6 +43,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private Sprite starSprite;
 
     private GuitarBridgeServer owner;
+    private int loadedCloudSpriteCount;
     private GameObject root;
     private Transform skyGradient;
     private Renderer skyTopRenderer;
@@ -69,6 +70,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         ApplyMoodToSkyIfNeeded();
         CreateStaticStars();
         LoadCloudSprites();
+        LogCloudDiagnostics();
         CreateCloudLayer(SkyCloudLayer.Far, owner.tabSkyCloudCountFar, owner.tabSkyCloudSpeedFar, owner.tabSkyCloudAlphaFar, owner.tabSkyCloudScaleMinFar, owner.tabSkyCloudScaleMaxFar, 0.65f, 1f);
         CreateCloudLayer(SkyCloudLayer.Mid, owner.tabSkyCloudCountMid, owner.tabSkyCloudSpeedMid, owner.tabSkyCloudAlphaMid, owner.tabSkyCloudScaleMinMid, owner.tabSkyCloudScaleMaxMid, 0.32f, 0.70f);
         CreateCloudLayer(SkyCloudLayer.Near, owner.tabSkyCloudCountNear, owner.tabSkyCloudSpeedNear, owner.tabSkyCloudAlphaNear, owner.tabSkyCloudScaleMinNear, owner.tabSkyCloudScaleMaxNear, 0f, 0.38f);
@@ -237,11 +239,26 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         Object.Destroy(band.GetComponent<Collider>());
     }
 
+
+    private void LogCloudDiagnostics()
+    {
+        if (owner == null)
+            return;
+
+        GetSkyCoverage(out float width, out float minY, out float maxY);
+        GetSkyDepthRange(out float nearZ, out float farZ);
+        Debug.Log(
+            $"[BlueSkyBackground] init highwayOverrides={applyHighwayOverrides} bgMode={owner.tabBackgroundMode} loadedCloudSprites={loadedCloudSpriteCount} " +
+            $"cloudCounts=(near:{owner.tabSkyCloudCountNear}, mid:{owner.tabSkyCloudCountMid}, far:{owner.tabSkyCloudCountFar}) " +
+            $"cloudScaleGlobal={owner.tabSkyCloudGlobalScale:F2} cloudScaleOverride={GetCloudScaleMultiplier():F2} cloudSpread={GetCloudSpreadMultiplier():F2} cloudYOffset={GetCloudVerticalOffset():F2} " +
+            $"skyCoverage=width:{width:F2} minY:{minY:F2} maxY:{maxY:F2} depthRange=near:{nearZ:F2} far:{farZ:F2}");
+    }
+
     private void LoadCloudSprites()
     {
         cloudSprites.Clear();
 
-                LoadCloudSpritesFromResources("Cloud Pack");
+        LoadCloudSpritesFromResources("Cloud Pack");
         LoadCloudSpritesFromResources("Clouds");
 
 #if UNITY_EDITOR
@@ -251,6 +268,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
         if (cloudSprites.Count == 0)
             cloudSprites.Add(CreateProceduralCloudSprite());
+
+        loadedCloudSpriteCount = cloudSprites.Count;
     }
 
     private void LoadCloudSpritesFromResources(string resourcesPath)
@@ -260,7 +279,12 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
         Sprite[] loadedSprites = Resources.LoadAll<Sprite>(resourcesPath);
         if (loadedSprites == null || loadedSprites.Length == 0)
+        {
+            Debug.LogWarning($"[BlueSkyBackground] Resources.LoadAll<Sprite>(\"{resourcesPath}\") returned 0 sprites.");
             return;
+        }
+
+        Debug.Log($"[BlueSkyBackground] Resources.LoadAll<Sprite>(\"{resourcesPath}\") loaded {loadedSprites.Length} sprites.");
 
         for (int i = 0; i < loadedSprites.Length; i++)
         {
@@ -332,6 +356,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         Random.InitState(owner.tabStarSeed ^ (int)layer * 7919);
 
         int safeCount = Mathf.Clamp(count, 8, 220);
+        Debug.Log($"[BlueSkyBackground] spawning {layer} clouds requested={count} actual={safeCount} xRange=[{-halfWidth:F2},{halfWidth:F2}] yRange=[{minY + 0.6f:F2},{maxY - 0.6f:F2}] zRange=[{Mathf.Lerp(nearZ, farZ, nearBand):F2},{Mathf.Lerp(nearZ, farZ, farBand):F2}] offsetY={GetCloudVerticalOffset():F2}");
         for (int i = 0; i < safeCount; i++)
         {
             float depth = Random.Range(nearBand, farBand);
