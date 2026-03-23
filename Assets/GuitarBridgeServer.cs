@@ -2050,6 +2050,11 @@ private void OpenOrFocusToneLab()
         return m;
     }
 
+    public bool ShouldApplyHighwayBackgroundOverrides()
+    {
+        return renderMode == GuitarRenderMode.Highway3D && !mainMenuFlowActive;
+    }
+
 
     private static Material CreateMaterialFromPrimitiveFallback(string materialKind)
     {

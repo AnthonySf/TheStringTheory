@@ -92,7 +92,7 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         if (stars.Count == 0)
             return;
 
-        float spreadScale = owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+        float spreadScale = owner != null && owner.ShouldApplyHighwayBackgroundOverrides()
             ? Mathf.Max(0.05f, owner.highwayBackgroundStarSpread)
             : 1f;
         float width = owner.tabStarfieldWidth * spreadScale;
