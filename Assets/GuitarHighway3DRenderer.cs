@@ -395,7 +395,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             float anchorTime = group[0].time;
             float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * owner.noteSpeed);
-            bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && (!state.IsResolved || renderSongTime - state.resolvedAt <= owner.highwayResolvedHoldTime));
+            bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && state.IsResolved && renderSongTime - state.resolvedAt <= owner.highwayResolvedHoldTime);
             bool visible = z <= owner.SpawnZ && z >= owner.StrikeLineZ - (owner.noteSpeed * (owner.hitWindowLate + owner.judgmentGrace) + 1f);
 
             if (!visible && !anyRecent)
