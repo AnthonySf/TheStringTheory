@@ -305,7 +305,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         marker.transform.localScale = GetMarkerScale();
         marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
 
-        GameObject outlineRoot = CreateNoteOutline(cube.transform, cube.transform.localScale, owner.GetStringColor(data.stringIdx));
+        GameObject outlineRoot = CreateNoteOutline(cube.transform.localScale, owner.GetStringColor(data.stringIdx));
         outlineRoot.SetActive(false);
 
         return new HighwayNoteView
@@ -332,6 +332,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         view.noteRoot.transform.position = new Vector3(x, y, z);
         view.marker.transform.position = new Vector3(x, y, owner.StrikeLineZ);
+        if (view.outlineRoot != null)
+        {
+            view.outlineRoot.transform.position = view.noteRoot.transform.position;
+            view.outlineRoot.transform.localScale = view.noteRoot.transform.localScale;
+        }
 
         bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
         if (view.noteRenderer != null)
@@ -820,21 +825,23 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         piece.GetComponent<Renderer>().material = material;
     }
 
-    private GameObject CreateNoteOutline(Transform parent, Vector3 noteScale, Color color)
+    private GameObject CreateNoteOutline(Vector3 noteScale, Color color)
     {
         GameObject outlineRoot = new GameObject("NoteOutline");
-        outlineRoot.transform.SetParent(parent, false);
+        outlineRoot.transform.SetParent(root.transform, false);
 
-        float thickness = Mathf.Max(0.05f, noteScale.y * 0.28f);
-        float depth = Mathf.Max(0.05f, noteScale.z * 0.35f);
-        float halfWidth = noteScale.x * 0.5f;
-        float halfHeight = noteScale.y * 0.5f;
-        Material outlineMat = owner.CreateSharedGlowMaterial(color, 0.35f);
+        float thickness = Mathf.Max(0.05f, noteScale.y * 0.2f);
+        float depth = Mathf.Max(0.08f, noteScale.z * 0.45f);
+        float width = noteScale.x + thickness;
+        float height = noteScale.y + thickness;
+        float halfWidth = width * 0.5f;
+        float halfHeight = height * 0.5f;
+        Material outlineMat = owner.CreateSharedGlowMaterial(color, 0.6f);
 
-        CreateFramePiece(outlineRoot.transform, new Vector3(0f, halfHeight, 0f), new Vector3(noteScale.x, thickness, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -halfHeight, 0f), new Vector3(noteScale.x, thickness, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(-halfWidth, 0f, 0f), new Vector3(thickness, noteScale.y, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(halfWidth, 0f, 0f), new Vector3(thickness, noteScale.y, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, halfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -halfHeight, 0.02f), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(-halfWidth, 0f, 0.02f), new Vector3(thickness, height, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(halfWidth, 0f, 0.02f), new Vector3(thickness, height, depth), outlineMat);
         return outlineRoot;
     }
 
