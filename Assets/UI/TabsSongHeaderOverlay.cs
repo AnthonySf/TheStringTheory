@@ -25,7 +25,6 @@ public sealed class TabsSongHeaderOverlay
     private readonly GameObject rootObject;
     private readonly UIDocument document;
     private readonly PanelSettings panelSettings;
-    private readonly bool ownsPanelSettings;
 
     private readonly VisualElement songCard;
     private readonly Label songNameLabel;
@@ -241,7 +240,7 @@ public sealed class TabsSongHeaderOverlay
         rootObject = new GameObject("TabsSongHeaderUI");
         document = rootObject.AddComponent<UIDocument>();
 
-        panelSettings = ResolvePanelSettings(out ownsPanelSettings);
+        panelSettings = ResolvePanelSettings();
         panelSettings.scaleMode = PanelScaleMode.ConstantPixelSize;
         panelSettings.scale = 1f;
         panelSettings.targetDisplay = 0;
@@ -1437,9 +1436,6 @@ public sealed class TabsSongHeaderOverlay
     {
         if (rootObject != null)
             UnityEngine.Object.Destroy(rootObject);
-
-        if (ownsPanelSettings && panelSettings != null)
-            UnityEngine.Object.Destroy(panelSettings);
     }
 
     private void UpdateSongSelectionRows(GuitarGameplaySnapshot snapshot)
@@ -2683,8 +2679,13 @@ public sealed class TabsSongHeaderOverlay
         return trimmed.Trim();
     }
 
-    private static PanelSettings ResolvePanelSettings(out bool ownsInstance)
+    private static PanelSettings sharedPanelSettings;
+
+    private static PanelSettings ResolvePanelSettings()
     {
+        if (sharedPanelSettings != null)
+            return sharedPanelSettings;
+
         PanelSettings existing = Resources.FindObjectsOfTypeAll<PanelSettings>()
             .Where(candidate => candidate != null)
             .OrderByDescending(candidate => candidate.themeStyleSheet != null)
@@ -2694,19 +2695,16 @@ public sealed class TabsSongHeaderOverlay
 
         if (existing != null)
         {
-            ownsInstance = false;
-            return existing;
+            sharedPanelSettings = existing;
+            return sharedPanelSettings;
         }
 
         PanelSettings runtimeAsset = Resources.Load<PanelSettings>("UIToolkitRuntimePanelSettings");
-        if (runtimeAsset != null)
-        {
-            ownsInstance = true;
-            return ScriptableObject.Instantiate(runtimeAsset);
-        }
-
-        ownsInstance = true;
-        return ScriptableObject.CreateInstance<PanelSettings>();
+        sharedPanelSettings = runtimeAsset != null
+            ? ScriptableObject.Instantiate(runtimeAsset)
+            : ScriptableObject.CreateInstance<PanelSettings>();
+        sharedPanelSettings.name = "TabsSongHeaderRuntimePanelSettings";
+        return sharedPanelSettings;
     }
 
     private static void EnsurePanelSettingsSupportAssets(PanelSettings settings)
