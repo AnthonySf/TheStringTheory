@@ -16,6 +16,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     {
         public Transform transform;
         public SpriteRenderer renderer;
+        public float baseY;
         public float speed;
         public float bobAmplitude;
         public float bobFrequency;
@@ -82,6 +83,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         GetSkyCoverage(out float width, out float minY, out float maxY);
         float halfWidth = width * 0.5f;
         float safeGlobalScale = Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale);
+        float cloudYOffset = GetCloudVerticalOffset();
 
         for (int i = 0; i < clouds.Count; i++)
         {
@@ -94,7 +96,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             if (p.x < -halfWidth)
                 p.x += width;
 
-            p.y += Mathf.Sin((Time.time * cloud.bobFrequency) + cloud.bobPhase) * cloud.bobAmplitude * deltaTime;
+            p.y = cloud.baseY + cloudYOffset + (Mathf.Sin((Time.time * cloud.bobFrequency) + cloud.bobPhase) * cloud.bobAmplitude);
             cloud.transform.localPosition = p;
 
             cloud.transform.localScale = new Vector3(cloud.baseScaleX * safeGlobalScale, cloud.baseScaleY * safeGlobalScale, 1f);
@@ -327,7 +329,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
             GameObject cloudGo = new GameObject($"{layer}Cloud_{i:000}");
             cloudGo.transform.SetParent(root.transform, false);
-            cloudGo.transform.localPosition = new Vector3(x, y, z);
+            cloudGo.transform.localPosition = new Vector3(x, y + GetCloudVerticalOffset(), z);
             cloudGo.transform.localRotation = Quaternion.identity;
 
             SpriteRenderer spriteRenderer = cloudGo.AddComponent<SpriteRenderer>();
@@ -347,6 +349,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             {
                 transform = cloudGo.transform,
                 renderer = spriteRenderer,
+                baseY = y,
                 speed = baseSpeed * Random.Range(0.85f, 1.2f) * Mathf.Lerp(0.82f, 1.2f, 1f - depth),
                 bobAmplitude = owner.tabSkyCloudVerticalBob * Random.Range(0.3f, 1f),
                 bobFrequency = Random.Range(0.06f, 0.18f),
@@ -358,6 +361,13 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         }
 
         Random.state = oldState;
+    }
+
+    private float GetCloudVerticalOffset()
+    {
+        return owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+            ? owner.highwayBackgroundCloudYOffset
+            : 0f;
     }
 
     private void ApplyMoodToSkyIfNeeded()
