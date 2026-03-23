@@ -19,12 +19,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private Material[,] fretLightMats;
     private float cameraTargetX;
     private float cameraTargetFOV = 60f;
+    private float nextDiagnosticsLogTime;
+    private float nextPreviewLogTime;
+    private bool hasLoggedMissingCamera;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
         this.owner = owner;
         mainCamera = Camera.main;
         root = new GameObject("Highway3DRendererRoot");
+        nextDiagnosticsLogTime = Time.unscaledTime;
+        nextPreviewLogTime = Time.unscaledTime;
+        hasLoggedMissingCamera = false;
 
         BuildChartCaches(chartNotes);
         ConfigureCamera();
@@ -32,6 +38,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         GenerateStrings();
         fretLightMats = new Material[6, GetFretLightColumnCount()];
         GenerateFretLightGrid();
+        LogInitialization(chartNotes, sections);
     }
 
     public void ResetRenderer(List<NoteData> chartNotes, List<TabSectionData> sections)
@@ -46,14 +53,26 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     public void Render(GuitarGameplaySnapshot snapshot)
     {
-        if (snapshot == null || mainCamera == null)
+        if (snapshot == null)
             return;
+
+        if (mainCamera == null)
+        {
+            if (!hasLoggedMissingCamera)
+            {
+                Debug.LogWarning("[Highway3D] Render skipped because Camera.main is null.");
+                hasLoggedMissingCamera = true;
+            }
+
+            return;
+        }
 
         ConfigureCamera();
         UpdateFretboardLights(snapshot.latestDetectedPitches);
         UpdateNotes(snapshot);
         UpdateChordFrames(snapshot);
         UpdateSectionCamera(snapshot);
+        LogRenderDiagnostics(snapshot);
     }
 
     public void DisposeRenderer()
@@ -239,6 +258,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         float xPos = isOpen ? GetGroupAnchorX(group) : GetNoteX(data.fret);
         float yPos = GetStringY(data.stringIdx);
+        Debug.Log($"[Highway3D] Creating note view id={data.id} time={data.time:F2} string={data.stringIdx} fret={data.fret} grouped={isGrouped} open={isOpen} pos=({xPos:F2},{yPos:F2},{owner.SpawnZ:F2})");
 
         GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
         cube.name = "HighwayNote_" + data.id;
@@ -504,6 +524,66 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         mainCamera.fieldOfView = Mathf.Lerp(mainCamera.fieldOfView, cameraTargetFOV, Time.deltaTime * owner.camMoveSpeed);
     }
 
+    private void LogInitialization(List<NoteData> chartNotes, List<TabSectionData> sections)
+    {
+        int noteCount = chartNotes != null ? chartNotes.Count : 0;
+        int sectionCount = sections != null ? sections.Count : 0;
+        string noteRange = noteCount > 0
+            ? $"first={chartNotes.Min(n => n.time):F2}s last={chartNotes.Max(n => n.time):F2}s"
+            : "no chart notes";
+        string previewNotes = noteCount > 0
+            ? string.Join(" | ", chartNotes.OrderBy(n => n.time).Take(5).Select(n => $"id={n.id}@{n.time:F2}s s{n.stringIdx} f{n.fret}"))
+            : "none";
+
+        Debug.Log(
+            $"[Highway3D] Initialize root={(root != null ? root.name : "null")} camera={(mainCamera != null ? mainCamera.name : "null")} " +
+            $"notes={noteCount} sections={sectionCount} fretCols={GetFretLightColumnCount()} totalFrets={owner.TotalFrets} noteSpeed={owner.noteSpeed:F2} strikeZ={owner.StrikeLineZ:F2} spawnZ={owner.SpawnZ:F2} {noteRange} preview={previewNotes}");
+    }
+
+    private void LogRenderDiagnostics(GuitarGameplaySnapshot snapshot)
+    {
+        if (Time.unscaledTime < nextDiagnosticsLogTime)
+            return;
+
+        nextDiagnosticsLogTime = Time.unscaledTime + 1f;
+
+        float renderSongTime = GetRenderSongTime(snapshot);
+        float removeDist = owner.noteSpeed * (owner.hitWindowLate + owner.judgmentGrace) + 1f;
+        int totalStates = snapshot.noteStates != null ? snapshot.noteStates.Count : 0;
+        int visibleCount = 0;
+        int upcomingCount = 0;
+        GameplayNoteState nextPending = null;
+
+        if (snapshot.noteStates != null)
+        {
+            for (int i = 0; i < snapshot.noteStates.Count; i++)
+            {
+                GameplayNoteState state = snapshot.noteStates[i];
+                if (state == null || state.IsResolved)
+                    continue;
+
+                if (nextPending == null || state.data.time < nextPending.data.time)
+                    nextPending = state;
+
+                if (state.data.time >= renderSongTime)
+                    upcomingCount++;
+
+                float z = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
+                if (z <= owner.SpawnZ && z >= owner.StrikeLineZ - removeDist)
+                    visibleCount++;
+            }
+        }
+
+        string nextPendingText = nextPending != null
+            ? $"id={nextPending.data.id} time={nextPending.data.time:F2} string={nextPending.data.stringIdx} fret={nextPending.data.fret}"
+            : "none";
+
+        Debug.Log(
+            $"[Highway3D] Render diag songTime={snapshot.songTime:F2} renderSongTime={renderSongTime:F2} paused={snapshot.isPaused} mainMenu={snapshot.showMainMenu} " +
+            $"trackSelect={snapshot.showTrackSelection} songSelect={snapshot.showSongSelection} states={totalStates} visible={visibleCount} upcoming={upcomingCount} " +
+            $"spawnedViews={noteViews.Count} chordFrames={chordFrames.Count} cameraPos={mainCamera.transform.position} fov={mainCamera.fieldOfView:F2} nextPending={nextPendingText}");
+    }
+
     private float GetRenderSongTime(GuitarGameplaySnapshot snapshot)
     {
         if (snapshot == null)
@@ -536,7 +616,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (nextPending == null)
             return renderSongTime;
 
-        return Mathf.Max(0f, nextPending.data.time - (visibleWindow * 0.85f));
+        float previewRenderTime = Mathf.Max(0f, nextPending.data.time - (visibleWindow * 0.85f));
+        if (Time.unscaledTime >= nextPreviewLogTime)
+        {
+            nextPreviewLogTime = Time.unscaledTime + 1f;
+            Debug.Log($"[Highway3D] Previewing upcoming note id={nextPending.data.id} noteTime={nextPending.data.time:F2} renderSongTime={previewRenderTime:F2} visibleWindow={visibleWindow:F2} paused={snapshot.isPaused} songTime={snapshot.songTime:F2}");
+        }
+
+        return previewRenderTime;
     }
 
     private float GetVisibleLeadTime()
