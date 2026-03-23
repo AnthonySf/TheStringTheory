@@ -34,8 +34,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool hasLoggedMissingCamera;
     private bool gameplayVisualsVisible = true;
     private const int BackgroundLayer = 2;
-    private const float HighwayBackgroundScaleMultiplier = 6f;
-    private const float HighwayBackgroundCameraZoomMultiplier = 0.45f;
+    private const float HighwayBackgroundScaleMultiplier = 9f;
+    private const float HighwayBackgroundCameraZoomMultiplier = 0.3f;
+    private const float HighwayBackgroundVerticalOffset = 18f;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -190,6 +191,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         backgroundEffect.Initialize(backgroundRoot.transform, owner);
         backgroundRoot.transform.localScale = Vector3.one * HighwayBackgroundScaleMultiplier;
+        backgroundRoot.transform.localPosition = new Vector3(0f, HighwayBackgroundVerticalOffset, 0f);
         SetLayerRecursively(backgroundRoot, BackgroundLayer);
     }
 

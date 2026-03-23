@@ -1346,7 +1346,8 @@ public sealed class TabsSongHeaderOverlay
         bool showTrackSelection = snapshot.showTrackSelection && !showEnd;
         bool showGlobalSettings = snapshot.showGlobalSettings && !showEnd;
         bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showEnd && !showMainMenu && !showSelection && !showTrackSelection;
-        bool showTechniqueLegend = !showEnd && !showPause && !showMainMenu && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
+        bool showTechniqueLegend = !isHighway3D && !showEnd && !showPause && !showMainMenu && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
@@ -2794,7 +2795,24 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
 
-        float pedalLeftEdge = (Screen.width - pedalWidth) * 0.5f;
+        if (isHighway3D)
+        {
+            scorePlate.style.left = StyleKeyword.Auto;
+            scorePlate.style.right = 24f;
+            scorePlate.style.width = pedalWidth + 56f;
+            scorePlate.style.alignItems = Align.FlexEnd;
+        }
+        else
+        {
+            scorePlate.style.left = 0f;
+            scorePlate.style.right = 0f;
+            scorePlate.style.width = StyleKeyword.Auto;
+            scorePlate.style.alignItems = Align.Center;
+        }
+
+        float pedalLeftEdge = isHighway3D
+            ? Screen.width - pedalWidth - 56f
+            : (Screen.width - pedalWidth) * 0.5f;
         float songCardAvailableWidth = pedalLeftEdge + 24f;
         float songCardWidth = Mathf.Clamp(songCardAvailableWidth, 520f, 1320f);
         songCard.style.width = songCardWidth;
