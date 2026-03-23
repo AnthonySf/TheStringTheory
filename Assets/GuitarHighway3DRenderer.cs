@@ -196,7 +196,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void UpdateNotes(GuitarGameplaySnapshot snapshot)
     {
-        float renderSongTime = Mathf.Max(0f, snapshot.songTime);
+        float renderSongTime = GetRenderSongTime(snapshot);
         float removeDist = owner.noteSpeed * (owner.hitWindowLate + owner.judgmentGrace) + 1f;
         HashSet<int> visibleThisFrame = new HashSet<int>();
 
@@ -364,6 +364,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void UpdateChordFrames(GuitarGameplaySnapshot snapshot)
     {
+        float renderSongTime = GetRenderSongTime(snapshot);
         HashSet<int> activeChordIds = new HashSet<int>();
 
         foreach (var pair in chordGroups)
@@ -373,8 +374,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 continue;
 
             float anchorTime = group[0].time;
-            float z = owner.StrikeLineZ + ((anchorTime - snapshot.songTime) * owner.noteSpeed);
-            bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && (!state.IsResolved || snapshot.songTime - state.resolvedAt <= owner.highwayResolvedHoldTime));
+            float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * owner.noteSpeed);
+            bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && (!state.IsResolved || renderSongTime - state.resolvedAt <= owner.highwayResolvedHoldTime));
             bool visible = z <= owner.SpawnZ && z >= owner.StrikeLineZ - (owner.noteSpeed * (owner.hitWindowLate + owner.judgmentGrace) + 1f);
 
             if (!visible && !anyRecent)
@@ -439,7 +440,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void UpdateSectionCamera(GuitarGameplaySnapshot snapshot)
     {
-        float renderSongTime = Mathf.Max(0f, snapshot.songTime);
+        float renderSongTime = GetRenderSongTime(snapshot);
         float activeMin = -1000f;
         float activeMax = -1000f;
         bool foundActive = false;
@@ -501,6 +502,46 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             Time.deltaTime * owner.camMoveSpeed);
 
         mainCamera.fieldOfView = Mathf.Lerp(mainCamera.fieldOfView, cameraTargetFOV, Time.deltaTime * owner.camMoveSpeed);
+    }
+
+    private float GetRenderSongTime(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null)
+            return 0f;
+
+        float renderSongTime = Mathf.Max(0f, snapshot.songTime);
+        float visibleWindow = GetVisibleLeadTime();
+
+        if (snapshot.noteStates == null || snapshot.noteStates.Count == 0)
+            return renderSongTime;
+
+        bool shouldPreviewUpcoming = snapshot.isPaused || snapshot.songTime < 0f || snapshot.showMainMenu || snapshot.showSongSelection || snapshot.showTrackSelection;
+        if (!shouldPreviewUpcoming)
+            return renderSongTime;
+
+        bool hasVisiblePendingNote = snapshot.noteStates.Any(state =>
+            state != null &&
+            !state.IsResolved &&
+            state.data.time >= renderSongTime &&
+            state.data.time <= renderSongTime + visibleWindow);
+
+        if (hasVisiblePendingNote)
+            return renderSongTime;
+
+        GameplayNoteState nextPending = snapshot.noteStates
+            .Where(state => state != null && !state.IsResolved && state.data.time >= renderSongTime)
+            .OrderBy(state => state.data.time)
+            .FirstOrDefault();
+
+        if (nextPending == null)
+            return renderSongTime;
+
+        return Mathf.Max(0f, nextPending.data.time - (visibleWindow * 0.85f));
+    }
+
+    private float GetVisibleLeadTime()
+    {
+        return Mathf.Max(0.01f, (owner.SpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, owner.noteSpeed));
     }
 
     private bool TryGetState(List<GameplayNoteState> states, int noteId, out GameplayNoteState state)
