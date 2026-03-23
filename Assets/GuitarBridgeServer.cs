@@ -448,17 +448,14 @@ public class GuitarBridgeServer : MonoBehaviour
         EnsureBackingTrackSource();
         RegisterRuntimeSettings();
         LoadGlobalRuntimeSettingsMetadata();
-        bool startInMainMenu = renderMode != GuitarRenderMode.Highway3D;
+        bool startInMainMenu = true;
         showMainMenu = startInMainMenu;
         mainMenuFlowActive = startInMainMenu;
         isPaused = startInMainMenu;
         LoadTestSong();
         isPaused = startInMainMenu;
         EnsureRenderer();
-        if (renderMode == GuitarRenderMode.Highway3D)
-            AutoStartHighway3DIfNeeded();
-        else
-            SyncAudioToSongTimer(playImmediately: false);
+        SyncAudioToSongTimer(playImmediately: false);
     }
 
     private void Update()
@@ -497,26 +494,6 @@ public class GuitarBridgeServer : MonoBehaviour
             activeRenderer.Render(BuildSnapshot());
 
         UpdateUiText();
-    }
-
-    private void AutoStartHighway3DIfNeeded()
-    {
-        if (renderMode != GuitarRenderMode.Highway3D)
-            return;
-
-        showMainMenu = false;
-        mainMenuFlowActive = false;
-        showSongSelection = false;
-        showTrackSelection = false;
-        showSongSettings = false;
-        showGlobalSettings = false;
-        showStartupTuningReminder = false;
-        resumeGameplayAfterStartupTuningReminder = false;
-        songHasEnded = false;
-        isPaused = false;
-        songTimer = -songStartDelaySeconds;
-        audioSongTimer = -songStartDelaySeconds;
-        SyncAudioToSongTimer(playImmediately: true);
     }
 
     private void HandlePauseControls()
@@ -617,9 +594,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
-            loopEnabled = !loopEnabled;
-            if (loopEnabled && loopEndTime <= loopStartTime)
-                loopEndTime = loopStartTime + 0.25f;
+            if (renderMode != GuitarRenderMode.Highway3D)
+            {
+                loopEnabled = !loopEnabled;
+                if (loopEnabled && loopEndTime <= loopStartTime)
+                    loopEndTime = loopStartTime + 0.25f;
+            }
         }
 
 
@@ -1211,6 +1191,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleLoopPlayback()
     {
+        if (renderMode == GuitarRenderMode.Highway3D)
+            return;
+
         if (!loopEnabled || loopEndTime <= loopStartTime + 0.01f)
             return;
 
@@ -1223,6 +1206,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void ToggleLoopFromUi()
     {
+        if (renderMode == GuitarRenderMode.Highway3D)
+        {
+            loopEnabled = false;
+            return;
+        }
+
         loopEnabled = !loopEnabled;
         if (loopEnabled && loopEndTime <= loopStartTime)
             loopEndTime = loopStartTime + 0.25f;
@@ -1791,6 +1780,23 @@ private void OpenOrFocusToneLab()
                 {
                     noteState.result = GameplayNoteResult.Pending;
                     noteState.resolvedAt = -1f;
+                    noteState.isJudgeable = false;
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < noteStates.Count; i++)
+            {
+                GameplayNoteState noteState = noteStates[i];
+                if (noteState.IsResolved)
+                    continue;
+
+                float latestJudgeTime = noteState.data.time + hitWindowLate + judgmentGrace;
+                if (clampedTime > latestJudgeTime + (noteState.data.stringIdx >= 4 ? highStringExtraLate : 0f))
+                {
+                    noteState.result = GameplayNoteResult.Missed;
+                    noteState.resolvedAt = clampedTime;
                     noteState.isJudgeable = false;
                 }
             }
