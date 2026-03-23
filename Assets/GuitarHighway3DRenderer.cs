@@ -687,7 +687,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         GameObject slideRibbon = null;
         Renderer slideRibbonRenderer = null;
-        if (data.technique == NoteTechnique.Slide || data.slideTargetFret >= 0 || data.linkedFromNoteId >= 0)
+        if (data.slideTargetFret >= 0)
         {
             slideRibbon = GameObject.CreatePrimitive(PrimitiveType.Cube);
             slideRibbon.name = "SlideRibbon_" + data.id;
@@ -829,10 +829,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (view.slideRibbon == null || view.slideRibbonRenderer == null)
             return false;
 
-        NoteData anchorData = state.data;
-        if (anchorData.linkedFromNoteId >= 0 && chartById.TryGetValue(anchorData.linkedFromNoteId, out NoteData linkedStart))
-            anchorData = linkedStart;
+        if (state.data.linkedFromNoteId >= 0)
+            return false;
 
+        NoteData anchorData = state.data;
         int targetFret = anchorData.slideTargetFret;
         if (targetFret < 0)
             return false;
