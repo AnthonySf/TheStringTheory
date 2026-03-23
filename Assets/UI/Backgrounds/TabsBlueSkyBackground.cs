@@ -372,21 +372,21 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
     private float GetCloudVerticalOffset()
     {
-        return owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+        return owner != null && owner.ShouldApplyHighwayBackgroundOverrides()
             ? owner.highwayBackgroundCloudYOffset
             : 0f;
     }
 
     private float GetCloudScaleMultiplier()
     {
-        return owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+        return owner != null && owner.ShouldApplyHighwayBackgroundOverrides()
             ? Mathf.Max(0.05f, owner.highwayBackgroundCloudScale)
             : 1f;
     }
 
     private float GetCloudSpreadMultiplier()
     {
-        return owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+        return owner != null && owner.ShouldApplyHighwayBackgroundOverrides()
             ? Mathf.Max(0.05f, owner.highwayBackgroundCloudSpread)
             : 1f;
     }
