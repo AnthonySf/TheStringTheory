@@ -34,9 +34,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool hasLoggedMissingCamera;
     private bool gameplayVisualsVisible = true;
     private const int BackgroundLayer = 2;
-    private const float HighwayBackgroundScaleMultiplier = 9f;
-    private const float HighwayBackgroundCameraZoomMultiplier = 0.3f;
-    private const float HighwayBackgroundVerticalOffset = 18f;
+    private const float HighwayBackgroundExtraDepth = 240f;
+    private const float HighwayBackgroundMinZ = 320f;
+    private const float HighwayBackgroundVerticalBias = 0.30f;
+    private const float HighwayBackgroundScaleOverscan = 1.85f;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -55,7 +56,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         BuildChartCaches(chartNotes);
         InitializeBackgroundEffect();
-        CreateBackgroundCamera();
         ConfigureCamera();
         songHeaderOverlay = new TabsSongHeaderOverlay(owner);
         GenerateFretboard();
@@ -93,7 +93,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
 
         ConfigureCamera();
-        ConfigureBackgroundCamera();
+        UpdateBackgroundPlacement();
         bool suppressGameplay = snapshot.mainMenuFlowActive;
         SetGameplayVisualsVisible(!suppressGameplay);
 
@@ -173,9 +173,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return;
 
         mainCamera.orthographic = false;
-        mainCamera.clearFlags = backgroundCamera != null ? CameraClearFlags.Depth : CameraClearFlags.SolidColor;
+        mainCamera.clearFlags = CameraClearFlags.SolidColor;
         if (originalMainCameraCullingMask >= 0)
-            mainCamera.cullingMask = originalMainCameraCullingMask & ~(1 << BackgroundLayer);
+            mainCamera.cullingMask = originalMainCameraCullingMask;
         mainCamera.transform.position = new Vector3(cameraTargetX, owner.highwayCameraY, owner.highwayCameraZ);
         mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
         mainCamera.backgroundColor = owner.highwayBackgroundColor;
@@ -190,35 +190,30 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return;
 
         backgroundEffect.Initialize(backgroundRoot.transform, owner);
-        backgroundRoot.transform.localScale = Vector3.one * HighwayBackgroundScaleMultiplier;
-        backgroundRoot.transform.localPosition = new Vector3(0f, HighwayBackgroundVerticalOffset, 0f);
         SetLayerRecursively(backgroundRoot, BackgroundLayer);
+        UpdateBackgroundPlacement();
     }
 
-    private void CreateBackgroundCamera()
+    private void UpdateBackgroundPlacement()
     {
-        if (mainCamera == null || backgroundRoot == null || backgroundEffect == null)
+        if (backgroundRoot == null || mainCamera == null)
             return;
 
-        GameObject backgroundCameraObject = new GameObject("HighwayBackgroundCamera");
-        backgroundCameraObject.transform.SetParent(root.transform, false);
-        backgroundCamera = backgroundCameraObject.AddComponent<Camera>();
-        backgroundCamera.depth = mainCamera.depth - 1f;
-        ConfigureBackgroundCamera();
-    }
+        float backgroundZ = Mathf.Max(HighwayBackgroundMinZ, owner.SpawnZ + HighwayBackgroundExtraDepth);
+        float distanceFromCamera = Mathf.Max(1f, backgroundZ - owner.highwayCameraZ);
+        float halfVerticalSpan = Mathf.Tan(mainCamera.fieldOfView * 0.5f * Mathf.Deg2Rad) * distanceFromCamera;
+        float fullVerticalSpan = halfVerticalSpan * 2f;
+        float baseHeight = Mathf.Max(
+            Mathf.Abs(owner.tabSkyMaxY - owner.tabSkyMinY),
+            Mathf.Abs(owner.tabStarfieldMaxY - owner.tabStarfieldMinY),
+            12f);
+        float uniformScale = Mathf.Max(1f, (fullVerticalSpan / baseHeight) * HighwayBackgroundScaleOverscan);
 
-    private void ConfigureBackgroundCamera()
-    {
-        if (backgroundCamera == null)
-            return;
-
-        backgroundCamera.clearFlags = CameraClearFlags.SolidColor;
-        backgroundCamera.backgroundColor = owner.tabBackgroundColor;
-        backgroundCamera.orthographic = true;
-        backgroundCamera.orthographicSize = Mathf.Max(0.01f, owner.tabCameraSize * HighwayBackgroundCameraZoomMultiplier);
-        backgroundCamera.transform.position = new Vector3(0f, 0f, owner.tabCameraZ);
-        backgroundCamera.transform.rotation = Quaternion.identity;
-        backgroundCamera.cullingMask = 1 << BackgroundLayer;
+        backgroundRoot.transform.position = new Vector3(
+            cameraTargetX,
+            owner.highwayCameraY + (fullVerticalSpan * HighwayBackgroundVerticalBias),
+            backgroundZ);
+        backgroundRoot.transform.localScale = Vector3.one * uniformScale;
     }
 
     private static void SetLayerRecursively(GameObject target, int layer)
