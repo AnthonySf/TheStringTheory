@@ -34,10 +34,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool hasLoggedMissingCamera;
     private bool gameplayVisualsVisible = true;
     private const int BackgroundLayer = 2;
-    private const float HighwayBackgroundExtraDepth = 240f;
-    private const float HighwayBackgroundMinZ = 320f;
-    private const float HighwayBackgroundVerticalBias = 0.30f;
-    private const float HighwayBackgroundScaleOverscan = 1.85f;
+    private const float HighwayBackgroundDistance = 1200f;
+    private const float HighwayBackgroundCenterY = 120f;
+    private const float HighwayBackgroundScale = 120f;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -199,21 +198,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (backgroundRoot == null || mainCamera == null)
             return;
 
-        float backgroundZ = Mathf.Max(HighwayBackgroundMinZ, owner.SpawnZ + HighwayBackgroundExtraDepth);
-        float distanceFromCamera = Mathf.Max(1f, backgroundZ - owner.highwayCameraZ);
-        float halfVerticalSpan = Mathf.Tan(mainCamera.fieldOfView * 0.5f * Mathf.Deg2Rad) * distanceFromCamera;
-        float fullVerticalSpan = halfVerticalSpan * 2f;
-        float baseHeight = Mathf.Max(
-            Mathf.Abs(owner.tabSkyMaxY - owner.tabSkyMinY),
-            Mathf.Abs(owner.tabStarfieldMaxY - owner.tabStarfieldMinY),
-            12f);
-        float uniformScale = Mathf.Max(1f, (fullVerticalSpan / baseHeight) * HighwayBackgroundScaleOverscan);
-
         backgroundRoot.transform.position = new Vector3(
-            cameraTargetX,
-            owner.highwayCameraY + (fullVerticalSpan * HighwayBackgroundVerticalBias),
-            backgroundZ);
-        backgroundRoot.transform.localScale = Vector3.one * uniformScale;
+            Mathf.Max(0f, owner.TotalFrets * owner.FretSpacing * 0.5f),
+            HighwayBackgroundCenterY,
+            HighwayBackgroundDistance);
+        backgroundRoot.transform.localScale = Vector3.one * HighwayBackgroundScale;
     }
 
     private static void SetLayerRecursively(GameObject target, int layer)
