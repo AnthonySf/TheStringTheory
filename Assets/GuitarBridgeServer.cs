@@ -137,8 +137,8 @@ public class GuitarBridgeServer : MonoBehaviour
     public float highwayStuckOutlineDepth = 0.04f;
     public float highwayCameraFarClip = 5000f;
     public float highwayBackgroundDistance = 1200f;
-    public float highwayBackgroundCenterY = 120f;
-    public float highwayBackgroundScale = 120f;
+    public float highwayBackgroundCenterY = -850f;
+    public float highwayBackgroundScale = 200f;
 
     [Header("Tabs Dimensions")]
     public float tabPanelWidth = 22f;
