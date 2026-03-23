@@ -848,14 +848,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             ? Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((anchorState.data.time - songTime) * owner.noteSpeed))
             : z;
 
-        NoteData destinationData = null;
-        if (slideDestinationBySourceId.TryGetValue(anchorData.id, out int destinationId))
-            chartById.TryGetValue(destinationId, out destinationData);
+        NoteData? destinationData = null;
+        if (slideDestinationBySourceId.TryGetValue(anchorData.id, out int destinationId) && chartById.TryGetValue(destinationId, out NoteData resolvedDestination))
+            destinationData = resolvedDestination;
 
-        float endX = destinationData != null ? GetVisualNoteX(destinationData) : GetNoteX(targetFret);
-        float endY = destinationData != null ? GetStringY(destinationData.stringIdx) : startY;
+        float endX = destinationData.HasValue ? GetVisualNoteX(destinationData.Value) : GetNoteX(targetFret);
+        float endY = destinationData.HasValue ? GetStringY(destinationData.Value.stringIdx) : startY;
         float endZ;
-        if (destinationData != null && noteStatesById.TryGetValue(destinationData.id, out GameplayNoteState destinationState))
+        if (destinationData.HasValue && noteStatesById.TryGetValue(destinationData.Value.id, out GameplayNoteState destinationState))
         {
             endZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((destinationState.data.time - songTime) * owner.noteSpeed));
         }
