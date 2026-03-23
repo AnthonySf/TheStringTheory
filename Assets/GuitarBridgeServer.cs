@@ -132,6 +132,9 @@ public class GuitarBridgeServer : MonoBehaviour
     public float lookaheadWindow = 3.0f;
     public float highwayResolvedHoldTime = 0.4f;
     public float camMoveSpeed = 8.0f;
+    public float highwayNoteHeightScale = 1.35f;
+    public float highwayStuckOutlineThickness = 0.06f;
+    public float highwayStuckOutlineDepth = 0.04f;
 
     [Header("Tabs Dimensions")]
     public float tabPanelWidth = 22f;
