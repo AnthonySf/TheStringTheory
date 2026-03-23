@@ -82,7 +82,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
         GetSkyCoverage(out float width, out float minY, out float maxY);
         float halfWidth = width * 0.5f;
-        float safeGlobalScale = Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale);
+        float safeGlobalScale = Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale) * GetCloudScaleMultiplier();
         float cloudYOffset = GetCloudVerticalOffset();
 
         for (int i = 0; i < clouds.Count; i++)
@@ -343,7 +343,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             float stretchY = Random.Range(0.85f, 1.15f);
             float baseScaleX = scale * stretchX;
             float baseScaleY = scale * stretchY;
-            cloudGo.transform.localScale = new Vector3(baseScaleX * Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale), baseScaleY * Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale), 1f);
+            float cloudScaleMultiplier = Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale) * GetCloudScaleMultiplier();
+            cloudGo.transform.localScale = new Vector3(baseScaleX * cloudScaleMultiplier, baseScaleY * cloudScaleMultiplier, 1f);
 
             clouds.Add(new SkyCloud
             {
@@ -368,6 +369,13 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         return owner != null && owner.renderMode == GuitarRenderMode.Highway3D
             ? owner.highwayBackgroundCloudYOffset
             : 0f;
+    }
+
+    private float GetCloudScaleMultiplier()
+    {
+        return owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+            ? Mathf.Max(0.05f, owner.highwayBackgroundCloudScale)
+            : 1f;
     }
 
     private void ApplyMoodToSkyIfNeeded()

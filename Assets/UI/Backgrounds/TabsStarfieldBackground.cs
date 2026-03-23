@@ -320,6 +320,9 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         float safeSizeMax = Mathf.Max(safeSizeMin, Mathf.Max(sizeMin, sizeMax));
         float safeAlphaMin = Mathf.Clamp01(Mathf.Min(alphaMin, alphaMax));
         float safeAlphaMax = Mathf.Clamp01(Mathf.Max(alphaMin, alphaMax));
+        float starScale = owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+            ? Mathf.Max(0.05f, owner.highwayBackgroundStarScale)
+            : 1f;
 
         for (int i = 0; i < count; i++)
         {
@@ -336,7 +339,7 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
             go.transform.localRotation = Quaternion.identity;
 
             float size = Mathf.Lerp(safeSizeMin, safeSizeMax, Random.value);
-            go.transform.localScale = GetScaleForStyle(size);
+            go.transform.localScale = GetScaleForStyle(size * starScale);
 
             Renderer renderer = go.GetComponent<Renderer>();
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
