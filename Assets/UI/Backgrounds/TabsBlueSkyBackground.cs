@@ -39,6 +39,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private readonly List<SkyCloud> clouds = new List<SkyCloud>();
     private readonly List<SkyStar> stars = new List<SkyStar>();
     private readonly List<Sprite> cloudSprites = new List<Sprite>();
+    private readonly bool applyHighwayOverrides;
     private Sprite starSprite;
 
     private GuitarBridgeServer owner;
@@ -51,6 +52,11 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private const float SkyWidthOverscan = 1.45f;
     private const float SkyHeightOverscan = 1.60f;
     private GuitarBridgeServer.TabsSkyMood appliedMood = (GuitarBridgeServer.TabsSkyMood)(-1);
+
+    public TabsBlueSkyBackground(bool applyHighwayOverrides = false)
+    {
+        this.applyHighwayOverrides = applyHighwayOverrides;
+    }
 
     public void Initialize(Transform parent, GuitarBridgeServer owner)
     {
@@ -372,21 +378,21 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
     private float GetCloudVerticalOffset()
     {
-        return owner != null && owner.ShouldApplyHighwayBackgroundOverrides()
+        return owner != null && applyHighwayOverrides
             ? owner.highwayBackgroundCloudYOffset
             : 0f;
     }
 
     private float GetCloudScaleMultiplier()
     {
-        return owner != null && owner.ShouldApplyHighwayBackgroundOverrides()
+        return owner != null && applyHighwayOverrides
             ? Mathf.Max(0.05f, owner.highwayBackgroundCloudScale)
             : 1f;
     }
 
     private float GetCloudSpreadMultiplier()
     {
-        return owner != null && owner.ShouldApplyHighwayBackgroundOverrides()
+        return owner != null && applyHighwayOverrides
             ? Mathf.Max(0.05f, owner.highwayBackgroundCloudSpread)
             : 1f;
     }

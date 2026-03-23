@@ -1,6 +1,6 @@
 public static class TabsBackgroundFactory
 {
-    public static ITabsBackgroundEffect Create(GuitarBridgeServer owner)
+    public static ITabsBackgroundEffect Create(GuitarBridgeServer owner, bool applyHighwayOverrides = false)
     {
         if (owner == null)
             return null;
@@ -8,9 +8,9 @@ public static class TabsBackgroundFactory
         switch (owner.tabBackgroundMode)
         {
             case GuitarBridgeServer.TabsBackgroundMode.BlueSky:
-                return new TabsBlueSkyBackground();
+                return new TabsBlueSkyBackground(applyHighwayOverrides);
             case GuitarBridgeServer.TabsBackgroundMode.Starfield:
-                return new TabsStarfieldBackground();
+                return new TabsStarfieldBackground(applyHighwayOverrides);
             case GuitarBridgeServer.TabsBackgroundMode.SolidColor:
             default:
                 return null;
