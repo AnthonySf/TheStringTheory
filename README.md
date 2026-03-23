@@ -1,6 +1,6 @@
 # StringTheory
 
-![Gameplay](Assets/564449394-b35a2f5e-64b5-48b0-81a7-d8d23a79169a.png)
+<img width="1730" height="959" alt="image" src="https://github.com/user-attachments/assets/b35a2f5e-64b5-48b0-81a7-d8d23a79169a" />
 
 StringTheory is a guitar game built in Unity that turns practice into something closer to a rhythm game.
 
@@ -15,24 +15,20 @@ Live note and chord detection powers the scoring system, so your performance is 
 - A scoring system so you can track how well you are doing
   
 - Looping for any section you select
-![Gameplay](Assets/2.png)
+  <img width="909" height="297" alt="image" src="https://github.com/user-attachments/assets/beb40feb-fdd1-4906-b701-f17a2d88745e" />
 
 - Slow down playback so hard parts are easier to learn
   
 - Timing offset controls by track and by full song
   
 - Instant track switching inside the same song
-![Gameplay](Assets/3.png)
+  <img width="565" height="539" alt="image" src="https://github.com/user-attachments/assets/5c3100e5-9cd2-4a56-a0ea-2a1fc824ddd6" />
   
 - Lots of settings for gameplay and practice behavior
   
 - Early 3D view work has started, but it is still incomplete
 
 There is also a simple amp simulator app included in the project.
-
-NOTE:
-The detector uses your system’s default recording device. Please set your guitar interface / mic as the default input before launching. For multi-input interfaces, use input 1.
-Project will be updated to have a special UI to select input device next.
 
 ## Adding songs
 
@@ -53,18 +49,3 @@ If you have a `.gp` file, you can convert it to MusicXML in a minute.
 Use a free tool such as TuxGuitar, open the `.gp` file, then export it as MusicXML.
 
 The exported file works directly in StringTheory and loads tracks and guitar techniques automatically.
-
-## Download
-
-A prebuilt version of the game is available in the releases section. 
-It is a first test of the build and is likely outdated.
-You can unzip it and run the .exe to test.
-
-## License
-
-All C# source code in this repository is licensed under the MIT License.
-
-Executable files (such as the note detection listener) are proprietary
-software and are NOT covered by the MIT license. All rights reserved.
-
-PS: notes/chords detection code will be opened for open source as well in a different repository soon.
