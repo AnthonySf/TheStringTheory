@@ -17,6 +17,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private GameObject gameplayRoot;
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
+    private readonly Renderer[] stringVisualRenderers = new Renderer[6];
     private Material[,] fretLightMats;
     private Renderer[,] fretLightRenderers;
     private ITabsBackgroundEffect backgroundEffect;
@@ -97,6 +98,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (!suppressGameplay)
         {
             EnsureGameplayVisualsBuilt();
+            UpdateStringVisuals(snapshot);
             UpdateFretboardLights(snapshot.latestDetectedPitches);
             UpdateNotes(snapshot);
             UpdateChordFrames(snapshot);
@@ -279,7 +281,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             wire.transform.SetParent(gameplayRoot.transform, false);
             wire.transform.position = new Vector3(wireX, 3.5f, owner.StrikeLineZ + 0.05f);
             wire.transform.localScale = new Vector3(0.15f, 12f, 0.15f);
-            wire.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(Color.gray, 0.3f);
+            wire.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(new Color(0.18f, 0.19f, 0.22f, 1f), 0f);
 
             if (fret % 3 == 0 || fret == 5 || fret == 7 || fret == 9 || fret == 12 || fret == 15)
             {
@@ -320,10 +322,64 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             s.transform.SetParent(gameplayRoot.transform, false);
             s.transform.position = new Vector3(0f, GetStringY(i), owner.StrikeLineZ);
             s.transform.localScale = new Vector3(600f, 0.1f, 0.1f);
-            Material mat = owner.CreateSharedGlowMaterial(owner.GetStringColor(i), 2f);
-            s.GetComponent<Renderer>().material = mat;
+            Material mat = owner.CreateSharedGlowMaterial(owner.GetStringColor(i), 0.9f);
+            Renderer renderer = s.GetComponent<Renderer>();
+            renderer.material = mat;
             stringVisuals[i] = s;
             stringVisualMats[i] = mat;
+            stringVisualRenderers[i] = renderer;
+        }
+    }
+
+    private void UpdateStringVisuals(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null)
+            return;
+
+        float renderSongTime = GetRenderSongTime(snapshot);
+        bool[] stringHasIncomingNotes = new bool[6];
+
+        if (snapshot.noteStates != null)
+        {
+            for (int i = 0; i < snapshot.noteStates.Count; i++)
+            {
+                GameplayNoteState state = snapshot.noteStates[i];
+                if (state == null || state.IsResolved || state.data == null)
+                    continue;
+
+                int stringIdx = state.data.stringIdx;
+                if (stringIdx < 0 || stringIdx >= stringHasIncomingNotes.Length)
+                    continue;
+
+                float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
+                if (travelZ > owner.SpawnZ)
+                    continue;
+
+                stringHasIncomingNotes[stringIdx] = true;
+            }
+        }
+
+        for (int i = 0; i < stringVisualMats.Length; i++)
+        {
+            Material mat = stringVisualMats[i];
+            if (mat == null)
+                continue;
+
+            Color baseColor = owner.GetStringColor(i);
+            bool isActive = stringHasIncomingNotes[i];
+            Color appliedColor = isActive
+                ? new Color(baseColor.r, baseColor.g, baseColor.b, 0.95f)
+                : new Color(baseColor.r * 0.28f, baseColor.g * 0.28f, baseColor.b * 0.28f, 0.42f);
+            float emission = isActive ? 0.6f : 0f;
+
+            mat.color = appliedColor;
+            mat.SetColor("_Color", appliedColor);
+            mat.SetColor("_BaseColor", appliedColor);
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", emission > 0f ? baseColor * Mathf.Pow(2f, emission) : Color.black);
+
+            if (stringVisualRenderers[i] != null)
+                stringVisualRenderers[i].enabled = true;
         }
     }
 
@@ -433,6 +489,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         tail.name = "Tail_" + data.id;
         tail.transform.SetParent(gameplayRoot.transform, false);
         tail.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx) * 0.4f, 0.2f);
+        tail.SetActive(owner.highwayShowApproachLine);
 
         GameObject marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         marker.name = "Marker_" + data.id;
@@ -440,6 +497,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         marker.transform.position = new Vector3(xPos, yPos, owner.StrikeLineZ);
         marker.transform.localScale = GetMarkerScale();
         marker.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
+        marker.SetActive(owner.highwayShowLandingDot);
 
         GameObject outlineRoot = CreateNoteOutline(cube.transform.localScale, owner.GetStringColor(data.stringIdx));
         outlineRoot.SetActive(false);
@@ -467,10 +525,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float y = GetStringY(state.data.stringIdx);
 
         view.noteRoot.transform.position = new Vector3(x, y, z);
-        view.marker.transform.position = new Vector3(x, y, owner.StrikeLineZ);
+        if (view.marker != null)
+            view.marker.transform.position = new Vector3(x, y, owner.StrikeLineZ);
         if (view.outlineRoot != null)
         {
-            view.outlineRoot.transform.position = view.noteRoot.transform.position;
+            view.outlineRoot.transform.position = new Vector3(x, y, GetStuckOutlineCenterZ());
             view.outlineRoot.transform.localScale = Vector3.one;
         }
 
@@ -481,9 +540,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             view.outlineRoot.SetActive(isStuckOnString);
 
         float tailLength = Mathf.Max(0f, z - owner.StrikeLineZ);
-        view.tail.transform.position = new Vector3(x, y, owner.StrikeLineZ + (tailLength * 0.5f));
-        view.tail.transform.localScale = new Vector3(owner.FretSpacing * 0.06f, 0.06f, tailLength);
-        view.tail.SetActive(tailLength > 0.01f && !state.IsResolved);
+        if (view.tail != null)
+        {
+            view.tail.transform.position = new Vector3(x, y, owner.StrikeLineZ + (tailLength * 0.5f));
+            view.tail.transform.localScale = new Vector3(owner.FretSpacing * 0.06f, 0.06f, tailLength);
+            view.tail.SetActive(owner.highwayShowApproachLine && tailLength > 0.01f && !state.IsResolved);
+        }
 
         view.noteRoot.transform.localScale = view.baseScale;
 
@@ -511,8 +573,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (view.marker != null)
         {
+            view.marker.SetActive(owner.highwayShowLandingDot);
             Renderer markerRenderer = view.marker.GetComponent<Renderer>();
             Color markerColor = state.IsHit ? owner.highwayHitColor : (state.IsMissed ? owner.highwayMissColor : view.baseColor);
+            markerRenderer.material.color = markerColor;
             markerRenderer.material.SetColor("_EmissionColor", markerColor * (state.IsHit ? 2f : 0.8f));
         }
     }
@@ -989,13 +1053,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float insetHalfWidth = Mathf.Max(0f, (width - thickness) * 0.5f);
         float insetHalfHeight = Mathf.Max(0f, (height - thickness) * 0.5f);
         Material outlineMat = owner.CreateSharedTransparentMaterial(new Color(color.r, color.g, color.b, 0.38f), 0.12f);
-        float frontZ = (noteScale.z * 0.5f) - (depth * 0.5f) + 0.01f;
+        float outlinePlaneZ = 0f;
 
-        CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, frontZ), new Vector3(width, thickness, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -insetHalfHeight, frontZ), new Vector3(width, thickness, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(-insetHalfWidth, 0f, frontZ), new Vector3(thickness, height, depth), outlineMat);
-        CreateFramePiece(outlineRoot.transform, new Vector3(insetHalfWidth, 0f, frontZ), new Vector3(thickness, height, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, outlinePlaneZ), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -insetHalfHeight, outlinePlaneZ), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(-insetHalfWidth, 0f, outlinePlaneZ), new Vector3(thickness, height, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(insetHalfWidth, 0f, outlinePlaneZ), new Vector3(thickness, height, depth), outlineMat);
         return outlineRoot;
+    }
+
+    private float GetStuckOutlineCenterZ()
+    {
+        return owner.StrikeLineZ + (Mathf.Max(0.01f, owner.highwayStuckOutlineDepth) * 0.5f);
     }
 
     private int GetFretLightColumnCount()
