@@ -81,7 +81,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             return;
 
         GetSkyCoverage(out float width, out float minY, out float maxY);
-        float halfWidth = width * 0.5f;
+        float cloudSpread = GetCloudSpreadMultiplier();
+        float halfWidth = (width * cloudSpread) * 0.5f;
         float safeGlobalScale = Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale) * GetCloudScaleMultiplier();
         float cloudYOffset = GetCloudVerticalOffset();
 
@@ -313,7 +314,12 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             return;
 
         GetSkyCoverage(out float width, out float minY, out float maxY);
-        float halfWidth = width * 0.5f;
+        float cloudSpread = GetCloudSpreadMultiplier();
+        float halfWidth = (width * cloudSpread) * 0.5f;
+        float centerY = (minY + maxY) * 0.5f;
+        float halfHeight = (maxY - minY) * 0.5f * cloudSpread;
+        minY = centerY - halfHeight;
+        maxY = centerY + halfHeight;
         GetSkyDepthRange(out float nearZ, out float farZ);
 
         Random.State oldState = Random.state;
@@ -375,6 +381,13 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     {
         return owner != null && owner.renderMode == GuitarRenderMode.Highway3D
             ? Mathf.Max(0.05f, owner.highwayBackgroundCloudScale)
+            : 1f;
+    }
+
+    private float GetCloudSpreadMultiplier()
+    {
+        return owner != null && owner.renderMode == GuitarRenderMode.Highway3D
+            ? Mathf.Max(0.05f, owner.highwayBackgroundCloudSpread)
             : 1f;
     }
 

@@ -142,6 +142,8 @@ public class GuitarBridgeServer : MonoBehaviour
     public float highwayBackgroundCloudYOffset = 0f;
     public float highwayBackgroundStarScale = 1f;
     public float highwayBackgroundCloudScale = 1f;
+    public float highwayBackgroundStarSpread = 1f;
+    public float highwayBackgroundCloudSpread = 1f;
 
     [Header("Tabs Dimensions")]
     public float tabPanelWidth = 22f;
