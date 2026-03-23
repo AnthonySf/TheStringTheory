@@ -216,7 +216,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void UpdateNotes(GuitarGameplaySnapshot snapshot)
     {
         float renderSongTime = GetRenderSongTime(snapshot);
-        float removeDist = owner.noteSpeed * (owner.hitWindowLate + owner.judgmentGrace) + 1f;
         HashSet<int> visibleThisFrame = new HashSet<int>();
 
         for (int i = 0; i < snapshot.noteStates.Count; i++)
@@ -224,7 +223,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             GameplayNoteState state = snapshot.noteStates[i];
             float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
             bool keepForResult = state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime();
-            bool visible = travelZ <= owner.SpawnZ && (travelZ >= owner.StrikeLineZ || keepForResult);
+            bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || travelZ >= owner.StrikeLineZ);
 
             if (!visible)
                 continue;
@@ -531,7 +530,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         nextDiagnosticsLogTime = Time.unscaledTime + 1f;
 
         float renderSongTime = GetRenderSongTime(snapshot);
-        float removeDist = owner.noteSpeed * (owner.hitWindowLate + owner.judgmentGrace) + 1f;
         int totalStates = snapshot.noteStates != null ? snapshot.noteStates.Count : 0;
         int visibleCount = 0;
         int upcomingCount = 0;
@@ -552,7 +550,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     upcomingCount++;
 
                 float z = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
-                if (z <= owner.SpawnZ && z >= owner.StrikeLineZ - removeDist)
+                if (z <= owner.SpawnZ)
                     visibleCount++;
             }
         }
@@ -585,13 +583,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (snapshot == null)
             return 0f;
 
-        float renderSongTime = Mathf.Max(0f, snapshot.songTime);
+        float renderSongTime = snapshot.songTime;
         float visibleWindow = GetVisibleLeadTime();
 
         if (snapshot.noteStates == null || snapshot.noteStates.Count == 0)
             return renderSongTime;
 
-        bool shouldPreviewUpcoming = snapshot.isPaused || snapshot.songTime < 0f || snapshot.showMainMenu || snapshot.showSongSelection || snapshot.showTrackSelection;
+        bool shouldPreviewUpcoming = snapshot.isPaused || snapshot.showMainMenu || snapshot.showSongSelection || snapshot.showTrackSelection;
         if (!shouldPreviewUpcoming)
             return renderSongTime;
 
@@ -674,7 +672,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetHandWindowEndX(int handFret, List<NoteData> group = null)
     {
-        int furthestFret = handFret + 2;
+        int furthestFret = handFret + 3;
         if (group != null)
         {
             int highestGroupFret = group.Where(n => n.fret > 0).Select(n => n.fret).DefaultIfEmpty(furthestFret).Max();
@@ -753,7 +751,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private Vector3 GetSingleOpenNoteScale()
     {
         return new Vector3(
-            owner.FretSpacing * 2.7f,
+            owner.FretSpacing * 3.6f,
             GetScaledOpenHeight(),
             GetScaledOpenDepth());
     }
