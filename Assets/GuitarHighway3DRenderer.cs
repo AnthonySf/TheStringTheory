@@ -435,6 +435,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             Color baseColor = new Color(0.18f, 0.45f, 1f, 0.14f);
             Material mat = owner.CreateSharedTransparentMaterial(baseColor, 0.02f);
+            ConfigureOverlayMaterial(mat, 60, true);
             Renderer renderer = guide.GetComponent<Renderer>();
             renderer.material = mat;
             laneGuideMats[lane] = mat;
