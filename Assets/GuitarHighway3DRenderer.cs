@@ -287,7 +287,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             wire.transform.SetParent(gameplayRoot.transform, false);
             wire.transform.position = new Vector3(wireX, 3.5f, owner.StrikeLineZ + 0.05f);
             wire.transform.localScale = new Vector3(0.15f, 12f, 0.15f);
-            wire.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(new Color(0.18f, 0.19f, 0.22f, 1f), 0f);
+            wire.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(new Color(0.30f, 0.32f, 0.36f, 1f), 0.05f);
 
             if (fret % 3 == 0 || fret == 5 || fret == 7 || fret == 9 || fret == 12 || fret == 15)
             {
@@ -418,7 +418,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         int laneCount = GetFretLightColumnCount();
         float laneSurfaceY = -1.93f;
         float depth = 150f;
-        float centerZ = 25f;
+        float centerZ = owner.StrikeLineZ + (depth * 0.5f);
 
         for (int lane = 0; lane < laneCount; lane++)
         {
