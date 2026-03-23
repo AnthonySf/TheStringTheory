@@ -458,6 +458,27 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (snapshot == null || fretBoundaryMats == null || fretBoundaryRenderers == null)
             return;
 
+        if (!owner.highwayHighlightFretBoundaries)
+        {
+            Color disabledColor = new Color(0.20f, 0.22f, 0.25f, 1f);
+            for (int i = 0; i < fretBoundaryMats.Length; i++)
+            {
+                Material mat = fretBoundaryMats[i];
+                Renderer renderer = fretBoundaryRenderers[i];
+                if (mat == null || renderer == null)
+                    continue;
+
+                mat.color = disabledColor;
+                mat.SetColor("_Color", disabledColor);
+                mat.SetColor("_BaseColor", disabledColor);
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", Color.black);
+                renderer.enabled = true;
+            }
+
+            return;
+        }
+
         float renderSongTime = GetRenderSongTime(snapshot);
         bool[] boundaryActive = new bool[fretBoundaryMats.Length];
 

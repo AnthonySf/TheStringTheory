@@ -1681,6 +1681,7 @@ public sealed class TabsSongHeaderOverlay
 
         AddGlobalSettingsColumn(columnsWrapper, "Gameplay Mechanics", addRightSpacing: true);
         AddGlobalSettingsColumn(columnsWrapper, "Tabs Visuals", addRightSpacing: true);
+        AddGlobalSettingsColumn(columnsWrapper, "Highway 3D", addRightSpacing: true);
         AddGlobalSettingsColumn(columnsWrapper, "General Visuals", addRightSpacing: false);
 
         globalSettingsScrollView.Add(columnsWrapper);
@@ -1775,6 +1776,9 @@ public sealed class TabsSongHeaderOverlay
 
         if (normalizedTitle.Contains("tab") || normalizedTitle.Contains("layout") || IsSectionIdPrefix(sectionSettings, "layout."))
             return "Tabs Visuals";
+
+        if (normalizedTitle.Contains("highway") || IsSectionIdPrefix(sectionSettings, "highway.") || IsSectionIdPrefix(sectionSettings, "render."))
+            return "Highway 3D";
 
         if (normalizedTitle.Contains("visual") || normalizedTitle.Contains("color") || normalizedTitle.Contains("background") || IsSectionIdPrefix(sectionSettings, "fx.") || IsSectionIdPrefix(sectionSettings, "bg."))
             return "General Visuals";
