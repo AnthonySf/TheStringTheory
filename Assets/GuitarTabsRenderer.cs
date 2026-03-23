@@ -216,23 +216,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private void InitializeBackgroundEffect()
     {
         backgroundEffect?.Dispose();
-        backgroundEffect = null;
+        backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides: false);
 
-        if (backgroundRoot == null)
+        if (backgroundRoot == null || backgroundEffect == null)
             return;
-
-        switch (owner.tabBackgroundMode)
-        {
-            case GuitarBridgeServer.TabsBackgroundMode.BlueSky:
-                backgroundEffect = new TabsBlueSkyBackground();
-                break;
-            case GuitarBridgeServer.TabsBackgroundMode.Starfield:
-                backgroundEffect = new TabsStarfieldBackground();
-                break;
-            case GuitarBridgeServer.TabsBackgroundMode.SolidColor:
-            default:
-                return;
-        }
 
         backgroundEffect.Initialize(backgroundRoot.transform, owner);
     }

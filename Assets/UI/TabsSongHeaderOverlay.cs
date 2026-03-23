@@ -175,6 +175,12 @@ public sealed class TabsSongHeaderOverlay
     private readonly Slider settingsTabSpeedSlider;
     private readonly Label settingsStartDelayLabel;
     private readonly Slider settingsStartDelaySlider;
+    private readonly Label settingsLaneGuideYOffsetLabel;
+    private readonly Slider settingsLaneGuideYOffsetSlider;
+    private readonly Label settingsFretNumberYOffsetLabel;
+    private readonly Slider settingsFretNumberYOffsetSlider;
+    private readonly Label settingsFretNumberZOffsetLabel;
+    private readonly Slider settingsFretNumberZOffsetSlider;
 
     private readonly VisualElement globalSettingsOverlay;
     private readonly VisualElement globalSettingsCard;
@@ -228,6 +234,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly FontDefinition bodyFontDefinition;
     private readonly FontDefinition titleFontDefinition;
     private string globalSettingsLayoutSignature = string.Empty;
+    private Vector2 globalSettingsScrollOffset = Vector2.zero;
 
     public TabsSongHeaderOverlay(GuitarBridgeServer owner)
     {
@@ -811,7 +818,38 @@ public sealed class TabsSongHeaderOverlay
         settingsStartDelayLabel = CreateLabel("Start Delay", 31f, new Color(0.84f, 0.95f, 1f, 1f));
         settingsStartDelaySlider = new Slider(0f, 8f);
         settingsStartDelaySlider.focusable = false;
+        settingsStartDelaySlider.style.marginBottom = 14f;
         settingsStartDelaySlider.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetSongStartDelaySecondsFromUi(evt.newValue); });
+
+        settingsLaneGuideYOffsetLabel = CreateLabel("Highway Guide Y Offset", 31f, new Color(0.84f, 0.95f, 1f, 1f));
+        settingsLaneGuideYOffsetSlider = new Slider(-3f, 2f);
+        settingsLaneGuideYOffsetSlider.focusable = false;
+        settingsLaneGuideYOffsetSlider.style.marginBottom = 14f;
+        settingsLaneGuideYOffsetSlider.RegisterValueChangedCallback(evt =>
+        {
+            if (!suppressCallbacks)
+                owner?.SetGlobalRuntimeSettingFromUi("highway.laneGuideYOffset", evt.newValue.ToString("0.###", CultureInfo.InvariantCulture));
+        });
+
+        settingsFretNumberYOffsetLabel = CreateLabel("Highway Fret Number Y", 31f, new Color(0.84f, 0.95f, 1f, 1f));
+        settingsFretNumberYOffsetSlider = new Slider(-3f, 3f);
+        settingsFretNumberYOffsetSlider.focusable = false;
+        settingsFretNumberYOffsetSlider.style.marginBottom = 14f;
+        settingsFretNumberYOffsetSlider.RegisterValueChangedCallback(evt =>
+        {
+            if (!suppressCallbacks)
+                owner?.SetGlobalRuntimeSettingFromUi("highway.fretNumberYOffset", evt.newValue.ToString("0.###", CultureInfo.InvariantCulture));
+        });
+
+        settingsFretNumberZOffsetLabel = CreateLabel("Highway Fret Number Z", 31f, new Color(0.84f, 0.95f, 1f, 1f));
+        settingsFretNumberZOffsetSlider = new Slider(-3f, 3f);
+        settingsFretNumberZOffsetSlider.focusable = false;
+        settingsFretNumberZOffsetSlider.style.marginBottom = 14f;
+        settingsFretNumberZOffsetSlider.RegisterValueChangedCallback(evt =>
+        {
+            if (!suppressCallbacks)
+                owner?.SetGlobalRuntimeSettingFromUi("highway.fretNumberZOffset", evt.newValue.ToString("0.###", CultureInfo.InvariantCulture));
+        });
 
         VisualElement settingsButtons = new VisualElement();
         settingsButtons.style.flexDirection = FlexDirection.Row;
@@ -838,6 +876,12 @@ public sealed class TabsSongHeaderOverlay
         settingsCard.Add(settingsTabSpeedSlider);
         settingsCard.Add(settingsStartDelayLabel);
         settingsCard.Add(settingsStartDelaySlider);
+        settingsCard.Add(settingsLaneGuideYOffsetLabel);
+        settingsCard.Add(settingsLaneGuideYOffsetSlider);
+        settingsCard.Add(settingsFretNumberYOffsetLabel);
+        settingsCard.Add(settingsFretNumberYOffsetSlider);
+        settingsCard.Add(settingsFretNumberZOffsetLabel);
+        settingsCard.Add(settingsFretNumberZOffsetSlider);
         settingsCard.Add(settingsButtons);
         AddBottomRightPrimaryButtons(settingsCard, backPauseButton, resumeFromSettingsButton);
 
@@ -896,6 +940,8 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsScrollView.style.minHeight = 0f;
         globalSettingsScrollView.style.marginTop = 8f;
         globalSettingsScrollView.style.marginBottom = 8f;
+        ConfigureRuntimeScrollView(globalSettingsScrollView);
+        globalSettingsCard.style.overflow = Overflow.Hidden;
         globalSettingsCard.Add(globalSettingsScrollView);
 
         Button globalBackButton = CreateActionButton("Back", () => owner?.CloseGlobalSettingsFromUi());
@@ -931,6 +977,8 @@ public sealed class TabsSongHeaderOverlay
         selectionScrollView.style.marginTop = 4f;
         selectionScrollView.style.marginBottom = 4f;
         selectionScrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        ConfigureRuntimeScrollView(selectionScrollView);
+        selectionCard.style.overflow = Overflow.Hidden;
         selectionCard.Add(selectionScrollView);
 
         VisualElement selectionButtons = new VisualElement();
@@ -983,6 +1031,8 @@ public sealed class TabsSongHeaderOverlay
         trackSelectionScrollView.style.maxHeight = 640f;
         trackSelectionScrollView.style.minHeight = 380f;
         trackSelectionScrollView.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        ConfigureRuntimeScrollView(trackSelectionScrollView);
+        trackSelectionCard.style.overflow = Overflow.Hidden;
         trackSelectionCard.Add(trackSelectionScrollView);
 
         VisualElement trackSelectionButtons = new VisualElement();
@@ -1331,6 +1381,9 @@ public sealed class TabsSongHeaderOverlay
         settingsOffsetSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.audioOffsetMs, -2000f, 2000f));
         settingsTabSpeedSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.tabSpeedOffsetPercent, 50f, 150f));
         settingsStartDelaySlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songStartDelaySeconds, 0f, 8f));
+        settingsLaneGuideYOffsetSlider.SetValueWithoutNotify(Mathf.Clamp(owner != null ? owner.highwayLaneGuideYOffset : -1.84f, -3f, 2f));
+        settingsFretNumberYOffsetSlider.SetValueWithoutNotify(Mathf.Clamp(owner != null ? owner.highwayFretNumberYOffset : 0.45f, -3f, 3f));
+        settingsFretNumberZOffsetSlider.SetValueWithoutNotify(Mathf.Clamp(owner != null ? owner.highwayFretNumberZOffset : 0.12f, -3f, 3f));
         suppressCallbacks = false;
 
         settingsTrackLabel.text = $"Track: {trackName}   •   Scope: {snapshot.offsetScopeLabel}";
@@ -1346,7 +1399,8 @@ public sealed class TabsSongHeaderOverlay
         bool showTrackSelection = snapshot.showTrackSelection && !showEnd;
         bool showGlobalSettings = snapshot.showGlobalSettings && !showEnd;
         bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showEnd && !showMainMenu && !showSelection && !showTrackSelection;
-        bool showTechniqueLegend = !showEnd && !showPause && !showMainMenu && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
+        bool showTechniqueLegend = !isHighway3D && !showEnd && !showPause && !showMainMenu && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
@@ -1619,7 +1673,9 @@ public sealed class TabsSongHeaderOverlay
 
     private void UpdateGlobalSettings(GuitarGameplaySnapshot snapshot)
     {
-        BuildGlobalSettingsUi(snapshot.runtimeSettingsSections);
+        bool rebuilt = BuildGlobalSettingsUi(snapshot.runtimeSettingsSections);
+        if (rebuilt)
+            RestoreGlobalSettingsScrollOffset();
 
         if (snapshot.runtimeSettingsSections == null)
             return;
@@ -1653,17 +1709,19 @@ public sealed class TabsSongHeaderOverlay
             }
         }
         suppressCallbacks = false;
+        globalSettingsScrollOffset = globalSettingsScrollView != null ? globalSettingsScrollView.scrollOffset : globalSettingsScrollOffset;
     }
 
-    private void BuildGlobalSettingsUi(List<RuntimeSettingSectionSnapshot> sections)
+    private bool BuildGlobalSettingsUi(List<RuntimeSettingSectionSnapshot> sections)
     {
         if (sections == null)
-            return;
+            return false;
 
         string signature = BuildGlobalSettingsLayoutSignature(sections);
         if (signature == globalSettingsLayoutSignature && globalSettingInputs.Count > 0)
-            return;
+            return false;
 
+        globalSettingsScrollOffset = globalSettingsScrollView != null ? globalSettingsScrollView.scrollOffset : globalSettingsScrollOffset;
         globalSettingsLayoutSignature = signature;
         globalSettingsScrollView.Clear();
         globalSettingInputs.Clear();
@@ -1680,6 +1738,7 @@ public sealed class TabsSongHeaderOverlay
 
         AddGlobalSettingsColumn(columnsWrapper, "Gameplay Mechanics", addRightSpacing: true);
         AddGlobalSettingsColumn(columnsWrapper, "Tabs Visuals", addRightSpacing: true);
+        AddGlobalSettingsColumn(columnsWrapper, "Highway 3D", addRightSpacing: true);
         AddGlobalSettingsColumn(columnsWrapper, "General Visuals", addRightSpacing: false);
 
         globalSettingsScrollView.Add(columnsWrapper);
@@ -1727,6 +1786,31 @@ public sealed class TabsSongHeaderOverlay
         }
 
         ApplyResponsiveSizing(force: true);
+        return true;
+    }
+
+    private void RestoreGlobalSettingsScrollOffset()
+    {
+        if (globalSettingsScrollView == null)
+            return;
+
+        Vector2 preservedOffset = globalSettingsScrollOffset;
+        globalSettingsScrollView.schedule.Execute(() =>
+        {
+            if (globalSettingsScrollView == null)
+                return;
+
+            globalSettingsScrollView.scrollOffset = preservedOffset;
+        }).ExecuteLater(0);
+    }
+
+    private void PreserveGlobalSettingsScrollOffset()
+    {
+        if (globalSettingsScrollView == null)
+            return;
+
+        globalSettingsScrollOffset = globalSettingsScrollView.scrollOffset;
+        RestoreGlobalSettingsScrollOffset();
     }
 
     private void AddGlobalSettingsColumn(VisualElement parent, string title, bool addRightSpacing)
@@ -1774,6 +1858,9 @@ public sealed class TabsSongHeaderOverlay
 
         if (normalizedTitle.Contains("tab") || normalizedTitle.Contains("layout") || IsSectionIdPrefix(sectionSettings, "layout."))
             return "Tabs Visuals";
+
+        if (normalizedTitle.Contains("highway") || IsSectionIdPrefix(sectionSettings, "highway.") || IsSectionIdPrefix(sectionSettings, "render."))
+            return "Highway 3D";
 
         if (normalizedTitle.Contains("visual") || normalizedTitle.Contains("color") || normalizedTitle.Contains("background") || IsSectionIdPrefix(sectionSettings, "fx.") || IsSectionIdPrefix(sectionSettings, "bg."))
             return "General Visuals";
@@ -1837,27 +1924,44 @@ public sealed class TabsSongHeaderOverlay
         {
             Toggle toggle = new Toggle();
             toggle.value = string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase);
-            toggle.RegisterValueChangedCallback(evt => { if (!suppressCallbacks) owner?.SetGlobalRuntimeSettingFromUi(setting.id, evt.newValue ? "true" : "false"); });
+            toggle.focusable = false;
+            toggle.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
+            toggle.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressCallbacks)
+                    return;
+
+                PreserveGlobalSettingsScrollOffset();
+                owner?.SetGlobalRuntimeSettingFromUi(setting.id, evt.newValue ? "true" : "false");
+            });
             input = toggle;
         }
         else if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase))
         {
             EnumCycleControl enumCycle = new EnumCycleControl(setting.enumOptions, setting.value, CreateLabel, CreateActionButton);
+            enumCycle.focusable = false;
+            enumCycle.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
             enumCycle.OnValueChanged += value =>
             {
                 if (!suppressCallbacks)
+                {
+                    PreserveGlobalSettingsScrollOffset();
                     owner?.SetGlobalRuntimeSettingFromUi(setting.id, value);
+                }
             };
             input = enumCycle;
         }
         else
         {
             Slider slider = new Slider(setting.min, setting.max) { value = ParseFloat(setting.value, setting.min) };
+            slider.focusable = false;
+            slider.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
             slider.RegisterValueChangedCallback(evt =>
             {
                 if (suppressCallbacks)
                     return;
 
+                PreserveGlobalSettingsScrollOffset();
                 float snapped = setting.step > 0.0001f ? Mathf.Round(evt.newValue / setting.step) * setting.step : evt.newValue;
                 string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase)
                     ? Mathf.RoundToInt(snapped).ToString(CultureInfo.InvariantCulture)
@@ -1880,6 +1984,18 @@ public sealed class TabsSongHeaderOverlay
         globalSettingInputs[setting.id] = input;
         globalSettingValueLabels[setting.id] = valueLabel;
         return row;
+    }
+
+    private static void ConfigureRuntimeScrollView(ScrollView scrollView)
+    {
+        if (scrollView == null)
+            return;
+
+        scrollView.style.overflow = Overflow.Hidden;
+        scrollView.contentViewport.style.overflow = Overflow.Hidden;
+        scrollView.contentContainer.style.flexShrink = 0f;
+        scrollView.mouseWheelScrollSize = 96f;
+        scrollView.verticalPageSize = 240f;
     }
 
     private static string BuildGlobalSettingsLayoutSignature(List<RuntimeSettingSectionSnapshot> sections)
@@ -1948,6 +2064,35 @@ public sealed class TabsSongHeaderOverlay
 
         Label popup = CreateLabel(text, judgePopupFontSize, popupColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
         popup.style.position = Position.Absolute;
+        bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
+        if (isHighway3D)
+        {
+            float pedalWidth = Mathf.Clamp(Screen.width * 0.15f, 430f, 620f);
+            float pedalHeight = Mathf.Clamp(Screen.height * 0.30f, 280f, 560f);
+            float popupWidth = Mathf.Clamp(Screen.width * 0.18f, 240f, 360f);
+            float popupRight = pedalWidth + 88f;
+            float highwayPopupBaseY = 8f + pedalHeight - Mathf.Clamp(judgePopupFontSize * 1.15f, 54f, 96f);
+            int highwayPopupLayer = Mathf.Min(activeJudgePopups.Count, 4);
+            float highwayPopupStartY = highwayPopupBaseY - highwayPopupLayer * 26f;
+
+            popup.style.left = StyleKeyword.Auto;
+            popup.style.right = popupRight;
+            popup.style.width = popupWidth;
+            popup.style.unityTextAlign = TextAnchor.MiddleRight;
+            popup.style.top = highwayPopupStartY;
+
+            judgePopupLayer.Add(popup);
+            activeJudgePopups.Add(new JudgePopupEntry
+            {
+                label = popup,
+                startTime = Time.unscaledTime,
+                startY = highwayPopupStartY,
+                endY = highwayPopupStartY - 120f,
+                duration = 1.05f
+            });
+            return;
+        }
+
         popup.style.left = 0f;
         popup.style.right = 0f;
         popup.style.unityTextAlign = TextAnchor.MiddleCenter;
@@ -2598,6 +2743,13 @@ public sealed class TabsSongHeaderOverlay
             return existing;
         }
 
+        PanelSettings runtimeAsset = Resources.Load<PanelSettings>("UIToolkitRuntimePanelSettings");
+        if (runtimeAsset != null)
+        {
+            ownsInstance = true;
+            return ScriptableObject.Instantiate(runtimeAsset);
+        }
+
         ownsInstance = true;
         return ScriptableObject.CreateInstance<PanelSettings>();
     }
@@ -2621,6 +2773,7 @@ public sealed class TabsSongHeaderOverlay
             return;
 
         lastScreenHeight = screenHeight;
+        bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
 
         float songSize = Mathf.Clamp(screenHeight * 0.052f, 40f, 64f);
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
@@ -2794,7 +2947,24 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
 
-        float pedalLeftEdge = (Screen.width - pedalWidth) * 0.5f;
+        if (isHighway3D)
+        {
+            scorePlate.style.left = StyleKeyword.Auto;
+            scorePlate.style.right = 24f;
+            scorePlate.style.width = pedalWidth + 56f;
+            scorePlate.style.alignItems = Align.FlexEnd;
+        }
+        else
+        {
+            scorePlate.style.left = 0f;
+            scorePlate.style.right = 0f;
+            scorePlate.style.width = StyleKeyword.Auto;
+            scorePlate.style.alignItems = Align.Center;
+        }
+
+        float pedalLeftEdge = isHighway3D
+            ? Screen.width - pedalWidth - 56f
+            : (Screen.width - pedalWidth) * 0.5f;
         float songCardAvailableWidth = pedalLeftEdge + 24f;
         float songCardWidth = Mathf.Clamp(songCardAvailableWidth, 520f, 1320f);
         songCard.style.width = songCardWidth;

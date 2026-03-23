@@ -132,6 +132,25 @@ public class GuitarBridgeServer : MonoBehaviour
     public float lookaheadWindow = 3.0f;
     public float highwayResolvedHoldTime = 0.4f;
     public float camMoveSpeed = 8.0f;
+    public float highwayNoteHeightScale = 1.35f;
+    public float highwayStuckOutlineThickness = 0.06f;
+    public float highwayStuckOutlineDepth = 0.04f;
+    public float highwayCameraFarClip = 5000f;
+    public float highwayBackgroundDistance = 1200f;
+    public float highwayBackgroundCenterY = -1500f;
+    public float highwayBackgroundScale = 250f;
+    public float highwayBackgroundCloudYOffset = 0f;
+    public float highwayBackgroundStarScale = 1f;
+    public float highwayBackgroundCloudScale = 1f;
+    public float highwayBackgroundStarSpread = 1f;
+    public float highwayBackgroundCloudSpread = 1f;
+    public float highwayLaneGuideThickness = 0.14f;
+    public float highwayLaneGuideYOffset = -1.84f;
+    public float highwayFretNumberYOffset = 0.45f;
+    public float highwayFretNumberZOffset = 0.12f;
+    public bool highwayHighlightFretBoundaries = false;
+    public bool highwayShowApproachLine = false;
+    public bool highwayShowLandingDot = true;
 
     [Header("Tabs Dimensions")]
     public float tabPanelWidth = 22f;
@@ -445,11 +464,12 @@ public class GuitarBridgeServer : MonoBehaviour
         EnsureBackingTrackSource();
         RegisterRuntimeSettings();
         LoadGlobalRuntimeSettingsMetadata();
-        showMainMenu = true;
-        mainMenuFlowActive = true;
-        isPaused = true;
+        bool startInMainMenu = true;
+        showMainMenu = startInMainMenu;
+        mainMenuFlowActive = startInMainMenu;
+        isPaused = startInMainMenu;
         LoadTestSong();
-        isPaused = true;
+        isPaused = startInMainMenu;
         EnsureRenderer();
         SyncAudioToSongTimer(playImmediately: false);
     }
@@ -590,9 +610,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
-            loopEnabled = !loopEnabled;
-            if (loopEnabled && loopEndTime <= loopStartTime)
-                loopEndTime = loopStartTime + 0.25f;
+            if (renderMode != GuitarRenderMode.Highway3D)
+            {
+                loopEnabled = !loopEnabled;
+                if (loopEnabled && loopEndTime <= loopStartTime)
+                    loopEndTime = loopStartTime + 0.25f;
+            }
         }
 
 
@@ -1184,6 +1207,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleLoopPlayback()
     {
+        if (renderMode == GuitarRenderMode.Highway3D)
+            return;
+
         if (!loopEnabled || loopEndTime <= loopStartTime + 0.01f)
             return;
 
@@ -1196,6 +1222,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void ToggleLoopFromUi()
     {
+        if (renderMode == GuitarRenderMode.Highway3D)
+        {
+            loopEnabled = false;
+            return;
+        }
+
         loopEnabled = !loopEnabled;
         if (loopEnabled && loopEndTime <= loopStartTime)
             loopEndTime = loopStartTime + 0.25f;
@@ -1768,6 +1800,23 @@ private void OpenOrFocusToneLab()
                 }
             }
         }
+        else
+        {
+            for (int i = 0; i < noteStates.Count; i++)
+            {
+                GameplayNoteState noteState = noteStates[i];
+                if (noteState.IsResolved)
+                    continue;
+
+                float latestJudgeTime = noteState.data.time + hitWindowLate + judgmentGrace;
+                if (clampedTime > latestJudgeTime + (noteState.data.stringIdx >= 4 ? highStringExtraLate : 0f))
+                {
+                    noteState.result = GameplayNoteResult.Missed;
+                    noteState.resolvedAt = clampedTime;
+                    noteState.isJudgeable = false;
+                }
+            }
+        }
 
         recentNoteEvents.Clear();
         latestDetectedPitches.Clear();
@@ -2007,7 +2056,6 @@ private void OpenOrFocusToneLab()
 
         return m;
     }
-
 
     private static Material CreateMaterialFromPrimitiveFallback(string materialKind)
     {
@@ -3183,6 +3231,7 @@ private void ParseUdpState()
 
         RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
+        RegisterEnumSetting("render.mode", "Highway 3D", "Render Mode", "Switches between Tabs and Highway3D presentation.", new []{"Tabs","Highway3D"}, () => renderMode.ToString(), v => { if (Enum.TryParse(v, out GuitarRenderMode mode)) renderMode = mode; });
 
         RegisterFloatSetting("timing.hitWindowEarly", "Timing & Forgiveness", "Hit Window Early", "How far before a note you can strike and still get credit.", 0.05f, 0.6f, 0.005f, () => hitWindowEarly, v => hitWindowEarly = v);
         RegisterFloatSetting("timing.hitWindowLate", "Timing & Forgiveness", "Hit Window Late", "How far after a note you can strike and still get credit.", 0.05f, 0.8f, 0.005f, () => hitWindowLate, v => hitWindowLate = v);
@@ -3221,6 +3270,46 @@ private void ParseUdpState()
         RegisterFloatSetting("bg.skyCloudMidSpeed", "Background - Blue Sky", "Cloud Speed (Mid)", "Horizontal drift speed for the middle cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedMid, v => tabSkyCloudSpeedMid = v);
         RegisterFloatSetting("bg.skyCloudFarSpeed", "Background - Blue Sky", "Cloud Speed (Far)", "Horizontal drift speed for the far cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedFar, v => tabSkyCloudSpeedFar = v);
         RegisterFloatSetting("bg.skyCloudGlobalScale", "Background - Blue Sky", "Cloud Global Scale", "Scales all BlueSky clouds live without restarting.", 0.2f, 6f, 0.05f, () => tabSkyCloudGlobalScale, v => tabSkyCloudGlobalScale = v);
+
+        RegisterIntSetting("highway.totalFrets", "Highway 3D - Layout", "Total Frets", "How many fret lanes are generated for the 3D highway.", 12, 36, 1, () => TotalFrets, v => TotalFrets = v);
+        RegisterFloatSetting("highway.fretSpacing", "Highway 3D - Layout", "Fret Spacing", "Horizontal spacing between fret lanes in Highway3D.", 0.4f, 2.5f, 0.01f, () => FretSpacing, v => FretSpacing = v);
+        RegisterFloatSetting("highway.strikeLineZ", "Highway 3D - Layout", "Strike Line Z", "Depth of the hit line in Highway3D.", -20f, 5f, 0.05f, () => StrikeLineZ, v => StrikeLineZ = v);
+        RegisterFloatSetting("highway.spawnZ", "Highway 3D - Layout", "Spawn Z", "Depth where incoming Highway3D notes appear.", 10f, 120f, 0.5f, () => SpawnZ, v => SpawnZ = v);
+        RegisterFloatSetting("highway.defaultOpenAnchorFret", "Highway 3D - Layout", "Open Anchor Fret", "Anchor fret used to visualize open notes in Highway3D.", 1f, 8f, 0.1f, () => defaultOpenAnchorFret, v => defaultOpenAnchorFret = v);
+        RegisterBoolSetting("highway.hideOpenFretNumber", "Highway 3D - Layout", "Hide Open Fret Number", "Hides the open fret index marker on the Highway3D board.", () => hideOpenFretNumber, v => hideOpenFretNumber = v);
+
+        RegisterFloatSetting("highway.cameraY", "Highway 3D - Camera", "Camera Y", "Vertical placement of the Highway3D camera.", 2f, 18f, 0.05f, () => highwayCameraY, v => highwayCameraY = v);
+        RegisterFloatSetting("highway.cameraZ", "Highway 3D - Camera", "Camera Z", "Depth placement of the Highway3D camera.", -30f, 5f, 0.05f, () => highwayCameraZ, v => highwayCameraZ = v);
+        RegisterFloatSetting("highway.cameraPitch", "Highway 3D - Camera", "Camera Pitch", "Pitch angle of the Highway3D camera.", 10f, 80f, 0.5f, () => highwayCameraPitch, v => highwayCameraPitch = v);
+        RegisterFloatSetting("highway.lookaheadWindow", "Highway 3D - Camera", "Lookahead Window", "How far ahead the Highway3D camera frames upcoming notes.", 0.5f, 6f, 0.05f, () => lookaheadWindow, v => lookaheadWindow = v);
+        RegisterFloatSetting("highway.cameraFarClip", "Highway 3D - Camera", "Camera Far Clip", "Far clipping plane for the Highway3D camera.", 100f, 6000f, 10f, () => highwayCameraFarClip, v => highwayCameraFarClip = v);
+        RegisterFloatSetting("highway.cameraMoveSpeed", "Highway 3D - Camera", "Camera Move Speed", "Movement speed tuning value for Highway3D camera transitions.", 0.5f, 20f, 0.1f, () => camMoveSpeed, v => camMoveSpeed = v);
+
+        RegisterFloatSetting("highway.noteHeightScale", "Highway 3D - Notes", "Note Height Scale", "Scales the vertical size of Highway3D note bodies.", 0.6f, 3f, 0.05f, () => highwayNoteHeightScale, v => highwayNoteHeightScale = v);
+        RegisterFloatSetting("highway.resolvedHoldTime", "Highway 3D - Notes", "Resolved Hold Time", "How long hit/miss note feedback stays visible.", 0.1f, 1.5f, 0.01f, () => highwayResolvedHoldTime, v => highwayResolvedHoldTime = v);
+        RegisterFloatSetting("highway.outlineThickness", "Highway 3D - Notes", "Stuck Outline Thickness", "Thickness of the stuck-note outline frame.", 0.01f, 0.3f, 0.005f, () => highwayStuckOutlineThickness, v => highwayStuckOutlineThickness = v);
+        RegisterFloatSetting("highway.outlineDepth", "Highway 3D - Notes", "Stuck Outline Depth", "Depth of the stuck-note outline frame.", 0.005f, 0.2f, 0.005f, () => highwayStuckOutlineDepth, v => highwayStuckOutlineDepth = v);
+        RegisterBoolSetting("highway.showApproachLine", "Highway 3D - Notes", "Show Approach Line", "Shows the line connecting notes to the strike line.", () => highwayShowApproachLine, v => highwayShowApproachLine = v);
+        RegisterBoolSetting("highway.showLandingDot", "Highway 3D - Notes", "Show Landing Dot", "Shows the landing dot for fretted notes.", () => highwayShowLandingDot, v => highwayShowLandingDot = v);
+
+        RegisterFloatSetting("highway.backgroundDistance", "Highway 3D - Background", "Background Distance", "How far behind the track the Highway3D background sits.", 50f, 4000f, 10f, () => highwayBackgroundDistance, v => highwayBackgroundDistance = v);
+        RegisterFloatSetting("highway.backgroundCenterY", "Highway 3D - Background", "Background Center Y", "Vertical offset of the Highway3D background anchor.", -3000f, 1000f, 10f, () => highwayBackgroundCenterY, v => highwayBackgroundCenterY = v);
+        RegisterFloatSetting("highway.backgroundScale", "Highway 3D - Background", "Background Scale", "Overall scale of the Highway3D background.", 10f, 1000f, 5f, () => highwayBackgroundScale, v => highwayBackgroundScale = v);
+        RegisterFloatSetting("highway.cloudYOffset", "Highway 3D - Background", "Cloud Y Offset", "Vertical offset applied to highway-mode clouds.", -500f, 500f, 5f, () => highwayBackgroundCloudYOffset, v => highwayBackgroundCloudYOffset = v);
+        RegisterFloatSetting("highway.starScale", "Highway 3D - Background", "Star Scale", "Highway override scale for starfield elements.", 0.05f, 5f, 0.05f, () => highwayBackgroundStarScale, v => highwayBackgroundStarScale = v);
+        RegisterFloatSetting("highway.cloudScale", "Highway 3D - Background", "Cloud Scale", "Highway override scale for clouds.", 0.05f, 5f, 0.05f, () => highwayBackgroundCloudScale, v => highwayBackgroundCloudScale = v);
+        RegisterFloatSetting("highway.starSpread", "Highway 3D - Background", "Star Spread", "Highway override spread for starfield elements.", 0.05f, 5f, 0.05f, () => highwayBackgroundStarSpread, v => highwayBackgroundStarSpread = v);
+        RegisterFloatSetting("highway.cloudSpread", "Highway 3D - Background", "Cloud Spread", "Highway override spread for clouds.", 0.05f, 5f, 0.05f, () => highwayBackgroundCloudSpread, v => highwayBackgroundCloudSpread = v);
+        RegisterFloatSetting("highway.backgroundColorR", "Highway 3D - Background", "Background Color R", "Red channel of the Highway3D background color.", 0f, 1f, 0.01f, () => highwayBackgroundColor.r, v => { Color c = highwayBackgroundColor; c.r = v; highwayBackgroundColor = c; });
+        RegisterFloatSetting("highway.backgroundColorG", "Highway 3D - Background", "Background Color G", "Green channel of the Highway3D background color.", 0f, 1f, 0.01f, () => highwayBackgroundColor.g, v => { Color c = highwayBackgroundColor; c.g = v; highwayBackgroundColor = c; });
+        RegisterFloatSetting("highway.backgroundColorB", "Highway 3D - Background", "Background Color B", "Blue channel of the Highway3D background color.", 0f, 1f, 0.01f, () => highwayBackgroundColor.b, v => { Color c = highwayBackgroundColor; c.b = v; highwayBackgroundColor = c; });
+        RegisterFloatSetting("highway.backgroundColorA", "Highway 3D - Background", "Background Color A", "Alpha channel of the Highway3D background color.", 0f, 1f, 0.01f, () => highwayBackgroundColor.a, v => { Color c = highwayBackgroundColor; c.a = v; highwayBackgroundColor = c; });
+
+        RegisterFloatSetting("highway.laneGuideThickness", "Highway 3D - Lanes", "Lane Guide Thickness", "Thickness of the Highway3D fret-boundary lane guides.", 0.02f, 0.5f, 0.01f, () => highwayLaneGuideThickness, v => highwayLaneGuideThickness = v);
+        RegisterFloatSetting("highway.laneGuideYOffset", "Highway 3D - Lanes", "Lane Guide Y Offset", "Vertical offset for the Highway3D lane guides so you can lift them above or sink them into the board.", -3f, 2f, 0.01f, () => highwayLaneGuideYOffset, v => highwayLaneGuideYOffset = v);
+        RegisterBoolSetting("highway.highlightFretBoundaries", "Highway 3D - Lanes", "Highlight Fret Boundaries", "Brightens fret metal boundaries when incoming notes are between them.", () => highwayHighlightFretBoundaries, v => highwayHighlightFretBoundaries = v);
+        RegisterFloatSetting("highway.fretNumberYOffset", "Highway 3D - Layout", "Fret Number Y Offset", "Vertical offset for the Highway3D fret numbers.", -3f, 3f, 0.01f, () => highwayFretNumberYOffset, v => highwayFretNumberYOffset = v);
+        RegisterFloatSetting("highway.fretNumberZOffset", "Highway 3D - Layout", "Fret Number Z Offset", "Depth offset for the Highway3D fret numbers relative to the strike line.", -3f, 3f, 0.01f, () => highwayFretNumberZOffset, v => highwayFretNumberZOffset = v);
     }
 
     private void RegisterFloatSetting(string id, string section, string label, string tooltip, float min, float max, float step, Func<float> getter, Action<float> setter)
@@ -3362,6 +3451,8 @@ private void ParseUdpState()
         bool requiresSectionRebuild = settingId.StartsWith("tabs.tabSection", StringComparison.OrdinalIgnoreCase);
         bool requiresRendererRefresh =
             requiresSectionRebuild ||
+            settingId.StartsWith("render.", StringComparison.OrdinalIgnoreCase) ||
+            settingId.StartsWith("highway.", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("layout.", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("fx.", StringComparison.OrdinalIgnoreCase);
