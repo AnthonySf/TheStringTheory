@@ -549,7 +549,10 @@ public sealed class TabsSongHeaderOverlay
         document = rootObject.AddComponent<UIDocument>();
 
         panelSettings = ResolvePanelSettings();
-        panelSettings.scaleMode = PanelScaleMode.ConstantPixelSize;
+        panelSettings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
+        panelSettings.referenceResolution = new Vector2Int(3840, 2160);
+        panelSettings.screenMatchMode = PanelScreenMatchMode.MatchWidthOrHeight;
+        panelSettings.match = 1f;
         panelSettings.scale = 1f;
         panelSettings.targetDisplay = 0;
         panelSettings.sortingOrder = 220;
@@ -4593,17 +4596,23 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         lastScreenWidth = screenWidth;
         bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
 
+        // Menu and library should keep their authored size on 1080p and larger displays.
+        // Only smaller screens should effectively compress them.
+        float menuLayoutWidth = Mathf.Min(screenWidth, 1600f);
+        float menuLayoutHeight = Mathf.Min(screenHeight, 900f);
+        float menuLayoutScale = Mathf.Clamp(menuLayoutHeight / 900f, 0.82f, 1f);
+
         float songSize = Mathf.Clamp(screenHeight * 0.052f, 40f, 64f);
         float trackSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
         float pauseSize = Mathf.Clamp(screenHeight * 0.135f, 112f, 170f);
         float bodySize = Mathf.Clamp(screenHeight * 0.036f, 30f, 50f);
-        float menuTitleSize = Mathf.Clamp(screenHeight * 0.105f, 70f, 126f);
-        float menuSubtitleSize = Mathf.Clamp(screenHeight * 0.038f, 30f, 46f);
-        float menuEyebrowSize = Mathf.Clamp(screenHeight * 0.026f, 22f, 32f);
-        float menuItemTitleSize = Mathf.Clamp(screenHeight * 0.068f, 58f, 88f);
-        float menuItemSubtitleSize = Mathf.Clamp(screenHeight * 0.020f, 17f, 22f);
-        float menuSongSize = Mathf.Clamp(screenHeight * 0.055f, 34f, 58f);
-        float menuMetaSize = Mathf.Clamp(screenHeight * 0.024f, 20f, 30f);
+        float menuTitleSize = Mathf.Clamp(menuLayoutHeight * 0.105f, 70f, 126f);
+        float menuSubtitleSize = Mathf.Clamp(menuLayoutHeight * 0.038f, 30f, 46f);
+        float menuEyebrowSize = Mathf.Clamp(menuLayoutHeight * 0.026f, 22f, 32f);
+        float menuItemTitleSize = Mathf.Clamp(menuLayoutHeight * 0.068f, 58f, 88f);
+        float menuItemSubtitleSize = Mathf.Clamp(menuLayoutHeight * 0.020f, 17f, 22f);
+        float menuSongSize = Mathf.Clamp(menuLayoutHeight * 0.055f, 34f, 58f);
+        float menuMetaSize = Mathf.Clamp(menuLayoutHeight * 0.024f, 20f, 30f);
         float pedalWidth = Mathf.Clamp(Screen.width * 0.15f, 430f, 620f);
         float pedalHeight = Mathf.Clamp(screenHeight * 0.30f, 280f, 560f);
         float knobSize = Mathf.Clamp(pedalHeight * 0.24f, 42f, 78f);
@@ -4625,15 +4634,15 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         mainMenuEyebrowLabel.style.fontSize = menuEyebrowSize;
         mainMenuTitleLabel.style.fontSize = menuTitleSize;
         mainMenuSubtitleLabel.style.fontSize = menuSubtitleSize;
-        mainMenuFooterHintLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.020f, 17f, 24f);
+        mainMenuFooterHintLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.020f, 17f, 24f);
         mainMenuCurrentSongValueLabel.style.fontSize = menuSongSize;
         mainMenuCurrentTrackValueLabel.style.fontSize = menuMetaSize;
-        mainMenuCurrentSpeedValueLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.030f, 24f, 36f);
-        mainMenuCurrentDetectorValueLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.030f, 24f, 36f);
+        mainMenuCurrentSpeedValueLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.030f, 24f, 36f);
+        mainMenuCurrentDetectorValueLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.030f, 24f, 36f);
         foreach (MainMenuEntry entry in mainMenuEntries)
         {
-            entry.button.style.minHeight = Mathf.Clamp(screenHeight * 0.145f, 108f, 148f);
-            entry.arrowLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.062f, 48f, 70f);
+            entry.button.style.minHeight = Mathf.Clamp(menuLayoutHeight * 0.145f, 108f, 148f);
+            entry.arrowLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.062f, 48f, 70f);
             entry.titleLabel.style.fontSize = menuItemTitleSize;
             entry.subtitleLabel.style.fontSize = menuItemSubtitleSize;
         }
@@ -4747,8 +4756,8 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         settingsTabSpeedLabel.style.fontSize = bodySize * 0.80f;
         settingsStartDelayLabel.style.fontSize = bodySize * 0.80f;
 
-        float buttonFontSize = Mathf.Clamp(screenHeight * 0.030f, 28f, 44f);
-        float buttonHeight = Mathf.Clamp(screenHeight * 0.078f, 64f, 98f);
+        float buttonFontSize = Mathf.Clamp(menuLayoutHeight * 0.030f, 28f, 44f);
+        float buttonHeight = Mathf.Clamp(menuLayoutHeight * 0.078f, 64f, 98f);
         float globalCardMaxHeight = Mathf.Clamp(screenHeight * 0.90f, 580f, 1720f);
         songEndCard.style.minHeight = Mathf.Clamp(screenHeight * 0.74f, 640f, 1180f);
 
@@ -4758,13 +4767,13 @@ selectionShell.style.maxWidth = StyleKeyword.None;
                 continue;
 
             if (row.nameLabel != null)
-                row.nameLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
+                row.nameLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.032f, 24f, 40f);
             if (row.metaLabel != null)
-                row.metaLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.015f, 16f, 22f);
+                row.metaLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.015f, 16f, 22f);
             if (row.indexLabel != null)
-                row.indexLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.020f, 18f, 28f);
+                row.indexLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.020f, 18f, 28f);
             if (row.scoreLabel != null)
-                row.scoreLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.029f, 22f, 34f);
+                row.scoreLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.029f, 22f, 34f);
         }
 
         foreach (TrackSelectionRow row in trackSelectionRows)
@@ -4773,13 +4782,13 @@ selectionShell.style.maxWidth = StyleKeyword.None;
                 continue;
 
             if (row.nameLabel != null)
-                row.nameLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.032f, 24f, 40f);
+                row.nameLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.032f, 24f, 40f);
             if (row.metaLabel != null)
-                row.metaLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.015f, 16f, 22f);
+                row.metaLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.015f, 16f, 22f);
             if (row.indexLabel != null)
-                row.indexLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.020f, 18f, 28f);
+                row.indexLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.020f, 18f, 28f);
             if (row.scoreLabel != null)
-                row.scoreLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.029f, 22f, 34f);
+                row.scoreLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.029f, 22f, 34f);
         }
 
         foreach (LibraryTrackRow row in selectionTrackRows)
@@ -4788,9 +4797,9 @@ selectionShell.style.maxWidth = StyleKeyword.None;
                 continue;
 
             if (row.nameLabel != null)
-                row.nameLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.022f, 20f, 28f);
+                row.nameLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.022f, 20f, 28f);
             if (row.scoreLabel != null)
-                row.scoreLabel.style.fontSize = Mathf.Clamp(screenHeight * 0.020f, 18f, 24f);
+                row.scoreLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.020f, 18f, 24f);
         }
 
         foreach (Button button in document.rootVisualElement.Query<Button>().ToList())
@@ -4816,18 +4825,18 @@ selectionShell.style.maxWidth = StyleKeyword.None;
             label.style.fontSize = buttonFontSize;
 
         globalSettingsCard.style.maxHeight = globalCardMaxHeight;
-        bool compactMainMenu = screenWidth < 1320;
+        bool compactMainMenu = menuLayoutWidth < 1320f;
         mainMenuShell.style.flexDirection = FlexDirection.Row;
-        mainMenuShell.style.marginTop = compactMainMenu ? 96f : 120f;
+        mainMenuShell.style.marginTop = (compactMainMenu ? 96f : 120f) * menuLayoutScale;
         mainMenuLeftColumn.style.paddingLeft = 0f;
         mainMenuLeftColumn.style.paddingRight = 0f;
         mainMenuLeftColumn.style.marginBottom = 0f;
-        mainMenuOverlay.style.paddingLeft = compactMainMenu ? 28f : 48f;
-        mainMenuOverlay.style.paddingRight = compactMainMenu ? 20f : 32f; 
-        mainMenuOverlay.style.paddingTop = compactMainMenu ? 126f : 180f;
-        mainMenuOverlay.style.paddingBottom = compactMainMenu ? 22f : 36f;
+        mainMenuOverlay.style.paddingLeft = (compactMainMenu ? 28f : 48f) * menuLayoutScale;
+        mainMenuOverlay.style.paddingRight = (compactMainMenu ? 20f : 32f) * menuLayoutScale; 
+        mainMenuOverlay.style.paddingTop = (compactMainMenu ? 126f : 180f) * menuLayoutScale;
+        mainMenuOverlay.style.paddingBottom = (compactMainMenu ? 22f : 36f) * menuLayoutScale;
         mainMenuBackgroundPlane.style.left = Length.Percent(compactMainMenu ? 58f : 38f);
-        mainMenuBackgroundPlane.style.top = compactMainMenu ? -80f : -120f;
+        mainMenuBackgroundPlane.style.top = (compactMainMenu ? -80f : -120f) * menuLayoutScale;
         mainMenuBackgroundPlane.style.width = Length.Percent(compactMainMenu ? 92f : 78f);
         mainMenuBackgroundPlane.style.height = Length.Percent(compactMainMenu ? 132f : 140f);
         mainMenuBackgroundPlane.style.rotate = new Rotate(new Angle(compactMainMenu ? 10f : 8f, AngleUnit.Degree));
@@ -4877,18 +4886,18 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         songNameLabel.style.maxWidth = titleMaxWidth;
         trackNameLabel.style.maxWidth = titleMaxWidth;
 
-              bool compactSelection = screenWidth < 1440f;
+        bool compactSelection = menuLayoutWidth < 1440f;
         selectionLeftBackdrop.style.display = compactSelection ? DisplayStyle.None : DisplayStyle.Flex;
         selectionLeftBackdrop.style.width = compactSelection ? Length.Percent(0f) : Length.Percent(70f);
         selectionShell.style.flexDirection = compactSelection ? FlexDirection.Column : FlexDirection.Row;
         selectionShell.style.width = compactSelection ? Length.Percent(100f) : Length.Percent(70f);
-        selectionShell.style.paddingLeft = compactSelection ? 0f : 72f;
-        selectionShell.style.paddingRight = compactSelection ? 0f : 176f;
+        selectionShell.style.paddingLeft = compactSelection ? 0f : 72f * menuLayoutScale;
+        selectionShell.style.paddingRight = compactSelection ? 0f : 176f * menuLayoutScale;
         trackSelectionShell.style.flexDirection = compactSelection ? FlexDirection.Column : FlexDirection.Row;
-        selectionInfoCard.style.marginRight = compactSelection ? 0f : 44f;
+        selectionInfoCard.style.marginRight = compactSelection ? 0f : 44f * menuLayoutScale;
         selectionRailPanel.style.width = compactSelection ? Length.Percent(100f) : Length.Percent(30f);
-        selectionRailPanel.style.minWidth = compactSelection ? 0f : 980f;
-        selectionRailPanel.style.maxWidth = compactSelection ? StyleKeyword.None : 1280f;
+        selectionRailPanel.style.minWidth = compactSelection ? 0f : 980f * menuLayoutScale;
+        selectionRailPanel.style.maxWidth = compactSelection ? StyleKeyword.None : 1280f * menuLayoutScale;
         selectionRailPanel.style.position = compactSelection ? Position.Relative : Position.Absolute;
         selectionRailPanel.style.right = 0f;
         selectionRailPanel.style.top = compactSelection ? 0f : 0f;
@@ -4898,28 +4907,28 @@ selectionShell.style.maxWidth = StyleKeyword.None;
             : new Color(0f, 0f, 0f, 0f);
         selectionRailBackdrop.style.display = compactSelection ? DisplayStyle.None : DisplayStyle.Flex;
         selectionRailBackdropGradient.style.display = compactSelection ? DisplayStyle.None : DisplayStyle.Flex;
-        selectionRailBackdrop.style.right = compactSelection ? 0f : -300;
-        selectionRailBackdrop.style.top = compactSelection ? 0f : -320f;
-        selectionRailBackdrop.style.bottom = compactSelection ? 0f : -320f;
-        selectionRailBackdrop.style.width = compactSelection ? 0f : 1900f;
+        selectionRailBackdrop.style.right = compactSelection ? 0f : -300f * menuLayoutScale;
+        selectionRailBackdrop.style.top = compactSelection ? 0f : -320f * menuLayoutScale;
+        selectionRailBackdrop.style.bottom = compactSelection ? 0f : -320f * menuLayoutScale;
+        selectionRailBackdrop.style.width = compactSelection ? 0f : 1900f * menuLayoutScale;
         selectionSplitDivider.style.display = compactSelection ? DisplayStyle.None : DisplayStyle.Flex;
-        selectionSplitDivider.style.right = compactSelection ? 0f : -235f;
-        selectionSplitDivider.style.top = compactSelection ? 0f : -260f;
-        selectionSplitDivider.style.bottom = compactSelection ? 0f : -260f;
-        selectionSplitDivider.style.width = compactSelection ? 0f : 1800f;
-        trackSelectionInfoCard.style.marginRight = compactSelection ? 0f : 24f;
-        selectionInfoCard.style.marginBottom = compactSelection ? 18f : 0f;
-        trackSelectionInfoCard.style.marginBottom = compactSelection ? 18f : 0f;
-        selectionScrollView.style.minHeight = compactSelection ? 420f : 0f;
+        selectionSplitDivider.style.right = compactSelection ? 0f : -235f * menuLayoutScale;
+        selectionSplitDivider.style.top = compactSelection ? 0f : -260f * menuLayoutScale;
+        selectionSplitDivider.style.bottom = compactSelection ? 0f : -260f * menuLayoutScale;
+        selectionSplitDivider.style.width = compactSelection ? 0f : 1800f * menuLayoutScale;
+        trackSelectionInfoCard.style.marginRight = compactSelection ? 0f : 24f * menuLayoutScale;
+        selectionInfoCard.style.marginBottom = compactSelection ? 18f * menuLayoutScale : 0f;
+        trackSelectionInfoCard.style.marginBottom = compactSelection ? 18f * menuLayoutScale : 0f;
+        selectionScrollView.style.minHeight = compactSelection ? 420f * menuLayoutScale : 0f;
         selectionScrollView.style.maxHeight = StyleKeyword.None;
-        selectionTrackScrollView.style.minHeight = compactSelection ? 220f : 0f;
-        selectionTrackScrollView.style.height = compactSelection ? 510f : 750f;
-        selectionTrackScrollView.style.maxHeight = compactSelection ? 510f : 750f;
-        trackSelectionScrollView.style.minHeight = compactSelection ? 340f : 420f;
-        selectionInfoTitleLabel.style.fontSize = compactSelection ? 60f : 94f;
-        trackSelectionInfoTitleLabel.style.fontSize = compactSelection ? 42f : 52f;
-        selectionSubtitleLabel.style.fontSize = compactSelection ? 24f : 28f;
-        trackSelectionSubtitleLabel.style.fontSize = compactSelection ? 24f : 30f;
+        selectionTrackScrollView.style.minHeight = compactSelection ? 220f * menuLayoutScale : 0f;
+        selectionTrackScrollView.style.height = compactSelection ? 510f * menuLayoutScale : 750f * menuLayoutScale;
+        selectionTrackScrollView.style.maxHeight = compactSelection ? 510f * menuLayoutScale : 750f * menuLayoutScale;
+        trackSelectionScrollView.style.minHeight = compactSelection ? 340f * menuLayoutScale : 420f * menuLayoutScale;
+        selectionInfoTitleLabel.style.fontSize = (compactSelection ? 60f : 94f) * menuLayoutScale;
+        trackSelectionInfoTitleLabel.style.fontSize = (compactSelection ? 42f : 52f) * menuLayoutScale;
+        selectionSubtitleLabel.style.fontSize = (compactSelection ? 24f : 28f) * menuLayoutScale;
+        trackSelectionSubtitleLabel.style.fontSize = (compactSelection ? 24f : 30f) * menuLayoutScale;
         if (compactSelection)
         {
             selectionInfoCard.style.maxWidth = StyleKeyword.None;
@@ -4927,17 +4936,17 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         }
         else
         {
-            selectionInfoCard.style.maxWidth = 1260f;
-            trackSelectionInfoCard.style.maxWidth = 430f;
+            selectionInfoCard.style.maxWidth = 1260f * menuLayoutScale;
+            trackSelectionInfoCard.style.maxWidth = 430f * menuLayoutScale;
         }
 
         VisualElement selectionListCard = selectionScrollView?.parent;
         if (selectionListCard != null)
         {
-            selectionListCard.style.paddingLeft = compactSelection ? 28f : 10f;
-            selectionListCard.style.paddingRight = compactSelection ? 20f : 110f;
-            selectionListCard.style.paddingTop = compactSelection ? 24f : 132f;
-            selectionListCard.style.paddingBottom = compactSelection ? 24f : 116f;
+            selectionListCard.style.paddingLeft = compactSelection ? 28f * menuLayoutScale : 10f * menuLayoutScale;
+            selectionListCard.style.paddingRight = compactSelection ? 20f * menuLayoutScale : 110f * menuLayoutScale;
+            selectionListCard.style.paddingTop = compactSelection ? 24f * menuLayoutScale : 132f * menuLayoutScale;
+            selectionListCard.style.paddingBottom = compactSelection ? 24f * menuLayoutScale : 116f * menuLayoutScale;
         }
 
         foreach (SongSelectionRow row in selectionRows)
@@ -4945,17 +4954,17 @@ selectionShell.style.maxWidth = StyleKeyword.None;
             if (row?.button == null)
                 continue;
 
-            row.button.style.minWidth = compactSelection ? 1220f : 1380f;
-            row.button.style.height = compactSelection ? 180f : 220f;
+            row.button.style.minWidth = compactSelection ? 1220f * menuLayoutScale : 1380f * menuLayoutScale;
+            row.button.style.height = compactSelection ? 180f * menuLayoutScale : 220f * menuLayoutScale;
         }
 
-        selectionBackButton.style.minWidth = compactSelection ? 180f : 214f;
-        selectionSongsFolderButton.style.minWidth = compactSelection ? 180f : 214f;
-        selectionRefreshButton.style.minWidth = compactSelection ? 160f : 214f;
-        selectionStartButton.style.minWidth = compactSelection ? 220f : 250f;
-        selectionBackButton.style.height = compactSelection ? 68f : 76f;
-        selectionSongsFolderButton.style.height = compactSelection ? 68f : 76f;
-        selectionRefreshButton.style.height = compactSelection ? 68f : 76f;
-        selectionStartButton.style.height = compactSelection ? 72f : 82f;
+        selectionBackButton.style.minWidth = compactSelection ? 180f * menuLayoutScale : 214f * menuLayoutScale;
+        selectionSongsFolderButton.style.minWidth = compactSelection ? 180f * menuLayoutScale : 214f * menuLayoutScale;
+        selectionRefreshButton.style.minWidth = compactSelection ? 160f * menuLayoutScale : 214f * menuLayoutScale;
+        selectionStartButton.style.minWidth = compactSelection ? 220f * menuLayoutScale : 250f * menuLayoutScale;
+        selectionBackButton.style.height = compactSelection ? 68f * menuLayoutScale : 76f * menuLayoutScale;
+        selectionSongsFolderButton.style.height = compactSelection ? 68f * menuLayoutScale : 76f * menuLayoutScale;
+        selectionRefreshButton.style.height = compactSelection ? 68f * menuLayoutScale : 76f * menuLayoutScale;
+        selectionStartButton.style.height = compactSelection ? 72f * menuLayoutScale : 82f * menuLayoutScale;
     }
 }
