@@ -128,9 +128,12 @@ public sealed class GuitarGameplaySnapshot
     public bool showSongSettings;
     public bool showMainMenu;
     public bool mainMenuFlowActive;
+    public int selectedMainMenuIndex;
     public bool showSongSelection;
+    public bool songSelectionSongConfirmed;
     public bool showTrackSelection;
     public List<string> availableSongNames;
+    public List<string> availableSongSubtitles;
     public List<float> availableSongScores;
     public int selectedSongIndex;
     public List<string> availableTrackNames;

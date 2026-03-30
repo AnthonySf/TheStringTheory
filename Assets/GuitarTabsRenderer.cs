@@ -36,6 +36,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     private ITabsBackgroundEffect backgroundEffect;
     private GameObject backgroundRoot;
     private bool gameplayVisualsVisible = true;
+    private string backgroundSignature = string.Empty;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -109,6 +110,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
     public void Render(GuitarGameplaySnapshot snapshot)
     {
+        EnsureBackgroundEffectCurrent();
+
         if (snapshot == null || mainCamera == null)
             return;
 
@@ -217,11 +220,26 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
     {
         backgroundEffect?.Dispose();
         backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides: false);
+        backgroundSignature = GetBackgroundSignature();
 
         if (backgroundRoot == null || backgroundEffect == null)
             return;
 
         backgroundEffect.Initialize(backgroundRoot.transform, owner);
+    }
+
+    private void EnsureBackgroundEffectCurrent()
+    {
+        if (GetBackgroundSignature() != backgroundSignature)
+            InitializeBackgroundEffect();
+    }
+
+    private string GetBackgroundSignature()
+    {
+        if (owner == null)
+            return string.Empty;
+
+        return $"{owner.tabBackgroundMode}|{owner.tabSkyUseStageBackdrop}";
     }
 
     private void BuildInitialPanels(GuitarGameplaySnapshot snapshot)

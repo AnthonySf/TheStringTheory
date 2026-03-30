@@ -530,12 +530,12 @@ MonoBehaviour:
   tabIdleFillDarken: 0.33
   highwayBackgroundColor: {r: 0.02, g: 0.02, b: 0.05, a: 1}
   TotalFrets: 24
-  FretSpacing: 3.4
+  FretSpacing: 4.2
   StrikeLineZ: -5
   SpawnZ: 50
-  highwayCameraY: 14
-  highwayCameraZ: -22
-  highwayCameraPitch: 28
+  highwayCameraY: 17
+  highwayCameraZ: -18
+  highwayCameraPitch: 40
   lookaheadWindow: 5
   highwayResolvedHoldTime: 0.18
   camMoveSpeed: 3
@@ -552,6 +552,9 @@ MonoBehaviour:
   highwayBackgroundStarSpread: 0.6
   highwayBackgroundCloudSpread: 0.6
   highwayLaneGuideThickness: 0.14
+  highwayLaneGuideYOffset: -1.84
+  highwayFretNumberYOffset: 0.45
+  highwayFretNumberZOffset: 0.12
   highwayHighlightFretBoundaries: 0
   highwayShowApproachLine: 0
   highwayShowLandingDot: 1
@@ -627,6 +630,7 @@ MonoBehaviour:
   tabShootingStarAlpha: 0.9
   tabShootingStarColor: {r: 0.95, g: 0.97, b: 1, a: 0.9}
   tabSkyMood: 0
+  tabSkyUseStageBackdrop: 0
   tabSkyWidth: 54
   tabSkyNearZ: 1.4
   tabSkyFarZ: 7.8
@@ -971,7 +975,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 744277264}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dc42784cf147c0c48a680349fa168899, type: 3}
   m_Name: 

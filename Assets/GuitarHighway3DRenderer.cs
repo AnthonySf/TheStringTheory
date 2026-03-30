@@ -13,6 +13,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly Dictionary<int, GameObject> chordFrames = new Dictionary<int, GameObject>();
     private readonly Dictionary<int, int> slideDestinationBySourceId = new Dictionary<int, int>();
     private readonly Dictionary<int, GameplayNoteState> noteStatesById = new Dictionary<int, GameplayNoteState>();
+    private readonly Dictionary<int, string> noteLaneTagTextById = new Dictionary<int, string>();
+    private readonly List<LaneHighlightChunk> laneHighlightChunks = new List<LaneHighlightChunk>();
 
     private GuitarBridgeServer owner;
     private Camera mainCamera;
@@ -21,8 +23,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
     private readonly Renderer[] stringVisualRenderers = new Renderer[6];
+    private readonly Dictionary<int, TextMeshPro> fretNumberLabels = new Dictionary<int, TextMeshPro>();
     private Material[] fretBoundaryMats;
     private Renderer[] fretBoundaryRenderers;
+    private Material[] laneSurfaceMats;
+    private Renderer[] laneSurfaceRenderers;
     private Material[] laneGuideMats;
     private Renderer[] laneGuideRenderers;
     private Material[,] fretLightMats;
@@ -40,6 +45,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool gameplayVisualsVisible = true;
     private bool gameplayBuilt;
     private const int BackgroundLayer = 2;
+    private string backgroundSignature = string.Empty;
+
+    private sealed class LaneHighlightChunk
+    {
+        public float startTime;
+        public float endTime;
+        public bool[] laneSurfaceMask;
+        public bool[] laneGuideMask;
+    }
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -54,6 +68,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         originalMainCameraCullingMask = mainCamera != null ? mainCamera.cullingMask : -1;
 
         BuildChartCaches(chartNotes);
+        BuildLaneHighlightChunks(chartNotes, sections);
         InitializeBackgroundEffect(menuMode: true);
         ConfigureCamera();
         songHeaderOverlay = new TabsSongHeaderOverlay(owner);
@@ -67,6 +82,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         noteViews.Clear();
         chordFrames.Clear();
+        fretNumberLabels.Clear();
         Initialize(owner, chartNotes, sections);
     }
 
@@ -92,6 +108,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             EnsureGameplayVisualsBuilt();
             UpdateStringVisuals(snapshot);
             UpdateFretBoundaries(snapshot);
+            UpdateLaneSurfaces(snapshot);
             UpdateLaneGuides(snapshot);
             UpdateFretboardLights(snapshot.latestDetectedPitches);
             UpdateNotes(snapshot);
@@ -136,6 +153,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         chartById.Clear();
         chordGroups.Clear();
         slideDestinationBySourceId.Clear();
+        noteLaneTagTextById.Clear();
 
         if (chartNotes == null)
             return;
@@ -162,6 +180,131 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         foreach (var key in chordGroups.Keys.ToList())
             chordGroups[key] = chordGroups[key].OrderBy(n => n.stringIdx).ThenBy(n => n.fret).ToList();
+
+        BuildLaneTagNoteMap(chartNotes);
+    }
+
+    private void BuildLaneTagNoteMap(List<NoteData> chartNotes)
+    {
+        if (chartNotes == null || chartNotes.Count == 0)
+            return;
+
+        List<NoteData> orderedNotes = chartNotes
+            .OrderBy(note => note.time)
+            .ThenBy(note => note.id)
+            .ToList();
+
+        const int notesPerSection = 5;
+        for (int start = 0; start < orderedNotes.Count; start += notesPerSection)
+        {
+            int endExclusive = Mathf.Min(start + notesPerSection, orderedNotes.Count);
+            HashSet<int> seenFrets = new HashSet<int>();
+
+            for (int i = start; i < endExclusive; i++)
+            {
+                NoteData note = orderedNotes[i];
+                if (note.fret <= 0)
+                    continue;
+
+                if (!seenFrets.Add(note.fret))
+                    continue;
+
+                noteLaneTagTextById[note.id] = note.fret.ToString();
+            }
+        }
+    }
+
+    private void BuildLaneHighlightChunks(List<NoteData> chartNotes, List<TabSectionData> sections)
+    {
+        laneHighlightChunks.Clear();
+        if (chartNotes == null || chartNotes.Count == 0)
+            return;
+
+        List<TabSectionData> sourceSections = sections != null && sections.Count > 0
+            ? sections
+            : BuildFallbackLaneSections(chartNotes);
+
+        int laneCount = GetFretLightColumnCount();
+        HashSet<int> processedChordIds = new HashSet<int>();
+
+        for (int sectionIndex = 0; sectionIndex < sourceSections.Count; sectionIndex++)
+        {
+            TabSectionData section = sourceSections[sectionIndex];
+            if (section == null)
+                continue;
+
+            bool[] surfaceMask = new bool[laneCount];
+            bool[] guideMask = new bool[laneCount];
+            List<int> frettedSurfaceAnchors = new List<int>();
+            List<int> frettedGuideAnchors = new List<int>();
+
+            if (section.noteIds != null && section.noteIds.Count > 0)
+            {
+                for (int noteIndex = 0; noteIndex < section.noteIds.Count; noteIndex++)
+                {
+                    if (!chartById.TryGetValue(section.noteIds[noteIndex], out NoteData note))
+                        continue;
+
+                    if (note.chordId >= 0)
+                    {
+                        if (!processedChordIds.Add(note.chordId))
+                            continue;
+
+                        if (chordGroups.TryGetValue(note.chordId, out List<NoteData> chordGroup))
+                            AddGroupToChunkMasks(chordGroup, surfaceMask, guideMask, frettedSurfaceAnchors, frettedGuideAnchors);
+                        else
+                            AddGroupToChunkMasks(new List<NoteData> { note }, surfaceMask, guideMask, frettedSurfaceAnchors, frettedGuideAnchors);
+
+                        continue;
+                    }
+
+                    AddGroupToChunkMasks(new List<NoteData> { note }, surfaceMask, guideMask, frettedSurfaceAnchors, frettedGuideAnchors);
+                }
+            }
+
+            processedChordIds.Clear();
+            MarkChunkedLaneRanges(surfaceMask, frettedSurfaceAnchors, maxChunkGap: 3);
+            MarkChunkedLaneRanges(guideMask, frettedGuideAnchors, maxChunkGap: 2);
+
+            laneHighlightChunks.Add(new LaneHighlightChunk
+            {
+                startTime = section.startTime,
+                endTime = section.endTime,
+                laneSurfaceMask = surfaceMask,
+                laneGuideMask = guideMask
+            });
+        }
+    }
+
+    private List<TabSectionData> BuildFallbackLaneSections(List<NoteData> chartNotes)
+    {
+        List<TabSectionData> generatedSections = new List<TabSectionData>();
+        if (chartNotes == null || chartNotes.Count == 0)
+            return generatedSections;
+
+        float chunkDuration = Mathf.Max(0.75f, GetVisibleLeadTime() * 0.75f);
+        float maxTime = chartNotes.Max(n => n.time + n.duration);
+        int totalSections = Mathf.Max(1, Mathf.CeilToInt(maxTime / chunkDuration) + 1);
+
+        for (int i = 0; i < totalSections; i++)
+        {
+            float start = i * chunkDuration;
+            float end = start + chunkDuration;
+            List<int> noteIds = chartNotes
+                .Where(n => n.time >= start && n.time < end)
+                .Select(n => n.id)
+                .ToList();
+
+            generatedSections.Add(new TabSectionData
+            {
+                index = i,
+                startTime = start,
+                endTime = end,
+                noteIds = noteIds
+            });
+        }
+
+        return generatedSections;
     }
 
     private void ConfigureCamera()
@@ -202,10 +345,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         fretLightRenderers = new Renderer[6, GetFretLightColumnCount()];
         fretBoundaryMats = new Material[GetFretLightColumnCount()];
         fretBoundaryRenderers = new Renderer[GetFretLightColumnCount()];
+        laneSurfaceMats = new Material[GetFretLightColumnCount()];
+        laneSurfaceRenderers = new Renderer[GetFretLightColumnCount()];
         laneGuideMats = new Material[GetFretLightColumnCount()];
         laneGuideRenderers = new Renderer[GetFretLightColumnCount()];
         GenerateFretboard();
         GenerateStrings();
+        GenerateLaneSurfaces();
         GenerateLaneGuides();
         GenerateFretLightGrid();
         gameplayBuilt = true;
@@ -216,6 +362,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         backgroundEffect?.Dispose();
         backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides: !menuMode);
         backgroundUsingMenuMode = menuMode;
+        backgroundSignature = GetBackgroundSignature(menuMode);
 
         if (backgroundRoot == null || backgroundEffect == null)
             return;
@@ -246,8 +393,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void EnsureBackgroundMode(bool menuMode)
     {
-        if (backgroundEffect == null || menuMode != backgroundUsingMenuMode)
+        if (backgroundEffect == null || menuMode != backgroundUsingMenuMode || backgroundSignature != GetBackgroundSignature(menuMode))
             InitializeBackgroundEffect(menuMode);
+    }
+
+    private string GetBackgroundSignature(bool menuMode)
+    {
+        if (owner == null)
+            return string.Empty;
+
+        return $"{owner.tabBackgroundMode}|{owner.tabSkyUseStageBackdrop}|{menuMode}";
     }
 
     private static void SetLayerRecursively(GameObject target, int layer)
@@ -262,19 +417,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void GenerateFretboard()
     {
-        GameObject neck = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        float neckWidth = (owner.TotalFrets + 2) * owner.FretSpacing + 10f;
-        neck.transform.SetParent(gameplayRoot.transform, false);
-        neck.transform.position = new Vector3(neckWidth / 2f - 10f, -2f, 25f);
-        neck.transform.localScale = new Vector3(neckWidth, 0.1f, 150f);
-        neck.GetComponent<Renderer>().material = owner.CreateSharedGlowMaterial(new Color(0.1f, 0.05f, 0.02f), 0f);
+        fretNumberLabels.Clear();
+        float fretLineCenterY = GetFretLineCenterY();
+        float fretLineHeight = GetFretLineHeight();
 
         GameObject nut = GameObject.CreatePrimitive(PrimitiveType.Cube);
         nut.transform.SetParent(gameplayRoot.transform, false);
-        nut.transform.position = new Vector3(0f, 3.5f, owner.StrikeLineZ + 0.05f);
-        nut.transform.localScale = new Vector3(0.5f, 12f, 0.3f);
+        nut.transform.position = new Vector3(0f, fretLineCenterY, owner.StrikeLineZ + 0.05f);
+        nut.transform.localScale = new Vector3(0.5f, fretLineHeight, 0.3f);
         Renderer nutRenderer = nut.GetComponent<Renderer>();
-        Material nutMat = owner.CreateSharedGlowMaterial(new Color(0.22f, 0.23f, 0.27f, 1f), 0f);
+        Material nutMat = owner.CreateSharedTransparentMaterial(new Color(0.22f, 0.23f, 0.27f, 0.28f), 0f);
+        ConfigureOverlayMaterial(nutMat, 120, true);
         nutRenderer.material = nutMat;
         fretBoundaryMats[0] = nutMat;
         fretBoundaryRenderers[0] = nutRenderer;
@@ -285,41 +438,51 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             GameObject wire = GameObject.CreatePrimitive(PrimitiveType.Cube);
             wire.transform.SetParent(gameplayRoot.transform, false);
-            wire.transform.position = new Vector3(wireX, 3.5f, owner.StrikeLineZ + 0.05f);
-            wire.transform.localScale = new Vector3(0.15f, 12f, 0.15f);
+            wire.transform.position = new Vector3(wireX, fretLineCenterY, owner.StrikeLineZ + 0.05f);
+            wire.transform.localScale = new Vector3(0.15f, fretLineHeight, 0.15f);
             Renderer wireRenderer = wire.GetComponent<Renderer>();
-            Material wireMat = owner.CreateSharedGlowMaterial(new Color(0.22f, 0.23f, 0.27f, 1f), 0f);
+            Material wireMat = owner.CreateSharedTransparentMaterial(new Color(0.22f, 0.23f, 0.27f, 0.28f), 0f);
+            ConfigureOverlayMaterial(wireMat, 120, true);
             wireRenderer.material = wireMat;
             fretBoundaryMats[fret] = wireMat;
             fretBoundaryRenderers[fret] = wireRenderer;
 
             if (fret % 3 == 0 || fret == 5 || fret == 7 || fret == 9 || fret == 12 || fret == 15)
             {
-                GameObject textObj = new GameObject("FretNum_" + fret);
-                textObj.transform.SetParent(root.transform, false);
-                textObj.transform.position = new Vector3(wireX - (owner.FretSpacing * 0.5f), owner.highwayFretNumberYOffset, owner.StrikeLineZ + owner.highwayFretNumberZOffset);
-                textObj.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-
-                TextMeshPro tm = textObj.AddComponent<TextMeshPro>();
-                tm.text = fret.ToString();
-                tm.fontSize = 16;
-                tm.alignment = TextAlignmentOptions.Center;
-                tm.color = new Color(1f, 1f, 1f, 0.5f);
+                CreateFretNumberLabel(fret, GetFretNumberX(fret));
             }
         }
 
         if (!owner.hideOpenFretNumber)
-        {
-            GameObject openText = new GameObject("FretNum_0");
-            openText.transform.SetParent(root.transform, false);
-            openText.transform.position = new Vector3(GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)), owner.highwayFretNumberYOffset, owner.StrikeLineZ + owner.highwayFretNumberZOffset);
-            openText.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            CreateFretNumberLabel(0, GetOpenFretNumberX());
+    }
 
-            TextMeshPro tm0 = openText.AddComponent<TextMeshPro>();
-            tm0.text = "0";
-            tm0.fontSize = 16;
-            tm0.alignment = TextAlignmentOptions.Center;
-            tm0.color = new Color(1f, 1f, 1f, 0.5f);
+    private void GenerateLaneSurfaces()
+    {
+        int laneCount = GetFretLightColumnCount();
+        float laneSurfaceY = GetLaneSurfaceY();
+        const float laneBackOverhang = 8f;
+        float depth = 150f + laneBackOverhang;
+        float centerZ = owner.StrikeLineZ - laneBackOverhang + (depth * 0.5f);
+        float laneWidth = Mathf.Max(0.08f, owner.FretSpacing * 1.02f);
+        const float laneHeight = 0.025f;
+
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            GameObject surface = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            surface.name = "LaneSurface_" + lane;
+            surface.transform.SetParent(gameplayRoot.transform, false);
+            surface.transform.position = new Vector3(GetNoteX(lane), laneSurfaceY, centerZ);
+            surface.transform.localScale = new Vector3(laneWidth, laneHeight, depth);
+
+            Material mat = CreateLaneSurfaceMaterial();
+            ConfigureOverlayMaterial(mat, 20, false);
+            Renderer renderer = surface.GetComponent<Renderer>();
+            renderer.material = mat;
+            laneSurfaceMats[lane] = mat;
+            laneSurfaceRenderers[lane] = renderer;
+
+            Object.Destroy(surface.GetComponent<Collider>());
         }
     }
 
@@ -420,11 +583,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void GenerateLaneGuides()
     {
         int laneCount = GetFretLightColumnCount();
-        float laneSurfaceY = owner.highwayLaneGuideYOffset;
+        float laneSurfaceY = GetLaneGuideStringY();
         float depth = 150f;
         float centerZ = owner.StrikeLineZ + (depth * 0.5f);
-        const float laneGuideHeight = 0.03f;
-        const float laneGuideLift = 0.055f;
+        const float laneGuideHeight = 0.045f;
+        const float laneGuideLift = 0.025f;
 
         for (int lane = 0; lane < laneCount; lane++)
         {
@@ -435,9 +598,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             guide.transform.position = new Vector3(xPos, laneSurfaceY + laneGuideLift, centerZ);
             guide.transform.localScale = new Vector3(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), laneGuideHeight, depth);
 
-            Color baseColor = new Color(0.18f, 0.45f, 1f, 0.14f);
-            Material mat = owner.CreateSharedTransparentMaterial(baseColor, 0.02f);
-            ConfigureOverlayMaterial(mat, 60, false);
+            Material mat = CreateLaneGuideMaterial();
             Renderer renderer = guide.GetComponent<Renderer>();
             renderer.material = mat;
             laneGuideMats[lane] = mat;
@@ -452,56 +613,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (snapshot == null || fretBoundaryMats == null || fretBoundaryRenderers == null)
             return;
 
-        if (!owner.highwayHighlightFretBoundaries)
-        {
-            Color disabledColor = new Color(0.20f, 0.22f, 0.25f, 1f);
-            for (int i = 0; i < fretBoundaryMats.Length; i++)
-            {
-                Material mat = fretBoundaryMats[i];
-                Renderer renderer = fretBoundaryRenderers[i];
-                if (mat == null || renderer == null)
-                    continue;
+        bool[] boundaryActive = BuildFretBoundaryActivityFlags(snapshot);
 
-                mat.color = disabledColor;
-                mat.SetColor("_Color", disabledColor);
-                mat.SetColor("_BaseColor", disabledColor);
-                mat.EnableKeyword("_EMISSION");
-                mat.SetColor("_EmissionColor", Color.black);
-                renderer.enabled = true;
-            }
-
-            return;
-        }
-
-        float renderSongTime = GetRenderSongTime(snapshot);
-        bool[] boundaryActive = new bool[fretBoundaryMats.Length];
-
-        if (snapshot.noteStates != null)
-        {
-            for (int i = 0; i < snapshot.noteStates.Count; i++)
-            {
-                GameplayNoteState state = snapshot.noteStates[i];
-                if (state == null || state.IsResolved)
-                    continue;
-
-                float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
-                if (travelZ > owner.SpawnZ)
-                    continue;
-
-                int fret = Mathf.Clamp(state.data.fret, 0, owner.TotalFrets);
-                if (fret <= 0)
-                {
-                    boundaryActive[0] = true;
-                    continue;
-                }
-
-                boundaryActive[Mathf.Clamp(fret - 1, 0, boundaryActive.Length - 1)] = true;
-                boundaryActive[Mathf.Clamp(fret, 0, boundaryActive.Length - 1)] = true;
-            }
-        }
-
-        Color activeColor = new Color(0.40f, 0.43f, 0.48f, 1f);
-        Color idleColor = new Color(0.20f, 0.22f, 0.25f, 1f);
+        Color activeColor = new Color(0.46f, 0.50f, 0.56f, 0.92f);
+        Color idleColor = new Color(0.20f, 0.22f, 0.25f, 0.18f);
 
         for (int i = 0; i < fretBoundaryMats.Length; i++)
         {
@@ -511,7 +626,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 continue;
 
             Color color = boundaryActive[i] ? activeColor : idleColor;
-            float emission = boundaryActive[i] ? 0.18f : 0f;
+            float emission = boundaryActive[i]
+                ? (owner.highwayHighlightFretBoundaries ? 0.18f : 0.04f)
+                : 0f;
             mat.color = color;
             mat.SetColor("_Color", color);
             mat.SetColor("_BaseColor", color);
@@ -519,6 +636,30 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             mat.SetColor("_EmissionColor", boundaryActive[i] ? color * Mathf.Pow(2f, emission) : Color.black);
             renderer.enabled = true;
         }
+
+        UpdateFretNumberLabels(boundaryActive);
+    }
+
+    private bool[] BuildFretBoundaryActivityFlags(GuitarGameplaySnapshot snapshot)
+    {
+        int boundaryCount = fretBoundaryMats != null ? fretBoundaryMats.Length : GetFretLightColumnCount();
+        bool[] boundaryActive = new bool[boundaryCount];
+        bool[] laneMask = GetChunkLaneMask(snapshot, boundaryCount, useGuideMask: false);
+
+        for (int fret = 0; fret < boundaryCount; fret++)
+        {
+            if (fret == 0)
+            {
+                boundaryActive[fret] = laneMask.Length > 1 && laneMask[1];
+                continue;
+            }
+
+            bool lowerFretLaneActive = fret < laneMask.Length && laneMask[fret];
+            bool higherFretLaneActive = fret + 1 < laneMask.Length && laneMask[fret + 1];
+            boundaryActive[fret] = lowerFretLaneActive || higherFretLaneActive;
+        }
+
+        return boundaryActive;
     }
 
     private void UpdateLaneGuides(GuitarGameplaySnapshot snapshot)
@@ -526,32 +667,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (snapshot == null || laneGuideMats == null || laneGuideRenderers == null)
             return;
 
-        float renderSongTime = GetRenderSongTime(snapshot);
-        bool[] laneHasIncomingNotes = new bool[laneGuideMats.Length];
-
-        if (snapshot.noteStates != null)
-        {
-            for (int i = 0; i < snapshot.noteStates.Count; i++)
-            {
-                GameplayNoteState state = snapshot.noteStates[i];
-                if (state == null || state.IsResolved)
-                    continue;
-
-                float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
-                if (travelZ > owner.SpawnZ)
-                    continue;
-
-                int fret = Mathf.Clamp(state.data.fret, 0, owner.TotalFrets);
-                if (fret <= 0)
-                {
-                    laneHasIncomingNotes[0] = true;
-                    continue;
-                }
-
-                laneHasIncomingNotes[Mathf.Clamp(fret - 1, 0, laneHasIncomingNotes.Length - 1)] = true;
-                laneHasIncomingNotes[Mathf.Clamp(fret, 0, laneHasIncomingNotes.Length - 1)] = true;
-            }
-        }
+        bool[] laneHasIncomingNotes = BuildLaneGuideActivityFlags(snapshot);
 
         for (int lane = 0; lane < laneGuideMats.Length; lane++)
         {
@@ -562,17 +678,420 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             bool isActive = laneHasIncomingNotes[lane];
             Color laneColor = isActive
-                ? new Color(0.30f, 0.62f, 1f, 0.30f)
-                : new Color(0.12f, 0.24f, 0.60f, 0.10f);
-            float emission = isActive ? 0.75f : 0.05f;
+                ? new Color(0.34f, 0.74f, 1f, 1f)
+                : new Color(0.03f, 0.07f, 0.14f, 0.18f);
+            float emission = isActive ? 2.2f : 0f;
 
             mat.color = laneColor;
             mat.SetColor("_Color", laneColor);
             mat.SetColor("_BaseColor", laneColor);
+            mat.SetColor("_TintColor", laneColor);
             mat.EnableKeyword("_EMISSION");
             mat.SetColor("_EmissionColor", new Color(0.18f, 0.45f, 1f, 1f) * Mathf.Pow(2f, emission));
             renderer.enabled = true;
         }
+    }
+
+    private float GetFretNumberY()
+    {
+        float lowestStringY = float.MaxValue;
+        for (int stringIdx = 0; stringIdx < 6; stringIdx++)
+            lowestStringY = Mathf.Min(lowestStringY, GetStringY(stringIdx));
+
+        // Adjust this value to move fret numbers lower or higher relative to the lowest string.
+        return lowestStringY - 2f + owner.highwayFretNumberYOffset;
+    }
+
+    private float GetFretLineCenterY()
+    {
+        GetStringVerticalBounds(out float minY, out float maxY);
+        return (minY + maxY) * 0.5f;
+    }
+
+    private float GetLaneGuideY()
+    {
+        GetStringVerticalBounds(out float minY, out _);
+        const float laneGuideHeight = 0.045f;
+        const float laneGuideLift = 0.14f;
+        const float noteClearanceMargin = 0.03f;
+
+        float lowestNoteHalfHeight = Mathf.Max(
+            GetSingleFrettedNoteScale().y * 0.5f,
+            GetGroupedFrettedNoteScale().y * 0.5f);
+
+        float highestSafeGuideTop = minY - lowestNoteHalfHeight - noteClearanceMargin;
+        return highestSafeGuideTop - laneGuideLift - (laneGuideHeight * 0.5f) + owner.highwayLaneGuideYOffset;
+    }
+
+    private float GetLaneGuideStringY()
+    {
+        GetStringVerticalBounds(out float minY, out _);
+        return minY + owner.highwayLaneGuideYOffset;
+    }
+
+    private float GetLaneSurfaceY()
+    {
+        return GetLaneGuideY() - 0.03f;
+    }
+
+    private float GetLaneSurfaceTopY()
+    {
+        const float laneHeight = 0.025f;
+        return GetLaneSurfaceY() + (laneHeight * 0.5f);
+    }
+
+    private float GetFretLineHeight()
+    {
+        GetStringVerticalBounds(out float minY, out float maxY);
+        float endOverhang = GetTrackLowerEdgeOverhang();
+        return Mathf.Max(0.2f, (maxY - minY) + (endOverhang * 2f));
+    }
+
+    private float GetTrackLowerEdgeOverhang()
+    {
+        return 0.12f;
+    }
+
+    private void GetStringVerticalBounds(out float minY, out float maxY)
+    {
+        minY = float.MaxValue;
+        maxY = float.MinValue;
+
+        for (int stringIdx = 0; stringIdx < 6; stringIdx++)
+        {
+            float y = GetStringY(stringIdx);
+            minY = Mathf.Min(minY, y);
+            maxY = Mathf.Max(maxY, y);
+        }
+    }
+
+    private float GetFretNumberX(int fret)
+    {
+        float leftBoundaryX = fret <= 1 ? 0f : (fret - 1) * owner.FretSpacing;
+        float rightBoundaryX = fret * owner.FretSpacing;
+        return (leftBoundaryX + rightBoundaryX) * 0.5f;
+    }
+
+    private float GetOpenFretNumberX()
+    {
+        int openAnchorFret = Mathf.Clamp(Mathf.RoundToInt(owner.defaultOpenAnchorFret), 1, owner.TotalFrets);
+        return GetFretNumberX(openAnchorFret);
+    }
+
+    private string FormatFretNumberLabel(int fret)
+    {
+        return Mathf.Max(0, fret).ToString();
+    }
+
+    private void CreateFretNumberLabel(int fret, float x)
+    {
+        GameObject textObj = new GameObject("FretNum_" + fret);
+        textObj.transform.SetParent(gameplayRoot.transform, false);
+        textObj.transform.position = new Vector3(x, GetFretNumberY(), owner.StrikeLineZ + 0.18f + owner.highwayFretNumberZOffset);
+        textObj.transform.rotation = Quaternion.identity;
+        textObj.transform.localScale = Vector3.one;
+
+        TextMeshPro tm = textObj.AddComponent<TextMeshPro>();
+        tm.text = FormatFretNumberLabel(fret);
+        // Adjust this value to change fret number size.
+        tm.fontSize = 14f;
+        tm.fontStyle = FontStyles.Bold;
+        tm.alignment = TextAlignmentOptions.Center;
+        tm.overflowMode = TextOverflowModes.Overflow;
+        tm.enableWordWrapping = false;
+        tm.characterSpacing = 0f;
+        tm.lineSpacing = 0f; 
+        tm.rectTransform.sizeDelta = new Vector2(12f, 10f);
+        tm.color = new Color(0.38f, 0.62f, 1f, 0.92f);
+        tm.sortingOrder = 250;
+
+        if (tm.fontSharedMaterial != null)
+            tm.fontMaterial = new Material(tm.fontSharedMaterial);
+
+        fretNumberLabels[fret] = tm;
+        ApplyFretNumberLabelStyle(tm, false);
+    }
+
+    private TextMeshPro CreateLaneTagLabelIfNeeded(NoteData data)
+    {
+        if (!noteLaneTagTextById.TryGetValue(data.id, out string laneText))
+            return null;
+
+        GameObject textObj = new GameObject("LaneTag_" + data.id);
+        textObj.transform.SetParent(gameplayRoot.transform, false);
+        textObj.transform.rotation = Quaternion.identity;
+        textObj.transform.localScale = Vector3.one;
+
+        TextMeshPro tm = textObj.AddComponent<TextMeshPro>();
+        tm.text = laneText;
+        tm.fontSize = 22f;
+        tm.fontStyle = FontStyles.Bold;
+        tm.alignment = TextAlignmentOptions.Center;
+        tm.overflowMode = TextOverflowModes.Overflow;
+        tm.enableWordWrapping = false;
+        tm.characterSpacing = 0f;
+        tm.lineSpacing = 0f;
+        tm.rectTransform.sizeDelta = new Vector2(16f, 14f);
+        tm.sortingOrder = 255;
+
+        if (tm.fontSharedMaterial != null)
+            tm.fontMaterial = new Material(tm.fontSharedMaterial);
+
+        ApplyFretNumberLabelStyle(tm, true);
+        return tm;
+    }
+
+    private void UpdateFretNumberLabels(bool[] boundaryActive)
+    {
+        if (fretNumberLabels.Count == 0)
+            return;
+
+        foreach (KeyValuePair<int, TextMeshPro> pair in fretNumberLabels)
+        {
+            TextMeshPro label = pair.Value;
+            if (label == null)
+                continue;
+
+            bool isActive = pair.Key >= 0 && pair.Key < boundaryActive.Length && boundaryActive[pair.Key];
+            ApplyFretNumberLabelStyle(label, isActive);
+        }
+    }
+
+    private void ApplyFretNumberLabelStyle(TextMeshPro label, bool isActive)
+    {
+        if (label == null)
+            return;
+
+        Color faceColor = isActive
+            ? new Color(1f, 0.90f, 0.20f, 1f)
+            : new Color(0.38f, 0.62f, 1f, 0.92f);
+        label.color = faceColor;
+
+        Material fontMat = label.fontMaterial;
+        if (fontMat == null)
+            return;
+
+        fontMat.SetColor("_FaceColor", faceColor);
+        if (fontMat.HasProperty("_GlowColor"))
+        {
+            fontMat.SetFloat("_GlowPower", isActive ? 0.55f : 0f);
+            fontMat.SetFloat("_GlowInner", isActive ? 0.04f : 0f);
+            fontMat.SetFloat("_GlowOuter", isActive ? 0.18f : 0f);
+            fontMat.SetColor("_GlowColor", isActive ? new Color(1f, 0.84f, 0.12f, 0.9f) : Color.clear);
+        }
+        if (fontMat.HasProperty("_UnderlaySoftness"))
+        {
+            fontMat.SetFloat("_UnderlaySoftness", 0f);
+            fontMat.SetFloat("_UnderlayDilate", 0f);
+            fontMat.SetColor("_UnderlayColor", Color.clear);
+        }
+    }
+
+    private void UpdateLaneSurfaces(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || laneSurfaceMats == null || laneSurfaceRenderers == null)
+            return;
+
+        bool[] activeLanes = BuildLaneSurfaceActivityFlags(snapshot);
+
+        for (int lane = 0; lane < laneSurfaceMats.Length; lane++)
+        {
+            Material mat = laneSurfaceMats[lane];
+            Renderer renderer = laneSurfaceRenderers[lane];
+            if (mat == null || renderer == null)
+                continue;
+
+            bool isActive = activeLanes[lane];
+            bool hasLeftNeighbor = lane > 0 && activeLanes[lane - 1];
+            bool hasRightNeighbor = lane + 1 < activeLanes.Length && activeLanes[lane + 1];
+            Color laneColor = isActive
+                ? new Color(0.08f, 0.10f, 0.14f, 1f)
+                : new Color(0.025f, 0.03f, 0.045f, 0.14f);
+
+            mat.color = laneColor;
+            mat.SetColor("_Color", laneColor);
+            mat.SetColor("_BaseColor", laneColor);
+            mat.SetColor("_TintColor", laneColor);
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", isActive ? new Color(0.18f, 0.32f, 0.46f, 1f) * Mathf.Pow(2f, 0.15f) : Color.black);
+            if (mat.HasProperty("_EdgeFadeLeft"))
+                mat.SetFloat("_EdgeFadeLeft", isActive && !hasLeftNeighbor ? 0.12f : 0.01f);
+            if (mat.HasProperty("_EdgeFadeRight"))
+                mat.SetFloat("_EdgeFadeRight", isActive && !hasRightNeighbor ? 0.12f : 0.01f);
+            if (mat.HasProperty("_FrontBackFade"))
+                mat.SetFloat("_FrontBackFade", 0.1f);
+            renderer.enabled = true;
+        }
+    }
+
+    private bool[] BuildLaneGuideActivityFlags(GuitarGameplaySnapshot snapshot)
+    {
+        int laneCount = laneGuideMats != null ? laneGuideMats.Length : GetFretLightColumnCount();
+        bool[] laneMask = GetChunkLaneMask(snapshot, laneCount, useGuideMask: false);
+        bool[] guideMask = new bool[laneCount];
+
+        for (int guide = 0; guide < laneCount; guide++)
+        {
+            bool lowerLaneActive = guide < laneMask.Length && laneMask[guide];
+            bool higherLaneActive = guide + 1 < laneMask.Length && laneMask[guide + 1];
+            guideMask[guide] = lowerLaneActive || higherLaneActive;
+        }
+
+        return guideMask;
+    }
+
+    private bool[] BuildLaneSurfaceActivityFlags(GuitarGameplaySnapshot snapshot)
+    {
+        int laneCount = laneSurfaceMats != null ? laneSurfaceMats.Length : GetFretLightColumnCount();
+        return ExpandLaneMask(GetChunkLaneMask(snapshot, laneCount, useGuideMask: false), 1);
+    }
+
+    private bool[] ExpandLaneMask(bool[] sourceMask, int extraLanesPerSide)
+    {
+        if (sourceMask == null || sourceMask.Length == 0 || extraLanesPerSide <= 0)
+            return sourceMask ?? new bool[0];
+
+        bool[] expanded = new bool[sourceMask.Length];
+        for (int lane = 0; lane < sourceMask.Length; lane++)
+        {
+            if (!sourceMask[lane])
+                continue;
+
+            int start = Mathf.Clamp(lane - extraLanesPerSide, 0, sourceMask.Length - 1);
+            int end = Mathf.Clamp(lane + extraLanesPerSide, 0, sourceMask.Length - 1);
+            for (int i = start; i <= end; i++)
+                expanded[i] = true;
+        }
+
+        return expanded;
+    }
+
+    private bool[] GetChunkLaneMask(GuitarGameplaySnapshot snapshot, int laneCount, bool useGuideMask)
+    {
+        bool[] emptyMask = new bool[laneCount];
+        if (laneHighlightChunks == null || laneHighlightChunks.Count == 0 || snapshot == null)
+            return emptyMask;
+
+        float renderSongTime = GetRenderSongTime(snapshot);
+        if (renderSongTime < laneHighlightChunks[0].startTime)
+            return CloneChunkMask(laneHighlightChunks[0], laneCount, useGuideMask);
+
+        for (int i = 0; i < laneHighlightChunks.Count; i++)
+        {
+            LaneHighlightChunk chunk = laneHighlightChunks[i];
+            if (chunk == null)
+                continue;
+
+            bool isInChunk = renderSongTime >= chunk.startTime && renderSongTime < chunk.endTime;
+            bool isLastChunk = i == laneHighlightChunks.Count - 1 && renderSongTime >= chunk.startTime;
+            if (!isInChunk && !isLastChunk)
+                continue;
+
+            return CloneChunkMask(chunk, laneCount, useGuideMask);
+        }
+
+        return emptyMask;
+    }
+
+    private bool[] CloneChunkMask(LaneHighlightChunk chunk, int laneCount, bool useGuideMask)
+    {
+        bool[] clonedMask = new bool[laneCount];
+        if (chunk == null)
+            return clonedMask;
+
+        bool[] sourceMask = useGuideMask ? chunk.laneGuideMask : chunk.laneSurfaceMask;
+        if (sourceMask == null)
+            return clonedMask;
+
+        int copyLength = Mathf.Min(laneCount, sourceMask.Length);
+        for (int lane = 0; lane < copyLength; lane++)
+            clonedMask[lane] = sourceMask[lane];
+        return clonedMask;
+    }
+
+    private void AddGroupToChunkMasks(List<NoteData> group, bool[] surfaceMask, bool[] guideMask, List<int> frettedSurfaceAnchors, List<int> frettedGuideAnchors)
+    {
+        if (group == null || group.Count == 0)
+            return;
+
+        List<NoteData> fretted = group.Where(n => n.fret > 0).ToList();
+        if (fretted.Count == 0)
+        {
+            int handFret = GetGroupHandFret(group);
+            MarkOpenGroupRange(surfaceMask, handFret, group);
+            MarkOpenGroupRange(guideMask, handFret, group);
+            return;
+        }
+
+        for (int i = 0; i < fretted.Count; i++)
+        {
+            NoteData note = fretted[i];
+            int laneIndex = Mathf.Clamp(note.fret, 0, surfaceMask.Length - 1);
+            frettedSurfaceAnchors.Add(laneIndex);
+            frettedGuideAnchors.Add(laneIndex);
+            MarkLaneRange(guideMask, laneIndex - 1, laneIndex);
+        }
+    }
+
+    private void MarkChunkedLaneRanges(bool[] activeFlags, List<int> anchors, int maxChunkGap)
+    {
+        if (activeFlags == null || anchors == null || anchors.Count == 0)
+            return;
+
+        int[] ordered = anchors
+            .Where(index => index >= 0 && index < activeFlags.Length)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToArray();
+
+        if (ordered.Length == 0)
+            return;
+
+        int chunkStart = ordered[0];
+        int previous = ordered[0];
+        for (int i = 1; i < ordered.Length; i++)
+        {
+            int current = ordered[i];
+            if (current - previous > maxChunkGap)
+            {
+                MarkLaneRange(activeFlags, chunkStart, previous);
+                chunkStart = current;
+            }
+
+            previous = current;
+        }
+
+        MarkLaneRange(activeFlags, chunkStart, previous);
+    }
+
+    private static void MarkLaneRange(bool[] activeFlags, int startIndex, int endIndex)
+    {
+        if (activeFlags == null || activeFlags.Length == 0)
+            return;
+
+        int clampedStart = Mathf.Clamp(Mathf.Min(startIndex, endIndex), 0, activeFlags.Length - 1);
+        int clampedEnd = Mathf.Clamp(Mathf.Max(startIndex, endIndex), 0, activeFlags.Length - 1);
+        for (int i = clampedStart; i <= clampedEnd; i++)
+            activeFlags[i] = true;
+    }
+
+    private void MarkOpenGroupRange(bool[] activeFlags, int handFret, List<NoteData> group)
+    {
+        int startLane = Mathf.Clamp(handFret - 1, 0, activeFlags.Length - 1);
+        int endLane = Mathf.Clamp(GetOpenGroupEndLane(handFret, group), 0, activeFlags.Length - 1);
+        MarkLaneRange(activeFlags, startLane, endLane);
+    }
+
+    private int GetOpenGroupEndLane(int handFret, List<NoteData> group)
+    {
+        int furthestFret = handFret + 3;
+        if (group != null)
+        {
+            int highestGroupFret = group.Where(n => n.fret > 0).Select(n => n.fret).DefaultIfEmpty(furthestFret).Max();
+            furthestFret = Mathf.Max(furthestFret, highestGroupFret);
+        }
+
+        return furthestFret;
     }
 
     private void UpdateNotes(GuitarGameplaySnapshot snapshot)
@@ -632,6 +1151,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         cube.GetComponent<Renderer>().material = noteMat;
 
         GameObject textObj = null;
+        TextMeshPro laneTagLabel = CreateLaneTagLabelIfNeeded(data);
 
         if (isGrouped)
         {
@@ -662,8 +1182,22 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         tail.GetComponent<Renderer>().material = tailMat;
         tail.SetActive(owner.highwayShowApproachLine);
 
-        GameObject marker = null;
-        if (!isOpen)
+        GameObject tether = null;
+        Material tetherMat = null;
+        Renderer tetherRenderer = null;
+        if (!isOpen && !isGrouped)
+        {
+            tether = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            tether.name = "LaneTether_" + data.id;
+            tether.transform.SetParent(gameplayRoot.transform, false);
+            tetherMat = CreateNoteTetherMaterial(owner.GetStringColor(data.stringIdx));
+            tetherRenderer = tether.GetComponent<Renderer>();
+            tetherRenderer.material = tetherMat;
+            Object.Destroy(tether.GetComponent<Collider>());
+        }
+
+        GameObject marker = null; 
+        if (!isOpen) 
         {
             marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             marker.name = "Marker_" + data.id;
@@ -716,7 +1250,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             noteRenderer = cube.GetComponent<Renderer>(),
             noteMaterial = noteMat,
             label = textObj != null ? textObj.GetComponent<TextMeshPro>() : null,
+            laneTagLabel = laneTagLabel,
             tail = tail,
+            tether = tether,
+            tetherRenderer = tetherRenderer,
+            tetherMaterial = tetherMat,
             marker = marker,
             outlineRoot = outlineRoot,
             techniqueRoot = techniqueRoot,
@@ -736,6 +1274,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         float x = GetVisualNoteX(state.data);
         float y = GetStringY(state.data.stringIdx);
+        float floorY = GetLaneSurfaceTopY();
+        float laneTagY = GetLaneGuideStringY() + 0.06f;
+        float laneTagZ = z - 0.08f;
 
         view.noteRoot.transform.position = new Vector3(x, y, z);
         if (view.marker != null)
@@ -758,6 +1299,25 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             view.tail.transform.position = new Vector3(x, y, owner.StrikeLineZ + (tailLength * 0.5f));
             view.tail.transform.localScale = new Vector3(owner.FretSpacing * 0.06f, 0.06f, tailLength);
             view.tail.SetActive(owner.highwayShowApproachLine && tailLength > 0.01f && !state.IsResolved);
+        }
+
+        if (view.tether != null && view.tetherRenderer != null && view.tetherMaterial != null)
+        {
+            float noteBottomY = y - (view.baseScale.y * 0.5f);
+            float tetherTopGap = Mathf.Max(0.18f, view.baseScale.y * 0.7f);
+            float tetherTopY = noteBottomY - tetherTopGap;
+            float tetherLength = Mathf.Max(0f, tetherTopY - floorY);
+            bool showTether = tetherLength > 0.02f && z > owner.StrikeLineZ + 0.001f && !state.IsResolved;
+            view.tether.transform.position = new Vector3(x, floorY + (tetherLength * 0.5f), z);
+            view.tether.transform.localScale = new Vector3(Mathf.Max(0.04f, owner.FretSpacing * 0.05f), tetherLength, Mathf.Max(0.03f, owner.FretSpacing * 0.04f));
+            view.tether.SetActive(showTether);
+        }
+
+        if (view.laneTagLabel != null)
+        {
+            view.laneTagLabel.transform.position = new Vector3(x, laneTagY, laneTagZ);
+            ApplyFretNumberLabelStyle(view.laneTagLabel, true);
+            view.laneTagLabel.gameObject.SetActive(z > owner.StrikeLineZ + 0.001f && !state.IsResolved);
         }
 
         view.noteRoot.transform.localScale = view.baseScale;
@@ -783,6 +1343,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         view.noteMaterial.color = finalColor;
         view.noteMaterial.EnableKeyword("_EMISSION");
         view.noteMaterial.SetColor("_EmissionColor", finalColor * Mathf.Pow(2f, emission));
+
+        if (view.tetherMaterial != null)
+        {
+            Color tetherColor = new Color(finalColor.r, finalColor.g, finalColor.b, state.IsResolved ? Mathf.Clamp01(finalColor.a * 0.55f) : 0.95f);
+            view.tetherMaterial.color = tetherColor;
+            view.tetherMaterial.SetColor("_Color", tetherColor);
+            view.tetherMaterial.SetColor("_BaseColor", tetherColor);
+            view.tetherMaterial.SetColor("_TintColor", tetherColor);
+        }
 
         if (view.marker != null)
         {
@@ -919,7 +1488,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float anchorTime = group[0].time;
             float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * owner.noteSpeed);
             bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime());
-            bool visible = z <= owner.SpawnZ && z >= owner.StrikeLineZ - (owner.noteSpeed * (owner.hitWindowLate + owner.judgmentGrace) + 1f);
+            bool visible = z <= owner.SpawnZ && z > owner.StrikeLineZ + 0.001f;
 
             if (!visible && !anyRecent)
                 continue;
@@ -992,7 +1561,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void UpdateSectionCamera(GuitarGameplaySnapshot snapshot)
     {
         float renderSongTime = GetRenderSongTime(snapshot);
-        float previewWindow = Mathf.Max(1.1f, owner.lookaheadWindow);
+        float previewWindow = Mathf.Max(1.6f, owner.lookaheadWindow * 1.75f);
         float weightedCenterSum = 0f;
         float weightSum = 0f;
         float requiredMin = 0f;
@@ -1011,7 +1580,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             GetFramingRange(state.data, out float minX, out float maxX);
             float noteCenter = (minX + maxX) * 0.5f;
-            float noteWeight = Mathf.Lerp(1.6f, 0.45f, Mathf.Clamp01(timeUntilNote / previewWindow));
+            float noteWeight = Mathf.Lerp(1.15f, 0.75f, Mathf.Clamp01(timeUntilNote / previewWindow));
 
             weightedCenterSum += noteCenter * noteWeight;
             weightSum += noteWeight;
@@ -1039,14 +1608,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float desiredSpread = (halfSpan * 2f) / Mathf.Max(0.01f, owner.FretSpacing);
             float desiredFov = Mathf.Clamp(50f + (desiredSpread * 3.0f), 50f, 90f);
 
-            float targetBlend = 1f - Mathf.Exp(-Time.deltaTime * 2.2f);
+            float targetBlend = 1f - Mathf.Exp(-Time.deltaTime * 1.35f);
             cameraTargetX = Mathf.Lerp(cameraTargetX, desiredTargetX, targetBlend);
-            cameraTargetFOV = Mathf.Lerp(cameraTargetFOV, desiredFov, targetBlend * 0.9f);
+            cameraTargetFOV = Mathf.Lerp(cameraTargetFOV, desiredFov, targetBlend * 0.75f);
         }
 
-        float smoothedX = Mathf.SmoothDamp(mainCamera.transform.position.x, cameraTargetX, ref cameraXVelocity, 0.28f, Mathf.Infinity, Time.deltaTime);
+        float smoothedX = Mathf.SmoothDamp(mainCamera.transform.position.x, cameraTargetX, ref cameraXVelocity, 0.46f, Mathf.Infinity, Time.deltaTime);
         mainCamera.transform.position = new Vector3(smoothedX, owner.highwayCameraY, owner.highwayCameraZ);
-        mainCamera.fieldOfView = Mathf.SmoothDamp(mainCamera.fieldOfView, cameraTargetFOV, ref cameraFovVelocity, 0.42f, Mathf.Infinity, Time.deltaTime);
+        mainCamera.fieldOfView = Mathf.SmoothDamp(mainCamera.fieldOfView, cameraTargetFOV, ref cameraFovVelocity, 0.58f, Mathf.Infinity, Time.deltaTime);
     }
 
     private float GetRenderSongTime(GuitarGameplaySnapshot snapshot)
@@ -1185,9 +1754,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (group == null || group.Count == 0)
             return 1.2f;
 
-        int minString = group.Min(n => n.stringIdx);
-        int maxString = group.Max(n => n.stringIdx);
-        return Mathf.Max(1f, (GetStringY(maxString) - GetStringY(minString)) + owner.chordFrameVerticalPadding);
+        float minY = float.MaxValue;
+        float maxY = float.MinValue;
+        for (int i = 0; i < group.Count; i++)
+        {
+            float y = GetStringY(group[i].stringIdx);
+            minY = Mathf.Min(minY, y);
+            maxY = Mathf.Max(maxY, y);
+        }
+
+        return Mathf.Max(1f, (maxY - minY) + owner.chordFrameVerticalPadding);
     }
 
     private float GetChordBoxCenterY(List<NoteData> group)
@@ -1195,9 +1771,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (group == null || group.Count == 0)
             return 0f;
 
-        int minString = group.Min(n => n.stringIdx);
-        int maxString = group.Max(n => n.stringIdx);
-        return (GetStringY(minString) + GetStringY(maxString)) * 0.5f;
+        float minY = float.MaxValue;
+        float maxY = float.MinValue;
+        for (int i = 0; i < group.Count; i++)
+        {
+            float y = GetStringY(group[i].stringIdx);
+            minY = Mathf.Min(minY, y);
+            maxY = Mathf.Max(maxY, y);
+        }
+
+        return (minY + maxY) * 0.5f;
     }
 
     private Vector3 GetSingleFrettedNoteScale()
@@ -1316,6 +1899,60 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         material.SetInt("_ZTest", (int)(renderOnTop ? CompareFunction.Always : CompareFunction.LessEqual));
     }
 
+    private Material CreateLaneSurfaceMaterial()
+    {
+        Shader shader = Shader.Find("Custom/HighwayLaneFloorFade");
+        Material mat = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(new Color(0.025f, 0.03f, 0.045f, 0.14f), 0f);
+
+        mat.SetColor("_Color", new Color(0.025f, 0.03f, 0.045f, 0.14f));
+        mat.SetColor("_BaseColor", new Color(0.025f, 0.03f, 0.045f, 0.14f));
+        mat.SetColor("_TintColor", new Color(0.025f, 0.03f, 0.045f, 0.14f));
+        if (mat.HasProperty("_EdgeFadeLeft"))
+            mat.SetFloat("_EdgeFadeLeft", 0.01f);
+        if (mat.HasProperty("_EdgeFadeRight"))
+            mat.SetFloat("_EdgeFadeRight", 0.01f);
+        if (mat.HasProperty("_FrontBackFade"))
+            mat.SetFloat("_FrontBackFade", 0.45f);
+        return mat;
+    }
+
+    private Material CreateNoteTetherMaterial(Color color)
+    {
+        Shader shader = Shader.Find("Custom/HighwayNoteTetherFade");
+        Material mat = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(new Color(color.r, color.g, color.b, 0.95f), 0f);
+
+        Color tetherColor = new Color(color.r, color.g, color.b, 0.95f);
+        mat.SetColor("_Color", tetherColor);
+        mat.SetColor("_BaseColor", tetherColor);
+        mat.SetColor("_TintColor", tetherColor);
+        if (mat.HasProperty("_FadeTop"))
+            mat.SetFloat("_FadeTop", 0.5f);
+        ConfigureOverlayMaterial(mat, 92, true);
+        return mat;
+    }
+
+    private Material CreateLaneGuideMaterial()
+    {
+        Shader shader = Shader.Find("Custom/HighwayLaneGuideFade");
+        Material mat = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(new Color(0.12f, 0.26f, 0.55f, 0.85f), 0.15f);
+
+        ConfigureOverlayMaterial(mat, 95, true);
+        mat.SetColor("_Color", new Color(0.12f, 0.26f, 0.55f, 0.85f));
+        mat.SetColor("_BaseColor", new Color(0.12f, 0.26f, 0.55f, 0.85f));
+        mat.SetColor("_TintColor", new Color(0.12f, 0.26f, 0.55f, 0.85f));
+        if (mat.HasProperty("_FadeStart"))
+            mat.SetFloat("_FadeStart", 0.0f);
+        if (mat.HasProperty("_FadeEnd"))
+            mat.SetFloat("_FadeEnd", 0.38f);
+        return mat;
+    }
+
     private int GetFretLightColumnCount()
     {
         return Mathf.Max(1, owner.TotalFrets + 1);
@@ -1341,7 +1978,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public Renderer noteRenderer;
         public Material noteMaterial;
         public TextMeshPro label;
+        public TextMeshPro laneTagLabel;
         public GameObject tail;
+        public GameObject tether;
+        public Renderer tetherRenderer;
+        public Material tetherMaterial;
         public GameObject marker;
         public GameObject outlineRoot;
         public GameObject techniqueRoot;
@@ -1356,8 +1997,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             if (noteRoot != null)
                 Object.Destroy(noteRoot);
+            if (laneTagLabel != null)
+                Object.Destroy(laneTagLabel.gameObject);
             if (tail != null)
                 Object.Destroy(tail);
+            if (tether != null)
+                Object.Destroy(tether);
             if (marker != null)
                 Object.Destroy(marker);
             if (outlineRoot != null)

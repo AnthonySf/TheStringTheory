@@ -40,7 +40,7 @@ public class GuitarBridgeServer : MonoBehaviour
     [Header("Settings")]
     public bool invertStrings = true;
     public float noteSpeed = 12f;
-
+ 
     [Header("Timing & Forgiveness")]
     public float hitWindowEarly = 0.3f;
     public float hitWindowLate = 0.5f;
@@ -51,7 +51,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("Onset Matching")]
     public float eventMatchEarly = 0.15f; 
-    public float eventMatchLate = 0.15f;  
+    public float eventMatchLate = 0.15f;   
     public float duplicateEventMergeWindow = 0.085f;
 
     [Header("High String Rescue")]
@@ -123,7 +123,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("Highway 3D Dimensions")]
     public int TotalFrets = 24;
-    public float FretSpacing = 1.0f;
+    public float FretSpacing = 4.0f;
     public float StrikeLineZ = -5.0f;
     public float SpawnZ = 50.0f;
     public float highwayCameraY = 8.0f;
@@ -145,7 +145,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public float highwayBackgroundStarSpread = 1f;
     public float highwayBackgroundCloudSpread = 1f;
     public float highwayLaneGuideThickness = 0.14f;
-    public float highwayLaneGuideYOffset = -1.84f;
+    public float highwayLaneGuideYOffset = 0f;
     public float highwayFretNumberYOffset = 0.45f;
     public float highwayFretNumberZOffset = 0.12f;
     public bool highwayHighlightFretBoundaries = false;
@@ -237,11 +237,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("Background - Blue Sky")]
     public TabsSkyMood tabSkyMood = TabsSkyMood.Day;
+    public bool tabSkyUseStageBackdrop = false;
     [Min(0.01f)] public float tabSkyWidth = 54f;
     public float tabSkyNearZ = 1.4f;
     public float tabSkyFarZ = 7.8f;
-    public float tabSkyMinY = -7.2f;
-    public float tabSkyMaxY = 7.2f;
+    public float tabSkyMinY = -7.2f; 
+    public float tabSkyMaxY = 7.2f; 
     public Color tabSkyTopColor = new Color(0.17f, 0.55f, 0.98f, 1f);
     public Color tabSkyMidColor = new Color(0.38f, 0.72f, 0.99f, 1f);
     public Color tabSkyBottomColor = new Color(0.76f, 0.90f, 1f, 1f);
@@ -394,7 +395,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool showSongSettings;
     private bool showMainMenu;
     private bool mainMenuFlowActive;
+    private int selectedMainMenuIndex;
     private bool showSongSelection;
+    private bool songSelectionSongConfirmed;
     private bool showTrackSelection;
     private bool showGlobalSettings;
     private int selectedSongListIndex;
@@ -404,6 +407,10 @@ public class GuitarBridgeServer : MonoBehaviour
     private SongLibraryEntry pendingTrackSelectionSong;
     private readonly List<SongLibraryEntry> availableSongs = new List<SongLibraryEntry>();
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> pendingTrackSelectionParts = new List<MusicXmlLoader.MusicXmlPartSummary>();
+    private readonly Dictionary<string, SongMetadata> cachedSongMetadataByPath = new Dictionary<string, SongMetadata>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> cachedSongMetadataTicksByPath = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<MusicXmlLoader.MusicXmlPartSummary>> cachedTrackSummariesByXmlPath = new Dictionary<string, List<MusicXmlLoader.MusicXmlPartSummary>>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, long> cachedTrackSummaryTicksByXmlPath = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
     private float audioOffsetMs;
     private float globalAudioOffsetMs;
     private bool useTrackOffsetForCurrentTrack;
@@ -426,7 +433,10 @@ public class GuitarBridgeServer : MonoBehaviour
     private string selectedMusicXmlPartId = string.Empty;
     private float lastLeftArrowTapTime = -10f;
     private float lastRightArrowTapTime = -10f;
+    private float lastMainMenuKeyboardInputTime = -10f;
     private const float ArrowDoubleTapThreshold = 0.35f;
+    private const int MainMenuOptionCount = 5;
+    private const float MainMenuHoverLockSeconds = 0.20f;
     private readonly List<RuntimeSettingDefinition> runtimeSettingDefinitions = new List<RuntimeSettingDefinition>();
     private readonly Dictionary<string, RuntimeSettingDefinition> runtimeSettingById = new Dictionary<string, RuntimeSettingDefinition>();
     private readonly Dictionary<string, string> runtimeSettingDefaultValues = new Dictionary<string, string>();
@@ -720,26 +730,55 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            MoveMainMenuSelectionFromUi(-1);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            MoveMainMenuSelectionFromUi(1);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Space))
+        {
+            ActivateSelectedMainMenuFromUi();
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.C))
         {
+            SetMainMenuSelectionFromUi(0);
             ContinueFromMainMenuFromUi();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.L))
         {
+            SetMainMenuSelectionFromUi(1);
             OpenSongSelectionFromUi();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.S))
         {
+            SetMainMenuSelectionFromUi(2);
             OpenGlobalSettingsFromUi();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.T))
+        {
+            SetMainMenuSelectionFromUi(3);
+            OpenToneLabFromUi();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.X))
         {
+            SetMainMenuSelectionFromUi(4);
             ExitGameFromUi();
             return;
         }
@@ -756,13 +795,32 @@ public class GuitarBridgeServer : MonoBehaviour
         if (availableSongs.Count == 0)
             return;
 
+        if (!songSelectionSongConfirmed)
+        {
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+                MoveSongSelection(-1);
+            else if (Input.GetKeyDown(KeyCode.DownArrow))
+                MoveSongSelection(1);
+
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.LeftArrow))
+                songSelectionSongConfirmed = true;
+
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            songSelectionSongConfirmed = false;
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.UpArrow))
-            MoveSongSelection(-1);
+            MoveTrackSelectionInMenu(-1);
         else if (Input.GetKeyDown(KeyCode.DownArrow))
-            MoveSongSelection(1);
+            MoveTrackSelectionInMenu(1);
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
-            OpenTrackSelectionForSong(selectedSongListIndex);
+            ConfirmTrackSelection();
     }
 
     private void HandleTrackSelectionControls()
@@ -990,6 +1048,7 @@ public class GuitarBridgeServer : MonoBehaviour
         RefreshAvailableSongs();
         showMainMenu = false;
         showSongSelection = true;
+        songSelectionSongConfirmed = false;
         showTrackSelection = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
@@ -1002,6 +1061,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             selectedSongListIndex = 0;
             songListScrollOffset = 0;
+            songSelectionSongConfirmed = false;
             return;
         }
 
@@ -1010,6 +1070,7 @@ public class GuitarBridgeServer : MonoBehaviour
             string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase));
 
         selectedSongListIndex = selectedIndex >= 0 ? selectedIndex : 0;
+        SyncPendingTrackSelectionToSong(selectedSongListIndex, preserveTrackIfPossible: true);
         EnsureSongSelectionVisible();
         SyncAudioToSongTimer(playImmediately: false);
     }
@@ -1043,6 +1104,15 @@ public class GuitarBridgeServer : MonoBehaviour
             selectedSongListIndex = Mathf.Max(0, availableSongs.Count - 1);
     }
 
+    private void ClearSongSelectionCaches()
+    {
+        SongLibraryService.ClearCache();
+        cachedSongMetadataByPath.Clear();
+        cachedSongMetadataTicksByPath.Clear();
+        cachedTrackSummariesByXmlPath.Clear();
+        cachedTrackSummaryTicksByXmlPath.Clear();
+    }
+
     private void OpenTrackSelectionForSong(int songIndex)
     {
         if (songIndex < 0 || songIndex >= availableSongs.Count)
@@ -1061,11 +1131,47 @@ public class GuitarBridgeServer : MonoBehaviour
         showTrackSelection = true;
     }
 
+    private void SyncPendingTrackSelectionToSong(int songIndex, bool preserveTrackIfPossible)
+    {
+        if (songIndex < 0 || songIndex >= availableSongs.Count)
+        {
+            pendingTrackSelectionSong = null;
+            pendingTrackSelectionParts.Clear();
+            selectedTrackListIndex = 0;
+            trackListScrollOffset = 0;
+            return;
+        }
+
+        SongLibraryEntry selected = availableSongs[songIndex];
+        string previousPartId = preserveTrackIfPossible &&
+            selectedTrackListIndex >= 0 &&
+            selectedTrackListIndex < pendingTrackSelectionParts.Count
+            ? pendingTrackSelectionParts[selectedTrackListIndex].PartId
+            : string.Empty;
+
+        pendingTrackSelectionSong = selected;
+        pendingTrackSelectionParts.Clear();
+        pendingTrackSelectionParts.AddRange(GetSortedTrackSummaries(selected));
+        selectedTrackListIndex = 0;
+
+        if (!string.IsNullOrEmpty(previousPartId))
+        {
+            int preservedIndex = pendingTrackSelectionParts.FindIndex(track =>
+                string.Equals(track.PartId, previousPartId, StringComparison.OrdinalIgnoreCase));
+            if (preservedIndex >= 0)
+                selectedTrackListIndex = preservedIndex;
+        }
+
+        trackListScrollOffset = 0;
+        EnsureTrackSelectionVisible();
+    }
+
     private void CloseTrackSelection()
     {
         showTrackSelection = false;
         showMainMenu = false;
         showSongSelection = true;
+        songSelectionSongConfirmed = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
         isPaused = true;
@@ -1078,6 +1184,8 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         selectedSongListIndex = Mathf.Clamp(selectedSongListIndex + delta, 0, availableSongs.Count - 1);
+        songSelectionSongConfirmed = false;
+        SyncPendingTrackSelectionToSong(selectedSongListIndex, preserveTrackIfPossible: true);
         EnsureSongSelectionVisible();
     }
 
@@ -1133,6 +1241,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             showTrackSelection = false;
             showSongSelection = false;
+            songSelectionSongConfirmed = false;
             pendingTrackSelectionSong = null;
             pendingTrackSelectionParts.Clear();
 
@@ -1160,6 +1269,7 @@ public class GuitarBridgeServer : MonoBehaviour
         LoadSongFromEntry(songEntry, selectedPartId);
         showTrackSelection = false;
         showSongSelection = false;
+        songSelectionSongConfirmed = false;
         showMainMenu = false;
         mainMenuFlowActive = false;
         pendingTrackSelectionSong = null;
@@ -1237,8 +1347,10 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showMainMenu = true;
         mainMenuFlowActive = true;
+        selectedMainMenuIndex = 0;
         showSongSettings = false;
         showSongSelection = false;
+        songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
         isPaused = true;
@@ -1257,9 +1369,65 @@ public class GuitarBridgeServer : MonoBehaviour
         mainMenuFlowActive = false;
         showSongSettings = false;
         showSongSelection = false;
+        songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
         ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
+    }
+
+    public void SetMainMenuSelectionFromUi(int index)
+    {
+        selectedMainMenuIndex = Mathf.Clamp(index, 0, MainMenuOptionCount - 1);
+    }
+
+    public void HoverMainMenuSelectionFromUi(int index)
+    {
+        if (Time.unscaledTime - lastMainMenuKeyboardInputTime < MainMenuHoverLockSeconds)
+            return;
+
+        SetMainMenuSelectionFromUi(index);
+    }
+
+    public void MoveMainMenuSelectionFromUi(int delta)
+    {
+        if (MainMenuOptionCount <= 0)
+            return;
+
+        if (delta == 0)
+            return;
+
+        int normalized = selectedMainMenuIndex;
+        if (normalized < 0 || normalized >= MainMenuOptionCount)
+            normalized = 0;
+
+        normalized = (normalized + delta) % MainMenuOptionCount;
+        if (normalized < 0)
+            normalized += MainMenuOptionCount;
+
+        lastMainMenuKeyboardInputTime = Time.unscaledTime;
+        selectedMainMenuIndex = normalized;
+    }
+
+    public void ActivateSelectedMainMenuFromUi()
+    {
+        switch (Mathf.Clamp(selectedMainMenuIndex, 0, MainMenuOptionCount - 1))
+        {
+            case 0:
+                ContinueFromMainMenuFromUi();
+                break;
+            case 1:
+                OpenSongSelectionFromUi();
+                break;
+            case 2:
+                OpenGlobalSettingsFromUi();
+                break;
+            case 3:
+                OpenToneLabFromUi();
+                break;
+            case 4:
+                ExitGameFromUi();
+                break;
+        }
     }
 
     public void OpenSongSelectionFromUi()
@@ -1310,6 +1478,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showMainMenu = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
+        songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showSongSettings = false;
         showGlobalSettings = false;
@@ -1324,6 +1493,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showMainMenu = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
+        songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
         isPaused = true;
@@ -1337,6 +1507,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showSongSettings = false;
         showMainMenu = false;
         showSongSelection = false;
+        songSelectionSongConfirmed = false;
         showTrackSelection = false;
         isPaused = true;
     }
@@ -1390,6 +1561,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 ? availableSongs[selectedSongListIndex]?.SongDirectory
                 : null;
 
+        ClearSongSelectionCaches();
         RefreshAvailableSongs();
 
         if (!string.IsNullOrEmpty(selectedDirectory))
@@ -1405,6 +1577,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (selectedSongListIndex >= availableSongs.Count)
             selectedSongListIndex = Mathf.Max(0, availableSongs.Count - 1);
 
+        songSelectionSongConfirmed = false;
         EnsureSongSelectionVisible();
     }
 
@@ -1416,13 +1589,15 @@ public class GuitarBridgeServer : MonoBehaviour
     public void SelectSongByIndexFromUi(int songIndex)
     {
         selectedSongListIndex = Mathf.Clamp(songIndex, 0, Mathf.Max(0, availableSongs.Count - 1));
+        SyncPendingTrackSelectionToSong(selectedSongListIndex, preserveTrackIfPossible: true);
+        songSelectionSongConfirmed = true;
         EnsureSongSelectionVisible();
-        OpenTrackSelectionForSong(selectedSongListIndex);
     }
 
     public void CloseSongSelectionFromUi()
     {
         showSongSelection = false;
+        songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showMainMenu = mainMenuFlowActive;
         songSelectionOpenedFromMainMenu = false;
@@ -1437,7 +1612,13 @@ public class GuitarBridgeServer : MonoBehaviour
     public void SelectTrackByIndexFromUi(int trackIndex)
     {
         selectedTrackListIndex = Mathf.Clamp(trackIndex, 0, Mathf.Max(0, pendingTrackSelectionParts.Count - 1));
+        songSelectionSongConfirmed = true;
         EnsureTrackSelectionVisible();
+    }
+
+    public void StartSelectedSongFromUi()
+    {
+        songSelectionSongConfirmed = true;
         ConfirmTrackSelection();
     }
 
@@ -1513,6 +1694,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showMainMenu = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
+        songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
         SyncAudioToSongTimer(playImmediately: true);
@@ -2644,10 +2826,13 @@ private void ParseUdpState()
             showSongSettings = showSongSettings,
             showMainMenu = showMainMenu,
             mainMenuFlowActive = mainMenuFlowActive,
+            selectedMainMenuIndex = selectedMainMenuIndex,
             showSongSelection = showSongSelection,
+            songSelectionSongConfirmed = songSelectionSongConfirmed,
             showTrackSelection = showTrackSelection,
             showGlobalSettings = showGlobalSettings,
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
+            availableSongSubtitles = availableSongs.Select(song => song.Subtitle ?? string.Empty).ToList(),
             availableSongScores = availableSongs.Select(GetStoredSongBestScorePercent).ToList(),
             selectedSongIndex = selectedSongListIndex,
             availableTrackNames = pendingTrackSelectionParts.Select(track => track.Name).ToList(),
@@ -3073,7 +3258,42 @@ private void ParseUdpState()
         if (entry == null || string.IsNullOrEmpty(entry.XmlPath))
             return new List<MusicXmlLoader.MusicXmlPartSummary>();
 
-        List<MusicXmlLoader.MusicXmlPartSummary> summaries = MusicXmlLoader.GetPartSummaries(entry.XmlPath);
+        long xmlTicks = File.Exists(entry.XmlPath) ? File.GetLastWriteTimeUtc(entry.XmlPath).Ticks : -1L;
+        List<MusicXmlLoader.MusicXmlPartSummary> summaries;
+        if (cachedTrackSummariesByXmlPath.TryGetValue(entry.XmlPath, out List<MusicXmlLoader.MusicXmlPartSummary> cachedSummaries) &&
+            cachedTrackSummaryTicksByXmlPath.TryGetValue(entry.XmlPath, out long cachedTicks) &&
+            cachedTicks == xmlTicks &&
+            cachedSummaries != null)
+        {
+            summaries = cachedSummaries
+                .Select(summary => new MusicXmlLoader.MusicXmlPartSummary
+                {
+                    Index = summary.Index,
+                    PartId = summary.PartId,
+                    Name = summary.Name,
+                    NoteCount = summary.NoteCount,
+                    TabCount = summary.TabCount,
+                    Score = summary.Score
+                })
+                .ToList();
+        }
+        else
+        {
+            summaries = MusicXmlLoader.GetPartSummaries(entry.XmlPath);
+            cachedTrackSummariesByXmlPath[entry.XmlPath] = summaries
+                .Select(summary => new MusicXmlLoader.MusicXmlPartSummary
+                {
+                    Index = summary.Index,
+                    PartId = summary.PartId,
+                    Name = summary.Name,
+                    NoteCount = summary.NoteCount,
+                    TabCount = summary.TabCount,
+                    Score = summary.Score
+                })
+                .ToList();
+            cachedTrackSummaryTicksByXmlPath[entry.XmlPath] = xmlTicks;
+        }
+
         SongMetadata metadata = LoadSongMetadataForEntry(entry);
 
         return summaries
@@ -3128,6 +3348,18 @@ private void ParseUdpState()
 
     private SongMetadata LoadSongMetadata(string songFileName, string metadataPath)
     {
+        if (!string.IsNullOrEmpty(metadataPath))
+        {
+            long lastWriteTicks = File.Exists(metadataPath) ? File.GetLastWriteTimeUtc(metadataPath).Ticks : -1L;
+            if (cachedSongMetadataByPath.TryGetValue(metadataPath, out SongMetadata cachedMetadata) &&
+                cachedSongMetadataTicksByPath.TryGetValue(metadataPath, out long cachedTicks) &&
+                cachedTicks == lastWriteTicks &&
+                cachedMetadata != null)
+            {
+                return CloneSongMetadata(cachedMetadata);
+            }
+        }
+
         SongMetadata data = new SongMetadata
         {
             songFileName = songFileName,
@@ -3174,6 +3406,12 @@ private void ParseUdpState()
             Debug.LogWarning($"Failed to load metadata {metadataPath}: {ex.Message}");
         }
 
+        if (!string.IsNullOrEmpty(metadataPath))
+        {
+            cachedSongMetadataByPath[metadataPath] = CloneSongMetadata(data);
+            cachedSongMetadataTicksByPath[metadataPath] = File.Exists(metadataPath) ? File.GetLastWriteTimeUtc(metadataPath).Ticks : -1L;
+        }
+
         return data;
     }
 
@@ -3211,6 +3449,42 @@ private void ParseUdpState()
         {
             Debug.LogWarning($"Failed to save song metadata: {ex.Message}");
         }
+
+        cachedSongMetadataByPath[metadataPath] = CloneSongMetadata(metadata);
+        cachedSongMetadataTicksByPath[metadataPath] = File.Exists(metadataPath) ? File.GetLastWriteTimeUtc(metadataPath).Ticks : -1L;
+    }
+
+    private static SongMetadata CloneSongMetadata(SongMetadata source)
+    {
+        if (source == null)
+            return new SongMetadata();
+
+        return new SongMetadata
+        {
+            songFileName = source.songFileName,
+            audioOffsetMs = source.audioOffsetMs,
+            tabSpeedOffsetPercent = source.tabSpeedOffsetPercent,
+            songStartDelaySeconds = source.songStartDelaySeconds,
+            useAutoTrackSelection = source.useAutoTrackSelection,
+            selectedMusicXmlPartId = source.selectedMusicXmlPartId,
+            bestScorePercent = source.bestScorePercent,
+            trackScores = source.trackScores != null
+                ? source.trackScores.Select(score => new TrackScoreEntry
+                {
+                    partId = score.partId,
+                    displayName = score.displayName,
+                    bestScorePercent = score.bestScorePercent
+                }).ToList()
+                : new List<TrackScoreEntry>(),
+            trackOffsetOverrides = source.trackOffsetOverrides != null
+                ? source.trackOffsetOverrides.Select(entry => new TrackOffsetOverride
+                {
+                    partId = entry.partId,
+                    useTrackOffset = entry.useTrackOffset,
+                    offsetMs = entry.offsetMs
+                }).ToList()
+                : new List<TrackOffsetOverride>()
+        };
     }
 
     private string GetMetadataPath(string songFileName)
@@ -3256,6 +3530,7 @@ private void ParseUdpState()
 
         RegisterEnumSetting("bg.mode", "Background", "Background Mode", "Switches between static and animated backgrounds.", new []{"SolidColor","Starfield","BlueSky"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
         RegisterEnumSetting("bg.skyMood", "Background - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime and sunset palettes.", new []{"Day","Sunset"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
+        RegisterBoolSetting("bg.skyUseStage", "Background - Blue Sky", "Use Stage Backdrop", "Switches BlueSky mode between the sunset-cloud scene and a stylized stage backdrop.", () => tabSkyUseStageBackdrop, v => tabSkyUseStageBackdrop = v);
         RegisterBoolSetting("bg.skyStars", "Background - Blue Sky", "Static Sky Stars", "Adds non-moving stars behind clouds in BlueSky mode.", () => tabSkyStarsEnabled, v => tabSkyStarsEnabled = v);
         RegisterIntSetting("bg.skyStarCount", "Background - Blue Sky", "Sky Star Count", "Controls how many static stars are rendered in BlueSky mode.", 8, 1200, 1, () => tabSkyStarCount, v => tabSkyStarCount = v);
         RegisterFloatSetting("bg.skyStarTwinkleFraction", "Background - Blue Sky", "Star Twinkle Fraction", "Percentage of stars allowed to twinkle.", 0f, 1f, 0.01f, () => tabSkyStarTwinkleFraction, v => tabSkyStarTwinkleFraction = v);
@@ -3272,7 +3547,7 @@ private void ParseUdpState()
         RegisterFloatSetting("bg.skyCloudGlobalScale", "Background - Blue Sky", "Cloud Global Scale", "Scales all BlueSky clouds live without restarting.", 0.2f, 6f, 0.05f, () => tabSkyCloudGlobalScale, v => tabSkyCloudGlobalScale = v);
 
         RegisterIntSetting("highway.totalFrets", "Highway 3D - Layout", "Total Frets", "How many fret lanes are generated for the 3D highway.", 12, 36, 1, () => TotalFrets, v => TotalFrets = v);
-        RegisterFloatSetting("highway.fretSpacing", "Highway 3D - Layout", "Fret Spacing", "Horizontal spacing between fret lanes in Highway3D.", 0.4f, 2.5f, 0.01f, () => FretSpacing, v => FretSpacing = v);
+        RegisterFloatSetting("highway.fretSpacing", "Highway 3D - Layout", "Fret Spacing", "Horizontal spacing between fret lanes in Highway3D.", 0.4f, 6f, 0.01f, () => FretSpacing, v => FretSpacing = v);
         RegisterFloatSetting("highway.strikeLineZ", "Highway 3D - Layout", "Strike Line Z", "Depth of the hit line in Highway3D.", -20f, 5f, 0.05f, () => StrikeLineZ, v => StrikeLineZ = v);
         RegisterFloatSetting("highway.spawnZ", "Highway 3D - Layout", "Spawn Z", "Depth where incoming Highway3D notes appear.", 10f, 120f, 0.5f, () => SpawnZ, v => SpawnZ = v);
         RegisterFloatSetting("highway.defaultOpenAnchorFret", "Highway 3D - Layout", "Open Anchor Fret", "Anchor fret used to visualize open notes in Highway3D.", 1f, 8f, 0.1f, () => defaultOpenAnchorFret, v => defaultOpenAnchorFret = v);
@@ -3494,6 +3769,29 @@ private void ParseUdpState()
 
             foreach (KeyValuePair<string, string> pair in pendingGlobalRuntimeSettingValues)
                 ApplyRuntimeSettingValue(pair.Key, pair.Value, saveMetadata: false);
+
+            Dictionary<string, string> defaults = LoadRuntimeSettingDefaultsFromFile();
+            bool appliedMissingDefaults = false;
+
+            foreach (RuntimeSettingDefinition definition in runtimeSettingDefinitions)
+            {
+                if (definition == null || string.IsNullOrEmpty(definition.Id))
+                    continue;
+
+                if (pendingGlobalRuntimeSettingValues.ContainsKey(definition.Id))
+                    continue;
+
+                string value;
+                if (!defaults.TryGetValue(definition.Id, out value) && !runtimeSettingDefaultValues.TryGetValue(definition.Id, out value))
+                    continue;
+
+                ApplyRuntimeSettingValue(definition.Id, value, saveMetadata: false);
+                pendingGlobalRuntimeSettingValues[definition.Id] = value;
+                appliedMissingDefaults = true;
+            }
+
+            if (appliedMissingDefaults)
+                SaveGlobalRuntimeSettingsMetadata();
         }
         catch (Exception ex)
         {
