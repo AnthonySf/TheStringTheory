@@ -10,9 +10,10 @@ Shader "Custom/HighwayLaneFloorFade"
 
     SubShader
     {
-        Tags { "Queue"="Transparent" "RenderType"="Transparent" }
+        Tags { "Queue"="Transparent-40" "RenderType"="Transparent" }
         Blend SrcAlpha OneMinusSrcAlpha
-        ZWrite Off
+        ZWrite On
+        ZTest LEqual
         Cull Off
 
         Pass

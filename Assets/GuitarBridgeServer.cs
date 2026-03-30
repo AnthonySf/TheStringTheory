@@ -2223,11 +2223,24 @@ private void OpenOrFocusToneLab()
         m.SetColor("_BaseColor", c);
         m.color = c;
 
-        m.SetInt("_ZWrite", 0);
-        m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        m.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+        if (m.HasProperty("_Surface"))
+            m.SetFloat("_Surface", 1f);
+        if (m.HasProperty("_Blend"))
+            m.SetFloat("_Blend", 0f);
+        if (m.HasProperty("_AlphaClip"))
+            m.SetFloat("_AlphaClip", 0f);
+        if (m.HasProperty("_SrcBlend"))
+            m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        if (m.HasProperty("_DstBlend"))
+            m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        if (m.HasProperty("_ZWrite"))
+            m.SetInt("_ZWrite", 0);
+        if (m.HasProperty("_Cull"))
+            m.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
         m.EnableKeyword("_ALPHABLEND_ON");
+        m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        m.DisableKeyword("_ALPHATEST_ON");
 
         if (emission > 0f)
         {
