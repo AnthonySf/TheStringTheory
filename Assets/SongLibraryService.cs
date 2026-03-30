@@ -9,6 +9,7 @@ public sealed class SongLibraryEntry
 {
     public string SongId;
     public string DisplayName;
+    public string Subtitle;
     public string SongDirectory;
     public string Mp3Path;
     public string XmlPath;
@@ -18,6 +19,15 @@ public sealed class SongLibraryEntry
 
 public static class SongLibraryService
 {
+    private sealed class CachedSongEntry
+    {
+        public SongLibraryEntry Entry;
+        public string Fingerprint;
+    }
+
+    private static readonly Dictionary<string, CachedSongEntry> cachedEntriesByDirectory = new Dictionary<string, CachedSongEntry>(StringComparer.OrdinalIgnoreCase);
+    private static string cachedLibraryFingerprint = string.Empty;
+
     [Serializable]
     private sealed class SongFolderMetadata
     {
@@ -32,7 +42,13 @@ public static class SongLibraryService
         return entry != null;
     }
 
-    public static List<SongLibraryEntry> GetAvailableSongs()
+    public static void ClearCache()
+    {
+        cachedEntriesByDirectory.Clear();
+        cachedLibraryFingerprint = string.Empty;
+    }
+
+    public static List<SongLibraryEntry> GetAvailableSongs(bool forceRefresh = false)
     {
         List<SongLibraryEntry> entries = new List<SongLibraryEntry>();
 
@@ -46,11 +62,53 @@ public static class SongLibraryService
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        string libraryFingerprint = BuildLibraryFingerprint(songDirectories);
+        if (!forceRefresh && string.Equals(cachedLibraryFingerprint, libraryFingerprint, StringComparison.Ordinal))
+        {
+            foreach (string songDirectory in songDirectories)
+            {
+                if (cachedEntriesByDirectory.TryGetValue(songDirectory, out CachedSongEntry cached) && cached?.Entry != null)
+                    entries.Add(CloneEntry(cached.Entry));
+            }
+
+            return entries;
+        }
+
+        Dictionary<string, CachedSongEntry> nextCache = new Dictionary<string, CachedSongEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (string songDirectory in songDirectories)
         {
+            string entryFingerprint = BuildSongFingerprint(songDirectory);
+            if (!forceRefresh &&
+                cachedEntriesByDirectory.TryGetValue(songDirectory, out CachedSongEntry cached) &&
+                cached != null &&
+                string.Equals(cached.Fingerprint, entryFingerprint, StringComparison.Ordinal) &&
+                cached.Entry != null)
+            {
+                SongLibraryEntry cloned = CloneEntry(cached.Entry);
+                entries.Add(cloned);
+                nextCache[songDirectory] = new CachedSongEntry
+                {
+                    Entry = CloneEntry(cloned),
+                    Fingerprint = entryFingerprint
+                };
+                continue;
+            }
+
             if (TryBuildEntry(songDirectory, out SongLibraryEntry discovered))
+            {
                 entries.Add(discovered);
+                nextCache[songDirectory] = new CachedSongEntry
+                {
+                    Entry = CloneEntry(discovered),
+                    Fingerprint = entryFingerprint
+                };
+            }
         }
+
+        cachedEntriesByDirectory.Clear();
+        foreach (KeyValuePair<string, CachedSongEntry> pair in nextCache)
+            cachedEntriesByDirectory[pair.Key] = pair.Value;
+        cachedLibraryFingerprint = libraryFingerprint;
 
         if (entries.Count == 0)
             Debug.LogWarning($"[SongLibraryService] No valid song folders found in: {ExternalContentPaths.PersistentSongsDirectory}");
@@ -73,11 +131,13 @@ public static class SongLibraryService
 
         string metadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
         string displayName = ResolveDisplayName(songDirectory, xmlPath, metadataPath);
+        string subtitle = TryReadCreatorFromXml(xmlPath);
 
         entry = new SongLibraryEntry
         {
             SongId = Path.GetFileName(songDirectory),
             DisplayName = displayName,
+            Subtitle = subtitle,
             SongDirectory = songDirectory,
             Mp3Path = mp3Path,
             XmlPath = xmlPath,
@@ -155,5 +215,74 @@ public static class SongLibraryService
         }
 
         return null;
+    }
+
+    private static string TryReadCreatorFromXml(string xmlPath)
+    {
+        if (string.IsNullOrEmpty(xmlPath) || !File.Exists(xmlPath))
+            return null;
+
+        try
+        {
+            XmlDocument xml = new XmlDocument();
+            xml.Load(xmlPath);
+
+            XmlNode creatorNode = xml.SelectSingleNode("//identification/creator[@type='composer']")
+                ?? xml.SelectSingleNode("//identification/creator")
+                ?? xml.SelectSingleNode("//creator");
+
+            if (creatorNode != null && !string.IsNullOrWhiteSpace(creatorNode.InnerText))
+                return creatorNode.InnerText.Trim();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[SongLibraryService] Failed to read creator from XML '{xmlPath}': {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static SongLibraryEntry CloneEntry(SongLibraryEntry entry)
+    {
+        if (entry == null)
+            return null;
+
+        return new SongLibraryEntry
+        {
+            SongId = entry.SongId,
+            DisplayName = entry.DisplayName,
+            Subtitle = entry.Subtitle,
+            SongDirectory = entry.SongDirectory,
+            Mp3Path = entry.Mp3Path,
+            XmlPath = entry.XmlPath,
+            MetadataPath = entry.MetadataPath,
+            MidiPath = entry.MidiPath
+        };
+    }
+
+    private static string BuildLibraryFingerprint(IEnumerable<string> songDirectories)
+    {
+        List<string> tokens = new List<string>();
+        foreach (string songDirectory in songDirectories)
+            tokens.Add($"{songDirectory}|{BuildSongFingerprint(songDirectory)}");
+
+        return string.Join("||", tokens);
+    }
+
+    private static string BuildSongFingerprint(string songDirectory)
+    {
+        if (string.IsNullOrEmpty(songDirectory) || !Directory.Exists(songDirectory))
+            return string.Empty;
+
+        List<string> tokens = new List<string>();
+        foreach (string filePath in Directory.GetFiles(songDirectory).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+        {
+            FileInfo info = new FileInfo(filePath);
+            tokens.Add($"{Path.GetFileName(filePath)}|{info.Length}|{info.LastWriteTimeUtc.Ticks}");
+        }
+
+        DirectoryInfo directoryInfo = new DirectoryInfo(songDirectory);
+        tokens.Add($"DIR|{directoryInfo.LastWriteTimeUtc.Ticks}");
+        return string.Join(";", tokens);
     }
 }

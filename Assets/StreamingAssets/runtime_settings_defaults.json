@@ -81,6 +81,10 @@
       "value": "Sunset"
     },
     {
+      "id": "bg.skyUseStage",
+      "value": "false"
+    },
+    {
       "id": "bg.skyStars",
       "value": "true"
     },
@@ -135,6 +139,22 @@
     {
       "id": "bg.skyCloudGlobalScale",
       "value": "3"
+    },
+    {
+      "id": "highway.fretSpacing",
+      "value": "4.2"
+    },
+    {
+      "id": "highway.cameraY",
+      "value": "17"
+    },
+    {
+      "id": "highway.cameraZ",
+      "value": "-18"
+    },
+    {
+      "id": "highway.cameraPitch",
+      "value": "40"
     }
   ]
 }
