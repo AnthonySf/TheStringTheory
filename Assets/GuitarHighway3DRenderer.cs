@@ -476,7 +476,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             surface.transform.localScale = new Vector3(laneWidth, laneHeight, depth);
 
             Material mat = CreateLaneSurfaceMaterial();
-            ConfigureOverlayMaterial(mat, 20, false);
             Renderer renderer = surface.GetComponent<Renderer>();
             renderer.material = mat;
             laneSurfaceMats[lane] = mat;
@@ -1905,6 +1904,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         Material mat = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(new Color(0.025f, 0.03f, 0.045f, 0.14f), 0f);
+
+        // Keep lane floors behind strings and overlay effects in both editor and player.
+        mat.renderQueue = (int)RenderQueue.Transparent - 40;
 
         mat.SetColor("_Color", new Color(0.025f, 0.03f, 0.045f, 0.14f));
         mat.SetColor("_BaseColor", new Color(0.025f, 0.03f, 0.045f, 0.14f));
