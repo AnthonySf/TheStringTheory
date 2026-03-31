@@ -16,11 +16,16 @@ using UnityEditor;
 public sealed class TabsSongHeaderOverlay
 {
     private static readonly Color MainMenuSelectedColor = new Color(0.44f, 0.84f, 1f, 1f);
-    private static readonly Color LibraryPrimaryColor = new Color(0.271f, 0.780f, 0.757f, 1f);
-    private static readonly Color LibraryPrimarySoftColor = new Color(0.271f, 0.780f, 0.757f, 0.88f);
-    private static readonly Color LibraryPrimaryTextColor = new Color(0.12f, 0.18f, 0.24f, 1f);
-    private static readonly Color LibraryConfirmedSongColor = new Color(0.98f, 0.62f, 0.42f, 1f);
-    private static readonly Color LibraryConfirmedSongTextColor = new Color(0.20f, 0.11f, 0.07f, 1f);
+    private static readonly Color LibraryPrimaryAccentColor = new Color(0.98f, 0.62f, 0.42f, 1f);
+    private static readonly Color LibraryPrimaryAccentTextColor = new Color(0.20f, 0.11f, 0.07f, 1f);
+    private static readonly Color LibrarySecondaryColor = new Color(0.271f, 0.780f, 0.757f, 1f);
+    private static readonly Color LibrarySecondarySoftColor = new Color(0.271f, 0.780f, 0.757f, 0.88f);
+    private static readonly Color LibrarySecondaryTextColor = new Color(0.12f, 0.18f, 0.24f, 1f);
+    private static readonly Color LibraryPrimaryColor = LibrarySecondaryColor;
+    private static readonly Color LibraryPrimarySoftColor = LibrarySecondarySoftColor;
+    private static readonly Color LibraryPrimaryTextColor = LibrarySecondaryTextColor;
+    private static readonly Color LibraryConfirmedSongColor = LibraryPrimaryAccentColor;
+    private static readonly Color LibraryConfirmedSongTextColor = LibraryPrimaryAccentTextColor;
     private static readonly Color LibraryPanelColor = new Color(0.10f, 0.10f, 0.11f, 1f);
     private static readonly Color LibrarySectionLabelColor = new Color(0.74f, 0.88f, 0.98f, 0.94f);
     private static readonly Color LibraryCardColor = new Color(0.05f, 0.09f, 0.14f, 0.94f);
@@ -2003,7 +2008,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         selectionInfoInstructionLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
         selectionInfoInstructionLabel.style.color = new Color(0.96f, 0.97f, 0.98f, 1f);
 
-        Label selectionInfoEyebrow = CreateLabel("TRACK SELECT", 20f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label selectionInfoEyebrow = CreateLabel("TRACK SELECT", 20f, LibrarySecondaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
         selectionInfoEyebrow.style.letterSpacing = 1.6f;
         selectionInfoEyebrow.style.marginBottom = 12f;
         selectionInfoEyebrow.style.unityFontDefinition = modernUiFontDefinition;
@@ -2072,7 +2077,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         selectionInfoScoreCard.style.borderBottomColor = new Color(0.19f, 0.22f, 0.27f, 1f);
         selectionInfoScoreCard.style.borderLeftColor = new Color(0.19f, 0.22f, 0.27f, 1f);
 
-        Label selectionInfoScoreTitle = CreateLabel("BEST PERFORMANCE", 18f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label selectionInfoScoreTitle = CreateLabel("BEST PERFORMANCE", 18f, LibrarySecondaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
         selectionInfoScoreTitle.style.letterSpacing = 1.2f;
         selectionInfoScoreTitle.style.marginBottom = 12f;
         selectionInfoScoreTitle.style.unityFontDefinition = modernUiFontDefinition;
@@ -2122,7 +2127,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         arrangementPanel.style.alignSelf = Align.Center;
         arrangementPanel.pickingMode = PickingMode.Position;
 
-        Label arrangementTitle = CreateLabel("ARRANGEMENTS", 54f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label arrangementTitle = CreateLabel("ARRANGEMENTS", 54f, LibrarySecondaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
         arrangementTitle.style.letterSpacing = 1.2f;
         arrangementTitle.style.marginBottom = 22f;
         arrangementTitle.style.unityFontDefinition = modernUiFontDefinition;
@@ -2239,7 +2244,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         selectionListCard.style.alignItems = Align.Center;
         selectionListCard.pickingMode = PickingMode.Position;
 
-        Label selectionSongsListTitle = CreateLabel("SONGS", 132f, LibrarySectionLabelColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label selectionSongsListTitle = CreateLabel("SONGS", 132f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
         selectionSongsListTitle.style.letterSpacing = 4f;
         selectionSongsListTitle.style.marginBottom = 12f;
         selectionSongsListTitle.style.unityFontDefinition = modernUiFontDefinition;
@@ -2247,7 +2252,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         selectionSongsListTitle.style.alignSelf = Align.Center;
         selectionSubtitleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
         selectionSubtitleLabel.style.alignSelf = Align.Center;
-        selectionSubtitleLabel.style.marginBottom = 22f;
+        selectionSubtitleLabel.style.marginBottom = 40f;
 
         selectionScrollView = new ScrollView(ScrollViewMode.Vertical);
         selectionScrollView.style.flexGrow = 1f;
@@ -3189,8 +3194,8 @@ selectionShell.style.maxWidth = StyleKeyword.None;
             }
         }
 
-        selectionScrollView.contentContainer.style.paddingTop = 360f;
-        selectionScrollView.contentContainer.style.paddingBottom = 360f;
+        selectionScrollView.contentContainer.style.paddingTop = 8f;
+        selectionScrollView.contentContainer.style.paddingBottom = 8f;
     }
 
     private void CenterModernSongSelectionRow(int rowIndex)
@@ -3198,14 +3203,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         if (rowIndex < 0 || rowIndex >= selectionRows.Count || selectionScrollView == null)
             return;
 
-        float viewportHeight = selectionScrollView.resolvedStyle.height > 1f ? selectionScrollView.resolvedStyle.height : 820f;
-        const float rowHeight = 146f;
-        const float rowSpacing = 6f;
-        const float contentTopPadding = 360f;
-        float stride = rowHeight + (rowSpacing * 2f);
-        float rowY = contentTopPadding + (rowIndex * stride);
-        float targetOffset = Mathf.Max(0f, rowY - ((viewportHeight - rowHeight) * 0.5f));
-        selectionScrollView.scrollOffset = new Vector2(0f, targetOffset);
+        selectionScrollView.ScrollTo(selectionRows[rowIndex].button);
     }
 
     private void UpdateModernLibraryTrackRows(GuitarGameplaySnapshot snapshot)
