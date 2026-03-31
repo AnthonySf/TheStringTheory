@@ -1394,7 +1394,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void SetPauseActionSelectionFromUi(int index)
     {
-        selectedPauseActionIndex = Mathf.Clamp(index, 0, 7);
+        selectedPauseActionIndex = Mathf.Clamp(index, 0, 9);
     }
 
     public void HoverPauseActionSelectionFromUi(int index)
@@ -1407,7 +1407,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void MovePauseActionSelectionFromUi(int delta)
     {
-        const int optionCount = 8;
+        const int optionCount = 10;
         selectedPauseActionIndex = (selectedPauseActionIndex + delta + optionCount) % optionCount;
     }
 
@@ -1523,7 +1523,34 @@ public class GuitarBridgeServer : MonoBehaviour
             case 7:
                 ResumePlaybackFromUi();
                 break;
+            case 8:
+                EndSongFromUi();
+                break;
+            case 9:
+                RetrySongFromUi();
+                break;
         }
+    }
+
+    public void EndSongFromUi()
+    {
+        isPaused = true;
+        showSongSettings = false;
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        showSongSelection = false;
+        songSelectionSongConfirmed = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        float duration = GetSongDurationSeconds();
+        if (duration > 0.001f)
+        {
+            SeekSongTime(duration, false);
+            songTimer = duration;
+            audioSongTimer = duration;
+        }
+        songHasEnded = true;
+        SyncAudioToSongTimer(playImmediately: false);
     }
 
     public void ActivateSelectedPauseActionFromUi()
