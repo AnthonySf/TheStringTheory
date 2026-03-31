@@ -117,6 +117,12 @@ public sealed class GuitarGameplaySnapshot
     public float loopStartTime;
     public float loopEndTime;
     public int selectedLoopMarker;
+    public bool showLoopSettings;
+    public bool loopPreviewPlaying;
+    public bool showLoopPausePopup;
+    public int selectedLoopPausePopupIndex;
+    public float loopPauseDurationSeconds;
+    public float loopRestartPauseRemainingSeconds;
     public float playbackSpeedPercent;
     public float currentSectionProgress;
     public int currentSectionIndex;
@@ -146,6 +152,7 @@ public sealed class GuitarGameplaySnapshot
     public float audioOffsetMs;
     public float tabSpeedOffsetPercent;
     public float songStartDelaySeconds;
+    public float songVolumePercent;
     public string selectedTrackDisplayName;
     public string trackSelectionHint;
     public string offsetScopeLabel;
@@ -158,6 +165,7 @@ public sealed class GuitarGameplaySnapshot
     public float songDuration;
     public float songProgressNormalized;
     public bool songEnded;
+    public int selectedSongEndActionIndex;
     public float currentTrackBestScorePercent;
     public bool showStartupTuningReminder;
     public bool showGlobalSettings;

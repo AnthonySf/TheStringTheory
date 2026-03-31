@@ -1,0 +1,42 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/Resources/UI/SongEndScreen.uss?fileID=7433441132597879392&amp;guid=a1e89c86e56b4a10a49bb8f6215c4c11&amp;type=3#SongEndScreen" />
+    <ui:VisualElement name="song-end-card" class="song-end-card" style="height: 1080px; width: 1920px;">
+        <ui:VisualElement name="song-end-accent-frame" class="song-end-accent-frame">
+            <ui:VisualElement name="song-end-accent-plate" picking-mode="Ignore" class="song-end-accent-plate" />
+        </ui:VisualElement>
+        <ui:VisualElement name="song-end-main-frame" class="song-end-main-frame">
+            <ui:VisualElement name="song-end-main-plate" picking-mode="Ignore" class="song-end-main-plate" />
+        </ui:VisualElement>
+        <ui:VisualElement name="song-end-content" class="song-end-content">
+            <ui:VisualElement name="song-end-header-row" class="song-end-header-row">
+                <ui:VisualElement name="song-end-title-column" class="song-end-title-column">
+                    <ui:Label name="song-end-eyebrow" text="TRACK CLEAR" class="song-end-eyebrow" />
+                    <ui:Label name="song-end-title-label" text="SONG COMPLETED" class="song-end-title" />
+                    <ui:Label name="song-end-song-label" text="Song" class="song-end-song" />
+                    <ui:Label name="song-end-meta-label" text="Track" class="song-end-meta" />
+                    <ui:Label name="song-end-stats-label" text="Hits / Misses" class="song-end-stats" />
+                </ui:VisualElement>
+                <ui:VisualElement name="song-end-score-column" class="song-end-score-column">
+                    <ui:Label name="song-end-score-eyebrow" text="RUN SCORE" class="song-end-score-eyebrow" />
+                    <ui:Label name="song-end-best-label" text="TRACK BEST" class="song-end-best" />
+                    <ui:Label name="song-end-speed-value-label" text="SPEED 100%" class="song-end-speed" />
+                    <ui:Label name="song-end-delta-label" text="NEW RECORD!" class="song-end-delta" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="song-end-middle-band" class="song-end-middle-band">
+                <ui:VisualElement name="song-end-grade-block" class="song-end-grade-block">
+                    <ui:Label name="song-end-grade-caption" text="GRADE" class="song-end-grade-caption" />
+                    <ui:Label name="song-end-rating-label" text="A" class="song-end-rating" />
+                    <ui:Label name="song-end-score-label" text="100.0%" class="song-end-score" />
+                    <ui:VisualElement name="song-end-rule" class="song-end-rule" />
+                    <ui:Label name="song-end-note" text="Push for a new track best on the next run." class="song-end-note" />
+                </ui:VisualElement>
+            </ui:VisualElement>
+            <ui:VisualElement name="song-end-buttons" class="song-end-buttons">
+                <ui:Button name="song-end-retry-button" text="Retry" class="song-end-action-primary" />
+                <ui:Button name="song-end-selection-button" text="Song Selection" class="song-end-action-secondary" />
+                <ui:Button name="song-end-mainmenu-button" text="Main Menu" class="song-end-action-secondary" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
