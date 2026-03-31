@@ -464,7 +464,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         const float laneBackOverhang = 8f;
         float depth = 150f + laneBackOverhang;
         float centerZ = owner.StrikeLineZ - laneBackOverhang + (depth * 0.5f);
-        float laneWidth = Mathf.Max(0.08f, owner.FretSpacing * 1.02f);
+        // Keep adjacent lane floors from overlapping while leaving only a hairline seam.
+        float laneWidth = Mathf.Max(0.0f, owner.FretSpacing * 1);
         const float laneHeight = 0.025f;
 
         for (int lane = 0; lane < laneCount; lane++)
@@ -585,8 +586,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float laneSurfaceY = GetLaneGuideStringY();
         float depth = 150f;
         float centerZ = owner.StrikeLineZ + (depth * 0.5f);
-        const float laneGuideHeight = 0.045f;
-        const float laneGuideLift = 0.025f;
+        // Make lane guides read more like slim glowing planes that bridge the lane seams.
+        const float laneGuideHeight = 0.085f;
+        const float laneGuideLift = 0.038f;
 
         for (int lane = 0; lane < laneCount; lane++)
         {
@@ -594,8 +596,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             guide.name = "LaneGuide_" + lane;
             guide.transform.SetParent(gameplayRoot.transform, false);
             float xPos = lane * owner.FretSpacing;
+            float guideWidth = Mathf.Max(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), owner.FretSpacing * 0.03f);
             guide.transform.position = new Vector3(xPos, laneSurfaceY + laneGuideLift, centerZ);
-            guide.transform.localScale = new Vector3(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), laneGuideHeight, depth);
+            guide.transform.localScale = new Vector3(guideWidth, laneGuideHeight, depth);
 
             Material mat = CreateLaneGuideMaterial();
             Renderer renderer = guide.GetComponent<Renderer>();
@@ -914,9 +917,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             mat.EnableKeyword("_EMISSION");
             mat.SetColor("_EmissionColor", isActive ? new Color(0.18f, 0.32f, 0.46f, 1f) * Mathf.Pow(2f, 0.15f) : Color.black);
             if (mat.HasProperty("_EdgeFadeLeft"))
-                mat.SetFloat("_EdgeFadeLeft", isActive && !hasLeftNeighbor ? 0.12f : 0.01f);
+                mat.SetFloat("_EdgeFadeLeft", isActive && !hasLeftNeighbor ? 0.12f : 0.008f);
             if (mat.HasProperty("_EdgeFadeRight"))
-                mat.SetFloat("_EdgeFadeRight", isActive && !hasRightNeighbor ? 0.12f : 0.01f);
+                mat.SetFloat("_EdgeFadeRight", isActive && !hasRightNeighbor ? 0.12f : 0.008f);
             if (mat.HasProperty("_FrontBackFade"))
                 mat.SetFloat("_FrontBackFade", 0.1f);
             renderer.enabled = true;
@@ -1912,9 +1915,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         mat.SetColor("_BaseColor", new Color(0.025f, 0.03f, 0.045f, 0.14f));
         mat.SetColor("_TintColor", new Color(0.025f, 0.03f, 0.045f, 0.14f));
         if (mat.HasProperty("_EdgeFadeLeft"))
-            mat.SetFloat("_EdgeFadeLeft", 0.01f);
+            mat.SetFloat("_EdgeFadeLeft", 0.008f);
         if (mat.HasProperty("_EdgeFadeRight"))
-            mat.SetFloat("_EdgeFadeRight", 0.01f);
+            mat.SetFloat("_EdgeFadeRight", 0.008f);
         if (mat.HasProperty("_FrontBackFade"))
             mat.SetFloat("_FrontBackFade", 0.45f);
         return mat;
