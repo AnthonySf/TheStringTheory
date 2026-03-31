@@ -30,6 +30,7 @@ public sealed class TabsSongHeaderOverlay
     private static readonly Color MenuDarkButtonBorderColor = new Color(0.13f, 0.14f, 0.16f, 1f);
     private static readonly Color MenuOutlineNeutralColor = new Color(0.42f, 0.44f, 0.47f, 1f);
     private const float PauseMenuButtonFontScale = 1.5f;
+    private const float LibraryFooterButtonFontScale = 1.45f;
 
     private static readonly Color[] LogoStringColors =
     {
@@ -1055,6 +1056,14 @@ public sealed class TabsSongHeaderOverlay
         // Change this angle to adjust the dark main panel slant.
         pauseFrontPlate.style.rotate = new Rotate(new Angle(-6f, AngleUnit.Degree));
         pauseFrontPlate.style.backgroundColor = LibraryPanelColor;
+        pauseFrontPlate.style.borderTopWidth = 0f;
+        pauseFrontPlate.style.borderRightWidth = 0f;
+        pauseFrontPlate.style.borderBottomWidth = 0f;
+        pauseFrontPlate.style.borderLeftWidth = 0f;
+        pauseFrontPlate.style.borderTopColor = new Color(0.03f, 0.03f, 0.04f, 1f);
+        pauseFrontPlate.style.borderRightColor = new Color(0.03f, 0.03f, 0.04f, 1f);
+        pauseFrontPlate.style.borderBottomColor = new Color(0.03f, 0.03f, 0.04f, 1f);
+        pauseFrontPlate.style.borderLeftColor = new Color(0.03f, 0.03f, 0.04f, 1f);
         pauseFrontPlate.pickingMode = PickingMode.Ignore;
 
         VisualElement pauseRegion = new VisualElement();
@@ -1184,7 +1193,9 @@ public sealed class TabsSongHeaderOverlay
         Button toneLabButton = CreateActionButton("Tone Lab", () => owner?.OpenToneLabFromUi());
         Button mainMenuButton = CreateActionButton("Main Menu", () => owner?.OpenMainMenuFromUi());
         Button resumeButton = CreateActionButton("Resume", () => owner?.ResumePlaybackFromUi());
-        pauseActionButtons.AddRange(new[] { loopButton, songSettingsButton, songSelectButton, globalSettingsButton, toneLabButton, mainMenuButton, resumeButton });
+        Button endButton = CreateActionButton("End", () => owner?.EndSongFromUi());
+        Button restartButton = CreateActionButton("Restart", () => owner?.RetrySongFromUi());
+        pauseActionButtons.AddRange(new[] { loopButton, songSettingsButton, songSelectButton, globalSettingsButton, toneLabButton, mainMenuButton, resumeButton, endButton, restartButton });
 
         for (int i = 0; i < pauseActionButtons.Count; i++)
         {
@@ -1249,8 +1260,45 @@ public sealed class TabsSongHeaderOverlay
         resumeButton.style.unityFontDefinition = modernUiFontDefinition;
         resumeButton.style.marginBottom = 0f;
 
+        foreach (Button button in new[] { endButton, restartButton })
+        {
+            button.style.marginTop = 0f;
+            button.style.marginBottom = 0f;
+            button.style.minWidth = 0f;
+            button.style.width = StyleKeyword.Auto;
+            button.style.flexBasis = 0f;
+            button.style.height = 108f;
+            button.style.fontSize = 82f;
+            button.style.unityFontDefinition = modernUiFontDefinition;
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            button.style.color = new Color(0.94f, 0.96f, 0.98f, 1f);
+            button.style.borderTopWidth = 2f;
+            button.style.borderRightWidth = 2f;
+            button.style.borderBottomWidth = 2f;
+            button.style.borderLeftWidth = 2f;
+            button.style.borderTopColor = new Color(0f, 0f, 0f, 0f);
+            button.style.borderRightColor = new Color(0f, 0f, 0f, 0f);
+            button.style.borderBottomColor = new Color(0f, 0f, 0f, 0f);
+            button.style.borderLeftColor = new Color(0f, 0f, 0f, 0f);
+        }
+
+        VisualElement pauseEndRow = new VisualElement();
+        pauseEndRow.style.flexDirection = FlexDirection.Row;
+        pauseEndRow.style.alignItems = Align.Stretch;
+        pauseEndRow.style.width = Length.Percent(100f);
+        pauseEndRow.style.maxWidth = 620f;
+        pauseEndRow.style.marginTop = 14f;
+        endButton.style.marginRight = 14f;
+        endButton.style.flexGrow = 1f;
+        endButton.style.flexShrink = 1f;
+        restartButton.style.flexGrow = 1f;
+        restartButton.style.flexShrink = 1f;
+        pauseEndRow.Add(endButton);
+        pauseEndRow.Add(restartButton);
+
         pauseButtons.Add(mainMenuButton);
         pauseButtons.Add(resumeButton);
+        pauseButtons.Add(pauseEndRow);
         pauseStatusCard.Add(pauseStatusTitle);
         pauseStatusCard.Add(pauseInfoLabel);
         pauseSpeedCard.Add(pauseSpeedTitle);
@@ -2155,8 +2203,8 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         selectionRailBackdropGradient.style.right = 0f;
         selectionRailBackdropGradient.style.top = 0f;
         selectionRailBackdropGradient.style.bottom = 0f;
-        selectionRailBackdropGradient.style.backgroundColor = Color.clear;
-        selectionRailBackdropGradient.style.backgroundImage = new StyleBackground(GetPauseBackplateGradientTexture());
+        selectionRailBackdropGradient.style.backgroundColor = new Color(0.03f, 0.03f, 0.035f, 1f);
+        selectionRailBackdropGradient.style.backgroundImage = StyleKeyword.None;
         selectionRailBackdropGradient.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
         selectionRailBackdropGradient.pickingMode = PickingMode.Ignore;
         selectionRailBackdrop.Add(selectionRailBackdropGradient);
@@ -2234,6 +2282,26 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         selectionFooter.style.justifyContent = Justify.FlexStart;
         selectionFooter.style.alignItems = Align.Center;
         selectionFooter.style.marginTop = 22f;
+        selectionFooter.style.alignSelf = Align.FlexStart;
+        selectionFooter.style.marginLeft = 22f;
+        selectionFooter.style.marginBottom = 18f;
+        selectionFooter.style.paddingLeft = 26f;
+        selectionFooter.style.paddingRight = 26f;
+        selectionFooter.style.paddingTop = 16f;
+        selectionFooter.style.paddingBottom = 16f;
+        selectionFooter.style.backgroundColor = LibraryPanelColor;
+        selectionFooter.style.borderTopWidth = 0f;
+        selectionFooter.style.borderRightWidth = 0f;
+        selectionFooter.style.borderBottomWidth = 0f;
+        selectionFooter.style.borderLeftWidth = 0f;
+        selectionFooter.style.borderTopColor = new Color(0.03f, 0.03f, 0.04f, 1f);
+        selectionFooter.style.borderRightColor = new Color(0.03f, 0.03f, 0.04f, 1f);
+        selectionFooter.style.borderBottomColor = new Color(0.03f, 0.03f, 0.04f, 1f);
+        selectionFooter.style.borderLeftColor = new Color(0.03f, 0.03f, 0.04f, 1f);
+        selectionFooter.style.borderTopLeftRadius = 18f;
+        selectionFooter.style.borderTopRightRadius = 18f;
+        selectionFooter.style.borderBottomLeftRadius = 18f;
+        selectionFooter.style.borderBottomRightRadius = 18f;
 
         VisualElement selectionUtilityButtons = new VisualElement();
         selectionUtilityButtons.style.flexDirection = FlexDirection.Row;
@@ -2251,7 +2319,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         selectionPrimaryButtons.style.marginLeft = 14f;
 
         selectionBackButton = CreateLibraryFooterButton("Back", new Color(0.149f, 0.169f, 0.20f, 1f), () => owner?.CloseSongSelectionFromUi());
-        selectionStartButton = CreateLibraryFooterButton("Start", LibraryPrimaryColor, () => owner?.StartSelectedSongFromUi());
+        selectionStartButton = CreateLibraryFooterButton("Start", LibraryConfirmedSongColor, () => owner?.StartSelectedSongFromUi());
         selectionBackButton.style.marginRight = 14f;
         selectionPrimaryButtons.Add(selectionBackButton);
         selectionPrimaryButtons.Add(selectionStartButton);
@@ -5086,9 +5154,10 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         button.style.height = 68f;
         button.style.paddingLeft = 24f;
         button.style.paddingRight = 24f;
-        button.style.backgroundColor = backgroundColor;
-        button.style.color = backgroundColor == LibraryPrimaryColor
-            ? new Color(0.08f, 0.12f, 0.14f, 1f)
+        bool isPrimary = backgroundColor == LibraryPrimaryColor || backgroundColor == LibraryConfirmedSongColor;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        button.style.color = isPrimary
+            ? LibraryConfirmedSongColor
             : new Color(0.93f, 0.95f, 0.97f, 1f);
         button.style.fontSize = 24f;
         button.style.unityFontStyleAndWeight = FontStyle.Bold;
@@ -5100,9 +5169,9 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         button.style.borderRightWidth = 1f;
         button.style.borderBottomWidth = 1f;
         button.style.borderLeftWidth = 1f;
-        Color borderColor = backgroundColor == LibraryPrimaryColor
-            ? LibraryPrimaryColor
-            : new Color(0.19f, 0.22f, 0.27f, 1f);
+        Color borderColor = isPrimary
+            ? new Color(0f, 0f, 0f, 0f)
+            : new Color(0f, 0f, 0f, 0f);
         button.style.borderTopColor = borderColor;
         button.style.borderRightColor = borderColor;
         button.style.borderBottomColor = borderColor;
@@ -5110,6 +5179,30 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         button.style.unityTextAlign = TextAnchor.MiddleCenter;
         button.style.letterSpacing = 0f;
         button.style.unityFontDefinition = modernUiFontDefinition;
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.scale = new Scale(new Vector3(1.04f, 1.04f, 1f));
+            button.style.translate = new Translate(-8f, 0f);
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            button.style.color = LibraryConfirmedSongColor;
+            button.style.borderTopColor = LibraryConfirmedSongColor;
+            button.style.borderRightColor = LibraryConfirmedSongColor;
+            button.style.borderBottomColor = LibraryConfirmedSongColor;
+            button.style.borderLeftColor = LibraryConfirmedSongColor;
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.scale = new Scale(new Vector3(1f, 1f, 1f));
+            button.style.translate = new Translate(0f, 0f);
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            button.style.color = isPrimary
+                ? LibraryConfirmedSongColor
+                : new Color(0.93f, 0.95f, 0.97f, 1f);
+            button.style.borderTopColor = new Color(0f, 0f, 0f, 0f);
+            button.style.borderRightColor = new Color(0f, 0f, 0f, 0f);
+            button.style.borderBottomColor = new Color(0f, 0f, 0f, 0f);
+            button.style.borderLeftColor = new Color(0f, 0f, 0f, 0f);
+        });
         return button;
     }
 
@@ -6208,6 +6301,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         }
 
         float pauseMenuButtonFontSize = buttonFontSize * PauseMenuButtonFontScale;
+        float libraryFooterButtonFontSize = buttonFontSize * LibraryFooterButtonFontScale;
 
         foreach (Button button in pauseActionButtons)
         {
@@ -6223,6 +6317,14 @@ selectionShell.style.maxWidth = StyleKeyword.None;
                 continue;
 
             button.style.fontSize = pauseMenuButtonFontSize;
+        }
+
+        foreach (Button button in new[] { selectionSongsFolderButton, selectionRefreshButton, selectionBackButton, selectionStartButton })
+        {
+            if (button == null)
+                continue;
+
+            button.style.fontSize = libraryFooterButtonFontSize;
         }
 
         foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-section-title").ToList())
@@ -6323,7 +6425,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
             : new Color(0f, 0f, 0f, 0f);
         selectionRailBackdrop.style.display = compactSelection ? DisplayStyle.None : DisplayStyle.Flex;
         selectionRailBackdropGradient.style.display = compactSelection ? DisplayStyle.None : DisplayStyle.Flex;
-        selectionRailBackdrop.style.right = compactSelection ? 0f : -300f * menuLayoutScale;
+        selectionRailBackdrop.style.right = compactSelection ? 0f : -275f * menuLayoutScale;
         selectionRailBackdrop.style.top = compactSelection ? 0f : -320f * menuLayoutScale;
         selectionRailBackdrop.style.bottom = compactSelection ? 0f : -320f * menuLayoutScale;
         selectionRailBackdrop.style.width = compactSelection ? 0f : 1900f * menuLayoutScale;
@@ -6374,14 +6476,14 @@ selectionShell.style.maxWidth = StyleKeyword.None;
             row.button.style.height = compactSelection ? 180f * menuLayoutScale : 220f * menuLayoutScale;
         }
 
-        selectionBackButton.style.minWidth = compactSelection ? 180f * menuLayoutScale : 214f * menuLayoutScale;
-        selectionSongsFolderButton.style.minWidth = compactSelection ? 180f * menuLayoutScale : 214f * menuLayoutScale;
-        selectionRefreshButton.style.minWidth = compactSelection ? 160f * menuLayoutScale : 214f * menuLayoutScale;
-        selectionStartButton.style.minWidth = compactSelection ? 220f * menuLayoutScale : 250f * menuLayoutScale;
-        selectionBackButton.style.height = compactSelection ? 68f * menuLayoutScale : 76f * menuLayoutScale;
-        selectionSongsFolderButton.style.height = compactSelection ? 68f * menuLayoutScale : 76f * menuLayoutScale;
-        selectionRefreshButton.style.height = compactSelection ? 68f * menuLayoutScale : 76f * menuLayoutScale;
-        selectionStartButton.style.height = compactSelection ? 72f * menuLayoutScale : 82f * menuLayoutScale;
+        selectionBackButton.style.minWidth = compactSelection ? 210f * menuLayoutScale : 244f * menuLayoutScale;
+        selectionSongsFolderButton.style.minWidth = compactSelection ? 210f * menuLayoutScale : 244f * menuLayoutScale;
+        selectionRefreshButton.style.minWidth = compactSelection ? 188f * menuLayoutScale : 230f * menuLayoutScale;
+        selectionStartButton.style.minWidth = compactSelection ? 244f * menuLayoutScale : 284f * menuLayoutScale;
+        selectionBackButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
+        selectionSongsFolderButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
+        selectionRefreshButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
+        selectionStartButton.style.height = compactSelection ? 82f * menuLayoutScale : 94f * menuLayoutScale;
     }
 }
 
