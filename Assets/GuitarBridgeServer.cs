@@ -1192,10 +1192,17 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         SongLibraryEntry selected = availableSongs[songIndex];
+        SongMetadata selectedMetadata = LoadSongMetadataForEntry(selected);
+        bool samePendingSong = pendingTrackSelectionSong != null &&
+            string.Equals(pendingTrackSelectionSong.SongDirectory, selected.SongDirectory, StringComparison.OrdinalIgnoreCase);
         string previousPartId = preserveTrackIfPossible &&
+            samePendingSong &&
             selectedTrackListIndex >= 0 &&
             selectedTrackListIndex < pendingTrackSelectionParts.Count
             ? pendingTrackSelectionParts[selectedTrackListIndex].PartId
+            : string.Empty;
+        string savedPartId = selectedMetadata != null && !selectedMetadata.useAutoTrackSelection
+            ? selectedMetadata.selectedMusicXmlPartId ?? string.Empty
             : string.Empty;
 
         pendingTrackSelectionSong = selected;
@@ -1209,6 +1216,13 @@ public class GuitarBridgeServer : MonoBehaviour
                 string.Equals(track.PartId, previousPartId, StringComparison.OrdinalIgnoreCase));
             if (preservedIndex >= 0)
                 selectedTrackListIndex = preservedIndex;
+        }
+        else if (!string.IsNullOrEmpty(savedPartId))
+        {
+            int savedIndex = pendingTrackSelectionParts.FindIndex(track =>
+                string.Equals(track.PartId, savedPartId, StringComparison.OrdinalIgnoreCase));
+            if (savedIndex >= 0)
+                selectedTrackListIndex = savedIndex;
         }
 
         trackListScrollOffset = 0;
@@ -1343,10 +1357,11 @@ public class GuitarBridgeServer : MonoBehaviour
         SaveSelectedSongPreference(entry);
         if (!string.IsNullOrEmpty(preferredPartId) && entry != null)
         {
-            SongMetadata trackMetadata = LoadSongMetadata(Path.GetFileName(entry.Mp3Path));
+            string metadataPath = BuildSongMetadataPath(entry);
+            SongMetadata trackMetadata = LoadSongMetadata(Path.GetFileName(entry.Mp3Path), metadataPath);
             trackMetadata.useAutoTrackSelection = false;
             trackMetadata.selectedMusicXmlPartId = preferredPartId;
-            SaveSongMetadata(trackMetadata, entry.MetadataPath, Path.GetFileName(entry.Mp3Path));
+            SaveSongMetadata(trackMetadata, metadataPath, Path.GetFileName(entry.Mp3Path));
         }
 
         LoadTestSong();
@@ -3503,8 +3518,21 @@ private void ParseUdpState()
 
     private static string BuildSongMetadataPath(SongLibraryEntry entry)
     {
-        if (entry != null && !string.IsNullOrEmpty(entry.MetadataPath))
-            return entry.MetadataPath;
+        if (entry != null)
+        {
+            if (!string.IsNullOrEmpty(entry.MetadataPath))
+                return entry.MetadataPath;
+
+            if (!string.IsNullOrEmpty(entry.SongDirectory))
+                return Path.Combine(entry.SongDirectory, ExternalContentPaths.SongMetadataFileName);
+
+            if (!string.IsNullOrEmpty(entry.Mp3Path))
+            {
+                string songDirectory = Path.GetDirectoryName(entry.Mp3Path);
+                if (!string.IsNullOrEmpty(songDirectory))
+                    return Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
+            }
+        }
 
         string fallbackFileName = entry != null && !string.IsNullOrEmpty(entry.Mp3Path)
             ? Path.GetFileName(entry.Mp3Path)
@@ -3816,8 +3844,21 @@ private void ParseUdpState()
 
     private string GetMetadataPath(string songFileName)
     {
-        if (currentSongEntry != null && !string.IsNullOrEmpty(currentSongEntry.MetadataPath))
-            return currentSongEntry.MetadataPath;
+        if (currentSongEntry != null)
+        {
+            if (!string.IsNullOrEmpty(currentSongEntry.MetadataPath))
+                return currentSongEntry.MetadataPath;
+
+            if (!string.IsNullOrEmpty(currentSongEntry.SongDirectory))
+                return Path.Combine(currentSongEntry.SongDirectory, ExternalContentPaths.SongMetadataFileName);
+
+            if (!string.IsNullOrEmpty(currentSongEntry.Mp3Path))
+            {
+                string songDirectory = Path.GetDirectoryName(currentSongEntry.Mp3Path);
+                if (!string.IsNullOrEmpty(songDirectory))
+                    return Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
+            }
+        }
 
         string safeName = Regex.Replace(Path.GetFileNameWithoutExtension(songFileName), "[^a-zA-Z0-9_-]", "_");
         return Path.Combine(ExternalContentPaths.PersistentSongsDirectory, safeName, ExternalContentPaths.SongMetadataFileName);
