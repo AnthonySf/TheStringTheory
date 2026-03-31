@@ -324,8 +324,13 @@ public class GuitarBridgeServer : MonoBehaviour
     private float songTimer;
     private float audioSongTimer;
     private bool isPaused;
+    private int selectedPauseActionIndex;
+    private int selectedSongSettingsIndex;
     private float pauseSeekStepSeconds = 3.2f;
     private float playbackSpeedPercent = 100f;
+    private float heldUiHorizontalNextRepeatTime = -1f;
+    private int heldUiHorizontalDirection;
+    private string heldUiHorizontalContext = string.Empty;
 
     private bool loopEnabled;
     private float loopStartTime;
@@ -400,6 +405,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool songSelectionSongConfirmed;
     private bool showTrackSelection;
     private bool showGlobalSettings;
+    private int selectedGlobalSettingsTopIndex;
+    private int selectedGlobalSettingsItemIndex;
+    private string activeGlobalSettingsCategory = string.Empty;
     private int selectedSongListIndex;
     private int songListScrollOffset;
     private int selectedTrackListIndex;
@@ -540,6 +548,8 @@ public class GuitarBridgeServer : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
         {
             showSongSettings = !showSongSettings;
+            if (showSongSettings)
+                selectedSongSettingsIndex = 0;
             showGlobalSettings = false;
         }
 
@@ -582,12 +592,15 @@ public class GuitarBridgeServer : MonoBehaviour
         if (songHasEnded)
         {
             isPaused = true;
+            selectedPauseActionIndex = 1;
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.Space))
         {
             isPaused = !isPaused;
+            if (isPaused)
+                selectedPauseActionIndex = 1;
             showSongSettings = false;
             showMainMenu = false;
             mainMenuFlowActive = false;
@@ -600,33 +613,64 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!isPaused)
             return;
 
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            ResumePlaybackFromUi();
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.M))
         {
+            SetPauseActionSelectionFromUi(6);
             OpenMainMenuFromUi();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.L))
         {
+            SetPauseActionSelectionFromUi(2);
             OpenSongSelectionMenu();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.T))
         {
+            SetPauseActionSelectionFromUi(5);
             OpenOrFocusToneLab();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+        {
+            MovePauseActionSelectionFromUi(-1);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            MovePauseActionSelectionFromUi(1);
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
-            if (renderMode != GuitarRenderMode.Highway3D)
-            {
-                loopEnabled = !loopEnabled;
-                if (loopEnabled && loopEndTime <= loopStartTime)
-                    loopEndTime = loopStartTime + 0.25f;
-            }
+            ActivateSelectedPauseActionFromUi();
+            return;
         }
+
+        if (selectedPauseActionIndex == 0)
+        {
+            int horizontalDirection = GetHeldHorizontalArrowDirection();
+            if (ConsumeHeldHorizontalUiStep("pause-speed", horizontalDirection))
+            {
+                AdjustPauseSpeedFromUi(horizontalDirection * 5);
+                return;
+            }
+
+            return;
+        }
+
+        ConsumeHeldHorizontalUiStep("pause-speed", 0);
 
 
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
@@ -853,95 +897,100 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKeyDown(KeyCode.UpArrow))
         {
-            isPaused = !isPaused;
-            SyncAudioToSongTimer(playImmediately: !isPaused);
+            MoveSongSettingsSelectionFromUi(-1);
+            return;
         }
 
-        if (Input.GetKeyDown(KeyCode.O))
+        if (Input.GetKeyDown(KeyCode.DownArrow))
         {
-            ToggleOffsetScope();
-            SaveSongMetadata();
-            SyncAudioToSongTimer(playImmediately: !isPaused);
+            MoveSongSettingsSelectionFromUi(1);
+            return;
         }
-
-        if (Input.GetKeyDown(KeyCode.Q) || Input.GetKeyDown(KeyCode.Comma))
-            MoveTrackSelection(-1);
-        else if (Input.GetKeyDown(KeyCode.E) || Input.GetKeyDown(KeyCode.Period))
-            MoveTrackSelection(1);
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
-            isPaused = false;
-            SyncAudioToSongTimer(playImmediately: true);
+            ActivateSelectedSongSettingsItemFromUi();
+            return;
         }
 
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        int horizontalDirection = GetHeldHorizontalArrowDirection();
+        if (selectedSongSettingsIndex <= 2)
         {
-            if (Time.unscaledTime - lastLeftArrowTapTime <= ArrowDoubleTapThreshold)
+            if (ConsumeHeldHorizontalUiStep("song-settings-slider", horizontalDirection))
             {
-                JumpToAdjacentNote(false);
-                lastLeftArrowTapTime = -10f;
+                AdjustSelectedSongSettingFromUi(horizontalDirection);
                 return;
             }
-            lastLeftArrowTapTime = Time.unscaledTime;
         }
-
-        if (Input.GetKeyDown(KeyCode.RightArrow))
+        else
         {
-            if (Time.unscaledTime - lastRightArrowTapTime <= ArrowDoubleTapThreshold)
+            ConsumeHeldHorizontalUiStep("song-settings-slider", 0);
+            if (Input.GetKeyDown(KeyCode.LeftArrow))
             {
-                JumpToAdjacentNote(true);
-                lastRightArrowTapTime = -10f;
+                AdjustSelectedSongSettingFromUi(-1);
                 return;
             }
-            lastRightArrowTapTime = Time.unscaledTime;
+
+            if (Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                AdjustSelectedSongSettingFromUi(1);
+                return;
+            }
         }
-
-        float seekDirection = 0f;
-        if (Input.GetKey(KeyCode.LeftArrow))
-            seekDirection -= 1f;
-        if (Input.GetKey(KeyCode.RightArrow))
-            seekDirection += 1f;
-
-        if (!Mathf.Approximately(seekDirection, 0f))
-            SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
     }
 
     private void HandleGlobalSettingsControls()
     {
         if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.G))
         {
-            CloseGlobalSettingsFromUi();
+            if (!string.IsNullOrEmpty(activeGlobalSettingsCategory))
+            {
+                activeGlobalSettingsCategory = string.Empty;
+                selectedGlobalSettingsItemIndex = 0;
+            }
+            else
+            {
+                CloseGlobalSettingsFromUi();
+            }
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKeyDown(KeyCode.UpArrow))
         {
-            if (mainMenuFlowActive)
-            {
-                CloseGlobalSettingsFromUi();
-                return;
-            }
+            if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
+                selectedGlobalSettingsTopIndex = (selectedGlobalSettingsTopIndex + 6) % 7;
+            else
+                MoveGlobalSettingsItemSelection(-1);
+            return;
+        }
 
-            isPaused = !isPaused;
-            if (!isPaused)
-                showGlobalSettings = false;
-            SyncAudioToSongTimer(playImmediately: !isPaused);
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+        {
+            if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
+                selectedGlobalSettingsTopIndex = (selectedGlobalSettingsTopIndex + 1) % 7;
+            else
+                MoveGlobalSettingsItemSelection(1);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        {
+            AdjustCurrentGlobalSettingsValue(-1);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+        {
+            AdjustCurrentGlobalSettingsValue(1);
+            return;
         }
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
-            if (mainMenuFlowActive)
-            {
-                CloseGlobalSettingsFromUi();
-                return;
-            }
-
-            isPaused = false;
-            showGlobalSettings = false;
-            SyncAudioToSongTimer(playImmediately: true);
+            ActivateCurrentGlobalSettingsSelection();
+            return;
         }
     }
 
@@ -1343,6 +1392,170 @@ public class GuitarBridgeServer : MonoBehaviour
             loopEndTime = loopStartTime + 0.25f;
     }
 
+    public void SetPauseActionSelectionFromUi(int index)
+    {
+        selectedPauseActionIndex = Mathf.Clamp(index, 0, 7);
+    }
+
+    public void HoverPauseActionSelectionFromUi(int index)
+    {
+        if (!isPaused || showMainMenu || showSongSettings || showSongSelection || showTrackSelection || showGlobalSettings)
+            return;
+
+        SetPauseActionSelectionFromUi(index);
+    }
+
+    public void MovePauseActionSelectionFromUi(int delta)
+    {
+        const int optionCount = 8;
+        selectedPauseActionIndex = (selectedPauseActionIndex + delta + optionCount) % optionCount;
+    }
+
+    public void AdjustPauseSpeedFromUi(int deltaPercent)
+    {
+        if (deltaPercent == 0)
+            return;
+
+        SetPlaybackSpeedPercentFromUi(playbackSpeedPercent + deltaPercent);
+    }
+
+    private int GetHeldHorizontalArrowDirection()
+    {
+        bool leftHeld = Input.GetKey(KeyCode.LeftArrow);
+        bool rightHeld = Input.GetKey(KeyCode.RightArrow);
+        if (leftHeld == rightHeld)
+            return 0;
+
+        return leftHeld ? -1 : 1;
+    }
+
+    private bool ConsumeHeldHorizontalUiStep(string context, int direction)
+    {
+        if (direction == 0)
+        {
+            if (string.Equals(heldUiHorizontalContext, context, StringComparison.Ordinal))
+            {
+                heldUiHorizontalContext = string.Empty;
+                heldUiHorizontalDirection = 0;
+                heldUiHorizontalNextRepeatTime = -1f;
+            }
+
+            return false;
+        }
+
+        float now = Time.unscaledTime;
+        if (!string.Equals(heldUiHorizontalContext, context, StringComparison.Ordinal) ||
+            heldUiHorizontalDirection != direction)
+        {
+            heldUiHorizontalContext = context;
+            heldUiHorizontalDirection = direction;
+            heldUiHorizontalNextRepeatTime = now + 0.35f;
+            return true;
+        }
+
+        bool initialDown = (direction < 0 && Input.GetKeyDown(KeyCode.LeftArrow)) ||
+                           (direction > 0 && Input.GetKeyDown(KeyCode.RightArrow));
+        if (initialDown)
+        {
+            heldUiHorizontalNextRepeatTime = now + 0.35f;
+            return true;
+        }
+
+        if (now >= heldUiHorizontalNextRepeatTime)
+        {
+            heldUiHorizontalNextRepeatTime = now + 0.06f;
+            return true;
+        }
+
+        return false;
+    }
+
+    public void MoveSongSettingsSelectionFromUi(int delta)
+    {
+        const int optionCount = 8;
+        selectedSongSettingsIndex = (selectedSongSettingsIndex + delta + optionCount) % optionCount;
+    }
+
+    public void AdjustSelectedSongSettingFromUi(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        switch (selectedSongSettingsIndex)
+        {
+            case 0:
+                SetAudioOffsetMsFromUi(audioOffsetMs + (delta * 10f));
+                break;
+            case 1:
+                SetTabSpeedOffsetPercentFromUi(tabSpeedOffsetPercent + delta);
+                break;
+            case 2:
+                SetSongStartDelaySecondsFromUi(songStartDelaySeconds + (delta * 0.05f));
+                break;
+            case 3:
+                if (delta < 0)
+                    MoveTrackSelectionFromUi(-1);
+                else if (delta > 0)
+                    MoveTrackSelectionFromUi(1);
+                break;
+            case 4:
+                ToggleOffsetScopeFromUi();
+                break;
+        }
+    }
+
+    public void ActivateSelectedSongSettingsItemFromUi()
+    {
+        switch (selectedSongSettingsIndex)
+        {
+            case 3:
+                MoveTrackSelectionFromUi(1);
+                break;
+            case 4:
+                ToggleOffsetScopeFromUi();
+                break;
+            case 5:
+                OpenGlobalSettingsFromUi();
+                break;
+            case 6:
+                CloseSongSettingsFromUi();
+                break;
+            case 7:
+                ResumePlaybackFromUi();
+                break;
+        }
+    }
+
+    public void ActivateSelectedPauseActionFromUi()
+    {
+        switch (selectedPauseActionIndex)
+        {
+            case 0:
+                break;
+            case 1:
+                ToggleLoopFromUi();
+                break;
+            case 2:
+                OpenSongSettingsFromUi();
+                break;
+            case 3:
+                OpenSongSelectionFromUi();
+                break;
+            case 4:
+                OpenGlobalSettingsFromUi();
+                break;
+            case 5:
+                OpenToneLabFromUi();
+                break;
+            case 6:
+                OpenMainMenuFromUi();
+                break;
+            case 7:
+                ResumePlaybackFromUi();
+                break;
+        }
+    }
+
     public void OpenMainMenuFromUi()
     {
         showMainMenu = true;
@@ -1490,6 +1703,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public void OpenSongSettingsFromUi()
     {
         showSongSettings = true;
+        selectedSongSettingsIndex = 0;
         showMainMenu = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
@@ -1504,6 +1718,9 @@ public class GuitarBridgeServer : MonoBehaviour
             mainMenuFlowActive = false;
 
         showGlobalSettings = true;
+        selectedGlobalSettingsTopIndex = 0;
+        selectedGlobalSettingsItemIndex = 0;
+        activeGlobalSettingsCategory = string.Empty;
         showSongSettings = false;
         showMainMenu = false;
         showSongSelection = false;
@@ -1639,6 +1856,8 @@ public class GuitarBridgeServer : MonoBehaviour
     public void CloseGlobalSettingsFromUi()
     {
         showGlobalSettings = false;
+        activeGlobalSettingsCategory = string.Empty;
+        selectedGlobalSettingsItemIndex = 0;
         showMainMenu = mainMenuFlowActive;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
@@ -1684,6 +1903,69 @@ public class GuitarBridgeServer : MonoBehaviour
     public void MoveTrackSelectionFromUi(int delta)
     {
         MoveTrackSelection(delta);
+    }
+
+    public void HoverSongSettingsSelectionFromUi(int index)
+    {
+        if (!showSongSettings)
+            return;
+
+        selectedSongSettingsIndex = Mathf.Clamp(index, 0, 7);
+    }
+
+    public void HoverGlobalSettingsTopSelectionFromUi(int index)
+    {
+        if (!showGlobalSettings || !string.IsNullOrEmpty(activeGlobalSettingsCategory))
+            return;
+
+        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 6);
+    }
+
+    public void HoverGlobalSettingsItemSelectionFromUi(int index)
+    {
+        if (!showGlobalSettings || string.IsNullOrEmpty(activeGlobalSettingsCategory))
+            return;
+
+        List<RuntimeSettingSnapshot> settings = GetActiveGlobalSettingsItems();
+        selectedGlobalSettingsItemIndex = Mathf.Clamp(index, 0, Mathf.Max(0, settings.Count - 1));
+    }
+
+    public void ActivateGlobalSettingsTopSelectionFromUi(int index)
+    {
+        if (!showGlobalSettings)
+            return;
+
+        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 6);
+        ActivateCurrentGlobalSettingsSelection();
+    }
+
+    public void AdjustGlobalSettingsTopValueFromUi(int index, int delta)
+    {
+        if (!showGlobalSettings)
+            return;
+
+        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 6);
+        AdjustCurrentGlobalSettingsValue(delta);
+    }
+
+    public void ActivateGlobalSettingsItemSelectionFromUi(int index)
+    {
+        if (!showGlobalSettings || string.IsNullOrEmpty(activeGlobalSettingsCategory))
+            return;
+
+        List<RuntimeSettingSnapshot> settings = GetActiveGlobalSettingsItems();
+        selectedGlobalSettingsItemIndex = Mathf.Clamp(index, 0, Mathf.Max(0, settings.Count - 1));
+        ActivateCurrentGlobalSettingsSelection();
+    }
+
+    public void AdjustGlobalSettingsItemValueFromUi(int index, int delta)
+    {
+        if (!showGlobalSettings || string.IsNullOrEmpty(activeGlobalSettingsCategory))
+            return;
+
+        List<RuntimeSettingSnapshot> settings = GetActiveGlobalSettingsItems();
+        selectedGlobalSettingsItemIndex = Mathf.Clamp(index, 0, Mathf.Max(0, settings.Count - 1));
+        AdjustCurrentGlobalSettingsValue(delta);
     }
 
     public void ResumePlaybackFromUi()
@@ -2824,6 +3106,8 @@ private void ParseUdpState()
         {
             songTime = songTimer,
             isPaused = isPaused,
+            selectedPauseActionIndex = selectedPauseActionIndex,
+            selectedSongSettingsIndex = selectedSongSettingsIndex,
             loopEnabled = loopEnabled,
             loopStartTime = loopStartTime,
             loopEndTime = loopEndTime,
@@ -2844,6 +3128,9 @@ private void ParseUdpState()
             songSelectionSongConfirmed = songSelectionSongConfirmed,
             showTrackSelection = showTrackSelection,
             showGlobalSettings = showGlobalSettings,
+            selectedGlobalSettingsTopIndex = selectedGlobalSettingsTopIndex,
+            selectedGlobalSettingsItemIndex = selectedGlobalSettingsItemIndex,
+            activeGlobalSettingsCategory = activeGlobalSettingsCategory,
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
             availableSongSubtitles = availableSongs.Select(song => song.Subtitle ?? string.Empty).ToList(),
             availableSongScores = availableSongs.Select(GetStoredSongBestScorePercent).ToList(),
@@ -3687,6 +3974,188 @@ private void ParseUdpState()
         runtimeSettingById[definition.Id] = definition;
         runtimeSettingDefaultValues[definition.Id] = definition.Getter != null ? definition.Getter() : string.Empty;
         runtimeSettingsSnapshotDirty = true;
+    }
+
+    private void MoveGlobalSettingsItemSelection(int delta)
+    {
+        List<RuntimeSettingSnapshot> settings = GetActiveGlobalSettingsItems();
+        if (settings.Count == 0)
+        {
+            selectedGlobalSettingsItemIndex = 0;
+            return;
+        }
+
+        selectedGlobalSettingsItemIndex = (selectedGlobalSettingsItemIndex + delta + settings.Count) % settings.Count;
+    }
+
+    private void ActivateCurrentGlobalSettingsSelection()
+    {
+        if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
+        {
+            if (selectedGlobalSettingsTopIndex >= 2 && selectedGlobalSettingsTopIndex <= 5)
+            {
+                activeGlobalSettingsCategory = GetGlobalSettingsCategoryFromTopIndex(selectedGlobalSettingsTopIndex);
+                selectedGlobalSettingsItemIndex = 0;
+                return;
+            }
+
+            if (selectedGlobalSettingsTopIndex == 6)
+                ResetGlobalSettingsToDefaultsFromUi();
+
+            return;
+        }
+
+        List<RuntimeSettingSnapshot> settings = GetActiveGlobalSettingsItems();
+        if (settings.Count == 0)
+            return;
+
+        RuntimeSettingSnapshot setting = settings[Mathf.Clamp(selectedGlobalSettingsItemIndex, 0, settings.Count - 1)];
+        if (setting == null)
+            return;
+
+        if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
+        {
+            string nextValue = string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase) ? "false" : "true";
+            ApplyRuntimeSettingValue(setting.id, nextValue, saveMetadata: true);
+        }
+        else if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase) && setting.enumOptions != null && setting.enumOptions.Count > 0)
+        {
+            int currentIndex = setting.enumOptions.FindIndex(option => string.Equals(option, setting.value, StringComparison.OrdinalIgnoreCase));
+            if (currentIndex < 0)
+                currentIndex = 0;
+
+            int nextIndex = (currentIndex + 1) % setting.enumOptions.Count;
+            ApplyRuntimeSettingValue(setting.id, setting.enumOptions[nextIndex], saveMetadata: true);
+        }
+    }
+
+    private void AdjustCurrentGlobalSettingsValue(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
+        {
+            switch (selectedGlobalSettingsTopIndex)
+            {
+                case 0:
+                    ApplyRuntimeSettingValue("core.invertStrings", delta > 0 ? "true" : "false", saveMetadata: true);
+                    break;
+                case 1:
+                    if (runtimeSettingById.TryGetValue("render.mode", out RuntimeSettingDefinition renderDefinition) &&
+                        renderDefinition.EnumOptions != null &&
+                        renderDefinition.EnumOptions.Count > 0)
+                    {
+                        string current = renderDefinition.Getter != null ? renderDefinition.Getter() : renderMode.ToString();
+                        int currentIndex = renderDefinition.EnumOptions.FindIndex(option => string.Equals(option, current, StringComparison.OrdinalIgnoreCase));
+                        if (currentIndex < 0)
+                            currentIndex = 0;
+                        int nextIndex = (currentIndex + delta + renderDefinition.EnumOptions.Count) % renderDefinition.EnumOptions.Count;
+                        ApplyRuntimeSettingValue("render.mode", renderDefinition.EnumOptions[nextIndex], saveMetadata: true);
+                    }
+                    break;
+                case 6:
+                    if (delta != 0)
+                        ResetGlobalSettingsToDefaultsFromUi();
+                    break;
+            }
+
+            return;
+        }
+
+        List<RuntimeSettingSnapshot> settings = GetActiveGlobalSettingsItems();
+        if (settings.Count == 0)
+            return;
+
+        RuntimeSettingSnapshot setting = settings[Mathf.Clamp(selectedGlobalSettingsItemIndex, 0, settings.Count - 1)];
+        if (setting == null)
+            return;
+
+        if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplyRuntimeSettingValue(setting.id, delta > 0 ? "true" : "false", saveMetadata: true);
+            return;
+        }
+
+        if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase))
+        {
+            if (setting.enumOptions == null || setting.enumOptions.Count == 0)
+                return;
+
+            int currentIndex = setting.enumOptions.FindIndex(option => string.Equals(option, setting.value, StringComparison.OrdinalIgnoreCase));
+            if (currentIndex < 0)
+                currentIndex = 0;
+
+            int nextIndex = (currentIndex + delta + setting.enumOptions.Count) % setting.enumOptions.Count;
+            ApplyRuntimeSettingValue(setting.id, setting.enumOptions[nextIndex], saveMetadata: true);
+            return;
+        }
+
+        if (!float.TryParse(setting.value, NumberStyles.Float, CultureInfo.InvariantCulture, out float currentValue))
+            currentValue = setting.min;
+
+        float step = Mathf.Abs(setting.step) > 0.0001f ? setting.step : 1f;
+        float nextValue = Mathf.Clamp(currentValue + (delta * step), setting.min, setting.max);
+        string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase)
+            ? Mathf.RoundToInt(nextValue).ToString(CultureInfo.InvariantCulture)
+            : nextValue.ToString("0.###", CultureInfo.InvariantCulture);
+        ApplyRuntimeSettingValue(setting.id, serialized, saveMetadata: true);
+    }
+
+    private List<RuntimeSettingSnapshot> GetActiveGlobalSettingsItems()
+    {
+        string category = activeGlobalSettingsCategory;
+        if (string.IsNullOrEmpty(category))
+            return new List<RuntimeSettingSnapshot>();
+
+        return BuildRuntimeSettingsSnapshot()
+            .Where(section => string.Equals(CategorizeRuntimeSettingsSectionForMenu(section), category, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(section => section.settings ?? new List<RuntimeSettingSnapshot>())
+            .Where(setting => setting != null && !string.Equals(setting.id, "core.invertStrings", StringComparison.OrdinalIgnoreCase) && !string.Equals(setting.id, "render.mode", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    private static string GetGlobalSettingsCategoryFromTopIndex(int index)
+    {
+        switch (index)
+        {
+            case 2: return "Gameplay";
+            case 3: return "2D Tabs";
+            case 4: return "Highway3D";
+            case 5: return "Visuals";
+            default: return string.Empty;
+        }
+    }
+
+    private static string CategorizeRuntimeSettingsSectionForMenu(RuntimeSettingSectionSnapshot section)
+    {
+        string normalizedTitle = section?.title?.ToLowerInvariant() ?? string.Empty;
+        List<RuntimeSettingSnapshot> sectionSettings = section?.settings;
+
+        if (normalizedTitle.Contains("timing") || normalizedTitle.Contains("forgiveness") || normalizedTitle.Contains("settings") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "core.") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "timing."))
+            return "Gameplay";
+
+        if (normalizedTitle.Contains("tab") || normalizedTitle.Contains("layout") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "layout."))
+            return "2D Tabs";
+
+        if (normalizedTitle.Contains("highway") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "highway.") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "render."))
+            return "Highway3D";
+
+        if (normalizedTitle.Contains("visual") || normalizedTitle.Contains("color") || normalizedTitle.Contains("background") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "fx.") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "bg."))
+            return "Visuals";
+
+        return "Gameplay";
+    }
+
+    private static bool IsRuntimeSettingsSectionIdPrefix(List<RuntimeSettingSnapshot> settings, string prefix)
+    {
+        if (settings == null || string.IsNullOrEmpty(prefix))
+            return false;
+
+        return settings.Any(setting =>
+            setting != null &&
+            !string.IsNullOrEmpty(setting.id) &&
+            setting.id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
     }
 
     private List<RuntimeSettingSectionSnapshot> BuildRuntimeSettingsSnapshot()

@@ -132,6 +132,8 @@ public sealed class GuitarGameplaySnapshot
     public bool showSongSelection;
     public bool songSelectionSongConfirmed;
     public bool showTrackSelection;
+    public int selectedPauseActionIndex;
+    public int selectedSongSettingsIndex;
     public List<string> availableSongNames;
     public List<string> availableSongSubtitles;
     public List<float> availableSongScores;
@@ -159,6 +161,9 @@ public sealed class GuitarGameplaySnapshot
     public float currentTrackBestScorePercent;
     public bool showStartupTuningReminder;
     public bool showGlobalSettings;
+    public int selectedGlobalSettingsTopIndex;
+    public int selectedGlobalSettingsItemIndex;
+    public string activeGlobalSettingsCategory;
     public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
 }
 
