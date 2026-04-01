@@ -51,6 +51,10 @@ public static class MusicXmlLoader
         public bool pullStart;
         public bool vibrato;
         public float bendStep;
+        public double bendVisualStartQuarter;
+        public double bendVisualDurationQuarter;
+        public bool bendPreBend;
+        public bool bendRelease;
     }
 
     public static List<NoteData> LoadMusicXmlSong(string filePath, int targetPartIndex = -1)
@@ -355,7 +359,7 @@ public static class MusicXmlLoader
                         ParseTechniqueInfo(child,
                             out bool tieStart, out bool tieStop,
                             out bool slideStart, out bool hammerStart, out bool pullStart,
-                            out bool vibrato, out float bendStep);
+                            out bool vibrato, out float bendStep, out bool bendPreBend, out bool bendRelease);
 
                         if (TryReadTabNote(child, out stringIdx, out fret, out midi, out name))
                         {
@@ -376,7 +380,11 @@ public static class MusicXmlLoader
                                 hammerStart = hammerStart,
                                 pullStart = pullStart,
                                 vibrato = vibrato,
-                                bendStep = bendStep
+                                bendStep = bendStep,
+                                bendVisualStartQuarter = bendStep > 0f || bendPreBend || bendRelease ? noteStartQuarter : -1.0,
+                                bendVisualDurationQuarter = bendStep > 0f || bendPreBend || bendRelease ? durQuarter : 0.0,
+                                bendPreBend = bendPreBend,
+                                bendRelease = bendRelease
                             });
                         }
                         else if (TryReadPitchedNote(child, chromaticTranspose, out midi, out name))
@@ -401,7 +409,11 @@ public static class MusicXmlLoader
                                     hammerStart = hammerStart,
                                     pullStart = pullStart,
                                     vibrato = vibrato,
-                                    bendStep = bendStep
+                                    bendStep = bendStep,
+                                    bendVisualStartQuarter = bendStep > 0f || bendPreBend || bendRelease ? noteStartQuarter : -1.0,
+                                    bendVisualDurationQuarter = bendStep > 0f || bendPreBend || bendRelease ? durQuarter : 0.0,
+                                    bendPreBend = bendPreBend,
+                                    bendRelease = bendRelease
                                 });
                             }
                         }
@@ -636,6 +648,11 @@ public static class MusicXmlLoader
                 existing.pullStart |= n.pullStart;
                 existing.vibrato |= n.vibrato;
                 existing.bendStep = Mathf.Max(existing.bendStep, n.bendStep);
+                if (existing.bendVisualStartQuarter < 0.0 && n.bendVisualStartQuarter >= 0.0)
+                    existing.bendVisualStartQuarter = n.bendVisualStartQuarter;
+                existing.bendVisualDurationQuarter = Math.Max(existing.bendVisualDurationQuarter, n.bendVisualDurationQuarter);
+                existing.bendPreBend |= n.bendPreBend;
+                existing.bendRelease |= n.bendRelease;
                 existing.fromTab |= n.fromTab;
                 continue;
             }
@@ -656,7 +673,28 @@ public static class MusicXmlLoader
                     previous.durationQuarter += current.durationQuarter;
                     previous.tieStart = previous.tieStart || current.tieStart;
                     previous.vibrato = previous.vibrato || current.vibrato;
+                    float previousBendStep = previous.bendStep;
+                    bool previousPreBend = previous.bendPreBend;
                     previous.bendStep = Mathf.Max(previous.bendStep, current.bendStep);
+                    bool startsNewVisibleBendSegment =
+                        current.bendVisualStartQuarter >= 0.0 &&
+                        (current.bendRelease ||
+                         current.bendPreBend != previousPreBend ||
+                         Math.Abs(current.bendStep - previousBendStep) > 0.01f);
+
+                    if (startsNewVisibleBendSegment)
+                    {
+                        previous.bendVisualStartQuarter = current.bendVisualStartQuarter;
+                        previous.bendVisualDurationQuarter = current.bendVisualDurationQuarter;
+                    }
+                    else if (current.bendVisualDurationQuarter > 0.0)
+                    {
+                        double bendSegmentEndQuarter = current.quarterPos + current.bendVisualDurationQuarter;
+                        double visualStartQuarter = previous.bendVisualStartQuarter >= 0.0 ? previous.bendVisualStartQuarter : previous.quarterPos;
+                        previous.bendVisualDurationQuarter = Math.Max(previous.bendVisualDurationQuarter, bendSegmentEndQuarter - visualStartQuarter);
+                    }
+                    previous.bendPreBend = previous.bendPreBend || current.bendPreBend;
+                    previous.bendRelease = previous.bendRelease || current.bendRelease;
                     continue;
                 }
             }
@@ -684,12 +722,16 @@ public static class MusicXmlLoader
                 n.fret,
                 n.note,
                 chordIds[i],
-                n.bendStep > 0f ? NoteTechnique.Bend : (n.vibrato ? NoteTechnique.Vibrato : NoteTechnique.None),
+                (n.bendStep > 0f || n.bendPreBend || n.bendRelease) ? NoteTechnique.Bend : (n.vibrato ? NoteTechnique.Vibrato : NoteTechnique.None),
                 -1,
                 n.bendStep,
                 false,
                 true,
-                -1);
+                -1,
+                n.bendPreBend,
+                n.bendRelease,
+                n.bendVisualStartQuarter >= 0.0 ? (float)QuarterToSeconds(n.bendVisualStartQuarter, tempoMap) : -1f,
+                (float)Math.Max(0.0, QuarterToSeconds(n.quarterPos + n.bendVisualDurationQuarter, tempoMap) - QuarterToSeconds(n.quarterPos, tempoMap)));
 
             result.Add(noteData);
             sourceIndexToResultIndex[n.sourceIndex] = i;
@@ -771,7 +813,9 @@ public static class MusicXmlLoader
         out bool hammerStart,
         out bool pullStart,
         out bool vibrato,
-        out float bendStep)
+        out float bendStep,
+        out bool bendPreBend,
+        out bool bendRelease)
     {
         tieStart = noteNode.Elements().Any(e => e.Name.LocalName == "tie" && Attr(e, "type") == "start");
         tieStop = noteNode.Elements().Any(e => e.Name.LocalName == "tie" && Attr(e, "type") == "stop");
@@ -780,6 +824,8 @@ public static class MusicXmlLoader
         pullStart = false;
         vibrato = false;
         bendStep = 0f;
+        bendPreBend = false;
+        bendRelease = false;
 
         XElement notations = noteNode.Elements().FirstOrDefault(e => e.Name.LocalName == "notations");
         if (notations == null)
@@ -803,6 +849,8 @@ public static class MusicXmlLoader
             XElement bendNode = technical.Elements().FirstOrDefault(e => e.Name.LocalName == "bend");
             if (bendNode != null)
             {
+                bendPreBend = bendNode.Elements().Any(e => e.Name.LocalName == "pre-bend");
+                bendRelease = bendNode.Elements().Any(e => e.Name.LocalName == "release");
                 float bendAlter;
                 if (float.TryParse(ChildValue(bendNode, "bend-alter"), NumberStyles.Any, CultureInfo.InvariantCulture, out bendAlter))
                     bendStep = bendAlter;

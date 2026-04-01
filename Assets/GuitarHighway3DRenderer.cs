@@ -12,9 +12,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly Dictionary<int, HighwayNoteView> noteViews = new Dictionary<int, HighwayNoteView>();
     private readonly Dictionary<int, GameObject> chordFrames = new Dictionary<int, GameObject>();
     private readonly Dictionary<int, int> slideDestinationBySourceId = new Dictionary<int, int>();
+    private readonly Dictionary<int, int> bendDestinationBySourceId = new Dictionary<int, int>();
+    private readonly Dictionary<int, int> bendSourceByDestinationId = new Dictionary<int, int>();
     private readonly Dictionary<int, GameplayNoteState> noteStatesById = new Dictionary<int, GameplayNoteState>();
     private readonly Dictionary<int, string> noteLaneTagTextById = new Dictionary<int, string>();
     private readonly List<LaneHighlightChunk> laneHighlightChunks = new List<LaneHighlightChunk>();
+    private readonly HashSet<int> debugLoggedBendProfileIds = new HashSet<int>();
+    private readonly HashSet<int> debugLoggedBendNearStrikeIds = new HashSet<int>();
+    private Mesh techniqueRibbonMesh;
+    private Material sharedTechniqueRibbonMaterial;
 
     private GuitarBridgeServer owner;
     private Camera mainCamera;
@@ -37,7 +43,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool backgroundUsingMenuMode = true;
     private TabsSongHeaderOverlay songHeaderOverlay;
     private int originalMainCameraCullingMask = -1;
-    private CameraClearFlags originalMainCameraClearFlags;
+    private CameraClearFlags originalMainCameraClearFlags; 
     private float currentVisualNoteSpeed = 12f;
     private float cameraTargetX;
     private float cameraTargetFOV = 60f;
@@ -46,7 +52,53 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool gameplayVisualsVisible = true;
     private bool gameplayBuilt;
     private const int BackgroundLayer = 2;
+    private const float StringLaneSpacing = 1.2f;
+    private const float BendRibbonVisualHeightInStrings = 2f;
+    private const float BendRibbonLeadOutDistance = 0.9f;
+    private const float BendRibbonCornerDepth = 0.25f;
+    private const float BendRibbonCornerRoundness = 3f;
+    private const float BendRibbonMinimumTopHoldDistance = 0.45f;
+    private const float BendRibbonHeadMaximumFlatHoldSeconds = 1.2f;
+    private const float BendRibbonFlatLightStrength = 0.85f;
+    private const float BendRibbonDarkBandPaddingDistance = 0.32f;
+    private const bool DebugBendRibbonLogs = false;
     private string backgroundSignature = string.Empty;
+    private static readonly int CurveP0ShaderId = Shader.PropertyToID("_CurveP0");
+    private static readonly int CurveP1ShaderId = Shader.PropertyToID("_CurveP1");
+    private static readonly int CurveP2ShaderId = Shader.PropertyToID("_CurveP2");
+    private static readonly int CurveP3ShaderId = Shader.PropertyToID("_CurveP3");
+    private static readonly int HalfWidthShaderId = Shader.PropertyToID("_HalfWidth");
+    private static readonly int CenterColorShaderId = Shader.PropertyToID("_CenterColor");
+    private static readonly int EdgeColorShaderId = Shader.PropertyToID("_EdgeColor");
+    private static readonly int EmissionColorShaderId = Shader.PropertyToID("_EmissionColor");
+    private static readonly int VisibleStart01ShaderId = Shader.PropertyToID("_VisibleStart01");
+    private static readonly int VisibleFadeSoftness01ShaderId = Shader.PropertyToID("_VisibleFadeSoftness01");
+    private static readonly int LengthFadeSoftness01ShaderId = Shader.PropertyToID("_LengthFadeSoftness01");
+    private static readonly int FlatLightStrengthShaderId = Shader.PropertyToID("_FlatLightStrength");
+    private static readonly int PathModeShaderId = Shader.PropertyToID("_PathMode");
+    private static readonly int CornerRoundnessShaderId = Shader.PropertyToID("_CornerRoundness");
+    private static readonly int DarkBandStart01ShaderId = Shader.PropertyToID("_DarkBandStart01");
+    private static readonly int DarkBandEnd01ShaderId = Shader.PropertyToID("_DarkBandEnd01");
+
+    private struct TechniqueRibbonProfile
+    {
+        public Vector3 start;
+        public Vector3 control1;
+        public Vector3 control2;
+        public Vector3 end;
+        public float halfWidth;
+        public float pathMode;
+        public float cornerRoundness;
+        public float darkBandStart01;
+        public float darkBandEnd01;
+    }
+
+    private struct SlideRibbonFadeState
+    {
+        public bool freezeActive;
+        public float fadeStartSongTime;
+        public float fadeEndSongTime;
+    }
 
     private sealed class LaneHighlightChunk
     {
@@ -139,6 +191,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (root != null)
             Object.Destroy(root);
+
+        if (sharedTechniqueRibbonMaterial != null)
+        {
+            Object.Destroy(sharedTechniqueRibbonMaterial);
+            sharedTechniqueRibbonMaterial = null;
+        }
+
+        if (techniqueRibbonMesh != null)
+        {
+            Object.Destroy(techniqueRibbonMesh);
+            techniqueRibbonMesh = null;
+        }
     }
 
     private void SetGameplayVisualsVisible(bool visible)
@@ -156,7 +220,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         chartById.Clear();
         chordGroups.Clear();
         slideDestinationBySourceId.Clear();
+        bendDestinationBySourceId.Clear();
+        bendSourceByDestinationId.Clear();
         noteLaneTagTextById.Clear();
+        debugLoggedBendProfileIds.Clear();
+        debugLoggedBendNearStrikeIds.Clear();
 
         if (chartNotes == null)
             return;
@@ -165,6 +233,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             NoteData note = chartNotes[i];
             chartById[note.id] = note;
+
+            if (DebugBendRibbonLogs && HasBendRibbon(note))
+            {
+                Debug.Log(
+                    $"[BEND CACHE] id={note.id} t={note.time:F3} dur={note.duration:F3} string={note.stringIdx} fret={note.fret} " +
+                    $"bend={note.bendStep:F2} pre={note.bendPreBend} rel={note.bendRelease} " +
+                    $"visualStart={note.bendVisualStartTime:F3} visualDur={note.bendVisualDuration:F3}");
+            }
 
             if (note.linkedFromNoteId >= 0)
                 slideDestinationBySourceId[note.linkedFromNoteId] = note.id;
@@ -184,7 +260,60 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         foreach (var key in chordGroups.Keys.ToList())
             chordGroups[key] = chordGroups[key].OrderBy(n => n.stringIdx).ThenBy(n => n.fret).ToList();
 
+        for (int i = 0; i < chartNotes.Count; i++)
+        {
+            NoteData source = chartNotes[i];
+            if (!HasBendRibbon(source))
+                continue;
+
+            int destinationIndex = FindBendDestinationIndex(chartNotes, i);
+            if (destinationIndex < 0)
+                continue;
+
+            NoteData destination = chartNotes[destinationIndex];
+            bendDestinationBySourceId[source.id] = destination.id;
+            bendSourceByDestinationId[destination.id] = source.id;
+        }
+
         BuildLaneTagNoteMap(chartNotes);
+    }
+
+    private static int FindBendDestinationIndex(List<NoteData> chartNotes, int sourceIndex)
+    {
+        NoteData source = chartNotes[sourceIndex];
+        float expectedEndTime = source.time + Mathf.Max(0.05f, source.duration);
+        const float earlyTolerance = 0.06f;
+        const float lateTolerance = 0.14f;
+
+        int bestIndex = -1;
+        float bestDelta = float.MaxValue;
+
+        for (int i = sourceIndex + 1; i < chartNotes.Count; i++)
+        {
+            NoteData candidate = chartNotes[i];
+            if (candidate.time > expectedEndTime + lateTolerance)
+                break;
+
+            if (candidate.stringIdx != source.stringIdx || candidate.fret != source.fret)
+                continue;
+
+            // If the candidate starts its own bend, it is a real new anchor note and
+            // should keep its travelling box instead of being hidden as a continuation.
+            if (candidate.bendStep > 0f || candidate.technique == NoteTechnique.Bend || candidate.bendPreBend || candidate.bendRelease)
+                continue;
+
+            if (candidate.time < expectedEndTime - earlyTolerance)
+                continue;
+
+            float delta = Mathf.Abs(candidate.time - expectedEndTime);
+            if (delta < bestDelta)
+            {
+                bestDelta = delta;
+                bestIndex = i;
+            }
+        }
+
+        return bestIndex;
     }
 
     private void BuildLaneTagNoteMap(List<NoteData> chartNotes)
@@ -1110,7 +1239,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             GameplayNoteState state = snapshot.noteStates[i];
             float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
             bool keepForResult = state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime();
-            bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || travelZ >= owner.StrikeLineZ);
+            bool keepForTechnique = state.IsResolved && ShouldKeepTechniqueAliveAfterResolution(state.data, renderSongTime);
+            bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || keepForTechnique || travelZ >= owner.StrikeLineZ);
 
             if (!visible)
                 continue;
@@ -1124,7 +1254,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             }
 
             float displayZ = Mathf.Max(owner.StrikeLineZ, travelZ);
-            UpdateNoteView(view, state, displayZ, renderSongTime);
+            UpdateNoteView(view, state, displayZ, travelZ, renderSongTime);
         }
 
         foreach (int key in noteViews.Keys.ToList())
@@ -1225,28 +1355,25 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         Renderer slideRibbonRenderer = null;
         if (data.slideTargetFret >= 0)
         {
-            slideRibbon = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            slideRibbon.name = "SlideRibbon_" + data.id;
-            slideRibbon.transform.SetParent(techniqueRoot.transform, false);
-            slideRibbonRenderer = slideRibbon.GetComponent<Renderer>();
-            slideRibbonRenderer.material = owner.CreateSharedTransparentMaterial(new Color(owner.GetStringColor(data.stringIdx).r, owner.GetStringColor(data.stringIdx).g, owner.GetStringColor(data.stringIdx).b, 0.32f), 0.16f);
-            ConfigureOverlayMaterial(slideRibbonRenderer.material, 100, true);
-            Object.Destroy(slideRibbon.GetComponent<Collider>());
-
+            EnsureTechniqueRibbonResources();
+            if (techniqueRibbonMesh != null && sharedTechniqueRibbonMaterial != null)
+            {
+                slideRibbon = CreateTechniqueRibbonObject("SlideRibbon_" + data.id, techniqueRoot.transform, techniqueRibbonMesh, sharedTechniqueRibbonMaterial, out slideRibbonRenderer);
+            }
         }
 
         GameObject bendRibbon = null;
         Renderer bendRibbonRenderer = null;
-        if (data.technique == NoteTechnique.Bend || data.bendStep > 0f)
+        GameObject bendSustainRibbon = null;
+        Renderer bendSustainRibbonRenderer = null;
+        if (HasBendRibbon(data))
         {
-            bendRibbon = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            bendRibbon.name = "BendRibbon_" + data.id;
-            bendRibbon.transform.SetParent(techniqueRoot.transform, false);
-            bendRibbonRenderer = bendRibbon.GetComponent<Renderer>();
-            bendRibbonRenderer.material = owner.CreateSharedTransparentMaterial(new Color(0.7f, 0.92f, 1f, 0.3f), 0.12f);
-            ConfigureOverlayMaterial(bendRibbonRenderer.material, 100, true);
-            Object.Destroy(bendRibbon.GetComponent<Collider>());
-
+            EnsureTechniqueRibbonResources();
+            if (techniqueRibbonMesh != null && sharedTechniqueRibbonMaterial != null)
+            {
+                bendRibbon = CreateTechniqueRibbonObject("BendRibbon_" + data.id, techniqueRoot.transform, techniqueRibbonMesh, sharedTechniqueRibbonMaterial, out bendRibbonRenderer);
+                bendSustainRibbon = CreateTechniqueRibbonObject("BendSustainRibbon_" + data.id, techniqueRoot.transform, techniqueRibbonMesh, sharedTechniqueRibbonMaterial, out bendSustainRibbonRenderer);
+            }
         }
 
         return new HighwayNoteView
@@ -1265,14 +1392,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             techniqueRoot = techniqueRoot,
             slideRibbon = slideRibbon,
             slideRibbonRenderer = slideRibbonRenderer,
+            slideRibbonPropertyBlock = slideRibbonRenderer != null ? new MaterialPropertyBlock() : null,
             bendRibbon = bendRibbon,
             bendRibbonRenderer = bendRibbonRenderer,
+            bendRibbonPropertyBlock = bendRibbonRenderer != null ? new MaterialPropertyBlock() : null,
+            bendSustainRibbon = bendSustainRibbon,
+            bendSustainRibbonRenderer = bendSustainRibbonRenderer,
+            bendSustainRibbonPropertyBlock = bendSustainRibbonRenderer != null ? new MaterialPropertyBlock() : null,
             baseColor = owner.GetStringColor(data.stringIdx),
             baseScale = cube.transform.localScale
         };
     }
 
-    private void UpdateNoteView(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
+    private void UpdateNoteView(HighwayNoteView view, GameplayNoteState state, float z, float rawTravelZ, float songTime)
     {
         if (view.noteRoot == null)
             return;
@@ -1281,6 +1413,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float y = GetStringY(state.data.stringIdx);
         float floorY = GetLaneSurfaceTopY();
         float visualNoteZ = z - GetVisualNoteStrikeOffset(view);
+        float rawVisualNoteZ = rawTravelZ - GetVisualNoteStrikeOffset(view);
         float laneTagY = GetLaneGuideStringY() + 0.06f;
         float laneTagZ = visualNoteZ - 0.08f;
 
@@ -1294,10 +1427,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
 
         bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
+        bool hideBendTargetBox = bendSourceByDestinationId.ContainsKey(state.data.id);
+        bool hideSlideTargetBox = IsSlideDestinationNote(state.data);
+        bool hideTravelingNoteBox = hideBendTargetBox || hideSlideTargetBox;
+        bool hideResolvedCoreVisuals = state.IsResolved &&
+            songTime - state.resolvedAt > GetResolvedFadeTime() &&
+            ShouldKeepTechniqueAliveAfterResolution(state.data, songTime);
         if (view.noteRenderer != null)
-            view.noteRenderer.enabled = !isStuckOnString;
+            view.noteRenderer.enabled = !hideResolvedCoreVisuals && !isStuckOnString && !hideTravelingNoteBox;
         if (view.outlineRoot != null)
-            view.outlineRoot.SetActive(isStuckOnString);
+            view.outlineRoot.SetActive(!hideResolvedCoreVisuals && isStuckOnString);
+        if (view.label != null)
+            view.label.gameObject.SetActive(!hideResolvedCoreVisuals);
 
         float tailLength = Mathf.Max(0f, z - owner.StrikeLineZ);
         if (view.tail != null)
@@ -1361,14 +1502,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (view.marker != null)
         {
-            view.marker.SetActive(owner.highwayShowLandingDot);
+            view.marker.SetActive(owner.highwayShowLandingDot && !hideResolvedCoreVisuals);
             Renderer markerRenderer = view.marker.GetComponent<Renderer>();
             Color markerColor = state.IsHit ? owner.highwayHitColor : (state.IsMissed ? owner.highwayMissColor : view.baseColor);
             markerRenderer.material.color = markerColor;
             markerRenderer.material.SetColor("_EmissionColor", markerColor * (state.IsHit ? 2f : 0.8f));
         }
 
-        UpdateTechniqueView(view, state, visualNoteZ, songTime);
+        UpdateTechniqueView(view, state, visualNoteZ, rawVisualNoteZ, songTime);
     }
 
 
@@ -1388,13 +1529,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
     }
 
-    private void UpdateTechniqueView(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
+    private void UpdateTechniqueView(HighwayNoteView view, GameplayNoteState state, float displayVisualZ, float rawVisualNoteZ, float songTime)
     {
         if (view.techniqueRoot == null)
             return;
 
-        bool showSlide = UpdateSlideTechnique(view, state, z, songTime);
-        bool showBend = UpdateBendTechnique(view, state, z, songTime);
+        bool showSlide = UpdateSlideTechnique(view, state, displayVisualZ, songTime);
+        bool showBend = UpdateBendTechnique(view, state, rawVisualNoteZ, songTime);
         view.techniqueRoot.SetActive(showSlide || showBend);
     }
 
@@ -1404,57 +1545,337 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return false;
 
         if (state.data.linkedFromNoteId >= 0)
+        {
+            view.slideRibbon.SetActive(false);
             return false;
+        }
 
         NoteData anchorData = state.data;
         int targetFret = anchorData.slideTargetFret;
         if (targetFret < 0)
+        {
+            view.slideRibbon.SetActive(false);
             return false;
+        }
 
+        if (!TryBuildSlideRibbonProfile(view, state, z, songTime, out TechniqueRibbonProfile liveProfile))
+        {
+            view.slideRibbonFadeState.freezeActive = false;
+            view.slideRibbon.SetActive(false);
+            return false;
+        }
+
+        float fadeStartSongTime = anchorData.time;
+        float fadeEndSongTime = GetSlideRibbonFadeEndTime(anchorData, songTime, liveProfile);
+        bool shouldFreezeRibbon = songTime >= fadeStartSongTime - 0.0001f;
+
+        if (shouldFreezeRibbon)
+        {
+            if (!view.slideRibbonFadeState.freezeActive)
+            {
+                view.slideRibbonFadeState.freezeActive = true;
+                view.slideRibbonFadeState.fadeStartSongTime = fadeStartSongTime;
+                view.slideRibbonFadeState.fadeEndSongTime = Mathf.Max(fadeStartSongTime + 0.02f, fadeEndSongTime);
+            }
+        }
+        else
+        {
+            view.slideRibbonFadeState.freezeActive = false;
+        }
+
+        float visibleStart01 = 0f;
+        if (view.slideRibbonFadeState.freezeActive)
+        {
+            float fadeDuration = Mathf.Max(0.02f, view.slideRibbonFadeState.fadeEndSongTime - view.slideRibbonFadeState.fadeStartSongTime);
+            visibleStart01 = Mathf.Clamp01((songTime - view.slideRibbonFadeState.fadeStartSongTime) / fadeDuration);
+            if (visibleStart01 >= 0.999f)
+            {
+                view.slideRibbon.SetActive(false);
+                return false;
+            }
+        }
+
+        ApplySlideTechniqueRibbon(view, liveProfile, state.IsResolved, visibleStart01);
+        return true;
+    }
+
+    private float GetSlideRibbonFadeEndTime(NoteData anchorData, float songTime, TechniqueRibbonProfile profile)
+    {
+        if (slideDestinationBySourceId.TryGetValue(anchorData.id, out int destinationId) &&
+            chartById.TryGetValue(destinationId, out NoteData destinationData))
+        {
+            return destinationData.time;
+        }
+
+        float estimatedTravelSeconds = Vector3.Distance(profile.start, profile.end) / Mathf.Max(0.01f, currentVisualNoteSpeed);
+        return Mathf.Max(anchorData.time + 0.1f, songTime + estimatedTravelSeconds);
+    }
+
+    private bool TryBuildSlideRibbonProfile(HighwayNoteView view, GameplayNoteState state, float noteCenterZ, float songTime, out TechniqueRibbonProfile profile)
+    {
+        profile = default;
+
+        NoteData anchorData = state.data;
+        float startDepth = Mathf.Max(0.1f, view.baseScale.z);
+        float startTravelZ = noteCenterZ + (startDepth * 0.5f);
+        float startAttachZ = startTravelZ;
         float startX = GetVisualNoteX(anchorData);
         float startY = GetStringY(anchorData.stringIdx);
-        float startZ = noteStatesById.TryGetValue(anchorData.id, out GameplayNoteState anchorState)
-            ? Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((anchorState.data.time - songTime) * currentVisualNoteSpeed))
-            : z;
 
         NoteData? destinationData = null;
         if (slideDestinationBySourceId.TryGetValue(anchorData.id, out int destinationId) && chartById.TryGetValue(destinationId, out NoteData resolvedDestination))
             destinationData = resolvedDestination;
 
-        float endX = destinationData.HasValue ? GetVisualNoteX(destinationData.Value) : GetNoteX(targetFret);
+        float endX = destinationData.HasValue ? GetVisualNoteX(destinationData.Value) : GetNoteX(anchorData.slideTargetFret);
         float endY = destinationData.HasValue ? GetStringY(destinationData.Value.stringIdx) : startY;
-        float endZ;
+        float endDepth = startDepth;
+        if (destinationData.HasValue)
+        {
+            if (noteViews.TryGetValue(destinationData.Value.id, out HighwayNoteView destinationView) && destinationView != null)
+                endDepth = Mathf.Max(0.1f, destinationView.baseScale.z);
+            else
+                endDepth = GetApproximateTechniqueNoteDepth(destinationData.Value);
+        }
+        float endTravelZ;
         if (destinationData.HasValue && noteStatesById.TryGetValue(destinationData.Value.id, out GameplayNoteState destinationState))
         {
-            endZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((destinationState.data.time - songTime) * currentVisualNoteSpeed));
+            endTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((destinationState.data.time - songTime) * currentVisualNoteSpeed));
         }
         else
         {
-            endZ = Mathf.Max(startZ + 0.6f, startZ + Mathf.Abs(endX - startX) * 0.35f);
+            endTravelZ = Mathf.Max(startTravelZ + 0.75f, startTravelZ + Mathf.Abs(endX - startX) * 0.50f);
         }
 
-        Vector3 start = new Vector3(startX, startY, startZ);
-        Vector3 end = new Vector3(endX, endY, endZ);
-        Vector3 direction = end - start;
-        float length = direction.magnitude;
-        if (length <= 0.01f)
+        float endAttachZ = endTravelZ - (endDepth * 0.95f);
+        if (endAttachZ <= startAttachZ + 0.05f)
+            endAttachZ = startAttachZ + 0.05f;
+
+        Vector3 start = new Vector3(startX, startY, startAttachZ);
+        Vector3 end = new Vector3(endX, endY, endAttachZ);
+        float length = Vector3.Distance(start, end);
+        if (length <= 0.05f)
             return false;
 
-        Vector3 center = (start + end) * 0.5f;
-        float thickness = Mathf.Max(0.08f, owner.FretSpacing * 0.1f);
-        view.techniqueRoot.transform.position = center;
-        view.slideRibbon.transform.position = center;
-        view.slideRibbon.transform.rotation = Quaternion.LookRotation(direction.normalized, Vector3.up);
-        view.slideRibbon.transform.localScale = new Vector3(thickness, thickness, length);
-
-        Color slideColor = new Color(view.baseColor.r, view.baseColor.g, view.baseColor.b, state.IsResolved ? 0.2f : 0.88f);
-        view.slideRibbonRenderer.material.color = slideColor;
-        view.slideRibbonRenderer.material.SetColor("_BaseColor", slideColor);
-        view.slideRibbonRenderer.material.SetColor("_Color", slideColor);
-        view.slideRibbonRenderer.material.EnableKeyword("_EMISSION");
-        view.slideRibbonRenderer.material.SetColor("_EmissionColor", view.baseColor * Mathf.Pow(2f, state.IsResolved ? 0.2f : 1.3f));
-        view.slideRibbon.SetActive(true);
+        float leadDistance = Mathf.Clamp(Mathf.Abs(endX - startX) * 0.55f + Mathf.Abs(endAttachZ - startAttachZ) * 0.16f, 0.35f, 2.2f);
+        profile.start = start;
+        profile.control1 = start + new Vector3(0f, 0f, leadDistance);
+        profile.control2 = end - new Vector3(0f, 0f, leadDistance);
+        profile.end = end;
+        profile.halfWidth = Mathf.Max(0.18f, view.baseScale.x * 0.38f);
+        profile.pathMode = 0f;
+        profile.cornerRoundness = 0f;
         return true;
+    }
+
+    private float GetApproximateTechniqueNoteDepth(NoteData data)
+    {
+        if (data.fret <= 0)
+            return GetSingleOpenNoteScale().z;
+
+        return GetSingleFrettedNoteScale().z;
+    }
+
+    private bool IsSlideDestinationNote(NoteData data)
+    {
+        if (data.linkedFromNoteId < 0)
+            return false;
+
+        return chartById.TryGetValue(data.linkedFromNoteId, out NoteData source) &&
+               source.technique == NoteTechnique.Slide;
+    }
+
+    private static bool HasBendRibbon(NoteData data)
+    {
+        return data.technique == NoteTechnique.Bend || data.bendStep > 0f || data.bendPreBend || data.bendRelease;
+    }
+
+    private bool TryBuildBendRibbonProfiles(
+        HighwayNoteView view,
+        GameplayNoteState state,
+        float noteCenterZ,
+        float songTime,
+        out TechniqueRibbonProfile headProfile,
+        out bool hasSustainTail,
+        out TechniqueRibbonProfile sustainTailProfile,
+        out float totalDisplayedDepth)
+    {
+        headProfile = default;
+        sustainTailProfile = default;
+        hasSustainTail = false;
+        totalDisplayedDepth = 0f;
+
+        float bendAmount = Mathf.Max(0f, state.data.bendStep);
+        bool startsBent = state.data.bendPreBend || state.data.bendRelease;
+        if (bendAmount <= 0f && !startsBent)
+            return false;
+
+        float startDepth = Mathf.Max(0.1f, view.baseScale.z);
+        float startAttachZ = noteCenterZ + (startDepth * 0.5f);
+        float startX = GetVisualNoteX(state.data);
+        float startY = GetStringY(state.data.stringIdx);
+        float bendHeight = GetStringLaneSpacing() * BendRibbonVisualHeightInStrings;
+        float targetY = startY + bendHeight;
+
+        float bendEndTime = state.data.time + Mathf.Max(0.14f, state.data.duration);
+        float fullEndTravelZ = Mathf.Max(
+            owner.StrikeLineZ,
+            owner.StrikeLineZ + ((bendEndTime - songTime) * currentVisualNoteSpeed));
+        float minimumVisualDepth = BendRibbonLeadOutDistance + BendRibbonCornerDepth + BendRibbonMinimumTopHoldDistance;
+        float fullEndAttachZ = Mathf.Max(startAttachZ + minimumVisualDepth, Mathf.Max(startAttachZ + 0.4f, fullEndTravelZ));
+        float totalDepth = Mathf.Max(minimumVisualDepth, fullEndAttachZ - startAttachZ);
+        float leadOutZ = Mathf.Clamp(BendRibbonLeadOutDistance, 0.12f, totalDepth - 0.16f);
+        float riseDepth = Mathf.Clamp(BendRibbonCornerDepth, 0.03f, totalDepth - leadOutZ - 0.12f);
+        float topHoldLength = Mathf.Max(BendRibbonMinimumTopHoldDistance, totalDepth - leadOutZ - riseDepth);
+        float maxHeadTopHoldLength = Mathf.Max(BendRibbonMinimumTopHoldDistance, currentVisualNoteSpeed * BendRibbonHeadMaximumFlatHoldSeconds);
+        float headTopHoldLength = Mathf.Min(topHoldLength, maxHeadTopHoldLength);
+        float curveEntryZ = startAttachZ + leadOutZ;
+        float curvePeakZ = curveEntryZ + riseDepth;
+        float headEndAttachZ = curvePeakZ + headTopHoldLength;
+
+        headProfile.start = new Vector3(startX, startY, startAttachZ);
+        headProfile.control1 = new Vector3(startX, startY, curveEntryZ);
+        headProfile.control2 = new Vector3(startX, targetY, curvePeakZ);
+        headProfile.end = new Vector3(startX, targetY, headEndAttachZ);
+
+        headProfile.halfWidth = Mathf.Max(0.16f, view.baseScale.x * 0.34f);
+        headProfile.pathMode = 1f;
+        headProfile.cornerRoundness = Mathf.Max(0f, BendRibbonCornerRoundness);
+        float totalSpan = Mathf.Max(0.01f, headEndAttachZ - startAttachZ);
+        float darkBandPadding = Mathf.Clamp(BendRibbonDarkBandPaddingDistance, 0.04f, totalSpan * 0.35f);
+        headProfile.darkBandStart01 = Mathf.Clamp01(((curveEntryZ - darkBandPadding) - startAttachZ) / totalSpan);
+        headProfile.darkBandEnd01 = Mathf.Clamp01(((curvePeakZ + darkBandPadding) - startAttachZ) / totalSpan);
+
+        if (fullEndAttachZ > headEndAttachZ + 0.05f)
+        {
+            hasSustainTail = true;
+            float tailStartZ = headEndAttachZ;
+            float tailEndZ = fullEndAttachZ;
+            float tailDepth = Mathf.Max(0.01f, tailEndZ - tailStartZ);
+            float firstControlZ = tailStartZ + (tailDepth / 3f);
+            float secondControlZ = tailStartZ + ((tailDepth * 2f) / 3f);
+
+            sustainTailProfile.start = new Vector3(startX, targetY, tailStartZ);
+            sustainTailProfile.control1 = new Vector3(startX, targetY, firstControlZ);
+            sustainTailProfile.control2 = new Vector3(startX, targetY, secondControlZ);
+            sustainTailProfile.end = new Vector3(startX, targetY, tailEndZ);
+            sustainTailProfile.halfWidth = headProfile.halfWidth;
+            sustainTailProfile.pathMode = 0f;
+            sustainTailProfile.cornerRoundness = 0f;
+            sustainTailProfile.darkBandStart01 = 1f;
+            sustainTailProfile.darkBandEnd01 = 1f;
+        }
+
+        totalDisplayedDepth = Mathf.Max(0.01f, fullEndAttachZ - startAttachZ);
+        return true;
+    }
+
+    private void ApplySlideTechniqueRibbon(HighwayNoteView view, TechniqueRibbonProfile profile, bool isResolved, float visibleStart01)
+    {
+        Color centerBaseColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.04f : 0.08f);
+        Color centerColor = new Color(centerBaseColor.r, centerBaseColor.g, centerBaseColor.b, isResolved ? 0.28f : 0.58f);
+        Color edgeColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.34f : 0.64f);
+        edgeColor.a = isResolved ? 0.46f : 0.98f;
+        Color emissionColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.34f : 0.82f) * Mathf.Pow(2f, isResolved ? 0.40f : 1.32f);
+
+        ApplyTechniqueRibbon(
+            view.techniqueRoot.transform,
+            view.slideRibbon,
+            view.slideRibbonRenderer,
+            view.slideRibbonPropertyBlock,
+            profile,
+            centerColor,
+            edgeColor,
+            emissionColor,
+            visibleStart01,
+            0f);
+    }
+
+    private void ApplyBendTechniqueRibbon(HighwayNoteView view, TechniqueRibbonProfile profile, bool isResolved, float visibleStart01)
+    {
+        ApplyBendTechniqueRibbon(
+            view,
+            view.bendRibbon,
+            view.bendRibbonRenderer,
+            view.bendRibbonPropertyBlock,
+            profile,
+            isResolved,
+            visibleStart01);
+    }
+
+    private void ApplyBendTechniqueRibbon(
+        HighwayNoteView view,
+        GameObject ribbon,
+        Renderer ribbonRenderer,
+        MaterialPropertyBlock propertyBlock,
+        TechniqueRibbonProfile profile,
+        bool isResolved,
+        float visibleStart01)
+    {
+        Color centerBaseColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.10f : 0.16f);
+        Color centerColor = new Color(centerBaseColor.r, centerBaseColor.g, centerBaseColor.b, isResolved ? 0.34f : 0.70f);
+        Color edgeColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.42f : 0.70f);
+        edgeColor.a = isResolved ? 0.50f : 1.0f;
+        Color emissionColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.44f : 0.90f) * Mathf.Pow(2f, isResolved ? 0.46f : 1.38f);
+
+        ApplyTechniqueRibbon(
+            view.techniqueRoot.transform,
+            ribbon,
+            ribbonRenderer,
+            propertyBlock,
+            profile,
+            centerColor,
+            edgeColor,
+            emissionColor,
+            visibleStart01,
+            BendRibbonFlatLightStrength);
+    }
+
+    private void ApplyTechniqueRibbon(
+        Transform techniqueRoot,
+        GameObject ribbon,
+        Renderer ribbonRenderer,
+        MaterialPropertyBlock propertyBlock,
+        TechniqueRibbonProfile profile,
+        Color centerColor,
+        Color edgeColor,
+        Color emissionColor,
+        float visibleStart01,
+        float flatLightStrength)
+    {
+        if (ribbon == null || ribbonRenderer == null || techniqueRoot == null || propertyBlock == null)
+            return;
+
+        Vector3 center = (profile.start + profile.end) * 0.5f;
+        ribbon.transform.localPosition = center;
+        ribbon.transform.localRotation = Quaternion.identity;
+        ribbon.transform.localScale = Vector3.one;
+
+        propertyBlock.Clear();
+
+        propertyBlock.SetVector(CurveP0ShaderId, profile.start - center);
+        propertyBlock.SetVector(CurveP1ShaderId, profile.control1 - center);
+        propertyBlock.SetVector(CurveP2ShaderId, profile.control2 - center);
+        propertyBlock.SetVector(CurveP3ShaderId, profile.end - center);
+        propertyBlock.SetFloat(HalfWidthShaderId, profile.halfWidth);
+        propertyBlock.SetColor(CenterColorShaderId, centerColor);
+        propertyBlock.SetColor(EdgeColorShaderId, edgeColor);
+        propertyBlock.SetColor(EmissionColorShaderId, emissionColor);
+        float approxRibbonLength =
+            Vector3.Distance(profile.start, profile.control1) +
+            Vector3.Distance(profile.control1, profile.control2) +
+            Vector3.Distance(profile.control2, profile.end);
+        float visibleFadeSoftness01 = Mathf.Clamp(0.55f / Mathf.Max(0.01f, approxRibbonLength), 0.0025f, 0.03f);
+        float lengthFadeSoftness01 = Mathf.Clamp(0.75f / Mathf.Max(0.01f, approxRibbonLength), 0.005f, 0.05f);
+        propertyBlock.SetFloat(VisibleStart01ShaderId, Mathf.Clamp01(visibleStart01));
+        propertyBlock.SetFloat(VisibleFadeSoftness01ShaderId, visibleFadeSoftness01);
+        propertyBlock.SetFloat(LengthFadeSoftness01ShaderId, lengthFadeSoftness01);
+        propertyBlock.SetFloat(FlatLightStrengthShaderId, Mathf.Clamp01(flatLightStrength));
+        propertyBlock.SetFloat(PathModeShaderId, profile.pathMode);
+        propertyBlock.SetFloat(CornerRoundnessShaderId, Mathf.Max(0f, profile.cornerRoundness));
+        propertyBlock.SetFloat(DarkBandStart01ShaderId, Mathf.Clamp01(profile.darkBandStart01));
+        propertyBlock.SetFloat(DarkBandEnd01ShaderId, Mathf.Clamp01(profile.darkBandEnd01));
+        ribbonRenderer.SetPropertyBlock(propertyBlock);
+        ribbon.SetActive(true);
     }
 
     private bool UpdateBendTechnique(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
@@ -1463,21 +1884,100 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return false;
 
         float bendAmount = Mathf.Max(0f, state.data.bendStep);
-        if (bendAmount <= 0f)
+        if (bendAmount <= 0f && !state.data.bendPreBend && !state.data.bendRelease)
+        {
+            view.bendRibbon.SetActive(false);
+            if (view.bendSustainRibbon != null)
+                view.bendSustainRibbon.SetActive(false);
             return false;
+        }
 
-        float x = GetVisualNoteX(state.data);
-        float y = GetStringY(state.data.stringIdx);
-        float height = Mathf.Max(0.35f, bendAmount * 0.75f);
-        view.bendRibbon.transform.position = new Vector3(x, y + (height * 0.5f) + 0.18f, z);
-        view.bendRibbon.transform.localScale = new Vector3(Mathf.Max(0.12f, owner.FretSpacing * 0.14f), height, Mathf.Max(0.18f, owner.FretSpacing * 0.12f));
-        Color bendColor = Color.Lerp(new Color(0.6f, 0.85f, 1f, 0.24f), new Color(1f, 1f, 1f, 0.16f), state.IsResolved ? 1f : 0f);
-        view.bendRibbonRenderer.material.color = bendColor;
-        view.bendRibbonRenderer.material.SetColor("_BaseColor", bendColor);
-        view.bendRibbonRenderer.material.SetColor("_Color", bendColor);
-        view.bendRibbon.SetActive(true);
+        if (!TryBuildBendRibbonProfiles(
+                view,
+                state,
+                z,
+                songTime,
+                out TechniqueRibbonProfile headProfile,
+                out bool hasSustainTail,
+                out TechniqueRibbonProfile sustainTailProfile,
+                out float totalDisplayedDepth))
+        {
+            view.bendRibbon.SetActive(false);
+            if (view.bendSustainRibbon != null)
+                view.bendSustainRibbon.SetActive(false);
+            return false;
+        }
 
-        return true;
+        float fadeStartSongTime = state.data.time;
+        float displayedRibbonDuration = Mathf.Max(0.02f, totalDisplayedDepth / Mathf.Max(0.01f, currentVisualNoteSpeed));
+        float fadeEndSongTime = fadeStartSongTime + displayedRibbonDuration;
+        float visibleDistance = 0f;
+        if (songTime >= fadeStartSongTime)
+        {
+            float overallVisibleStart01 = Mathf.Clamp01((songTime - fadeStartSongTime) / Mathf.Max(0.02f, fadeEndSongTime - fadeStartSongTime));
+            visibleDistance = overallVisibleStart01 * totalDisplayedDepth;
+        }
+
+        float headDepth = Mathf.Max(0.01f, headProfile.end.z - headProfile.start.z);
+        float headVisibleStart01 = Mathf.Clamp01(visibleDistance / headDepth);
+        float tailVisibleStart01 = 0f;
+        if (hasSustainTail)
+        {
+            float tailDepth = Mathf.Max(0.01f, sustainTailProfile.end.z - sustainTailProfile.start.z);
+            tailVisibleStart01 = Mathf.Clamp01((visibleDistance - headDepth) / tailDepth);
+        }
+
+        if (DebugBendRibbonLogs && !debugLoggedBendProfileIds.Contains(state.data.id))
+        {
+            debugLoggedBendProfileIds.Add(state.data.id);
+            Debug.Log(
+                $"[BEND RENDER] id={state.data.id} songTime={songTime:F3} noteTime={state.data.time:F3} " +
+                $"dur={state.data.duration:F3} visualStart={state.data.bendVisualStartTime:F3} visualDur={state.data.bendVisualDuration:F3} " +
+                $"bend={state.data.bendStep:F2} pre={state.data.bendPreBend} rel={state.data.bendRelease} " +
+                $"visibleStart01={headVisibleStart01:F3} start={headProfile.start} c1={headProfile.control1} c2={headProfile.control2} end={headProfile.end}");
+        }
+
+        if (DebugBendRibbonLogs &&
+            !debugLoggedBendNearStrikeIds.Contains(state.data.id) &&
+            Mathf.Abs(songTime - state.data.time) <= 0.08f)
+        {
+            debugLoggedBendNearStrikeIds.Add(state.data.id);
+            Debug.Log(
+                $"[BEND NEAR STRIKE] id={state.data.id} songTime={songTime:F3} noteTime={state.data.time:F3} " +
+                $"dur={state.data.duration:F3} visualStart={state.data.bendVisualStartTime:F3} visualDur={state.data.bendVisualDuration:F3} " +
+                $"bend={state.data.bendStep:F2} pre={state.data.bendPreBend} rel={state.data.bendRelease} " +
+                $"visibleStart01={headVisibleStart01:F3} z={z:F3} start={headProfile.start} c1={headProfile.control1} c2={headProfile.control2} end={headProfile.end}");
+        }
+
+        bool anyVisible = false;
+        if (headVisibleStart01 < 0.999f)
+        {
+            ApplyBendTechniqueRibbon(view, headProfile, state.IsResolved, headVisibleStart01);
+            anyVisible = true;
+        }
+        else
+        {
+            view.bendRibbon.SetActive(false);
+        }
+
+        if (hasSustainTail && view.bendSustainRibbon != null && view.bendSustainRibbonRenderer != null && tailVisibleStart01 < 0.999f)
+        {
+            ApplyBendTechniqueRibbon(
+                view,
+                view.bendSustainRibbon,
+                view.bendSustainRibbonRenderer,
+                view.bendSustainRibbonPropertyBlock,
+                sustainTailProfile,
+                state.IsResolved,
+                tailVisibleStart01);
+            anyVisible = true;
+        }
+        else if (view.bendSustainRibbon != null)
+        {
+            view.bendSustainRibbon.SetActive(false);
+        }
+
+        return anyVisible;
     }
 
     private void UpdateChordFrames(GuitarGameplaySnapshot snapshot)
@@ -1767,7 +2267,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float GetChordBoxHeight(List<NoteData> group)
     {
         if (group == null || group.Count == 0)
-            return 1.2f;
+            return GetStringLaneSpacing();
 
         float minY = float.MaxValue;
         float maxY = float.MinValue;
@@ -1853,6 +2353,35 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return Mathf.Max(0.45f, owner.highwayResolvedHoldTime);
     }
 
+    private bool ShouldKeepTechniqueAliveAfterResolution(NoteData data, float songTime)
+    {
+        if (!HasPersistentTechniqueVisual(data))
+            return false;
+
+        return songTime <= GetTechniqueVisualEndTime(data) + 0.02f;
+    }
+
+    private bool HasPersistentTechniqueVisual(NoteData data)
+    {
+        return HasBendRibbon(data) || data.slideTargetFret >= 0;
+    }
+
+    private float GetTechniqueVisualEndTime(NoteData data)
+    {
+        float endTime = data.time;
+        if (HasBendRibbon(data))
+            endTime = Mathf.Max(endTime, data.time + Mathf.Max(0.14f, data.duration));
+
+        if (data.slideTargetFret >= 0 &&
+            slideDestinationBySourceId.TryGetValue(data.id, out int targetId) &&
+            chartById.TryGetValue(targetId, out NoteData slideTarget))
+        {
+            endTime = Mathf.Max(endTime, slideTarget.time);
+        }
+
+        return endTime;
+    }
+
     private GameObject CreateChordFrame(float leftX, float rightX, float centerY, float height)
     {
         GameObject parent = new GameObject("ChordFrame");
@@ -1917,6 +2446,79 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         material.SetInt("_ZWrite", 0);
         material.SetInt("_Cull", (int)CullMode.Off);
         material.SetInt("_ZTest", (int)(renderOnTop ? CompareFunction.Always : CompareFunction.LessEqual));
+    }
+
+    private void EnsureTechniqueRibbonResources()
+    {
+        if (techniqueRibbonMesh == null)
+            techniqueRibbonMesh = CreateTechniqueRibbonMesh(28);
+
+        if (sharedTechniqueRibbonMaterial == null)
+        {
+            Shader shader = Shader.Find("Custom/HighwaySlideRibbon");
+            if (shader == null)
+                return;
+
+            sharedTechniqueRibbonMaterial = new Material(shader);
+            ConfigureOverlayMaterial(sharedTechniqueRibbonMaterial, 100, true);
+        }
+    }
+
+    private static Mesh CreateTechniqueRibbonMesh(int segments)
+    {
+        int clampedSegments = Mathf.Max(8, segments);
+        int vertexPairs = clampedSegments + 1;
+        Vector3[] vertices = new Vector3[vertexPairs * 2];
+        Vector2[] uvs = new Vector2[vertices.Length];
+        int[] triangles = new int[clampedSegments * 6];
+
+        for (int i = 0; i < vertexPairs; i++)
+        {
+            float t = i / (float)clampedSegments;
+            int baseIndex = i * 2;
+            vertices[baseIndex] = new Vector3(-1f, 0f, t);
+            vertices[baseIndex + 1] = new Vector3(1f, 0f, t);
+            uvs[baseIndex] = new Vector2(0f, t);
+            uvs[baseIndex + 1] = new Vector2(1f, t);
+
+            if (i >= clampedSegments)
+                continue;
+
+            int triangleIndex = i * 6;
+            triangles[triangleIndex] = baseIndex;
+            triangles[triangleIndex + 1] = baseIndex + 2;
+            triangles[triangleIndex + 2] = baseIndex + 1;
+            triangles[triangleIndex + 3] = baseIndex + 1;
+            triangles[triangleIndex + 4] = baseIndex + 2;
+            triangles[triangleIndex + 5] = baseIndex + 3;
+        }
+
+        Mesh mesh = new Mesh
+        {
+            name = "HighwayTechniqueRibbonMesh"
+        };
+        mesh.vertices = vertices;
+        mesh.uv = uvs;
+        mesh.triangles = triangles;
+        mesh.RecalculateNormals();
+        mesh.bounds = new Bounds(Vector3.zero, new Vector3(256f, 64f, 256f));
+        return mesh;
+    }
+
+    private static GameObject CreateTechniqueRibbonObject(string name, Transform parent, Mesh mesh, Material material, out Renderer renderer)
+    {
+        GameObject ribbon = new GameObject(name);
+        ribbon.transform.SetParent(parent, false);
+        MeshFilter meshFilter = ribbon.AddComponent<MeshFilter>();
+        meshFilter.sharedMesh = mesh;
+        MeshRenderer meshRenderer = ribbon.AddComponent<MeshRenderer>();
+        meshRenderer.sharedMaterial = material;
+        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+        meshRenderer.lightProbeUsage = LightProbeUsage.Off;
+        meshRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+        renderer = meshRenderer;
+        return ribbon;
     }
 
     private Material CreateLaneSurfaceMaterial()
@@ -1984,7 +2586,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float GetStringY(int stringIdx)
     {
         int row = owner.invertStrings ? (5 - stringIdx) : stringIdx;
-        return (row * 1.2f) + 1.2f;
+        return (row * GetStringLaneSpacing()) + GetStringLaneSpacing();
+    }
+
+    private static float GetStringLaneSpacing()
+    {
+        return StringLaneSpacing;
     }
 
     private float GetNoteX(int fret)
@@ -2011,8 +2618,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public GameObject techniqueRoot;
         public GameObject slideRibbon;
         public Renderer slideRibbonRenderer;
+        public MaterialPropertyBlock slideRibbonPropertyBlock;
+        public SlideRibbonFadeState slideRibbonFadeState;
         public GameObject bendRibbon;
         public Renderer bendRibbonRenderer;
+        public MaterialPropertyBlock bendRibbonPropertyBlock;
+        public GameObject bendSustainRibbon;
+        public Renderer bendSustainRibbonRenderer;
+        public MaterialPropertyBlock bendSustainRibbonPropertyBlock;
         public Color baseColor;
         public Vector3 baseScale;
 
