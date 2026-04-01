@@ -39,6 +39,10 @@ public struct NoteData
     public NoteTechnique technique;
     public int slideTargetFret;
     public float bendStep;
+    public float bendVisualStartTime;
+    public float bendVisualDuration;
+    public bool bendPreBend;
+    public bool bendRelease;
     public bool isLegato;
     public bool requiresPluck;
     public int linkedFromNoteId;
@@ -56,6 +60,10 @@ public struct NoteData
         technique = NoteTechnique.None;
         slideTargetFret = -1;
         bendStep = 0;
+        bendVisualStartTime = -1f;
+        bendVisualDuration = 0;
+        bendPreBend = false;
+        bendRelease = false;
         isLegato = false;
         requiresPluck = true;
         linkedFromNoteId = -1;
@@ -64,7 +72,8 @@ public struct NoteData
     // Full constructor for the XML Loader
     public NoteData(int noteId, float t, float d, int s, int f, string n, int assignedChordId,
                     NoteTechnique tech = NoteTechnique.None, int slideTo = -1, float bend = 0, bool legato = false,
-                    bool pluckRequired = true, int linkedFrom = -1)
+                    bool pluckRequired = true, int linkedFrom = -1, bool preBend = false, bool release = false,
+                    float visualBendStartTime = -1f, float visualBendDuration = 0f)
     {
         id = noteId;
         time = t;
@@ -76,6 +85,10 @@ public struct NoteData
         technique = tech;
         slideTargetFret = slideTo;
         bendStep = bend;
+        bendVisualStartTime = visualBendStartTime;
+        bendVisualDuration = visualBendDuration;
+        bendPreBend = preBend;
+        bendRelease = release;
         isLegato = legato;
         requiresPluck = pluckRequired;
         linkedFromNoteId = linkedFrom;
