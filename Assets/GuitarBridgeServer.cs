@@ -324,6 +324,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private float songTimer;
     private float audioSongTimer;
     private bool isPaused;
+    private bool noteByNoteModeEnabled;
+    private bool noteByNoteWaitingForMatch;
+    private float noteByNoteWaitingNoteTime = -1f;
     private int selectedPauseActionIndex;
     private int selectedSongEndActionIndex;
     private int selectedSongSettingsIndex;
@@ -478,6 +481,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private float lastRightArrowTapTime = -10f;
     private float lastMainMenuKeyboardInputTime = -10f;
     private const float ArrowDoubleTapThreshold = 0.35f;
+    private const float NoteByNoteTimeEpsilon = 0.0001f;
     private const int MainMenuOptionCount = 5;
     private const float MainMenuHoverLockSeconds = 0.20f;
     private readonly List<RuntimeSettingDefinition> runtimeSettingDefinitions = new List<RuntimeSettingDefinition>();
@@ -534,6 +538,7 @@ public class GuitarBridgeServer : MonoBehaviour
         bool loopPreviewActive = showLoopSettings && loopSettingsPreviewPlaying;
         bool offsetHelperPreviewActive = showOffsetHelper && offsetHelperAdjusting && offsetHelperPreviewPlaying;
         bool loopGapActive = loopRestartPauseRemainingSeconds > 0.0001f;
+        float songTimeBeforeAdvance = songTimer;
 
         if (loopGapActive)
         {
@@ -554,10 +559,12 @@ public class GuitarBridgeServer : MonoBehaviour
             loopGapActive = loopRestartPauseRemainingSeconds > 0.0001f;
         }
 
+        ApplyNoteByNoteTransportGate(songTimeBeforeAdvance, loopPreviewActive, offsetHelperPreviewActive, loopGapActive);
+
         UpdateSongEndState();
 
         ApplyPlaybackSpeedToAudio();
-        SyncAudioToSongTimer(playImmediately: (!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive);
+        SyncAudioToSongTimer(playImmediately: ShouldPlaybackAudio(loopPreviewActive, offsetHelperPreviewActive, loopGapActive));
 
         if (midiTrackIndex != currentLoadedTrackIndex)
             LoadTestSong(preservePauseUiState: isPaused || showMainMenu || showSongSettings || showSongSelection || showTrackSelection || showGlobalSettings || showLoopPausePopup);
@@ -570,6 +577,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             PruneHistory();
             UpdateGameplayStates();
+            UpdateNoteByNoteWaitingStateAfterJudgment(loopPreviewActive, offsetHelperPreviewActive);
             UpdateSessionScoreState();
             UpdateAndPersistSongBestScore();
         }
@@ -693,21 +701,21 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.M))
         {
-            SetPauseActionSelectionFromUi(6);
+            SetPauseActionSelectionFromUi(7);
             OpenMainMenuFromUi();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.L))
         {
-            SetPauseActionSelectionFromUi(2);
+            SetPauseActionSelectionFromUi(4);
             OpenLibraryFromPauseFromUi();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.T))
         {
-            SetPauseActionSelectionFromUi(5);
+            SetPauseActionSelectionFromUi(6);
             OpenOrFocusToneLab();
             return;
         }
@@ -922,6 +930,128 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         SeekSongTimeFromUserNavigation(targetTime, false);
+    }
+
+    private bool ShouldUseNoteByNotePlayback(bool loopPreviewActive, bool offsetHelperPreviewActive, bool loopGapActive)
+    {
+        return noteByNoteModeEnabled &&
+               !isPaused &&
+               !loopPreviewActive &&
+               !offsetHelperPreviewActive &&
+               !loopGapActive &&
+               !showMainMenu &&
+               !showSongSettings &&
+               !showSongSelection &&
+               !showTrackSelection &&
+               !showGlobalSettings &&
+               !showLoopSettings &&
+               !showLoopPausePopup &&
+               !showOffsetHelper &&
+               !songHasEnded;
+    }
+
+    private bool ShouldPlaybackAudio(bool loopPreviewActive, bool offsetHelperPreviewActive, bool loopGapActive)
+    {
+        return ((!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive && !noteByNoteWaitingForMatch);
+    }
+
+    private void ClearNoteByNoteWaitingState()
+    {
+        noteByNoteWaitingForMatch = false;
+        noteByNoteWaitingNoteTime = -1f;
+    }
+
+    private void ApplyNoteByNoteTransportGate(float previousSongTime, bool loopPreviewActive, bool offsetHelperPreviewActive, bool loopGapActive)
+    {
+        if (!ShouldUseNoteByNotePlayback(loopPreviewActive, offsetHelperPreviewActive, loopGapActive))
+        {
+            if (!noteByNoteModeEnabled)
+                ClearNoteByNoteWaitingState();
+            return;
+        }
+
+        if (noteByNoteWaitingForMatch)
+        {
+            if (HasUnresolvedNotesAtTime(noteByNoteWaitingNoteTime))
+            {
+                songTimer = noteByNoteWaitingNoteTime;
+                audioSongTimer = noteByNoteWaitingNoteTime;
+                return;
+            }
+
+            ClearNoteByNoteWaitingState();
+        }
+
+        if (TryGetPendingNoteTimeInRange(previousSongTime, songTimer, out float pendingNoteTime))
+        {
+            noteByNoteWaitingForMatch = true;
+            noteByNoteWaitingNoteTime = pendingNoteTime;
+            songTimer = pendingNoteTime;
+            audioSongTimer = pendingNoteTime;
+        }
+    }
+
+    private void UpdateNoteByNoteWaitingStateAfterJudgment(bool loopPreviewActive, bool offsetHelperPreviewActive)
+    {
+        if (!noteByNoteWaitingForMatch)
+            return;
+
+        if (!ShouldUseNoteByNotePlayback(loopPreviewActive, offsetHelperPreviewActive, loopGapActive: false))
+            return;
+
+        if (HasUnresolvedNotesAtTime(noteByNoteWaitingNoteTime))
+            return;
+
+        ClearNoteByNoteWaitingState();
+    }
+
+    private bool TryGetPendingNoteTimeInRange(float rangeStart, float rangeEnd, out float targetTime)
+    {
+        targetTime = 0f;
+        if (noteStates == null || noteStates.Count == 0)
+            return false;
+
+        float minTime = Mathf.Min(rangeStart, rangeEnd) - NoteByNoteTimeEpsilon;
+        float maxTime = Mathf.Max(rangeStart, rangeEnd) + NoteByNoteTimeEpsilon;
+        float best = float.MaxValue;
+
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState noteState = noteStates[i];
+            if (noteState == null || noteState.IsResolved)
+                continue;
+
+            float noteTime = noteState.data.time;
+            if (noteTime < minTime || noteTime > maxTime)
+                continue;
+
+            if (noteTime < best)
+                best = noteTime;
+        }
+
+        if (best == float.MaxValue)
+            return false;
+
+        targetTime = best;
+        return true;
+    }
+
+    private bool HasUnresolvedNotesAtTime(float targetTime)
+    {
+        if (noteStates == null || noteStates.Count == 0)
+            return false;
+
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState noteState = noteStates[i];
+            if (noteState == null || noteState.IsResolved)
+                continue;
+
+            if (Mathf.Abs(noteState.data.time - targetTime) <= NoteByNoteTimeEpsilon)
+                return true;
+        }
+
+        return false;
     }
 
     private void CacheOffsetHelperRunState()
@@ -2049,9 +2179,24 @@ public class GuitarBridgeServer : MonoBehaviour
         EnterLoopSettingsMode();
     }
 
+    public void ToggleNoteByNoteModeFromUi()
+    {
+        noteByNoteModeEnabled = !noteByNoteModeEnabled;
+        if (!noteByNoteModeEnabled)
+        {
+            ClearNoteByNoteWaitingState();
+        }
+        else if (!isPaused)
+        {
+            ApplyNoteByNoteTransportGate(songTimer, showLoopSettings && loopSettingsPreviewPlaying, showOffsetHelper && offsetHelperAdjusting && offsetHelperPreviewPlaying, loopRestartPauseRemainingSeconds > 0.0001f);
+        }
+
+        SyncAudioToSongTimer(playImmediately: ShouldPlaybackAudio(showLoopSettings && loopSettingsPreviewPlaying, showOffsetHelper && offsetHelperAdjusting && offsetHelperPreviewPlaying, loopRestartPauseRemainingSeconds > 0.0001f), forceSeek: noteByNoteWaitingForMatch);
+    }
+
     public void SetPauseActionSelectionFromUi(int index)
     {
-        selectedPauseActionIndex = Mathf.Clamp(index, 0, 9);
+        selectedPauseActionIndex = Mathf.Clamp(index, 0, 10);
     }
 
     public void HoverPauseActionSelectionFromUi(int index)
@@ -2064,7 +2209,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void MovePauseActionSelectionFromUi(int delta)
     {
-        const int optionCount = 10;
+        const int optionCount = 11;
         selectedPauseActionIndex = (selectedPauseActionIndex + delta + optionCount) % optionCount;
     }
 
@@ -2300,27 +2445,30 @@ public class GuitarBridgeServer : MonoBehaviour
                 ToggleLoopFromUi();
                 break;
             case 2:
-                OpenSongSettingsFromUi();
+                ToggleNoteByNoteModeFromUi();
                 break;
             case 3:
-                OpenLibraryFromPauseFromUi();
+                OpenSongSettingsFromUi();
                 break;
             case 4:
-                OpenGlobalSettingsFromUi();
+                OpenLibraryFromPauseFromUi();
                 break;
             case 5:
-                OpenToneLabFromUi();
+                OpenGlobalSettingsFromUi();
                 break;
             case 6:
-                OpenMainMenuFromUi();
+                OpenToneLabFromUi();
                 break;
             case 7:
-                ResumePlaybackFromUi();
+                OpenMainMenuFromUi();
                 break;
             case 8:
-                EndSongFromUi();
+                ResumePlaybackFromUi();
                 break;
             case 9:
+                EndSongFromUi();
+                break;
+            case 10:
                 RetrySongFromUi();
                 break;
         }
@@ -2873,7 +3021,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
-        SyncAudioToSongTimer(playImmediately: true);
+        SyncAudioToSongTimer(playImmediately: ShouldPlaybackAudio(false, false, false), forceSeek: noteByNoteWaitingForMatch);
     }
 
 
@@ -3172,6 +3320,7 @@ private void OpenOrFocusToneLab()
         float clampedTime = Mathf.Max(-songStartDelaySeconds, targetTime);
         if (clearLoopRestartPause)
             loopRestartPauseRemainingSeconds = 0f;
+        ClearNoteByNoteWaitingState();
         songTimer = clampedTime;
         audioSongTimer = clampedTime;
 
@@ -3627,8 +3776,6 @@ private void OpenOrFocusToneLab()
         float windowStart = note.data.time - eventMatchEarly - eventTimeSlack - extraEarly;
         float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + extraLate;
 
-        int exactTargetPitch = stringBasePitch[note.data.stringIdx] + note.data.fret;
-        int targetPitchModulo = exactTargetPitch % 12; 
         float bestDistance = float.MaxValue;
 
         for (int i = recentNoteEvents.Count - 1; i >= 0; i--)
@@ -3638,14 +3785,14 @@ private void OpenOrFocusToneLab()
             if (ev.time < windowStart) break;
             if (ev.time > windowEnd) continue;
 
-            if (!ev.pitches.Any(p => p % 12 == targetPitchModulo)) continue;
-            if (ev.consumedKeys.Contains(exactTargetPitch)) continue; 
+            if (!TryGetAcceptedConsumeKey(note, ev.pitches, out int acceptedConsumeKey)) continue;
+            if (ev.consumedKeys.Contains(acceptedConsumeKey)) continue; 
 
             float distance = Mathf.Abs(ev.time - note.data.time);
             if (distance >= bestDistance) continue;
 
             matchedEvent = ev;
-            consumeKey = exactTargetPitch;
+            consumeKey = acceptedConsumeKey;
             matchedEventTime = ev.time;
             bestDistance = distance;
         }
@@ -3664,15 +3811,12 @@ private void OpenOrFocusToneLab()
                 return false;
         }
 
-        int exactTargetPitch = stringBasePitch[note.data.stringIdx] + note.data.fret;
-        int targetPitchModulo = exactTargetPitch % 12;
-
         float windowStart = note.data.time - eventMatchEarly - eventTimeSlack;
         float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + 0.1f;
 
         if (songTimer >= windowStart && songTimer <= windowEnd)
         {
-            if (latestDetectedPitches.Contains(exactTargetPitch) || latestDetectedPitches.Any(p => p % 12 == targetPitchModulo))
+            if (ContainsAcceptedPitch(note, latestDetectedPitches))
             {
                 matchedTime = songTimer;
                 return true;
@@ -3687,7 +3831,7 @@ private void OpenOrFocusToneLab()
             if (ev.time > windowEnd)
                 continue;
 
-            if (ev.pitches.Contains(exactTargetPitch) || ev.pitches.Any(p => p % 12 == targetPitchModulo))
+            if (ContainsAcceptedPitch(note, ev.pitches))
             {
                 matchedTime = ev.time;
                 return true;
@@ -3704,13 +3848,8 @@ private void OpenOrFocusToneLab()
 
         if (!allowHighStringActiveRescue || note.data.stringIdx < 4) return false;
 
-        int exactTargetPitch = stringBasePitch[note.data.stringIdx] + note.data.fret;
-        int targetPitchModulo = exactTargetPitch % 12;
-
         float windowStart = note.data.time - highStringRescueTightWindow - eventTimeSlack;
         float windowEnd = note.data.time + highStringRescueTightWindow + eventTimeSlack;
-
-        rescueConsumeKey = 500000 + (exactTargetPitch * 8) + note.data.stringIdx;
 
         for (int i = recentNoteEvents.Count - 1; i >= 0; i--)
         {
@@ -3718,8 +3857,9 @@ private void OpenOrFocusToneLab()
             if (ev.time < windowStart) break;
             if (ev.time > windowEnd) continue;
 
-            if (!ev.pitches.Any(p => p % 12 == targetPitchModulo)) continue;
-            if (ev.consumedKeys.Contains(rescueConsumeKey) || ev.consumedKeys.Contains(exactTargetPitch)) continue;
+            if (!TryGetAcceptedConsumeKey(note, ev.pitches, out int acceptedConsumeKey)) continue;
+            rescueConsumeKey = 500000 + (acceptedConsumeKey * 8) + note.data.stringIdx;
+            if (ev.consumedKeys.Contains(rescueConsumeKey) || ev.consumedKeys.Contains(acceptedConsumeKey)) continue;
 
             bool closeEnough = Mathf.Abs(ev.time - note.data.time) <= highStringRescueTightWindow;
             bool chordish = ev.pitches.Count >= 2;
@@ -3730,6 +3870,75 @@ private void OpenOrFocusToneLab()
                 return true;
             }
         }
+        return false;
+    }
+
+    private int GetBaseTargetPitch(GameplayNoteState note)
+    {
+        return stringBasePitch[note.data.stringIdx] + note.data.fret;
+    }
+
+    private bool TryGetBentTargetPitch(GameplayNoteState note, out int bentTargetPitch)
+    {
+        bentTargetPitch = -1;
+        bool hasBend = note != null && (
+            note.data.technique == NoteTechnique.Bend ||
+            note.data.bendStep > 0f ||
+            note.data.bendPreBend ||
+            note.data.bendRelease);
+        if (!hasBend)
+            return false;
+
+        int bendSemitones = Mathf.RoundToInt(note.data.bendStep);
+        if (bendSemitones == 0)
+            return false;
+
+        int baseTargetPitch = GetBaseTargetPitch(note);
+        bentTargetPitch = baseTargetPitch + bendSemitones;
+        return bentTargetPitch != baseTargetPitch;
+    }
+
+    private bool ContainsAcceptedPitch(GameplayNoteState note, HashSet<int> pitches)
+    {
+        return TryGetAcceptedConsumeKey(note, pitches, out _);
+    }
+
+    private bool TryGetAcceptedConsumeKey(GameplayNoteState note, HashSet<int> pitches, out int consumeKey)
+    {
+        consumeKey = -1;
+        if (pitches == null || pitches.Count == 0)
+            return false;
+
+        int baseTargetPitch = GetBaseTargetPitch(note);
+        if (pitches.Contains(baseTargetPitch))
+        {
+            consumeKey = baseTargetPitch;
+            return true;
+        }
+
+        if (TryGetBentTargetPitch(note, out int bentTargetPitch) && pitches.Contains(bentTargetPitch))
+        {
+            consumeKey = bentTargetPitch;
+            return true;
+        }
+
+        int baseModulo = baseTargetPitch % 12;
+        if (pitches.Any(p => p % 12 == baseModulo))
+        {
+            consumeKey = baseTargetPitch;
+            return true;
+        }
+
+        if (TryGetBentTargetPitch(note, out bentTargetPitch))
+        {
+            int bentModulo = bentTargetPitch % 12;
+            if (pitches.Any(p => p % 12 == bentModulo))
+            {
+                consumeKey = bentTargetPitch;
+                return true;
+            }
+        }
+
         return false;
     }
 
@@ -3834,8 +4043,7 @@ private void ParseUdpState()
 
             if (eventId <= 0 || string.IsNullOrWhiteSpace(eventCsv) || eventCsv == "--") return;
 
-            float eventAgeInSongTime = Mathf.Max(0f, eventAge) * GetPlaybackSpeedScale();
-            float estimatedEventTime = Mathf.Max(0f, songTimer - eventAgeInSongTime);
+            float estimatedEventTime = GetEstimatedNoteEventSongTime(eventAge);
             
             // Log exactly what timestamp Unity is assigning this event on the timeline
             if (TryStoreNoteEvent(eventId, estimatedEventTime, eventCsv, out NoteEvent ev))
@@ -3873,6 +4081,15 @@ private void ParseUdpState()
         recentNoteEvents.Add(newEv);
         storedEvent = newEv;
         return true;
+    }
+
+    private float GetEstimatedNoteEventSongTime(float eventAge)
+    {
+        if (noteByNoteWaitingForMatch)
+            return Mathf.Max(0f, noteByNoteWaitingNoteTime >= 0f ? noteByNoteWaitingNoteTime : songTimer);
+
+        float eventAgeInSongTime = Mathf.Max(0f, eventAge) * GetPlaybackSpeedScale();
+        return Mathf.Max(0f, songTimer - eventAgeInSongTime);
     }
 
     private void ParseNoteCsvIntoSet(string csv, HashSet<int> targetSet)
@@ -4059,6 +4276,8 @@ private void ParseUdpState()
         {
             songTime = songTimer,
             isPaused = isPaused,
+            noteByNoteModeEnabled = noteByNoteModeEnabled,
+            noteByNoteWaitingForMatch = noteByNoteWaitingForMatch,
             selectedPauseActionIndex = selectedPauseActionIndex,
             selectedSongEndActionIndex = selectedSongEndActionIndex,
             selectedSongSettingsIndex = selectedSongSettingsIndex,
@@ -4193,6 +4412,7 @@ private void ParseUdpState()
         latestDetectedPitches.Clear();
         recentNoteEvents.Clear();
         latestNoteEventId = 0;
+        ClearNoteByNoteWaitingState();
         bool wasPaused = isPaused;
         bool wasShowingSongSettings = showSongSettings;
         bool wasShowingMainMenu = showMainMenu;

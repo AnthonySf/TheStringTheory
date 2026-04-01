@@ -25,6 +25,49 @@ public enum NoteTechnique
     Vibrato
 }
 
+public enum NoteTechniqueSegmentType
+{
+    Slide,
+    Bend,
+    Sustain,
+    Vibrato
+}
+
+public static class GuitarTechniqueVisualThresholds
+{
+    public const float SustainSeconds = 0.35f;
+}
+
+[Serializable]
+public struct NoteTechniqueSegmentData
+{
+    public NoteTechniqueSegmentType type;
+    public float startOffset;
+    public float endOffset;
+    public int startFret;
+    public int endFret;
+    public float startBend;
+    public float endBend;
+
+    public NoteTechniqueSegmentData(
+        NoteTechniqueSegmentType segmentType,
+        float startTimeOffset,
+        float endTimeOffset,
+        int fromFret,
+        int toFret,
+        float fromBend,
+        float toBend)
+    {
+        type = segmentType;
+        startOffset = startTimeOffset;
+        endOffset = endTimeOffset;
+        startFret = fromFret;
+        endFret = toFret;
+        startBend = fromBend;
+        endBend = toBend;
+    }
+}
+
 [Serializable]
 public struct NoteData
 {
@@ -46,6 +89,7 @@ public struct NoteData
     public bool isLegato;
     public bool requiresPluck;
     public int linkedFromNoteId;
+    public List<NoteTechniqueSegmentData> techniqueSegments;
 
     // Simple constructor for backward compatibility
     public NoteData(float t, int s, int f, string n)
@@ -67,13 +111,14 @@ public struct NoteData
         isLegato = false;
         requiresPluck = true;
         linkedFromNoteId = -1;
+        techniqueSegments = null;
     }
 
     // Full constructor for the XML Loader
     public NoteData(int noteId, float t, float d, int s, int f, string n, int assignedChordId,
                     NoteTechnique tech = NoteTechnique.None, int slideTo = -1, float bend = 0, bool legato = false,
                     bool pluckRequired = true, int linkedFrom = -1, bool preBend = false, bool release = false,
-                    float visualBendStartTime = -1f, float visualBendDuration = 0f)
+                    float visualBendStartTime = -1f, float visualBendDuration = 0f, List<NoteTechniqueSegmentData> segments = null)
     {
         id = noteId;
         time = t;
@@ -92,6 +137,7 @@ public struct NoteData
         isLegato = legato;
         requiresPluck = pluckRequired;
         linkedFromNoteId = linkedFrom;
+        techniqueSegments = segments;
     }
 }
 
@@ -126,6 +172,8 @@ public sealed class GuitarGameplaySnapshot
 {
     public float songTime;
     public bool isPaused;
+    public bool noteByNoteModeEnabled;
+    public bool noteByNoteWaitingForMatch;
     public bool loopEnabled;
     public float loopStartTime;
     public float loopEndTime;

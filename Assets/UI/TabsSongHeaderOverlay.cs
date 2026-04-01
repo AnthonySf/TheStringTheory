@@ -947,6 +947,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label offsetHelperHintLabel;
 
     private readonly Button loopButton;
+    private readonly Button noteByNoteButton;
 
     private readonly List<Button> pauseActionButtons = new List<Button>();
 
@@ -2536,6 +2537,7 @@ public sealed class TabsSongHeaderOverlay
 
 
         loopButton = CreateActionButton("Loop", () => owner?.ToggleLoopFromUi());
+        noteByNoteButton = CreateActionButton("Note By Note: OFF", () => owner?.ToggleNoteByNoteModeFromUi());
 
         Button songSettingsButton = CreateActionButton("Song Settings", () => owner?.OpenSongSettingsFromUi());
 
@@ -2553,7 +2555,7 @@ public sealed class TabsSongHeaderOverlay
 
         Button restartButton = CreateActionButton("Restart", () => owner?.RetrySongFromUi());
 
-        pauseActionButtons.AddRange(new[] { loopButton, songSettingsButton, songSelectButton, globalSettingsButton, toneLabButton, mainMenuButton, resumeButton, endButton, restartButton });
+        pauseActionButtons.AddRange(new[] { loopButton, noteByNoteButton, songSettingsButton, songSelectButton, globalSettingsButton, toneLabButton, mainMenuButton, resumeButton, endButton, restartButton });
 
 
 
@@ -2569,7 +2571,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        foreach (Button button in new[] { loopButton, songSettingsButton, songSelectButton, globalSettingsButton, toneLabButton })
+        foreach (Button button in new[] { loopButton, noteByNoteButton, songSettingsButton, songSelectButton, globalSettingsButton, toneLabButton })
 
         {
 
@@ -6749,6 +6751,9 @@ selectionShell.style.maxWidth = StyleKeyword.None;
                 : "Up/Down selects  �  Left/Right moves song time";
 
             loopButton.text = snapshot.loopEnabled ? "Loop: ON" : "Loop: OFF";
+            noteByNoteButton.text = snapshot.noteByNoteModeEnabled
+                ? (snapshot.noteByNoteWaitingForMatch ? "Note By Note: ON  (Waiting)" : "Note By Note: ON")
+                : "Note By Note: OFF";
 
             UpdatePauseActionSelection(snapshot.selectedPauseActionIndex);
 
