@@ -31,6 +31,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     {
         public Transform transform;
         public SpriteRenderer renderer;
+        public Color baseColor;
         public float baseAlpha;
         public bool twinkles;
         public float twinkleSpeed;
@@ -40,10 +41,13 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private readonly List<SkyCloud> clouds = new List<SkyCloud>();
     private readonly List<SkyStar> stars = new List<SkyStar>();
     private readonly List<Sprite> cloudSprites = new List<Sprite>();
+    private readonly List<Sprite> starSprites = new List<Sprite>();
     private readonly HashSet<Sprite> ownedCloudSprites = new HashSet<Sprite>();
     private readonly HashSet<Texture2D> ownedCloudTextures = new HashSet<Texture2D>();
+    private readonly HashSet<Texture2D> ownedStarTextures = new HashSet<Texture2D>();
     private readonly bool applyHighwayOverrides;
-    private Sprite starSprite;
+    private const int StarSpriteRevision = 2;
+    private int appliedStarSpriteRevision = -1;
 
     private GuitarBridgeServer owner;
     private int loadedCloudSpriteCount;
@@ -128,14 +132,14 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         clouds.Clear();
         stars.Clear();
 
-        if (starSprite != null)
-        {
-            Texture2D starTexture = starSprite.texture;
-            Object.Destroy(starSprite);
-            if (starTexture != null)
-                Object.Destroy(starTexture);
-            starSprite = null;
-        }
+        foreach (Sprite sprite in starSprites.Where(sprite => sprite != null))
+            Object.Destroy(sprite);
+
+        foreach (Texture2D texture in ownedStarTextures.Where(texture => texture != null))
+            Object.Destroy(texture);
+
+        starSprites.Clear();
+        ownedStarTextures.Clear();
 
         foreach (Sprite sprite in ownedCloudSprites.Where(sprite => sprite != null))
             Object.Destroy(sprite);
@@ -157,6 +161,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         skyBottomRenderer = null;
         hazeRenderer = null;
         appliedMood = (GuitarBridgeServer.TabsSkyMood)(-1);
+        appliedStarSpriteRevision = -1;
     }
 
     private void GetSkyDepthRange(out float nearZ, out float farZ)
@@ -484,6 +489,11 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             : 1f;
     }
 
+    private float GetStarScaleMultiplier()
+    {
+        return applyHighwayOverrides ? 0.52f : 1f;
+    }
+
     private void ApplyMoodToSkyIfNeeded()
     {
         if (owner == null || (appliedMood == owner.tabSkyMood && skyTopRenderer != null && skyBottomRenderer != null))
@@ -499,9 +509,19 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
         if (hazeRenderer != null)
         {
-            Color hazeColor = owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset
-                ? new Color(1f, 0.74f, 0.50f, 0.18f)
-                : new Color(0.95f, 0.98f, 1f, 0.14f);
+            Color hazeColor;
+            if (owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset)
+            {
+                hazeColor = new Color(1f, 0.74f, 0.50f, 0.18f);
+            }
+            else if (owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Midnight)
+            {
+                hazeColor = new Color(0.20f, 0.36f, 0.72f, 0.16f);
+            }
+            else
+            {
+                hazeColor = new Color(0.95f, 0.98f, 1f, 0.14f);
+            }
             hazeRenderer.material.color = hazeColor;
         }
 
@@ -530,6 +550,14 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             return;
         }
 
+        if (owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Midnight)
+        {
+            top = owner.tabSkyMidnightTopColor;
+            mid = owner.tabSkyMidnightMidColor;
+            bottom = owner.tabSkyMidnightBottomColor;
+            return;
+        }
+
         top = owner.tabSkyTopColor;
         mid = owner.tabSkyMidColor;
         bottom = owner.tabSkyBottomColor;
@@ -541,6 +569,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
         if (owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset)
             return Color.Lerp(owner.tabSkySunsetCloudBottomTint, owner.tabSkySunsetCloudTopTint, y01);
+
+        if (owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Midnight)
+            return Color.Lerp(owner.tabSkyMidnightCloudBottomTint, owner.tabSkyMidnightCloudTopTint, y01);
 
         return Color.Lerp(owner.tabSkyDayCloudBottomTint, owner.tabSkyDayCloudTopTint, y01);
     }
@@ -561,8 +592,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         Random.State oldState = Random.state;
         Random.InitState(owner.tabStarSeed ^ unchecked((int)0x7A11C0DEu));
 
-        if (starSprite == null)
-            starSprite = CreateSolidSprite(new Color(1f, 1f, 1f, 1f));
+        EnsureStarSprites();
 
         for (int i = 0; i < starCount; i++)
         {
@@ -574,7 +604,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             float z = Mathf.Clamp(farZ - Random.Range(0.45f, 1.15f), nearZ + 0.05f, farZ - 0.06f);
             star.transform.localPosition = new Vector3(x, y, z);
 
-            float size = Random.Range(sizeMin, sizeMax) * 1.75f;
+            Sprite starSprite = ChooseStarSprite();
+            float sizeMultiplier = starSprite == starSprites[0] ? 1.45f : 1.75f;
+            float size = Random.Range(sizeMin, sizeMax) * sizeMultiplier * GetStarScaleMultiplier();
             star.transform.localScale = new Vector3(size, size, 1f);
 
             SpriteRenderer renderer = star.AddComponent<SpriteRenderer>();
@@ -584,7 +616,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             float depthT = Mathf.InverseLerp(nearZ, farZ, z);
             float distanceFade = Mathf.Lerp(1f, 0.62f, depthT);
             float alpha = Mathf.Clamp01(owner.tabSkyStarAlpha * Random.Range(0.88f, 1f) * distanceFade);
-            renderer.color = new Color(1f, 1f, 1f, alpha);
+            Color baseColor = ChooseStarTint();
+            renderer.color = new Color(baseColor.r, baseColor.g, baseColor.b, alpha);
 
             bool twinkles = Random.value < Mathf.Clamp01(owner.tabSkyStarTwinkleFraction);
             float speedMin = Mathf.Max(0.05f, owner.tabSkyStarTwinkleSpeedMin);
@@ -594,6 +627,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             {
                 transform = star.transform,
                 renderer = renderer,
+                baseColor = baseColor,
                 baseAlpha = alpha,
                 twinkles = twinkles,
                 twinkleSpeed = twinkles ? Random.Range(speedMin, speedMax) : 0f,
@@ -601,6 +635,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             });
         }
 
+        appliedStarSpriteRevision = StarSpriteRevision;
         Random.state = oldState;
     }
 
@@ -623,8 +658,23 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             return;
         }
 
+        EnsureStarSprites();
         int targetCount = Mathf.Clamp(owner.tabSkyStarCount, 8, 1200);
-        if (stars.Count != targetCount)
+        bool starSetOutdated = appliedStarSpriteRevision != StarSpriteRevision;
+        if (!starSetOutdated)
+        {
+            for (int i = 0; i < stars.Count; i++)
+            {
+                Sprite sprite = stars[i].renderer != null ? stars[i].renderer.sprite : null;
+                if (sprite == null || !starSprites.Contains(sprite))
+                {
+                    starSetOutdated = true;
+                    break;
+                }
+            }
+        }
+
+        if (stars.Count != targetCount || starSetOutdated)
         {
             ClearStaticStars();
             CreateStaticStars();
@@ -654,23 +704,107 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
                 alpha = Mathf.Clamp01(star.baseAlpha * (1f + twinkle));
             }
 
-            star.renderer.color = new Color(1f, 1f, 1f, alpha);
+            Color baseColor = star.baseColor;
+            star.renderer.color = new Color(baseColor.r, baseColor.g, baseColor.b, alpha);
         }
     }
 
-    private static Sprite CreateSolidSprite(Color color)
+    private void EnsureStarSprites()
     {
-        Texture2D tex = new Texture2D(2, 2, TextureFormat.RGBA32, false, true);
+        if (starSprites.Count > 0)
+            return;
+
+        starSprites.Add(CreateSoftStarSprite(48, 0.16f, 0.44f, 1f));
+        starSprites.Add(CreateSparkleStarSprite(48, 0.08f, 0.16f, 0.95f));
+        starSprites.Add(CreateSparkleStarSprite(64, 0.06f, 0.11f, 0.78f));
+    }
+
+    private Sprite ChooseStarSprite()
+    {
+        if (starSprites.Count == 0)
+            EnsureStarSprites();
+
+        float pick = Random.value;
+        if (pick < 0.72f)
+            return starSprites[0];
+        if (pick < 0.92f)
+            return starSprites[1];
+        return starSprites[2];
+    }
+
+    private static Color ChooseStarTint()
+    {
+        float pick = Random.value;
+        if (pick < 0.55f)
+            return new Color(1f, 1f, 1f, 1f);
+        if (pick < 0.82f)
+            return new Color(0.82f, 0.90f, 1f, 1f);
+        if (pick < 0.95f)
+            return new Color(0.68f, 0.83f, 1f, 1f);
+        return new Color(1f, 0.93f, 0.82f, 1f);
+    }
+
+    private Sprite CreateSoftStarSprite(int size, float coreRadius01, float glowRadius01, float glowStrength)
+    {
+        Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false, true);
         tex.wrapMode = TextureWrapMode.Clamp;
-        tex.filterMode = FilterMode.Point;
+        tex.filterMode = FilterMode.Bilinear;
 
-        tex.SetPixel(0, 0, color);
-        tex.SetPixel(1, 0, color);
-        tex.SetPixel(0, 1, color);
-        tex.SetPixel(1, 1, color);
+        Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+        float invHalf = 1f / Mathf.Max(1f, size * 0.5f);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 p = new Vector2(x, y);
+                float dist01 = Vector2.Distance(p, center) * invHalf;
+                float core = 1f - Mathf.SmoothStep(coreRadius01, coreRadius01 + 0.16f, dist01);
+                float glow = 1f - Mathf.SmoothStep(coreRadius01, glowRadius01, dist01);
+                float alpha = Mathf.Clamp01((core * 0.95f) + (glow * glowStrength * 0.55f));
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+            }
+        }
+
         tex.Apply(false, false);
+        ownedStarTextures.Add(tex);
+        Sprite sprite = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
+        return sprite;
+    }
 
-        return Sprite.Create(tex, new Rect(0f, 0f, 2f, 2f), new Vector2(0.5f, 0.5f), 2f);
+    private Sprite CreateSparkleStarSprite(int size, float armHalfWidth01, float diagonalHalfWidth01, float glowStrength)
+    {
+        Texture2D tex = new Texture2D(size, size, TextureFormat.RGBA32, false, true);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+
+        Vector2 center = new Vector2((size - 1) * 0.5f, (size - 1) * 0.5f);
+        float invHalf = 1f / Mathf.Max(1f, size * 0.5f);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float px = (x - center.x) * invHalf;
+                float py = (y - center.y) * invHalf;
+                float radial = Mathf.Sqrt((px * px) + (py * py));
+
+                float vertical = 1f - Mathf.SmoothStep(armHalfWidth01, armHalfWidth01 + 0.09f, Mathf.Abs(px));
+                float horizontal = 1f - Mathf.SmoothStep(armHalfWidth01, armHalfWidth01 + 0.09f, Mathf.Abs(py));
+                float diagA = 1f - Mathf.SmoothStep(diagonalHalfWidth01, diagonalHalfWidth01 + 0.08f, Mathf.Abs(px - py));
+                float diagB = 1f - Mathf.SmoothStep(diagonalHalfWidth01, diagonalHalfWidth01 + 0.08f, Mathf.Abs(px + py));
+                float sparkle = Mathf.Max(Mathf.Max(vertical, horizontal), Mathf.Max(diagA * 0.72f, diagB * 0.72f));
+                float core = 1f - Mathf.SmoothStep(0.04f, 0.22f, radial);
+                float halo = 1f - Mathf.SmoothStep(0.10f, 0.62f, radial);
+                float alpha = Mathf.Clamp01((sparkle * 0.74f) + (core * 0.92f) + (halo * glowStrength * 0.28f));
+                tex.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+            }
+        }
+
+        tex.Apply(false, false);
+        ownedStarTextures.Add(tex);
+        Sprite sprite = Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), size);
+        return sprite;
     }
 
     private static Sprite CreateProceduralCloudSprite()

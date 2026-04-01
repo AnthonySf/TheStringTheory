@@ -31,7 +31,8 @@ public class GuitarBridgeServer : MonoBehaviour
     public enum TabsSkyMood
     {
         Day = 0,
-        Sunset = 1
+        Sunset = 1,
+        Midnight = 2
     }
 
     [Header("Render Mode")]
@@ -87,6 +88,20 @@ public class GuitarBridgeServer : MonoBehaviour
     private UdpClient udpClient;
     private Thread receiveThread;
     private bool isRunning;
+
+    [Header("Detector Hint UDP")]
+    public bool sendDetectorHintsToPython = true;
+    public string detectorHintIp = "127.0.0.1";
+    public int detectorHintPort = 9001;
+    public float detectorHintSendIntervalSeconds = 0.05f;
+    public float detectorHintLookbackSeconds = 0.08f;
+    public float detectorHintLookaheadSeconds = 0.45f;
+    public float detectorHintInterpolationStepSeconds = 0.035f;
+    public int detectorHintMaxWindowsPerPacket = 20;
+    private UdpClient detectorHintClient;
+    private IPEndPoint detectorHintEndpoint;
+    private float lastDetectorHintSendRealtime = -999f;
+    private bool detectorHintForceSend = true;
 
     [Header("Notes Detector")]
     public bool autoLaunchNotesDetector = true;
@@ -249,6 +264,9 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabSkySunsetTopColor = new Color(0.96f, 0.50f, 0.22f, 1f);
     public Color tabSkySunsetMidColor = new Color(0.98f, 0.66f, 0.30f, 1f);
     public Color tabSkySunsetBottomColor = new Color(1f, 0.84f, 0.52f, 1f);
+    public Color tabSkyMidnightTopColor = new Color(0.03f, 0.06f, 0.18f, 1f);
+    public Color tabSkyMidnightMidColor = new Color(0.08f, 0.14f, 0.32f, 1f);
+    public Color tabSkyMidnightBottomColor = new Color(0.14f, 0.24f, 0.46f, 1f);
     [Range(8, 220)] public int tabSkyCloudCountNear = 42;
     [Range(8, 220)] public int tabSkyCloudCountMid = 30;
     [Range(8, 220)] public int tabSkyCloudCountFar = 18;
@@ -269,6 +287,8 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabSkyDayCloudBottomTint = new Color(0.90f, 0.95f, 1f, 1f);
     public Color tabSkySunsetCloudTopTint = new Color(1f, 0.84f, 0.68f, 1f);
     public Color tabSkySunsetCloudBottomTint = new Color(0.98f, 0.62f, 0.42f, 1f);
+    public Color tabSkyMidnightCloudTopTint = new Color(0.58f, 0.68f, 0.94f, 1f);
+    public Color tabSkyMidnightCloudBottomTint = new Color(0.14f, 0.22f, 0.40f, 1f);
     public bool tabSkyStarsEnabled = true;
     [Range(8, 1200)] public int tabSkyStarCount = 320;
     [Min(0.001f)] public float tabSkyStarSizeMin = 0.015f;
@@ -306,6 +326,20 @@ public class GuitarBridgeServer : MonoBehaviour
         public float time;
         public HashSet<int> pitches = new HashSet<int>();
         public HashSet<int> consumedKeys = new HashSet<int>();
+    }
+
+    private struct DetectorHintWindow
+    {
+        public float startTime;
+        public float endTime;
+        public HashSet<int> pitches;
+
+        public DetectorHintWindow(float start, float end, HashSet<int> notePitches)
+        {
+            startTime = start;
+            endTime = end;
+            pitches = notePitches;
+        }
     }
 
     private readonly int[] stringBasePitch = { 40, 45, 50, 55, 59, 64 };
@@ -583,6 +617,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         UpdateInputLevelEstimate();
+        SendDetectorHintPacketIfNeeded();
 
         EnsureRenderer();
 
@@ -1097,6 +1132,7 @@ public class GuitarBridgeServer : MonoBehaviour
         latestNoteEventId = 0;
         latestPacketHadEvent = false;
         Interlocked.Exchange(ref lastUdpPacketUtcTicks, 0L);
+        MarkDetectorHintDirty();
 
         if (syncAudio)
             SyncAudioToSongTimer(playImmediately, forceSeek: true);
@@ -3365,6 +3401,7 @@ private void OpenOrFocusToneLab()
         latestNoteEventId = 0;
         latestPacketHadEvent = false;
         Interlocked.Exchange(ref lastUdpPacketUtcTicks, 0L);
+        MarkDetectorHintDirty();
         if (syncAudioAfterSeek)
             SyncAudioToSongTimer(playImmediately: playImmediatelyAfterSeek);
         UpdateSongEndState();
@@ -3411,16 +3448,19 @@ private void OpenOrFocusToneLab()
         isRunning = false;
         if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
         if (udpClient != null) udpClient.Close();
+        CloseDetectorHintClient();
         ShutdownNotesDetectorIfRunning();
     }
 
     private void OnDestroy()
     {
+        CloseDetectorHintClient();
         ShutdownNotesDetectorIfRunning();
     }
 
     private void OnDisable()
     {
+        CloseDetectorHintClient();
         ShutdownNotesDetectorIfRunning();
     }
 
@@ -3973,6 +4013,330 @@ private void OpenOrFocusToneLab()
     // =========================================================
     // NETWORKING AND DATA PARSING
     // =========================================================
+    private void EnsureDetectorHintClient()
+    {
+        if (detectorHintClient != null || !sendDetectorHintsToPython)
+            return;
+
+        try
+        {
+            detectorHintClient = new UdpClient();
+            IPAddress address;
+            if (!IPAddress.TryParse(detectorHintIp, out address))
+                address = IPAddress.Loopback;
+            detectorHintEndpoint = new IPEndPoint(address, detectorHintPort);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Detector hint UDP init error: " + e.Message);
+            detectorHintClient = null;
+            detectorHintEndpoint = null;
+        }
+    }
+
+    private void CloseDetectorHintClient()
+    {
+        if (detectorHintClient == null)
+            return;
+
+        try
+        {
+            detectorHintClient.Close();
+        }
+        catch
+        {
+        }
+
+        detectorHintClient = null;
+        detectorHintEndpoint = null;
+    }
+
+    private void MarkDetectorHintDirty()
+    {
+        detectorHintForceSend = true;
+        lastDetectorHintSendRealtime = -999f;
+    }
+
+    private void SendDetectorHintPacketIfNeeded()
+    {
+        if (!sendDetectorHintsToPython)
+            return;
+
+        float realtimeNow = Time.realtimeSinceStartup;
+        if (!detectorHintForceSend && (realtimeNow - lastDetectorHintSendRealtime) < detectorHintSendIntervalSeconds)
+            return;
+
+        EnsureDetectorHintClient();
+        if (detectorHintClient == null || detectorHintEndpoint == null)
+            return;
+
+        string payload = BuildDetectorHintPayload(songTimer);
+        if (string.IsNullOrEmpty(payload))
+            return;
+
+        try
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(payload);
+            detectorHintClient.Send(bytes, bytes.Length, detectorHintEndpoint);
+            lastDetectorHintSendRealtime = realtimeNow;
+            detectorHintForceSend = false;
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Detector hint UDP send error: " + e.Message);
+            CloseDetectorHintClient();
+        }
+    }
+
+    private string BuildDetectorHintPayload(float currentSongTime)
+    {
+        var windows = new List<DetectorHintWindow>();
+        BuildDetectorHintWindows(currentSongTime, windows);
+
+        if (windows.Count == 0)
+            return $"SYNC|{currentSongTime.ToString("F3", CultureInfo.InvariantCulture)}";
+
+        StringBuilder builder = new StringBuilder();
+        builder.Append("HINT|");
+        builder.Append(currentSongTime.ToString("F3", CultureInfo.InvariantCulture));
+
+        for (int i = 0; i < windows.Count; i++)
+        {
+            DetectorHintWindow window = windows[i];
+            string notesCsv = string.Join(",", window.pitches
+                .OrderBy(p => p)
+                .Select(GetNoteNameFromMidi));
+            if (string.IsNullOrEmpty(notesCsv))
+                continue;
+
+            builder.Append('|');
+            builder.Append(window.startTime.ToString("F3", CultureInfo.InvariantCulture));
+            builder.Append(':');
+            builder.Append(window.endTime.ToString("F3", CultureInfo.InvariantCulture));
+            builder.Append(':');
+            builder.Append(notesCsv);
+        }
+
+        return builder.ToString();
+    }
+
+    private void BuildDetectorHintWindows(float currentSongTime, List<DetectorHintWindow> output)
+    {
+        output.Clear();
+        if (noteStates == null || noteStates.Count == 0)
+            return;
+
+        float minTime = currentSongTime - detectorHintLookbackSeconds;
+        float maxTime = currentSongTime + detectorHintLookaheadSeconds;
+
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState noteState = noteStates[i];
+            if (noteState == null || noteState.result == GameplayNoteResult.Missed)
+                continue;
+
+            AppendDetectorHintWindowsForNote(noteState, minTime, maxTime, output);
+        }
+
+        output.Sort((a, b) =>
+        {
+            int startCompare = a.startTime.CompareTo(b.startTime);
+            if (startCompare != 0)
+                return startCompare;
+            return a.endTime.CompareTo(b.endTime);
+        });
+
+        MergeDetectorHintWindows(output);
+
+        if (output.Count > detectorHintMaxWindowsPerPacket)
+            output.RemoveRange(detectorHintMaxWindowsPerPacket, output.Count - detectorHintMaxWindowsPerPacket);
+    }
+
+    private void MergeDetectorHintWindows(List<DetectorHintWindow> windows)
+    {
+        if (windows.Count <= 1)
+            return;
+
+        int writeIndex = 0;
+        for (int readIndex = 1; readIndex < windows.Count; readIndex++)
+        {
+            DetectorHintWindow current = windows[writeIndex];
+            DetectorHintWindow next = windows[readIndex];
+
+            if (AreHintPitchSetsEqual(current.pitches, next.pitches) && next.startTime <= current.endTime + 0.001f)
+            {
+                current.endTime = Mathf.Max(current.endTime, next.endTime);
+                windows[writeIndex] = current;
+                continue;
+            }
+
+            writeIndex++;
+            windows[writeIndex] = next;
+        }
+
+        if (writeIndex < windows.Count - 1)
+            windows.RemoveRange(writeIndex + 1, windows.Count - writeIndex - 1);
+    }
+
+    private bool AreHintPitchSetsEqual(HashSet<int> a, HashSet<int> b)
+    {
+        if (ReferenceEquals(a, b))
+            return true;
+        if (a == null || b == null || a.Count != b.Count)
+            return false;
+        return a.SetEquals(b);
+    }
+
+    private void AppendDetectorHintWindowsForNote(GameplayNoteState noteState, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)
+    {
+        NoteData note = noteState.data;
+        float noteStart = note.time;
+        float noteEnd = note.time + Mathf.Max(0.05f, note.duration);
+        List<NoteTechniqueSegmentData> segments = note.techniqueSegments;
+        bool hasSegments = segments != null && segments.Count > 0;
+        float maxTechniqueEnd = noteStart;
+        if (hasSegments)
+        {
+            for (int i = 0; i < segments.Count; i++)
+                maxTechniqueEnd = Mathf.Max(maxTechniqueEnd, note.time + Mathf.Max(segments[i].startOffset, segments[i].endOffset));
+        }
+
+        float overallHintEnd = Mathf.Max(noteEnd, maxTechniqueEnd);
+        if (overallHintEnd < rangeStart || noteStart > rangeEnd)
+            return;
+
+        float finalSegmentEnd = noteStart;
+
+        if (hasSegments)
+        {
+            List<NoteTechniqueSegmentData> orderedSegments = segments
+                .OrderBy(segment => segment.startOffset)
+                .ThenBy(segment => segment.endOffset)
+                .ToList();
+
+            bool appliedOnsetLookback = false;
+            for (int i = 0; i < orderedSegments.Count; i++)
+            {
+                NoteTechniqueSegmentData segment = orderedSegments[i];
+                float segmentStart = noteStart + Mathf.Max(0f, segment.startOffset);
+                float segmentEnd = noteStart + Mathf.Max(segment.startOffset, segment.endOffset);
+                if (segmentEnd <= segmentStart + 0.0001f)
+                    continue;
+
+                finalSegmentEnd = Mathf.Max(finalSegmentEnd, segmentEnd);
+                AppendDetectorHintWindowsForSegment(note, segment, segmentStart, segmentEnd, !appliedOnsetLookback, rangeStart, rangeEnd, output);
+                appliedOnsetLookback = true;
+            }
+        }
+
+        if (!hasSegments)
+        {
+            AddDetectorHintWindow(noteStart - detectorHintLookbackSeconds, noteEnd, GetPitchSetForMidi(GetNoteMidiFromStringFret(note.stringIdx, note.fret)), rangeStart, rangeEnd, output);
+            return;
+        }
+
+        if (noteEnd > finalSegmentEnd + 0.001f)
+        {
+            int tailMidi = GetTailMidiForNote(note);
+            AddDetectorHintWindow(finalSegmentEnd, noteEnd, GetPitchSetForMidi(tailMidi), rangeStart, rangeEnd, output);
+        }
+    }
+
+    private void AppendDetectorHintWindowsForSegment(NoteData note, NoteTechniqueSegmentData segment, float segmentStart, float segmentEnd, bool includeOnsetLookback, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)
+    {
+        switch (segment.type)
+        {
+            case NoteTechniqueSegmentType.Slide:
+            case NoteTechniqueSegmentType.Bend:
+                AppendInterpolatedDetectorHintWindows(note, segment, segmentStart, segmentEnd, includeOnsetLookback, rangeStart, rangeEnd, output);
+                break;
+            case NoteTechniqueSegmentType.Sustain:
+            case NoteTechniqueSegmentType.Vibrato:
+            default:
+                int sustainMidi = Mathf.RoundToInt(EvaluateTechniqueSegmentMidi(note.stringIdx, segment, 1f));
+                AddDetectorHintWindow(
+                    includeOnsetLookback ? segmentStart - detectorHintLookbackSeconds : segmentStart,
+                    segmentEnd,
+                    GetPitchSetForMidi(sustainMidi),
+                    rangeStart,
+                    rangeEnd,
+                    output);
+                break;
+        }
+    }
+
+    private void AppendInterpolatedDetectorHintWindows(NoteData note, NoteTechniqueSegmentData segment, float segmentStart, float segmentEnd, bool includeOnsetLookback, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)
+    {
+        float duration = Mathf.Max(0.0001f, segmentEnd - segmentStart);
+        int stepCount = Mathf.Clamp(Mathf.CeilToInt(duration / Mathf.Max(0.01f, detectorHintInterpolationStepSeconds)), 1, 64);
+        float bucketStart = segmentStart;
+        int bucketMidi = Mathf.RoundToInt(EvaluateTechniqueSegmentMidi(note.stringIdx, segment, 0f));
+
+        for (int stepIndex = 1; stepIndex <= stepCount; stepIndex++)
+        {
+            float t = stepIndex / (float)stepCount;
+            float sampleTime = Mathf.Lerp(segmentStart, segmentEnd, t);
+            int sampleMidi = Mathf.RoundToInt(EvaluateTechniqueSegmentMidi(note.stringIdx, segment, t));
+
+            if (sampleMidi == bucketMidi && stepIndex < stepCount)
+                continue;
+
+            float sendStart = bucketStart;
+            if (includeOnsetLookback && Mathf.Abs(bucketStart - segmentStart) <= 0.0001f)
+                sendStart -= detectorHintLookbackSeconds;
+
+            AddDetectorHintWindow(sendStart, sampleTime, GetPitchSetForMidi(bucketMidi), rangeStart, rangeEnd, output);
+            bucketStart = sampleTime;
+            bucketMidi = sampleMidi;
+        }
+    }
+
+    private float EvaluateTechniqueSegmentMidi(int stringIdx, NoteTechniqueSegmentData segment, float t)
+    {
+        float clampedT = Mathf.Clamp01(t);
+        float fret = Mathf.Lerp(segment.startFret, segment.endFret, clampedT);
+        float bend = Mathf.Lerp(segment.startBend, segment.endBend, clampedT);
+        return GetStringBasePitch(stringIdx) + fret + bend;
+    }
+
+    private int GetTailMidiForNote(NoteData note)
+    {
+        List<NoteTechniqueSegmentData> segments = note.techniqueSegments;
+        if (segments != null && segments.Count > 0)
+        {
+            NoteTechniqueSegmentData last = segments
+                .OrderBy(segment => segment.endOffset)
+                .ThenBy(segment => segment.startOffset)
+                .Last();
+            return Mathf.RoundToInt(EvaluateTechniqueSegmentMidi(note.stringIdx, last, 1f));
+        }
+
+        return GetNoteMidiFromStringFret(note.stringIdx, note.fret);
+    }
+
+    private HashSet<int> GetPitchSetForMidi(int midi)
+    {
+        return new HashSet<int> { midi };
+    }
+
+    private void AddDetectorHintWindow(float startTime, float endTime, HashSet<int> pitches, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)
+    {
+        if (pitches == null || pitches.Count == 0)
+            return;
+
+        float clippedStart = Mathf.Max(startTime, rangeStart);
+        float clippedEnd = Mathf.Min(endTime, rangeEnd);
+        if (clippedEnd <= clippedStart + 0.0001f)
+            return;
+
+        output.Add(new DetectorHintWindow(clippedStart, clippedEnd, pitches));
+    }
+
+    private int GetNoteMidiFromStringFret(int stringIdx, int fret)
+    {
+        return GetStringBasePitch(stringIdx) + fret;
+    }
+
     private void StartUdpThread()
     {
         receiveThread = new Thread(new ThreadStart(ReceiveUdpData));
@@ -4555,6 +4919,7 @@ private void ParseUdpState()
         songTimer = -songStartDelaySeconds;
         audioSongTimer = -songStartDelaySeconds;
         currentLoadedTrackIndex = midiTrackIndex;
+        MarkDetectorHintDirty();
         ApplyPlaybackSpeedToAudio();
         SyncAudioToSongTimer(playImmediately: !isPaused);
     }
@@ -5107,7 +5472,7 @@ private void ParseUdpState()
         RegisterFloatSetting("fx.tabIdleFillDarken", "Colors - Status", "Idle Fill Darken", "Controls how muted unresolved tab notes appear.", 0f, 1f, 0.01f, () => tabIdleFillDarken, v => tabIdleFillDarken = v);
 
         RegisterEnumSetting("bg.mode", "Background", "Background Mode", "Switches between static and animated backgrounds.", new []{"SolidColor","Starfield","BlueSky"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
-        RegisterEnumSetting("bg.skyMood", "Background - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime and sunset palettes.", new []{"Day","Sunset"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
+        RegisterEnumSetting("bg.skyMood", "Background - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime, sunset, and midnight palettes.", new []{"Day","Sunset","Midnight"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
         RegisterBoolSetting("bg.skyUseStage", "Background - Blue Sky", "Use Stage Backdrop", "Switches BlueSky mode between the sunset-cloud scene and a stylized stage backdrop.", () => tabSkyUseStageBackdrop, v => tabSkyUseStageBackdrop = v);
         RegisterBoolSetting("bg.skyStars", "Background - Blue Sky", "Static Sky Stars", "Adds non-moving stars behind clouds in BlueSky mode.", () => tabSkyStarsEnabled, v => tabSkyStarsEnabled = v);
         RegisterIntSetting("bg.skyStarCount", "Background - Blue Sky", "Sky Star Count", "Controls how many static stars are rendered in BlueSky mode.", 8, 1200, 1, () => tabSkyStarCount, v => tabSkyStarCount = v);

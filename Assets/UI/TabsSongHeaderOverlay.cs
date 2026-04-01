@@ -6392,9 +6392,12 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         }
         else
         {
-            scorePercent = Mathf.Clamp(snapshot.currentSessionScorePercent, 0f, 100f);
             displayHits = Mathf.Max(0, snapshot.currentSessionScoreHits);
             displayMisses = Mathf.Max(0, snapshot.currentSessionScoreMisses);
+            int liveResolvedCount = displayHits + displayMisses;
+            scorePercent = snapshot.songEnded
+                ? Mathf.Clamp(snapshot.currentSessionScorePercent, 0f, 100f)
+                : (liveResolvedCount > 0 ? Mathf.Clamp(100f * displayHits / liveResolvedCount, 0f, 100f) : 0f);
         }
 
         string scoreTitle = snapshot.scoreSaveInvalidated ? "SCORE (x)" : "SCORE";
