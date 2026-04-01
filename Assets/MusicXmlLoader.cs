@@ -55,6 +55,18 @@ public static class MusicXmlLoader
         public double bendVisualDurationQuarter;
         public bool bendPreBend;
         public bool bendRelease;
+        public List<ParsedTechniqueSegment> techniqueSegments = new List<ParsedTechniqueSegment>();
+    }
+
+    private sealed class ParsedTechniqueSegment
+    {
+        public NoteTechniqueSegmentType type;
+        public double startQuarter;
+        public double endQuarter;
+        public int startFret;
+        public int endFret;
+        public float startBend;
+        public float endBend;
     }
 
     public static List<NoteData> LoadMusicXmlSong(string filePath, int targetPartIndex = -1)
@@ -363,6 +375,14 @@ public static class MusicXmlLoader
 
                         if (TryReadTabNote(child, out stringIdx, out fret, out midi, out name))
                         {
+                            List<ParsedTechniqueSegment> techniqueSegments = BuildInitialTechniqueSegments(
+                                noteStartQuarter,
+                                durQuarter,
+                                fret,
+                                vibrato,
+                                bendStep,
+                                bendPreBend,
+                                bendRelease);
                             notes.Add(new ParsedNote
                             {
                                 sourceIndex = sourceIndex++,
@@ -384,7 +404,8 @@ public static class MusicXmlLoader
                                 bendVisualStartQuarter = bendStep > 0f || bendPreBend || bendRelease ? noteStartQuarter : -1.0,
                                 bendVisualDurationQuarter = bendStep > 0f || bendPreBend || bendRelease ? durQuarter : 0.0,
                                 bendPreBend = bendPreBend,
-                                bendRelease = bendRelease
+                                bendRelease = bendRelease,
+                                techniqueSegments = techniqueSegments
                             });
                         }
                         else if (TryReadPitchedNote(child, chromaticTranspose, out midi, out name))
@@ -392,6 +413,14 @@ public static class MusicXmlLoader
                             var mapped = MapMidiToGuitar(midi);
                             if (mapped.HasValue)
                             {
+                                List<ParsedTechniqueSegment> techniqueSegments = BuildInitialTechniqueSegments(
+                                    noteStartQuarter,
+                                    durQuarter,
+                                    mapped.Value.Value,
+                                    vibrato,
+                                    bendStep,
+                                    bendPreBend,
+                                    bendRelease);
                                 notes.Add(new ParsedNote
                                 {
                                     sourceIndex = sourceIndex++,
@@ -413,7 +442,8 @@ public static class MusicXmlLoader
                                     bendVisualStartQuarter = bendStep > 0f || bendPreBend || bendRelease ? noteStartQuarter : -1.0,
                                     bendVisualDurationQuarter = bendStep > 0f || bendPreBend || bendRelease ? durQuarter : 0.0,
                                     bendPreBend = bendPreBend,
-                                    bendRelease = bendRelease
+                                    bendRelease = bendRelease,
+                                    techniqueSegments = techniqueSegments
                                 });
                             }
                         }
@@ -653,6 +683,7 @@ public static class MusicXmlLoader
                 existing.bendVisualDurationQuarter = Math.Max(existing.bendVisualDurationQuarter, n.bendVisualDurationQuarter);
                 existing.bendPreBend |= n.bendPreBend;
                 existing.bendRelease |= n.bendRelease;
+                AppendTechniqueSegments(existing.techniqueSegments, n.techniqueSegments);
                 existing.fromTab |= n.fromTab;
                 continue;
             }
@@ -670,6 +701,7 @@ public static class MusicXmlLoader
                 ParsedNote previous = normalized.LastOrDefault(n => n.stringIdx == current.stringIdx && n.fret == current.fret && n.quarterPos <= current.quarterPos);
                 if (previous != null)
                 {
+                    float carriedBend = GetEndingBendValue(previous.techniqueSegments);
                     previous.durationQuarter += current.durationQuarter;
                     previous.tieStart = previous.tieStart || current.tieStart;
                     previous.vibrato = previous.vibrato || current.vibrato;
@@ -695,6 +727,25 @@ public static class MusicXmlLoader
                     }
                     previous.bendPreBend = previous.bendPreBend || current.bendPreBend;
                     previous.bendRelease = previous.bendRelease || current.bendRelease;
+
+                    if (current.techniqueSegments != null && current.techniqueSegments.Count > 0)
+                    {
+                        AlignReleaseSegmentStartBend(current.techniqueSegments, carriedBend);
+                        AppendTechniqueSegments(previous.techniqueSegments, current.techniqueSegments);
+                    }
+                    else if (carriedBend > 0.01f && current.durationQuarter > 0.0)
+                    {
+                        AddParsedTechniqueSegment(previous.techniqueSegments, new ParsedTechniqueSegment
+                        {
+                            type = current.vibrato ? NoteTechniqueSegmentType.Vibrato : NoteTechniqueSegmentType.Sustain,
+                            startQuarter = current.quarterPos,
+                            endQuarter = current.quarterPos + current.durationQuarter,
+                            startFret = current.fret,
+                            endFret = current.fret,
+                            startBend = carriedBend,
+                            endBend = carriedBend
+                        });
+                    }
                     continue;
                 }
             }
@@ -703,6 +754,180 @@ public static class MusicXmlLoader
         }
 
         return normalized;
+    }
+
+    private static List<ParsedTechniqueSegment> BuildInitialTechniqueSegments(
+        double noteStartQuarter,
+        double durationQuarter,
+        int fret,
+        bool vibrato,
+        float bendStep,
+        bool bendPreBend,
+        bool bendRelease)
+    {
+        var segments = new List<ParsedTechniqueSegment>();
+        if (durationQuarter <= 0.0)
+            return segments;
+
+        double noteEndQuarter = noteStartQuarter + durationQuarter;
+
+        if (bendRelease)
+        {
+            float releaseStartBend = bendStep > 0.01f ? bendStep : 1f;
+            AddParsedTechniqueSegment(segments, new ParsedTechniqueSegment
+            {
+                type = NoteTechniqueSegmentType.Bend,
+                startQuarter = noteStartQuarter,
+                endQuarter = noteEndQuarter,
+                startFret = fret,
+                endFret = fret,
+                startBend = releaseStartBend,
+                endBend = 0f
+            });
+            return segments;
+        }
+
+        if (bendPreBend || bendStep > 0.01f)
+        {
+            float targetBend = bendStep > 0.01f ? bendStep : 1f;
+            AddParsedTechniqueSegment(segments, new ParsedTechniqueSegment
+            {
+                type = bendPreBend ? NoteTechniqueSegmentType.Sustain : NoteTechniqueSegmentType.Bend,
+                startQuarter = noteStartQuarter,
+                endQuarter = noteEndQuarter,
+                startFret = fret,
+                endFret = fret,
+                startBend = bendPreBend ? targetBend : 0f,
+                endBend = targetBend
+            });
+        }
+        else if (vibrato)
+        {
+            AddParsedTechniqueSegment(segments, new ParsedTechniqueSegment
+            {
+                type = NoteTechniqueSegmentType.Vibrato,
+                startQuarter = noteStartQuarter,
+                endQuarter = noteEndQuarter,
+                startFret = fret,
+                endFret = fret,
+                startBend = 0f,
+                endBend = 0f
+            });
+        }
+
+        return segments;
+    }
+
+    private static void AddParsedTechniqueSegment(List<ParsedTechniqueSegment> segments, ParsedTechniqueSegment segment)
+    {
+        if (segments == null || segment == null || segment.endQuarter <= segment.startQuarter + 1e-6)
+            return;
+
+        ParsedTechniqueSegment last = segments.Count > 0 ? segments[segments.Count - 1] : null;
+        if (last != null &&
+            last.type == segment.type &&
+            last.startFret == segment.startFret &&
+            last.endFret == segment.endFret &&
+            Math.Abs(last.startBend - segment.startBend) < 0.01f &&
+            Math.Abs(last.endBend - segment.endBend) < 0.01f &&
+            (Math.Abs(last.endQuarter - segment.startQuarter) < 1e-5 ||
+             (Math.Abs(last.startQuarter - segment.startQuarter) < 1e-5 &&
+              Math.Abs(last.endQuarter - segment.endQuarter) < 1e-5)))
+        {
+            last.startQuarter = Math.Min(last.startQuarter, segment.startQuarter);
+            last.endQuarter = Math.Max(last.endQuarter, segment.endQuarter);
+            return;
+        }
+
+        segments.Add(segment);
+    }
+
+    private static void AppendTechniqueSegments(List<ParsedTechniqueSegment> target, List<ParsedTechniqueSegment> source)
+    {
+        if (target == null || source == null)
+            return;
+
+        for (int i = 0; i < source.Count; i++)
+        {
+            ParsedTechniqueSegment segment = source[i];
+            AddParsedTechniqueSegment(target, new ParsedTechniqueSegment
+            {
+                type = segment.type,
+                startQuarter = segment.startQuarter,
+                endQuarter = segment.endQuarter,
+                startFret = segment.startFret,
+                endFret = segment.endFret,
+                startBend = segment.startBend,
+                endBend = segment.endBend
+            });
+        }
+    }
+
+    private static float GetEndingBendValue(List<ParsedTechniqueSegment> segments)
+    {
+        if (segments == null)
+            return 0f;
+
+        for (int i = segments.Count - 1; i >= 0; i--)
+        {
+            ParsedTechniqueSegment segment = segments[i];
+            if (segment == null)
+                continue;
+
+            if (segment.type == NoteTechniqueSegmentType.Bend ||
+                segment.type == NoteTechniqueSegmentType.Sustain ||
+                segment.type == NoteTechniqueSegmentType.Vibrato)
+            {
+                return segment.endBend;
+            }
+        }
+
+        return 0f;
+    }
+
+    private static void AlignReleaseSegmentStartBend(List<ParsedTechniqueSegment> segments, float carriedBend)
+    {
+        if (segments == null || segments.Count == 0 || carriedBend <= 0.01f)
+            return;
+
+        ParsedTechniqueSegment first = segments[0];
+        if (first != null &&
+            first.type == NoteTechniqueSegmentType.Bend &&
+            first.endBend < first.startBend)
+        {
+            first.startBend = Mathf.Max(carriedBend, first.startBend);
+        }
+    }
+
+    private static List<NoteTechniqueSegmentData> ConvertTechniqueSegmentsToGameplay(
+        List<ParsedTechniqueSegment> parsedSegments,
+        double noteStartQuarter,
+        List<TempoEvent> tempoMap)
+    {
+        if (parsedSegments == null || parsedSegments.Count == 0)
+            return null;
+
+        double noteStartSeconds = QuarterToSeconds(noteStartQuarter, tempoMap);
+        var result = new List<NoteTechniqueSegmentData>(parsedSegments.Count);
+
+        foreach (ParsedTechniqueSegment segment in parsedSegments.OrderBy(s => s.startQuarter))
+        {
+            float startOffset = (float)Math.Max(0.0, QuarterToSeconds(segment.startQuarter, tempoMap) - noteStartSeconds);
+            float endOffset = (float)Math.Max(startOffset, QuarterToSeconds(segment.endQuarter, tempoMap) - noteStartSeconds);
+            if (endOffset <= startOffset + 0.0001f)
+                continue;
+
+            result.Add(new NoteTechniqueSegmentData(
+                segment.type,
+                startOffset,
+                endOffset,
+                segment.startFret,
+                segment.endFret,
+                segment.startBend,
+                segment.endBend));
+        }
+
+        return result.Count > 0 ? result : null;
     }
 
     private static List<NoteData> BuildGameplayNotes(List<ParsedNote> parsed, List<TempoEvent> tempoMap)
@@ -714,6 +939,7 @@ public static class MusicXmlLoader
         for (int i = 0; i < parsed.Count; i++)
         {
             ParsedNote n = parsed[i];
+            List<NoteTechniqueSegmentData> techniqueSegments = ConvertTechniqueSegmentsToGameplay(n.techniqueSegments, n.quarterPos, tempoMap);
             var noteData = new NoteData(
                 i,
                 (float)QuarterToSeconds(n.quarterPos, tempoMap),
@@ -731,7 +957,8 @@ public static class MusicXmlLoader
                 n.bendPreBend,
                 n.bendRelease,
                 n.bendVisualStartQuarter >= 0.0 ? (float)QuarterToSeconds(n.bendVisualStartQuarter, tempoMap) : -1f,
-                (float)Math.Max(0.0, QuarterToSeconds(n.quarterPos + n.bendVisualDurationQuarter, tempoMap) - QuarterToSeconds(n.quarterPos, tempoMap)));
+                (float)Math.Max(0.0, QuarterToSeconds(n.quarterPos + n.bendVisualDurationQuarter, tempoMap) - QuarterToSeconds(n.quarterPos, tempoMap)),
+                techniqueSegments);
 
             result.Add(noteData);
             sourceIndexToResultIndex[n.sourceIndex] = i;
@@ -755,6 +982,48 @@ public static class MusicXmlLoader
             start.technique = technique;
             start.slideTargetFret = dest.fret;
             start.duration = Mathf.Max(start.duration, Mathf.Max(0.05f, dest.time - start.time));
+            if (technique == NoteTechnique.Slide)
+            {
+                if (start.techniqueSegments == null)
+                    start.techniqueSegments = new List<NoteTechniqueSegmentData>();
+
+                float slideEndOffset = Mathf.Max(0.05f, dest.time - start.time);
+                start.techniqueSegments.Add(new NoteTechniqueSegmentData(
+                    NoteTechniqueSegmentType.Slide,
+                    0f,
+                    slideEndOffset,
+                    start.fret,
+                    dest.fret,
+                    0f,
+                    0f));
+
+                if (dest.techniqueSegments != null && dest.techniqueSegments.Count > 0)
+                {
+                    for (int segmentIndex = 0; segmentIndex < dest.techniqueSegments.Count; segmentIndex++)
+                    {
+                        NoteTechniqueSegmentData segment = dest.techniqueSegments[segmentIndex];
+                        start.techniqueSegments.Add(new NoteTechniqueSegmentData(
+                            segment.type,
+                            slideEndOffset + segment.startOffset,
+                            slideEndOffset + segment.endOffset,
+                            segment.startFret,
+                            segment.endFret,
+                            segment.startBend,
+                            segment.endBend));
+                    }
+                }
+                else if (dest.duration > GuitarTechniqueVisualThresholds.SustainSeconds)
+                {
+                    start.techniqueSegments.Add(new NoteTechniqueSegmentData(
+                        NoteTechniqueSegmentType.Sustain,
+                        slideEndOffset,
+                        slideEndOffset + dest.duration,
+                        dest.fret,
+                        dest.fret,
+                        0f,
+                        0f));
+                }
+            }
             result[i] = start;
 
             dest.isLegato = true;
