@@ -25,6 +25,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly List<int> chordFrameRemovalBuffer = new List<int>();
     private Mesh techniqueRibbonMesh;
     private Material sharedTechniqueRibbonMaterial;
+    private Material sharedBendArrowMaterial;
+    private Material sharedMuteSymbolMaterial;
 
     private GuitarBridgeServer owner;
     private Camera mainCamera;
@@ -67,6 +69,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const float BendRibbonHeadMaximumFlatHoldSeconds = 1.2f;
     private const float BendRibbonFlatLightStrength = 0.85f;
     private const float BendRibbonDarkBandPaddingDistance = 0.32f;
+    private const float BendArrowWidthFraction = 0.82f;
+    private const float BendArrowFrontOffset = 0.035f;
+    private const float BendArrowStackOffsetFraction = 0.72f;
+    private const float LegatoCurveWidthFraction = 0.22f;
+    private const int LegatoCurveSamples = 18;
+    private const float MuteSymbolScaleFraction = 1.76f;
+    private const float MuteSymbolFrontOffset = 0.04f;
+    private const bool ForceMuteSymbolPreviewOnAllNotes = false;
     private const float VibratoRibbonAmplitudeInStrings = 0.42f;
     private const float VibratoCyclesPerSecond = 5f;
     private const int VibratoMinimumHalfWaves = 4;
@@ -89,6 +99,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly int CornerRoundnessShaderId = Shader.PropertyToID("_CornerRoundness");
     private static readonly int DarkBandStart01ShaderId = Shader.PropertyToID("_DarkBandStart01");
     private static readonly int DarkBandEnd01ShaderId = Shader.PropertyToID("_DarkBandEnd01");
+    private static readonly int BendArrowBaseColorShaderId = Shader.PropertyToID("_BaseColor");
 
     private struct TechniqueRibbonProfile
     {
@@ -208,6 +219,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             Object.Destroy(sharedTechniqueRibbonMaterial);
             sharedTechniqueRibbonMaterial = null;
+        }
+
+        if (sharedBendArrowMaterial != null)
+        {
+            Object.Destroy(sharedBendArrowMaterial);
+            sharedBendArrowMaterial = null;
+        }
+
+        if (sharedMuteSymbolMaterial != null)
+        {
+            Object.Destroy(sharedMuteSymbolMaterial);
+            sharedMuteSymbolMaterial = null;
         }
 
         if (techniqueRibbonMesh != null)
@@ -1367,6 +1390,63 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             SetGameObjectActive(marker, owner.highwayShowLandingDot);
         }
 
+        GameObject bendArrow = null;
+        Renderer bendArrowRenderer = null;
+        MaterialPropertyBlock bendArrowPropertyBlock = null;
+        GameObject bendArrowSecondary = null;
+        Renderer bendArrowSecondaryRenderer = null;
+        MaterialPropertyBlock bendArrowSecondaryPropertyBlock = null;
+        if (HasBendRibbon(data))
+        {
+            EnsureBendArrowResources();
+            if (sharedBendArrowMaterial != null)
+            {
+                bendArrow = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                bendArrow.name = "BendArrow_" + data.id;
+                bendArrow.transform.SetParent(gameplayRoot.transform, false);
+                Object.Destroy(bendArrow.GetComponent<Collider>());
+                bendArrowRenderer = bendArrow.GetComponent<Renderer>();
+                bendArrowRenderer.sharedMaterial = sharedBendArrowMaterial;
+                bendArrowRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                bendArrowRenderer.receiveShadows = false;
+                bendArrowRenderer.lightProbeUsage = LightProbeUsage.Off;
+                bendArrowRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                bendArrowPropertyBlock = new MaterialPropertyBlock();
+
+                bendArrowSecondary = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                bendArrowSecondary.name = "BendArrowSecondary_" + data.id;
+                bendArrowSecondary.transform.SetParent(gameplayRoot.transform, false);
+                Object.Destroy(bendArrowSecondary.GetComponent<Collider>());
+                bendArrowSecondaryRenderer = bendArrowSecondary.GetComponent<Renderer>();
+                bendArrowSecondaryRenderer.sharedMaterial = sharedBendArrowMaterial;
+                bendArrowSecondaryRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                bendArrowSecondaryRenderer.receiveShadows = false;
+                bendArrowSecondaryRenderer.lightProbeUsage = LightProbeUsage.Off;
+                bendArrowSecondaryRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                bendArrowSecondaryPropertyBlock = new MaterialPropertyBlock();
+            }
+        }
+
+        GameObject muteSymbol = null;
+        Renderer muteSymbolRenderer = null;
+        if (ShouldShowMuteSymbolForNote(data))
+        {
+            EnsureMuteSymbolResources();
+            if (sharedMuteSymbolMaterial != null)
+            {
+                muteSymbol = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                muteSymbol.name = "MuteSymbol_" + data.id;
+                muteSymbol.transform.SetParent(gameplayRoot.transform, false);
+                Object.Destroy(muteSymbol.GetComponent<Collider>());
+                muteSymbolRenderer = muteSymbol.GetComponent<Renderer>();
+                muteSymbolRenderer.sharedMaterial = sharedMuteSymbolMaterial;
+                muteSymbolRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                muteSymbolRenderer.receiveShadows = false;
+                muteSymbolRenderer.lightProbeUsage = LightProbeUsage.Off;
+                muteSymbolRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+            }
+        }
+
         GameObject outlineRoot = CreateNoteOutline(cube.transform.localScale, owner.GetStringColor(data.stringIdx));
         outlineRoot.SetActive(false);
 
@@ -1401,12 +1481,36 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         GameObject slideRibbon = null;
         Renderer slideRibbonRenderer = null;
+        GameObject legatoCurve = null;
+        LineRenderer legatoCurveRenderer = null;
         if (!HasTechniqueSegments(data) && data.slideTargetFret >= 0)
         {
-            EnsureTechniqueRibbonResources();
-            if (techniqueRibbonMesh != null && sharedTechniqueRibbonMaterial != null)
+            if (IsLegatoCurveTechnique(data))
             {
-                slideRibbon = CreateTechniqueRibbonObject("SlideRibbon_" + data.id, techniqueRoot.transform, techniqueRibbonMesh, sharedTechniqueRibbonMaterial, out slideRibbonRenderer);
+                legatoCurve = new GameObject("LegatoCurve_" + data.id);
+                legatoCurve.transform.SetParent(techniqueRoot.transform, false);
+                legatoCurveRenderer = legatoCurve.AddComponent<LineRenderer>();
+                legatoCurveRenderer.useWorldSpace = true;
+                legatoCurveRenderer.loop = false;
+                legatoCurveRenderer.alignment = LineAlignment.View;
+                legatoCurveRenderer.textureMode = LineTextureMode.Stretch;
+                legatoCurveRenderer.numCapVertices = 6;
+                legatoCurveRenderer.numCornerVertices = 4;
+                legatoCurveRenderer.shadowCastingMode = ShadowCastingMode.Off;
+                legatoCurveRenderer.receiveShadows = false;
+                legatoCurveRenderer.lightProbeUsage = LightProbeUsage.Off;
+                legatoCurveRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+                Material legatoMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.4f);
+                ConfigureOverlayMaterial(legatoMat, 101, true);
+                legatoCurveRenderer.material = legatoMat;
+            }
+            else
+            {
+                EnsureTechniqueRibbonResources();
+                if (techniqueRibbonMesh != null && sharedTechniqueRibbonMaterial != null)
+                {
+                    slideRibbon = CreateTechniqueRibbonObject("SlideRibbon_" + data.id, techniqueRoot.transform, techniqueRibbonMesh, sharedTechniqueRibbonMaterial, out slideRibbonRenderer);
+                }
             }
         }
 
@@ -1449,6 +1553,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             marker = marker,
             markerRenderer = markerRenderer,
             markerMaterial = markerMaterial,
+            bendArrow = bendArrow,
+            bendArrowRenderer = bendArrowRenderer,
+            bendArrowPropertyBlock = bendArrowPropertyBlock,
+            bendArrowSecondary = bendArrowSecondary,
+            bendArrowSecondaryRenderer = bendArrowSecondaryRenderer,
+            bendArrowSecondaryPropertyBlock = bendArrowSecondaryPropertyBlock,
+            muteSymbol = muteSymbol,
+            muteSymbolRenderer = muteSymbolRenderer,
             outlineRoot = outlineRoot,
             techniqueRoot = techniqueRoot,
             techniqueSegmentRibbons = techniqueSegmentRibbons,
@@ -1457,6 +1569,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             slideRibbon = slideRibbon,
             slideRibbonRenderer = slideRibbonRenderer,
             slideRibbonPropertyBlock = slideRibbonRenderer != null ? new MaterialPropertyBlock() : null,
+            legatoCurve = legatoCurve,
+            legatoCurveRenderer = legatoCurveRenderer,
             bendRibbon = bendRibbon,
             bendRibbonRenderer = bendRibbonRenderer,
             bendRibbonPropertyBlock = bendRibbonRenderer != null ? new MaterialPropertyBlock() : null,
@@ -1584,6 +1698,53 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             }
         }
 
+        bool hideOverlaySymbol = songTime >= state.data.time - 0.0001f;
+
+        if (view.bendArrow != null && view.bendArrowRenderer != null && view.bendArrowPropertyBlock != null)
+        {
+            Vector3 currentScale = view.noteRoot.transform.localScale;
+            float arrowWidth = Mathf.Max(0.05f, currentScale.x * BendArrowWidthFraction);
+            float arrowHeight = Mathf.Max(0.05f, currentScale.y);
+            float arrowFrontZ = visualNoteZ - (currentScale.z * 0.5f) - BendArrowFrontOffset;
+            float arrowBaseY = y + (currentScale.y * 0.5f);
+            bool showPrimaryArrow = !hideResolvedCoreVisuals && !hideTravelingNoteBox && !hideOverlaySymbol;
+            int roundedBendSemitones = Mathf.Max(0, Mathf.RoundToInt(state.data.bendStep));
+            bool showSecondaryArrow = showPrimaryArrow && roundedBendSemitones > 1;
+
+            view.bendArrow.transform.position = new Vector3(x, arrowBaseY, arrowFrontZ);
+            view.bendArrow.transform.rotation = Quaternion.identity;
+            view.bendArrow.transform.localScale = new Vector3(arrowWidth, arrowHeight, 1f);
+            SetGameObjectActive(view.bendArrow, showPrimaryArrow);
+            view.bendArrowRenderer.GetPropertyBlock(view.bendArrowPropertyBlock);
+            view.bendArrowPropertyBlock.SetColor(BendArrowBaseColorShaderId, finalColor);
+            view.bendArrowRenderer.SetPropertyBlock(view.bendArrowPropertyBlock);
+
+            if (view.bendArrowSecondary != null && view.bendArrowSecondaryRenderer != null && view.bendArrowSecondaryPropertyBlock != null)
+            {
+                view.bendArrowSecondary.transform.position = new Vector3(x, arrowBaseY + (arrowHeight * BendArrowStackOffsetFraction), arrowFrontZ);
+                view.bendArrowSecondary.transform.rotation = Quaternion.identity;
+                view.bendArrowSecondary.transform.localScale = new Vector3(arrowWidth, arrowHeight, 1f);
+                SetGameObjectActive(view.bendArrowSecondary, showSecondaryArrow);
+                view.bendArrowSecondaryRenderer.GetPropertyBlock(view.bendArrowSecondaryPropertyBlock);
+                view.bendArrowSecondaryPropertyBlock.SetColor(BendArrowBaseColorShaderId, finalColor);
+                view.bendArrowSecondaryRenderer.SetPropertyBlock(view.bendArrowSecondaryPropertyBlock);
+            }
+        }
+
+        if (view.muteSymbol != null)
+        {
+            Vector3 currentScale = view.noteRoot.transform.localScale;
+            float referenceNoteSize = Mathf.Max(GetSingleFrettedNoteScale().y, currentScale.y);
+            float symbolSize = Mathf.Max(0.05f, referenceNoteSize * MuteSymbolScaleFraction);
+            float symbolFrontZ = visualNoteZ - (currentScale.z * 0.5f) - MuteSymbolFrontOffset;
+            bool showMuteSymbol = ShouldShowMuteSymbolForNote(state.data) && !hideResolvedCoreVisuals && !hideTravelingNoteBox && !hideOverlaySymbol;
+
+            view.muteSymbol.transform.position = new Vector3(x, y, symbolFrontZ);
+            view.muteSymbol.transform.rotation = Quaternion.identity;
+            view.muteSymbol.transform.localScale = new Vector3(symbolSize, symbolSize, 1f);
+            SetGameObjectActive(view.muteSymbol, showMuteSymbol);
+        }
+
         UpdateTechniqueView(view, state, visualNoteZ, rawVisualNoteZ, songTime);
     }
 
@@ -1632,6 +1793,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         if (view.slideRibbon != null)
             SetGameObjectActive(view.slideRibbon, false);
+        if (view.legatoCurve != null)
+            SetGameObjectActive(view.legatoCurve, false);
         if (view.bendRibbon != null)
             SetGameObjectActive(view.bendRibbon, false);
         if (view.bendSustainRibbon != null)
@@ -1650,12 +1813,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private bool UpdateSlideTechnique(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
     {
-        if (view.slideRibbon == null || view.slideRibbonRenderer == null)
+        bool useLegatoCurve = view.legatoCurve != null && view.legatoCurveRenderer != null;
+        if (!useLegatoCurve && (view.slideRibbon == null || view.slideRibbonRenderer == null))
             return false;
 
-        if (state.data.linkedFromNoteId >= 0)
+        if (state.data.linkedFromNoteId >= 0 && state.data.slideTargetFret < 0)
         {
-            view.slideRibbon.SetActive(false);
+            if (view.slideRibbon != null)
+                view.slideRibbon.SetActive(false);
+            if (view.legatoCurve != null)
+                view.legatoCurve.SetActive(false);
             return false;
         }
 
@@ -1663,14 +1830,20 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         int targetFret = anchorData.slideTargetFret;
         if (targetFret < 0 || anchorData.fret <= 0)
         {
-            view.slideRibbon.SetActive(false);
+            if (view.slideRibbon != null)
+                view.slideRibbon.SetActive(false);
+            if (view.legatoCurve != null)
+                view.legatoCurve.SetActive(false);
             return false;
         }
 
         if (!TryBuildSlideRibbonProfile(view, state, z, songTime, out TechniqueRibbonProfile liveProfile))
         {
             view.slideRibbonFadeState.freezeActive = false;
-            view.slideRibbon.SetActive(false);
+            if (view.slideRibbon != null)
+                view.slideRibbon.SetActive(false);
+            if (view.legatoCurve != null)
+                view.legatoCurve.SetActive(false);
             return false;
         }
 
@@ -1699,12 +1872,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             visibleStart01 = Mathf.Clamp01((songTime - view.slideRibbonFadeState.fadeStartSongTime) / fadeDuration);
             if (visibleStart01 >= 0.999f)
             {
-                view.slideRibbon.SetActive(false);
+                if (view.slideRibbon != null)
+                    view.slideRibbon.SetActive(false);
+                if (view.legatoCurve != null)
+                    view.legatoCurve.SetActive(false);
                 return false;
             }
         }
 
-        ApplySlideTechniqueRibbon(view, liveProfile, state.IsResolved, visibleStart01);
+        if (useLegatoCurve)
+            ApplyLegatoCurveTechnique(view, liveProfile, state.IsResolved, visibleStart01);
+        else
+            ApplySlideTechniqueRibbon(view, liveProfile, state.IsResolved, visibleStart01);
         return true;
     }
 
@@ -1791,6 +1970,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         return chartById.TryGetValue(data.linkedFromNoteId, out NoteData source) &&
                source.technique == NoteTechnique.Slide;
+    }
+
+    private static bool IsLegatoCurveTechnique(NoteData data)
+    {
+        return data.technique == NoteTechnique.HammerOn || data.technique == NoteTechnique.PullOff;
     }
 
     private static bool HasBendRibbon(NoteData data)
@@ -1965,6 +2149,63 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             emissionColor,
             visibleStart01,
             0f);
+    }
+
+    private void ApplyLegatoCurveTechnique(HighwayNoteView view, TechniqueRibbonProfile profile, bool isResolved, float visibleStart01)
+    {
+        if (view.legatoCurve == null || view.legatoCurveRenderer == null)
+            return;
+
+        SetGameObjectActive(view.legatoCurve, true);
+
+        LineRenderer line = view.legatoCurveRenderer;
+        int sampleCount = Mathf.Max(2, LegatoCurveSamples);
+        float startT = Mathf.Clamp01(visibleStart01);
+        float remaining = 1f - startT;
+        if (remaining <= 0.001f)
+        {
+            view.legatoCurve.SetActive(false);
+            return;
+        }
+
+        line.positionCount = sampleCount;
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float normalized = i / (float)(sampleCount - 1);
+            float t = startT + (normalized * remaining);
+            line.SetPosition(i, EvaluateTechniqueBezier(profile, t));
+        }
+
+        float width = Mathf.Max(0.04f, view.baseScale.x * LegatoCurveWidthFraction);
+        line.startWidth = width;
+        line.endWidth = width * 0.92f;
+
+        Color lineColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.12f : 0.08f);
+        float alpha = isResolved ? 0.58f : 0.96f;
+        lineColor.a = alpha * (1f - (visibleStart01 * 0.8f));
+        line.startColor = lineColor;
+        line.endColor = lineColor;
+
+        Material lineMat = line.material;
+        if (lineMat != null)
+        {
+            lineMat.color = lineColor;
+            lineMat.EnableKeyword("_EMISSION");
+            lineMat.SetColor("_EmissionColor", Color.Lerp(view.baseColor, Color.white, 0.18f) * Mathf.Pow(2f, isResolved ? 0.55f : 1.35f));
+        }
+
+        if (view.slideRibbon != null)
+            view.slideRibbon.SetActive(false);
+    }
+
+    private static Vector3 EvaluateTechniqueBezier(TechniqueRibbonProfile profile, float t)
+    {
+        float u = 1f - t;
+        return
+            (u * u * u * profile.start) +
+            (3f * u * u * t * profile.control1) +
+            (3f * u * t * t * profile.control2) +
+            (t * t * t * profile.end);
     }
 
     private void ApplyBendTechniqueRibbon(HighwayNoteView view, TechniqueRibbonProfile profile, bool isResolved, float visibleStart01)
@@ -3397,6 +3638,51 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
     }
 
+    private void EnsureBendArrowResources()
+    {
+        if (sharedBendArrowMaterial != null)
+            return;
+
+        Shader shader = Shader.Find("Custom/HighwayNoteArrow");
+        if (shader == null)
+            return;
+
+        sharedBendArrowMaterial = new Material(shader);
+        ConfigureOverlayMaterial(sharedBendArrowMaterial, 145, true);
+    }
+
+    private void EnsureMuteSymbolResources()
+    {
+        if (sharedMuteSymbolMaterial != null)
+            return;
+
+        Shader shader = Shader.Find("Custom/HighwayMuteSymbol");
+        if (shader == null)
+            return;
+
+        sharedMuteSymbolMaterial = new Material(shader);
+        ConfigureOverlayMaterial(sharedMuteSymbolMaterial, 146, true);
+    }
+
+    private static bool IsMutedNoteVisual(NoteData data)
+    {
+        if (data.isMuted)
+            return true;
+
+        if (data.fret < 0)
+            return true;
+
+        string noteName = data.note ?? string.Empty;
+        return noteName.Equals("x", System.StringComparison.OrdinalIgnoreCase)
+            || noteName.Equals("mute", System.StringComparison.OrdinalIgnoreCase)
+            || noteName.Equals("muted", System.StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldShowMuteSymbolForNote(NoteData data)
+    {
+        return ForceMuteSymbolPreviewOnAllNotes || IsMutedNoteVisual(data);
+    }
+
     private static Mesh CreateTechniqueRibbonMesh(int segments)
     {
         int clampedSegments = Mathf.Max(8, segments);
@@ -3549,6 +3835,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public GameObject marker;
         public Renderer markerRenderer;
         public Material markerMaterial;
+        public GameObject bendArrow;
+        public Renderer bendArrowRenderer;
+        public MaterialPropertyBlock bendArrowPropertyBlock;
+        public GameObject bendArrowSecondary;
+        public Renderer bendArrowSecondaryRenderer;
+        public MaterialPropertyBlock bendArrowSecondaryPropertyBlock;
+        public GameObject muteSymbol;
+        public Renderer muteSymbolRenderer;
         public GameObject outlineRoot;
         public GameObject techniqueRoot;
         public GameObject[] techniqueSegmentRibbons;
@@ -3557,6 +3851,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public GameObject slideRibbon;
         public Renderer slideRibbonRenderer;
         public MaterialPropertyBlock slideRibbonPropertyBlock;
+        public GameObject legatoCurve;
+        public LineRenderer legatoCurveRenderer;
         public SlideRibbonFadeState slideRibbonFadeState;
         public GameObject bendRibbon;
         public Renderer bendRibbonRenderer;
@@ -3582,6 +3878,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 Object.Destroy(tether);
             if (marker != null)
                 Object.Destroy(marker);
+            if (bendArrow != null)
+                Object.Destroy(bendArrow);
+            if (bendArrowSecondary != null)
+                Object.Destroy(bendArrowSecondary);
+            if (muteSymbol != null)
+                Object.Destroy(muteSymbol);
+            if (legatoCurve != null)
+                Object.Destroy(legatoCurve);
             if (outlineRoot != null)
                 Object.Destroy(outlineRoot);
             if (techniqueRoot != null)

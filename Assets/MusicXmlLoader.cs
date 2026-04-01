@@ -55,6 +55,7 @@ public static class MusicXmlLoader
         public double bendVisualDurationQuarter;
         public bool bendPreBend;
         public bool bendRelease;
+        public bool isMuted;
         public List<ParsedTechniqueSegment> techniqueSegments = new List<ParsedTechniqueSegment>();
     }
 
@@ -372,6 +373,7 @@ public static class MusicXmlLoader
                             out bool tieStart, out bool tieStop,
                             out bool slideStart, out bool hammerStart, out bool pullStart,
                             out bool vibrato, out float bendStep, out bool bendPreBend, out bool bendRelease);
+                        bool isMuted = IsStraightMutedNote(child);
 
                         if (TryReadTabNote(child, out stringIdx, out fret, out midi, out name))
                         {
@@ -405,6 +407,7 @@ public static class MusicXmlLoader
                                 bendVisualDurationQuarter = bendStep > 0f || bendPreBend || bendRelease ? durQuarter : 0.0,
                                 bendPreBend = bendPreBend,
                                 bendRelease = bendRelease,
+                                isMuted = isMuted,
                                 techniqueSegments = techniqueSegments
                             });
                         }
@@ -443,6 +446,7 @@ public static class MusicXmlLoader
                                     bendVisualDurationQuarter = bendStep > 0f || bendPreBend || bendRelease ? durQuarter : 0.0,
                                     bendPreBend = bendPreBend,
                                     bendRelease = bendRelease,
+                                    isMuted = isMuted,
                                     techniqueSegments = techniqueSegments
                                 });
                             }
@@ -683,6 +687,7 @@ public static class MusicXmlLoader
                 existing.bendVisualDurationQuarter = Math.Max(existing.bendVisualDurationQuarter, n.bendVisualDurationQuarter);
                 existing.bendPreBend |= n.bendPreBend;
                 existing.bendRelease |= n.bendRelease;
+                existing.isMuted |= n.isMuted;
                 AppendTechniqueSegments(existing.techniqueSegments, n.techniqueSegments);
                 existing.fromTab |= n.fromTab;
                 continue;
@@ -773,17 +778,45 @@ public static class MusicXmlLoader
 
         if (bendRelease)
         {
-            float releaseStartBend = bendStep > 0.01f ? bendStep : 1f;
-            AddParsedTechniqueSegment(segments, new ParsedTechniqueSegment
+            float targetBend = bendStep > 0.01f ? bendStep : 1f;
+
+            if (bendPreBend)
             {
-                type = NoteTechniqueSegmentType.Bend,
-                startQuarter = noteStartQuarter,
-                endQuarter = noteEndQuarter,
-                startFret = fret,
-                endFret = fret,
-                startBend = releaseStartBend,
-                endBend = 0f
-            });
+                AddParsedTechniqueSegment(segments, new ParsedTechniqueSegment
+                {
+                    type = NoteTechniqueSegmentType.Bend,
+                    startQuarter = noteStartQuarter,
+                    endQuarter = noteEndQuarter,
+                    startFret = fret,
+                    endFret = fret,
+                    startBend = targetBend,
+                    endBend = 0f
+                });
+            }
+            else
+            {
+                double bendPeakQuarter = noteStartQuarter + (durationQuarter * 0.45);
+                AddParsedTechniqueSegment(segments, new ParsedTechniqueSegment
+                {
+                    type = NoteTechniqueSegmentType.Bend,
+                    startQuarter = noteStartQuarter,
+                    endQuarter = bendPeakQuarter,
+                    startFret = fret,
+                    endFret = fret,
+                    startBend = 0f,
+                    endBend = targetBend
+                });
+                AddParsedTechniqueSegment(segments, new ParsedTechniqueSegment
+                {
+                    type = NoteTechniqueSegmentType.Bend,
+                    startQuarter = bendPeakQuarter,
+                    endQuarter = noteEndQuarter,
+                    startFret = fret,
+                    endFret = fret,
+                    startBend = targetBend,
+                    endBend = 0f
+                });
+            }
             return segments;
         }
 
@@ -958,7 +991,8 @@ public static class MusicXmlLoader
                 n.bendRelease,
                 n.bendVisualStartQuarter >= 0.0 ? (float)QuarterToSeconds(n.bendVisualStartQuarter, tempoMap) : -1f,
                 (float)Math.Max(0.0, QuarterToSeconds(n.quarterPos + n.bendVisualDurationQuarter, tempoMap) - QuarterToSeconds(n.quarterPos, tempoMap)),
-                techniqueSegments);
+                techniqueSegments,
+                n.isMuted);
 
             result.Add(noteData);
             sourceIndexToResultIndex[n.sourceIndex] = i;
@@ -1115,18 +1149,43 @@ public static class MusicXmlLoader
             pullStart |= technical.Elements().Any(e => e.Name.LocalName == "pull-off" && Attr(e, "type") == "start");
             vibrato |= technical.Elements().Any(e => e.Name.LocalName == "vibrato");
 
-            XElement bendNode = technical.Elements().FirstOrDefault(e => e.Name.LocalName == "bend");
-            if (bendNode != null)
+            IEnumerable<XElement> bendNodes = technical.Elements().Where(e => e.Name.LocalName == "bend");
+            bool foundAnyBend = false;
+            float maxBendAlter = 0f;
+
+            foreach (XElement bendNode in bendNodes)
             {
-                bendPreBend = bendNode.Elements().Any(e => e.Name.LocalName == "pre-bend");
-                bendRelease = bendNode.Elements().Any(e => e.Name.LocalName == "release");
+                foundAnyBend = true;
+                bendPreBend |= bendNode.Elements().Any(e => e.Name.LocalName == "pre-bend");
+                bendRelease |= bendNode.Elements().Any(e => e.Name.LocalName == "release");
                 float bendAlter;
                 if (float.TryParse(ChildValue(bendNode, "bend-alter"), NumberStyles.Any, CultureInfo.InvariantCulture, out bendAlter))
-                    bendStep = bendAlter;
+                    maxBendAlter = Mathf.Max(maxBendAlter, bendAlter);
                 else
-                    bendStep = 1f;
+                    maxBendAlter = Mathf.Max(maxBendAlter, 1f);
             }
+
+            if (foundAnyBend)
+                bendStep = maxBendAlter;
         }
+    }
+
+    private static bool IsStraightMutedNote(XElement noteNode)
+    {
+        if (noteNode == null)
+            return false;
+
+        XElement notehead = noteNode.Elements().FirstOrDefault(e => e.Name.LocalName == "notehead");
+        if (notehead != null && string.Equals(notehead.Value?.Trim(), "x", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        XElement play = noteNode.Elements().FirstOrDefault(e => e.Name.LocalName == "play");
+        if (play == null)
+            return false;
+
+        return play.Elements().Any(e =>
+            e.Name.LocalName == "mute" &&
+            string.Equals((e.Value ?? string.Empty).Trim(), "straight", StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool TryReadDirectionOffsetQuarter(XElement directionNode, double divisions, out double offsetQuarter)

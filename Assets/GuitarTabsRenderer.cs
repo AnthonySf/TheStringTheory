@@ -671,26 +671,35 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
                 List<Renderer> extraRenderers = new List<Renderer>();
                 List<TextMeshPro> extraTexts = new List<TextMeshPro>();
+                TextMeshPro muteSymbolText = null;
+                AddMuteCenterSymbol(markerRoot.transform, note, ref muteSymbolText);
                 AddCornerTechniqueGlyph(markerRoot.transform, note, extraTexts);
                 GameObject tunnelRoot = BuildTechniqueTunnel(note, section, x, y, extraRenderers, extraTexts);
                 if (tunnelRoot != null)
                     dynamicObjects.Add(tunnelRoot);
 
-                NoteViews[note.id] = new TabNoteView(outlineRenderer, fillRenderer, text, extraRenderers, extraTexts);
+                NoteViews[note.id] = new TabNoteView(outlineRenderer, fillRenderer, text, extraRenderers, extraTexts, muteSymbolText);
             }
         }
 
 
         private static string GetNoteLabelText(NoteData note)
         {
-            if (note.fret < 0)
-                return "X";
-
-            string noteName = note.note ?? string.Empty;
-            if (noteName.Equals("x", StringComparison.OrdinalIgnoreCase) || noteName.Equals("mute", StringComparison.OrdinalIgnoreCase) || noteName.Equals("muted", StringComparison.OrdinalIgnoreCase))
-                return "X";
+            if (IsMutedNoteVisual(note))
+                return string.Empty;
 
             return Mathf.Max(0, note.fret).ToString();
+        }
+
+        private static bool IsMutedNoteVisual(NoteData note)
+        {
+            if (note.isMuted || note.fret < 0)
+                return true;
+
+            string noteName = note.note ?? string.Empty;
+            return noteName.Equals("x", StringComparison.OrdinalIgnoreCase)
+                || noteName.Equals("mute", StringComparison.OrdinalIgnoreCase)
+                || noteName.Equals("muted", StringComparison.OrdinalIgnoreCase);
         }
 
         private GameObject BuildTechniqueTunnel(NoteData note, TabSectionData section, float x, float y, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts)
@@ -771,13 +780,13 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 glyphObj.transform.SetParent(root.transform, false);
 
                 float visibleMiddleX = 0f;
-                float maxYOffsetBeforeNextString = lineSpacing * 0.33f;
-                float glyphYOffset = Mathf.Min(Mathf.Max(height * 0.72f, owner.tabTechniqueGlyphFontSize * 0.10f), maxYOffsetBeforeNextString);
+                float maxYOffsetBeforeNextString = lineSpacing * 0.45f;
+                float glyphYOffset = Mathf.Min(Mathf.Max(height * 1.9f, owner.tabTechniqueGlyphFontSize * 0.46f), maxYOffsetBeforeNextString);
                 glyphObj.transform.localPosition = new Vector3(visibleMiddleX, glyphYOffset, -0.08f);
 
                 TextMeshPro glyphText = glyphObj.AddComponent<TextMeshPro>();
                 glyphText.text = glyph;
-                glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.35f;
+                glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.54f;
                 glyphText.alignment = TextAlignmentOptions.Center;
                 glyphText.color = owner.tabTechniqueGlyphColor;
                 glyphText.enableAutoSizing = false;
@@ -887,18 +896,67 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             glyphObj.transform.SetParent(noteRoot, false);
 
             float xOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.24f, 0.11f);
-            float yOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.18f, 0.08f);
+            float yOffset = Mathf.Max(owner.tabNoteCircleDiameter * 0.22f, 0.10f);
             glyphObj.transform.localPosition = new Vector3(xOffset, yOffset, -0.09f);
 
             TextMeshPro glyphText = glyphObj.AddComponent<TextMeshPro>();
             glyphText.text = glyph;
-            glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.48f;
+            glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.52f;
             glyphText.alignment = TextAlignmentOptions.Center;
             glyphText.color = owner.tabTechniqueGlyphColor;
             glyphText.enableAutoSizing = false;
             glyphText.fontStyle = FontStyles.Bold;
             glyphText.sortingOrder = 31;
             extraTexts?.Add(glyphText);
+        }
+
+        private void AddMuteCenterSymbol(Transform noteRoot, NoteData note, ref TextMeshPro muteSymbolText)
+        {
+            if (!IsMutedNoteVisual(note))
+                return;
+
+            GameObject muteObj = new GameObject($"MuteSymbol_{note.id}");
+            muteObj.transform.SetParent(noteRoot, false);
+            muteObj.transform.localPosition = new Vector3(0f, 0f, -0.10f);
+
+            TextMeshPro muteText = muteObj.AddComponent<TextMeshPro>();
+            muteText.text = "X";
+            muteText.fontSize = owner.tabNoteFontSize * 1.02f;
+            muteText.alignment = TextAlignmentOptions.Center;
+            muteText.enableAutoSizing = false;
+            muteText.fontStyle = FontStyles.Bold;
+            muteText.sortingOrder = 32;
+            if (muteText.fontSharedMaterial != null)
+                muteText.fontMaterial = new Material(muteText.fontSharedMaterial);
+
+            ApplyMuteTextStyle(muteText, 1f);
+            muteSymbolText = muteText;
+        }
+
+        private static void ApplyMuteTextStyle(TextMeshPro text, float alpha)
+        {
+            if (text == null)
+                return;
+
+            Color faceColor = new Color(0.94f, 0.03f, 0.03f, alpha);
+            text.color = faceColor;
+
+            Material fontMat = text.fontMaterial;
+            if (fontMat == null)
+                return;
+
+            if (fontMat.HasProperty("_FaceColor"))
+                fontMat.SetColor("_FaceColor", faceColor);
+            if (fontMat.HasProperty("_OutlineColor"))
+                fontMat.SetColor("_OutlineColor", new Color(0.35f, 0.0f, 0.0f, alpha));
+            if (fontMat.HasProperty("_OutlineWidth"))
+                fontMat.SetFloat("_OutlineWidth", 0.18f);
+            if (fontMat.HasProperty("_GlowColor"))
+                fontMat.SetColor("_GlowColor", new Color(1f, 0.08f, 0.08f, alpha * 0.95f));
+            if (fontMat.HasProperty("_GlowOuter"))
+                fontMat.SetFloat("_GlowOuter", 0.42f);
+            if (fontMat.HasProperty("_GlowPower"))
+                fontMat.SetFloat("_GlowPower", 0.55f);
         }
 
         private string GetTechniqueGlyph(NoteData note)
@@ -1078,15 +1136,17 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         private readonly TextMeshPro text;
         private readonly List<Renderer> extraRenderers;
         private readonly List<TextMeshPro> extraTexts;
+        private readonly TextMeshPro muteSymbolText;
         private readonly string defaultLabelText;
 
-        public TabNoteView(Renderer outlineRenderer, Renderer fillRenderer, TextMeshPro text, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts)
+        public TabNoteView(Renderer outlineRenderer, Renderer fillRenderer, TextMeshPro text, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts, TextMeshPro muteSymbolText)
         {
             this.outlineRenderer = outlineRenderer;
             this.fillRenderer = fillRenderer;
             this.text = text;
             this.extraRenderers = extraRenderers ?? new List<Renderer>();
             this.extraTexts = extraTexts ?? new List<TextMeshPro>();
+            this.muteSymbolText = muteSymbolText;
             defaultLabelText = text != null ? text.text : string.Empty;
         }
 
@@ -1130,6 +1190,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 if (extraTexts[i] != null)
                     extraTexts[i].color = textColor;
             }
+
+            ApplyMuteTextStyle(muteSymbolText, text != null ? text.color.a : 1f);
         }
 
         public void SetAlpha(float alpha)
@@ -1177,6 +1239,34 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 c.a = alpha;
                 extraTexts[i].color = c;
             }
+
+            ApplyMuteTextStyle(muteSymbolText, alpha);
+        }
+
+        private static void ApplyMuteTextStyle(TextMeshPro text, float alpha)
+        {
+            if (text == null)
+                return;
+
+            Color faceColor = new Color(0.94f, 0.03f, 0.03f, alpha);
+            text.color = faceColor;
+
+            Material fontMat = text.fontMaterial;
+            if (fontMat == null)
+                return;
+
+            if (fontMat.HasProperty("_FaceColor"))
+                fontMat.SetColor("_FaceColor", faceColor);
+            if (fontMat.HasProperty("_OutlineColor"))
+                fontMat.SetColor("_OutlineColor", new Color(0.35f, 0.0f, 0.0f, alpha));
+            if (fontMat.HasProperty("_OutlineWidth"))
+                fontMat.SetFloat("_OutlineWidth", 0.18f);
+            if (fontMat.HasProperty("_GlowColor"))
+                fontMat.SetColor("_GlowColor", new Color(1f, 0.08f, 0.08f, alpha * 0.95f));
+            if (fontMat.HasProperty("_GlowOuter"))
+                fontMat.SetFloat("_GlowOuter", 0.42f);
+            if (fontMat.HasProperty("_GlowPower"))
+                fontMat.SetFloat("_GlowPower", 0.55f);
         }
     }
 }

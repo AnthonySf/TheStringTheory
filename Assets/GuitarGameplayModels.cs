@@ -86,6 +86,7 @@ public struct NoteData
     public float bendVisualDuration;
     public bool bendPreBend;
     public bool bendRelease;
+    public bool isMuted;
     public bool isLegato;
     public bool requiresPluck;
     public int linkedFromNoteId;
@@ -108,6 +109,7 @@ public struct NoteData
         bendVisualDuration = 0;
         bendPreBend = false;
         bendRelease = false;
+        isMuted = false;
         isLegato = false;
         requiresPluck = true;
         linkedFromNoteId = -1;
@@ -118,7 +120,8 @@ public struct NoteData
     public NoteData(int noteId, float t, float d, int s, int f, string n, int assignedChordId,
                     NoteTechnique tech = NoteTechnique.None, int slideTo = -1, float bend = 0, bool legato = false,
                     bool pluckRequired = true, int linkedFrom = -1, bool preBend = false, bool release = false,
-                    float visualBendStartTime = -1f, float visualBendDuration = 0f, List<NoteTechniqueSegmentData> segments = null)
+                    float visualBendStartTime = -1f, float visualBendDuration = 0f, List<NoteTechniqueSegmentData> segments = null,
+                    bool muted = false)
     {
         id = noteId;
         time = t;
@@ -134,6 +137,7 @@ public struct NoteData
         bendVisualDuration = visualBendDuration;
         bendPreBend = preBend;
         bendRelease = release;
+        isMuted = muted;
         isLegato = legato;
         requiresPluck = pluckRequired;
         linkedFromNoteId = linkedFrom;
