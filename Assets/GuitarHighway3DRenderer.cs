@@ -38,6 +38,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private TabsSongHeaderOverlay songHeaderOverlay;
     private int originalMainCameraCullingMask = -1;
     private CameraClearFlags originalMainCameraClearFlags;
+    private float currentVisualNoteSpeed = 12f;
     private float cameraTargetX;
     private float cameraTargetFOV = 60f;
     private float cameraXVelocity;
@@ -93,6 +94,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (mainCamera == null)
             return;
+
+        currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
 
         bool suppressGameplay = snapshot.mainMenuFlowActive;
         EnsureBackgroundMode(suppressGameplay);
@@ -524,7 +527,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 if (stringIdx < 0 || stringIdx >= stringHasIncomingNotes.Length)
                     continue;
 
-                float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
+                float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
                 if (travelZ > owner.SpawnZ)
                     continue;
 
@@ -1105,7 +1108,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         for (int i = 0; i < snapshot.noteStates.Count; i++)
         {
             GameplayNoteState state = snapshot.noteStates[i];
-            float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * owner.noteSpeed);
+            float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
             bool keepForResult = state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime();
             bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || travelZ >= owner.StrikeLineZ);
 
@@ -1277,10 +1280,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float x = GetVisualNoteX(state.data);
         float y = GetStringY(state.data.stringIdx);
         float floorY = GetLaneSurfaceTopY();
+        float visualNoteZ = z - GetVisualNoteStrikeOffset(view);
         float laneTagY = GetLaneGuideStringY() + 0.06f;
-        float laneTagZ = z - 0.08f;
+        float laneTagZ = visualNoteZ - 0.08f;
 
-        view.noteRoot.transform.position = new Vector3(x, y, z);
+        view.noteRoot.transform.position = new Vector3(x, y, visualNoteZ);
         if (view.marker != null)
             view.marker.transform.position = new Vector3(x, y, owner.StrikeLineZ);
         if (view.outlineRoot != null)
@@ -1310,7 +1314,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float tetherTopY = noteBottomY - tetherTopGap;
             float tetherLength = Mathf.Max(0f, tetherTopY - floorY);
             bool showTether = tetherLength > 0.02f && z > owner.StrikeLineZ + 0.001f && !state.IsResolved;
-            view.tether.transform.position = new Vector3(x, floorY + (tetherLength * 0.5f), z);
+            view.tether.transform.position = new Vector3(x, floorY + (tetherLength * 0.5f), visualNoteZ);
             view.tether.transform.localScale = new Vector3(Mathf.Max(0.04f, owner.FretSpacing * 0.05f), tetherLength, Mathf.Max(0.03f, owner.FretSpacing * 0.04f));
             view.tether.SetActive(showTether);
         }
@@ -1364,7 +1368,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             markerRenderer.material.SetColor("_EmissionColor", markerColor * (state.IsHit ? 2f : 0.8f));
         }
 
-        UpdateTechniqueView(view, state, z, songTime);
+        UpdateTechniqueView(view, state, visualNoteZ, songTime);
     }
 
 
@@ -1410,7 +1414,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float startX = GetVisualNoteX(anchorData);
         float startY = GetStringY(anchorData.stringIdx);
         float startZ = noteStatesById.TryGetValue(anchorData.id, out GameplayNoteState anchorState)
-            ? Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((anchorState.data.time - songTime) * owner.noteSpeed))
+            ? Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((anchorState.data.time - songTime) * currentVisualNoteSpeed))
             : z;
 
         NoteData? destinationData = null;
@@ -1422,7 +1426,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float endZ;
         if (destinationData.HasValue && noteStatesById.TryGetValue(destinationData.Value.id, out GameplayNoteState destinationState))
         {
-            endZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((destinationState.data.time - songTime) * owner.noteSpeed));
+            endZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((destinationState.data.time - songTime) * currentVisualNoteSpeed));
         }
         else
         {
@@ -1488,7 +1492,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 continue;
 
             float anchorTime = group[0].time;
-            float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * owner.noteSpeed);
+            float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * currentVisualNoteSpeed);
             bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime());
             bool visible = z <= owner.SpawnZ && z > owner.StrikeLineZ + 0.001f;
 
@@ -1658,7 +1662,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetVisibleLeadTime()
     {
-        return Mathf.Max(0.01f, (owner.SpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, owner.noteSpeed));
+        return Mathf.Max(0.01f, (owner.SpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, currentVisualNoteSpeed));
+    }
+
+    private float GetVisualNoteSpeed(GuitarGameplaySnapshot snapshot)
+    {
+        float spacingScale = 1f;
+        if (snapshot != null)
+            spacingScale = Mathf.Clamp(snapshot.tabSpeedOffsetPercent / 100f, 0.5f, 1.5f);
+
+        return Mathf.Max(0.01f, owner.noteSpeed * spacingScale);
     }
 
     private bool TryGetState(List<GameplayNoteState> states, int noteId, out GameplayNoteState state)
@@ -1828,6 +1841,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         float diameter = Mathf.Max(0.38f, owner.FretSpacing * 0.16f);
         return new Vector3(diameter, diameter, Mathf.Max(0.16f, diameter * 0.35f));
+    }
+
+    private static float GetVisualNoteStrikeOffset(HighwayNoteView view)
+    {
+        return Mathf.Max(0f, view.baseScale.z * 0.5f);
     }
 
     private float GetResolvedFadeTime()

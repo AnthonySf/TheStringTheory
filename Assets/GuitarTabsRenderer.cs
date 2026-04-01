@@ -516,7 +516,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         if (sectionByIndex.TryGetValue(sectionIndex, out TabSectionData section))
             return section;
 
-        float sectionDuration = Mathf.Max(0.25f, owner.tabSectionDuration * Mathf.Max(0.5f, owner.tabSectionLengthMultiplier));
+        float sectionDuration = owner.GetEffectiveTabSectionDuration();
         return new TabSectionData
         {
             index = sectionIndex,

@@ -125,7 +125,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public int TotalFrets = 24;
     public float FretSpacing = 4.0f;
     public float StrikeLineZ = -5.0f;
-    public float SpawnZ = 50.0f;
+    public float SpawnZ = 100.0f;
     public float highwayCameraY = 8.0f;
     public float highwayCameraZ = -10.0f;
     public float highwayCameraPitch = 45f;
@@ -344,6 +344,22 @@ public class GuitarBridgeServer : MonoBehaviour
     private float loopRestartPauseRemainingSeconds;
     private bool loopSettingsPreviewPlaying;
     private GuitarRenderMode loopSettingsReturnRenderMode = GuitarRenderMode.Tabs;
+    private bool showOffsetHelper;
+    private bool offsetHelperAdjusting;
+    private bool offsetHelperPreviewPlaying;
+    private float offsetHelperAnchorTime;
+    private float offsetHelperPreviewStartTime;
+    private float offsetHelperPreviewEndTime;
+    private GuitarRenderMode offsetHelperReturnRenderMode = GuitarRenderMode.Tabs;
+    private List<GameplayNoteState> offsetHelperSavedNoteStates;
+    private float offsetHelperSavedSongTimer;
+    private float offsetHelperSavedAudioSongTimer;
+    private readonly HashSet<int> offsetHelperSavedSessionScoredNoteIds = new HashSet<int>();
+    private int offsetHelperSavedSessionScoreHits;
+    private int offsetHelperSavedSessionScoreMisses;
+    private float offsetHelperSavedSessionScorePercent;
+    private bool offsetHelperSavedScoreSaveInvalidated;
+    private float offsetHelperWorkingOffsetMs;
     private int latestNoteEventId;
     private bool latestPacketHadEvent;
     private long lastUdpPacketUtcTicks;
@@ -441,6 +457,11 @@ public class GuitarBridgeServer : MonoBehaviour
     private SongMetadata songMetadata = new SongMetadata();
     private float currentSongBestScorePercent;
     private float currentTrackBestScorePercent;
+    private bool scoreSaveInvalidated;
+    private readonly HashSet<int> sessionScoredNoteIds = new HashSet<int>();
+    private int sessionScoreHits;
+    private int sessionScoreMisses;
+    private float currentSessionScorePercent;
     private const string SelectedSongDirectoryPrefsKey = "guitar_selected_song_directory";
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
@@ -511,6 +532,7 @@ public class GuitarBridgeServer : MonoBehaviour
         HandlePauseControls();
 
         bool loopPreviewActive = showLoopSettings && loopSettingsPreviewPlaying;
+        bool offsetHelperPreviewActive = showOffsetHelper && offsetHelperAdjusting && offsetHelperPreviewPlaying;
         bool loopGapActive = loopRestartPauseRemainingSeconds > 0.0001f;
 
         if (loopGapActive)
@@ -521,28 +543,34 @@ public class GuitarBridgeServer : MonoBehaviour
             loopGapActive = loopRestartPauseRemainingSeconds > 0.0001f;
         }
 
-        if ((!isPaused || loopPreviewActive) && !loopGapActive)
+        if ((!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive)
         {
             audioSongTimer += Time.deltaTime * GetPlaybackSpeedScale();
-            songTimer += Time.deltaTime * GetTabPlaybackSpeedScale();
-            HandleLoopPlayback();
+            songTimer += Time.deltaTime * GetPlaybackSpeedScale();
+            if (showOffsetHelper)
+                HandleOffsetHelperLoopPlayback();
+            else
+                HandleLoopPlayback();
             loopGapActive = loopRestartPauseRemainingSeconds > 0.0001f;
         }
 
         UpdateSongEndState();
 
         ApplyPlaybackSpeedToAudio();
-        SyncAudioToSongTimer(playImmediately: (!isPaused || loopPreviewActive) && !loopGapActive);
+        SyncAudioToSongTimer(playImmediately: (!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive);
 
         if (midiTrackIndex != currentLoadedTrackIndex)
             LoadTestSong(preservePauseUiState: isPaused || showMainMenu || showSongSettings || showSongSelection || showTrackSelection || showGlobalSettings || showLoopPausePopup);
 
         ParseUdpState();
+        if (isPaused)
+            UpdateSessionScoreState();
 
         if (!isPaused)
         {
             PruneHistory();
             UpdateGameplayStates();
+            UpdateSessionScoreState();
             UpdateAndPersistSongBestScore();
         }
 
@@ -574,6 +602,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (showLoopPausePopup)
         {
             HandleLoopPausePopupControls();
+            return;
+        }
+
+        if (showOffsetHelper)
+        {
+            HandleOffsetHelperControls();
             return;
         }
 
@@ -714,12 +748,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1))
         {
             selectedLoopMarker = 1;
-            SeekSongTime(loopStartTime, false);
+            SeekSongTimeFromUserNavigation(loopStartTime, false);
         }
         else if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2))
         {
             selectedLoopMarker = 2;
-            SeekSongTime(loopEndTime, false);
+            SeekSongTimeFromUserNavigation(loopEndTime, false);
         }
 
         if (Input.GetKeyDown(KeyCode.LeftArrow))
@@ -753,7 +787,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (Mathf.Approximately(seekDirection, 0f))
             return;
 
-        SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
+        SeekSongTimeFromUserNavigation(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), true);
     }
 
     private void HandleLoopSettingsControls()
@@ -800,7 +834,7 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         bool moveLoopMarker = selectedLoopMarker == 1 || selectedLoopMarker == 2;
-        SeekSongTime(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), moveLoopMarker);
+        SeekSongTimeFromUserNavigation(songTimer + (seekDirection * pauseSeekStepSeconds * Time.deltaTime), moveLoopMarker);
     }
 
     private void HandleLoopPausePopupControls()
@@ -887,7 +921,302 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!found)
             return;
 
-        SeekSongTime(targetTime, false);
+        SeekSongTimeFromUserNavigation(targetTime, false);
+    }
+
+    private void CacheOffsetHelperRunState()
+    {
+        offsetHelperSavedSongTimer = songTimer;
+        offsetHelperSavedAudioSongTimer = audioSongTimer;
+        offsetHelperSavedNoteStates = CloneNoteStates(noteStates);
+        offsetHelperSavedSessionScoredNoteIds.Clear();
+        foreach (int noteId in sessionScoredNoteIds)
+            offsetHelperSavedSessionScoredNoteIds.Add(noteId);
+        offsetHelperSavedSessionScoreHits = sessionScoreHits;
+        offsetHelperSavedSessionScoreMisses = sessionScoreMisses;
+        offsetHelperSavedSessionScorePercent = currentSessionScorePercent;
+        offsetHelperSavedScoreSaveInvalidated = scoreSaveInvalidated;
+    }
+
+    private void RestoreOffsetHelperRunState()
+    {
+        songTimer = offsetHelperSavedSongTimer;
+        audioSongTimer = offsetHelperSavedAudioSongTimer;
+        noteStates = offsetHelperSavedNoteStates != null ? CloneNoteStates(offsetHelperSavedNoteStates) : chartNotes.Select(n => new GameplayNoteState(n)).ToList();
+        sessionScoredNoteIds.Clear();
+        foreach (int noteId in offsetHelperSavedSessionScoredNoteIds)
+            sessionScoredNoteIds.Add(noteId);
+        sessionScoreHits = offsetHelperSavedSessionScoreHits;
+        sessionScoreMisses = offsetHelperSavedSessionScoreMisses;
+        currentSessionScorePercent = offsetHelperSavedSessionScorePercent;
+        scoreSaveInvalidated = offsetHelperSavedScoreSaveInvalidated;
+    }
+
+    private void SeekOffsetHelperTime(float targetTime, bool syncAudio, bool playImmediately)
+    {
+        float duration = GetSongDurationSeconds();
+        float clampedTime = duration > 0.001f
+            ? Mathf.Clamp(targetTime, 0f, duration)
+            : Mathf.Max(0f, targetTime);
+
+        songTimer = clampedTime;
+        audioSongTimer = clampedTime;
+        recentNoteEvents.Clear();
+        latestDetectedPitches.Clear();
+        latestEventNotesText = "--";
+        latestNoteEventId = 0;
+        latestPacketHadEvent = false;
+        Interlocked.Exchange(ref lastUdpPacketUtcTicks, 0L);
+
+        if (syncAudio)
+            SyncAudioToSongTimer(playImmediately, forceSeek: true);
+    }
+
+    private float GetNearestChartNoteTime(float referenceTime)
+    {
+        if (chartNotes == null || chartNotes.Count == 0)
+            return 0f;
+
+        float bestTime = chartNotes[0].time;
+        float bestDistance = Mathf.Abs(bestTime - referenceTime);
+        for (int i = 1; i < chartNotes.Count; i++)
+        {
+            float candidate = chartNotes[i].time;
+            float distance = Mathf.Abs(candidate - referenceTime);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                bestTime = candidate;
+            }
+        }
+
+        return Mathf.Max(0f, bestTime);
+    }
+
+    private bool TryGetAdjacentChartNoteTime(float referenceTime, bool moveForward, out float targetTime)
+    {
+        targetTime = referenceTime;
+        if (chartNotes == null || chartNotes.Count == 0)
+            return false;
+
+        const float epsilon = 0.0001f;
+        bool found = false;
+
+        if (moveForward)
+        {
+            float best = float.MaxValue;
+            for (int i = 0; i < chartNotes.Count; i++)
+            {
+                float candidate = chartNotes[i].time;
+                if (candidate > referenceTime + epsilon && candidate < best)
+                {
+                    best = candidate;
+                    found = true;
+                }
+            }
+
+            if (found)
+                targetTime = best;
+        }
+        else
+        {
+            float best = float.MinValue;
+            for (int i = 0; i < chartNotes.Count; i++)
+            {
+                float candidate = chartNotes[i].time;
+                if (candidate < referenceTime - epsilon && candidate > best)
+                {
+                    best = candidate;
+                    found = true;
+                }
+            }
+
+            if (found)
+                targetTime = best;
+        }
+
+        return found;
+    }
+
+    private string GetOffsetHelperAnchorLabel()
+    {
+        if (chartNotes == null || chartNotes.Count == 0)
+            return "NOTE";
+
+        const float epsilon = 0.0001f;
+        List<NoteData> notesAtTime = chartNotes
+            .Where(note => Mathf.Abs(note.time - offsetHelperAnchorTime) <= epsilon)
+            .OrderBy(note => note.stringIdx)
+            .ThenBy(note => note.fret)
+            .ToList();
+
+        if (notesAtTime.Count <= 0)
+            return "NOTE";
+
+        if (notesAtTime.Count > 1)
+            return $"CHORD ({notesAtTime.Count} NOTES)";
+
+        NoteData noteData = notesAtTime[0];
+        string fretText = noteData.fret < 0 ? "X" : noteData.fret.ToString();
+        return $"STRING {noteData.stringIdx + 1} • FRET {fretText}";
+    }
+
+    private void MoveOffsetHelperAnchor(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        if (TryGetAdjacentChartNoteTime(offsetHelperAnchorTime, delta > 0, out float targetTime))
+        {
+            offsetHelperAnchorTime = targetTime;
+            SeekOffsetHelperTime(offsetHelperAnchorTime, syncAudio: true, playImmediately: false);
+        }
+    }
+
+    private void StartOffsetHelperAdjustMode()
+    {
+        if (!showOffsetHelper)
+            return;
+
+        float duration = GetSongDurationSeconds();
+        const float targetPreviewDuration = 2.0f;
+        float halfPreviewDuration = targetPreviewDuration * 0.5f;
+        offsetHelperPreviewStartTime = Mathf.Max(0f, offsetHelperAnchorTime - halfPreviewDuration);
+        offsetHelperPreviewEndTime = offsetHelperPreviewStartTime + targetPreviewDuration;
+
+        if (duration > 0.001f && offsetHelperPreviewEndTime > duration)
+        {
+            offsetHelperPreviewEndTime = duration;
+            offsetHelperPreviewStartTime = Mathf.Max(0f, offsetHelperPreviewEndTime - targetPreviewDuration);
+        }
+
+        if (offsetHelperPreviewEndTime <= offsetHelperPreviewStartTime + 0.30f)
+        {
+            offsetHelperPreviewEndTime = offsetHelperPreviewStartTime + 0.30f;
+            if (duration > 0.001f && offsetHelperPreviewEndTime > duration)
+            {
+                offsetHelperPreviewEndTime = duration;
+                offsetHelperPreviewStartTime = Mathf.Max(0f, offsetHelperPreviewEndTime - 0.30f);
+            }
+        }
+
+        offsetHelperAdjusting = true;
+        offsetHelperPreviewPlaying = true;
+        SeekOffsetHelperTime(offsetHelperPreviewStartTime, syncAudio: true, playImmediately: true);
+    }
+
+    private void ToggleOffsetHelperPreviewPlayback()
+    {
+        if (!showOffsetHelper || !offsetHelperAdjusting)
+            return;
+
+        offsetHelperPreviewPlaying = !offsetHelperPreviewPlaying;
+        if (offsetHelperPreviewPlaying)
+        {
+            if (songTimer < offsetHelperPreviewStartTime - 0.0001f || songTimer > offsetHelperPreviewEndTime + 0.0001f)
+                SeekOffsetHelperTime(offsetHelperPreviewStartTime, syncAudio: true, playImmediately: true);
+            else
+                SyncAudioToSongTimer(playImmediately: true, forceSeek: true);
+        }
+        else
+        {
+            SyncAudioToSongTimer(playImmediately: false, forceSeek: true);
+        }
+    }
+
+    private void HandleOffsetHelperLoopPlayback()
+    {
+        if (!showOffsetHelper || !offsetHelperAdjusting || !offsetHelperPreviewPlaying)
+            return;
+
+        if (songTimer < offsetHelperPreviewStartTime - 0.0001f || songTimer > offsetHelperPreviewEndTime + 0.0001f)
+        {
+            songTimer = offsetHelperPreviewStartTime;
+            audioSongTimer = offsetHelperPreviewStartTime;
+            return;
+        }
+
+        if (songTimer < offsetHelperPreviewEndTime)
+            return;
+
+        songTimer = offsetHelperPreviewStartTime;
+        audioSongTimer = offsetHelperPreviewStartTime;
+    }
+
+    private void AdjustOffsetHelperWorkingOffset(float deltaMs)
+    {
+        if (!showOffsetHelper || !offsetHelperAdjusting || Mathf.Abs(deltaMs) <= 0.001f)
+            return;
+
+        offsetHelperWorkingOffsetMs = Mathf.Clamp(offsetHelperWorkingOffsetMs + deltaMs, -2000f, 2000f);
+        audioOffsetMs = offsetHelperWorkingOffsetMs;
+        SyncAudioToSongTimer(playImmediately: offsetHelperPreviewPlaying, forceSeek: true);
+    }
+
+    public void OpenOffsetHelperFromUi()
+    {
+        if (!showSongSettings || chartNotes == null || chartNotes.Count == 0 || !hasBackingTrack)
+            return;
+
+        CacheOffsetHelperRunState();
+        noteStates = chartNotes.Select(n => new GameplayNoteState(n)).ToList();
+        sessionScoredNoteIds.Clear();
+        sessionScoreHits = 0;
+        sessionScoreMisses = 0;
+        currentSessionScorePercent = 0f;
+        offsetHelperWorkingOffsetMs = audioOffsetMs;
+        offsetHelperAnchorTime = GetNearestChartNoteTime(offsetHelperSavedSongTimer);
+        offsetHelperAdjusting = false;
+        offsetHelperPreviewPlaying = false;
+        offsetHelperPreviewStartTime = offsetHelperAnchorTime;
+        offsetHelperPreviewEndTime = offsetHelperAnchorTime;
+        showOffsetHelper = true;
+        showSongSettings = false;
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        showSongSelection = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        isPaused = true;
+        loopRestartPauseRemainingSeconds = 0f;
+        offsetHelperReturnRenderMode = renderMode;
+
+        if (renderMode == GuitarRenderMode.Highway3D)
+            renderMode = GuitarRenderMode.Tabs;
+
+        SeekOffsetHelperTime(offsetHelperAnchorTime, syncAudio: true, playImmediately: false);
+    }
+
+    private void ConfirmOffsetHelperFromUi()
+    {
+        if (!showOffsetHelper)
+            return;
+
+        SetEffectiveOffsetForCurrentScope(offsetHelperWorkingOffsetMs);
+        SaveSongMetadata();
+        CloseOffsetHelperBackToSongSettings(saveChanges: true);
+    }
+
+    private void CloseOffsetHelperBackToSongSettings(bool saveChanges)
+    {
+        if (!showOffsetHelper)
+            return;
+
+        showOffsetHelper = false;
+        offsetHelperAdjusting = false;
+        offsetHelperPreviewPlaying = false;
+
+        if (!saveChanges)
+            RefreshEffectiveAudioOffset();
+
+        RestoreOffsetHelperRunState();
+
+        if (renderMode != offsetHelperReturnRenderMode)
+            renderMode = offsetHelperReturnRenderMode;
+
+        showSongSettings = true;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false, forceSeek: true);
     }
 
     private void HandleMainMenuControls()
@@ -1042,7 +1371,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         int horizontalDirection = GetHeldHorizontalArrowDirection();
-        if (selectedSongSettingsIndex <= 3)
+        if (selectedSongSettingsIndex >= 1 && selectedSongSettingsIndex <= 4)
         {
             if (ConsumeHeldHorizontalUiStep("song-settings-slider", horizontalDirection))
             {
@@ -1053,18 +1382,94 @@ public class GuitarBridgeServer : MonoBehaviour
         else
         {
             ConsumeHeldHorizontalUiStep("song-settings-slider", 0);
-            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            if ((selectedSongSettingsIndex == 5 || selectedSongSettingsIndex == 6) && Input.GetKeyDown(KeyCode.LeftArrow))
             {
                 AdjustSelectedSongSettingFromUi(-1);
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.RightArrow))
+            if ((selectedSongSettingsIndex == 5 || selectedSongSettingsIndex == 6) && Input.GetKeyDown(KeyCode.RightArrow))
             {
                 AdjustSelectedSongSettingFromUi(1);
                 return;
             }
         }
+    }
+
+    private void HandleOffsetHelperControls()
+    {
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+        {
+            if (offsetHelperAdjusting)
+            {
+                offsetHelperAdjusting = false;
+                offsetHelperPreviewPlaying = false;
+                SeekOffsetHelperTime(offsetHelperAnchorTime, syncAudio: true, playImmediately: false);
+            }
+            else
+            {
+                CloseOffsetHelperBackToSongSettings(saveChanges: false);
+            }
+
+            return;
+        }
+
+        if (!offsetHelperAdjusting)
+        {
+            int moveDelta = 0;
+            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                moveDelta = -1;
+            }
+            else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                moveDelta = 1;
+            }
+            else
+            {
+                int heldDirection = GetHeldHorizontalArrowDirection();
+                if (ConsumeHeldHorizontalUiStep("offset-helper-anchor", heldDirection))
+                    moveDelta = heldDirection;
+                else if (heldDirection == 0)
+                    ConsumeHeldHorizontalUiStep("offset-helper-anchor", 0);
+            }
+
+            if (moveDelta != 0)
+            {
+                MoveOffsetHelperAnchor(moveDelta);
+                return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            {
+                StartOffsetHelperAdjustMode();
+                return;
+            }
+
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            ToggleOffsetHelperPreviewPlayback();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            ConfirmOffsetHelperFromUi();
+            return;
+        }
+
+        int horizontalDirection = GetHeldHorizontalArrowDirection();
+        if (ConsumeHeldHorizontalUiStep("offset-helper-adjust", horizontalDirection))
+        {
+            AdjustOffsetHelperWorkingOffset(horizontalDirection * 10f);
+            return;
+        }
+
+        if (horizontalDirection == 0)
+            ConsumeHeldHorizontalUiStep("offset-helper-adjust", 0);
     }
 
     private void HandleSongEndControls()
@@ -1782,25 +2187,25 @@ public class GuitarBridgeServer : MonoBehaviour
 
         switch (selectedSongSettingsIndex)
         {
-            case 0:
+            case 1:
                 SetAudioOffsetMsFromUi(audioOffsetMs + (delta * 10f));
                 break;
-            case 1:
+            case 2:
                 SetTabSpeedOffsetPercentFromUi(tabSpeedOffsetPercent + delta);
                 break;
-            case 2:
+            case 3:
                 SetSongStartDelaySecondsFromUi(songStartDelaySeconds + (delta * 0.05f));
                 break;
-            case 3:
+            case 4:
                 SetSongVolumePercentFromUi(songVolumePercent + (delta * 5f));
                 break;
-            case 4:
+            case 5:
                 if (delta < 0)
                     MoveTrackSelectionFromUi(-1);
                 else if (delta > 0)
                     MoveTrackSelectionFromUi(1);
                 break;
-            case 5:
+            case 6:
                 ToggleOffsetScopeFromUi();
                 break;
         }
@@ -1810,14 +2215,14 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         switch (selectedSongSettingsIndex)
         {
-            case 4:
-                MoveTrackSelectionFromUi(1);
+            case 0:
+                OpenOffsetHelperFromUi();
                 break;
             case 5:
-                ToggleOffsetScopeFromUi();
+                MoveTrackSelectionFromUi(1);
                 break;
             case 6:
-                OpenGlobalSettingsFromUi();
+                ToggleOffsetScopeFromUi();
                 break;
             case 7:
                 CloseSongSettingsFromUi();
@@ -2119,6 +2524,8 @@ public class GuitarBridgeServer : MonoBehaviour
         showSongSettings = false;
         showGlobalSettings = false;
         isPaused = false;
+        scoreSaveInvalidated = playbackSpeedPercent < 100f;
+        ResetSessionScoreState();
         SeekSongTime(-songStartDelaySeconds, false);
         SyncAudioToSongTimer(playImmediately: true);
     }
@@ -2168,6 +2575,8 @@ public class GuitarBridgeServer : MonoBehaviour
     public void SetPlaybackSpeedPercentFromUi(float speedPercent)
     {
         playbackSpeedPercent = Mathf.Clamp(speedPercent, 1f, 200f);
+        if (playbackSpeedPercent < 100f)
+            scoreSaveInvalidated = true;
     }
 
 
@@ -2314,6 +2723,8 @@ public class GuitarBridgeServer : MonoBehaviour
     public void SetTabSpeedOffsetPercentFromUi(float percent)
     {
         tabSpeedOffsetPercent = Mathf.Clamp(percent, 50f, 150f);
+        GenerateTabSections();
+        ResetActiveRendererContent();
         SaveSongMetadata();
     }
 
@@ -2334,6 +2745,51 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         MoveTrackSelection(delta);
     }
+
+    private static List<GameplayNoteState> CloneNoteStates(List<GameplayNoteState> source)
+    {
+        if (source == null)
+            return new List<GameplayNoteState>();
+
+        List<GameplayNoteState> clone = new List<GameplayNoteState>(source.Count);
+        for (int i = 0; i < source.Count; i++)
+        {
+            GameplayNoteState state = source[i];
+            if (state == null)
+            {
+                clone.Add(null);
+                continue;
+            }
+
+            clone.Add(new GameplayNoteState(state.data)
+            {
+                result = state.result,
+                resolvedAt = state.resolvedAt,
+                isJudgeable = state.isJudgeable
+            });
+        }
+
+        return clone;
+    }
+
+    private float GetFirstChartNoteTime()
+    {
+        if (noteStates == null || noteStates.Count == 0)
+            return 0f;
+
+        float first = float.MaxValue;
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState state = noteStates[i];
+            if (state == null)
+                continue;
+
+            first = Mathf.Min(first, state.data.time);
+        }
+
+        return first == float.MaxValue ? 0f : Mathf.Max(0f, first);
+    }
+
 
     public void HoverSongSettingsSelectionFromUi(int index)
     {
@@ -2673,9 +3129,9 @@ private void OpenOrFocusToneLab()
         return Mathf.Clamp(playbackSpeedPercent / 100f, 0.01f, 2f);
     }
 
-    private float GetTabPlaybackSpeedScale()
+    private float GetVisualTabSpacingScale()
     {
-        return Mathf.Clamp(GetPlaybackSpeedScale() * (tabSpeedOffsetPercent / 100f), 0.01f, 4f);
+        return Mathf.Clamp(tabSpeedOffsetPercent / 100f, 0.5f, 1.5f);
     }
 
     private void SeekSongTime(float targetTime, bool updateSelectedMarker)
@@ -2686,6 +3142,18 @@ private void OpenOrFocusToneLab()
             clearLoopRestartPause: true,
             syncAudioAfterSeek: true,
             playImmediatelyAfterSeek: !isPaused || (showLoopSettings && loopSettingsPreviewPlaying));
+    }
+
+    private void SeekSongTimeFromUserNavigation(float targetTime, bool updateSelectedMarker)
+    {
+        float previousTime = songTimer;
+        SeekSongTimeInternal(
+            targetTime,
+            updateSelectedMarker,
+            clearLoopRestartPause: true,
+            syncAudioAfterSeek: true,
+            playImmediatelyAfterSeek: !isPaused || (showLoopSettings && loopSettingsPreviewPlaying));
+        UpdateScoreSaveInvalidationForUserSeek(previousTime, songTimer);
     }
 
     private void SeekSongTimeForLoopRestartPause(float targetTime)
@@ -2751,6 +3219,28 @@ private void OpenOrFocusToneLab()
         if (syncAudioAfterSeek)
             SyncAudioToSongTimer(playImmediately: playImmediatelyAfterSeek);
         UpdateSongEndState();
+    }
+
+    private void UpdateScoreSaveInvalidationForUserSeek(float previousTime, float newTime)
+    {
+        if (Mathf.Abs(newTime - previousTime) <= 0.0001f)
+            return;
+
+        float resetThreshold = GetScoreSaveResetTimeThreshold();
+        if (newTime <= resetThreshold + 0.0001f && playbackSpeedPercent >= 100f)
+        {
+            scoreSaveInvalidated = false;
+            ResetSessionScoreState();
+            return;
+        }
+    }
+
+    private float GetScoreSaveResetTimeThreshold()
+    {
+        if (chartNotes == null || chartNotes.Count == 0)
+            return 0f;
+
+        return chartNotes.Min(note => note.time);
     }
 
     private void UpdateSelectedLoopMarker(float markerTime)
@@ -3344,7 +3834,7 @@ private void ParseUdpState()
 
             if (eventId <= 0 || string.IsNullOrWhiteSpace(eventCsv) || eventCsv == "--") return;
 
-            float eventAgeInSongTime = Mathf.Max(0f, eventAge) * GetTabPlaybackSpeedScale();
+            float eventAgeInSongTime = Mathf.Max(0f, eventAge) * GetPlaybackSpeedScale();
             float estimatedEventTime = Mathf.Max(0f, songTimer - eventAgeInSongTime);
             
             // Log exactly what timestamp Unity is assigning this event on the timeline
@@ -3452,9 +3942,10 @@ private void ParseUdpState()
         noteToIndex["B"] = 11;
     }
 
-    private float GetEffectiveTabSectionDuration()
+    public float GetEffectiveTabSectionDuration()
     {
-        return Mathf.Max(0.25f, tabSectionDuration * Mathf.Max(0.5f, tabSectionLengthMultiplier));
+        float baseDuration = tabSectionDuration * Mathf.Max(0.5f, tabSectionLengthMultiplier);
+        return Mathf.Max(0.25f, baseDuration / GetVisualTabSpacingScale());
     }
 
     private int GetSectionIndex(float time)
@@ -3582,14 +4073,25 @@ private void ParseUdpState()
             loopPauseDurationSeconds = loopPauseDurationSeconds,
             loopRestartPauseRemainingSeconds = loopRestartPauseRemainingSeconds,
             playbackSpeedPercent = playbackSpeedPercent,
+            scoreSaveInvalidated = scoreSaveInvalidated,
             currentSectionIndex = currentSectionIndex,
             nextSectionIndex = currentSectionIndex + 1,
             currentSectionProgress = progress,
             sectionDuration = GetEffectiveTabSectionDuration(),
+            currentSessionScoreHits = sessionScoreHits,
+            currentSessionScoreMisses = sessionScoreMisses,
+            currentSessionScorePercent = currentSessionScorePercent,
             noteStates = noteStates,
             sections = tabSections,
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
+            showOffsetHelper = showOffsetHelper,
+            offsetHelperAdjusting = offsetHelperAdjusting,
+            offsetHelperPreviewPlaying = offsetHelperPreviewPlaying,
+            offsetHelperAnchorTime = offsetHelperAnchorTime,
+            offsetHelperPreviewStartTime = offsetHelperPreviewStartTime,
+            offsetHelperPreviewEndTime = offsetHelperPreviewEndTime,
+            offsetHelperAnchorLabel = GetOffsetHelperAnchorLabel(),
             showMainMenu = showMainMenu,
             mainMenuFlowActive = mainMenuFlowActive,
             selectedMainMenuIndex = selectedMainMenuIndex,
@@ -3708,6 +4210,8 @@ private void ParseUdpState()
         selectedLoopPausePopupIndex = 0;
         loopSettingsPreviewPlaying = false;
         loopRestartPauseRemainingSeconds = 0f;
+        scoreSaveInvalidated = false;
+        ResetSessionScoreState();
         loopSettingsReturnRenderMode = renderMode;
 
         float sectionDuration = GetEffectiveTabSectionDuration();
@@ -4115,20 +4619,47 @@ private void ParseUdpState()
         return PlayerPrefs.GetString(SelectedSongDirectoryPrefsKey, string.Empty);
     }
 
-    private void UpdateAndPersistSongBestScore()
+    private void ResetSessionScoreState()
     {
-        if (loopEnabled || currentSongEntry == null || noteStates == null || noteStates.Count == 0 || string.IsNullOrEmpty(selectedMusicXmlPartId))
+        sessionScoredNoteIds.Clear();
+        sessionScoreHits = 0;
+        sessionScoreMisses = 0;
+        currentSessionScorePercent = 0f;
+    }
+
+    private void UpdateSessionScoreState()
+    {
+        if (loopEnabled || noteStates == null || noteStates.Count == 0)
             return;
 
-        int total = noteStates.Count;
-        int hits = 0;
         for (int i = 0; i < noteStates.Count; i++)
         {
-            if (noteStates[i] != null && noteStates[i].IsHit)
-                hits++;
+            GameplayNoteState noteState = noteStates[i];
+            if (noteState == null || !noteState.IsResolved)
+                continue;
+
+            int noteKey = noteState.data.id >= 0 ? noteState.data.id : i;
+            if (!sessionScoredNoteIds.Add(noteKey))
+                continue;
+
+            if (noteState.IsHit)
+                sessionScoreHits++;
+            else if (noteState.IsMissed)
+                sessionScoreMisses++;
         }
 
-        float percent = total > 0 ? (100f * hits / total) : 0f;
+        int total = noteStates.Count;
+        currentSessionScorePercent = total > 0
+            ? Mathf.Clamp(100f * sessionScoreHits / total, 0f, 100f)
+            : 0f;
+    }
+
+    private void UpdateAndPersistSongBestScore()
+    {
+        if (scoreSaveInvalidated || loopEnabled || currentSongEntry == null || noteStates == null || noteStates.Count == 0 || string.IsNullOrEmpty(selectedMusicXmlPartId))
+            return;
+
+        float percent = currentSessionScorePercent;
         if (percent <= currentTrackBestScorePercent + 0.01f)
             return;
 
@@ -4894,7 +5425,7 @@ private void ParseUdpState()
             backingTrackSource.volume = volume;
     }
 
-    private void SyncAudioToSongTimer(bool playImmediately)
+    private void SyncAudioToSongTimer(bool playImmediately, bool forceSeek = false)
     {
         if (backingTrackSource == null || backingTrackSource.clip == null)
             return;
@@ -4902,7 +5433,7 @@ private void ParseUdpState()
         float timelineAudioTime = audioSongTimer + (audioOffsetMs / 1000f);
         float audioTime = Mathf.Clamp(timelineAudioTime, 0f, backingTrackSource.clip.length);
 
-        if (Mathf.Abs(backingTrackSource.time - audioTime) > 0.04f)
+        if (forceSeek || Mathf.Abs(backingTrackSource.time - audioTime) > 0.04f)
             backingTrackSource.time = audioTime;
 
         bool shouldBeSilentForCountdown = timelineAudioTime <= 0f;
