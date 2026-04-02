@@ -557,6 +557,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         private readonly GuitarBridgeServer owner;
         private readonly float lineSpacing;
         private readonly List<Renderer> staticRenderers = new List<Renderer>();
+        private readonly Transform[] stringLineTransforms = new Transform[6];
+        private readonly Renderer[] stringLineRenderers = new Renderer[6];
         private readonly List<GameObject> dynamicObjects = new List<GameObject>();
         private Renderer backdropRenderer;
         private float panelAlpha = 1f;
@@ -1034,6 +1036,21 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             backdropRenderer.material.color = c;
             backdropRenderer.material.SetColor("_Color", c);
             backdropRenderer.material.SetColor("_BaseColor", c);
+
+            for (int i = 0; i < stringLineTransforms.Length; i++)
+            {
+                if (stringLineTransforms[i] != null)
+                    stringLineTransforms[i].localPosition = new Vector3(0f, GetLocalStringY(i), 0f);
+
+                if (stringLineRenderers[i] != null && stringLineRenderers[i].material != null)
+                {
+                    Color stringColor = owner.GetStringColor(i);
+                    stringColor.a = panelAlpha;
+                    stringLineRenderers[i].material.color = stringColor;
+                    stringLineRenderers[i].material.SetColor("_Color", stringColor);
+                    stringLineRenderers[i].material.SetColor("_BaseColor", stringColor);
+                }
+            }
         }
 
         private void CreateBackdrop()
@@ -1100,6 +1117,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 Renderer renderer = line.GetComponent<Renderer>();
                 renderer.material = owner.CreateSharedGlowMaterial(owner.GetStringColor(i), 0.25f);
                 ConfigureRendererNoShadows(renderer);
+                stringLineTransforms[i] = line.transform;
+                stringLineRenderers[i] = renderer;
 
                 staticRenderers.Add(renderer);
             }

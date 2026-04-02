@@ -27,11 +27,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private Material sharedTechniqueRibbonMaterial;
     private Material sharedBendArrowMaterial;
     private Material sharedMuteSymbolMaterial;
+    private Material sharedHighwayCharacterMaterial;
 
     private GuitarBridgeServer owner;
     private Camera mainCamera;
+    private Camera backgroundCamera;
     private GameObject root;
     private GameObject gameplayRoot;
+    private GameObject characterRoot;
+    private Renderer highwayCharacterRenderer;
+    private Texture2D highwayCharacterTexture;
+    private float highwayCharacterAspect = 1f;
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
     private readonly Renderer[] stringVisualRenderers = new Renderer[6];
@@ -50,6 +56,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private TabsSongHeaderOverlay songHeaderOverlay;
     private int originalMainCameraCullingMask = -1;
     private CameraClearFlags originalMainCameraClearFlags; 
+    private float originalMainCameraDepth;
     private float currentVisualNoteSpeed = 12f;
     private bool currentNoteByNoteModeEnabled;
     private bool currentNoteByNoteWaitingForMatch;
@@ -60,6 +67,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool gameplayVisualsVisible = true;
     private bool gameplayBuilt;
     private const int BackgroundLayer = 2;
+    private const float HighwayCharacterViewportMarginX = 0.035f;
+    private const float HighwayCharacterViewportMarginY = 0.035f;
+    private const float HighwayCharacterDepth = 44f;
+    private const float HighwayCharacterHeightViewportFraction = 1.02f;
+    private const float HighwayCharacterAdditionalLeftOffsetInWidths = 0.25f;
+    private const float HighwayCharacterAdditionalDownOffsetInHeights = 0.35f;
+    private const float HighwayCharacterBottomFadeStart01 = 0.62f;
+    private const float HighwayCharacterBottomFadeEnd01 = 0.38f;
     private const float StringLaneSpacing = 1.2f;
     private const float BendRibbonVisualHeightInStrings = 2f;
     private const float BendRibbonLeadOutDistance = 0.9f;
@@ -100,6 +115,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly int DarkBandStart01ShaderId = Shader.PropertyToID("_DarkBandStart01");
     private static readonly int DarkBandEnd01ShaderId = Shader.PropertyToID("_DarkBandEnd01");
     private static readonly int BendArrowBaseColorShaderId = Shader.PropertyToID("_BaseColor");
+    private static readonly int CharacterFadeStartShaderId = Shader.PropertyToID("_FadeStartY");
+    private static readonly int CharacterFadeEndShaderId = Shader.PropertyToID("_FadeEndY");
 
     private struct TechniqueRibbonProfile
     {
@@ -134,16 +151,21 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         this.owner = owner;
         mainCamera = Camera.main;
         root = new GameObject("Highway3DRendererRoot");
-        gameplayRoot = new GameObject("Highway3DGameplayRoot");
-        gameplayRoot.transform.SetParent(root.transform, false);
         backgroundRoot = new GameObject("Highway3DBackgroundRoot");
         backgroundRoot.transform.SetParent(root.transform, false);
+        characterRoot = new GameObject("Highway3DCharacterRoot");
+        characterRoot.transform.SetParent(root.transform, false);
+        gameplayRoot = new GameObject("Highway3DGameplayRoot");
+        gameplayRoot.transform.SetParent(root.transform, false);
         originalMainCameraClearFlags = mainCamera != null ? mainCamera.clearFlags : CameraClearFlags.SolidColor;
         originalMainCameraCullingMask = mainCamera != null ? mainCamera.cullingMask : -1;
+        originalMainCameraDepth = mainCamera != null ? mainCamera.depth : 0f;
 
         BuildChartCaches(chartNotes);
         BuildLaneHighlightChunks(chartNotes, sections);
         InitializeBackgroundEffect(menuMode: true);
+        InitializeHighwayCharacter();
+        InitializeBackgroundCamera();
         ConfigureCamera();
         songHeaderOverlay = new TabsSongHeaderOverlay(owner);
         gameplayBuilt = false;
@@ -175,6 +197,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         bool suppressGameplay = snapshot.mainMenuFlowActive;
         EnsureBackgroundMode(suppressGameplay);
         ConfigureCamera();
+
+        UpdateHighwayCharacterPlacement();
 
         if (!suppressGameplay)
             UpdateBackgroundPlacement();
@@ -210,7 +234,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             mainCamera.cullingMask = originalMainCameraCullingMask;
             mainCamera.clearFlags = originalMainCameraClearFlags;
+            mainCamera.depth = originalMainCameraDepth;
         }
+
+        if (backgroundCamera != null)
+            backgroundCamera.enabled = false;
 
         if (root != null)
             Object.Destroy(root);
@@ -233,11 +261,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             sharedMuteSymbolMaterial = null;
         }
 
+        if (sharedHighwayCharacterMaterial != null)
+        {
+            Object.Destroy(sharedHighwayCharacterMaterial);
+            sharedHighwayCharacterMaterial = null;
+        }
+
         if (techniqueRibbonMesh != null)
         {
             Object.Destroy(techniqueRibbonMesh);
             techniqueRibbonMesh = null;
         }
+
+        highwayCharacterTexture = null;
     }
 
     private void SetGameplayVisualsVisible(bool visible)
@@ -481,23 +517,29 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (backgroundUsingMenuMode)
         {
+            if (backgroundCamera != null)
+                backgroundCamera.enabled = false;
+
             mainCamera.orthographic = true;
             mainCamera.orthographicSize = owner.tabCameraSize;
             mainCamera.clearFlags = CameraClearFlags.SolidColor;
             if (originalMainCameraCullingMask >= 0)
                 mainCamera.cullingMask = originalMainCameraCullingMask | (1 << BackgroundLayer);
+            mainCamera.depth = originalMainCameraDepth;
             mainCamera.transform.position = new Vector3(0f, 0f, owner.tabCameraZ);
             mainCamera.transform.rotation = Quaternion.identity;
         }
         else
         {
             mainCamera.orthographic = false;
-            mainCamera.clearFlags = CameraClearFlags.SolidColor;
+            mainCamera.clearFlags = CameraClearFlags.Depth;
             if (originalMainCameraCullingMask >= 0)
-                mainCamera.cullingMask = originalMainCameraCullingMask | (1 << BackgroundLayer);
+                mainCamera.cullingMask = originalMainCameraCullingMask & ~(1 << BackgroundLayer);
+            mainCamera.depth = originalMainCameraDepth;
             mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, owner.highwayCameraFarClip);
             mainCamera.transform.position = new Vector3(cameraTargetX, owner.highwayCameraY, owner.highwayCameraZ);
             mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
+            SyncBackgroundCamera();
         }
 
         mainCamera.backgroundColor = GetCameraBackgroundColor();
@@ -545,6 +587,53 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         gameplayBuilt = true;
     }
 
+    private void InitializeHighwayCharacter()
+    {
+        if (characterRoot == null)
+            return;
+
+        Sprite characterSprite = Resources.Load<Sprite>("char");
+        if (characterSprite != null)
+        {
+            highwayCharacterTexture = characterSprite.texture;
+            Rect spriteRect = characterSprite.rect;
+            highwayCharacterAspect = Mathf.Max(0.05f, spriteRect.width / Mathf.Max(1f, spriteRect.height));
+        }
+        else
+        {
+            highwayCharacterTexture = Resources.Load<Texture2D>("char");
+            if (highwayCharacterTexture == null)
+                return;
+
+            highwayCharacterAspect = Mathf.Max(0.05f, highwayCharacterTexture.width / (float)Mathf.Max(1, highwayCharacterTexture.height));
+        }
+
+        GameObject characterObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        characterObject.name = "HighwayCharacter";
+        characterObject.transform.SetParent(characterRoot.transform, false);
+        Object.Destroy(characterObject.GetComponent<Collider>());
+
+        highwayCharacterRenderer = characterObject.GetComponent<Renderer>();
+        highwayCharacterRenderer.sharedMaterial = GetHighwayCharacterMaterial();
+        highwayCharacterRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        highwayCharacterRenderer.receiveShadows = false;
+
+        SetLayerRecursively(characterRoot, 0);
+        characterRoot.SetActive(false);
+    }
+
+    private void InitializeBackgroundCamera()
+    {
+        if (mainCamera == null || backgroundCamera != null)
+            return;
+
+        GameObject cameraObject = new GameObject("Highway3DBackgroundCamera");
+        cameraObject.transform.SetParent(root.transform, false);
+        backgroundCamera = cameraObject.AddComponent<Camera>();
+        backgroundCamera.enabled = false;
+        backgroundCamera.depth = originalMainCameraDepth - 1f;
+    }
+
     private void InitializeBackgroundEffect(bool menuMode)
     {
         backgroundEffect?.Dispose();
@@ -579,6 +668,49 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         backgroundRoot.transform.localScale = Vector3.one * owner.highwayBackgroundScale;
     }
 
+    private void UpdateHighwayCharacterPlacement()
+    {
+        if (characterRoot == null)
+            return;
+
+        bool shouldShow = !backgroundUsingMenuMode && mainCamera != null && highwayCharacterRenderer != null && highwayCharacterTexture != null;
+        if (characterRoot.activeSelf != shouldShow)
+            characterRoot.SetActive(shouldShow);
+
+        if (!shouldShow)
+            return;
+
+        float viewportHeight = HighwayCharacterHeightViewportFraction;
+        float viewportWidth = viewportHeight * highwayCharacterAspect / Mathf.Max(0.1f, mainCamera.aspect);
+        float left = HighwayCharacterViewportMarginX;
+        float bottom = HighwayCharacterViewportMarginY;
+        Vector3 lowerLeft = mainCamera.ViewportToWorldPoint(new Vector3(left, bottom, HighwayCharacterDepth));
+        Vector3 lowerRight = mainCamera.ViewportToWorldPoint(new Vector3(left + viewportWidth, bottom, HighwayCharacterDepth));
+        Vector3 upperLeft = mainCamera.ViewportToWorldPoint(new Vector3(left, bottom + viewportHeight, HighwayCharacterDepth));
+        float targetWidth = Vector3.Distance(lowerLeft, lowerRight);
+        float targetHeight = Vector3.Distance(lowerLeft, upperLeft);
+        Vector3 worldPosition = (lowerLeft + lowerRight + upperLeft + (lowerRight + (upperLeft - lowerLeft))) * 0.25f;
+        worldPosition -= mainCamera.transform.right * (targetWidth * HighwayCharacterAdditionalLeftOffsetInWidths);
+        worldPosition -= mainCamera.transform.up * (targetHeight * HighwayCharacterAdditionalDownOffsetInHeights);
+
+        characterRoot.transform.position = worldPosition;
+        characterRoot.transform.rotation = mainCamera.transform.rotation;
+        characterRoot.transform.localScale = new Vector3(targetWidth, targetHeight, 1f);
+    }
+
+    private void SyncBackgroundCamera()
+    {
+        if (mainCamera == null || backgroundCamera == null)
+            return;
+
+        backgroundCamera.enabled = true;
+        backgroundCamera.CopyFrom(mainCamera);
+        backgroundCamera.clearFlags = CameraClearFlags.SolidColor;
+        backgroundCamera.backgroundColor = GetCameraBackgroundColor();
+        backgroundCamera.cullingMask = 1 << BackgroundLayer;
+        backgroundCamera.depth = originalMainCameraDepth - 1f;
+    }
+
     private void EnsureBackgroundMode(bool menuMode)
     {
         if (backgroundEffect == null || menuMode != backgroundUsingMenuMode || backgroundSignature != GetBackgroundSignature(menuMode))
@@ -591,6 +723,40 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return string.Empty;
 
         return $"{owner.tabBackgroundMode}|{owner.tabSkyUseStageBackdrop}|{menuMode}";
+    }
+
+    private Material GetHighwayCharacterMaterial()
+    {
+        if (sharedHighwayCharacterMaterial != null)
+            return sharedHighwayCharacterMaterial;
+
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayCharacterFade");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayCharacterFade");
+        if (shader == null)
+            shader = Shader.Find("Sprites/Default");
+        if (shader == null)
+            shader = Shader.Find("Unlit/Transparent");
+        if (shader == null)
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+
+        sharedHighwayCharacterMaterial = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(Color.white, 0f);
+        sharedHighwayCharacterMaterial.color = Color.white;
+        sharedHighwayCharacterMaterial.mainTexture = highwayCharacterTexture;
+        sharedHighwayCharacterMaterial.SetTexture("_MainTex", highwayCharacterTexture);
+        if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeStartShaderId))
+            sharedHighwayCharacterMaterial.SetFloat(CharacterFadeStartShaderId, HighwayCharacterBottomFadeStart01);
+        if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeEndShaderId))
+            sharedHighwayCharacterMaterial.SetFloat(CharacterFadeEndShaderId, HighwayCharacterBottomFadeEnd01);
+        // Render the character before lane transparencies so they can blend over it,
+        // while opaque gameplay geometry still occludes it by depth.
+        sharedHighwayCharacterMaterial.renderQueue = (int)RenderQueue.Transparent - 50;
+        sharedHighwayCharacterMaterial.SetInt("_ZWrite", 0);
+        sharedHighwayCharacterMaterial.SetInt("_Cull", (int)CullMode.Off);
+        sharedHighwayCharacterMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
+        return sharedHighwayCharacterMaterial;
     }
 
     private static void SetLayerRecursively(GameObject target, int layer)
@@ -676,13 +842,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void GenerateStrings()
     {
+        float stringStartX = 0f;
+        float stringEndX = (owner.TotalFrets * owner.FretSpacing) + (owner.FretSpacing * 0.75f);
+        float stringLength = Mathf.Max(0.01f, stringEndX - stringStartX);
+        float stringCenterX = stringStartX + (stringLength * 0.5f);
+
         for (int i = 0; i < 6; i++)
         {
             GameObject s = GameObject.CreatePrimitive(PrimitiveType.Cube);
             s.name = "String_" + i;
             s.transform.SetParent(gameplayRoot.transform, false);
-            s.transform.position = new Vector3(0f, GetStringY(i), owner.StrikeLineZ);
-            s.transform.localScale = new Vector3(600f, 0.1f, 0.1f);
+            s.transform.position = new Vector3(stringCenterX, GetStringY(i), owner.StrikeLineZ);
+            s.transform.localScale = new Vector3(stringLength, 0.1f, 0.1f);
             Material mat = owner.CreateSharedGlowMaterial(owner.GetStringColor(i), 0.9f);
             Renderer renderer = s.GetComponent<Renderer>();
             renderer.material = mat;
@@ -725,6 +896,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             Material mat = stringVisualMats[i];
             if (mat == null)
                 continue;
+
+            if (stringVisuals[i] != null)
+            {
+                Vector3 position = stringVisuals[i].transform.position;
+                position.y = GetStringY(i);
+                stringVisuals[i].transform.position = position;
+            }
 
             Color baseColor = owner.GetStringColor(i);
             bool isActive = stringHasIncomingNotes[i];
@@ -1027,8 +1205,31 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (tm.fontSharedMaterial != null)
             tm.fontMaterial = new Material(tm.fontSharedMaterial);
 
+        ConfigureLaneTagLabelMaterial(tm);
+
         ApplyFretNumberLabelStyle(tm, true);
         return tm;
+    }
+
+    private static void ConfigureLaneTagLabelMaterial(TextMeshPro label)
+    {
+        if (label == null)
+            return;
+
+        Material fontMat = label.fontMaterial;
+        if (fontMat == null)
+            return;
+
+        // Keep moving lane tags above the lane floor while staying below higher overlay elements.
+        fontMat.renderQueue = (int)RenderQueue.Transparent + 89;
+        if (fontMat.HasProperty("_ZWrite"))
+            fontMat.SetFloat("_ZWrite", 0f);
+        if (fontMat.HasProperty("_CullMode"))
+            fontMat.SetFloat("_CullMode", 0f);
+        if (fontMat.HasProperty("_ZTestMode"))
+            fontMat.SetFloat("_ZTestMode", (float)CompareFunction.Always);
+        else if (fontMat.HasProperty("_ZTest"))
+            fontMat.SetFloat("_ZTest", (float)CompareFunction.Always);
     }
 
     private void UpdateFretNumberLabels(bool[] boundaryActive)
@@ -1616,8 +1817,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float floorY = GetLaneSurfaceTopY();
         float visualNoteZ = z - GetVisualNoteStrikeOffset(view);
         float rawVisualNoteZ = rawTravelZ - GetVisualNoteStrikeOffset(view);
-        float laneTagY = GetLaneGuideStringY() + 0.06f;
-        float laneTagZ = visualNoteZ - 0.08f;
+        float laneTagY = GetLaneGuideStringY() + 0.15f;
+        float laneTagZ = visualNoteZ - 0.55f;
 
         view.noteRoot.transform.position = new Vector3(x, y, visualNoteZ);
         if (view.marker != null)
@@ -3221,6 +3422,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             for (int f = 0; f < fretLightColumns; f++)
             {
+                if (fretLightRenderers[s, f] != null)
+                {
+                    float xPos = f == 0 ? GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)) : GetNoteX(f);
+                    Vector3 position = fretLightRenderers[s, f].transform.position;
+                    position.x = xPos;
+                    position.y = GetStringY(s);
+                    position.z = owner.StrikeLineZ;
+                    fretLightRenderers[s, f].transform.position = position;
+                }
+
                 fretLightMats[s, f].SetColor("_EmissionColor", Color.black);
                 if (fretLightRenderers[s, f] != null)
                     fretLightRenderers[s, f].enabled = false;

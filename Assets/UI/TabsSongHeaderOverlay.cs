@@ -1000,6 +1000,16 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly VisualElement settingsBlurBackdrop;
 
+    private readonly VisualElement settingsBackplate;
+
+    private readonly VisualElement settingsFrontPlate;
+
+    private readonly VisualElement settingsRegion;
+
+    private readonly VisualElement settingsShell;
+
+    private readonly VisualElement settingsCard;
+
     private readonly Label settingsTrackLabel;
 
     private readonly Label settingsHintLabel;
@@ -3492,7 +3502,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement settingsBackplate = new VisualElement();
+        settingsBackplate = new VisualElement();
 
         settingsBackplate.style.position = Position.Absolute;
 
@@ -3536,7 +3546,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement settingsFrontPlate = new VisualElement();
+        settingsFrontPlate = new VisualElement();
 
         settingsFrontPlate.style.position = Position.Absolute;
 
@@ -3554,7 +3564,7 @@ public sealed class TabsSongHeaderOverlay
 
         settingsFrontPlate.pickingMode = PickingMode.Ignore;
 
-        VisualElement settingsRegion = new VisualElement();
+        settingsRegion = new VisualElement();
 
         settingsRegion.style.position = Position.Absolute;
 
@@ -3582,7 +3592,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement settingsShell = new VisualElement();
+        settingsShell = new VisualElement();
 
         settingsShell.style.width = 820f;
 
@@ -3628,7 +3638,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement settingsCard = new VisualElement();
+        settingsCard = new VisualElement();
 
         settingsCard.style.width = Length.Percent(100f);
 
@@ -14385,6 +14395,33 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         speedSlider.style.maxWidth = pauseInnerMaxWidth - 40f;
         speedValueLabel.style.minWidth = Mathf.Clamp(pauseInnerMaxWidth - 80f, 420f, 520f);
 
+        float settingsFrontPlateWidth = pauseFrontPlateWidth;
+        float settingsBackplateWidth = pauseBackplateWidth;
+        float settingsRegionWidth = pauseRegionWidth;
+        float settingsShellWidth = pauseShellWidth;
+        float settingsInnerMaxWidth = pauseInnerMaxWidth;
+        float settingsControlMaxWidth = settingsInnerMaxWidth - 40f;
+
+        settingsBackplate.style.width = settingsBackplateWidth;
+        settingsFrontPlate.style.width = settingsFrontPlateWidth;
+        settingsRegion.style.width = settingsRegionWidth;
+        settingsRegion.style.paddingLeft = Mathf.Clamp(screenWidth * 0.05f, 120f, 220f);
+        settingsShell.style.width = settingsShellWidth;
+        settingsShell.style.maxWidth = settingsShellWidth;
+        settingsCard.style.maxWidth = settingsInnerMaxWidth;
+        settingsOffsetRow.style.maxWidth = settingsInnerMaxWidth;
+        settingsTabSpeedRow.style.maxWidth = settingsInnerMaxWidth;
+        settingsStartDelayRow.style.maxWidth = settingsInnerMaxWidth;
+        settingsVolumeRow.style.maxWidth = settingsInnerMaxWidth;
+        settingsTrackRow.style.maxWidth = settingsControlMaxWidth;
+        settingsOffsetScopeRow.style.maxWidth = settingsControlMaxWidth;
+        settingsOffsetSlider.style.maxWidth = settingsControlMaxWidth;
+        settingsTabSpeedSlider.style.maxWidth = settingsControlMaxWidth;
+        settingsStartDelaySlider.style.maxWidth = settingsControlMaxWidth;
+        settingsVolumeSlider.style.maxWidth = settingsControlMaxWidth;
+        settingsTrackButton.style.maxWidth = settingsControlMaxWidth;
+        settingsOffsetScopeButton.style.maxWidth = settingsControlMaxWidth;
+
         startupTuningReminderPopup?.ApplyResponsiveSizing(menuLayoutHeight, buttonFontSize);
 
         loopPausePopup?.ApplyResponsiveSizing(menuLayoutHeight, buttonFontSize);
@@ -14472,6 +14509,7 @@ selectionShell.style.maxWidth = StyleKeyword.None;
 
 
             button.style.fontSize = pauseMenuButtonFontSize;
+            button.style.maxWidth = settingsControlMaxWidth;
 
         }
 
