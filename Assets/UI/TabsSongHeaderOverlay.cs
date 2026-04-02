@@ -921,6 +921,13 @@ public sealed class TabsSongHeaderOverlay
     private readonly VisualElement pauseOverlay;
 
     private readonly VisualElement pauseBlurBackdrop;
+    private readonly VisualElement pauseBackplate;
+    private readonly VisualElement pauseFrontPlate;
+    private readonly VisualElement pauseRegion;
+    private readonly VisualElement pauseShell;
+    private readonly VisualElement pauseCard;
+    private readonly VisualElement pauseButtons;
+    private readonly VisualElement pauseEndRow;
 
     private readonly Label pauseTitleLabel;
 
@@ -2208,7 +2215,7 @@ public sealed class TabsSongHeaderOverlay
 
         pauseBlurBackdrop.pickingMode = PickingMode.Ignore;
 
-        VisualElement pauseBackplate = new VisualElement();
+        pauseBackplate = new VisualElement();
 
         pauseBackplate.style.position = Position.Absolute;
 
@@ -2256,7 +2263,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement pauseFrontPlate = new VisualElement();
+        pauseFrontPlate = new VisualElement();
 
         pauseFrontPlate.style.position = Position.Absolute;
 
@@ -2296,7 +2303,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement pauseRegion = new VisualElement();
+        pauseRegion = new VisualElement();
 
         pauseRegion.style.position = Position.Absolute;
 
@@ -2324,7 +2331,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement pauseShell = new VisualElement();
+        pauseShell = new VisualElement();
 
         pauseShell.style.width = 820f;
 
@@ -2382,7 +2389,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement pauseCard = new VisualElement();
+        pauseCard = new VisualElement();
 
         pauseCard.style.width = Length.Percent(100f);
 
@@ -2520,7 +2527,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement pauseButtons = new VisualElement();
+        pauseButtons = new VisualElement();
 
         pauseButtons.style.flexDirection = FlexDirection.Column;
 
@@ -2729,7 +2736,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement pauseEndRow = new VisualElement();
+        pauseEndRow = new VisualElement();
 
         pauseEndRow.style.flexDirection = FlexDirection.Row;
 
@@ -14357,6 +14364,26 @@ selectionShell.style.maxWidth = StyleKeyword.None;
         float songEndButtonHeight = buttonHeight * SongEndButtonHeightScale;
 
         float songEndButtonMinWidth = Mathf.Clamp(menuLayoutWidth * 0.19f, 320f, 420f);
+
+        float pauseFrontPlateWidth = Mathf.Clamp(screenWidth * 0.34f, 1180f, 1460f);
+        float pauseBackplateWidth = pauseFrontPlateWidth + 80f;
+        float pauseRegionWidth = pauseFrontPlateWidth - Mathf.Clamp(screenWidth * 0.04f, 140f, 220f);
+        float pauseShellWidth = Mathf.Clamp(pauseRegionWidth - Mathf.Clamp(screenWidth * 0.035f, 150f, 220f), 700f, 860f);
+        float pauseInnerMaxWidth = Mathf.Clamp(pauseShellWidth - 120f, 520f, 660f);
+        float pauseInfoMaxWidth = Mathf.Clamp(pauseShellWidth - 32f, 560f, 760f);
+
+        pauseBackplate.style.width = pauseBackplateWidth;
+        pauseFrontPlate.style.width = pauseFrontPlateWidth;
+        pauseRegion.style.width = pauseRegionWidth;
+        pauseRegion.style.paddingLeft = Mathf.Clamp(screenWidth * 0.05f, 120f, 220f);
+        pauseShell.style.width = pauseShellWidth;
+        pauseShell.style.maxWidth = pauseShellWidth;
+        pauseCard.style.maxWidth = pauseInnerMaxWidth;
+        pauseButtons.style.maxWidth = pauseInnerMaxWidth - 40f;
+        pauseEndRow.style.maxWidth = pauseInnerMaxWidth - 40f;
+        pauseInfoLabel.style.maxWidth = pauseInfoMaxWidth;
+        speedSlider.style.maxWidth = pauseInnerMaxWidth - 40f;
+        speedValueLabel.style.minWidth = Mathf.Clamp(pauseInnerMaxWidth - 80f, 420f, 520f);
 
         startupTuningReminderPopup?.ApplyResponsiveSizing(menuLayoutHeight, buttonFontSize);
 
