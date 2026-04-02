@@ -500,7 +500,28 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
         }
 
-        mainCamera.backgroundColor = owner.tabBackgroundColor;
+        mainCamera.backgroundColor = GetCameraBackgroundColor();
+    }
+
+    private Color GetCameraBackgroundColor()
+    {
+        if (owner == null)
+            return Color.black;
+
+        if (owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.BlueSky)
+        {
+            switch (owner.tabSkyMood)
+            {
+                case GuitarBridgeServer.TabsSkyMood.Sunset:
+                    return owner.tabSkySunsetBottomColor;
+                case GuitarBridgeServer.TabsSkyMood.Midnight:
+                    return owner.tabSkyMidnightBottomColor;
+                default:
+                    return owner.tabSkyBottomColor;
+            }
+        }
+
+        return owner.tabBackgroundColor;
     }
 
     private void EnsureGameplayVisualsBuilt()

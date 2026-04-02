@@ -42,6 +42,10 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private readonly List<SkyStar> stars = new List<SkyStar>();
     private readonly List<Sprite> cloudSprites = new List<Sprite>();
     private readonly List<Sprite> starSprites = new List<Sprite>();
+    private readonly List<Renderer> skyTopRenderers = new List<Renderer>();
+    private readonly List<Renderer> skyBottomRenderers = new List<Renderer>();
+    private readonly List<Renderer> skyLowerFillRenderers = new List<Renderer>();
+    private readonly List<Renderer> hazeRenderers = new List<Renderer>();
     private readonly HashSet<Sprite> ownedCloudSprites = new HashSet<Sprite>();
     private readonly HashSet<Texture2D> ownedCloudTextures = new HashSet<Texture2D>();
     private readonly HashSet<Texture2D> ownedStarTextures = new HashSet<Texture2D>();
@@ -53,12 +57,15 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private int loadedCloudSpriteCount;
     private GameObject root;
     private Transform skyGradient;
-    private Renderer skyTopRenderer;
-    private Renderer skyBottomRenderer;
-    private Renderer hazeRenderer;
 
     private const float SkyWidthOverscan = 1.45f;
     private const float SkyHeightOverscan = 1.60f;
+    private const float CurvedSkyWidthOverscan = 3.25f;
+    private const float CurvedSkyLowerCoverageFactor = 4.80f;
+    private const float CurvedSkyUpperCoverageFactor = 2.25f;
+    private const float CurvedSkyLowerFillMultiplier = 6.50f;
+    private const int CurvedSkySegments = 56;
+    private const float CurvedSkyArcDegrees = 72f;
     private GuitarBridgeServer.TabsSkyMood appliedMood = (GuitarBridgeServer.TabsSkyMood)(-1);
 
     public TabsBlueSkyBackground(bool applyHighwayOverrides = false)
@@ -91,13 +98,13 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         ApplyMoodToSkyIfNeeded();
         SyncStaticStarsState();
         UpdateStarTint();
+        UpdateCameraFacingSprites();
 
         if (clouds.Count == 0)
             return;
 
-        GetSkyCoverage(out float width, out float minY, out float maxY);
-        float cloudSpread = GetCloudSpreadMultiplier();
-        float halfWidth = (width * cloudSpread) * 0.5f;
+        GetAtmosphereCoverage(false, out float width, out float minY, out float maxY);
+        float halfWidth = width * 0.5f;
         float safeGlobalScale = Mathf.Max(0.2f, owner.tabSkyCloudGlobalScale) * GetCloudScaleMultiplier();
         float cloudYOffset = GetCloudVerticalOffset();
 
@@ -157,9 +164,10 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         owner = null;
         root = null;
         skyGradient = null;
-        skyTopRenderer = null;
-        skyBottomRenderer = null;
-        hazeRenderer = null;
+        skyTopRenderers.Clear();
+        skyBottomRenderers.Clear();
+        skyLowerFillRenderers.Clear();
+        hazeRenderers.Clear();
         appliedMood = (GuitarBridgeServer.TabsSkyMood)(-1);
         appliedStarSpriteRevision = -1;
     }
@@ -183,63 +191,203 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         float cameraHalfHeight = Mathf.Max(owner.tabCameraSize, (baseMaxY - baseMinY) * 0.5f);
         float cameraHalfWidth = cameraHalfHeight * Mathf.Max(1f, Camera.main != null ? Camera.main.aspect : 16f / 9f);
 
-        width = Mathf.Max(baseWidth, cameraHalfWidth * 2f) * SkyWidthOverscan;
+        float widthOverscan = applyHighwayOverrides ? CurvedSkyWidthOverscan : SkyWidthOverscan;
+        width = Mathf.Max(baseWidth, cameraHalfWidth * 2f) * widthOverscan;
 
         float centerY = (baseMinY + baseMaxY) * 0.5f;
-        float halfHeight = Mathf.Max((baseMaxY - baseMinY) * 0.5f, cameraHalfHeight) * SkyHeightOverscan;
+        float baseHalfHeight = Mathf.Max((baseMaxY - baseMinY) * 0.5f, cameraHalfHeight);
+        if (applyHighwayOverrides)
+        {
+            minY = centerY - (baseHalfHeight * CurvedSkyLowerCoverageFactor);
+            maxY = centerY + (baseHalfHeight * CurvedSkyUpperCoverageFactor);
+            return;
+        }
+
+        float halfHeight = baseHalfHeight * SkyHeightOverscan;
+        minY = centerY - halfHeight;
+        maxY = centerY + halfHeight;
+    }
+
+    private void GetAtmosphereCoverage(bool stars, out float width, out float minY, out float maxY)
+    {
+        float baseWidth = Mathf.Max(0.01f, owner.tabSkyWidth);
+        float baseMinY = Mathf.Min(owner.tabSkyMinY, owner.tabSkyMaxY);
+        float baseMaxY = Mathf.Max(owner.tabSkyMinY, owner.tabSkyMaxY);
+
+        float cameraHalfHeight = Mathf.Max(owner.tabCameraSize, (baseMaxY - baseMinY) * 0.5f);
+        float cameraHalfWidth = cameraHalfHeight * Mathf.Max(1f, Camera.main != null ? Camera.main.aspect : 16f / 9f);
+        float centerY = (baseMinY + baseMaxY) * 0.5f;
+        float baseHalfHeight = Mathf.Max((baseMaxY - baseMinY) * 0.5f, cameraHalfHeight);
+
+        float horizontalSpread = stars ? GetStarSpreadMultiplier() : GetCloudSpreadMultiplier();
+        width = Mathf.Max(baseWidth, cameraHalfWidth * 2f) * SkyWidthOverscan * horizontalSpread;
+        float halfHeight = baseHalfHeight * SkyHeightOverscan;
         minY = centerY - halfHeight;
         maxY = centerY + halfHeight;
     }
 
     private void CreateGradientSky()
     {
-        GetSkyCoverage(out float width, out float minY, out float maxY);
+        GetAtmosphereCoverage(false, out float width, out float minY, out float maxY);
+        GetSkyCoverage(out float shellWidth, out float shellMinY, out float shellMaxY);
         GetSkyDepthRange(out _, out float farZ);
 
         GameObject gradientRoot = new GameObject("SkyGradient");
         gradientRoot.transform.SetParent(root.transform, false);
         skyGradient = gradientRoot.transform;
 
-        CreateGradientBand("SkyBandTop", owner.tabSkyTopColor, owner.tabSkyMidColor, (minY + maxY) * 0.5f, maxY, farZ - 0.03f, width);
-        CreateGradientBand("SkyBandBottom", owner.tabSkyMidColor, owner.tabSkyBottomColor, minY, (minY + maxY) * 0.5f, farZ - 0.02f, width);
+        skyTopRenderers.Clear();
+        skyBottomRenderers.Clear();
+        skyLowerFillRenderers.Clear();
+        hazeRenderers.Clear();
 
-        GameObject haze = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        haze.name = "SkyHaze";
-        haze.transform.SetParent(skyGradient, false);
-        haze.transform.localPosition = new Vector3(0f, minY + (maxY - minY) * 0.26f, farZ - 0.01f);
-        haze.transform.localScale = new Vector3(width * 1.06f, (maxY - minY) * 0.45f, 1f);
-
-        hazeRenderer = haze.GetComponent<Renderer>();
-        hazeRenderer.shadowCastingMode = ShadowCastingMode.Off;
-        hazeRenderer.receiveShadows = false;
-        hazeRenderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
-        hazeRenderer.material = CreateUnlitTransparentMaterial(new Color(0.95f, 0.98f, 1f, 0.14f), BuildVerticalAlphaTexture(1f, 0f));
-        Object.Destroy(haze.GetComponent<Collider>());
+        float middleY = (minY + maxY) * 0.5f;
+        float extraLowerFillHeight = (shellMaxY - shellMinY) * CurvedSkyLowerFillMultiplier;
+        CreateGradientBand("SkyBandTop", owner.tabSkyTopColor, owner.tabSkyMidColor, middleY, maxY, farZ - 0.03f, width, skyTopRenderers);
+        CreateGradientBand("SkyBandBottom", owner.tabSkyMidColor, owner.tabSkyBottomColor, minY, middleY, farZ - 0.02f, width, skyBottomRenderers);
+        CreateGradientBand("SkyBandLowerFill", owner.tabSkyBottomColor, owner.tabSkyBottomColor, shellMinY - extraLowerFillHeight, minY + 0.02f, farZ - 0.025f, shellWidth * 1.12f, skyLowerFillRenderers);
+        CreateHazeBand(minY + (maxY - minY) * 0.26f, (maxY - minY) * 0.45f, farZ - 0.01f, width);
     }
 
-    private void CreateGradientBand(string name, Color topColor, Color bottomColor, float minY, float maxY, float z, float width)
+    private void CreateGradientBand(string name, Color topColor, Color bottomColor, float minY, float maxY, float z, float width, List<Renderer> targetRenderers)
+    {
+        float centerY = (minY + maxY) * 0.5f;
+        float height = Mathf.Max(0.01f, maxY - minY);
+        Texture2D gradientTexture = BuildVerticalGradientTexture(topColor, bottomColor);
+
+        if (applyHighwayOverrides)
+        {
+            Renderer curvedRenderer = CreateCurvedBandMesh(name, centerY, height, z, width, Color.white, gradientTexture, false);
+            if (curvedRenderer != null)
+                targetRenderers.Add(curvedRenderer);
+            return;
+        }
+
+        Renderer renderer = CreateBandQuad(name, new Vector3(0f, centerY, z), Quaternion.identity, new Vector3(width * 1.06f, height, 1f), CreateUnlitOpaqueMaterial(Color.white, gradientTexture));
+        if (renderer != null)
+            targetRenderers.Add(renderer);
+    }
+
+    private void CreateHazeBand(float centerY, float height, float z, float width)
+    {
+        Texture2D hazeTexture = BuildVerticalAlphaTexture(1f, 0f);
+        Material hazeMaterial = CreateUnlitTransparentMaterial(new Color(0.95f, 0.98f, 1f, 0.14f), hazeTexture);
+
+        if (applyHighwayOverrides)
+        {
+            Renderer curvedRenderer = CreateCurvedBandMesh("SkyHaze", centerY, height, z, width, hazeMaterial.color, hazeTexture, true);
+            if (curvedRenderer != null)
+                hazeRenderers.Add(curvedRenderer);
+            return;
+        }
+
+        Renderer renderer = CreateBandQuad("SkyHaze", new Vector3(0f, centerY, z), Quaternion.identity, new Vector3(width * 1.06f, height, 1f), hazeMaterial);
+        if (renderer != null)
+            hazeRenderers.Add(renderer);
+    }
+
+    private Renderer CreateCurvedBandMesh(string name, float centerY, float height, float z, float width, Color tint, Texture2D texture, bool transparent)
+    {
+        int segments = Mathf.Max(12, CurvedSkySegments);
+        float arcRadians = CurvedSkyArcDegrees * Mathf.Deg2Rad;
+        float spanWidth = width * 1.08f;
+        float radius = spanWidth / Mathf.Max(0.01f, arcRadians);
+        float halfHeight = height * 0.5f;
+
+        Vector3[] vertices = new Vector3[(segments + 1) * 2];
+        Vector2[] uvs = new Vector2[vertices.Length];
+        int[] triangles = new int[segments * 6];
+
+        for (int i = 0; i <= segments; i++)
+        {
+            float t = i / (float)segments;
+            float angle = Mathf.Lerp(-arcRadians * 0.5f, arcRadians * 0.5f, t);
+
+            float x = Mathf.Sin(angle) * radius;
+            float pointZ = z - ((1f - Mathf.Cos(angle)) * radius);
+            int vertexIndex = i * 2;
+            vertices[vertexIndex] = new Vector3(x, centerY - halfHeight, pointZ);
+            vertices[vertexIndex + 1] = new Vector3(x, centerY + halfHeight, pointZ);
+            uvs[vertexIndex] = new Vector2(t, 0f);
+            uvs[vertexIndex + 1] = new Vector2(t, 1f);
+        }
+
+        for (int i = 0; i < segments; i++)
+        {
+            int triangleIndex = i * 6;
+            int vertexIndex = i * 2;
+            triangles[triangleIndex] = vertexIndex;
+            triangles[triangleIndex + 1] = vertexIndex + 1;
+            triangles[triangleIndex + 2] = vertexIndex + 2;
+            triangles[triangleIndex + 3] = vertexIndex + 2;
+            triangles[triangleIndex + 4] = vertexIndex + 1;
+            triangles[triangleIndex + 5] = vertexIndex + 3;
+        }
+
+        Mesh mesh = new Mesh();
+        mesh.name = $"{name}_CurvedMesh";
+        mesh.vertices = vertices;
+        mesh.uv = uvs;
+        mesh.triangles = triangles;
+        mesh.RecalculateBounds();
+        mesh.RecalculateNormals();
+
+        GameObject curvedBand = new GameObject(name);
+        curvedBand.transform.SetParent(skyGradient, false);
+
+        MeshFilter meshFilter = curvedBand.AddComponent<MeshFilter>();
+        meshFilter.sharedMesh = mesh;
+
+        MeshRenderer meshRenderer = curvedBand.AddComponent<MeshRenderer>();
+        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+        meshRenderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
+        meshRenderer.material = transparent
+            ? CreateUnlitTransparentMaterial(tint, texture)
+            : CreateUnlitOpaqueMaterial(tint, texture);
+
+        return meshRenderer;
+    }
+
+    private void UpdateCameraFacingSprites()
+    {
+        Camera camera = Camera.main;
+        if (camera == null)
+            return;
+
+        Quaternion facingRotation = camera.transform.rotation;
+
+        for (int i = 0; i < clouds.Count; i++)
+        {
+            Transform cloudTransform = clouds[i].transform;
+            if (cloudTransform != null)
+                cloudTransform.rotation = facingRotation;
+        }
+
+        for (int i = 0; i < stars.Count; i++)
+        {
+            Transform starTransform = stars[i].transform;
+            if (starTransform != null)
+                starTransform.rotation = facingRotation;
+        }
+    }
+
+    private Renderer CreateBandQuad(string name, Vector3 localPosition, Quaternion localRotation, Vector3 localScale, Material material)
     {
         GameObject band = GameObject.CreatePrimitive(PrimitiveType.Quad);
         band.name = name;
         band.transform.SetParent(skyGradient, false);
-
-        float centerY = (minY + maxY) * 0.5f;
-        float height = Mathf.Max(0.01f, maxY - minY);
-        band.transform.localPosition = new Vector3(0f, centerY, z);
-        band.transform.localScale = new Vector3(width * 1.06f, height, 1f);
+        band.transform.localPosition = localPosition;
+        band.transform.localRotation = localRotation;
+        band.transform.localScale = localScale;
 
         Renderer renderer = band.GetComponent<Renderer>();
         renderer.shadowCastingMode = ShadowCastingMode.Off;
         renderer.receiveShadows = false;
         renderer.motionVectorGenerationMode = MotionVectorGenerationMode.ForceNoMotion;
-        renderer.material = CreateUnlitOpaqueMaterial(Color.white, BuildVerticalGradientTexture(topColor, bottomColor));
-
-        if (name == "SkyBandTop")
-            skyTopRenderer = renderer;
-        else if (name == "SkyBandBottom")
-            skyBottomRenderer = renderer;
-
+        renderer.material = material;
         Object.Destroy(band.GetComponent<Collider>());
+        return renderer;
     }
 
 
@@ -410,13 +558,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         if (cloudSprites.Count == 0)
             return;
 
-        GetSkyCoverage(out float width, out float minY, out float maxY);
-        float cloudSpread = GetCloudSpreadMultiplier();
-        float halfWidth = (width * cloudSpread) * 0.5f;
-        float centerY = (minY + maxY) * 0.5f;
-        float halfHeight = (maxY - minY) * 0.5f * cloudSpread;
-        minY = centerY - halfHeight;
-        maxY = centerY + halfHeight;
+        GetAtmosphereCoverage(false, out float width, out float minY, out float maxY);
+        float halfWidth = width * 0.5f;
         GetSkyDepthRange(out float nearZ, out float farZ);
 
         Random.State oldState = Random.state;
@@ -489,25 +632,34 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             : 1f;
     }
 
+    private float GetStarSpreadMultiplier()
+    {
+        return owner != null && applyHighwayOverrides
+            ? Mathf.Max(0.05f, owner.highwayBackgroundStarSpread)
+            : 1f;
+    }
+
     private float GetStarScaleMultiplier()
     {
-        return applyHighwayOverrides ? 0.52f : 1f;
+        return applyHighwayOverrides
+            ? 0.52f * Mathf.Max(0.05f, owner.highwayBackgroundStarScale)
+            : 1f;
     }
 
     private void ApplyMoodToSkyIfNeeded()
     {
-        if (owner == null || (appliedMood == owner.tabSkyMood && skyTopRenderer != null && skyBottomRenderer != null))
+        if (owner == null || (appliedMood == owner.tabSkyMood && skyTopRenderers.Count > 0 && skyBottomRenderers.Count > 0 && skyLowerFillRenderers.Count > 0))
             return;
 
         GetSkyColors(out Color top, out Color mid, out Color bottom);
 
-        if (skyTopRenderer != null)
-            ReplaceMaterialTexture(skyTopRenderer, BuildVerticalGradientTexture(top, mid));
+        ReplaceMaterialTexture(skyTopRenderers, BuildVerticalGradientTexture(top, mid));
 
-        if (skyBottomRenderer != null)
-            ReplaceMaterialTexture(skyBottomRenderer, BuildVerticalGradientTexture(mid, bottom));
+        ReplaceMaterialTexture(skyBottomRenderers, BuildVerticalGradientTexture(mid, bottom));
 
-        if (hazeRenderer != null)
+        ReplaceMaterialTexture(skyLowerFillRenderers, BuildVerticalGradientTexture(bottom, bottom));
+
+        if (hazeRenderers.Count > 0)
         {
             Color hazeColor;
             if (owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Sunset)
@@ -522,19 +674,34 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             {
                 hazeColor = new Color(0.95f, 0.98f, 1f, 0.14f);
             }
-            hazeRenderer.material.color = hazeColor;
+            for (int i = 0; i < hazeRenderers.Count; i++)
+            {
+                Renderer renderer = hazeRenderers[i];
+                if (renderer != null && renderer.material != null)
+                    renderer.material.color = hazeColor;
+            }
         }
 
         appliedMood = owner.tabSkyMood;
     }
 
-    private static void ReplaceMaterialTexture(Renderer renderer, Texture2D newTexture)
+    private static void ReplaceMaterialTexture(List<Renderer> renderers, Texture2D newTexture)
     {
-        if (renderer == null || renderer.material == null)
+        if (renderers == null || renderers.Count == 0)
             return;
 
-        Texture oldTexture = renderer.material.mainTexture;
-        renderer.material.mainTexture = newTexture;
+        Texture oldTexture = null;
+        for (int i = 0; i < renderers.Count; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null || renderer.material == null)
+                continue;
+
+            if (oldTexture == null)
+                oldTexture = renderer.material.mainTexture;
+
+            renderer.material.mainTexture = newTexture;
+        }
 
         if (oldTexture != null && oldTexture != newTexture)
             Object.Destroy(oldTexture);
@@ -581,7 +748,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         if (owner == null || !owner.tabSkyStarsEnabled)
             return;
 
-        GetSkyCoverage(out float width, out float minY, out float maxY);
+        GetAtmosphereCoverage(true, out float width, out float minY, out float maxY);
         GetSkyDepthRange(out float nearZ, out float farZ);
 
         float halfWidth = width * 0.5f;
