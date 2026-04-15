@@ -1,0 +1,20 @@
+fileFormatVersion: 2
+guid: 71421d59678b9f34ba8377430ba80bb1
+timeCreated: 1519710200
+licenseType: Store
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/MPTKMidi/MidiSet.cs
+  uploadId: 889890

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 0642fd130b25a2f448a437f4a73c8fc8
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/FluidSynth/fluid_iir_filter_64.cs
+  uploadId: 889890

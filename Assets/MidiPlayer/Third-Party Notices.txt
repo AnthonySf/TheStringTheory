@@ -1,0 +1,17 @@
+Asset is governed by the Asset Store EULA; however, the following components are governed by the licenses indicated below:
+
+A. FluidSynth
+    GNU LESSER GENERAL PUBLIC LICENSE  2.1, February 1999
+    license and copyright/accreditation details—determined by relevant license
+
+B. NAudio
+    Microsoft Public License (Ms-PL)
+    license and copyright/accreditation details—determined by relevant license
+
+C. GeneralUser_GS_SoftSynth_v144 
+	License v2.0;
+    license and copyright/accreditation details—determined by relevant license
+
+D. ScreenLogger
+	MIT License
+	license and copyright/accreditation details—determined by relevant license

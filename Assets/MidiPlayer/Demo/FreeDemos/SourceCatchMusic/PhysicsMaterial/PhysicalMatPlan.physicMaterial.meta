@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 2204cf4da8a6dfd43ab2dd0779d48c4e
+timeCreated: 1528787533
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 13400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/SourceCatchMusic/PhysicsMaterial/PhysicalMatPlan.physicMaterial
+  uploadId: 889890

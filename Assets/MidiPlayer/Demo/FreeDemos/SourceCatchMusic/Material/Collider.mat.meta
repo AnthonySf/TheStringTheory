@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 0c41e26b0f1650b45bcc658cc0f60079
+timeCreated: 1528797105
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/SourceCatchMusic/Material/Collider.mat
+  uploadId: 889890

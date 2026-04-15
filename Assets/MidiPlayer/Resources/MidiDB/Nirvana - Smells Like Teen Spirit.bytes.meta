@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: ca68c14efa27a1340aeb1a369c7a40c4
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Nirvana - Smells Like Teen Spirit.bytes
+  uploadId: 889890

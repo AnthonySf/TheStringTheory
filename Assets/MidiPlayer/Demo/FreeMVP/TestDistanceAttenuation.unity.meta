@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 272d33624d66ab144ad6a813cba2796d
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeMVP/TestDistanceAttenuation.unity
+  uploadId: 889890

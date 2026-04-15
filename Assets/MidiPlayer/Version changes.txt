@@ -1,0 +1,181 @@
+*** Read the full version change directly in the Asset/MidiPlayer folder 
+
+Please, before updating:
+   - Backup your own project
+   - If you get errors after updating, please quit Unity Editor and reload your project (GUID must be updated).
+   - If you are updating from an older version and errors persist, delete the MidiPlayer folder from your project and reinstall Maestro.
+
+Thank for your comments and talks, that help a lot to make Maestro better.
+
+V2.19.0 2026-03-28
+	New Feature Pro
+		Chord progression builder. 
+	Fixes
+		Guard against AudioSource being destroyed when MPTK_Stop() coroutine was waiting (thanks to Macias for pointing this out).
+		When MPTK Spatialization is disabled, the AudioSource spatial settings should stay untouched so the inspector values apply (thanks to CharleneAtlas for pointing this out). 
+		Huge review of the code and API documentation. Improve grammar, clarity, and consistency.
+		Full rebuild of the API documentation availabale on https://mptkapi.paxstellar.com/annotated.html. 
+
+V2.18.1 2026-02-23
+	Fixes
+		Correct unexpexted using clause.
+		Correct wrong time definition in TestMidiGenerator demo.
+
+V2.18.0 2026-02-09
+	Version Pro
+		New Feature
+			Orientation-based audio behavior, including:
+				Smooth left/right stereo panning
+				Front/back volume attenuation
+				Subtle filtering when the sound source is behind the listener
+		New Attributes:
+			MPTK_Orientation: Enables orientation-based audio behavior (default: false).
+			MPTK_OrientationToListener: Returns the angle (in degrees) between the sound source and the listener.
+	Version All
+		New Attributes
+			Renamed MPTK_Spatialize to MPTK_DistanceAttenuation for clarity.
+			Added MPTK_AudioListener attribute to MidiPlayerGlobal to specify which AudioListener is used (default: first AudioListener found in the scene).
+			Added MPTK_StatVoiceCountSustained.
+	Fixes
+		Ensured the MIDI player stops correctly when notes remain sustained at the end of a MIDI file.
+	Demos & MVP
+		Updated demos to use the new orientation-based audio behavior.
+
+V2.17.0 2025-12-07
+	New Feature Pro
+		Added the ability to pause and resume voices with smooth transitions (especially useful for MidiStreamPlayer).
+	New Feature All
+		Improved spatialization with two new parameters:
+			MPTK_MinDistance: distance at which attenuation begins.
+			MPTK_MinSoundAttenuation: minimum volume applied at maximum distance.
+		The free Maestro edition is now based on the GS v2.0.2 SoundFont from Christian Collins � many thanks to him! Enjoy noticeably enhanced audio.
+	Fix: 
+		Correct spatialization calculation.
+		MPTK_Play: when MIDI player is paused and not yet playing, the player just resume pause and not playing ... now, resume pause and play!
+
+V2.16.2 2025-10-31
+	New Features
+		Official version compatible WebGL.
+		MPTK_Core set to false when Unity WebGL selected (legacy mode).
+		Added MPTK_ListPresetDrum, MPTK_PresetsNameDrum, MPTK_PresetsNumberDrum.
+		MPTK_PauseOnMaxDistance: MIDI player automatically paused when the distance from the listener exceeds MPTK_MaxDistance.
+			- Default is true (pause)
+
+	Demo & MVP
+		MidiChannel MVP: now displays channel information.
+		MidiFileWriter: now working with WebGL (removes local file management).
+		TestEuclideanRhythme: now working with WebGL (uses coroutine).
+		TestMidiExternalPlayer: now working with WebGL (uses coroutine).
+		TinyMidiSequencer: deprecated (source code still available).
+		Helper to migrate MPTK demos to Unity 6.
+		Remove some design not compliant to Unity 6 :
+			- Water in TestMidiFilePlayerMulti
+			- Shadow in TestMidiFilePlayerScripting
+
+	Fix
+		WebGL: all voices are now cleared when stopping a MIDI.
+		WebGL: playback now starts at the first note.
+		WebGL: MidiExternalPlayer for WebGL compatibility (move MIDI to as CORS compliant server).
+		WebGL: MPTKWriter is now compliant (direct play only).
+		MPTK_CurrentTempo: get rounded to the nearest integer. Thanks to cihadturhan_unity.
+		Correct issue on quantization calculation. Thanks to cihadturhan_unity.
+		Parameter AlreadyLoaded was not used when MIDI Player is in autorestart mode.
+
+
+V2.15.0 2025-04-25
+	New Features
+		SoundFonts can be dynamically loaded either from a local file system or directly from the web.
+        Supports assigning different SoundFonts to different MIDI players.
+		Delays line number for reverb now can be expanded to 12 (default is 8) to produces a better quality sound but with a cpu cost. Add script symbols MPTK_REVERB_NBR_DELAYS_12 to expand.
+		Changes the way each note-on velocity affects the attenuation of a voice. A higher value increases the volume at low velocity (the fluidsynth constant FLUID_PEAK_ATTENUATION is modified). Perfect for soundfont with not audible notes at low velocity. See member MPTK_VelocityAttenuation (experimental feature).
+		Easier access to the verbose modes in the inspector.
+		Access to MPTK custom ChatGPT from the About MPTK.
+	Demo & MVP
+		TestLoadingExternalSoundFont: use of the new MPTKSoundFont class (pro), predefined soundfonts, quick switching, ...
+		MidiChannel: Free MVP, three simple demos in one! disable all channels but not drum, apply sustain, play extra notes ...
+		HackYourMIDI: Pro MVP, how to transform a MIDI note-on on to an arppegio.
+	Fix
+		MPTK_LoadLiveSF is deprecated but is still working.
+		Correct abrupt reverb off when any voice is active.
+		Update from FS 2.3: ignore note-off for non looped samples in the attack phase and improve amp calculation.
+		Improve MIDI sort and set priority for bank change (dramatically decrease time loading for big MIDI file).
+		Ignore CC32 for LSB Bank change (default for GS soundfont))
+		WebGL: subset generator for web, correct issue in GEN_STARTADDROFS, apply pitch at playing (Pitch Change). WebGL will be soon officialy available!
+		Correct soundfont importing with truncated samples name. Can conduct to samples missing. It's a rare issue but in case of you need to re-import your specific soundfont.
+
+V2.14.0 2024-12-22
+	New Features
+		Unlock global volume up to 10 (by default, limited to 1). Add script symbols MPTK_UNLOCK_VOLUME to unlock. Experimental, use with caution.
+		Unlock MIDI player speed from 0.0001 to 100 (by default between to 0.1 and 10). Add script symbols MPTK_UNLOCK_SPEED to unlock. Experimental, use with caution.
+		Add optionnal wait time to MPTK_Stop for waiting until MIDI is really stopped.
+		Improve MPTK debug mode with MPTK_BuildInfoSynth.
+		Move Maestro menu to Unity Tools menu when MPTK_MAESTRO_MENU_TOOLS symbol is defined.
+		Soundfont caching is now optional when loading SF dynamically, see MidiPlayerGlobal.MPTK_LoadLiveSF. 
+		Add MPTK_ResetTranspose to force cancel transpose when looping on a MIDI.
+	Demo & MVP
+		TestOboe: redesign (again!). Also good on non-Android devices for latency analysis.
+		TestLoadingExternalSoundFont: redesign
+		Create MVP demo MidiKeyboardThread
+	Fix
+		Correct Oboe setting to correct bad sound on some devices (buffer not a multiple of 64). 
+		Correct MIDI thread reader with OnAudio callback to improve accuracy.
+		Restore initial transpose value when looping.
+
+V2.13.2 2024-10-31
+	New Features
+		Based on Unity version 2022.3
+		MidiStream player: Extended to 256 channels. 
+		MPTKWriter: Create MIDI until 256 channels (but not for writing).
+		MPTK_DebugActiveVoice added for advanced use.
+		Added new stat in MIDI file setup.
+	Demo & MVP
+		TestMidiExternalPlayer: Add measure calculation and innerloop capabilities, UI redesign.
+		TestOboe: UI redesign.
+		TestMidiStreamPlayer: Able to play with 32 channels.
+	Fixes
+		Replace obsolete method in Unity 6.
+		Correct synth attenuation range, limit to 1440.
+		HelperDemo: replaced method LabelC4FromMidi with method LabelFromMidi. Now label centred in C4 (60 return C4). Removed LabelFromEcart method.
+		MPTKWriter: Correct TickLast.
+		Effect with oboe: process in blocks of 64 improve the quality.
+		In folder MPTKGameObject/Pro, rename files MPTKEffect____.cs to MPTKEffect____Pro.cs. 
+		In folder MPTKGameObject, create partial class MPTKEffect____.cs.
+		Correct build error
+		Correct transposition error
+
+
+V2.12.1 2024-06-18
+	New Features
+		MPTK_ThreadMidiPriority: MIDI thread priority to improve reading stability. 
+		MPTK_ThreadMidiWait: MIDI thread waiting in milliseconds. 
+		IntegratedThreadMidi: MIDI reader integrated into the audio thread for more stable reading (can only be set by the inspector).
+		MPTK_CalculateTiming: Now, refresh all timing in the MIDI file: Tempo Map, Signature Map, Realtime, Measure, Beat.
+		MPTK_EventLastNote: Get the last MIDI event which holds a note-on.
+		MPTK_FindLastNote: Find the last MIDI event note-on.
+		MPTK_StopPlayOnLastNote: MIDI playing stop at the last note found in the MIDI.
+	Demo & MVP
+		TestMidiFilePlayerScript: new possibilities for "Modify MIDI And Play" feature and redesign.
+		EuclideanRhythm: light redesign.
+	Fixes
+		Correct MPTKTempo.FindSegment from a time (thanks cihadturhan_unity).
+		Correct MidiFilePlayer.Duration: now take into account the duration of the last note-on event (thanks Izanol).
+
+V2.12.0 2024-05-26
+	New Features
+		Update of the core MIDI synth from fluidsynth 1.3 to fluidsynth 2.3. Incredible new sound!
+		Ability to read and write META text with UTF8 encoding (out of MIDI standard).
+		DSP and iir filters in 64 bits.
+		Added MPTK_RawSeek function for instant looping.
+		Added MPTK_WebRequestError attribute for MidiFileExternalPlayer.
+	Demo & MVP
+		Added MIDI Viewer. Some colored line effects that move in relation to the music.
+		Added MVP demo TheSimplestRandomPlayer.
+		Added inner loop in TestMidiFilePlayerScript demo.
+		New MVP demo load midi and play.
+	Fixes
+		Oboe integration - correct assembly + many bugs.
+		Apply UI scale to all IMGUI demos.
+	Deprecated
+		MidiFilePlayer.MPTK_PulseLength deprecated, replaced by MPTK_Pulse.
+
+*** Read the full version change directly in the Asset/MidiPlayer folder 

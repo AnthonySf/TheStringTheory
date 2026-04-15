@@ -672,15 +672,29 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 dynamicObjects.Add(markerRoot);
 
                 List<Renderer> extraRenderers = new List<Renderer>();
+                HashSet<Renderer> fillExtraRenderers = new HashSet<Renderer>();
                 List<TextMeshPro> extraTexts = new List<TextMeshPro>();
                 TextMeshPro muteSymbolText = null;
                 AddMuteCenterSymbol(markerRoot.transform, note, ref muteSymbolText);
                 AddCornerTechniqueGlyph(markerRoot.transform, note, extraTexts);
-                GameObject tunnelRoot = BuildTechniqueTunnel(note, section, x, y, extraRenderers, extraTexts);
-                if (tunnelRoot != null)
-                    dynamicObjects.Add(tunnelRoot);
+                GameObject techniqueRoot = TabBendCurveBuilder.Build(
+                    Root.transform,
+                    owner,
+                    note,
+                    section,
+                    x,
+                    y,
+                    LeftEdge,
+                    UsableWidth,
+                    GetVisibleNoteRadius(),
+                    lineSpacing,
+                    extraRenderers);
+                if (techniqueRoot == null)
+                    techniqueRoot = BuildTechniqueTunnel(note, section, x, y, extraRenderers, fillExtraRenderers, extraTexts);
+                if (techniqueRoot != null)
+                    dynamicObjects.Add(techniqueRoot);
 
-                NoteViews[note.id] = new TabNoteView(outlineRenderer, fillRenderer, text, extraRenderers, extraTexts, muteSymbolText);
+                NoteViews[note.id] = new TabNoteView(outlineRenderer, fillRenderer, text, extraRenderers, fillExtraRenderers, extraTexts, muteSymbolText);
             }
         }
 
@@ -704,7 +718,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 || noteName.Equals("muted", StringComparison.OrdinalIgnoreCase);
         }
 
-        private GameObject BuildTechniqueTunnel(NoteData note, TabSectionData section, float x, float y, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts)
+        private GameObject BuildTechniqueTunnel(NoteData note, TabSectionData section, float x, float y, List<Renderer> extraRenderers, HashSet<Renderer> fillExtraRenderers, List<TextMeshPro> extraTexts)
         {
             bool hasTechnique = note.technique != NoteTechnique.None;
             bool hasSustain = note.duration > 0.05f;
@@ -761,16 +775,16 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             Color outlineColor = owner.GetStringColor(note.stringIdx);
             Color fillColor = owner.tabTechniqueFillColor;
 
-            CreateCapsulePiece(root.transform, Vector3.zero, new Vector3(Mathf.Max(0.01f, width - height), height, depth), PrimitiveType.Cube, outlineColor, 0.9f, extraRenderers);
-            CreateCapsulePiece(root.transform, new Vector3(-(width * 0.5f) + radius, 0f, 0f), new Vector3(radius, depth * 0.5f, radius), PrimitiveType.Cylinder, outlineColor, 0.9f, extraRenderers);
-            CreateCapsulePiece(root.transform, new Vector3((width * 0.5f) - radius, 0f, 0f), new Vector3(radius, depth * 0.5f, radius), PrimitiveType.Cylinder, outlineColor, 0.9f, extraRenderers);
+            CreateCapsulePiece(root.transform, Vector3.zero, new Vector3(Mathf.Max(0.01f, width - height), height, depth), PrimitiveType.Cube, outlineColor, 0.9f, extraRenderers, null);
+            CreateCapsulePiece(root.transform, new Vector3(-(width * 0.5f) + radius, 0f, 0f), new Vector3(radius, depth * 0.5f, radius), PrimitiveType.Cylinder, outlineColor, 0.9f, extraRenderers, null);
+            CreateCapsulePiece(root.transform, new Vector3((width * 0.5f) - radius, 0f, 0f), new Vector3(radius, depth * 0.5f, radius), PrimitiveType.Cylinder, outlineColor, 0.9f, extraRenderers, null);
 
             float innerHeight = Mathf.Max(0.03f, height - owner.tabTechniqueInnerPadding * 2f);
             float innerWidth = Mathf.Max(0.02f, width - owner.tabTechniqueInnerPadding * 2f);
             float innerRadius = innerHeight * 0.5f;
-            CreateCapsulePiece(root.transform, new Vector3(0f, 0f, -0.015f), new Vector3(Mathf.Max(0.01f, innerWidth - innerHeight), innerHeight, depth * 0.55f), PrimitiveType.Cube, fillColor, 0.2f, extraRenderers);
-            CreateCapsulePiece(root.transform, new Vector3(-(innerWidth * 0.5f) + innerRadius, 0f, -0.015f), new Vector3(innerRadius, depth * 0.28f, innerRadius), PrimitiveType.Cylinder, fillColor, 0.2f, extraRenderers);
-            CreateCapsulePiece(root.transform, new Vector3((innerWidth * 0.5f) - innerRadius, 0f, -0.015f), new Vector3(innerRadius, depth * 0.28f, innerRadius), PrimitiveType.Cylinder, fillColor, 0.2f, extraRenderers);
+            CreateCapsulePiece(root.transform, new Vector3(0f, 0f, -0.015f), new Vector3(Mathf.Max(0.01f, innerWidth - innerHeight), innerHeight, depth * 0.55f), PrimitiveType.Cube, fillColor, 0.2f, extraRenderers, fillExtraRenderers);
+            CreateCapsulePiece(root.transform, new Vector3(-(innerWidth * 0.5f) + innerRadius, 0f, -0.015f), new Vector3(innerRadius, depth * 0.28f, innerRadius), PrimitiveType.Cylinder, fillColor, 0.2f, extraRenderers, fillExtraRenderers);
+            CreateCapsulePiece(root.transform, new Vector3((innerWidth * 0.5f) - innerRadius, 0f, -0.015f), new Vector3(innerRadius, depth * 0.28f, innerRadius), PrimitiveType.Cylinder, fillColor, 0.2f, extraRenderers, fillExtraRenderers);
 
             if (note.technique == NoteTechnique.Slide)
                 CreateSlideDirectionLine(root.transform, width, height, depth, note, extraRenderers);
@@ -849,7 +863,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             return found;
         }
 
-        private void CreateCapsulePiece(Transform parent, Vector3 localPos, Vector3 scale, PrimitiveType primitiveType, Color color, float emission, List<Renderer> extraRenderers)
+        private void CreateCapsulePiece(Transform parent, Vector3 localPos, Vector3 scale, PrimitiveType primitiveType, Color color, float emission, List<Renderer> extraRenderers, HashSet<Renderer> fillExtraRenderers)
         {
             GameObject go = GameObject.CreatePrimitive(primitiveType);
             go.transform.SetParent(parent, false);
@@ -861,6 +875,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             renderer.material = owner.CreateSharedGlowMaterial(color, emission);
             ConfigureRendererNoShadows(renderer);
             extraRenderers.Add(renderer);
+            fillExtraRenderers?.Add(renderer);
         }
 
         private void CreateSlideDirectionLine(Transform parent, float width, float height, float depth, NoteData note, List<Renderer> extraRenderers)
@@ -887,7 +902,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         private void AddCornerTechniqueGlyph(Transform noteRoot, NoteData note, List<TextMeshPro> extraTexts)
         {
-            if (note.technique != NoteTechnique.Bend && note.technique != NoteTechnique.Vibrato)
+            if (note.technique != NoteTechnique.Vibrato)
                 return;
 
             string glyph = GetTechniqueGlyph(note);
@@ -1154,16 +1169,18 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         private readonly Renderer fillRenderer;
         private readonly TextMeshPro text;
         private readonly List<Renderer> extraRenderers;
+        private readonly HashSet<Renderer> fillExtraRenderers;
         private readonly List<TextMeshPro> extraTexts;
         private readonly TextMeshPro muteSymbolText;
         private readonly string defaultLabelText;
 
-        public TabNoteView(Renderer outlineRenderer, Renderer fillRenderer, TextMeshPro text, List<Renderer> extraRenderers, List<TextMeshPro> extraTexts, TextMeshPro muteSymbolText)
+        public TabNoteView(Renderer outlineRenderer, Renderer fillRenderer, TextMeshPro text, List<Renderer> extraRenderers, HashSet<Renderer> fillExtraRenderers, List<TextMeshPro> extraTexts, TextMeshPro muteSymbolText)
         {
             this.outlineRenderer = outlineRenderer;
             this.fillRenderer = fillRenderer;
             this.text = text;
             this.extraRenderers = extraRenderers ?? new List<Renderer>();
+            this.fillExtraRenderers = fillExtraRenderers ?? new HashSet<Renderer>();
             this.extraTexts = extraTexts ?? new List<TextMeshPro>();
             this.muteSymbolText = muteSymbolText;
             defaultLabelText = text != null ? text.text : string.Empty;
@@ -1197,7 +1214,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 if (r == null || r.material == null)
                     continue;
 
-                bool isOutlineLike = i < 3;
+                bool isOutlineLike = !fillExtraRenderers.Contains(r);
                 Color targetColor = isOutlineLike ? outlineColor : fillColor;
                 r.material.color = targetColor;
                 r.material.EnableKeyword("_EMISSION");

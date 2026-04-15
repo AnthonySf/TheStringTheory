@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 2a4b1a404777bb04d9946b495de36ddb
+timeCreated: 1574357138
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/Materials/Logo_MPTK.mat
+  uploadId: 889890

@@ -528,7 +528,7 @@ MonoBehaviour:
   tabMissColor: {r: 1, g: 0.3, b: 0.3, a: 1}
   tabJudgeableColor: {r: 1, g: 0.92, b: 0.35, a: 1}
   tabIdleFillDarken: 0.33
-  highwayBackgroundColor: {r: 0.02, g: 0.02, b: 0.05, a: 1}
+  highwayBackgroundColor: {r: 0.01, g: 0.015, b: 0.045, a: 1}
   TotalFrets: 24
   FretSpacing: 4.2
   StrikeLineZ: -5

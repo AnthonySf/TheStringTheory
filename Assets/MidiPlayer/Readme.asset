@@ -1,0 +1,40 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fcf7219bab7fe46a1ad266029b2fee19, type: 3}
+  m_Name: Readme
+  m_EditorClassIdentifier: 
+  icon: {fileID: 2800000, guid: 201513b20d29c7f44b5c39122b37f370, type: 3}
+  title: Maestro Midi Player Tool Kit - V2
+  sections:
+  - heading: Read the full documentation
+    text: ''
+    linkText: See the full How-To documentation
+    url: https://paxstellar.fr//
+  - heading: See the full API documentation
+    text: ''
+    linkText: See the full API documentation
+    url: https://mptkapi.paxstellar.com/annotated.html
+  - heading: Feedback and Support
+    text: This package has a dedicated forum. If you need help, visit the forum and ask!
+    linkText: Visit the dedicated Forum Thread
+    url: https://forum.unity.com/threads/free-midi-player-tool-kit-available.526741/
+  - heading: Free MPTK Store
+    text: Please leave a review. We want your feedback!
+    linkText: Visit the Free MPTK on Unity Store
+    url: https://assetstore.unity.com/packages/tools/audio/midi-tool-kit-free-107994
+  - heading: Pro MPTK Store
+    text: Please leave a review. We want your feedback!
+    linkText: Visit the Pro MPTK on Unity Store
+    url: https://assetstore.unity.com/packages/tools/audio/midi-tool-kit-pro-115331
+  - heading: Special note for Pro users
+    text: Why are there no SountFonts or MIDIs published with the pro version?
+    linkText: See a response here
+    url: http://paxstellar.fr/2018/06/20/mptk-special-note-for-pro-uses/

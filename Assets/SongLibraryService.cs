@@ -10,8 +10,12 @@ public sealed class SongLibraryEntry
     public string SongId;
     public string DisplayName;
     public string Subtitle;
+    public string ArtworkPath;
     public string SongDirectory;
     public string Mp3Path;
+    public string PrimaryNotationPath;
+    public SongNotationSourceKind PrimaryNotationKind;
+    public string GpPath;
     public string XmlPath;
     public string MetadataPath;
     public string MidiPath;
@@ -121,25 +125,35 @@ public static class SongLibraryService
         entry = null;
 
         string mp3Path = FindFirstFile(songDirectory, "*.mp3");
+        string gpPath = FindPreferredGpNotation(songDirectory);
         string xmlPath = FindFirstFile(songDirectory, "*.musicxml") ?? FindFirstFile(songDirectory, "*.xml");
+        string artworkPath = FindArtworkFile(songDirectory);
+        string primaryNotationPath = !string.IsNullOrWhiteSpace(gpPath) ? gpPath : xmlPath;
+        SongNotationSourceKind primaryNotationKind = SongNotationSourceKind.None;
+        if (!SongNotationFacade.TryDetectKind(primaryNotationPath, out primaryNotationKind))
+            primaryNotationKind = SongNotationSourceKind.None;
 
-        if (string.IsNullOrEmpty(xmlPath))
+        if (string.IsNullOrEmpty(primaryNotationPath) || primaryNotationKind == SongNotationSourceKind.None)
         {
-            Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: .xml/.musicxml.");
+            Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: supported Guitar Pro or MusicXML notation.");
             return false;
         }
 
         string metadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
-        string displayName = ResolveDisplayName(songDirectory, xmlPath, metadataPath);
-        string subtitle = TryReadCreatorFromXml(xmlPath);
+        string displayName = ResolveDisplayName(songDirectory, primaryNotationPath, primaryNotationKind, metadataPath, xmlPath);
+        string subtitle = SongNotationFacade.TryReadCreator(primaryNotationPath, primaryNotationKind);
 
         entry = new SongLibraryEntry
         {
             SongId = Path.GetFileName(songDirectory),
             DisplayName = displayName,
             Subtitle = subtitle,
+            ArtworkPath = artworkPath,
             SongDirectory = songDirectory,
             Mp3Path = mp3Path,
+            PrimaryNotationPath = primaryNotationPath,
+            PrimaryNotationKind = primaryNotationKind,
+            GpPath = gpPath,
             XmlPath = xmlPath,
             MetadataPath = metadataPath,
             MidiPath = FindFirstFile(songDirectory, "*.mid") ?? FindFirstFile(songDirectory, "*.midi")
@@ -158,7 +172,73 @@ public static class SongLibraryService
             .FirstOrDefault();
     }
 
-    private static string ResolveDisplayName(string songDirectory, string xmlPath, string metadataPath)
+    private static string FindPreferredGpNotation(string directory)
+    {
+        if (!Directory.Exists(directory))
+            return null;
+
+        string[] patterns =
+        {
+            "*.gp5",
+            "*.gp4",
+            "*.gp3",
+            "*.gpx",
+            "*.gp"
+        };
+
+        for (int i = 0; i < patterns.Length; i++)
+        {
+            string candidate = FindFirstFile(directory, patterns[i]);
+            if (string.IsNullOrWhiteSpace(candidate))
+                continue;
+
+            if (SongNotationFacade.TryDetectKind(candidate, out SongNotationSourceKind detectedKind) &&
+                detectedKind != SongNotationSourceKind.None)
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private static string FindArtworkFile(string directory)
+    {
+        if (!Directory.Exists(directory))
+            return null;
+
+        string[] preferredNames =
+        {
+            "cover.jpg",
+            "cover.jpeg",
+            "cover.png",
+            "folder.jpg",
+            "folder.jpeg",
+            "folder.png",
+            "artwork.jpg",
+            "artwork.jpeg",
+            "artwork.png"
+        };
+
+        for (int i = 0; i < preferredNames.Length; i++)
+        {
+            string candidate = Path.Combine(directory, preferredNames[i]);
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        string[] patterns = { "*.jpg", "*.jpeg", "*.png" };
+        for (int i = 0; i < patterns.Length; i++)
+        {
+            string candidate = FindFirstFile(directory, patterns[i]);
+            if (!string.IsNullOrWhiteSpace(candidate))
+                return candidate;
+        }
+
+        return null;
+    }
+
+    private static string ResolveDisplayName(string songDirectory, string notationPath, SongNotationSourceKind notationKind, string metadataPath, string xmlFallbackPath)
     {
         string fallbackName = Path.GetFileName(songDirectory);
 
@@ -166,7 +246,11 @@ public static class SongLibraryService
         if (!string.IsNullOrWhiteSpace(metadataName))
             return metadataName.Trim();
 
-        string xmlName = TryReadDisplayNameFromXml(xmlPath);
+        string notationName = SongNotationFacade.TryReadDisplayName(notationPath, notationKind);
+        if (!string.IsNullOrWhiteSpace(notationName))
+            return notationName.Trim();
+
+        string xmlName = TryReadDisplayNameFromXml(xmlFallbackPath);
         if (!string.IsNullOrWhiteSpace(xmlName))
             return xmlName.Trim();
 
@@ -191,7 +275,7 @@ public static class SongLibraryService
         }
     }
 
-    private static string TryReadDisplayNameFromXml(string xmlPath)
+    internal static string TryReadDisplayNameFromXml(string xmlPath)
     {
         if (string.IsNullOrEmpty(xmlPath) || !File.Exists(xmlPath))
             return null;
@@ -217,7 +301,7 @@ public static class SongLibraryService
         return null;
     }
 
-    private static string TryReadCreatorFromXml(string xmlPath)
+    internal static string TryReadCreatorFromXml(string xmlPath)
     {
         if (string.IsNullOrEmpty(xmlPath) || !File.Exists(xmlPath))
             return null;
@@ -252,8 +336,12 @@ public static class SongLibraryService
             SongId = entry.SongId,
             DisplayName = entry.DisplayName,
             Subtitle = entry.Subtitle,
+            ArtworkPath = entry.ArtworkPath,
             SongDirectory = entry.SongDirectory,
             Mp3Path = entry.Mp3Path,
+            PrimaryNotationPath = entry.PrimaryNotationPath,
+            PrimaryNotationKind = entry.PrimaryNotationKind,
+            GpPath = entry.GpPath,
             XmlPath = entry.XmlPath,
             MetadataPath = entry.MetadataPath,
             MidiPath = entry.MidiPath

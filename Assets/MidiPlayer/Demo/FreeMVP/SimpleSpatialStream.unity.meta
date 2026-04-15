@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: f1b968371588ed1429bb355b0a98868f
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeMVP/SimpleSpatialStream.unity
+  uploadId: 889890

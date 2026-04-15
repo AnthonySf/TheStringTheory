@@ -1,0 +1,9 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" editor-extension-mode="False">
+    <ui:VisualElement name="screen-is-blue" style="flex-grow: 1; justify-content: flex-end; background-color: blue;">
+        <ui:VisualElement name="toolbar-is-orange" style="align-items: auto; background-color: orange; flex-direction: row; justify-content: space-around; flex-shrink: 1; flex-grow: 0;">
+            <ui:Button text="ButtonLeft" display-tooltip-when-elided="true" />
+            <ui:Button text="ButtonRight" display-tooltip-when-elided="true" style="justify-content: flex-end;" />
+            <ui:Button text="ButtonLeft" display-tooltip-when-elided="true" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

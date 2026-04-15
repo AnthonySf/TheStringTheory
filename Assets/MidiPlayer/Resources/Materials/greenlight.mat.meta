@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 8e38c22a4e45cda4b88d430a742c0d27
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/Materials/greenlight.mat
+  uploadId: 889890

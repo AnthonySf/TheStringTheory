@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: a1da353243062479a9b31c85074a796b
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/Water/Water/Scripts/WaterBase.cs
+  uploadId: 889890

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: c4f0c06d357522549af3cdb74b7aa6f3
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Yves Montand - A bicyclette.bytes
+  uploadId: 889890

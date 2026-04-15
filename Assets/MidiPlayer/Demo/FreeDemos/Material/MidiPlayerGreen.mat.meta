@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 7fb7f34432b4e1843a66a790368e13d2
+timeCreated: 1526803634
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/Material/MidiPlayerGreen.mat
+  uploadId: 889890

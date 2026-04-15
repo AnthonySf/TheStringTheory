@@ -3,6 +3,8 @@ using UnityEngine;
 
 public static class ExternalContentPaths
 {
+    public const string LegalFolderName = "Legal";
+    public const string LicensesFolderName = "Licenses";
     public const string ToneLabFolderName = "ToneLab";
     public const string ToneLabDistFolderName = "dist";
     public const string ToneLabDistAppFolderName = "ToneLab";
@@ -10,14 +12,18 @@ public static class ExternalContentPaths
     public const string ToneLabScriptFileName = "ToneLab.py";
     public const string ToneLabExeFileName = "ToneLab.exe";
     public const string ToneLabConfigFileName = "tone.json";
+    public const string ToneLabPresetsFolderName = "Presets";
     public const string SongMetadataFileName = "metadata.json";
     public const string SongSaveDataFileName = "saveData.json";
 
     public static string StreamingRoot => Application.streamingAssetsPath;
     public static string PersistentRoot => Application.persistentDataPath;
 
+    public static string StreamingLegalDirectory => Path.Combine(StreamingRoot, LegalFolderName);
+    public static string PersistentLicensesDirectory => Path.Combine(PersistentRoot, LicensesFolderName);
     public static string StreamingToneLabDirectory => Path.Combine(StreamingRoot, ToneLabFolderName);
     public static string PersistentToneLabDirectory => Path.Combine(PersistentRoot, ToneLabFolderName);
+    public static string PersistentToneLabPresetDirectory => Path.Combine(PersistentToneLabDirectory, ToneLabPresetsFolderName);
     public static string PersistentToneLabDistDirectory => Path.Combine(PersistentToneLabDirectory, ToneLabDistFolderName, ToneLabDistAppFolderName);
     public static string StreamingSongsDirectory => Path.Combine(StreamingRoot, SongsFolderName);
     public static string PersistentSongsDirectory => Path.Combine(PersistentRoot, SongsFolderName);

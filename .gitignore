@@ -51,5 +51,10 @@ Assets/StreamingAssets/ToneLab/build/
 Assets/StreamingAssets/ToneLab/*.log
 Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
 
+# Native detector generated artifacts
+Assets/Plugins/x86_64/*.pdb
+Assets/Plugins/x86_64/*.lib
+Assets/Plugins/x86_64/*.exp
+
 # General
 *.log

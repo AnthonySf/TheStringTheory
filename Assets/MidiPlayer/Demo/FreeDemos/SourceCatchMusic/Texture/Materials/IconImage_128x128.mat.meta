@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 1d0ea0b43fac1d14d847b119d8750a07
+timeCreated: 1572192272
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/SourceCatchMusic/Texture/Materials/IconImage_128x128.mat
+  uploadId: 889890

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 64403888f1c0a794885121f603e15004
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Mike Oldfield - Moonlight_Shadow.bytes
+  uploadId: 889890

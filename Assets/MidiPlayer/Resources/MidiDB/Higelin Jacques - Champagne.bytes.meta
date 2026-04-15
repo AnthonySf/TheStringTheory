@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 34fd70af34f45ac409ebd1084a51718e
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Higelin Jacques - Champagne.bytes
+  uploadId: 889890

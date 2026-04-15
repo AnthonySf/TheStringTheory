@@ -1,0 +1,114 @@
+<?xml version="1.0"?>
+<MidiSet xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <SoundFonts>
+    <SoundFontInfo>
+      <Name>GeneralUser-GS-v2.0.1</Name>
+      <PatchCount>287</PatchCount>
+      <WaveCount>920</WaveCount>
+      <WaveSize>36724496</WaveSize>
+      <SF2Path>C:/Users/thier/AppData/LocalLow/MusIT/ScenesDemo\SoundFont\GeneralUser-GS-v2.0.1.sf2</SF2Path>
+    </SoundFontInfo>
+  </SoundFonts>
+  <IndexSelectedSF>0</IndexSelectedSF>
+  <MidiFiles>
+    <string>@ All Rights Reserved for these Midi Files</string>
+    <string>_Generated - Milli - Four notes every 500 milliseconds</string>
+    <string>Albinoni - Adagio</string>
+    <string>All Night Long</string>
+    <string>Animal Crossing</string>
+    <string>Aqua - Lollipop Candy Man</string>
+    <string>Bach - Fugue</string>
+    <string>Bach - Little fugue G minor</string>
+    <string>Bach - Prelude</string>
+    <string>Bach - The Art of Fugue</string>
+    <string>Bach - Toccata in D minor Organ</string>
+    <string>Bach - Toccata in D minor Piano</string>
+    <string>Bach - Trisonate 3iem mvt</string>
+    <string>Baez Joan - Here's to You</string>
+    <string>Baez Joan - Plaisir D'Amour</string>
+    <string>Beattles - Michelle</string>
+    <string>Beethoven-sonata-14-3</string>
+    <string>Bizet - Arlesienne</string>
+    <string>Bjork - Joga</string>
+    <string>Bjork - Oh So Quiet</string>
+    <string>Bjork - Venus As A Boy</string>
+    <string>BlowinintheWind</string>
+    <string>Blues Image - Ride Captain Ride</string>
+    <string>Bobby Blue Bland - A Touch Of Blues</string>
+    <string>Buddy Guy - Midnight Train</string>
+    <string>Christopher Cross - Sailing</string>
+    <string>Conan The Barbarian</string>
+    <string>Dark Cloud 2 - Dark Chronicle</string>
+    <string>Dark Cloud 2 - Peace</string>
+    <string>Dark Cloud 2 - Shop Theme</string>
+    <string>DarkCloud2</string>
+    <string>Debussy - Clair De Lune</string>
+    <string>Debussy - Poissons d'or</string>
+    <string>Donkey Kong - Country</string>
+    <string>Donkey Kong - Theme</string>
+    <string>Dragon Ball Z - Battle Theme1</string>
+    <string>Dragon Ball Z - Opening</string>
+    <string>Dragon Ball Z - Super Butouden 2</string>
+    <string>Eagles - Best Of My Love</string>
+    <string>Everybody loves somebody sometime 1</string>
+    <string>EVO - Boss Theme</string>
+    <string>Faure - Requiem</string>
+    <string>Final Fantasy - Village</string>
+    <string>Fire Emblem 3 - Theme</string>
+    <string>Higelin Jacques - Champagne</string>
+    <string>kakariko</string>
+    <string>ladolcevita</string>
+    <string>Leo Ferre - Avec le temps</string>
+    <string>Liszt - La Campanella</string>
+    <string>Liszt Saint-Saens - Danse Macabre</string>
+    <string>Louis Armstrong - Hello Dolly</string>
+    <string>Louis Armstrong - What A Wonderful World</string>
+    <string>Maji Call Jarr</string>
+    <string>Mike Oldfield - Incantations 1</string>
+    <string>Mike Oldfield - Incantations 3</string>
+    <string>Mike Oldfield - Moonlight_Shadow</string>
+    <string>Mike Oldfield - Ommadawn 1</string>
+    <string>Mike Oldfield - Ommadawn 1b</string>
+    <string>Mike Oldfield - TubularBells Part 1</string>
+    <string>Moby - Alone</string>
+    <string>Moby - J Breas</string>
+    <string>Moby - The Blue Terror of Lawns</string>
+    <string>Mozart - Requiem Confutatis</string>
+    <string>Mozart - Requiem Dies Irae</string>
+    <string>Mozart - Requiem Introitus</string>
+    <string>Mozart - Sonate 11 Alla Turca</string>
+    <string>MPTK_Example 0001</string>
+    <string>MPTK_Example 0021</string>
+    <string>Nirvana - Smells Like Teen Spirit</string>
+    <string>Palm Bricks</string>
+    <string>Patti Smith - Because the Night</string>
+    <string>Pergolesi - Stabat Mater</string>
+    <string>Reayo - Amor de Hombre</string>
+    <string>Salvador Henri - Jardin D'hiver</string>
+    <string>Satie - Gnossienne 4</string>
+    <string>Satie - Gnossienne 5</string>
+    <string>Satie - Gymnopedie 1</string>
+    <string>Satie - Gymnopedie 2</string>
+    <string>Satie - Trois Gnossiennes</string>
+    <string>Sibelius - Finlandia</string>
+    <string>Sibelius - Romance</string>
+    <string>Take 5 - by Paul Desmond</string>
+    <string>Tchaikovsky - Flower Waltz</string>
+    <string>Tetris2</string>
+    <string>The Christmas Song</string>
+    <string>To Make the End of Battle</string>
+    <string>Van Morrison - Moondance</string>
+    <string>Van Morrison - Wild Nights</string>
+    <string>Void World's 2nd Half</string>
+    <string>WishYouWereHere</string>
+    <string>Yves Montand - A bicyclette</string>
+    <string>Zagronia - Dw1gOver</string>
+    <string>ZZ_2180 Acqua - Barbie Girl.2</string>
+    <string>ZZ_2180 Amish Paradise</string>
+    <string>ZZ_2180 Brassens - Dans l'eau de la claire Fontaine</string>
+    <string>ZZ_2180 Brassens - Pauvre Martin</string>
+    <string>ZZ_2180 Have a Nice Day</string>
+    <string>ZZ_2180 Rammstein - Das Modell</string>
+    <string>ZZ_2180 Theme From The Godfather</string>
+  </MidiFiles>
+</MidiSet>

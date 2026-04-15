@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 1fbb4b22ab76dde47a69a16f08a1db30
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/NAudio/RawMetaEvent.cs
+  uploadId: 889890

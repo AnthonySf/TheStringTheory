@@ -1,0 +1,13 @@
+A Minimum Viable Product has just enough core features to effectively deploy the product, and no more.
+More detail here: https://en.wikipedia.org/wiki/Minimum_viable_product
+
+Demonstration focus on the essentials of a Maestro function. 
+Therefore, error tests are absent, the user interface is almost non-existent, and manipulations in Unity are reduced. 
+The goal is rather to learn how to use the Maestro API and then progress by building more complex applications.
+
+Maestro is based on the use of prefabs (MidiFilePlayer, MidiStreamPlayer, …) which must be added in the Unity editor in the hierarchy of your project.
+In these demos, we prefer to create the prefabs by script to avoid manipulations in the editor. 
+It is rather recommended to create them in Unity to take advantage of the Inspectors and its many directly accessible parameters.
+
+We hope that could be a base for your own developments.
+

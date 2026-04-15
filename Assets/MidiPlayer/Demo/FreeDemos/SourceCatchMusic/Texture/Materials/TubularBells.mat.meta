@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: c6645dee56416d34c9dc7ba7c59dc776
+timeCreated: 1551893063
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/SourceCatchMusic/Texture/Materials/TubularBells.mat
+  uploadId: 889890

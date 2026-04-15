@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: dad73a2736f97c747a19e4c32b2be9ef
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/GeneratorTemplate/ChordLib.csv
+  uploadId: 889890

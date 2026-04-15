@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 2fc7ac26a693b824385114108670483e
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/Builder/ScenesDemonstrationPanelSettings.asset
+  uploadId: 889890

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 9a143ad1a2b4f264b93da39c8631713e
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Moby - The Blue Terror of Lawns.bytes
+  uploadId: 889890

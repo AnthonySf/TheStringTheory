@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 3e75022b3332fd54d92404a20ed0eb80
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/DemoNoteScripts/MptkDemoNoteEditor.cs
+  uploadId: 889890

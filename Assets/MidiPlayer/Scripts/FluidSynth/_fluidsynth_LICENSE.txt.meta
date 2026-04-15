@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 386a61180e9f1284b87fe29a3c6a3d80
+timeCreated: 1545204161
+licenseType: Store
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/FluidSynth/_fluidsynth_LICENSE.txt
+  uploadId: 889890

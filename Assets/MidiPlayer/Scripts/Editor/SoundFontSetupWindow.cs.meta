@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: a779a01ce3d62cd44b8d476190eebb90
+timeCreated: 1514698354
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/Editor/SoundFontSetupWindow.cs
+  uploadId: 889890

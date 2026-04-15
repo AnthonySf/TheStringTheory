@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 42194344da7debb4980060f8eb83fa92
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/To Make the End of Battle.bytes
+  uploadId: 889890
