@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 5dd2d493a70cb4c4f8a57fe1c88e8e6d
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeMVP/SimplestMidiGenerator.unity
+  uploadId: 889890

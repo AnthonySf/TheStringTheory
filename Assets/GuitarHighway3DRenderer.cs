@@ -23,11 +23,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly List<int> noteViewRemovalBuffer = new List<int>();
     private readonly HashSet<int> activeChordIdsThisFrame = new HashSet<int>();
     private readonly List<int> chordFrameRemovalBuffer = new List<int>();
+    private readonly List<HighwayCharacterBopEvent> highwayCharacterBopEvents = new List<HighwayCharacterBopEvent>();
     private Mesh techniqueRibbonMesh;
     private Material sharedTechniqueRibbonMaterial;
     private Material sharedBendArrowMaterial;
     private Material sharedMuteSymbolMaterial;
     private Material sharedHighwayCharacterMaterial;
+    private Material sharedHighwayCharacterPortalBackMaterial;
+    private Material sharedHighwayCharacterPortalFrontMaterial;
+    private Material sharedHighwayCharacterMissParticleMaterial;
+    private Material sharedHighwayCharacterMissAuraParticleMaterial;
 
     private GuitarBridgeServer owner;
     private Camera mainCamera;
@@ -35,7 +40,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private GameObject root;
     private GameObject gameplayRoot;
     private GameObject characterRoot;
+    private Transform highwayCharacterTransform;
     private Renderer highwayCharacterRenderer;
+    private Renderer highwayCharacterPortalBackRenderer;
+    private Renderer highwayCharacterPortalFrontRenderer;
+    private ParticleSystem highwayCharacterMissParticles;
+    private ParticleSystem highwayCharacterMissAuraParticles;
     private Texture2D highwayCharacterTexture;
     private float highwayCharacterAspect = 1f;
     private readonly GameObject[] stringVisuals = new GameObject[6];
@@ -60,6 +70,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float currentVisualNoteSpeed = 12f;
     private bool currentNoteByNoteModeEnabled;
     private bool currentNoteByNoteWaitingForMatch;
+    private int lastObservedHighwayCharacterMissCount = -1;
+    private float lastHighwayCharacterMissTriggerSongTime = float.NegativeInfinity;
     private float cameraTargetX;
     private float cameraTargetFOV = 60f;
     private float cameraXVelocity;
@@ -70,11 +82,67 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const float HighwayCharacterViewportMarginX = 0.035f;
     private const float HighwayCharacterViewportMarginY = 0.035f;
     private const float HighwayCharacterDepth = 44f;
-    private const float HighwayCharacterHeightViewportFraction = 1.02f;
-    private const float HighwayCharacterAdditionalLeftOffsetInWidths = 0.25f;
-    private const float HighwayCharacterAdditionalDownOffsetInHeights = 0.35f;
-    private const float HighwayCharacterBottomFadeStart01 = 0.62f;
-    private const float HighwayCharacterBottomFadeEnd01 = 0.38f;
+    private const float HighwayCharacterHeightViewportFraction = 0.375f;
+    private const float HighwayCharacterViewportCenterY = 0.57f;
+    private const float DefaultHighwayCharacterHudAspectEstimate = 0.79f;
+    private static float currentHighwayCharacterHudAspect = DefaultHighwayCharacterHudAspectEstimate;
+    private const float HighwayCharacterBottomFadeStart01 = 0.22f;
+    private const float HighwayCharacterBottomFadeEnd01 = 0.12f;
+    private const float HighwayCharacterBopGroupWindowSeconds = 0.045f;
+    private const float HighwayCharacterBopMinimumSpacingSeconds = 0.16f;
+    private const float HighwayCharacterBopDurationSeconds = 0.42f;
+    private const float HighwayCharacterBopAttackSeconds = 0.06f;
+    private const float HighwayCharacterBopLiftInCharacterHeights = 0.05f;
+    private const float HighwayCharacterBopScaleYAmount = 0.045f;
+    private const float HighwayCharacterBopScaleXAmount = 0.022f;
+    private const float HighwayCharacterBopTiltDegrees = 4.75f;
+    private const float HighwayCharacterIdleSwaySpeed = 0.82f;
+    private const float HighwayCharacterIdleBreathSpeed = 1.36f;
+    private const float HighwayCharacterIdleLiftInCharacterHeights = 0.012f;
+    private const float HighwayCharacterIdleSwayInCharacterWidths = 0.008f;
+    private const float HighwayCharacterIdleScaleYAmount = 0.016f;
+    private const float HighwayCharacterIdleScaleXAmount = 0.008f;
+    private const float HighwayCharacterIdleTiltDegrees = 1.65f;
+    private const float HighwayCharacterMissDurationSeconds = 0.42f; // [CHARACTER MISS] : timing - total duration of the miss reaction
+    private const float HighwayCharacterMissAttackSeconds = 0.06f; // [CHARACTER MISS] : timing - how quickly the miss hits
+    private const float HighwayCharacterMissDropInCharacterHeights = 0.058f; // [CHARACTER MISS] : motion - downward recoil amount
+    private const float HighwayCharacterMissSwayInCharacterWidths = 0.028f; // [CHARACTER MISS] : motion - horizontal shake amount
+    private const float HighwayCharacterMissScaleXAmount = 0.06f; // [CHARACTER MISS] : motion - width squash during the miss
+    private const float HighwayCharacterMissScaleYAmount = 0.095f; // [CHARACTER MISS] : motion - height compression during the miss
+    private const float HighwayCharacterMissTiltDegrees = 8.5f; // [CHARACTER MISS] : motion - rotational recoil amount
+    private static readonly Color HighwayCharacterMissFlashColor = new Color(1f, 0.34f, 0.10f, 1f); // [CHARACTER MISS] : color - animated flash tint on the character
+    private const float HighwayCharacterMissFlashBandSpeed = 14f; // [CHARACTER MISS] : shader - speed of the animated miss flash bands
+    private const int HighwayCharacterMissParticleBurstCount = 28; // [CHARACTER MISS] : particles - base ember burst size
+    private const int HighwayCharacterMissAuraParticleBurstCount = 11; // [CHARACTER MISS] : particles - softer secondary flare count
+    private static readonly Color HighwayCharacterMissParticleColor = WithAlpha(HighwayCharacterPortalRimColor, 0.95f); // [CHARACTER MISS] : particles - ember body color synced to portal rim
+    private static readonly Color HighwayCharacterMissParticleEdgeColor = WithAlpha(HighwayCharacterPortalRimColor, 1f); // [CHARACTER MISS] : particles - ember edge color synced to portal rim
+    private const float HighwayCharacterMissParticleGlow = 1.55f; // [CHARACTER MISS] : particles - brightness of the ember burst
+    private static readonly Color HighwayCharacterMissAuraParticleColor = WithAlpha(HighwayCharacterPortalRimColor, 0.68f); // [CHARACTER MISS] : particles - secondary flare body synced to portal rim
+    private static readonly Color HighwayCharacterMissAuraParticleEdgeColor = WithAlpha(HighwayCharacterPortalRimColor, 0.9f); // [CHARACTER MISS] : particles - secondary flare edge synced to portal rim
+    private const float HighwayCharacterMissAuraParticleGlow = 1.1f; // [CHARACTER MISS] : particles - brightness of the secondary flare
+    private const float HighwayCharacterPortalLocalYInCharacterHeights = -0.34f;
+    private const float HighwayCharacterPortalWidthInCharacterWidths = 0.96f;
+    private const float HighwayCharacterPortalHeightInCharacterHeights = 0.34f;
+    private const float HighwayCharacterPortalBackForwardOffset = 0.01f;
+    private const float HighwayCharacterPortalFrontForwardOffset = -0.015f;
+    private const float HighwayCharacterPortalSplitY01 = 0.5f; // [PORTAL] : placement - front/back split line
+    private const float HighwayCharacterPortalSplitSoftness01 = 0.035f; // [PORTAL] : transparency - softness of the front/back split fade
+    private const float HighwayCharacterPortalRingThickness = 0.07f; // [PORTAL] : detail - thickness of the glowing rim
+    private const float HighwayCharacterPortalEdgeSoftness = 0.085f; // [PORTAL] : transparency - softness of the outer portal edge fade
+    private const float HighwayCharacterPortalRimSoftness = 0.0065f; // [PORTAL] : detail - softness of the rim itself
+    private const float HighwayCharacterPortalInteriorAlphaFloor = 0.8f; // [PORTAL] : transparency - minimum opacity inside the portal body
+    private static readonly Color HighwayCharacterPortalBaseColor = new Color(0.07f, 0.10f, 0.19f, 1f); // [PORTAL] : color - outer/base fill
+    private static readonly Color HighwayCharacterPortalCoreColor = new Color(0.03f, 0.05f, 0.12f, 1f); // [PORTAL] : color - inner dark void
+    private static Color HighwayCharacterPortalRimColor => new Color(0.98f, 0.43f, 0.14f, 1f); // [PORTAL] : color - glowing orange rim, shared by miss particles
+    private static readonly Color HighwayCharacterPortalSwirlColor = new Color(0.94f, 0.57f, 0.24f, 1f); // [PORTAL] : color - swirl energy
+    private const float HighwayCharacterPortalBaseOpacity = 1f; // [PORTAL] : transparency - outer/base fill opacity
+    private const float HighwayCharacterPortalCoreOpacity = 1f; // [PORTAL] : transparency - inner dark void opacity
+    private const float HighwayCharacterPortalRimOpacity = 1f; // [PORTAL] : transparency - rim opacity
+    private const float HighwayCharacterPortalSwirlOpacity = 0.9f; // [PORTAL] : transparency - swirl opacity
+    private const float HighwayCharacterPortalGlowStrength = 1.82f; // [PORTAL] : intensity - rim glow strength
+    private const float HighwayCharacterPortalSwirlSpeed = 0.55f; // [PORTAL] : motion - swirl animation speed
+    private const float HighwayCharacterPortalSwirlSharpness = 5f; // [PORTAL] : detail - swirl sharpness
+    private const float HighwayCharacterPortalPreviewTintMix = 0.18f; // [PORTAL] : mix - material preview tint
     private const float StringLaneSpacing = 1.2f;
     private const float BendRibbonVisualHeightInStrings = 2f;
     private const float BendRibbonLeadOutDistance = 0.9f;
@@ -96,6 +164,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const float VibratoCyclesPerSecond = 5f;
     private const int VibratoMinimumHalfWaves = 4;
     private const int VibratoMaximumHalfWaves = 12;
+    private const float TechniqueSegmentJoinToleranceSeconds = 0.03f;
     private const bool DebugBendRibbonLogs = false;
     private string backgroundSignature = string.Empty;
     private static readonly int CurveP0ShaderId = Shader.PropertyToID("_CurveP0");
@@ -117,6 +186,23 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly int BendArrowBaseColorShaderId = Shader.PropertyToID("_BaseColor");
     private static readonly int CharacterFadeStartShaderId = Shader.PropertyToID("_FadeStartY");
     private static readonly int CharacterFadeEndShaderId = Shader.PropertyToID("_FadeEndY");
+    private static readonly int CharacterMissFlashColorShaderId = Shader.PropertyToID("_MissFlashColor");
+    private static readonly int CharacterMissFlashStrengthShaderId = Shader.PropertyToID("_MissFlashStrength");
+    private static readonly int CharacterMissFlashSpeedShaderId = Shader.PropertyToID("_MissFlashSpeed");
+    private static readonly int CharacterPortalBaseColorShaderId = Shader.PropertyToID("_BaseColor");
+    private static readonly int CharacterPortalRimColorShaderId = Shader.PropertyToID("_RimColor");
+    private static readonly int CharacterPortalAccentColorShaderId = Shader.PropertyToID("_AccentColor");
+    private static readonly int CharacterPortalCoreColorShaderId = Shader.PropertyToID("_CoreColor");
+    private static readonly int CharacterPortalGlowStrengthShaderId = Shader.PropertyToID("_GlowStrength");
+    private static readonly int CharacterPortalSwirlSpeedShaderId = Shader.PropertyToID("_SwirlSpeed");
+    private static readonly int CharacterPortalSwirlSharpnessShaderId = Shader.PropertyToID("_SwirlSharpness");
+    private static readonly int CharacterPortalRingThicknessShaderId = Shader.PropertyToID("_RingThickness");
+    private static readonly int CharacterPortalSoftnessShaderId = Shader.PropertyToID("_Softness");
+    private static readonly int CharacterPortalRimSoftnessShaderId = Shader.PropertyToID("_RimSoftness");
+    private static readonly int CharacterPortalAlphaFloorShaderId = Shader.PropertyToID("_AlphaFloor");
+    private static readonly int CharacterPortalHalfModeShaderId = Shader.PropertyToID("_HalfMode");
+    private static readonly int CharacterPortalSplitYShaderId = Shader.PropertyToID("_SplitY");
+    private static readonly int CharacterPortalSplitSoftnessShaderId = Shader.PropertyToID("_SplitSoftness");
 
     private struct TechniqueRibbonProfile
     {
@@ -130,12 +216,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public float darkBandStart01;
         public float darkBandEnd01;
     }
-
+  
     private struct SlideRibbonFadeState
     {
         public bool freezeActive;
         public float fadeStartSongTime;
         public float fadeEndSongTime;
+    }
+
+    private struct HighwayCharacterBopEvent
+    {
+        public float time;
+        public float strength; 
     }
 
     private sealed class LaneHighlightChunk
@@ -160,6 +252,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         originalMainCameraClearFlags = mainCamera != null ? mainCamera.clearFlags : CameraClearFlags.SolidColor;
         originalMainCameraCullingMask = mainCamera != null ? mainCamera.cullingMask : -1;
         originalMainCameraDepth = mainCamera != null ? mainCamera.depth : 0f;
+        lastObservedHighwayCharacterMissCount = -1;
+        lastHighwayCharacterMissTriggerSongTime = float.NegativeInfinity;
 
         BuildChartCaches(chartNotes);
         BuildLaneHighlightChunks(chartNotes, sections);
@@ -169,6 +263,34 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         ConfigureCamera();
         songHeaderOverlay = new TabsSongHeaderOverlay(owner);
         gameplayBuilt = false;
+    }
+
+    internal static Rect GetHighwayCharacterHudScreenRect(float screenWidth, float screenHeight)
+    {
+        float safeScreenWidth = Mathf.Max(1f, screenWidth);
+        float safeScreenHeight = Mathf.Max(1f, screenHeight);
+        float screenAspect = safeScreenWidth / safeScreenHeight;
+        float viewportHeight = Mathf.Min(HighwayCharacterHeightViewportFraction, 1f - (2f * HighwayCharacterViewportMarginY));
+        float viewportWidth = viewportHeight * currentHighwayCharacterHudAspect / Mathf.Max(0.1f, screenAspect);
+        float maxViewportWidth = Mathf.Max(0.05f, 1f - (2f * HighwayCharacterViewportMarginX));
+        if (viewportWidth > maxViewportWidth)
+        {
+            float shrink = maxViewportWidth / viewportWidth;
+            viewportWidth = maxViewportWidth;
+            viewportHeight *= shrink;
+        }
+
+        float left = HighwayCharacterViewportMarginX;
+        float centerY = Mathf.Clamp(
+            HighwayCharacterViewportCenterY,
+            HighwayCharacterViewportMarginY + (viewportHeight * 0.5f),
+            1f - HighwayCharacterViewportMarginY - (viewportHeight * 0.5f));
+        float bottom = centerY - (viewportHeight * 0.5f);
+        float characterLeft = left * safeScreenWidth;
+        float characterTop = (1f - (bottom + viewportHeight)) * safeScreenHeight;
+        float characterWidth = viewportWidth * safeScreenWidth;
+        float characterHeight = viewportHeight * safeScreenHeight;
+        return new Rect(characterLeft, characterTop, characterWidth, characterHeight);
     }
 
     public void ResetRenderer(List<NoteData> chartNotes, List<TabSectionData> sections)
@@ -198,7 +320,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         EnsureBackgroundMode(suppressGameplay);
         ConfigureCamera();
 
-        UpdateHighwayCharacterPlacement();
+        bool showHighwayCharacter = snapshot.showHighwayCharacter;
+        if (characterRoot != null && characterRoot.activeSelf != showHighwayCharacter)
+            characterRoot.SetActive(showHighwayCharacter);
+
+        if (showHighwayCharacter)
+        {
+            UpdateHighwayCharacterPlacement();
+            UpdateHighwayCharacterAnimation(snapshot);
+        }
 
         if (!suppressGameplay)
             UpdateBackgroundPlacement();
@@ -267,6 +397,30 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             sharedHighwayCharacterMaterial = null;
         }
 
+        if (sharedHighwayCharacterPortalBackMaterial != null)
+        {
+            Object.Destroy(sharedHighwayCharacterPortalBackMaterial);
+            sharedHighwayCharacterPortalBackMaterial = null;
+        }
+
+        if (sharedHighwayCharacterPortalFrontMaterial != null)
+        {
+            Object.Destroy(sharedHighwayCharacterPortalFrontMaterial);
+            sharedHighwayCharacterPortalFrontMaterial = null;
+        }
+
+        if (sharedHighwayCharacterMissParticleMaterial != null)
+        {
+            Object.Destroy(sharedHighwayCharacterMissParticleMaterial);
+            sharedHighwayCharacterMissParticleMaterial = null;
+        }
+
+        if (sharedHighwayCharacterMissAuraParticleMaterial != null)
+        {
+            Object.Destroy(sharedHighwayCharacterMissAuraParticleMaterial);
+            sharedHighwayCharacterMissAuraParticleMaterial = null;
+        }
+
         if (techniqueRibbonMesh != null)
         {
             Object.Destroy(techniqueRibbonMesh);
@@ -294,6 +448,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         bendDestinationBySourceId.Clear();
         bendSourceByDestinationId.Clear();
         noteLaneTagTextById.Clear();
+        highwayCharacterBopEvents.Clear();
         debugLoggedBendProfileIds.Clear();
         debugLoggedBendNearStrikeIds.Clear();
 
@@ -347,6 +502,74 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
 
         BuildLaneTagNoteMap(chartNotes);
+        BuildHighwayCharacterBopEvents(chartNotes);
+    }
+
+    private void BuildHighwayCharacterBopEvents(List<NoteData> chartNotes)
+    {
+        highwayCharacterBopEvents.Clear();
+
+        if (chartNotes == null || chartNotes.Count == 0)
+            return;
+
+        List<NoteData> orderedNotes = chartNotes
+            .Where(note => note.time >= 0f)
+            .OrderBy(note => note.time)
+            .ToList();
+
+        if (orderedNotes.Count == 0)
+            return;
+
+        float groupTime = orderedNotes[0].time;
+        int noteCount = 0;
+        bool hasTechnique = false;
+
+        for (int i = 0; i < orderedNotes.Count; i++)
+        {
+            NoteData note = orderedNotes[i];
+            if (note.time - groupTime <= HighwayCharacterBopGroupWindowSeconds)
+            {
+                noteCount++;
+                hasTechnique |= note.technique != NoteTechnique.None || (note.techniqueSegments != null && note.techniqueSegments.Count > 0);
+                continue;
+            }
+
+            AddHighwayCharacterBopEvent(groupTime, noteCount, hasTechnique);
+            groupTime = note.time;
+            noteCount = 1;
+            hasTechnique = note.technique != NoteTechnique.None || (note.techniqueSegments != null && note.techniqueSegments.Count > 0);
+        }
+
+        AddHighwayCharacterBopEvent(groupTime, noteCount, hasTechnique);
+    }
+
+    private void AddHighwayCharacterBopEvent(float time, int noteCount, bool hasTechnique)
+    {
+        float strength = 0.95f;
+        strength += Mathf.Min(0.24f, Mathf.Max(0, noteCount - 1) * 0.08f);
+        if (hasTechnique)
+            strength += 0.06f;
+
+        strength = Mathf.Clamp(strength, 0.9f, 1.3f);
+
+        if (highwayCharacterBopEvents.Count > 0)
+        {
+            int lastIndex = highwayCharacterBopEvents.Count - 1;
+            HighwayCharacterBopEvent previous = highwayCharacterBopEvents[lastIndex];
+            if (time - previous.time < HighwayCharacterBopMinimumSpacingSeconds)
+            {
+                previous.time = Mathf.Lerp(previous.time, time, 0.35f);
+                previous.strength = Mathf.Max(previous.strength, strength);
+                highwayCharacterBopEvents[lastIndex] = previous;
+                return;
+            }
+        }
+
+        highwayCharacterBopEvents.Add(new HighwayCharacterBopEvent
+        {
+            time = time,
+            strength = strength
+        });
     }
 
     private static int FindBendDestinationIndex(List<NoteData> chartNotes, int sourceIndex)
@@ -368,9 +591,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             if (candidate.stringIdx != source.stringIdx || candidate.fret != source.fret)
                 continue;
 
-            // If the candidate starts its own bend, it is a real new anchor note and
-            // should keep its travelling box instead of being hidden as a continuation.
-            if (candidate.bendStep > 0f || candidate.technique == NoteTechnique.Bend || candidate.bendPreBend || candidate.bendRelease)
+            // If the candidate has its own explicit technique content, it is a real
+            // attacked note and should keep its travelling box instead of being hidden
+            // as a passive bend continuation anchor.
+            bool candidateHasOwnTechnique =
+                candidate.technique != NoteTechnique.None ||
+                (candidate.techniqueSegments != null && candidate.techniqueSegments.Count > 0) ||
+                candidate.bendStep > 0f ||
+                candidate.bendPreBend ||
+                candidate.bendRelease ||
+                candidate.slideTargetFret >= 0 ||
+                candidate.isMuted ||
+                candidate.isLegato;
+            if (candidateHasOwnTechnique)
                 continue;
 
             if (candidate.time < expectedEndTime - earlyTolerance)
@@ -552,6 +785,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.BlueSky)
         {
+            if (!backgroundUsingMenuMode)
+            {
+                switch (owner.tabSkyMood)
+                {
+                    case GuitarBridgeServer.TabsSkyMood.Sunset:
+                        return new Color(0.05f, 0.03f, 0.05f, 1f);
+                    case GuitarBridgeServer.TabsSkyMood.Midnight:
+                        return new Color(0.010f, 0.012f, 0.034f, 1f);
+                    default:
+                        return new Color(0.03f, 0.05f, 0.10f, 1f);
+                }
+            }
+
             switch (owner.tabSkyMood)
             {
                 case GuitarBridgeServer.TabsSkyMood.Sunset:
@@ -562,6 +808,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     return owner.tabSkyBottomColor;
             }
         }
+
+        if (owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.Space)
+            return owner.tabSpaceBackgroundColor;
 
         return owner.tabBackgroundColor;
     }
@@ -598,6 +847,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             highwayCharacterTexture = characterSprite.texture;
             Rect spriteRect = characterSprite.rect;
             highwayCharacterAspect = Mathf.Max(0.05f, spriteRect.width / Mathf.Max(1f, spriteRect.height));
+            currentHighwayCharacterHudAspect = highwayCharacterAspect;
         }
         else
         {
@@ -606,17 +856,29 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 return;
 
             highwayCharacterAspect = Mathf.Max(0.05f, highwayCharacterTexture.width / (float)Mathf.Max(1, highwayCharacterTexture.height));
+            currentHighwayCharacterHudAspect = highwayCharacterAspect;
         }
 
         GameObject characterObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
         characterObject.name = "HighwayCharacter";
         characterObject.transform.SetParent(characterRoot.transform, false);
+        highwayCharacterTransform = characterObject.transform;
         Object.Destroy(characterObject.GetComponent<Collider>());
 
         highwayCharacterRenderer = characterObject.GetComponent<Renderer>();
         highwayCharacterRenderer.sharedMaterial = GetHighwayCharacterMaterial();
         highwayCharacterRenderer.shadowCastingMode = ShadowCastingMode.Off;
         highwayCharacterRenderer.receiveShadows = false;
+        InitializeHighwayCharacterMissParticles();
+
+        highwayCharacterPortalBackRenderer = CreateHighwayCharacterPortalRenderer(
+            "HighwayCharacterPortalBack",
+            GetHighwayCharacterPortalBackMaterial(),
+            HighwayCharacterPortalBackForwardOffset);
+        highwayCharacterPortalFrontRenderer = CreateHighwayCharacterPortalRenderer(
+            "HighwayCharacterPortalFront",
+            GetHighwayCharacterPortalFrontMaterial(),
+            HighwayCharacterPortalFrontForwardOffset);
 
         SetLayerRecursively(characterRoot, 0);
         characterRoot.SetActive(false);
@@ -661,6 +923,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (backgroundRoot == null || mainCamera == null)
             return;
 
+        if (owner != null && owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.Space)
+        {
+            backgroundRoot.transform.position = Vector3.zero;
+            backgroundRoot.transform.localRotation = Quaternion.identity;
+            backgroundRoot.transform.localScale = Vector3.one;
+            return;
+        }
+
         backgroundRoot.transform.position = new Vector3(
             Mathf.Max(0f, owner.TotalFrets * owner.FretSpacing * 0.5f),
             owner.highwayBackgroundCenterY,
@@ -680,22 +950,229 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (!shouldShow)
             return;
 
-        float viewportHeight = HighwayCharacterHeightViewportFraction;
+        float viewportHeight = Mathf.Min(HighwayCharacterHeightViewportFraction, 1f - (2f * HighwayCharacterViewportMarginY));
         float viewportWidth = viewportHeight * highwayCharacterAspect / Mathf.Max(0.1f, mainCamera.aspect);
+        float maxViewportWidth = Mathf.Max(0.05f, 1f - (2f * HighwayCharacterViewportMarginX));
+        if (viewportWidth > maxViewportWidth)
+        {
+            float shrink = maxViewportWidth / viewportWidth;
+            viewportWidth = maxViewportWidth;
+            viewportHeight *= shrink;
+        }
+
         float left = HighwayCharacterViewportMarginX;
-        float bottom = HighwayCharacterViewportMarginY;
+        float centerY = Mathf.Clamp(
+            HighwayCharacterViewportCenterY,
+            HighwayCharacterViewportMarginY + (viewportHeight * 0.5f),
+            1f - HighwayCharacterViewportMarginY - (viewportHeight * 0.5f));
+        float bottom = centerY - (viewportHeight * 0.5f);
         Vector3 lowerLeft = mainCamera.ViewportToWorldPoint(new Vector3(left, bottom, HighwayCharacterDepth));
         Vector3 lowerRight = mainCamera.ViewportToWorldPoint(new Vector3(left + viewportWidth, bottom, HighwayCharacterDepth));
         Vector3 upperLeft = mainCamera.ViewportToWorldPoint(new Vector3(left, bottom + viewportHeight, HighwayCharacterDepth));
+        Vector3 upperRight = mainCamera.ViewportToWorldPoint(new Vector3(left + viewportWidth, bottom + viewportHeight, HighwayCharacterDepth));
         float targetWidth = Vector3.Distance(lowerLeft, lowerRight);
         float targetHeight = Vector3.Distance(lowerLeft, upperLeft);
-        Vector3 worldPosition = (lowerLeft + lowerRight + upperLeft + (lowerRight + (upperLeft - lowerLeft))) * 0.25f;
-        worldPosition -= mainCamera.transform.right * (targetWidth * HighwayCharacterAdditionalLeftOffsetInWidths);
-        worldPosition -= mainCamera.transform.up * (targetHeight * HighwayCharacterAdditionalDownOffsetInHeights);
+        Vector3 worldPosition = (lowerLeft + upperRight) * 0.5f;
 
         characterRoot.transform.position = worldPosition;
         characterRoot.transform.rotation = mainCamera.transform.rotation;
         characterRoot.transform.localScale = new Vector3(targetWidth, targetHeight, 1f);
+        UpdateHighwayCharacterPortalPalette();
+    }
+
+    private void UpdateHighwayCharacterAnimation(GuitarGameplaySnapshot snapshot)
+    {
+        if (highwayCharacterTransform == null)
+            return;
+
+        if (snapshot == null ||
+            snapshot.isPaused ||
+            characterRoot == null ||
+            !characterRoot.activeSelf)
+        {
+            ResetHighwayCharacterAnimation();
+            return;
+        }
+
+        float songTime = snapshot.songTime;
+        UpdateHighwayCharacterMissState(snapshot);
+
+        float missAge = songTime - lastHighwayCharacterMissTriggerSongTime;
+        float missStrength = GetHighwayCharacterMissStrength(missAge);
+        float missMotionSuppression = 1f - Mathf.Clamp01(missStrength * 0.76f);
+        int eventIndex = FindLastHighwayCharacterBopEventIndex(songTime);
+        float lift = 0f;
+        float squash = 0f;
+        float stretch = 0f;
+        float tilt = 0f;
+        float bopPresence = 0f;
+
+        // Blend the most recent few note-on pulses so dense passages still read as a smooth groove.
+        for (int i = eventIndex; i >= 0 && i >= eventIndex - 2; i--)
+        {
+            HighwayCharacterBopEvent bopEvent = highwayCharacterBopEvents[i];
+            float age = songTime - bopEvent.time;
+            if (age < 0f || age > HighwayCharacterBopDurationSeconds)
+                continue;
+
+            float attack = Mathf.Clamp01(age / Mathf.Max(0.01f, HighwayCharacterBopAttackSeconds));
+            attack = attack * attack * (3f - (2f * attack));
+
+            float normalizedAge = Mathf.Clamp01(age / HighwayCharacterBopDurationSeconds);
+            float decay = 1f - normalizedAge;
+            decay *= decay;
+
+            float pulse = attack * decay;
+            float motionWave = Mathf.Sin(normalizedAge * Mathf.PI * 1.18f);
+            float strength = bopEvent.strength;
+
+            lift += pulse * strength;
+            stretch += pulse * strength;
+            squash += motionWave * pulse * strength;
+            tilt += Mathf.Sin(normalizedAge * Mathf.PI * 1.9f) * pulse * strength;
+            bopPresence = Mathf.Max(bopPresence, pulse * strength);
+        }
+
+        lift *= missMotionSuppression;
+        squash *= missMotionSuppression;
+        stretch *= missMotionSuppression;
+        tilt *= missMotionSuppression;
+        bopPresence *= missMotionSuppression;
+
+        float idleWeight = (1f - Mathf.Clamp01(bopPresence * 1.45f)) * missMotionSuppression;
+        float swayWave = Mathf.Sin((songTime * HighwayCharacterIdleSwaySpeed) + 0.35f);
+        float breathWave = Mathf.Sin((songTime * HighwayCharacterIdleBreathSpeed) - 0.65f);
+        float breathEnvelope = (breathWave * 0.5f) + 0.5f;
+        float idleLocalX = swayWave * HighwayCharacterIdleSwayInCharacterWidths * idleWeight;
+        float idleLocalLift = breathEnvelope * HighwayCharacterIdleLiftInCharacterHeights * idleWeight;
+        float idleScaleX = 1f - (breathEnvelope * HighwayCharacterIdleScaleXAmount * idleWeight);
+        float idleScaleY = 1f + (breathEnvelope * HighwayCharacterIdleScaleYAmount * idleWeight);
+        float idleRotationZ = swayWave * HighwayCharacterIdleTiltDegrees * idleWeight;
+
+        float localLift = idleLocalLift + Mathf.Clamp(lift * HighwayCharacterBopLiftInCharacterHeights, 0f, HighwayCharacterBopLiftInCharacterHeights * 1.35f);
+        float scaleX = idleScaleX - Mathf.Clamp(squash * HighwayCharacterBopScaleXAmount, 0f, HighwayCharacterBopScaleXAmount * 1.5f);
+        float scaleY = idleScaleY + Mathf.Clamp(stretch * HighwayCharacterBopScaleYAmount, 0f, HighwayCharacterBopScaleYAmount * 1.5f);
+        float rotationZ = idleRotationZ + Mathf.Clamp(tilt * HighwayCharacterBopTiltDegrees, -HighwayCharacterBopTiltDegrees, HighwayCharacterBopTiltDegrees);
+
+        if (missStrength > 0.0001f)
+        {
+            float missShakeWave = Mathf.Sin((missAge * 26f) + 0.45f);
+            float missReboundWave = Mathf.Sin((missAge * 11.5f) - 0.4f);
+            float missFlashWave = 0.62f + (((Mathf.Sin((missAge * HighwayCharacterMissFlashBandSpeed) + 0.85f) * 0.5f) + 0.5f) * 0.38f);
+            float missLocalX = missShakeWave * HighwayCharacterMissSwayInCharacterWidths * missStrength;
+            float missLocalLift = (-HighwayCharacterMissDropInCharacterHeights * missStrength) + (Mathf.Max(0f, missReboundWave) * HighwayCharacterMissDropInCharacterHeights * 0.18f * missStrength);
+
+            idleLocalX += missLocalX;
+            localLift += missLocalLift;
+            scaleX += HighwayCharacterMissScaleXAmount * missStrength;
+            scaleY -= HighwayCharacterMissScaleYAmount * missStrength;
+            rotationZ += missShakeWave * HighwayCharacterMissTiltDegrees * missStrength;
+            ApplyHighwayCharacterMissMaterialState(missStrength * missFlashWave);
+        }
+        else
+            ApplyHighwayCharacterMissMaterialState(0f);
+
+        highwayCharacterTransform.localPosition = new Vector3(idleLocalX, localLift, 0f);
+        highwayCharacterTransform.localRotation = Quaternion.Euler(0f, 0f, rotationZ);
+        highwayCharacterTransform.localScale = new Vector3(Mathf.Max(0.82f, scaleX), Mathf.Max(0.78f, scaleY), 1f);
+    }
+
+    private void ResetHighwayCharacterAnimation()
+    {
+        if (highwayCharacterTransform == null)
+            return;
+
+        highwayCharacterTransform.localPosition = Vector3.zero;
+        highwayCharacterTransform.localRotation = Quaternion.identity;
+        highwayCharacterTransform.localScale = Vector3.one;
+        ClearHighwayCharacterMissFeedback();
+    }
+
+    private void ClearHighwayCharacterMissFeedback()
+    {
+        lastObservedHighwayCharacterMissCount = 0;
+        lastHighwayCharacterMissTriggerSongTime = float.NegativeInfinity;
+        ApplyHighwayCharacterMissMaterialState(0f);
+        if (highwayCharacterMissParticles != null)
+            highwayCharacterMissParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        if (highwayCharacterMissAuraParticles != null)
+            highwayCharacterMissAuraParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+    }
+
+    private void UpdateHighwayCharacterMissState(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null)
+            return;
+
+        if (snapshot.loopEnabled)
+        {
+            ClearHighwayCharacterMissFeedback();
+            return;
+        }
+
+        int missCount = Mathf.Max(0, snapshot.currentSessionScoreMisses);
+        if (lastObservedHighwayCharacterMissCount < 0 || missCount < lastObservedHighwayCharacterMissCount)
+        {
+            lastObservedHighwayCharacterMissCount = missCount;
+            if (missCount == 0)
+                lastHighwayCharacterMissTriggerSongTime = float.NegativeInfinity;
+            return;
+        }
+
+        if (missCount > lastObservedHighwayCharacterMissCount)
+            TriggerHighwayCharacterMissFeedback(snapshot.songTime, missCount - lastObservedHighwayCharacterMissCount);
+
+        lastObservedHighwayCharacterMissCount = missCount;
+    }
+
+    private float GetHighwayCharacterMissStrength(float missAge)
+    {
+        if (missAge < 0f || missAge > HighwayCharacterMissDurationSeconds)
+            return 0f;
+
+        float attack = Mathf.Clamp01(missAge / Mathf.Max(0.01f, HighwayCharacterMissAttackSeconds));
+        attack = attack * attack * (3f - (2f * attack));
+
+        float recoveryDuration = Mathf.Max(0.01f, HighwayCharacterMissDurationSeconds - HighwayCharacterMissAttackSeconds);
+        float recovery = 1f - Mathf.Clamp01((missAge - HighwayCharacterMissAttackSeconds) / recoveryDuration);
+        recovery *= recovery;
+        return attack * recovery;
+    }
+
+    private void TriggerHighwayCharacterMissFeedback(float songTime, int missDelta)
+    {
+        lastHighwayCharacterMissTriggerSongTime = songTime;
+        if (highwayCharacterMissParticles == null && highwayCharacterMissAuraParticles == null)
+            return;
+
+        int burstCount = Mathf.Clamp(HighwayCharacterMissParticleBurstCount + (Mathf.Max(0, missDelta - 1) * 6), HighwayCharacterMissParticleBurstCount, HighwayCharacterMissParticleBurstCount * 2);
+        highwayCharacterMissParticles?.Play(true);
+        highwayCharacterMissParticles?.Emit(burstCount);
+
+        int auraBurstCount = Mathf.Clamp(HighwayCharacterMissAuraParticleBurstCount + (Mathf.Max(0, missDelta - 1) * 2), HighwayCharacterMissAuraParticleBurstCount, HighwayCharacterMissAuraParticleBurstCount * 2);
+        highwayCharacterMissAuraParticles?.Play(true);
+        highwayCharacterMissAuraParticles?.Emit(auraBurstCount);
+    }
+
+    private int FindLastHighwayCharacterBopEventIndex(float songTime)
+    {
+        int low = 0;
+        int high = highwayCharacterBopEvents.Count - 1;
+        int result = -1;
+
+        while (low <= high)
+        {
+            int mid = low + ((high - low) / 2);
+            if (highwayCharacterBopEvents[mid].time <= songTime + 0.0001f)
+            {
+                result = mid;
+                low = mid + 1;
+            }
+            else
+                high = mid - 1;
+        }
+
+        return result;
     }
 
     private void SyncBackgroundCamera()
@@ -750,6 +1227,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             sharedHighwayCharacterMaterial.SetFloat(CharacterFadeStartShaderId, HighwayCharacterBottomFadeStart01);
         if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeEndShaderId))
             sharedHighwayCharacterMaterial.SetFloat(CharacterFadeEndShaderId, HighwayCharacterBottomFadeEnd01);
+        if (sharedHighwayCharacterMaterial.HasProperty(CharacterMissFlashColorShaderId))
+            sharedHighwayCharacterMaterial.SetColor(CharacterMissFlashColorShaderId, HighwayCharacterMissFlashColor);
+        if (sharedHighwayCharacterMaterial.HasProperty(CharacterMissFlashStrengthShaderId))
+            sharedHighwayCharacterMaterial.SetFloat(CharacterMissFlashStrengthShaderId, 0f);
+        if (sharedHighwayCharacterMaterial.HasProperty(CharacterMissFlashSpeedShaderId))
+            sharedHighwayCharacterMaterial.SetFloat(CharacterMissFlashSpeedShaderId, HighwayCharacterMissFlashBandSpeed);
         // Render the character before lane transparencies so they can blend over it,
         // while opaque gameplay geometry still occludes it by depth.
         sharedHighwayCharacterMaterial.renderQueue = (int)RenderQueue.Transparent - 50;
@@ -757,6 +1240,383 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         sharedHighwayCharacterMaterial.SetInt("_Cull", (int)CullMode.Off);
         sharedHighwayCharacterMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
         return sharedHighwayCharacterMaterial;
+    }
+
+    private void InitializeHighwayCharacterMissParticles()
+    {
+        if (characterRoot == null || highwayCharacterMissParticles != null)
+            return;
+
+        GameObject particleObject = new GameObject("HighwayCharacterMissParticles");
+        particleObject.transform.SetParent(characterRoot.transform, false);
+        particleObject.transform.localPosition = new Vector3(0f, -0.12f, 0.02f);
+        particleObject.transform.localRotation = Quaternion.identity;
+        particleObject.transform.localScale = Vector3.one;
+        particleObject.SetActive(false);
+
+        highwayCharacterMissParticles = particleObject.AddComponent<ParticleSystem>();
+        var main = highwayCharacterMissParticles.main;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.duration = 0.8f;
+        main.maxParticles = 96;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.34f, 0.62f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.16f, 0.34f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.24f);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        main.startColor = Color.white;
+        main.gravityModifier = 0f;
+
+        var emission = highwayCharacterMissParticles.emission;
+        emission.enabled = false;
+
+        var shape = highwayCharacterMissParticles.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 0.18f;
+        shape.radiusThickness = 0.7f;
+
+        var velocityOverLifetime = highwayCharacterMissParticles.velocityOverLifetime;
+        velocityOverLifetime.enabled = true;
+        velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
+        velocityOverLifetime.x = CreateTwoConstantsCurve(0f, 0f);
+        velocityOverLifetime.y = CreateTwoConstantsCurve(0.08f, 0.22f);
+        velocityOverLifetime.z = CreateTwoConstantsCurve(0f, 0f);
+        velocityOverLifetime.radial = CreateTwoConstantsCurve(0.42f, 0.72f);
+
+        var sizeOverLifetime = highwayCharacterMissParticles.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+            new Keyframe(0f, 0.38f),
+            new Keyframe(0.14f, 1f),
+            new Keyframe(0.48f, 0.74f),
+            new Keyframe(1f, 0f)));
+
+        var colorOverLifetime = highwayCharacterMissParticles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(Color.white, 0f),
+                new GradientColorKey(new Color(1f, 0.76f, 0.44f), 0.25f),
+                new GradientColorKey(new Color(0.86f, 0.26f, 0.10f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0f, 0f),
+                new GradientAlphaKey(0.92f, 0.12f),
+                new GradientAlphaKey(0.78f, 0.55f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        colorOverLifetime.color = new ParticleSystem.MinMaxGradient(gradient);
+
+        var rotationOverLifetime = highwayCharacterMissParticles.rotationOverLifetime;
+        rotationOverLifetime.enabled = true;
+        rotationOverLifetime.z = new ParticleSystem.MinMaxCurve(-2.4f, 2.4f);
+
+        var trails = highwayCharacterMissParticles.trails;
+        trails.enabled = false;
+
+        var noise = highwayCharacterMissParticles.noise;
+        noise.enabled = true;
+        noise.quality = ParticleSystemNoiseQuality.Low;
+        noise.strength = 0.08f;
+        noise.frequency = 0.55f;
+        noise.scrollSpeed = 0.5f;
+
+        ParticleSystemRenderer particleRenderer = particleObject.GetComponent<ParticleSystemRenderer>();
+        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+        particleRenderer.alignment = ParticleSystemRenderSpace.View;
+        particleRenderer.sortMode = ParticleSystemSortMode.Distance;
+        particleRenderer.sharedMaterial = GetHighwayCharacterMissParticleMaterial();
+        particleRenderer.lengthScale = 1f;
+        particleRenderer.velocityScale = 0f;
+        particleRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        particleRenderer.receiveShadows = false;
+        particleRenderer.sortingFudge = 2f;
+
+        highwayCharacterMissParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        particleObject.SetActive(true);
+        InitializeHighwayCharacterMissAuraParticles();
+    }
+
+    private Material GetHighwayCharacterMissParticleMaterial()
+    {
+        if (sharedHighwayCharacterMissParticleMaterial != null)
+            return sharedHighwayCharacterMissParticleMaterial;
+
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayCharacterMissParticle");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayCharacterMissParticle");
+
+        sharedHighwayCharacterMissParticleMaterial = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(HighwayCharacterMissParticleColor, 0.9f);
+        sharedHighwayCharacterMissParticleMaterial.renderQueue = (int)RenderQueue.Transparent - 54;
+        sharedHighwayCharacterMissParticleMaterial.SetInt("_ZWrite", 0);
+        sharedHighwayCharacterMissParticleMaterial.SetInt("_Cull", (int)CullMode.Off);
+        sharedHighwayCharacterMissParticleMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
+        sharedHighwayCharacterMissParticleMaterial.SetColor("_Color", HighwayCharacterMissParticleColor);
+        if (sharedHighwayCharacterMissParticleMaterial.HasProperty("_EdgeColor"))
+            sharedHighwayCharacterMissParticleMaterial.SetColor("_EdgeColor", HighwayCharacterMissParticleEdgeColor);
+        if (sharedHighwayCharacterMissParticleMaterial.HasProperty("_Glow"))
+            sharedHighwayCharacterMissParticleMaterial.SetFloat("_Glow", HighwayCharacterMissParticleGlow);
+        return sharedHighwayCharacterMissParticleMaterial;
+    }
+
+    private void InitializeHighwayCharacterMissAuraParticles()
+    {
+        if (characterRoot == null || highwayCharacterMissAuraParticles != null)
+            return;
+
+        GameObject particleObject = new GameObject("HighwayCharacterMissAuraParticles");
+        particleObject.transform.SetParent(characterRoot.transform, false);
+        particleObject.transform.localPosition = new Vector3(0f, HighwayCharacterPortalLocalYInCharacterHeights + 0.07f, 0.024f);
+        particleObject.transform.localRotation = Quaternion.identity;
+        particleObject.transform.localScale = Vector3.one;
+        particleObject.SetActive(false);
+
+        highwayCharacterMissAuraParticles = particleObject.AddComponent<ParticleSystem>();
+        var main = highwayCharacterMissAuraParticles.main;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.duration = 0.9f;
+        main.maxParticles = 48;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.4f, 0.8f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.03f, 0.08f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.18f, 0.42f);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        main.startColor = Color.white;
+        main.gravityModifier = 0f;
+
+        var emission = highwayCharacterMissAuraParticles.emission;
+        emission.enabled = false;
+
+        var shape = highwayCharacterMissAuraParticles.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = 0.14f;
+        shape.radiusThickness = 1f;
+
+        var velocityOverLifetime = highwayCharacterMissAuraParticles.velocityOverLifetime;
+        velocityOverLifetime.enabled = true;
+        velocityOverLifetime.space = ParticleSystemSimulationSpace.Local;
+        velocityOverLifetime.x = CreateTwoConstantsCurve(0f, 0f);
+        velocityOverLifetime.y = CreateTwoConstantsCurve(0.03f, 0.09f);
+        velocityOverLifetime.z = CreateTwoConstantsCurve(0f, 0f);
+        velocityOverLifetime.radial = CreateTwoConstantsCurve(0.07f, 0.14f);
+
+        var sizeOverLifetime = highwayCharacterMissAuraParticles.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, new AnimationCurve(
+            new Keyframe(0f, 0.42f),
+            new Keyframe(0.16f, 1f),
+            new Keyframe(0.55f, 1.08f),
+            new Keyframe(1f, 0f)));
+
+        var colorOverLifetime = highwayCharacterMissAuraParticles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient gradient = new Gradient();
+        gradient.SetKeys(
+            new[]
+            {
+                new GradientColorKey(new Color(1f, 0.86f, 0.5f), 0f),
+                new GradientColorKey(new Color(1f, 0.48f, 0.18f), 0.34f),
+                new GradientColorKey(new Color(0.42f, 0.06f, 0.03f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0f, 0f),
+                new GradientAlphaKey(0.62f, 0.15f),
+                new GradientAlphaKey(0.28f, 0.72f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        colorOverLifetime.color = new ParticleSystem.MinMaxGradient(gradient);
+
+        var noise = highwayCharacterMissAuraParticles.noise;
+        noise.enabled = true;
+        noise.quality = ParticleSystemNoiseQuality.Low;
+        noise.strength = 0.05f;
+        noise.frequency = 0.42f;
+        noise.scrollSpeed = 0.32f;
+
+        ParticleSystemRenderer particleRenderer = particleObject.GetComponent<ParticleSystemRenderer>();
+        particleRenderer.renderMode = ParticleSystemRenderMode.Billboard;
+        particleRenderer.alignment = ParticleSystemRenderSpace.View;
+        particleRenderer.sortMode = ParticleSystemSortMode.Distance;
+        particleRenderer.sharedMaterial = GetHighwayCharacterMissAuraParticleMaterial();
+        particleRenderer.lengthScale = 1f;
+        particleRenderer.velocityScale = 0f;
+        particleRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        particleRenderer.receiveShadows = false;
+        particleRenderer.sortingFudge = 1.5f;
+
+        highwayCharacterMissAuraParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        particleObject.SetActive(true);
+    }
+
+    private Material GetHighwayCharacterMissAuraParticleMaterial()
+    {
+        if (sharedHighwayCharacterMissAuraParticleMaterial != null)
+            return sharedHighwayCharacterMissAuraParticleMaterial;
+
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayCharacterMissParticle");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayCharacterMissParticle");
+
+        sharedHighwayCharacterMissAuraParticleMaterial = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(HighwayCharacterMissAuraParticleColor, 0.65f);
+        sharedHighwayCharacterMissAuraParticleMaterial.renderQueue = (int)RenderQueue.Transparent - 53;
+        sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_ZWrite", 0);
+        sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_Cull", (int)CullMode.Off);
+        sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
+        sharedHighwayCharacterMissAuraParticleMaterial.SetColor("_Color", HighwayCharacterMissAuraParticleColor);
+        if (sharedHighwayCharacterMissAuraParticleMaterial.HasProperty("_EdgeColor"))
+            sharedHighwayCharacterMissAuraParticleMaterial.SetColor("_EdgeColor", HighwayCharacterMissAuraParticleEdgeColor);
+        if (sharedHighwayCharacterMissAuraParticleMaterial.HasProperty("_Glow"))
+            sharedHighwayCharacterMissAuraParticleMaterial.SetFloat("_Glow", HighwayCharacterMissAuraParticleGlow);
+        return sharedHighwayCharacterMissAuraParticleMaterial;
+    }
+
+    private void ApplyHighwayCharacterMissMaterialState(float missFlashStrength)
+    {
+        if (sharedHighwayCharacterMaterial == null)
+            return;
+
+        bool usesCustomMissShader = sharedHighwayCharacterMaterial.HasProperty(CharacterMissFlashStrengthShaderId);
+        if (usesCustomMissShader)
+        {
+            sharedHighwayCharacterMaterial.color = Color.white;
+            sharedHighwayCharacterMaterial.SetColor(CharacterMissFlashColorShaderId, HighwayCharacterMissFlashColor);
+            sharedHighwayCharacterMaterial.SetFloat(CharacterMissFlashStrengthShaderId, Mathf.Clamp01(missFlashStrength));
+            if (sharedHighwayCharacterMaterial.HasProperty(CharacterMissFlashSpeedShaderId))
+                sharedHighwayCharacterMaterial.SetFloat(CharacterMissFlashSpeedShaderId, HighwayCharacterMissFlashBandSpeed);
+            return;
+        }
+
+        Color fallbackTint = Color.Lerp(Color.white, HighwayCharacterMissFlashColor, 0.32f);
+        sharedHighwayCharacterMaterial.color = Color.Lerp(Color.white, fallbackTint, Mathf.Clamp01(missFlashStrength * 0.45f));
+    }
+
+    private Renderer CreateHighwayCharacterPortalRenderer(string name, Material material, float localForwardOffset)
+    {
+        GameObject portalObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        portalObject.name = name;
+        portalObject.transform.SetParent(characterRoot.transform, false);
+        portalObject.transform.localPosition = new Vector3(0f, HighwayCharacterPortalLocalYInCharacterHeights, localForwardOffset);
+        portalObject.transform.localScale = new Vector3(
+            HighwayCharacterPortalWidthInCharacterWidths,
+            HighwayCharacterPortalHeightInCharacterHeights,
+            1f);
+        Object.Destroy(portalObject.GetComponent<Collider>());
+
+        Renderer portalRenderer = portalObject.GetComponent<Renderer>();
+        portalRenderer.sharedMaterial = material;
+        portalRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        portalRenderer.receiveShadows = false;
+        return portalRenderer;
+    }
+
+    private Material GetHighwayCharacterPortalBackMaterial()
+    {
+        if (sharedHighwayCharacterPortalBackMaterial != null)
+            return sharedHighwayCharacterPortalBackMaterial;
+
+        sharedHighwayCharacterPortalBackMaterial = CreateHighwayCharacterPortalMaterial(halfMode: -1f, renderQueue: (int)RenderQueue.Transparent - 52);
+        return sharedHighwayCharacterPortalBackMaterial;
+    }
+
+    private Material GetHighwayCharacterPortalFrontMaterial()
+    {
+        if (sharedHighwayCharacterPortalFrontMaterial != null)
+            return sharedHighwayCharacterPortalFrontMaterial;
+
+        sharedHighwayCharacterPortalFrontMaterial = CreateHighwayCharacterPortalMaterial(halfMode: 1f, renderQueue: (int)RenderQueue.Transparent - 51);
+        return sharedHighwayCharacterPortalFrontMaterial;
+    }
+
+    private Material CreateHighwayCharacterPortalMaterial(float halfMode, int renderQueue)
+    {
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayCharacterPortal");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayCharacterPortal");
+
+        Material material = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(new Color(0.03f, 0.12f, 0.16f, 0.72f), 0f);
+        material.renderQueue = renderQueue;
+        material.SetInt("_ZWrite", 0);
+        material.SetInt("_Cull", (int)CullMode.Off);
+        material.SetInt("_ZTest", (int)CompareFunction.LessEqual);
+        if (material.HasProperty(CharacterPortalHalfModeShaderId))
+            material.SetFloat(CharacterPortalHalfModeShaderId, halfMode);
+        if (material.HasProperty(CharacterPortalRingThicknessShaderId))
+            material.SetFloat(CharacterPortalRingThicknessShaderId, HighwayCharacterPortalRingThickness);
+        if (material.HasProperty(CharacterPortalSoftnessShaderId))
+            material.SetFloat(CharacterPortalSoftnessShaderId, HighwayCharacterPortalEdgeSoftness);
+        if (material.HasProperty(CharacterPortalRimSoftnessShaderId))
+            material.SetFloat(CharacterPortalRimSoftnessShaderId, HighwayCharacterPortalRimSoftness);
+        if (material.HasProperty(CharacterPortalAlphaFloorShaderId))
+            material.SetFloat(CharacterPortalAlphaFloorShaderId, HighwayCharacterPortalInteriorAlphaFloor);
+        if (material.HasProperty(CharacterPortalSwirlSpeedShaderId))
+            material.SetFloat(CharacterPortalSwirlSpeedShaderId, HighwayCharacterPortalSwirlSpeed);
+        if (material.HasProperty(CharacterPortalSwirlSharpnessShaderId))
+            material.SetFloat(CharacterPortalSwirlSharpnessShaderId, HighwayCharacterPortalSwirlSharpness);
+        if (material.HasProperty(CharacterPortalSplitYShaderId))
+            material.SetFloat(CharacterPortalSplitYShaderId, HighwayCharacterPortalSplitY01);
+        if (material.HasProperty(CharacterPortalSplitSoftnessShaderId))
+            material.SetFloat(CharacterPortalSplitSoftnessShaderId, HighwayCharacterPortalSplitSoftness01);
+        return material;
+    }
+
+    private void UpdateHighwayCharacterPortalPalette()
+    {
+        ApplyHighwayCharacterPortalPalette(sharedHighwayCharacterPortalBackMaterial);
+        ApplyHighwayCharacterPortalPalette(sharedHighwayCharacterPortalFrontMaterial);
+    }
+
+    private void ApplyHighwayCharacterPortalPalette(Material material)
+    {
+        if (material == null || owner == null)
+            return;
+
+        Color baseColor = WithAlpha(HighwayCharacterPortalBaseColor, HighwayCharacterPortalBaseOpacity);
+        Color coreColor = WithAlpha(HighwayCharacterPortalCoreColor, HighwayCharacterPortalCoreOpacity);
+        Color rimColor = WithAlpha(HighwayCharacterPortalRimColor, HighwayCharacterPortalRimOpacity);
+        Color accentColor = WithAlpha(HighwayCharacterPortalSwirlColor, HighwayCharacterPortalSwirlOpacity);
+
+        material.color = Color.Lerp(baseColor, rimColor, HighwayCharacterPortalPreviewTintMix);
+        if (material.HasProperty(CharacterPortalBaseColorShaderId))
+            material.SetColor(CharacterPortalBaseColorShaderId, baseColor);
+        if (material.HasProperty(CharacterPortalRimColorShaderId))
+            material.SetColor(CharacterPortalRimColorShaderId, rimColor);
+        if (material.HasProperty(CharacterPortalAccentColorShaderId))
+            material.SetColor(CharacterPortalAccentColorShaderId, accentColor);
+        if (material.HasProperty(CharacterPortalCoreColorShaderId))
+            material.SetColor(CharacterPortalCoreColorShaderId, coreColor);
+        if (material.HasProperty(CharacterPortalGlowStrengthShaderId))
+            material.SetFloat(CharacterPortalGlowStrengthShaderId, HighwayCharacterPortalGlowStrength);
+    }
+
+    private static Color WithAlpha(Color color, float alpha)
+    {
+        color.a = Mathf.Clamp01(alpha);
+        return color;
+    }
+
+    private static ParticleSystem.MinMaxCurve CreateTwoConstantsCurve(float min, float max)
+    {
+        ParticleSystem.MinMaxCurve curve = new ParticleSystem.MinMaxCurve();
+        curve.mode = ParticleSystemCurveMode.TwoConstants;
+        curve.constantMin = min;
+        curve.constantMax = max;
+        return curve;
     }
 
     private static void SetLayerRecursively(GameObject target, int layer)
@@ -2727,7 +3587,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             bool connectsToNextSegment =
                 segmentIndex + 1 < orderedSegments.Count &&
-                Mathf.Abs(orderedSegments[segmentIndex + 1].startOffset - segment.endOffset) <= 0.0001f;
+                AreTechniqueSegmentsContinuous(segment.endOffset, orderedSegments[segmentIndex + 1].startOffset);
 
             float segmentStartTime = state.data.time + segment.startOffset;
             float segmentEndTime = state.data.time + segment.endOffset;
@@ -2766,7 +3626,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     continue;
                 }
 
-                if (hasPreviousProfile && Mathf.Abs(segment.startOffset - previousEndOffset) <= 0.0001f)
+                if (hasPreviousProfile && AreTechniqueSegmentsContinuous(previousEndOffset, segment.startOffset))
                     ApplyRibbonJoinOverlap(previousProfile, ref headProfile);
 
                 float visibleDistance = segmentVisibleStart01 * Mathf.Max(0.01f, totalDisplayedDepth);
@@ -2860,7 +3720,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
                     if (vibratoIndex == 0 &&
                         hasPreviousProfile &&
-                        Mathf.Abs(segment.startOffset - previousEndOffset) <= 0.0001f)
+                        AreTechniqueSegmentsContinuous(previousEndOffset, segment.startOffset))
                     {
                         ApplyRibbonJoinOverlap(previousProfile, ref vibratoProfile);
                     }
@@ -2904,7 +3764,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 continue;
             }
 
-            if (hasPreviousProfile && Mathf.Abs(segment.startOffset - previousEndOffset) <= 0.0001f)
+            if (hasPreviousProfile && AreTechniqueSegmentsContinuous(previousEndOffset, segment.startOffset))
                 ApplyRibbonJoinOverlap(previousProfile, ref profile);
 
             ApplyTechniqueSegmentRibbon(view, slotIndex, segment.type, profile, state.IsResolved, segmentVisibleStart01);
@@ -3282,6 +4142,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void ApplyRibbonJoinOverlap(TechniqueRibbonProfile previousProfile, ref TechniqueRibbonProfile currentProfile)
     {
+        Vector3 snapDelta = previousProfile.end - currentProfile.start;
+        currentProfile.start += snapDelta;
+        currentProfile.control1 += snapDelta;
+
         float overlap = GetRibbonLengthFadeWorldDistance(previousProfile) + GetRibbonLengthFadeWorldDistance(currentProfile);
         Vector3 direction = currentProfile.control1 - currentProfile.start;
         if (direction.sqrMagnitude <= 0.0001f)
@@ -3293,6 +4157,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         Vector3 offset = direction * Mathf.Min(overlap, Vector3.Distance(currentProfile.start, currentProfile.end) * 0.45f);
         currentProfile.start -= offset;
         currentProfile.control1 -= offset;
+    }
+
+    private static bool AreTechniqueSegmentsContinuous(float previousEndOffset, float nextStartOffset)
+    {
+        return Mathf.Abs(nextStartOffset - previousEndOffset) <= TechniqueSegmentJoinToleranceSeconds;
     }
 
     private float GetSegmentBendVisualY(int stringIdx, float bendValue)

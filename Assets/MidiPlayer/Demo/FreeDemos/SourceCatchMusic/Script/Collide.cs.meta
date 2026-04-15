@@ -1,0 +1,20 @@
+fileFormatVersion: 2
+guid: d9e257853f4aa2841a4230e60686c0d5
+timeCreated: 1528870689
+licenseType: Store
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/SourceCatchMusic/Script/Collide.cs
+  uploadId: 889890

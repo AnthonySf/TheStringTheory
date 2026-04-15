@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: e702e902ee039454d92e06306db3ae92
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/Script/CreateSample.cs
+  uploadId: 889890

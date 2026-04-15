@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 7614bdd6511e49440904ad6bb496b1f8
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/MPTK_Example 0021.bytes
+  uploadId: 889890

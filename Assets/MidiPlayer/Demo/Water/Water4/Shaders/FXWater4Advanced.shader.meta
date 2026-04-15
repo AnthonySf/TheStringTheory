@@ -1,0 +1,13 @@
+fileFormatVersion: 2
+guid: 475c4a4e617a8401b84ca7b32c7cc460
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/Water/Water4/Shaders/FXWater4Advanced.shader
+  uploadId: 889890

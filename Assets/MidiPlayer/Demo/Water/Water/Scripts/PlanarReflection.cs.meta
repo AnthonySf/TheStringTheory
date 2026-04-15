@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 4185bc77c7194462ca3b1097ef4a5de0
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/Water/Water/Scripts/PlanarReflection.cs
+  uploadId: 889890

@@ -1,0 +1,332 @@
+.tone-lab-overlay {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    align-items: center;
+    justify-content: center;
+}
+
+.tone-lab-backdrop {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    background-color: rgba(3, 5, 12, 0.86);
+}
+
+.tone-lab-window {
+    width: 88%;
+    max-width: 3200px;
+    height: 88%;
+    max-height: 1960px;
+    min-width: 1320px;
+    min-height: 820px;
+    padding-left: 38px;
+    padding-right: 38px;
+    padding-top: 34px;
+    padding-bottom: 30px;
+    background-color: rgba(7, 11, 20, 0.98);
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+    border-top-color: rgba(70, 100, 142, 0.95);
+    border-right-color: rgba(28, 37, 54, 0.98);
+    border-bottom-color: rgba(18, 24, 37, 0.98);
+    border-left-color: rgba(28, 37, 54, 0.98);
+    border-top-left-radius: 24px;
+    border-top-right-radius: 24px;
+    border-bottom-left-radius: 24px;
+    border-bottom-right-radius: 24px;
+    flex-direction: column;
+}
+
+.tone-lab-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+}
+
+.tone-lab-title-column {
+    max-width: 70%;
+}
+
+.tone-lab-eyebrow {
+    color: rgba(120, 196, 255, 0.95);
+    font-size: 20px;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+}
+
+.tone-lab-title {
+    color: rgba(248, 250, 255, 1);
+    font-size: 58px;
+    unity-font-style: bold;
+    margin-bottom: 6px;
+}
+
+.tone-lab-subtitle {
+    color: rgba(178, 189, 208, 0.96);
+    font-size: 26px;
+    max-width: 1500px;
+}
+
+.tone-lab-header-actions {
+    align-items: flex-end;
+}
+
+.tone-lab-status {
+    color: rgba(255, 194, 123, 0.98);
+    font-size: 24px;
+    margin-bottom: 14px;
+    unity-text-align: middle-right;
+}
+
+.tone-lab-top-row {
+    flex-direction: row;
+    margin-bottom: 20px;
+}
+
+.tone-lab-card {
+    flex-grow: 1;
+    background-color: rgba(12, 18, 32, 0.98);
+    border-top-width: 3px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(96, 141, 198, 1);
+    border-right-color: rgba(32, 43, 64, 0.95);
+    border-bottom-color: rgba(23, 31, 47, 0.95);
+    border-left-color: rgba(32, 43, 64, 0.95);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+    padding-left: 22px;
+    padding-right: 22px;
+    padding-top: 20px;
+    padding-bottom: 18px;
+}
+
+.tone-lab-card:first-child {
+    margin-right: 10px;
+}
+
+.tone-lab-card:last-child {
+    margin-left: 10px;
+}
+
+.tone-lab-card-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.tone-lab-card-copy {
+    flex-grow: 1;
+    padding-right: 14px;
+}
+
+.tone-lab-card-title {
+    color: rgba(247, 249, 255, 1);
+    font-size: 34px;
+    unity-font-style: bold;
+    margin-bottom: 4px;
+}
+
+.tone-lab-card-subtitle {
+    color: rgba(149, 164, 190, 0.94);
+    font-size: 20px;
+}
+
+.tone-lab-setting-row {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.tone-lab-setting-label {
+    color: rgba(193, 204, 222, 0.95);
+    font-size: 22px;
+    unity-font-style: bold;
+}
+
+.tone-lab-setting-value-host {
+    min-width: 520px;
+    align-items: flex-end;
+}
+
+.tone-lab-dropdown {
+    min-width: 520px;
+    min-height: 54px;
+    font-size: 20px;
+}
+
+.tone-lab-route {
+    color: rgba(255, 234, 210, 0.98);
+    font-size: 22px;
+    unity-text-align: middle-right;
+}
+
+.tone-lab-button-row {
+    flex-direction: row;
+    margin-top: 8px;
+}
+
+.tone-lab-button {
+    min-width: 210px;
+    height: 60px;
+    margin-right: 12px;
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
+    font-size: 22px;
+    unity-font-style: bold;
+}
+
+.tone-lab-button-primary {
+    background-color: rgba(242, 153, 93, 1);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(255, 210, 171, 0.98);
+    border-right-color: rgba(179, 93, 45, 1);
+    border-bottom-color: rgba(150, 72, 34, 1);
+    border-left-color: rgba(179, 93, 45, 1);
+    color: rgba(18, 10, 6, 0.98);
+}
+
+.tone-lab-button-secondary {
+    background-color: rgba(16, 21, 35, 0.98);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(79, 114, 168, 0.85);
+    border-right-color: rgba(38, 50, 74, 0.98);
+    border-bottom-color: rgba(25, 33, 48, 0.98);
+    border-left-color: rgba(38, 50, 74, 0.98);
+    color: rgba(226, 233, 245, 0.98);
+}
+
+.tone-lab-scroll {
+    flex-grow: 1;
+    margin-top: 4px;
+    margin-bottom: 16px;
+}
+
+.tone-lab-effect-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding-bottom: 8px;
+}
+
+.tone-lab-effect-card {
+    width: 49%;
+    margin-bottom: 18px;
+}
+
+.tone-lab-effect-card:nth-child(odd) {
+    margin-right: 1%;
+}
+
+.tone-lab-effect-card:nth-child(even) {
+    margin-left: 1%;
+}
+
+.tone-lab-toggle {
+    min-width: 110px;
+    height: 44px;
+    border-top-left-radius: 10px;
+    border-top-right-radius: 10px;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+    font-size: 20px;
+    unity-font-style: bold;
+}
+
+.tone-lab-toggle-on {
+    background-color: rgba(55, 173, 113, 0.98);
+    color: rgba(7, 20, 13, 1);
+}
+
+.tone-lab-toggle-off {
+    background-color: rgba(23, 31, 47, 0.98);
+    color: rgba(193, 204, 222, 0.96);
+}
+
+.tone-lab-slider-row {
+    margin-bottom: 14px;
+}
+
+.tone-lab-slider-header {
+    flex-direction: row;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.tone-lab-slider-title {
+    color: rgba(232, 238, 249, 0.98);
+    font-size: 21px;
+}
+
+.tone-lab-slider-value {
+    color: rgba(255, 201, 142, 0.98);
+    font-size: 20px;
+    unity-text-align: middle-right;
+}
+
+.tone-lab-slider {
+    height: 48px;
+}
+
+.tone-lab-slider .unity-base-slider__drag-container {
+    height: 18px;
+    background-color: rgba(16, 23, 38, 0.98);
+    border-top-left-radius: 9px;
+    border-top-right-radius: 9px;
+    border-bottom-left-radius: 9px;
+    border-bottom-right-radius: 9px;
+}
+
+.tone-lab-slider .unity-base-slider__tracker {
+    background-color: rgba(44, 58, 86, 0.98);
+    border-top-left-radius: 9px;
+    border-top-right-radius: 9px;
+    border-bottom-left-radius: 9px;
+    border-bottom-right-radius: 9px;
+}
+
+.tone-lab-slider .unity-base-slider__dragger {
+    background-color: rgba(242, 153, 93, 1);
+    border-top-left-radius: 9px;
+    border-top-right-radius: 9px;
+    border-bottom-left-radius: 9px;
+    border-bottom-right-radius: 9px;
+}
+
+.tone-lab-slider .unity-base-slider__dragger-border {
+    background-color: rgba(255, 219, 189, 0.98);
+}
+
+.tone-lab-slider .unity-base-slider__dragger-thumb {
+    background-color: rgba(255, 248, 242, 1);
+    width: 18px;
+    border-top-left-radius: 9px;
+    border-top-right-radius: 9px;
+    border-bottom-left-radius: 9px;
+    border-bottom-right-radius: 9px;
+}
+
+.tone-lab-footer {
+    color: rgba(138, 151, 174, 0.95);
+    font-size: 20px;
+}

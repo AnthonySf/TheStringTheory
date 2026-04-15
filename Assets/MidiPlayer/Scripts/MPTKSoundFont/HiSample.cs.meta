@@ -1,0 +1,20 @@
+fileFormatVersion: 2
+guid: 4fda2cf4445389f45a38dd864e789983
+timeCreated: 1540273005
+licenseType: Store
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/MPTKSoundFont/HiSample.cs
+  uploadId: 889890

@@ -1,0 +1,4 @@
+ScenesDemonstration is used to build all the demos in only one application.
+For sure, you will not have the need of this scene. But it is published in case of!
+
+Simply, add each demo scene (Unity menu File / Build Settings) to rebuild this demo.

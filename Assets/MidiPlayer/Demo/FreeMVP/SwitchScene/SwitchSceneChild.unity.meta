@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 5f36771c393694e40986287bebd3bcf4
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeMVP/SwitchScene/SwitchSceneChild.unity
+  uploadId: 889890

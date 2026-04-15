@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 79995be7438eb7641a348459272635dd
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/EVO - Boss Theme.bytes
+  uploadId: 889890

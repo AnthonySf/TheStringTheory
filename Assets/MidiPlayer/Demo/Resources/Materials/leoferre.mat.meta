@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 24d368b1b76d1824d8ac9a1eb5836cdb
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/Resources/Materials/leoferre.mat
+  uploadId: 889890

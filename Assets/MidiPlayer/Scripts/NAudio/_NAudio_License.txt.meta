@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 34f6dc1e891c55a48847c3960552f033
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/NAudio/_NAudio_License.txt
+  uploadId: 889890

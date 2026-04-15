@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: ccfa76436c255dc4ba2630f820648b0e
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeMVP/MatBlue.mat
+  uploadId: 889890

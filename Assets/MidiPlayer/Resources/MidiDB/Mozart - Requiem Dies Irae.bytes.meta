@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 6020a3b175246ef469b76fe0ce5e356d
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Mozart - Requiem Dies Irae.bytes
+  uploadId: 889890

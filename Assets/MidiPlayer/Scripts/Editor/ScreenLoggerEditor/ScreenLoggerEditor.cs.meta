@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: e0180b985be6c854285448ae9f8a74f7
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/Editor/ScreenLoggerEditor/ScreenLoggerEditor.cs
+  uploadId: 889890

@@ -1,0 +1,16 @@
+{
+    "name": "MidiPlayer.Run",
+    "rootNamespace": "",
+    "references": [
+        "GUID:47decbe7e7732fb4c888e59bd21708cf"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

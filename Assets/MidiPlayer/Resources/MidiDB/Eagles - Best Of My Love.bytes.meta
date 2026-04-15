@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 0cb703d416547d9409b90827266777b5
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Eagles - Best Of My Love.bytes
+  uploadId: 889890

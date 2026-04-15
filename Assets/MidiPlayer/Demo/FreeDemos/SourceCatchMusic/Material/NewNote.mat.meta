@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 675943411bac0004c8e9cfcb2fb5825d
+timeCreated: 1528797105
+licenseType: Store
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/SourceCatchMusic/Material/NewNote.mat
+  uploadId: 889890

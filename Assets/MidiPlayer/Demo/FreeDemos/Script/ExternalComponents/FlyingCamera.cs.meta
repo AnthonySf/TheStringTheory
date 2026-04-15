@@ -1,0 +1,20 @@
+fileFormatVersion: 2
+guid: 999178050ffa16247a2e59ca9a64c8ee
+timeCreated: 1526884762
+licenseType: Store
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/Script/ExternalComponents/FlyingCamera.cs
+  uploadId: 889890

@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 136e18f4935ba99418eef26313ec88fb
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Patti Smith - Because the Night.bytes
+  uploadId: 889890

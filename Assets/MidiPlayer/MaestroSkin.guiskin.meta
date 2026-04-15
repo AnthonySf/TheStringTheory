@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 935f4059a84a9f945a1fa1b88e15e867
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/MaestroSkin.guiskin
+  uploadId: 889890

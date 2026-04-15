@@ -65,6 +65,10 @@
       "value": "0.06"
     },
     {
+      "id": "fx.characterDisplay",
+      "value": "Always"
+    },
+    {
       "id": "fx.judgeableDarkenMultiplier",
       "value": "1"
     },
@@ -78,7 +82,7 @@
     },
     {
       "id": "bg.skyMood",
-      "value": "Sunset"
+      "value": "Midnight"
     },
     {
       "id": "bg.skyUseStage",
@@ -139,6 +143,54 @@
     {
       "id": "bg.skyCloudGlobalScale",
       "value": "3"
+    },
+    {
+      "id": "highway.backgroundDistance",
+      "value": "100"
+    },
+    {
+      "id": "highway.backgroundCenterY",
+      "value": "-200"
+    },
+    {
+      "id": "highway.backgroundScale",
+      "value": "100"
+    },
+    {
+      "id": "highway.cloudYOffset",
+      "value": "6"
+    },
+    {
+      "id": "highway.starScale",
+      "value": "0.6"
+    },
+    {
+      "id": "highway.cloudScale",
+      "value": "0.75"
+    },
+    {
+      "id": "highway.starSpread",
+      "value": "0.6"
+    },
+    {
+      "id": "highway.cloudSpread",
+      "value": "0.42"
+    },
+    {
+      "id": "highway.backgroundColorR",
+      "value": "0.01"
+    },
+    {
+      "id": "highway.backgroundColorG",
+      "value": "0.015"
+    },
+    {
+      "id": "highway.backgroundColorB",
+      "value": "0.045"
+    },
+    {
+      "id": "highway.backgroundColorA",
+      "value": "1"
     },
     {
       "id": "highway.fretSpacing",

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: a112c8e0d31122e4a8b9e74ef416821d
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/MPTKGameObject/MPTKEnum.cs
+  uploadId: 889890

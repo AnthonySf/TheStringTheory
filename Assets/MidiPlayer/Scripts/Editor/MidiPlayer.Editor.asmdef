@@ -1,0 +1,17 @@
+{
+    "name": "MidiPlayer.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:82606d536e5b6a142a8b4d4879c5546c",
+        "GUID:9caac03f5ccbd5640be46fadf9127da7"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

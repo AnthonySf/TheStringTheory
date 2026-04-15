@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: e816be5ecca363745bcb69a5c78418fa
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Dark Cloud 2 - Dark Chronicle.bytes
+  uploadId: 889890

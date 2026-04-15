@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: a3e0aa6685ad79c49b9902603a99850f
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/Textures/icons8.txt
+  uploadId: 889890

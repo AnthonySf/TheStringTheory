@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 70f9320d2699cf049a7cfe637b04faa1
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/Material/GridX10.mat
+  uploadId: 889890

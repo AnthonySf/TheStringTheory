@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 88a5d20aefb7f7e448a8becc91fa9289
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Faure - Requiem.bytes
+  uploadId: 889890

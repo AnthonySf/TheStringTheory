@@ -1,0 +1,20 @@
+fileFormatVersion: 2
+guid: 3b2e16f1e32635c4a8b6bc3911427c09
+timeCreated: 1544637593
+licenseType: Store
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/MPTKUtil/PopupListItem.cs
+  uploadId: 889890

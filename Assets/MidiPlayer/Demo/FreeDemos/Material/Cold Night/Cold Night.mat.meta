@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 6c5f5934832686743a510621ef567fb3
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/Material/Cold Night/Cold Night.mat
+  uploadId: 889890

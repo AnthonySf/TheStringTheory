@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: dc2b118d1a6c1154983be5ee4bf1b510
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/MPTKGameObject/MPTKEffectSoundFont.cs
+  uploadId: 889890

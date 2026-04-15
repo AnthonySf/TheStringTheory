@@ -1,0 +1,770 @@
+Please, read this before updating:
+   - Backup your own project
+   - If you get errors after updating, please quit Unity Editor and reload your project (GUID must be updated).
+   - If you are updating from an older version and errors persist, delete the MidiPlayer folder from your project and reinstall Maestro.
+
+Thank for your comments and talks, that help a lot to make Maestro better.
+
+V2.19.0 2026-03-28
+	New Feature Pro
+		Chord progression builder. 
+	Fixes
+		Guard against AudioSource being destroyed when MPTK_Stop() coroutine was waiting (thanks to Macias for pointing this out).
+		When MPTK Spatialization is disabled, the AudioSource spatial settings should stay untouched so the inspector values apply (thanks to CharleneAtlas for pointing this out). 
+		Huge review of the code and API documentation. Improve grammar, clarity, and consistency.
+		Full rebuild of the API documentation availabale on https://mptkapi.paxstellar.com/annotated.html. 
+
+V2.18.1 2026-02-23
+	Fixes
+		Correct unexpected using clause.
+		Correct wrong time definition in TestMidiGenerator demo.
+
+V2.18.0 2026-02-09
+	Version Pro
+		New Feature
+			Orientation-based audio behavior, including:
+				Smooth left/right stereo panning
+				Front/back volume attenuation
+				Subtle filtering when the sound source is behind the listener
+		New Attributes:
+			MPTK_Orientation: Enables orientation-based audio behavior (default: false).
+			MPTK_OrientationToListener: Returns the angle (in degrees) between the sound source and the listener.
+	Version All
+		New Attributes
+			Renamed MPTK_Spatialize to MPTK_DistanceAttenuation for clarity.
+			Added MPTK_AudioListener attribute to MidiPlayerGlobal to specify which AudioListener is used (default: first AudioListener found in the scene).
+			Added MPTK_StatVoiceCountSustained.
+	Fixes
+		Ensured the MIDI player stops correctly when notes remain sustained at the end of a MIDI file.
+	Demos & MVP
+		Updated demos to use the new orientation-based audio behavior.
+
+V2.17.0 2025-12-07
+	New Feature Pro
+		Added the ability to pause and resume voices with smooth transitions (especially useful for MidiStreamPlayer).
+	New Feature All
+		Improved spatialization with two new parameters:
+			MPTK_MinDistance: distance at which attenuation begins.
+			MPTK_MinSoundAttenuation: minimum volume applied at maximum distance.
+		The free Maestro edition is now based on the GS v2.0.2 SoundFont from Christian Collins — many thanks to him! Enjoy noticeably enhanced audio.
+	Fix: 
+		Correct spatialization calculation.
+		MPTK_Play: when MIDI player is paused and not yet playing, the player just resume pause and not playing ... now, resume pause and play!
+
+V2.16.2 2025-10-31
+	Fix
+		Parameter AlreadyLoaded was not used when MIDI Player is in autorestart mode.
+
+V2.16.1 2025-09-06
+	New Feature
+		MPTK_PauseOnMaxDistance: MIDI player automatically paused when the distance from the listener exceeds MPTK_MaxDistance.
+			- Default is true (pause)
+	Demo & MVP
+		Helper to migrate MPTK demos to Unity 6.
+		Remove some design not compliant to Unity 6 :
+			- Water in TestMidiFilePlayerMulti
+			- Shadow in TestMidiFilePlayerScripting
+
+V2.16.0 2025-06-16
+	New Features
+		Official version compatible WebGL.
+		MPTK_Core set to false when Unity WebGL selected (legacy mode).
+		Added MPTK_ListPresetDrum, MPTK_PresetsNameDrum, MPTK_PresetsNumberDrum.
+
+	Demo & MVP
+		MidiChannel MVP: now displays channel information.
+		MidiFileWriter: now working with WebGL (removes local file management).
+		TestEuclideanRhythme: now working with WebGL (uses coroutine).
+		TestMidiExternalPlayer: now working with WebGL (uses coroutine).
+		TinyMidiSequencer: deprecated (source code still available).
+
+	Fix
+		WebGL: all voices are now cleared when stopping a MIDI.
+		WebGL: playback now starts at the first note.
+		WebGL: MidiExternalPlayer for WebGL compatibility (move MIDI to as CORS compliant server).
+		WebGL: MPTKWriter is now compliant (direct play only).
+		MPTK_CurrentTempo: get rounded to the nearest integer. Thanks to cihadturhan_unity.
+		Correct issue on quantization calculation. Thanks to cihadturhan_unity.
+
+V2.15.0 2025-04-25
+	New Features Pro
+		SoundFonts can be dynamically loaded either from a local file system or directly from the web.
+        Supports assigning different SoundFonts to different MIDI players.
+	New Features
+		Delays line number for reverb now can be expanded to 12 (default is 8) to produces a better quality sound but with a cpu cost. Add script symbols MPTK_REVERB_NBR_DELAYS_12 to expand.
+		Changes the way each note-on velocity affects the attenuation of a voice. A higher value increases the volume at low velocity (the fluidsynth constant FLUID_PEAK_ATTENUATION is modified). Perfect for soundfont with not audible notes at low velocity. See member MPTK_VelocityAttenuation (experimental feature).
+		Easier access to the verbose mode in the inspector.
+		Access to MPTK custom ChatGPT from the About MPTK.
+	Demo & MVP
+		TestLoadingExternalSoundFont: use of the new MPTKSoundFont class (pro), predefined soundfonts, quick switching, ...
+		MidiChannel: Free MVP, three simple demos in one! disable all channels but not drum, apply sustain, play extra notes ...
+		HackYourMIDI: Pro MVP, how to transform a MIDI note-on on to an arppegio.
+	Fix
+		MPTK_LoadLiveSF is deprecated but is still working.
+		Correct abrupt reverb off when any voice is active.
+		Update from FS 2.3: ignore note-off for non looped samples in the attack phase and improve amp calculation.
+		Improve MIDI sort and set priority for bank change (dramatically decrease time loading for big MIDI file).
+		Ignore CC32 for LSB Bank change (default for GS soundfont))
+		WebGL: subset generator for web, correct issue in GEN_STARTADDROFS, apply pitch at playing (Pitch Change). WebGL will be soon officialy available!
+		Correct soundfont importing with truncated samples name. Can conduct to samples missing. It's a rare issue but in case of you need to re-import your specific soundfont.
+
+V2.14.0 2024-12-22
+	New Features
+		Unlock global volume up to 10 (by default, limited to 1). Add script symbols MPTK_UNLOCK_VOLUME to unlock. Experimental, use with caution.
+		Unlock MIDI player speed from 0.0001 to 100 (by default between to 0.1 and 10). Add script symbols MPTK_UNLOCK_SPEED to unlock. Experimental, use with caution.
+		Add optionnal wait time to MPTK_Stop for waiting until MIDI is really stopped.
+		Improve MPTK debug mode with MPTK_BuildInfoSynth.
+		Move Maestro menu to Unity Tools menu when MPTK_MAESTRO_MENU_TOOLS symbol is defined.
+		Soundfont caching is now optional when loading SF dynamically, see MidiPlayerGlobal.MPTK_LoadLiveSF. 
+		Add MPTK_ResetTranspose to force cancel transpose when looping on a MIDI.
+	Demo & MVP
+		TestOboe: redesign (again!). Also good on non-Android devices for latency analysis.
+		TestLoadingExternalSoundFont: redesign
+		Create MVP demo MidiKeyboardThread
+	Fix
+		Correct Oboe setting to correct bad sound on some devices (buffer not a multiple of 64). 
+		Correct MIDI thread reader with OnAudio callback to improve accuracy.
+		Restore initial transpose value when looping.
+
+V2.13.2 2024-11-13
+	Fix
+		Correct build error
+
+V2.13.1 2024-11-11
+	Fix
+		Correct transposition error
+
+V2.13.0 2024-10-31
+	New Features
+		Based on Unity version 2022.3
+		MidiStream player: Extended to 256 channels. 
+		MPTKWriter: Create MIDI until 256 channels (but not for writing).
+		MPTK_DebugActiveVoice added for advanced use.
+		Added new stat in MIDI file setup.
+	Demo & MVP
+		TestMidiExternalPlayer: Add measure calculation and innerloop capabilities, UI redesign.
+		TestOboe: UI redesign.
+		TestMidiStreamPlayer: Able to play with 32 channels.
+	Fixes
+		Replace obsolete method in Unity 6.
+		Correct synth attenuation range, limit to 1440.
+		HelperDemo: replaced method LabelC4FromMidi with method LabelFromMidi. Now label centred in C4 (60 return C4). Removed LabelFromEcart method.
+		MPTKWriter: Correct TickLast.
+		Effect with oboe: process in blocks of 64 improve the quality.
+		In folder MPTKGameObject/Pro, rename files MPTKEffect____.cs to MPTKEffect____Pro.cs. 
+		In folder MPTKGameObject, create partial class MPTKEffect____.cs.
+
+V2.12.1 2024-06-18
+	New Features
+		MPTK_ThreadMidiPriority: MIDI thread priority to improve reading stability. 
+		MPTK_ThreadMidiWait: MIDI thread waiting in milliseconds. 
+		IntegratedThreadMidi: MIDI reader integrated into the audio thread for more stable reading (can only be set by the inspector).
+		MPTK_CalculateTiming: Now, refresh all timing in the MIDI file: Tempo Map, Signature Map, Realtime, Measure, Beat.
+		MPTK_EventLastNote: Get the last MIDI event which holds a note-on.
+		MPTK_FindLastNote: Find the last MIDI event note-on.
+		MPTK_StopPlayOnLastNote: MIDI playing stop at the last note found in the MIDI.
+	Demo & MVP
+		TestMidiFilePlayerScript: new possibilities for "Modify MIDI And Play" feature and redesign.
+		EuclideanRhythm: light redesign.
+	Fixes
+		Correct MPTKTempo.FindSegment from a time (thanks cihadturhan_unity).
+		Correct MidiFilePlayer.Duration: now take into account the duration of the last note-on event (thanks Izanol).
+
+V2.12.0 2024-05-26
+	New Features
+		Update of the core MIDI synth from fluidsynth 1.3 to fluidsynth 2.3. Incredible new sound!
+		Ability to read and write META text with UTF8 encoding (out of MIDI standard).
+		DSP and iir filters in 64 bits.
+		Added MPTK_RawSeek function for instant looping.
+		Added MPTK_WebRequestError attribute for MidiFileExternalPlayer.
+	Demo & MVP
+		Added MIDI Viewer. Some colored line effects that move in relation to the music.
+		Added MVP demo TheSimplestRandomPlayer.
+		Added inner loop in TestMidiFilePlayerScript demo.
+		New MVP demo load midi and play.
+	Fixes
+		Oboe integration - correct assembly + many bugs.
+		Apply UI scale to all IMGUI demos.
+	Deprecated
+		MidiFilePlayer.MPTK_PulseLength deprecated, replaced by MPTK_Pulse.
+
+V2.11.2 2024-07-02
+	New
+		Split MPTK sources in three assemblies for Demo, Editor and Run for better building perf.
+		Enhanced API for loading external SoundFont at runtime.
+		Add cache for external SoundFont loading at runtime.
+		Not mandatory to have a SoundFont for building an app.
+		Create demo load external SF from Demo Pro.
+		Add MPTK_StartSynth (could be usefull after a MPTK_StopSynth!)
+		Add directive UNITY_EDITOR to all editor scripts for better building perf.
+
+V2.11.1 2023-12-12
+	Fix
+		Remove weird using inserted by Unity.
+		Realign MIDI list events in demo TestMidiFileLoad.
+
+V2.11.0 2023-12-01
+	New
+		Class MptkChannel centralize all members related to MIDI channel.
+		Member MPTK_Channels in MidiSynth (and children MidiFilePlayer, MidiStreamPlayer, ...).
+		Class MPTKEffectSoundFont (pro).
+		Member MPTK_EffectSoundFont in MidiSynth (and children MidiFilePlayer, MidiStreamPlayer, ...).
+		Class MPTKEffectUnity (pro).
+		Member MPTK_EffectUnity in MidiSynth (and children MidiFilePlayer, MidiStreamPlayer, ...).
+		See detailed helper document for migration.
+	Change
+		Move members MPTK_Channelxxxx from MidiSynth class to MPTKChannel class.
+		MPTKRangeLib has been renamed to MPTKScaleLib and globally all members contraining Range by Scale (pro).
+		MidiFileWriter2 renamed to MPTKWriter (pro) and simplified.
+		MPTK_EnableChangeTempo available in inspector for all prefab.
+		MPTK_EnablePresetDrum available in the inspector.
+	Demo and MVP
+		New design and enhanced script clarity for TestMidiStream.
+		New design and enhanced script clarity for TestMidiFilePlayer.
+		New design and enhanced script clarity for TestMidiGenerator.
+	Fix
+		ADSR calculation for a better sound.
+		Extraction sample which stop in some cases.
+		No MIDI playing in editor mode with MidiFileSetup.
+	Deprecated 
+		MidiFileLoader, please consider using MidiFilePlayer.
+		MidiFileWriter2, please consider using MPTKWriter.
+
+V2.10.0 2023-08-27
+	New 
+		class MPTKInnerLoop (pro)
+		class MPTKTempo
+		class MPTKSignature
+		Measure/beat calculation capabilities
+		MPTKEvent
+			Measure and beat attributes calculated when a MIDI is loaded
+			Processing "System Real Time" MIDI events 
+		MidiFileWriter2 (pro)
+			MPTK_TempoMap as a list of MPTKTempo
+			MPTK_SignMap as a list of MPTKSignature
+			MPTK_CalculateTiming()
+			MPTK_DurationTickToMilli() and MPTK_DurationMilliToTick()
+		MidiLoad
+			MPTK_TempoMap as a list of MPTKTempo (tempo change in the MIDI)
+			MPTK_SignMap as a list of MPTKSignature (signature change in the MIDI)
+		MidiSynth
+			OnBeatEvent (pro)
+	Demo and MVP
+		Demo TestInnerLoop (pro)
+		Metronome with TestMidiFilePlayerScripting (OnQuarter event with pro)
+		Update demo TestMidiKeyboard for sending or receiving "System Real Time" MIDI event (pro)
+		Update demo TestMidiGenerator (simplification) + demo adding Inner Loop with META event (pro)
+	Correction
+		MidiFilePlayer: correct issue last notes not dequeueed at the end of the MIDI
+		SoundFont setup: orrect LoadType change not applied when extracting samples
+		global: correct build error (reference to Unity Editor)
+	Change
+		Midi Editor (pro)
+			Displaying measures in Midi Editor with time signature change
+			Looping based on the new MPTKInnerLoop class
+			Mute/unmute channel
+			Open or close section
+			Add button prev/next measure 
+			Add tooltip
+			Add editable META text and Tempo section 
+		Midi Sequencer
+			Able to disable WaitThreadMidi in the inspector for accurate timing precision
+		MidiFileWriter2 (pro)
+			MPTK_Addxxxx methods now return the MIDI event created. 
+			Split MPTK_ConvertTickToMilli and MPTK_DurationTickToMilli and now based on Tempo_Map
+			Enhancement for MPTK_ImportFromEventsList
+			MPTK_ConvertMilliToTick and MPTK_ConvertTickToMilli based on the Tempo map
+		MidiSynth (pro)
+			OnMidiEvent must return a boolean (change from C# Action to Func) to keep or skip the event.
+			OnMidiEvent must return a boolean. true to keep the event, false to skip it.
+			Check that DSPBufferSize is a multple of 64, display an error in case of not.
+		SetTempo store only microsecondsPerQuarterNote in value, BPM is not stored in Duration
+	Others
+		Maestro prefabs added to the scene as a link to the original prefab.
+
+	Deprecated attributes and methods
+		MPTKEvent.Duration role for event other than note-on is deprecated (please see API documentation)
+		MidiFilePlayer.MPTK_Loop is deprecated. Please investigate MPTK_MidiRestart or MPTK_InnerLoop (Pro) for a better looping accuracy.
+		MPTKEvent.Duration no longer contains tempo in quarter per minute. Please investigate MPTKEvent.MPTK_MPQN2BPM()
+		MidiLoad.MPTK_PulseLenght is deprecated please investigate MPTK_Pulse in place
+		MidiLoad.MPTK_ConvertTickToTime is deprecated and will be removed. Please investigate the tempo map capabilities, see MPTK_TempoMap.
+		MidiLoad.MPTK_ConvertTimeToTick is deprecated and will be removed. Please investigate the tempo map capabilities, see MPTK_TempoMap.
+		MidiLoad.MPTK_BPM2MPQN is deprecated and will be removed. Please investigate MPTKEvent.MPTK_BPM2MPQN.
+		MidiLoad.MPTK_MPQN2BPM is deprecated and will be removed. Please investigate MPTKEvent.MPTK_MPQN2BPM.
+		MidiFileWriter2.MPTK_NumberBeatsMeasure please investigate MPTK_SignMap and MPTK_CalculateTiming()
+		MidiFileWriter2.MPTK_GetMicrosecondsPerQuaterNote is deprecated and will be removed. Please consider MptkEvent.MPTK_BPM2MPQN
+		MidiFileWriter2.MPTK_BPM2MPQN is deprecated and will be removed. Please consider MptkEvent.MPTK_BPM2MPQN
+		MidiFileWriter2.MPTK_MPQN2BPM is deprecated and will be removed. Please consider MptkEvent.MPTK_MPQN2BPM
+
+
+V2.9.1 2023-05-27
+	MIDI Editor: Add loop points with UI [Pro].
+	New looping attributes: MPTK_TickStart, MPTK_TickEnd, MPTK_ModeStopVoice, MPTK_TickPlayer.
+	Restore FLUID_ATTEN_POWER_FACTOR to -531.509f (some voices was not played at low velocity)
+	Apply Speed change also on duration. 
+	Better musicality, thank to MPTK_CutOffVolume default value set to 0.0001f, was 0.05
+	MidiLoop demo update
+
+V2.9.0 2023-04-21
+	Add a MIDI Editor as a Unity Editor Extension:
+		Base version with the most valuable features.
+		One release note line for a lot of work! [Pro].
+	Full rewrite of MidiFileWriter2 class [Pro].
+		Now based on MPTKEvent.
+		Add MIDI File insert and join features with MPTK_ImportFromEventsList.
+		Rewrite of TestMidiGenerator demo.
+		Rewrite of SimplestMidiWriter MVP.
+	In MPTKEvent:
+		DurationTicks removed, use Legnth in place.
+		TickTime replaced by CreateTime (was confusing).
+		MPTK_DeltaTimeTick replaced by MPTK_LatenceTime.
+		MPTK_DeltaTimeMillis replaced by MPTK_LatenceTimeMillis.
+	In MidiFilePlayer:
+		MidiFileSetup redesign.
+		Add MPTK_StopPlayAtLastNote. If false, player is stopped only when all notes are released.
+		Add 'Stop Play At Last Note' property in Midi File Player inspector.
+		Correct MidiFilePlayer.MPTK_Load: now really load the MIDI in the MIDI Player.
+		Add optionnal parameter alreadyLoaded in MPTK_Play.
+	Full handling of bank selection, now 16383 banks are accesible (thanks Mike!)
+	In case of preset not found, try to find the same preset in the first bank.
+	Automatic MIDI migration from format 0 to format 1 when loading external MIDI.
+	MIDI seeks Optimization.
+	Quantization Correction.
+	Increase velocity factor acccording to fluidsynth change.
+	Improve Oboe Integration.
+	Replace menu MPTK by Maestro, you are ;-)
+	Add LabelPercussion, standard GM2, in HelperNoteLabel class.
+
+V2.89.6 - 2022-11-27
+	Correct RealTime attribute in MPTKEvent. Thanks to Ken Scott http://www.youtube.com/vjchaotic for the tip.
+	Rededign SoundFont setup windows.
+	Documentation correction.
+	Correction for Unity Editor player Midi (Midi File Player Setup window).
+	New method for the HelperNoteLabel class.
+
+
+V2.89.5 - 2022-09-24
+    Play MIDI also in editor mode.
+    Add some stat calculation from MIDI file in the editor.
+    New MVP demo: read a MIDI file, add some MIDI events, and write in a MIDI file with a few lines of script (see SimplestMidiWriter). Pro version.
+    Corrected: MidiFileWriter2.MPTK_LoadFromFile is now working.
+    Method MidiLoad.MPTK_LoadFile is now available only in PRO version.
+    MidiKeyboard (connect an external synth) is now available for CPU Silicon (M1, M2, …) on Mac. Pro version.
+
+V2.89.4 - 2022-07-23
+	New SoundFont Import: select sample format.
+	New MVP Free: TheSimplestMidiGenerator, a "Hello world" demo.
+	Replacing obsolete Unity API functions.
+	Move MPTK_Play from a bytes array to a base class. Now available for MidiFilePlayer and MidiSpatializer prefab (Pro).
+	Improvement of the pause on distance when spatialization is on.
+
+V2.89.3 - 2022-05-28
+	Update integration with last version of Oboe (Fight Android Audio Latency)
+	Can change tempo by script like MPTK_CurrentTempo = 120 (before, only MPTK_Speed was able to change the speed)
+	New MVP example to show how integrate in a few lines of script a MIDI external keyboard (Maestro Pro) 
+
+V2.89.2 - 2022-03-19
+	Update MidiFilePlayer inspector: add filter on the popup MIDI list for selecting a MIDI.
+	Update TestMidiStream: demo how to play MIDI events with the keyboard. 0-9: play notes, Arrow keys: change preset.
+	Apply Sample Rate setting when loading SoundFont to be able to play Vorbis samples (Thank to Paul).
+	Corrected MidiStreamPlayer which was not able to spatilize the sound (Unity Spatialization).
+	Add exception detection on all callback (like OnEventNotesMidi) to help detecting error in your script.
+	New design for MIDI and SoundFont setup windows. Now works fine with MacOS :-)
+
+V2.89.1 - 2021-10-03
+	Add helper link for the MidiFileLoader inspector and the related page on the web site.
+	Add delayed start to MPTK_Play (Pro version)
+	Add delayed stop to MPTK_Stop (Pro version)
+	Add short script demo for MIDI looping
+	Fix instanciation for all MPTK OnEventxxxx to avoid crash in rare cases.
+	Fix Preset change for channel 9 are now enabled for MidiStreamPlayer
+	Add new kind of demos: MVP (for Minimum Viable Product) has just enough core features to effectively deploy the product
+	MVP Free: MidiLoop and TheSimplestMidiLoader
+	MVP Pro: Spatializer3D for spatializing MIDI by tracks in a few lines of code
+
+V2.89.0 - 2021-08-30
+	New with Midi Player and Stream Player (MidiSynth)
+		Added OnMidiEvent can be used like a preprocessor of the MIDI events: it's possible to change the value of the MIDI events to modify in real time the song playing. [Pro]
+		Added MPTK_TransExcludedChannel method useful to exclude a channel for transposing (in general, channel 9 for drums).
+		Added MPTK_keepPlayingNonLooped properties: when set to true, NoteOff or Duration for non-looped samples are ignored and the samples play through to the end.
+		Synth rate can be set to any value from the inspector or with MPTK_SynthRate.
+		Output rate and buffer size can be modified when playing but only for test purpose.
+		Added changing output rate and buffer size for iOS, but stay experimental.
+		MPTK_ChannelPresetChange: apply bank and preset change even if not available but return false.
+		MPTK_ChannelForcedPresetSet: apply bank and preset change even if not available but return false, able now to force bank.
+	New with Midi Player
+		Added MPTK_RealTime properties: real time since the start of the MIDI.
+		Added MPTK_KeepEndTrack properties: when set to true, meta MIDI event End Track are keep. Default is false.
+		Added MPTK_TickLastNote properties: tick position for the last note-on found.
+		Added MPTK_PositionLastNote properties: real time position in millisecond for the last note-on found in the MIDI.
+		Added FootPrint capabilities: search a MIDI from a footprint and calculate a score tempo. [Pro]
+	New with inspector foldout "Midi Parameters"
+		Added "Channel Exception" (MPTK_TransExcludedChannel) "Apply transpose on all channels except this one. -1 to apply all. Default is 9 because generally it's the drum channel and we don't want to transpose drum instruments!"
+		Added "Real Time" (MPTK_RealTime) "Real time from the start of the playing. Tempo or speed change have no impact."
+		Added "Keep MIDI EndTrack" (MPTK_KeepEndTrack) "When set to true, meta MIDI event End Track are keep and these MIDI events are taken into account for calculate the full duration of the MIDI."
+	New with inspector foldout "Synth Parameters"
+		Added "Lean Synth Starting" (MPTK_LeanSynthStarting) "Sets the speed of the increase of the volume of the audio source when synth is starting."
+		Added "Keep Playing Non Looped" (MPTK_KeepPlayingNonLooped) "When the option is on, non looped samples (drum samples for the most part) are play through to the end."
+		Added "Release Time Modifier" (MPTK_ReleaseTimeMod) "Multiplier to increase or decrease the default release time defined in the SoundFont for each instrument."
+		Added "Unity Audio Setting" (MPTK_AudioSettingFromUnity) "If checked then synth rate and buffer size will be automatically defined by Unity in accordance of the capacity of the hardware."
+		Added "Synth Rate Free" (MPTK_EnableFreeSynthRate) "Allow free setting of the Synth Rate."
+	Varied
+		Removed full errors stack logging because Unity do the job since version 2019!
+		New site for hosting the API documentation https://mptkapi.paxstellar.com/annotated.html
+	Issues corrected
+		Fixed with SoundFont setup windows, no sample was removed when unselecting banks. 
+		Fixed with SoundFont Effect, modified values in inspector was not saved when running.
+		Fixed with Midi Synth, changing the bank was not taken into account until changing the preset.
+		Fixed for MacOS, opening folders functions did'nt open the finder.
+		Fixed for MacOS, now inspector can change synth output rate (experimental). 
+		Fixed for iOS, now it's possible to change the Attack delay.
+		Fixed for MPTK_ChannelForcedPresetSet, restore default preset from MIDI stream was wrong.
+
+V2.88.2 - 2021-06-12
+	New with MidiFilePlayer
+		Add method MPTK_ReadMidiEvents which returns a list of MIDI events (List<MPTKEvent>)
+	New with MPTKEvent class for the synthesizer parameters
+		Add methods MTPK_GetSynthParameterDefaultValue, MTPK_GetSynthParameterLabel, MTPK_GetSynthParameterListGenerator, MTPK_ClearSynthParameter [Pro].
+	New with MidiStreamPlayer
+		MPTK_PlayPitchWheelChange - Play a MIDI pitch change event for all notes on the channel [PRO].
+		MPTK_PlayPitchWheelSensitivity - Play a MIDI pitch sensitivity change for all notes on the channel [PRO].
+	New with MidiFileLoader
+		Add MPTK_SearchMidiToPlay(string name) able to find a MIDI in the Unity resources folder MidiDB which contains the name (case sensitive) [Pro].
+	New with MidiSpatializer
+		Capabilities to render multi source based on MIDI tracks, not only channels [PRO].
+		Tested with Resonance Audio and DearVR.
+		New look and functions for the demos TestMidiSpatialization [FREE] and SpatializerFly [PRO].
+	New with MPTKEvent
+		Add Controller "Registered Parameter Number" (RPN).
+		New setting available for soundfont effect (Reverb and Chorus).
+	New with SoundFont 
+		Now MPTK is able to read SoundFont based on 24 bits samples (but played in 16 bits). 	
+	Various points
+		Add shortcut menu for creation of each prefab
+		Cleaning of the resource folder.
+		Creation of a Discord Server. See here https://discord.gg/NhjXPTdeWk
+
+V2.88.1 - 2021-04-17
+	New with MidiFileLoader
+		Add the method MPTK_Load(string path) able to load a midi file from a folder on the local desktop (not only from MidiDB) [Pro].
+		Add reading MIDI Meta events KeySignature and TimeSignature.
+		Add properties MPTK_KeySigSharpsFlats and MPTK_KeySigMajorMinor from Key Signature.
+	Demo
+		Update TestMidiFileLoad, loading a local MIDI file [Pro]
+	Various points
+		Updated About windows design with direct access in MPTK Menu.
+		As usual, a lot of minor updates, enhancements, corrections ...
+
+V2.88 - 2021-04-03
+	New with MidiFilePlayer
+		Precalculation of the real-time position taking into account all "Tempo Change" events (tempo mapping function).
+		Properties MPTK_Duration and MPTK_Position are calculated with the real time value.
+		Properties MPTK_Duration and MPTK_Position are now no longer related to speed ratio (MPTK_Speed).
+		API: MPTK_LastEventPlayed, MPTK_PositionFirstNote, MPTK_TickFirstNote, MPTK_SearchEventFromTime.
+		Add MPTK_LoadTime = time in millisecond to load and analyse a MIDI file.
+	New with MPTKEvent class
+		Add RealTime properties: time of the event from start in milliseconds.
+		Add Index properties: event index in the event's list from MPTK_ReadMidiEvents or from callback OnEventNotesMidi. 
+	New with MidiFileWriter2  [Pro]
+		Automatic tracks creation and ending.
+		MIDI events sequence can be directly played with the internal MPTK midi sequencer (no temp file created). 
+		New useful API available: MPTK_AddChangePreset, MPTK_AddNote, MPTK_AddChordFromLib, MPTK_AddChordFromRange... 
+		Two new demos mainly based on MidiFileWriter2.  See scenes TinyMidiSequencer and TestMidiGenerator.
+	New with MPTKChordBuilder and MPTKRangeLib  [Pro]
+		Add helpers for building chords and ranges
+	Various points
+		MidiListPlayer : Some bugs corrected [Pro]
+		Updated: SoundFont GeneralUser GS v1.471 [Free]
+		As usual, a lot of minor updates, enhancements, corrections ...
+
+
+V2.873 2021-02-20
+New: create a midi event stream with the class MidiFileWriter2 and play it directly without saving to a file [Pro].
+New: trigger event OnEventEndPlayMidi also when a MIDI end and loop to the start. Reason=Loop
+Demo TestMidiWriter: demo update for creating a midi stream and play it [Pro].
+
+V2.872 2021-24-01
+Replace Datetime.Now with the more efficient Datetime.UtcNow (thank github.com/Ideae for this proposition).
+Corrected issue when a noteoff is processed in the attack phase (thank github.com/Ideae for detection and proposition).
+Corrected issue with MPTK_TickCurrent. MIDI events at this exact tick position was missing, so some midi events could be lost.
+New synth parameter MPTK_CutOffVolume. Sample is stopped when amplitude is below this value. Increase for better performance but with degraded quality because sample are stopped earlier.
+Changed default cutoff volume (MPTK_CutOffVolume) from 0.1f to 0.05f. (cab be increased in case of excessive DSP Load)
+Demo TestMidiFilePlayerScripting: add how to stop playing at a specific midi tick. 
+Added direct link to API helper in the inspector header of each prefab.
+
+V2.871 2020-12-29 (Pro only)
+Bug correction on "MIDI Euclidean Rhythms" demo
+Comments Enhancement on code source of the demo "MIDI Euclidean Rhythms"
+Better BPM convert done
+
+V2.87 2020-12-29 (Pro only)
+New MPTK event triggered by the audio engine. Absolutely essential if you are writing something like a sequencer or a rhythm game.
+Update of the "MIDI Euclidean Rhythms" demo. Mainly to check the added event but also with a lot of good function to play music.
+New attributes to MPTKEvent classe (generic tag and tick from creating event)
+
+V2.86 2020-12-02
+Android: Ready to fight latency with Oboe. Integration with Unity asset Oboe for low latency on Android without code to write [Pro].
+Synthesizer: Real Time modification of synth parameters available by script to change default SoundFont generator value (ADSR, LFO, Effect, ...) [Pro].
+MIDI Device: To avoid latency with MIDI keyboard, add callback possibility for reading midi events from a device [Pro]. 
+MIDI File Setup: Improvements of the MIDI File Setup windows.
+Add filter to editor popup list (MIDI file, Preset, Generator ...).
+Add timestamp at creation of a MPTKEvent. Usefull for building Rhytm Game.
+Prefab MidiExternalPlay: now able to load and play MIDI from a byte array.
+Corrected MIDI Loading for error in some cases when midi tcontains a sysex.
+Demo TestMidiFilePlayerScripting: add demo for method MPTK_TickCurrent to set random start playing inside the MIDI file.
+Demo TestMidiStream: have fun with MTPK_ModifySynthParameter to change synth behaviors [Pro].
+Demo TestEuclideanRhythme: add a tap zone to trig hit drum manually. Check latency and real time synth change with MTPK_ModifySynthParameter [Pro].
+Demo TestMidiKeyboard: switch to callback read midi events mode.
+
+V2.85 2020-10-22
+MIDI Device: MIDI output device capabilities on top of MIDI reading device [Pro].
+Prefab all: "Release Same Note" and "Kill By Exclusive Class" are now visibles from all prefab editor.
+Prefab MidiStreamPlayer:  "Kill By Exclusive Class" set to false by default.
+Demo EuclideanRhythme: Add Hit Volume + Minor design change [Pro].
+MIDI File Writer: new class, add high level set of functions [Pro].
+Prefab MidiExternalPlayer: add better control on MIDI loading error [Pro].
+Issue corrected: with drum kit, in some case, hit was kill too soon, corrected!
+Add new demo: read and write MIDI messages with a connected device (synthesizer, keyboard, light console ...) [Pro].
+Corrected MPTK_LoadLiveSF path(thx Mike!) [Pro]
+
+V2.841 2020-09-14
+MIDI Setup and SoundFont Setup Windows: design change to be compliant with recent versions of Unity.
+MIDI Setup Windows: Add function to load all Midis from a folder.
+
+V2.84 2020-09-09
+MIDI Player: Add functions to facilitate integration with Bolt [Pro].
+MIDI Player: Add functions able to force preset by channel regardless MIDI Change Preset message from the MIDI.
+MIDI Player: Remove wait time when switching between MIDI. Now, can switch between MIDI in an instant. 
+MIDI Player: Start and Stop playing gradually (ramp-up) [Pro]. 
+MIDI Player: Call MPTK_Stop when MidiFilePlayer is destroyed (more secure than only OnApplicationQuit). 
+MIDI Channel: Consistency, now all MIDI channels number are in the range 0 to 15 (so, drum is on channel 9).
+MIDI Player: now play with Time.timeScale = 0.
+Prefab MidiListPlayer: Inspector duration format saved [Pro].
+Prefab MidiExternalPlayer: Better error management [Pro].
+Demo TestMidiStream: Better demonstration for the Chord and Scales generators [Pro].
+Demo TestMidiFilePlayerScripting: Change instrument/preset, disable/enable channel on fly.
+Demo TestMidiPlayList: Add new functions and some corrections [Pro].
+Demo EuclideanRhythme: Add Mute and Solo filter + Minor design change [Pro].
+Demo TestExternalMidiPlay: Minor design change and add MIDI Online Roulette!!! [Pro].
+
+V2.83 2020-06-27
+Add Spatialization by channel/instrument [Pro]
+Add new Demo for spatialization by channel/instrument [Pro].
+Add New API and inspector attributes for ReleaseSameNote and KillByExclusiveClass modifier.
+Change MPTK_PauseOnDistance remplaced by MPTK_Spatialize.
+
+V2.82 2020-05-15
+Add Spatialization capabilities. Microsoft HRTF Spatializer and Oculus Spatializer tested.
+Add an optionnal delay before playing a note or a chord (default is 0), humanizing and playing arpeggio is now possible.
+Add API to define volume by midi channel.  
+Add integration with Adventure Creator - [Pro]
+Add integration with PlayerMaker - [Pro]
+Add capabilities to build Range and Chord (usefull for algo music) - [Pro]
+Add direct links to documentation in Prefab Inspector.
+Performance: replace DateTime.Now (thank Peter!).
+Performance: new rule in case of DSP overload: try to stop one older voice.
+Issue corrected: buffering voices was disabled, possible performance issue.
+Issue corrected: remove init synth when a MIDI is already playing.
+Issue corrected: trigger a MIDI Pause just after a MIDI Play create weird sounds when unpause.
+Issue corrected: missing 13 pages of documentation for MidiSynth class!!!
+Demo EuclideanRhythm: 3D animation + Humanization parameters.
+Demo TestMidiStream: add chord builder tests.
+Demo TestMidiFilePlayerMulti: take in account spatialization.
+Demo TestSpatialization: new demo.
+
+V2.81 2020-04-11
+Update text and url link in the store description (mainly for integration with other assets).
+
+V2.8 2020-04-03
+Add fluidsynth effects [Pro]
+Add Unity effects [Pro]
+Add integration with Cinematic Sequencer - Slate [Pro]
+Disable iOS synth change
+Remove debug flag set in 2.71 ;-)
+Correct bug on Pause midi with delay
+
+V2.71 2020-03-13
+Corrected lost of midi events at Startup in some cases.
+Added the MPTK Events "OnEventStartPlayMidi" when MIDI is looped.
+Improved management of filter midi event in MIDI File Setup Windows.
+Support from Unity versions 2017.4 Long Term Support.
+
+V2.7 2020-02-14
+Added loading soundfont on the fly from local device or from the web [PRO].
+Rewrited MIDI Sequencer. Now played in a separate thread for more accuracy, better performance, change tempo and speed on fly.
+Added function "Start playing from the first note".
+Added "Pause when focus loss". Essential for smartphone!
+Added new attributes to evaluate accuracy and performance for MIDI Playing and SoundFont Synthesizer.
+Replaced deprecated WWW method with UnityWebRequest for MidiExternalPlay prefab [PRO].
+Changed MPTK_Duration. Now takes into account the change of tempo inside the MIDI. 
+Added MPTK_DurationMS. Give duration in milliseconds.
+Removed MPTK_RealDuration. Use MPTK_Duration in place.
+Created a Android (APK) demo available on demand.
+Created a Windows demo available on demand.
+Corrected timing accuracy with MacOS.
+Corrected bad sound when changing tempo, position, speed when playing
+
+V2.65 2019-12-15
+Update the "MIDI File Setup" window : detailed midi file analyzer, new design of the page, ....
+Add Pitch change midi event and update demo TestMidiStream.
+Change default parameters for MidiInReader prefab to Core player [PRO].
+Now reading Marker MIDI metaevent
+Corrected an issue with the Sustain control which can generate CPU overload and cracking noise.
+Corrected refresh selected SoundFont from "SoundFont Setup" window [PRO].
+
+V2.6 2019-11-26
+Add MIDI input functions (Windows and MacOS only) [PRO].
+New Prefab MidiInReader and API to read a MIDI keyboard (Windows and MacOS only) [PRO].
+Add possibility to change Unity Audio buffer size and synth rate for again better tempo accuracy, better sound, low latency.
+Add looping functions inside a MIDI file with MidiListPlayer [PRO].
+Full rewrite of the MidiListPlayer Inspector [PRO].
+Improvement of MidiListPlayer API  [PRO].
+Now can keep only drum bank from a SoundFont (example of use: game based on drum) [PRO].
+New demo based on Euclidean Rhythm (rhythm box) [PRO].
+New demo based on MidiInReader [PRO].
+Added chm format for API documentation.
+Corrected: Move the OnEventStartPlayMidi closer to the start of the midi processing 
+Corrected: MPTK_Load(string midiname) with Android.
+Corrected: demonstration CatchMusic
+
+V2.5 2019-10-26
+New MIDI Synth based on the very good fluidsynth project.
+Follows the Full SoundFont and MIDI norms.
+Great improvement in the tempo accuracy.
+Now able to process hundred voices in parallel.
+Add processing of meta event Lyrics for displaying in the inspector.
+Demo TestMidiFilePlayerScripting: Add processing of meta event Lyrics.
+
+V2.05 2019-05-01
+Add Enable/Disable channels methods to the MIDI synth: enable/disable with MPTK_ChannelEnableSet. 
+Add Preset and Bank change by script with MPTK_ChannelPresetChange
+Add channel information with MPTK_ChannelEnableGet, MPTK_ChannelPresetGetIndex, MPTK_ChannelBankGetIndex, MPTK_ChannelPresetGetName, MPTK_ChannelCount
+Add ToString() method to MPTKEvent class.
+Add MPTK_UnPause method to MidiFilePlayer and MidiListPlayer prefabs.
+Add MPTK_RealDuration calculated according with tempo change found in the midi - Experimental!
+Add Track index to MPTKEvent when reading from midi file.
+Add Track count properties to class MidiLoad.
+Add crossfade capabilities between two MIDI files with MidiListPlayer (PRO only).
+Corrected processing of midi position in MidiFilePlayer Inspector which causes in some cases a nasty sound at the end of the midi.
+Corrected MidiExternalPlayer "Play At Startup" attribute that was not processed.
+Corrected the reading of the soundfont wave attribute "pitch correction" which could generate wrong sounds in seldom cases.
+Corrected MIDI file order when adding a new MIDI file.
+Demo TestMidiPlayer: Remove reset Speed and Transpose to default when a new midi file is played.
+
+V2.04 2019-05-01
+Calculate MIDI duration after loading a MIDI
+Corrected calculated Duration which was wrong in some cases
+Class MidiLoad: Add MPTK_InitialTempo attribute
+Prefab MidiListPlayer: Add MPTK_Load() method
+Add two new reasons for stop midi: next and previous
+Demo TestMidiFilePlayerScripting: Add display of MIDI information
+Demo TestMidiFileLoad: Add display of attributes
+Demo TestMidiListPlayer: Add play previous button and events trigger by script. 
+
+V2.03 2019-04-15
+New demonstration for using MidiLoad class. See scene TestMidiFileLoad.
+Improved processing time and regularity of MIDI event.
+Corrected "Keep MIDI Note Off" attribute 
+
+V2.02 2019-03-17
+Defined default midi tempo to 120 rather 80.
+Corrected “Play At Startup” attribute which did not worked well.
+Published TestMidiListPlayer.cs for demonstration of use.
+New design for TestMidiFilePlayerMulti demo dedicated to a great Musician.
+Corrected attributes not saved on Custom Inspector 
+
+V2.01 2019-03-02
+Corrected bad loop wave attributes.
+
+V2.00 2019-03-02
+New MIDI Synth based on the very good fluidsynth project.
+New class MidiLoad. Useful to load and process all the MIDI events from a MIDI.  
+Added Karaoke Capabilities.
+New SoundFont format: time to load and size divided by 20 and more compliant respect of generator, modulator, envelope …
+Added Real Time modulator (Control Change Event).
+Added Effect processing in relation with the SoundFont: low pass filter, reverb, chorus. 
+Enhancement of the SoundFont import window: select bank to keep or remove.
+Possibility to keep all banks from the SoundFont and change bank with a Control Change event
+Better coherence of the MPTK API. New class MPTKEvent to process all kind of MIDI Event.
+Access to the ticks information to manage an accurate position in the MIDI from the inspector and from the API.
+Added new event: OnEventSynthAwake , OnEventSynthStarted
+Use of the genious ‘More Effective Coroutines’ from Trinary Software to a better Coroutines management.
+And a lot of improvements!
+
+V1.96 2018-12-15 
+Corrected issue with the Compifont SoundFont which includes characters not authorized in XML
+
+V1.95 2018-11-17 
+Corrected bad sample Loop attributes in case SampleModes generator is defined in the SoundFont global zone.
+
+V1.94 2018-11-01 
+Added load and play midi from an external source: web or desktop [PRO]
+
+V1.93 2018-10-15
+Corrected path error on SoundFont when moving the project folder.
+
+V1.92 2018-10-06
+Added Demonstration Scene to access each demonstration scene.
+Removed Attenuation effect – will be push to a future version.
+API Changes:
+Renamed class MidiFileWriter to MPTK_MidiFileWriter [PRO]
+Renamed class MidiListPlayer to MPTK_MidiListPlayer [PRO]
+
+V1.91 2018-09-24
+Added to TestMidiWriter an very light sequencer to show how to create a MIDI file [Pro]
+Added to TestMidiStreamSimple more control to show how API can be used
+Corrected Instruments not working (mainly with drumkit)
+
+V1.9 2018-09-10
+Added new MidiListPlayer GameObject able to lead MIDI play list [PRO]
+Added new class to write MIDI file from MPTK
+Added capacity of playing multiple waves for one note when SoundFont contains overlapped zone
+Added processing of the Panoramic SoundFont parameter when playing waves
+Added processing of the Attenuation SoundFont parameter when playing waves
+Added flag in MIDI Player Global Inspector to enable or disable multiple playing [PRO]
+Added flag in MIDI Player Global Inspector to enable or disable Panoramic [PRO]
+Added ReleaseTime change with MidiStreamPlayer Inspector
+Added management of MIDI Controller Expression and Pan
+Redesign of MIDI Player Global Inspector. Now SoundFont can be changed at run time and edit time [PRO]
+Redesign of MIDI Information in MidiFilePlayer Inspector
+Redesign of MIDI paramerters in MidiFilePlayer Inspector: quantization, change temp, change pan, noteoff, log events
+Added keyboard shortcut to MIDI and SoundFont setup.
+Added a contextual menu item on Hierarchy to add MidiFilePlayer and MidiStreamPlayer GameObject.
+Corrected extraction of looped wave [PRO]
+Corrected “Soundfont setup” bank selection [PRO]
+API Changes:
+Created a new class MidiFileWriter
+Added MPTK_KeepNoteOff in class MidiFilePlayer 
+Added MPTK_EnablePanChange in class MidiFilePlayer 
+Changed in class MidiFilePlayer MPTK__IsPaused to MPTK_IsPaused 
+
+V1.8 - 2018-07-20
+Added management of the Stop note for midi stream
+Added “Direct send to player” parameter in MidiFilePlayer Inspector
+Added management of MIDI MetaEvent
+Added MIDI Info in MidiFilePlayer Inspector (textual information from MIDI file)
+A more friendly experience for  SoundFont Setup Windows.
+Correct Help & Contact box with the right link to Pro version and Help site.
+Added IsSharp properties for class  HelperNoteLabel.
+Corrected demo TestMidiFilePlayerMulti when original MIDI file has been modified.
+Checked with Unity version 2018.2
+API Changes:
+Added in class MidiFilePlayer MPTK_DirectSendToPlayer
+
+V1.7 - 2018-07-01
+Added Play and Stop a note with the MidiStreamPlayer component
+New demo « Catch Music », could become a game ;-)
+Corrected some defect and bad url
+Added a Readme asset in Project
+API Changes:
+New API for MPTKNote class
+New API for MidiPlayer class
+
+V1.6 - 2018-06-15
+Added ReleaseTime change with MidiFilePlayer Inspector
+Added Display MIDI info in inspector
+Changed Soundfonts On Fly from Inspector [PRO]
+Corrected Speed change with MidiFilePlayer Inspector
+
+V1.5 - 2018-06-01
+First release published on the store

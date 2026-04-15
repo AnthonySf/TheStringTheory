@@ -8,6 +8,13 @@ public enum GuitarRenderMode
     Tabs
 }
 
+public enum HighwayCharacterDisplayMode
+{
+    Always,
+    Never,
+    HeroModeOnly
+}
+
 public enum GameplayNoteResult
 {
     Pending,
@@ -178,6 +185,10 @@ public sealed class GuitarGameplaySnapshot
     public bool isPaused;
     public bool noteByNoteModeEnabled;
     public bool noteByNoteWaitingForMatch;
+    public bool heroModeEnabled;
+    public int heroModeHeartCount;
+    public int currentHeroHeartsRemaining;
+    public bool showHighwayCharacter;
     public bool loopEnabled;
     public float loopStartTime;
     public float loopEndTime;
@@ -214,14 +225,32 @@ public sealed class GuitarGameplaySnapshot
     public bool showSongSelection;
     public bool songSelectionSongConfirmed;
     public bool showTrackSelection;
+    public bool showToneLab;
+    public bool showNotesDetectorTestMenu;
+    public bool showGameModes;
+    public bool showHeroModeSettings;
+    public int selectedGameModesIndex;
+    public int selectedHeroModeSettingsIndex;
+    public int selectedNotesDetectorTestIndex;
     public int selectedPauseActionIndex;
     public int selectedSongSettingsIndex;
     public List<string> availableSongNames;
     public List<string> availableSongSubtitles;
+    public List<string> availableSongArtworkPaths;
     public List<float> availableSongScores;
+    public List<string> availableSongScoreTexts;
     public int selectedSongIndex;
+    public string selectedLibrarySongSubtitle;
+    public string selectedLibrarySongArtworkPath;
+    public int selectedLibrarySongTrackCount;
+    public int selectedLibrarySongHeroBestHeartsRemaining;
+    public int selectedLibrarySongHeroBestHeartsTotal;
+    public bool selectedLibrarySongHasMp3;
+    public bool selectedLibrarySongHasMidi;
+    public bool selectedLibrarySongIsCurrent;
     public List<string> availableTrackNames;
     public List<float> availableTrackScores;
+    public List<string> availableTrackScoreTexts;
     public int selectedTrackIndex;
     public string currentSongDisplayName;
     public int songListScrollOffset;
@@ -229,6 +258,14 @@ public sealed class GuitarGameplaySnapshot
     public float tabSpeedOffsetPercent;
     public float songStartDelaySeconds;
     public float songVolumePercent;
+    public string songPlaybackAudioModeLabel;
+    public bool songPlaybackUsesGeneratedMode;
+    public bool generatedAudioTrackSelectionAvailable;
+    public string generatedAudioTrackSelectionSummary;
+    public bool showGeneratedAudioTrackSelectionPopup;
+    public List<string> generatedAudioTrackNames;
+    public List<bool> generatedAudioTrackEnabled;
+    public int selectedGeneratedAudioTrackIndex;
     public string selectedTrackDisplayName;
     public string trackSelectionHint;
     public string offsetScopeLabel;
@@ -241,8 +278,31 @@ public sealed class GuitarGameplaySnapshot
     public float songDuration;
     public float songProgressNormalized;
     public bool songEnded;
+    public bool songEndedAsGameOver;
     public int selectedSongEndActionIndex;
     public float currentTrackBestScorePercent;
+    public float currentTrackHeroBestScorePercent;
+    public int currentTrackHeroBestHeartsRemaining;
+    public int currentTrackHeroBestHeartsTotal;
+    public string notesDetectorBackendLabel;
+    public string notesDetectorStatusText;
+    public string notesDetectorDetailText;
+    public List<string> notesDetectorAvailableInputDevices;
+    public int selectedNotesDetectorInputDeviceIndex;
+    public List<string> notesDetectorPresetLabels;
+    public int selectedNotesDetectorPresetIndex;
+    public string notesDetectorSelectedPresetLabel;
+    public List<NativeDetectorSettingSnapshot> notesDetectorSettings;
+    public string notesDetectorFastNotesText;
+    public string notesDetectorAiNotesText;
+    public bool showNotesDetectorRoutinePopup;
+    public string notesDetectorRoutineInstructionText;
+    public string notesDetectorRoutineTargetText;
+    public string notesDetectorRoutineStatusText;
+    public string notesDetectorRoutineProgressText;
+    public List<string> notesDetectorRoutineTabRows;
+    public bool notesDetectorRoutineStatusOk;
+    public bool notesDetectorRoutineCompleted;
     public bool showStartupTuningReminder;
     public bool showGlobalSettings;
     public int selectedGlobalSettingsTopIndex;

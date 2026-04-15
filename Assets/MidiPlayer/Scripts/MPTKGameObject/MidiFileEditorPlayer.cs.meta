@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 1c49e7b9f9f98834d83130c2b73c629f
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/MPTKGameObject/MidiFileEditorPlayer.cs
+  uploadId: 889890

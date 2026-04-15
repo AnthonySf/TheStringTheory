@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: e516073c9ca08494c86be67022be99bc
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Mozart - Requiem Introitus.bytes
+  uploadId: 889890

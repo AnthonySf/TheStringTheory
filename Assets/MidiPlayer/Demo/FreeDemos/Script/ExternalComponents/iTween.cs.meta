@@ -1,0 +1,20 @@
+fileFormatVersion: 2
+guid: b5b4c07ddb3953f43b288c4b94caac73
+timeCreated: 1526927633
+licenseType: Store
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/Script/ExternalComponents/iTween.cs
+  uploadId: 889890

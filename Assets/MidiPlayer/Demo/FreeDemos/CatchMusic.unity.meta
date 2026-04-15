@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: d08fbae9202e8bd4a8b34f7af4647c3d
+timeCreated: 1528615553
+licenseType: Store
+DefaultImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Demo/FreeDemos/CatchMusic.unity
+  uploadId: 889890

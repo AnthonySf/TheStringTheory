@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: 54c9f5a4dd6c1a6458e064d954b53ba6
+TextScriptImporter:
+  externalObjects: {}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Resources/MidiDB/Moby - Alone.bytes
+  uploadId: 889890

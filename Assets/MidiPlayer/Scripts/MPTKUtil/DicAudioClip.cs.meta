@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: b110c42c13641844e8d3132bb27490cc
+timeCreated: 1514888029
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 107994
+  packageName: Maestro - Midi Player Tool Kit - Free
+  packageVersion: 2.19.0
+  assetPath: Assets/MidiPlayer/Scripts/MPTKUtil/DicAudioClip.cs
+  uploadId: 889890
