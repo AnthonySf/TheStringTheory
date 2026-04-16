@@ -57,7 +57,8 @@ Example `song.json`:
 {
   "songId": "november-rain",
   "displayName": "November Rain",
-  "subtitle": "Guns N' Roses",
+  "artist": "Guns N' Roses",
+  "album": "Use Your Illusion I",
   "difficulty": 4
 }
 ```

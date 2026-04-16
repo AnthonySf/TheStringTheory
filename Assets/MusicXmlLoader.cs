@@ -16,6 +16,23 @@ public static class MusicXmlLoader
         public int NoteCount;
         public int TabCount;
         public int Score;
+        public int[] StringTuningPitches;
+        public string TuningDisplayName;
+
+        public MusicXmlPartSummary Clone()
+        {
+            return new MusicXmlPartSummary
+            {
+                Index = Index,
+                PartId = PartId,
+                Name = Name,
+                NoteCount = NoteCount,
+                TabCount = TabCount,
+                Score = Score,
+                StringTuningPitches = StringTuningPitches != null ? (int[])StringTuningPitches.Clone() : null,
+                TuningDisplayName = TuningDisplayName
+            };
+        }
     }
 
     private static readonly int[] stringBasePitches = { 40, 45, 50, 55, 59, 64 }; // E2 A2 D3 G3 B3 E4
@@ -245,6 +262,7 @@ public static class MusicXmlLoader
             if (lower.Contains("vocal")) score -= 200;
             if (lower.Contains("piano")) score -= 100;
 
+            int[] tuningPitches = ParsePartTuningPitches(part);
             summaries.Add(new MusicXmlPartSummary
             {
                 Index = i,
@@ -252,7 +270,9 @@ public static class MusicXmlLoader
                 Name = name,
                 NoteCount = noteCount,
                 TabCount = tabCount,
-                Score = score
+                Score = score,
+                StringTuningPitches = tuningPitches,
+                TuningDisplayName = StringTuningUtils.FormatTuningDisplayName(tuningPitches)
             });
         }
 
@@ -761,6 +781,52 @@ public static class MusicXmlLoader
         }
 
         return normalized;
+    }
+
+    private static int[] ParsePartTuningPitches(XElement part)
+    {
+        if (part == null)
+            return null;
+
+        XElement firstStringedAttributes = part
+            .Descendants()
+            .FirstOrDefault(element =>
+                element.Name.LocalName == "attributes" &&
+                element.Elements().Any(child => child.Name.LocalName == "staff-details" &&
+                                                child.Elements().Any(grandChild => grandChild.Name.LocalName == "staff-tuning")));
+        if (firstStringedAttributes == null)
+            return null;
+
+        XElement staffDetails = firstStringedAttributes.Elements().FirstOrDefault(child => child.Name.LocalName == "staff-details");
+        if (staffDetails == null)
+            return null;
+
+        List<(int line, int midi)> tunings = new List<(int line, int midi)>();
+        foreach (XElement tuningElement in staffDetails.Elements().Where(child => child.Name.LocalName == "staff-tuning"))
+        {
+            int line = ParseInt(Attr(tuningElement, "line"), 0);
+            string step = ChildValue(tuningElement, "tuning-step");
+            int octave = ParseInt(ChildValue(tuningElement, "tuning-octave"), int.MinValue);
+            if (string.IsNullOrWhiteSpace(step) || octave == int.MinValue)
+                continue;
+
+            int alter = ParseInt(ChildValue(tuningElement, "tuning-alter"), 0);
+            int pitchClass = StringTuningUtils.TryGetPitchClass(step.Trim(), out int resolvedPitchClass)
+                ? resolvedPitchClass
+                : -1;
+            if (pitchClass < 0)
+                continue;
+
+            tunings.Add((line, ((octave + 1) * 12) + pitchClass + alter));
+        }
+
+        if (tunings.Count == 0)
+            return null;
+
+        return tunings
+            .OrderBy(tuning => tuning.line)
+            .Select(tuning => tuning.midi)
+            .ToArray();
     }
 
     private static List<ParsedTechniqueSegment> BuildInitialTechniqueSegments(

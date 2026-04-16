@@ -293,7 +293,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         if (applyHighwayOverrides)
             CreateLowerFillBand(shellMinY - extraLowerFillHeight, shellMinY + 0.02f, farZ - 0.025f, shellWidth * 1.12f);
     }
-
+ 
     private void CreateMainGradientBand(float minY, float maxY, float z, float width)
     {
         float centerY = (minY + maxY) * 0.5f;

@@ -44,7 +44,11 @@ internal static class AlphaTabGpLoader
                 Name = track.name,
                 NoteCount = noteCount,
                 TabCount = tabCount,
-                Score = score
+                Score = score,
+                StringTuningPitches = track.stringTuningPitches != null ? (int[])track.stringTuningPitches.Clone() : null,
+                TuningDisplayName = string.IsNullOrWhiteSpace(track.tuningDisplayName)
+                    ? StringTuningUtils.FormatTuningDisplayName(track.stringTuningPitches)
+                    : track.tuningDisplayName
             });
         }
 

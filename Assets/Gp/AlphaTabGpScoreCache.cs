@@ -23,6 +23,8 @@ internal sealed class AlphaTabGpTrackContext
     public string shortName;
     public bool isPercussion;
     public int midiProgram;
+    public int[] stringTuningPitches;
+    public string tuningDisplayName;
     public readonly HashSet<int> usedChannels = new HashSet<int>();
 }
 
@@ -204,7 +206,9 @@ internal static class AlphaTabGpScoreCache
                 name = string.IsNullOrWhiteSpace(track.Name) ? $"Track {trackIndex + 1}" : track.Name,
                 shortName = track.ShortName,
                 isPercussion = isPercussion,
-                midiProgram = Mathf.Clamp(Mathf.RoundToInt((float)playback.Program), 0, 127)
+                midiProgram = Mathf.Clamp(Mathf.RoundToInt((float)playback.Program), 0, 127),
+                stringTuningPitches = ExtractTrackTuningPitches(track),
+                tuningDisplayName = ExtractTrackTuningDisplayName(track)
             });
         }
 
@@ -321,7 +325,7 @@ internal static class AlphaTabGpScoreCache
                                 int fret;
                                 bool isStringed = TryResolveStringPosition(note, out stringIdx, out fret);
                                 if (!isStringed)
-                                    ResolveFallbackStringPosition(midiNote, out stringIdx, out fret);
+                                    ResolveFallbackStringPosition(trackContext.stringTuningPitches, midiNote, out stringIdx, out fret);
 
                                 candidates.Add(new SourceCandidate
                                 {
@@ -348,6 +352,33 @@ internal static class AlphaTabGpScoreCache
             .ThenBy(candidate => candidate.midiNote)
             .ThenBy(candidate => candidate.stringIdx)
             .ToList();
+    }
+
+    private static int[] ExtractTrackTuningPitches(Track track)
+    {
+        if (track?.Staves == null)
+            return null;
+
+        Staff stringedStaff = track.Staves.FirstOrDefault(staff => staff != null && staff.IsStringed && staff.Tuning != null && staff.Tuning.Count > 0);
+        if (stringedStaff == null)
+            return null;
+
+        return stringedStaff.Tuning.Select(value => Mathf.RoundToInt((float)value)).ToArray();
+    }
+
+    private static string ExtractTrackTuningDisplayName(Track track)
+    {
+        if (track?.Staves != null)
+        {
+            Staff stringedStaff = track.Staves.FirstOrDefault(staff => staff != null && staff.IsStringed);
+            if (stringedStaff?.StringTuning != null && !string.IsNullOrWhiteSpace(stringedStaff.StringTuning.Name))
+                return stringedStaff.StringTuning.Name;
+
+            if (!string.IsNullOrWhiteSpace(stringedStaff?.TuningName))
+                return stringedStaff.TuningName;
+        }
+
+        return StringTuningUtils.FormatTuningDisplayName(ExtractTrackTuningPitches(track));
     }
 
     private static Dictionary<MatchKey, Queue<SourceCandidate>> BuildExactBuckets(List<SourceCandidate> candidates)
@@ -543,25 +574,27 @@ internal static class AlphaTabGpScoreCache
         return true;
     }
 
-    private static void ResolveFallbackStringPosition(int midiNote, out int stringIdx, out int fret)
+    private static void ResolveFallbackStringPosition(int[] tuningPitches, int midiNote, out int stringIdx, out int fret)
     {
-        if (TryMapMidiToGuitar(midiNote, out stringIdx, out fret))
+        if (TryMapMidiToGuitar(tuningPitches, midiNote, out stringIdx, out fret))
             return;
 
         stringIdx = 0;
-        fret = Mathf.Max(0, midiNote - GuitarStringBasePitches[0]);
+        int[] resolvedTuning = tuningPitches != null && tuningPitches.Length > 0 ? tuningPitches : GuitarStringBasePitches;
+        fret = Mathf.Max(0, midiNote - resolvedTuning[0]);
     }
 
-    private static bool TryMapMidiToGuitar(int midiPitch, out int stringIdx, out int fret)
+    private static bool TryMapMidiToGuitar(int[] tuningPitches, int midiPitch, out int stringIdx, out int fret)
     {
         stringIdx = -1;
         fret = -1;
         int bestString = -1;
         int bestFret = int.MaxValue;
+        int[] resolvedTuning = tuningPitches != null && tuningPitches.Length > 0 ? tuningPitches : GuitarStringBasePitches;
 
-        for (int s = 0; s < GuitarStringBasePitches.Length; s++)
+        for (int s = 0; s < resolvedTuning.Length; s++)
         {
-            int candidateFret = midiPitch - GuitarStringBasePitches[s];
+            int candidateFret = midiPitch - resolvedTuning[s];
             if (candidateFret < 0 || candidateFret > 24)
                 continue;
 

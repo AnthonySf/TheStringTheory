@@ -169,6 +169,8 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label songNameLabel;
 
     private readonly Label trackNameLabel;
+    private readonly Label trackTuningLabel;
+    private readonly VisualElement songCardLogo;
 
     private readonly Label speedBadgeLabel;
 
@@ -266,9 +268,19 @@ public sealed class TabsSongHeaderOverlay
 
         public Label metaLabel;
 
+        public VisualElement difficultyColumn;
+
         public Label difficultyLabel;
 
         public Label scoreLabel;
+
+        public VisualElement favoriteColumn;
+
+        public VisualElement scoreColumn;
+
+        public Button favoriteButton;
+
+        public Label favoriteLabel;
 
     }
 
@@ -291,9 +303,6 @@ public sealed class TabsSongHeaderOverlay
         public Label scoreLabel;
 
     }
-
-
-
     private sealed class LibraryTrackRow
 
     {
@@ -1246,11 +1255,20 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly VisualElement selectionSplitDivider;
 
+    private readonly Label selectionSongsListTitleLabel;
+
     private readonly Label selectionSubtitleLabel;
+
+    private readonly Button selectionBrowseAllButton;
+
+    private readonly Button selectionBrowseArtistsButton;
+
+    private readonly Button selectionBrowseAlbumsButton;
 
     private readonly Label selectionInfoInstructionLabel;
 
     private readonly Label selectionInfoSummaryLabel;
+    private readonly Label selectionInfoTuningLabel;
 
     private readonly VisualElement selectionArtworkCard;
 
@@ -1293,6 +1311,10 @@ public sealed class TabsSongHeaderOverlay
     private readonly ScrollView selectionScrollView;
 
     private readonly List<SongSelectionRow> selectionRows = new List<SongSelectionRow>();
+
+    private int hoveredLibraryBrowseModeIndex = -1;
+
+    private int currentLibraryBrowseModeIndex;
 
     private float currentMenuLayoutScale = 1f;
 
@@ -1403,6 +1425,8 @@ public sealed class TabsSongHeaderOverlay
     private int lastAutoScrolledTrackIndex = -1;
 
     private int hoveredSongRowIndex = -1;
+
+    private int hoveredSongFavoriteRowIndex = -1;
 
     private int hoveredLibraryTrackRowIndex = -1;
 
@@ -1558,13 +1582,14 @@ public sealed class TabsSongHeaderOverlay
 
         songCard.style.paddingRight = 34f;
 
-        songCard.style.paddingTop = 18f;
+        songCard.style.paddingTop = 12f;
 
         songCard.style.paddingBottom = 20f;
 
         songCard.style.marginBottom = 14f;
 
         songCard.style.marginRight = 24f;
+        songCard.style.position = Position.Relative;
 
         StyleGameplayHudCard(songCard, GameplayHudCardBackgroundColor, radius: 16f);
 
@@ -1572,11 +1597,11 @@ public sealed class TabsSongHeaderOverlay
 
         songCardTopRow.style.flexDirection = FlexDirection.Row;
 
-        songCardTopRow.style.alignItems = Align.Center;
+        songCardTopRow.style.alignItems = Align.FlexStart;
 
-        songCardTopRow.style.justifyContent = Justify.SpaceBetween;
+        songCardTopRow.style.justifyContent = Justify.FlexStart;
 
-        songCardTopRow.style.marginBottom = 12f;
+        songCardTopRow.style.marginBottom = 2f;
 
         Label songCardEyebrowLabel = CreateLabel("NOW PLAYING", 16f, GameplayHudEyebrowColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
 
@@ -1602,19 +1627,17 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement compactSongCardLogo = CreateStringTheoryLogo(34f, 32f, 22f, 0.7f, -4f, 1f);
-
-        compactSongCardLogo.style.alignSelf = Align.Center;
-
-        compactSongCardLogo.style.marginBottom = 0f;
-
-        compactSongCardLogo.style.opacity = 0.72f;
-
-        compactSongCardLogo.style.scale = new Scale(new Vector3(0.84f, 0.84f, 1f));
+        songCardLogo = CreateStringTheoryLogo(34f, 32f, 22f, 0.7f, -4f, 1f);
+        songCardLogo.style.position = Position.Absolute;
+        songCardLogo.style.top = 10f;
+        songCardLogo.style.right = 22f;
+        songCardLogo.style.alignSelf = Align.FlexStart;
+        songCardLogo.style.marginBottom = 0f;
+        songCardLogo.style.opacity = 0.72f;
+        songCardLogo.style.scale = new Scale(new Vector3(0.8f, 0.8f, 1f));
+        songCardLogo.pickingMode = PickingMode.Ignore;
 
         songCardTopRow.Add(songCardEyebrowLabel);
-
-        songCardTopRow.Add(compactSongCardLogo);
 
 
 
@@ -1639,6 +1662,17 @@ public sealed class TabsSongHeaderOverlay
         trackChip.style.marginBottom = 12f;
 
         trackChip.Add(trackNameLabel);
+
+        trackTuningLabel = CreateLabel("Tuning <color=#F99E6B>E Standard</color>", 26f, GameplayHudSecondaryTextColor, bold: false);
+        trackTuningLabel.enableRichText = true;
+        trackTuningLabel.style.letterSpacing = 0.55f;
+        trackTuningLabel.style.unityFontDefinition = modernUiFontDefinition;
+        trackTuningLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        trackTuningLabel.style.textOverflow = TextOverflow.Ellipsis;
+        trackTuningLabel.style.overflow = Overflow.Hidden;
+        trackTuningLabel.style.maxWidth = 1200f;
+        trackTuningLabel.style.marginTop = 2f;
+        trackChip.Add(trackTuningLabel);
 
 
 
@@ -5893,6 +5927,13 @@ public sealed class TabsSongHeaderOverlay
 
         selectionInfoSummaryLabel.style.unityFontDefinition = modernUiFontDefinition;
 
+        selectionInfoTuningLabel = CreateLabel("Tuning <color=#F99E6B>E Standard</color>", 32f, new Color(0.88f, 0.92f, 0.96f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        selectionInfoTuningLabel.enableRichText = true;
+        selectionInfoTuningLabel.style.whiteSpace = WhiteSpace.Normal;
+        selectionInfoTuningLabel.style.marginBottom = 20f;
+        selectionInfoTuningLabel.style.unityFontDefinition = modernUiFontDefinition;
+        selectionInfoTuningLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+
         VisualElement selectionInfoStatsRow = new VisualElement();
 
         selectionInfoStatsRow.style.flexDirection = FlexDirection.Row;
@@ -5953,19 +5994,23 @@ public sealed class TabsSongHeaderOverlay
 
         selectionInfoTextColumn.Add(selectionInfoSummaryLabel);
 
+        selectionInfoTextColumn.Add(selectionInfoTuningLabel);
+
         selectionInfoTextColumn.Add(selectionInfoStatsRow);
 
         selectionInfoHero.Add(selectionArtworkCard);
 
         selectionInfoHero.Add(selectionInfoTextColumn);
 
-        selectionInfoHintLabel = CreateLabel("Review the song details, then choose the arrangement you want to play below.", 22f, new Color(0.82f, 0.85f, 0.90f, 1f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        selectionInfoHintLabel = CreateLabel("Pick the arrangement you want to play.", 22f, new Color(0.82f, 0.85f, 0.90f, 1f), false, TextAnchor.MiddleLeft, useTitleFont: false);
 
         selectionInfoHintLabel.style.whiteSpace = WhiteSpace.Normal;
 
         selectionInfoHintLabel.style.marginTop = 18f;
 
         selectionInfoHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+        selectionInfoHintLabel.style.display = DisplayStyle.None;
 
         selectionArrangementCard = new VisualElement();
 
@@ -6029,7 +6074,7 @@ public sealed class TabsSongHeaderOverlay
 
         arrangementTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
 
-        Label arrangementSubtitle = CreateLabel("The highlighted arrangement is what Start will launch.", 30f, new Color(0.70f, 0.76f, 0.82f, 0.92f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label arrangementSubtitle = CreateLabel("Pick the arrangement you want to play.", 30f, new Color(0.70f, 0.76f, 0.82f, 0.92f), false, TextAnchor.MiddleLeft, useTitleFont: false);
 
         arrangementSubtitle.style.marginBottom = 18f;
 
@@ -6080,8 +6125,6 @@ public sealed class TabsSongHeaderOverlay
         selectionArrangementCard.Add(arrangementSubtitle);
 
         selectionArrangementCard.Add(selectionTrackScrollView);
-
-        selectionArrangementCard.Add(selectionInfoHintLabel);
 
 
 
@@ -6275,23 +6318,63 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        Label selectionSongsListTitle = CreateLabel("Songs", 92f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        selectionSongsListTitleLabel = CreateLabel("Songs", 92f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
 
-        selectionSongsListTitle.style.letterSpacing = 0.4f;
+        selectionSongsListTitleLabel.style.letterSpacing = 0.4f;
 
-        selectionSongsListTitle.style.marginBottom = 6f;
+        selectionSongsListTitleLabel.style.marginBottom = 6f;
 
-        selectionSongsListTitle.style.unityFontDefinition = modernUiFontDefinition;
+        selectionSongsListTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
 
-        selectionSongsListTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+        selectionSongsListTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
 
-        selectionSongsListTitle.style.alignSelf = Align.FlexStart;
+        selectionSongsListTitleLabel.style.alignSelf = Align.FlexStart;
+
+        selectionSongsListTitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+
+        selectionSongsListTitleLabel.style.overflow = Overflow.Hidden;
 
         selectionSubtitleLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
 
         selectionSubtitleLabel.style.alignSelf = Align.FlexStart;
 
-        selectionSubtitleLabel.style.marginBottom = 18f;
+        selectionSubtitleLabel.style.marginBottom = 0f;
+
+        selectionSubtitleLabel.style.flexGrow = 1f;
+
+        VisualElement selectionLibraryToolbarRow = new VisualElement();
+
+        selectionLibraryToolbarRow.style.flexDirection = FlexDirection.Row;
+
+        selectionLibraryToolbarRow.style.alignItems = Align.Center;
+
+        selectionLibraryToolbarRow.style.justifyContent = Justify.SpaceBetween;
+
+        selectionLibraryToolbarRow.style.marginBottom = 18f;
+
+        VisualElement selectionBrowseButtonsRow = new VisualElement();
+
+        selectionBrowseButtonsRow.style.flexDirection = FlexDirection.Row;
+
+        selectionBrowseButtonsRow.style.alignItems = Align.Center;
+
+        selectionBrowseButtonsRow.style.flexShrink = 0f;
+
+        selectionBrowseAllButton = CreateLibraryBrowseModeButton("All", 0);
+
+        selectionBrowseArtistsButton = CreateLibraryBrowseModeButton("Artists", 1);
+
+        selectionBrowseAlbumsButton = CreateLibraryBrowseModeButton("Albums", 2);
+
+        selectionBrowseButtonsRow.Add(selectionBrowseArtistsButton);
+
+        selectionBrowseButtonsRow.Add(selectionBrowseAlbumsButton);
+
+        selectionBrowseButtonsRow.Add(selectionBrowseAllButton);
+
+        selectionLibraryToolbarRow.Add(selectionSubtitleLabel);
+
+        selectionLibraryToolbarRow.Add(selectionBrowseButtonsRow);
 
 
 
@@ -6339,9 +6422,9 @@ public sealed class TabsSongHeaderOverlay
 
         selectionListCard.style.overflow = Overflow.Visible;
 
-        selectionListCard.Add(selectionSongsListTitle);
+        selectionListCard.Add(selectionSongsListTitleLabel);
 
-        selectionListCard.Add(selectionSubtitleLabel);
+        selectionListCard.Add(selectionLibraryToolbarRow);
 
         selectionListCard.Add(selectionScrollView);
 
@@ -7629,6 +7712,8 @@ public sealed class TabsSongHeaderOverlay
 
         songCard.Add(songCardTopRow);
 
+        songCard.Add(songCardLogo);
+
         songCard.Add(songNameLabel);
 
         songCard.Add(trackChip);
@@ -7719,10 +7804,15 @@ public sealed class TabsSongHeaderOverlay
 
 
         string trackName = FormatTrackName(snapshot.selectedTrackDisplayName);
+        string trackTuning = string.IsNullOrWhiteSpace(snapshot.selectedTrackTuningLabel)
+            ? string.Empty
+            : StringTuningUtils.FormatTuningRichText("Tuning", snapshot.selectedTrackTuningLabel, "#F99E6B");
 
         songNameLabel.text = songName;
 
         trackNameLabel.text = trackName;
+        trackTuningLabel.text = trackTuning;
+        trackTuningLabel.style.display = string.IsNullOrWhiteSpace(trackTuning) ? DisplayStyle.None : DisplayStyle.Flex;
 
         int resolvedCount = 0;
 
@@ -8083,6 +8173,20 @@ public sealed class TabsSongHeaderOverlay
         trackSelectionOverlay.style.display = showTrackSelection ? DisplayStyle.Flex : DisplayStyle.None;
 
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
+
+        if (showStartupTuningReminder)
+        {
+            string popupTuningLabel = string.IsNullOrWhiteSpace(snapshot.selectedTrackTuningLabel)
+                ? "E Standard"
+                : snapshot.selectedTrackTuningLabel;
+            startupTuningReminderPopup?.SetContent(
+                "INSTRUMENT CHECK",
+                "Before You Play",
+                $"Tune your guitar to <color=#F99E6B>{popupTuningLabel}</color>.",
+                "This song is charted for that tuning. You can force Standard Tuning in General Settings > Gameplay.",
+                "If the song and notes feel mismatched, adjust the song/notes offset in Song Settings. If notes look too close or too far apart, adjust Tabs Sections duration settings.",
+                "Continue");
+        }
 
         startupTuningReminderOverlay.style.display = showStartupTuningReminder ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -8812,7 +8916,7 @@ public sealed class TabsSongHeaderOverlay
     private static string GetAvailableSongScoreText(GuitarGameplaySnapshot snapshot, int songIndex)
 
     {
-        string difficultyLabel = "Unknown";
+        string difficultyLabel = string.Empty;
         if (snapshot.availableSongDifficultyLabels != null && songIndex >= 0 && songIndex < snapshot.availableSongDifficultyLabels.Count)
         {
             string configured = snapshot.availableSongDifficultyLabels[songIndex];
@@ -8828,7 +8932,7 @@ public sealed class TabsSongHeaderOverlay
 
             if (!string.IsNullOrWhiteSpace(text))
 
-                return $"{difficultyLabel}  {text}";
+                return string.IsNullOrWhiteSpace(difficultyLabel) ? text : $"{difficultyLabel}  {text}";
 
         }
 
@@ -8840,8 +8944,13 @@ public sealed class TabsSongHeaderOverlay
 
             : 0f;
 
-        return $"{difficultyLabel}  {score:F1}%";
+        return string.IsNullOrWhiteSpace(difficultyLabel) ? $"{score:F1}%" : $"{difficultyLabel}  {score:F1}%";
 
+    }
+
+    public void SetStartupTuningReminderContent(string eyebrow, string title, string message, string callout, string hint, string primaryText)
+    {
+        startupTuningReminderPopup?.SetContent(eyebrow, title, message, callout, hint, primaryText);
     }
 
     private sealed class GeneratedAudioTrackPopupRow
@@ -8891,6 +9000,153 @@ public sealed class TabsSongHeaderOverlay
 
 
         scoreText = combinedText.Trim();
+
+    }
+
+    private static string BuildLibraryArtistAlbumLine(string artist, string album)
+
+    {
+
+        bool hasArtist = !string.IsNullOrWhiteSpace(artist);
+
+        bool hasAlbum = !string.IsNullOrWhiteSpace(album);
+
+
+
+        if (hasArtist && hasAlbum)
+
+            return $"{artist.Trim()}  •  {album.Trim()}";
+
+
+
+        if (hasArtist)
+
+            return artist.Trim();
+
+
+
+        if (hasAlbum)
+
+            return album.Trim();
+
+
+
+        return "Unknown Artist";
+
+    }
+
+    private Button CreateLibraryBrowseModeButton(string text, int modeIndex)
+
+    {
+
+        Button button = new Button(() => owner?.SetSongLibraryBrowseModeFromUi(modeIndex)) { text = text };
+
+        button.focusable = false;
+
+        button.style.height = 66f;
+
+        button.style.minWidth = 156f;
+
+        button.style.paddingLeft = 22f;
+
+        button.style.paddingRight = 22f;
+
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+        button.style.color = Color.white;
+
+        button.style.fontSize = 32f;
+
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+        button.style.borderTopWidth = 2f;
+
+        button.style.borderRightWidth = 2f;
+
+        button.style.borderBottomWidth = 2f;
+
+        button.style.borderLeftWidth = 2f;
+
+        button.style.borderTopLeftRadius = 10f;
+
+        button.style.borderTopRightRadius = 10f;
+
+        button.style.borderBottomLeftRadius = 10f;
+
+        button.style.borderBottomRightRadius = 10f;
+
+        button.style.unityFontDefinition = modernUiFontDefinition;
+
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        button.style.marginLeft = 12f;
+
+        button.style.letterSpacing = 0.2f;
+
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            hoveredLibraryBrowseModeIndex = modeIndex;
+            UpdateLibraryBrowseModeButtons(currentLibraryBrowseModeIndex);
+        });
+
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            if (hoveredLibraryBrowseModeIndex == modeIndex)
+                hoveredLibraryBrowseModeIndex = -1;
+            UpdateLibraryBrowseModeButtons(currentLibraryBrowseModeIndex);
+        });
+
+        return button;
+
+    }
+
+    private void UpdateLibraryBrowseModeButtons(int selectedModeIndex)
+
+    {
+
+        UpdateLibraryBrowseModeButton(selectionBrowseAllButton, 0, selectedModeIndex);
+
+        UpdateLibraryBrowseModeButton(selectionBrowseArtistsButton, 1, selectedModeIndex);
+
+        UpdateLibraryBrowseModeButton(selectionBrowseAlbumsButton, 2, selectedModeIndex);
+
+    }
+
+    private void UpdateLibraryBrowseModeButton(Button button, int modeIndex, int selectedModeIndex)
+
+    {
+
+        if (button == null)
+
+            return;
+
+
+
+        bool isSelected = selectedModeIndex == modeIndex;
+
+        bool isHovered = hoveredLibraryBrowseModeIndex == modeIndex;
+
+        Color accent = new Color(0.95f, 0.54f, 0.22f, 1f);
+
+        Color neutral = new Color(1f, 1f, 1f, isHovered ? 0.98f : 0.90f);
+
+        Color color = isSelected ? accent : neutral;
+
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+        button.style.color = color;
+
+        button.style.borderTopColor = color;
+
+        button.style.borderRightColor = color;
+
+        button.style.borderBottomColor = color;
+
+        button.style.borderLeftColor = color;
+
+        button.style.scale = isHovered && !isSelected ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
+
+        button.style.opacity = isSelected ? 1f : (isHovered ? 1f : 0.94f);
 
     }
 
@@ -9138,6 +9394,8 @@ public sealed class TabsSongHeaderOverlay
         if (selectionInfoInstructionLabel != null)
 
         {
+            bool selectedEntryIsGroup = snapshot.selectedLibrarySongTrackCount <= 0 &&
+                string.Equals(snapshot.selectedLibrarySongAudioLabel, "--", StringComparison.OrdinalIgnoreCase);
 
             selectionInfoInstructionLabel.text = total <= 0
 
@@ -9147,19 +9405,26 @@ public sealed class TabsSongHeaderOverlay
 
                     ? "Song selected. Review the tracks on the right and launch the highlighted arrangement."
 
-                    : "Choose a song on the left, then inspect its arrangements on the right.";
+                    : selectedEntryIsGroup
+                        ? "Choose an artist or album on the left, then open it to browse its songs."
+                        : "Choose a song on the left, then inspect its arrangements on the right.";
 
             selectionInfoInstructionLabel.style.opacity = 0.92f;
 
         }
 
+        currentLibraryBrowseModeIndex = snapshot.songLibraryBrowseModeIndex;
 
+        if (selectionSongsListTitleLabel != null)
+            selectionSongsListTitleLabel.text = string.IsNullOrWhiteSpace(snapshot.songLibraryListTitle) ? "Songs" : snapshot.songLibraryListTitle;
 
-        selectionSubtitleLabel.text = total > 0
+        UpdateLibraryBrowseModeButtons(currentLibraryBrowseModeIndex);
 
-            ? $"{total} songs loaded"
+        selectionSubtitleLabel.text = string.IsNullOrWhiteSpace(snapshot.songLibraryListStatusText)
 
-            : "No songs";
+            ? (total > 0 ? $"{total} songs" : "No songs")
+
+            : snapshot.songLibraryListStatusText;
 
 
 
@@ -9188,6 +9453,10 @@ public sealed class TabsSongHeaderOverlay
                 ? snapshot.availableSongArtworkPaths[songIndex]
                 : string.Empty;
             ApplyLibraryArtworkToTile(row.artworkTile, row.artworkGlyphLabel, artworkPath, name);
+            bool isFavorited = snapshot.availableSongFavorited != null &&
+                songIndex >= 0 &&
+                songIndex < snapshot.availableSongFavorited.Count &&
+                snapshot.availableSongFavorited[songIndex];
 
             row.metaLabel.text = snapshot.availableSongSubtitles != null && songIndex < snapshot.availableSongSubtitles.Count
 
@@ -9196,13 +9465,31 @@ public sealed class TabsSongHeaderOverlay
                 : string.Empty;
 
             SplitLibraryDifficultyAndScore(GetAvailableSongScoreText(snapshot, songIndex), out string difficultyText, out string scoreText);
+            string configuredDifficultyText = snapshot.availableSongDifficultyLabels != null && songIndex < snapshot.availableSongDifficultyLabels.Count
+                ? snapshot.availableSongDifficultyLabels[songIndex] ?? string.Empty
+                : string.Empty;
             if (row.difficultyLabel != null)
             {
-                row.difficultyLabel.text = difficultyText;
+                row.difficultyLabel.text = configuredDifficultyText;
                 row.difficultyLabel.style.color = new Color(0.88f, 0.92f, 0.96f, isSelected ? 0.76f : 0.58f);
-                row.difficultyLabel.style.display = DisplayStyle.Flex;
+                row.difficultyLabel.style.display = string.IsNullOrWhiteSpace(configuredDifficultyText) ? DisplayStyle.None : DisplayStyle.Flex;
             }
             row.scoreLabel.text = scoreText;
+
+            if (row.favoriteButton != null && row.favoriteLabel != null)
+            {
+                bool showFavorite = !string.IsNullOrWhiteSpace(configuredDifficultyText);
+                bool isFavoriteHovered = songIndex == hoveredSongFavoriteRowIndex;
+                if (row.favoriteColumn != null)
+                    row.favoriteColumn.style.display = showFavorite ? DisplayStyle.Flex : DisplayStyle.None;
+                row.favoriteButton.style.display = showFavorite ? DisplayStyle.Flex : DisplayStyle.None;
+                row.favoriteLabel.text = isFavorited ? "★" : "☆";
+                row.favoriteLabel.style.color = isFavorited
+                    ? new Color(0.95f, 0.54f, 0.22f, 1f)
+                    : new Color(0.88f, 0.92f, 0.96f, isFavoriteHovered ? 0.78f : (isSelected ? 0.70f : 0.58f));
+                row.favoriteButton.style.opacity = isSelected || isFavorited || isFavoriteHovered ? 1f : 0.9f;
+                row.favoriteButton.style.scale = new Scale(isFavoriteHovered ? new Vector3(1.12f, 1.12f, 1f) : Vector3.one);
+            }
 
 
 
@@ -9295,21 +9582,27 @@ public sealed class TabsSongHeaderOverlay
         {
 
             string selectedSongName = snapshot.availableSongNames[selectedIndex];
-            string selectedSongSubtitle = !string.IsNullOrWhiteSpace(snapshot.selectedLibrarySongSubtitle)
-                ? snapshot.selectedLibrarySongSubtitle
-                : "Unknown Artist";
+            string selectedSongSubtitle = BuildLibraryArtistAlbumLine(snapshot.selectedLibrarySongSubtitle, snapshot.selectedLibrarySongAlbum);
             string selectedTrackName = (snapshot.availableTrackNames != null && selectedTrackIndex >= 0 && selectedTrackIndex < snapshot.availableTrackNames.Count)
                 ? snapshot.availableTrackNames[selectedTrackIndex]
                 : "No arrangement selected";
-            string audioSummary = snapshot.selectedLibrarySongHasMp3
-                ? (snapshot.selectedLibrarySongHasMidi ? "MP3 / XML / MIDI" : "MP3 / XML")
-                : (snapshot.selectedLibrarySongHasMidi ? "XML / MIDI" : "XML only");
+            string audioSummary = string.IsNullOrWhiteSpace(snapshot.selectedLibrarySongAudioLabel)
+                ? "--"
+                : snapshot.selectedLibrarySongAudioLabel;
 
             selectionInfoTitleLabel.text = selectedSongName;
             selectionInfoMetaLabel.text = selectedSongSubtitle;
 
             if (selectionInfoSummaryLabel != null)
                 selectionInfoSummaryLabel.text = $"Song {selectedIndex + 1} of {total} | Focused track: {selectedTrackName}";
+            if (selectionInfoTuningLabel != null)
+            {
+                string tuningText = string.IsNullOrWhiteSpace(snapshot.selectedLibrarySongTuningLabel)
+                    ? string.Empty
+                    : StringTuningUtils.FormatTuningRichText("Tuning", snapshot.selectedLibrarySongTuningLabel, "#F99E6B");
+                selectionInfoTuningLabel.text = tuningText;
+                selectionInfoTuningLabel.style.display = string.IsNullOrWhiteSpace(tuningText) ? DisplayStyle.None : DisplayStyle.Flex;
+            }
             if (selectionArtworkGlyphLabel != null)
                 selectionArtworkGlyphLabel.text = BuildLibraryArtworkGlyph(selectedSongName);
             ApplyLibraryArtworkToTile(selectionArtworkCard, selectionArtworkGlyphLabel, snapshot.selectedLibrarySongArtworkPath, selectedSongName);
@@ -9341,6 +9634,11 @@ public sealed class TabsSongHeaderOverlay
 
             if (selectionInfoSummaryLabel != null)
                 selectionInfoSummaryLabel.text = "No song details available.";
+            if (selectionInfoTuningLabel != null)
+            {
+                selectionInfoTuningLabel.text = string.Empty;
+                selectionInfoTuningLabel.style.display = DisplayStyle.None;
+            }
             if (selectionArtworkGlyphLabel != null)
             {
                 selectionArtworkGlyphLabel.text = "--";
@@ -9411,6 +9709,8 @@ public sealed class TabsSongHeaderOverlay
             lastAutoScrolledSongIndex = -1;
 
             hoveredSongRowIndex = -1;
+
+            hoveredSongFavoriteRowIndex = -1;
 
 
 
@@ -9692,6 +9992,56 @@ public sealed class TabsSongHeaderOverlay
 
                 scoreBadge.style.display = DisplayStyle.None;
 
+                const float songRowRightGap = 14f;
+
+                VisualElement difficultyColumn = new VisualElement();
+
+                difficultyColumn.style.flexDirection = FlexDirection.Row;
+
+                difficultyColumn.style.alignItems = Align.Center;
+
+                difficultyColumn.style.justifyContent = Justify.FlexEnd;
+
+                difficultyColumn.style.width = 140f;
+
+                difficultyColumn.style.minWidth = 140f;
+
+                difficultyColumn.style.maxWidth = 140f;
+
+                difficultyColumn.style.flexBasis = 140f;
+
+                difficultyColumn.style.marginRight = songRowRightGap;
+
+                difficultyColumn.style.flexShrink = 0f;
+
+                difficultyColumn.style.alignSelf = Align.Center;
+
+                difficultyColumn.style.overflow = Overflow.Hidden;
+
+                VisualElement favoriteColumn = new VisualElement();
+
+                favoriteColumn.style.flexDirection = FlexDirection.Row;
+
+                favoriteColumn.style.alignItems = Align.Center;
+
+                favoriteColumn.style.justifyContent = Justify.FlexStart;
+
+                favoriteColumn.style.width = 80f;
+
+                favoriteColumn.style.minWidth = 80f;
+
+                favoriteColumn.style.maxWidth = 80f;
+
+                favoriteColumn.style.flexBasis = 80f;
+
+                favoriteColumn.style.marginLeft = 0f;
+
+                favoriteColumn.style.marginRight = 0f;
+
+                favoriteColumn.style.flexShrink = 0f;
+
+                favoriteColumn.style.alignSelf = Align.Center;
+
 
 
                 VisualElement scoreColumn = new VisualElement();
@@ -9700,17 +10050,73 @@ public sealed class TabsSongHeaderOverlay
 
                 scoreColumn.style.alignItems = Align.Center;
 
-                scoreColumn.style.justifyContent = Justify.FlexEnd;
+                scoreColumn.style.justifyContent = Justify.FlexStart;
 
-                scoreColumn.style.width = 250f;
+                scoreColumn.style.width = 136f;
 
-                scoreColumn.style.minWidth = 250f;
+                scoreColumn.style.minWidth = 136f;
 
-                scoreColumn.style.maxWidth = 250f;
+                scoreColumn.style.maxWidth = 136f;
+
+                scoreColumn.style.flexBasis = 136f;
 
                 scoreColumn.style.flexShrink = 0f;
 
                 scoreColumn.style.alignSelf = Align.Center;
+
+                scoreColumn.style.marginRight = songRowRightGap;
+
+                scoreColumn.style.overflow = Overflow.Visible;
+
+                Button favoriteButton = new Button();
+
+                favoriteButton.focusable = false;
+
+                favoriteButton.text = string.Empty;
+
+                favoriteButton.style.width = 80f;
+
+                favoriteButton.style.minWidth = 80f;
+
+                favoriteButton.style.height = 80f;
+
+                favoriteButton.style.minHeight = 80f;
+
+                favoriteButton.style.marginRight = 0f;
+
+                favoriteButton.style.paddingLeft = 0f;
+
+                favoriteButton.style.paddingRight = 0f;
+
+                favoriteButton.style.paddingTop = 0f;
+
+                favoriteButton.style.paddingBottom = 0f;
+
+                favoriteButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+                favoriteButton.style.borderTopWidth = 0f;
+
+                favoriteButton.style.borderRightWidth = 0f;
+
+                favoriteButton.style.borderBottomWidth = 0f;
+
+                favoriteButton.style.borderLeftWidth = 0f;
+
+                favoriteButton.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+                favoriteButton.style.alignItems = Align.Center;
+
+                favoriteButton.style.justifyContent = Justify.Center;
+
+                Label favoriteLabel = CreateLabel("\u2606", 62f, new Color(1f, 1f, 1f, 0.82f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+                favoriteLabel.style.unityFontDefinition = bodyFontDefinition;
+                favoriteLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+                favoriteLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+                favoriteLabel.style.width = Length.Percent(100f);
+                favoriteLabel.style.height = Length.Percent(100f);
+                favoriteLabel.style.alignSelf = Align.Center;
+                favoriteLabel.pickingMode = PickingMode.Ignore;
+                favoriteButton.Add(favoriteLabel);
 
 
 
@@ -9722,9 +10128,13 @@ public sealed class TabsSongHeaderOverlay
 
                 difficultyLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
 
-                difficultyLabel.style.marginRight = 14f;
+                difficultyLabel.style.width = 132f;
+                difficultyLabel.style.minWidth = 132f;
+                difficultyLabel.style.maxWidth = 132f;
 
                 difficultyLabel.style.whiteSpace = WhiteSpace.NoWrap;
+                difficultyLabel.style.textOverflow = TextOverflow.Ellipsis;
+                difficultyLabel.style.overflow = Overflow.Hidden;
 
                 difficultyLabel.style.flexShrink = 1f;
 
@@ -9733,8 +10143,13 @@ public sealed class TabsSongHeaderOverlay
                 Label scoreLabel = CreateLabel("0%", 44f, Color.white, true, TextAnchor.MiddleRight, useTitleFont: false);
 
                 scoreLabel.style.flexShrink = 0f;
+                scoreLabel.style.width = 136f;
+                scoreLabel.style.minWidth = 136f;
+                scoreLabel.style.maxWidth = 136f;
+                scoreLabel.style.whiteSpace = WhiteSpace.NoWrap;
+                scoreLabel.style.overflow = Overflow.Visible;
 
-                scoreLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+                scoreLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
 
                 scoreLabel.style.unityFontDefinition = modernUiFontDefinition;
 
@@ -9754,11 +10169,17 @@ public sealed class TabsSongHeaderOverlay
 
                 content.Add(textColumn);
 
-                scoreColumn.Add(difficultyLabel);
+                difficultyColumn.Add(difficultyLabel);
+
+                content.Add(difficultyColumn);
 
                 scoreColumn.Add(scoreLabel);
 
                 content.Add(scoreColumn);
+
+                favoriteColumn.Add(favoriteButton);
+
+                content.Add(favoriteColumn);
 
                 rowButton.Add(content);
 
@@ -9783,6 +10204,25 @@ public sealed class TabsSongHeaderOverlay
                 nameLabel.RegisterCallback<ClickEvent>(_ => OnSongRowClicked(songIndex));
 
                 scoreLabel.RegisterCallback<ClickEvent>(_ => OnSongRowClicked(songIndex));
+
+                favoriteButton.RegisterCallback<MouseEnterEvent>(_ => hoveredSongFavoriteRowIndex = songIndex);
+
+                favoriteButton.RegisterCallback<MouseLeaveEvent>(_ =>
+                {
+                    if (hoveredSongFavoriteRowIndex == songIndex)
+                        hoveredSongFavoriteRowIndex = -1;
+                });
+
+                favoriteButton.RegisterCallback<PointerDownEvent>(evt =>
+                {
+                    if (evt.button != 0)
+                        return;
+                    evt.StopPropagation();
+                });
+
+                favoriteButton.RegisterCallback<ClickEvent>(evt => evt.StopPropagation());
+
+                favoriteButton.clicked += () => OnSongFavoriteClicked(songIndex);
 
                 selectionScrollView.Add(rowButton);
 
@@ -9812,9 +10252,19 @@ public sealed class TabsSongHeaderOverlay
 
                     metaLabel = metaLabel,
 
+                    difficultyColumn = difficultyColumn,
+
                     difficultyLabel = difficultyLabel,
 
-                    scoreLabel = scoreLabel
+                    scoreLabel = scoreLabel,
+
+                    favoriteColumn = favoriteColumn,
+
+                    scoreColumn = scoreColumn,
+
+                    favoriteButton = favoriteButton,
+
+                    favoriteLabel = favoriteLabel
 
                 });
 
@@ -9984,7 +10434,9 @@ public sealed class TabsSongHeaderOverlay
 
             selectionInfoBestTrackLabel.text = "--";
 
-            selectionInfoHintLabel.text = "No arrangements were found for this song.";
+            selectionInfoHintLabel.text = string.Equals(snapshot.selectedLibrarySongAudioLabel, "--", StringComparison.OrdinalIgnoreCase)
+                ? "Select this entry to open its songs."
+                : "No arrangements were found for this song.";
 
             selectionStartButton.SetEnabled(false);
 
@@ -10100,7 +10552,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-            Label nameLabel = CreateLabel(string.Empty, 30f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+            Label nameLabel = CreateLabel(string.Empty, 38f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
 
             nameLabel.style.flexGrow = 1f;
 
@@ -10487,6 +10939,20 @@ public sealed class TabsSongHeaderOverlay
 
 
         owner.SelectSongByIndexFromUi(rowIndex);
+
+    }
+
+    private void OnSongFavoriteClicked(int rowIndex)
+
+    {
+
+        if (owner == null)
+
+            return;
+
+
+
+        owner.ToggleSongFavoriteByIndexFromUi(rowIndex);
 
     }
 
@@ -17180,6 +17646,7 @@ public sealed class TabsSongHeaderOverlay
         songNameLabel.style.fontSize = songSize;
 
         trackNameLabel.style.fontSize = Mathf.Clamp(bodySize * 0.52f, 18f, 25f);
+        trackTuningLabel.style.fontSize = Mathf.Clamp(bodySize * 0.52f, 18f, 25f);
 
         speedBadgeLabel.style.fontSize = Mathf.Clamp(bodySize * 0.48f, 17f, 23f);
 
@@ -17878,6 +18345,28 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
+        foreach (Button button in new[] { selectionBrowseArtistsButton, selectionBrowseAlbumsButton, selectionBrowseAllButton })
+
+        {
+
+            if (button == null)
+
+                continue;
+
+
+
+            button.style.unityFontDefinition = modernUiFontDefinition;
+
+            button.style.fontSize = selectionSubtitleLabel.resolvedStyle.fontSize > 0f
+                ? selectionSubtitleLabel.resolvedStyle.fontSize
+                : Mathf.Clamp((currentCompactSelectionLayout ? 46f : 52f) * menuLayoutScale, 28f, 58f);
+
+            button.style.height = Mathf.Clamp(68f * menuLayoutScale, 54f, 84f);
+
+            button.style.minWidth = Mathf.Clamp(156f * menuLayoutScale, 118f, 190f);
+
+        }
+
 
 
         foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-section-title").ToList())
@@ -18012,11 +18501,13 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        float titleMaxWidth = Mathf.Max(340f, songCardWidth - 36f);
+        float logoReservedWidth = Mathf.Clamp(songCardWidth * 0.18f, 116f, 156f);
+        float titleMaxWidth = Mathf.Max(320f, songCardWidth - logoReservedWidth - 52f);
 
         songNameLabel.style.maxWidth = titleMaxWidth;
 
         trackNameLabel.style.maxWidth = titleMaxWidth;
+        trackTuningLabel.style.maxWidth = titleMaxWidth;
 
 
 
@@ -18221,6 +18712,7 @@ public sealed class TabsSongHeaderOverlay
         selectionInfoMetaLabel.style.fontSize = (compactSelection ? 38f : 46f) * libraryLayoutScale;
 
         selectionInfoSummaryLabel.style.fontSize = (compactSelection ? 24f : 28f) * libraryLayoutScale;
+        selectionInfoTuningLabel.style.fontSize = (compactSelection ? 28f : 34f) * libraryLayoutScale;
 
         float librarySelectionStatValueFontSize = (compactSelection ? 44f : 52f) * libraryLayoutScale;
 
@@ -18346,14 +18838,67 @@ public sealed class TabsSongHeaderOverlay
 
             row.button.style.height = (compactSelection ? 184f : 176f) * currentMenuLayoutScale;
 
-            row.nameLabel.style.fontSize = (compactSelection ? 12.096f : 13.104f) * currentMenuLayoutScale;
+            row.nameLabel.style.fontSize = (compactSelection ? 13.2f : 14.4f) * currentMenuLayoutScale;
 
             row.metaLabel.style.fontSize = (compactSelection ? 50.4f : 55.2f) * currentMenuLayoutScale;
 
+            if (row.difficultyColumn != null)
+            {
+                float difficultyColumnWidth = (compactSelection ? 132f : 140f) * currentMenuLayoutScale;
+                row.difficultyColumn.style.width = difficultyColumnWidth;
+                row.difficultyColumn.style.minWidth = difficultyColumnWidth;
+                row.difficultyColumn.style.maxWidth = difficultyColumnWidth;
+                row.difficultyColumn.style.flexBasis = difficultyColumnWidth;
+                row.difficultyColumn.style.marginRight = (compactSelection ? 12f : 14f) * currentMenuLayoutScale;
+            }
+
             if (row.difficultyLabel != null)
+            {
                 row.difficultyLabel.style.fontSize = (compactSelection ? 24f : 26f) * currentMenuLayoutScale;
+                float difficultySlotWidth = (compactSelection ? 124f : 132f) * currentMenuLayoutScale;
+                row.difficultyLabel.style.width = difficultySlotWidth;
+                row.difficultyLabel.style.minWidth = difficultySlotWidth;
+                row.difficultyLabel.style.maxWidth = difficultySlotWidth;
+            }
+
+            if (row.favoriteColumn != null)
+            {
+                float favoriteColumnWidth = (compactSelection ? 76f : 80f) * currentMenuLayoutScale;
+                row.favoriteColumn.style.width = favoriteColumnWidth;
+                row.favoriteColumn.style.minWidth = favoriteColumnWidth;
+                row.favoriteColumn.style.maxWidth = favoriteColumnWidth;
+                row.favoriteColumn.style.flexBasis = favoriteColumnWidth;
+                row.favoriteColumn.style.marginLeft = 0f;
+                row.favoriteColumn.style.marginRight = 0f;
+            }
+
+            if (row.favoriteButton != null)
+            {
+                float favoriteSize = (compactSelection ? 76f : 80f) * currentMenuLayoutScale;
+                row.favoriteButton.style.width = favoriteSize;
+                row.favoriteButton.style.minWidth = favoriteSize;
+                row.favoriteButton.style.height = favoriteSize;
+                row.favoriteButton.style.minHeight = favoriteSize;
+                row.favoriteButton.style.marginRight = 0f;
+            }
+
+            if (row.favoriteLabel != null)
+                row.favoriteLabel.style.fontSize = (compactSelection ? 58f : 62f) * currentMenuLayoutScale;
+
+            if (row.scoreColumn != null)
+            {
+                float scoreColumnWidth = (compactSelection ? 128f : 136f) * currentMenuLayoutScale;
+                row.scoreColumn.style.width = scoreColumnWidth;
+                row.scoreColumn.style.minWidth = scoreColumnWidth;
+                row.scoreColumn.style.maxWidth = scoreColumnWidth;
+                row.scoreColumn.style.flexBasis = scoreColumnWidth;
+                row.scoreColumn.style.marginRight = (compactSelection ? 12f : 14f) * currentMenuLayoutScale;
+            }
 
             row.scoreLabel.style.fontSize = (compactSelection ? 48f : 52.8f) * currentMenuLayoutScale;
+            row.scoreLabel.style.width = (compactSelection ? 128f : 136f) * currentMenuLayoutScale;
+            row.scoreLabel.style.minWidth = (compactSelection ? 128f : 136f) * currentMenuLayoutScale;
+            row.scoreLabel.style.maxWidth = (compactSelection ? 128f : 136f) * currentMenuLayoutScale;
 
             if (row.artworkTile != null)
 
