@@ -9,6 +9,8 @@ public sealed class SongLibraryEntry
 {
     public string SongId;
     public string DisplayName;
+    public string Artist;
+    public string Album;
     public string Subtitle;
     public string ArtworkPath;
     public int DifficultyRating;
@@ -40,6 +42,8 @@ public static class SongLibraryService
     {
         public string songId;
         public string displayName;
+        public string artist;
+        public string album;
         public string subtitle;
         public int difficulty;
     }
@@ -161,12 +165,16 @@ public static class SongLibraryService
         string definitionPath = Path.Combine(songDirectory, SongDefinitionFileName);
         SongFolderMetadata importedDefinition = TryReadSongFolderMetadata(definitionPath) ?? TryReadSongFolderMetadata(metadataPath);
         string displayName = ResolveDisplayName(songDirectory, primaryNotationPath, primaryNotationKind, importedDefinition, xmlPath);
-        string subtitle = ResolveSubtitle(primaryNotationPath, primaryNotationKind, importedDefinition, xmlPath);
+        string artist = ResolveArtist(primaryNotationPath, primaryNotationKind, importedDefinition, xmlPath);
+        string album = ResolveAlbum(importedDefinition);
+        string subtitle = BuildSubtitleDisplay(artist, importedDefinition?.subtitle);
 
         entry = new SongLibraryEntry
         {
             SongId = Path.GetFileName(songDirectory),
             DisplayName = displayName,
+            Artist = artist,
+            Album = album,
             Subtitle = subtitle,
             ArtworkPath = artworkPath,
             DifficultyRating = importedDefinition != null ? Mathf.Clamp(importedDefinition.difficulty, 0, 5) : 0,
@@ -294,8 +302,11 @@ public static class SongLibraryService
         }
     }
 
-    private static string ResolveSubtitle(string notationPath, SongNotationSourceKind notationKind, SongFolderMetadata importedDefinition, string xmlFallbackPath)
+    private static string ResolveArtist(string notationPath, SongNotationSourceKind notationKind, SongFolderMetadata importedDefinition, string xmlFallbackPath)
     {
+        if (!string.IsNullOrWhiteSpace(importedDefinition?.artist))
+            return importedDefinition.artist.Trim();
+
         if (!string.IsNullOrWhiteSpace(importedDefinition?.subtitle))
             return importedDefinition.subtitle.Trim();
 
@@ -305,6 +316,25 @@ public static class SongLibraryService
 
         string xmlCreator = TryReadCreatorFromXml(xmlFallbackPath);
         return string.IsNullOrWhiteSpace(xmlCreator) ? string.Empty : xmlCreator.Trim();
+    }
+
+    private static string ResolveAlbum(SongFolderMetadata importedDefinition)
+    {
+        if (!string.IsNullOrWhiteSpace(importedDefinition?.album))
+            return importedDefinition.album.Trim();
+
+        return string.Empty;
+    }
+
+    private static string BuildSubtitleDisplay(string artist, string legacySubtitle)
+    {
+        if (!string.IsNullOrWhiteSpace(artist))
+            return artist.Trim();
+
+        if (!string.IsNullOrWhiteSpace(legacySubtitle))
+            return legacySubtitle.Trim();
+
+        return string.Empty;
     }
 
     internal static string TryReadDisplayNameFromXml(string xmlPath)
@@ -367,6 +397,8 @@ public static class SongLibraryService
         {
             SongId = entry.SongId,
             DisplayName = entry.DisplayName,
+            Artist = entry.Artist,
+            Album = entry.Album,
             Subtitle = entry.Subtitle,
             ArtworkPath = entry.ArtworkPath,
             DifficultyRating = entry.DifficultyRating,

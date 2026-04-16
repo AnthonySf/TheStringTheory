@@ -64,6 +64,7 @@ public sealed class ModernMenuPopup
         titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
 
         messageLabel.text = message;
+        messageLabel.enableRichText = true;
         messageLabel.style.fontSize = 46f;
         messageLabel.style.color = new Color(0.98f, 0.95f, 0.84f, 1f);
         messageLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
@@ -71,6 +72,7 @@ public sealed class ModernMenuPopup
         messageLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
 
         calloutLabel.text = callout;
+        calloutLabel.enableRichText = true;
         calloutLabel.style.display = string.IsNullOrWhiteSpace(callout) ? DisplayStyle.None : DisplayStyle.Flex;
         calloutLabel.style.fontSize = 40f;
         calloutLabel.style.color = TabsSongHeaderOverlay.GlobalSecondaryAccentColor;
@@ -79,6 +81,7 @@ public sealed class ModernMenuPopup
         calloutLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
 
         hintLabel.text = hint;
+        hintLabel.enableRichText = true;
         hintLabel.style.fontSize = 34f;
         hintLabel.style.color = new Color(0.73f, 0.82f, 0.90f, 0.96f);
         hintLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
@@ -127,6 +130,17 @@ public sealed class ModernMenuPopup
             primaryButton.style.translate = new Translate(0f, 0f);
         });
 
+    }
+
+    public void SetContent(string eyebrow, string title, string message, string callout, string hint, string primaryText)
+    {
+        eyebrowLabel.text = eyebrow ?? string.Empty;
+        titleLabel.text = title ?? string.Empty;
+        messageLabel.text = message ?? string.Empty;
+        calloutLabel.text = callout ?? string.Empty;
+        calloutLabel.style.display = string.IsNullOrWhiteSpace(callout) ? DisplayStyle.None : DisplayStyle.Flex;
+        hintLabel.text = hint ?? string.Empty;
+        primaryButton.text = primaryText ?? string.Empty;
     }
 
     public void ApplyResponsiveSizing(float menuLayoutHeight, float buttonFontSize)
