@@ -1151,6 +1151,8 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly VisualElement settingsCard;
 
+    private readonly Label settingsTitleLabel;
+
     private readonly Label settingsTrackLabel;
 
     private readonly Label settingsHintLabel;
@@ -1200,8 +1202,11 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button settingsOffsetScopeRightArrowButton;
 
     private readonly VisualElement generatedAudioTracksPopupOverlay;
+    private readonly Label generatedAudioTracksPopupEyebrowLabel;
+    private readonly Label generatedAudioTracksPopupTitleLabel;
     private readonly Label generatedAudioTracksPopupSummaryLabel;
     private readonly Label generatedAudioTracksPopupHintLabel;
+    private readonly VisualElement generatedAudioTracksPopupButtonsRow;
     private readonly Button generatedAudioTracksSelectAllButton;
     private readonly Button generatedAudioTracksDeselectAllButton;
     private readonly Button generatedAudioTracksCloseButton;
@@ -1822,7 +1827,7 @@ public sealed class TabsSongHeaderOverlay
 
         songCardScoreBlock.style.paddingBottom = 16f;
 
-        StyleGameplayHudCard(songCardScoreBlock, new Color(0.022f, 0.040f, 0.074f, 0.95f), radius: 14f);
+        StyleGameplayHudCard(songCardScoreBlock, GameplayHudCardBackgroundColor, radius: 14f);
 
         songCardScoreBlock.pickingMode = PickingMode.Ignore;
 
@@ -2584,28 +2589,6 @@ public sealed class TabsSongHeaderOverlay
 
         pauseBackplate = new VisualElement();
 
-        pauseBackplate.style.position = Position.Absolute;
-
-        // Change this value to move the orange accent plate horizontally.
-
-        pauseBackplate.style.right = -160f;
-
-        pauseBackplate.style.top = -220f;
-
-        pauseBackplate.style.bottom = -220f;
-
-        pauseBackplate.style.width = 1540f;
-
-        // Change this angle to adjust the orange accent plate slant.
-
-        pauseBackplate.style.rotate = new Rotate(new Angle(-8f, AngleUnit.Degree));
-
-        pauseBackplate.style.backgroundColor = LibraryConfirmedSongColor;
-
-        pauseBackplate.style.opacity = 0.92f;
-
-        pauseBackplate.pickingMode = PickingMode.Ignore;
-
 
 
         VisualElement pauseBackplateGradient = new VisualElement();
@@ -2632,93 +2615,13 @@ public sealed class TabsSongHeaderOverlay
 
         pauseFrontPlate = new VisualElement();
 
-        pauseFrontPlate.style.position = Position.Absolute;
-
-        // Change this value to move the dark main panel horizontally.
-
-        pauseFrontPlate.style.right = -120f;
-
-        pauseFrontPlate.style.top = -170f;
-
-        pauseFrontPlate.style.bottom = -170f;
-
-        pauseFrontPlate.style.width = 1460f;
-
-        // Change this angle to adjust the dark main panel slant.
-
-        pauseFrontPlate.style.rotate = new Rotate(new Angle(-6f, AngleUnit.Degree));
-
-        pauseFrontPlate.style.backgroundColor = LibraryPanelColor;
-
-        pauseFrontPlate.style.borderTopWidth = 0f;
-
-        pauseFrontPlate.style.borderRightWidth = 0f;
-
-        pauseFrontPlate.style.borderBottomWidth = 0f;
-
-        pauseFrontPlate.style.borderLeftWidth = 0f;
-
-        pauseFrontPlate.style.borderTopColor = new Color(0.03f, 0.03f, 0.04f, 1f);
-
-        pauseFrontPlate.style.borderRightColor = new Color(0.03f, 0.03f, 0.04f, 1f);
-
-        pauseFrontPlate.style.borderBottomColor = new Color(0.03f, 0.03f, 0.04f, 1f);
-
-        pauseFrontPlate.style.borderLeftColor = new Color(0.03f, 0.03f, 0.04f, 1f);
-
-        pauseFrontPlate.pickingMode = PickingMode.Ignore;
-
 
 
         pauseRegion = new VisualElement();
 
-        pauseRegion.style.position = Position.Absolute;
-
-        pauseRegion.style.right = 0f;
-
-        pauseRegion.style.top = 0f;
-
-        pauseRegion.style.bottom = 0f;
-
-        pauseRegion.style.width = Length.Percent(44f);
-
-        pauseRegion.style.alignItems = Align.Center;
-
-        pauseRegion.style.justifyContent = Justify.FlexStart;
-
-        pauseRegion.style.paddingTop = 88f;
-
-        pauseRegion.style.paddingBottom = 0f;
-
-        pauseRegion.style.paddingLeft = 220f;
-
-        pauseRegion.style.paddingRight = 0f;
-
-        pauseRegion.pickingMode = PickingMode.Position;
-
-
 
         pauseShell = new VisualElement();
-
-        pauseShell.style.width = 820f;
-
-        pauseShell.style.maxWidth = 920f;
-
-        pauseShell.style.paddingLeft = 36f;
-
-        pauseShell.style.paddingRight = 36f;
-
-        pauseShell.style.paddingTop = 12f;
-
-        pauseShell.style.paddingBottom = 18f;
-
-        pauseShell.style.alignItems = Align.Center;
-
-        pauseShell.style.position = Position.Relative;
-
-        pauseShell.style.justifyContent = Justify.FlexStart;
-
-        pauseShell.style.alignSelf = Align.Center;
+        ConfigureStraightSidebarChrome(pauseBackplate, pauseFrontPlate, pauseRegion, pauseShell, centerContent: true);
 
         Label pauseStarsLabel = CreateLabel("\u2605 \u2605 \u2605", 34f, new Color(1f, 0.74f, 0.32f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: false);
 
@@ -2750,6 +2653,8 @@ public sealed class TabsSongHeaderOverlay
 
         pauseHintLabel.style.color = new Color(0.78f, 0.86f, 0.93f, 0.94f);
 
+        pauseHintLabel.style.whiteSpace = WhiteSpace.Normal;
+
         pauseHintLabel.style.marginTop = 0f;
 
         pauseHintLabel.style.marginBottom = 34f;
@@ -2764,7 +2669,7 @@ public sealed class TabsSongHeaderOverlay
 
         pauseCard.style.paddingLeft = 0f;
 
-        pauseCard.style.paddingRight = -100f;
+        pauseCard.style.paddingRight = 0f;
 
         pauseCard.style.paddingTop = 0f;
 
@@ -3186,15 +3091,6 @@ public sealed class TabsSongHeaderOverlay
         gameModesOverlay.style.display = DisplayStyle.None;
 
         gameModesBackplate = new VisualElement();
-        gameModesBackplate.style.position = Position.Absolute;
-        gameModesBackplate.style.right = -160f;
-        gameModesBackplate.style.top = -220f;
-        gameModesBackplate.style.bottom = -220f;
-        gameModesBackplate.style.width = 1540f;
-        gameModesBackplate.style.rotate = new Rotate(new Angle(-8f, AngleUnit.Degree));
-        gameModesBackplate.style.backgroundColor = LibraryConfirmedSongColor;
-        gameModesBackplate.style.opacity = 0.92f;
-        gameModesBackplate.pickingMode = PickingMode.Ignore;
 
         VisualElement gameModesBackplateGradient = new VisualElement();
         gameModesBackplateGradient.style.position = Position.Absolute;
@@ -3208,40 +3104,11 @@ public sealed class TabsSongHeaderOverlay
         gameModesBackplate.Add(gameModesBackplateGradient);
 
         gameModesFrontPlate = new VisualElement();
-        gameModesFrontPlate.style.position = Position.Absolute;
-        gameModesFrontPlate.style.right = -120f;
-        gameModesFrontPlate.style.top = -170f;
-        gameModesFrontPlate.style.bottom = -170f;
-        gameModesFrontPlate.style.width = 1460f;
-        gameModesFrontPlate.style.rotate = new Rotate(new Angle(-6f, AngleUnit.Degree));
-        gameModesFrontPlate.style.backgroundColor = LibraryPanelColor;
-        gameModesFrontPlate.pickingMode = PickingMode.Ignore;
 
         gameModesRegion = new VisualElement();
-        gameModesRegion.style.position = Position.Absolute;
-        gameModesRegion.style.right = 0f;
-        gameModesRegion.style.top = 0f;
-        gameModesRegion.style.bottom = 0f;
-        gameModesRegion.style.width = Length.Percent(44f);
-        gameModesRegion.style.alignItems = Align.Center;
-        gameModesRegion.style.justifyContent = Justify.FlexStart;
-        gameModesRegion.style.paddingTop = 88f;
-        gameModesRegion.style.paddingBottom = 0f;
-        gameModesRegion.style.paddingLeft = 220f;
-        gameModesRegion.style.paddingRight = 0f;
-        gameModesRegion.pickingMode = PickingMode.Position;
 
         gameModesShell = new VisualElement();
-        gameModesShell.style.width = 820f;
-        gameModesShell.style.maxWidth = 920f;
-        gameModesShell.style.paddingLeft = 36f;
-        gameModesShell.style.paddingRight = 36f;
-        gameModesShell.style.paddingTop = 12f;
-        gameModesShell.style.paddingBottom = 18f;
-        gameModesShell.style.alignItems = Align.Center;
-        gameModesShell.style.position = Position.Relative;
-        gameModesShell.style.justifyContent = Justify.FlexStart;
-        gameModesShell.style.alignSelf = Align.Center;
+        ConfigureStraightSidebarChrome(gameModesBackplate, gameModesFrontPlate, gameModesRegion, gameModesShell, centerContent: true);
 
         Label gameModesEyebrowLabel = CreateLabel("PRESS ESC TO RETURN", 24f, LibraryPrimaryColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
         gameModesEyebrowLabel.style.unityFontDefinition = modernUiFontDefinition;
@@ -4668,24 +4535,6 @@ public sealed class TabsSongHeaderOverlay
 
         settingsBackplate = new VisualElement();
 
-        settingsBackplate.style.position = Position.Absolute;
-
-        settingsBackplate.style.right = -160f;
-
-        settingsBackplate.style.top = -220f;
-
-        settingsBackplate.style.bottom = -220f;
-
-        settingsBackplate.style.width = 1540f;
-
-        settingsBackplate.style.rotate = new Rotate(new Angle(-8f, AngleUnit.Degree));
-
-        settingsBackplate.style.backgroundColor = LibraryConfirmedSongColor;
-
-        settingsBackplate.style.opacity = 0.92f;
-
-        settingsBackplate.pickingMode = PickingMode.Ignore;
-
 
 
         VisualElement settingsBackplateGradient = new VisualElement();
@@ -4712,71 +4561,10 @@ public sealed class TabsSongHeaderOverlay
 
         settingsFrontPlate = new VisualElement();
 
-        settingsFrontPlate.style.position = Position.Absolute;
-
-        settingsFrontPlate.style.right = -120f;
-
-        settingsFrontPlate.style.top = -170f;
-
-        settingsFrontPlate.style.bottom = -170f;
-
-        settingsFrontPlate.style.width = 1460f;
-
-        settingsFrontPlate.style.rotate = new Rotate(new Angle(-6f, AngleUnit.Degree));
-
-        settingsFrontPlate.style.backgroundColor = LibraryPanelColor;
-
-        settingsFrontPlate.pickingMode = PickingMode.Ignore;
-
         settingsRegion = new VisualElement();
 
-        settingsRegion.style.position = Position.Absolute;
-
-        settingsRegion.style.right = 0f;
-
-        settingsRegion.style.top = 0f;
-
-        settingsRegion.style.bottom = 0f;
-
-        settingsRegion.style.width = Length.Percent(44f);
-
-        settingsRegion.style.alignItems = Align.Center;
-
-        settingsRegion.style.justifyContent = Justify.FlexStart;
-
-        settingsRegion.style.paddingTop = 88f;
-
-        settingsRegion.style.paddingBottom = 0f;
-
-        settingsRegion.style.paddingLeft = 220f;
-
-        settingsRegion.style.paddingRight = 0f;
-
-        settingsRegion.pickingMode = PickingMode.Position;
-
-
-
         settingsShell = new VisualElement();
-
-        settingsShell.style.width = 820f;
-
-        settingsShell.style.maxWidth = 920f;
-
-        settingsShell.style.paddingLeft = 36f;
-
-        settingsShell.style.paddingRight = 36f;
-
-        settingsShell.style.paddingTop = 12f;
-
-        settingsShell.style.paddingBottom = 18f;
-
-        settingsShell.style.alignItems = Align.Center;
-
-        settingsShell.style.position = Position.Relative;
-
-        settingsShell.style.justifyContent = Justify.FlexStart;
-
-        settingsShell.style.alignSelf = Align.Center;
+        ConfigureStraightSidebarChrome(settingsBackplate, settingsFrontPlate, settingsRegion, settingsShell, centerContent: false);
 
         Label settingsTopTag = CreateLabel("PRESS ESC TO RETURN", 24f, LibraryPrimaryColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
 
@@ -4788,15 +4576,23 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        Label settingsTitle = CreateLabel("SONG SETTINGS", 112f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        settingsTitleLabel = CreateLabel("SONG\nSETTINGS", 112f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
 
-        settingsTitle.style.marginBottom = 8f;
+        settingsTitleLabel.style.marginTop = 6f;
 
-        settingsTitle.style.unityFontDefinition = modernUiFontDefinition;
+        settingsTitleLabel.style.marginBottom = 10f;
+
+        settingsTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+        settingsTitleLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        settingsTitleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
 
         settingsHintLabel = CreateLabel("Up/Down selects  \u2022  Left/Right adjusts  \u2022  Enter confirms", 34f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
 
         settingsHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+        settingsHintLabel.style.whiteSpace = WhiteSpace.Normal;
 
         settingsHintLabel.style.marginBottom = 34f;
 
@@ -4810,7 +4606,7 @@ public sealed class TabsSongHeaderOverlay
 
         settingsCard.style.paddingLeft = 0f;
 
-        settingsCard.style.paddingRight = -100f;
+        settingsCard.style.paddingRight = 0f;
 
         settingsCard.style.paddingTop = 0f;
 
@@ -4988,7 +4784,7 @@ public sealed class TabsSongHeaderOverlay
 
         settingsTrackLeftArrowButton = CreateSongSettingsSelectorArrowButton("\u2039", () => owner?.MoveTrackSelectionFromUi(-1), 5);
 
-        settingsTrackButton = CreateActionButton("Track", () => owner?.MoveTrackSelectionFromUi(1));
+        settingsTrackButton = CreateActionButton("Track", () => owner?.OpenSongSettingsTrackSelectionPopupFromUi());
 
         settingsTrackButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
 
@@ -5023,6 +4819,8 @@ public sealed class TabsSongHeaderOverlay
         settingsTrackButton.style.unityFontDefinition = modernUiFontDefinition;
 
         settingsTrackRightArrowButton = CreateSongSettingsSelectorArrowButton("\u203A", () => owner?.MoveTrackSelectionFromUi(1), 5);
+        settingsTrackLeftArrowButton.style.display = DisplayStyle.None;
+        settingsTrackRightArrowButton.style.display = DisplayStyle.None;
 
 
 
@@ -5040,7 +4838,7 @@ public sealed class TabsSongHeaderOverlay
 
         settingsOffsetScopeRow.style.overflow = Overflow.Visible;
 
-        settingsOffsetScopeHelpLabel = CreateSongSettingsHelpLabel("Song applies offset to the whole song. Track applies it only to this arrangement.");
+        settingsOffsetScopeHelpLabel = CreateSongSettingsHelpLabel("Apply offset to the whole song or only to one arrangement.");
 
         settingsOffsetScopeLeftArrowButton = CreateSongSettingsSelectorArrowButton("\u2039", () => owner?.ToggleOffsetScopeFromUi(), 6);
 
@@ -5247,7 +5045,7 @@ public sealed class TabsSongHeaderOverlay
 
         settingsShell.Add(settingsTopTag);
 
-        settingsShell.Add(settingsTitle);
+        settingsShell.Add(settingsTitleLabel);
 
         settingsShell.Add(settingsHintLabel);
 
@@ -5295,21 +5093,21 @@ public sealed class TabsSongHeaderOverlay
         generatedAudioTracksPopupCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.10f);
         generatedAudioTracksPopupCard.style.flexDirection = FlexDirection.Column;
 
-        Label generatedAudioTracksPopupEyebrow = CreateLabel("GENERATED AUDIO", 20f, new Color(0.74f, 0.88f, 0.98f, 0.92f), true, TextAnchor.MiddleCenter, useTitleFont: false);
-        generatedAudioTracksPopupEyebrow.style.unityFontDefinition = modernUiFontDefinition;
-        generatedAudioTracksPopupEyebrow.style.marginBottom = 8f;
-        generatedAudioTracksPopupEyebrow.style.letterSpacing = 1.8f;
+        generatedAudioTracksPopupEyebrowLabel = CreateLabel("GENERATED AUDIO", 20f, new Color(0.74f, 0.88f, 0.98f, 0.92f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        generatedAudioTracksPopupEyebrowLabel.style.unityFontDefinition = modernUiFontDefinition;
+        generatedAudioTracksPopupEyebrowLabel.style.marginBottom = 8f;
+        generatedAudioTracksPopupEyebrowLabel.style.letterSpacing = 1.8f;
 
-        Label generatedAudioTracksPopupTitle = CreateLabel("AUDIO TRACKS", 70f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
-        generatedAudioTracksPopupTitle.style.unityFontDefinition = modernUiFontDefinition;
-        generatedAudioTracksPopupTitle.style.marginBottom = 8f;
+        generatedAudioTracksPopupTitleLabel = CreateLabel("AUDIO TRACKS", 70f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        generatedAudioTracksPopupTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        generatedAudioTracksPopupTitleLabel.style.marginBottom = 8f;
 
         generatedAudioTracksPopupSummaryLabel = CreateLabel("Select which generated tracks should be played.", 24f, new Color(0.88f, 0.92f, 0.96f, 0.94f), false, TextAnchor.MiddleCenter, useTitleFont: false);
         generatedAudioTracksPopupSummaryLabel.style.unityFontDefinition = modernUiFontDefinition;
         generatedAudioTracksPopupSummaryLabel.style.whiteSpace = WhiteSpace.Normal;
         generatedAudioTracksPopupSummaryLabel.style.marginBottom = 18f;
 
-        VisualElement generatedAudioTracksPopupButtonsRow = new VisualElement();
+        generatedAudioTracksPopupButtonsRow = new VisualElement();
         generatedAudioTracksPopupButtonsRow.style.flexDirection = FlexDirection.Row;
         generatedAudioTracksPopupButtonsRow.style.justifyContent = Justify.Center;
         generatedAudioTracksPopupButtonsRow.style.alignItems = Align.Center;
@@ -5369,8 +5167,8 @@ public sealed class TabsSongHeaderOverlay
         generatedAudioTracksPopupHintLabel.style.whiteSpace = WhiteSpace.Normal;
         generatedAudioTracksPopupHintLabel.style.display = DisplayStyle.None;
 
-        generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupEyebrow);
-        generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupTitle);
+        generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupEyebrowLabel);
+        generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupTitleLabel);
         generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupSummaryLabel);
         generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupButtonsRow);
         generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupScrollView);
@@ -8072,7 +7870,7 @@ public sealed class TabsSongHeaderOverlay
         settingsPrimaryToolButton.text = generatedSongMode ? "Audio Track Selection" : "Offset Helper";
         settingsPrimaryToolHelpLabel.text = generatedSongMode
             ? "Choose which MusicXML parts should play in generated mode. You can solo a lead track or build your own backing mix."
-            : "Choose a note to calibrate around, then preview a short loop and nudge offset until the note lines up with the audio.";
+            : "Choose a note to calibrate, preview a loop and nudge offset.";
         settingsOffsetRow.style.display = generatedSongMode ? DisplayStyle.None : DisplayStyle.Flex;
         settingsOffsetHelpLabel.style.display = generatedSongMode ? DisplayStyle.None : DisplayStyle.Flex;
         settingsOffsetScopeRow.style.display = generatedSongMode ? DisplayStyle.None : DisplayStyle.Flex;
@@ -8166,7 +7964,7 @@ public sealed class TabsSongHeaderOverlay
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
 
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
-        generatedAudioTracksPopupOverlay.style.display = showSettings && snapshot.showGeneratedAudioTrackSelectionPopup ? DisplayStyle.Flex : DisplayStyle.None;
+        generatedAudioTracksPopupOverlay.style.display = showSettings && (snapshot.showGeneratedAudioTrackSelectionPopup || snapshot.showSongSettingsTrackSelectionPopup) ? DisplayStyle.Flex : DisplayStyle.None;
 
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -8563,12 +8361,17 @@ public sealed class TabsSongHeaderOverlay
             {
                 settingsHintLabel.text = "Track picker open  \u2022  Enter toggles  \u2022  Esc closes";
             }
+            else if (snapshot.showSongSettingsTrackSelectionPopup)
+            {
+                settingsHintLabel.text = "Track picker open  \u2022  Enter selects  \u2022  Esc closes";
+            }
             else if (snapshot.songPlaybackUsesGeneratedMode)
             {
                 settingsHintLabel.text = snapshot.selectedSongSettingsIndex switch
                 {
                     0 => "Up/Down selects  \u2022  Enter opens track picker  \u2022  Esc returns",
-                    2 or 3 or 4 or 5 => "Up/Down selects  \u2022  Left/Right adjusts  \u2022  Enter confirms",
+                    2 or 3 or 4 => "Up/Down selects  \u2022  Left/Right adjusts  \u2022  Enter confirms",
+                    5 => "Up/Down selects  \u2022  Enter opens track picker  \u2022  Esc returns",
                     _ => "Up/Down selects  \u2022  Enter confirms  \u2022  Esc returns"
                 };
             }
@@ -8576,9 +8379,11 @@ public sealed class TabsSongHeaderOverlay
             {
                 settingsHintLabel.text = snapshot.selectedSongSettingsIndex == 0
                     ? "Up/Down selects  \u2022  Enter opens helper  \u2022  Esc returns"
-                    : (snapshot.selectedSongSettingsIndex >= 1 && snapshot.selectedSongSettingsIndex <= 6
+                    : (snapshot.selectedSongSettingsIndex == 5
+                        ? "Up/Down selects  \u2022  Enter opens track picker  \u2022  Esc returns"
+                        : (snapshot.selectedSongSettingsIndex >= 1 && snapshot.selectedSongSettingsIndex <= 6
                         ? "Up/Down selects  \u2022  Left/Right adjusts  \u2022  Enter confirms"
-                        : "Up/Down selects  \u2022  Enter confirms  \u2022  Esc returns");
+                        : "Up/Down selects  \u2022  Enter confirms  \u2022  Esc returns"));
             }
 
             UpdateSongSettingsSelection(snapshot.selectedSongSettingsIndex);
@@ -14137,6 +13942,98 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private void ConfigureStraightSidebarChrome(VisualElement accentPlate, VisualElement frontPlate, VisualElement region, VisualElement shell, bool centerContent)
+
+    {
+
+        accentPlate.style.position = Position.Absolute;
+
+        accentPlate.style.right = 0f;
+
+        accentPlate.style.top = 0f;
+
+        accentPlate.style.bottom = 0f;
+
+        accentPlate.style.rotate = new Rotate(new Angle(0f, AngleUnit.Degree));
+
+        accentPlate.style.backgroundColor = LibraryConfirmedSongColor;
+
+        accentPlate.style.opacity = 0.96f;
+
+        accentPlate.pickingMode = PickingMode.Ignore;
+
+
+
+        frontPlate.style.position = Position.Absolute;
+
+        frontPlate.style.right = 0f;
+
+        frontPlate.style.top = 0f;
+
+        frontPlate.style.bottom = 0f;
+
+        frontPlate.style.rotate = new Rotate(new Angle(0f, AngleUnit.Degree));
+
+        frontPlate.style.backgroundColor = LibraryPanelColor;
+
+        frontPlate.style.borderTopWidth = 0f;
+
+        frontPlate.style.borderRightWidth = 0f;
+
+        frontPlate.style.borderBottomWidth = 0f;
+
+        frontPlate.style.borderLeftWidth = 1f;
+
+        frontPlate.style.borderLeftColor = new Color(0.26f, 0.32f, 0.40f, 0.62f);
+
+        frontPlate.pickingMode = PickingMode.Ignore;
+
+
+
+        region.style.position = Position.Absolute;
+
+        region.style.right = 0f;
+
+        region.style.top = 0f;
+
+        region.style.bottom = 0f;
+
+        region.style.alignItems = Align.Center;
+
+        region.style.justifyContent = centerContent ? Justify.Center : Justify.FlexStart;
+
+        region.style.paddingTop = 48f;
+
+        region.style.paddingBottom = 48f;
+
+        region.style.paddingLeft = 38f;
+
+        region.style.paddingRight = 38f;
+
+        region.pickingMode = PickingMode.Position;
+
+
+
+        shell.style.width = Length.Percent(100f);
+
+        shell.style.paddingLeft = 0f;
+
+        shell.style.paddingRight = 0f;
+
+        shell.style.paddingTop = 0f;
+
+        shell.style.paddingBottom = 0f;
+
+        shell.style.alignItems = Align.Center;
+
+        shell.style.position = Position.Relative;
+
+        shell.style.justifyContent = Justify.FlexStart;
+
+        shell.style.alignSelf = Align.Center;
+
+    }
+
 
 
     private void AddTechniqueLegendRow(string icon, string description, Color iconColor)
@@ -15593,9 +15490,13 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        UpdateSongSettingsSelectorArrows(settingsTrackLeftArrowButton, settingsTrackRightArrowButton, resolvedIndex == 5);
-
         UpdateSongSettingsSelectorArrows(settingsOffsetScopeLeftArrowButton, settingsOffsetScopeRightArrowButton, resolvedIndex == 6);
+
+        if (settingsTrackLeftArrowButton != null)
+            settingsTrackLeftArrowButton.style.display = DisplayStyle.None;
+
+        if (settingsTrackRightArrowButton != null)
+            settingsTrackRightArrowButton.style.display = DisplayStyle.None;
 
     }
 
@@ -15625,7 +15526,7 @@ public sealed class TabsSongHeaderOverlay
 
         {
 
-            int popupSelectionIndex = i + 3;
+            int rowIndex = i;
 
             Button rowButton = new Button();
 
@@ -15669,15 +15570,13 @@ public sealed class TabsSongHeaderOverlay
 
             rowButton.style.borderBottomRightRadius = 14f;
 
-            rowButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex));
+            rowButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedSongSettingsPopupTrackRowIndexFromUi(rowIndex));
 
             rowButton.clicked += () =>
 
             {
 
-                owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex);
-
-                owner?.ActivateSelectedGeneratedAudioTrackSelectionFromUi();
+                owner?.ActivateSongSettingsPopupTrackRowFromUi(rowIndex);
 
             };
 
@@ -15691,9 +15590,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-                owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex);
-
-                owner?.ActivateSelectedGeneratedAudioTrackSelectionFromUi();
+                owner?.ActivateSongSettingsPopupTrackRowFromUi(rowIndex);
 
                 evt.StopPropagation();
 
@@ -15849,15 +15746,28 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        generatedAudioTracksPopupSummaryLabel.text = snapshot.generatedAudioTrackSelectionAvailable
+        bool isTrackSelectionMode = snapshot.showSongSettingsTrackSelectionPopup;
 
-            ? $"Now playing: {snapshot.generatedAudioTrackSelectionSummary}"
+        generatedAudioTracksPopupEyebrowLabel.text = isTrackSelectionMode ? "SONG SETTINGS" : "GENERATED AUDIO";
+        generatedAudioTracksPopupTitleLabel.text = isTrackSelectionMode ? "TRACK SELECTION" : "AUDIO TRACKS";
 
-            : "No generated tracks are available for this song.";
+        generatedAudioTracksPopupSummaryLabel.text = isTrackSelectionMode
+
+            ? $"Current track: {FormatTrackName(snapshot.selectedTrackDisplayName)}"
+
+            : (snapshot.generatedAudioTrackSelectionAvailable
+
+                ? $"Now playing: {snapshot.generatedAudioTrackSelectionSummary}"
+
+                : "No generated tracks are available for this song.");
 
 
 
         Button[] topButtons = { generatedAudioTracksSelectAllButton, generatedAudioTracksDeselectAllButton, generatedAudioTracksCloseButton };
+        generatedAudioTracksPopupButtonsRow.style.display = isTrackSelectionMode ? DisplayStyle.None : DisplayStyle.Flex;
+        generatedAudioTracksSelectAllButton.style.display = isTrackSelectionMode ? DisplayStyle.None : DisplayStyle.Flex;
+        generatedAudioTracksDeselectAllButton.style.display = isTrackSelectionMode ? DisplayStyle.None : DisplayStyle.Flex;
+        generatedAudioTracksCloseButton.style.display = isTrackSelectionMode ? DisplayStyle.None : DisplayStyle.Flex;
 
         for (int i = 0; i < topButtons.Length; i++)
 
@@ -15887,38 +15797,54 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        int trackCount = Mathf.Min(snapshot.generatedAudioTrackNames?.Count ?? 0, snapshot.generatedAudioTrackEnabled?.Count ?? 0);
+        int trackCount = isTrackSelectionMode
+            ? (snapshot.songSettingsTrackOptionNames?.Count ?? 0)
+            : Mathf.Min(snapshot.generatedAudioTrackNames?.Count ?? 0, snapshot.generatedAudioTrackEnabled?.Count ?? 0);
         EnsureGeneratedAudioTrackPopupRows(trackCount);
 
         for (int i = 0; i < trackCount; i++)
 
         {
 
-            int popupSelectionIndex = i + 3;
+            bool enabled = !isTrackSelectionMode && snapshot.generatedAudioTrackEnabled[i];
 
-            bool enabled = snapshot.generatedAudioTrackEnabled[i];
-
-            string trackName = snapshot.generatedAudioTrackNames[i];
+            string trackName = isTrackSelectionMode
+                ? snapshot.songSettingsTrackOptionNames[i]
+                : snapshot.generatedAudioTrackNames[i];
 
             GeneratedAudioTrackPopupRow row = generatedAudioTracksPopupTrackButtons[i];
             if (row == null || row.button == null)
                 continue;
 
-            row.stateLabel.text = enabled ? "ON" : "OFF";
-            row.stateLabel.style.color = enabled ? LibraryPrimaryColor : new Color(0.58f, 0.62f, 0.68f, 1f);
-            row.stateLabel.style.backgroundColor = enabled ? new Color(0.14f, 0.21f, 0.17f, 0.92f) : new Color(0.13f, 0.14f, 0.16f, 0.92f);
-            row.stateLabel.style.borderTopColor = enabled ? new Color(0.30f, 0.66f, 0.48f, 0.72f) : new Color(1f, 1f, 1f, 0.10f);
+            bool isSelected = isTrackSelectionMode
+                ? snapshot.selectedSongSettingsTrackOptionIndex == i
+                : snapshot.selectedGeneratedAudioTrackIndex == i + 3;
+
+            row.stateLabel.text = isTrackSelectionMode
+                ? (isSelected ? "ACTIVE" : "TRACK")
+                : (enabled ? "ON" : "OFF");
+            row.stateLabel.style.color = isTrackSelectionMode
+                ? (isSelected ? LibraryPrimaryColor : new Color(0.74f, 0.80f, 0.86f, 1f))
+                : (enabled ? LibraryPrimaryColor : new Color(0.58f, 0.62f, 0.68f, 1f));
+            row.stateLabel.style.backgroundColor = isTrackSelectionMode
+                ? (isSelected ? new Color(0.14f, 0.21f, 0.17f, 0.92f) : new Color(0.13f, 0.14f, 0.16f, 0.92f))
+                : (enabled ? new Color(0.14f, 0.21f, 0.17f, 0.92f) : new Color(0.13f, 0.14f, 0.16f, 0.92f));
+            row.stateLabel.style.borderTopColor = isTrackSelectionMode
+                ? (isSelected ? new Color(0.30f, 0.66f, 0.48f, 0.72f) : new Color(1f, 1f, 1f, 0.10f))
+                : (enabled ? new Color(0.30f, 0.66f, 0.48f, 0.72f) : new Color(1f, 1f, 1f, 0.10f));
             row.stateLabel.style.borderRightColor = row.stateLabel.style.borderTopColor;
             row.stateLabel.style.borderBottomColor = row.stateLabel.style.borderTopColor;
             row.stateLabel.style.borderLeftColor = row.stateLabel.style.borderTopColor;
 
             row.nameLabel.text = FormatTrackName(trackName);
-            row.actionLabel.text = enabled ? "Included" : "Muted";
-            row.actionLabel.style.color = enabled ? new Color(0.82f, 0.89f, 0.95f, 0.92f) : new Color(0.56f, 0.62f, 0.70f, 0.92f);
+            row.actionLabel.text = isTrackSelectionMode
+                ? (isSelected ? "Selected" : "Choose")
+                : (enabled ? "Included" : "Muted");
+            row.actionLabel.style.color = isTrackSelectionMode
+                ? (isSelected ? new Color(0.82f, 0.89f, 0.95f, 0.92f) : new Color(0.56f, 0.62f, 0.70f, 0.92f))
+                : (enabled ? new Color(0.82f, 0.89f, 0.95f, 0.92f) : new Color(0.56f, 0.62f, 0.70f, 0.92f));
 
-            bool isSelected = snapshot.selectedGeneratedAudioTrackIndex == popupSelectionIndex;
-
-            row.button.style.color = enabled ? new Color(0.95f, 0.97f, 0.99f, 1f) : new Color(0.62f, 0.68f, 0.75f, 1f);
+            row.button.style.color = isTrackSelectionMode || enabled ? new Color(0.95f, 0.97f, 0.99f, 1f) : new Color(0.62f, 0.68f, 0.75f, 1f);
             row.button.style.borderTopColor = isSelected ? Color.white : new Color(1f, 1f, 1f, 0.10f);
             row.button.style.borderRightColor = row.button.style.borderTopColor;
             row.button.style.borderBottomColor = row.button.style.borderTopColor;
@@ -18103,39 +18029,60 @@ public sealed class TabsSongHeaderOverlay
 
         float songEndButtonMinWidth = Mathf.Clamp(menuLayoutWidth * 0.19f, 320f, 420f);
 
-        float pauseFrontPlateWidth = Mathf.Clamp(screenWidth * 0.34f, 1180f, 1460f);
-        float pauseBackplateWidth = pauseFrontPlateWidth + 80f;
-        float pauseRegionWidth = pauseFrontPlateWidth - Mathf.Clamp(screenWidth * 0.04f, 140f, 220f);
-        float pauseShellWidth = Mathf.Clamp(pauseRegionWidth - Mathf.Clamp(screenWidth * 0.035f, 150f, 220f), 700f, 860f);
-        float pauseInnerMaxWidth = Mathf.Clamp(pauseShellWidth - 120f, 520f, 660f);
-        float pauseInfoMaxWidth = Mathf.Clamp(pauseShellWidth - 32f, 560f, 760f);
+        float sidebarAccentWidth = Mathf.Clamp(screenWidth * 0.012f, 14f, 22f);
+        float pauseFrontPlateWidth = Mathf.Clamp(screenWidth * 0.44f, 740f, 940f);
+        float pauseBackplateWidth = pauseFrontPlateWidth + sidebarAccentWidth;
+        float pauseRegionWidth = pauseFrontPlateWidth;
+        float pauseRegionPadding = Mathf.Clamp(screenWidth * 0.022f, 28f, 42f);
+        float pauseVerticalPadding = Mathf.Clamp(screenHeight * 0.05f, 38f, 72f);
+        float pauseShellWidth = Mathf.Max(660f, pauseRegionWidth - (pauseRegionPadding * 2f));
+        float pauseInnerMaxWidth = pauseShellWidth;
+        float pauseInfoMaxWidth = pauseShellWidth;
+        float pauseTitleSizeByWidth = Mathf.Clamp(pauseShellWidth * 0.185f, 96f, 142f);
+        float pauseHintSizeByWidth = Mathf.Clamp(pauseShellWidth * 0.047f, 22f, 34f);
+        float pauseInfoSizeByWidth = Mathf.Clamp(pauseShellWidth * 0.043f, 20f, 30f);
 
         pauseBackplate.style.width = pauseBackplateWidth;
         pauseFrontPlate.style.width = pauseFrontPlateWidth;
         pauseRegion.style.width = pauseRegionWidth;
-        pauseRegion.style.paddingLeft = Mathf.Clamp(screenWidth * 0.05f, 120f, 220f);
+        pauseRegion.style.paddingLeft = pauseRegionPadding;
+        pauseRegion.style.paddingRight = pauseRegionPadding;
+        pauseRegion.style.paddingTop = pauseVerticalPadding;
+        pauseRegion.style.paddingBottom = pauseVerticalPadding;
         pauseShell.style.width = pauseShellWidth;
         pauseShell.style.maxWidth = pauseShellWidth;
+        pauseTitleLabel.style.fontSize = Mathf.Min(pauseSize, pauseTitleSizeByWidth);
+        pauseTitleLabel.style.maxWidth = pauseShellWidth;
+        pauseHintLabel.style.fontSize = Mathf.Min(bodySize * 0.85f, pauseHintSizeByWidth);
+        pauseHintLabel.style.maxWidth = pauseInfoMaxWidth;
+        pauseInfoLabel.style.fontSize = Mathf.Min(bodySize * 0.80f, pauseInfoSizeByWidth);
         pauseCard.style.maxWidth = pauseInnerMaxWidth;
-        pauseButtons.style.maxWidth = pauseInnerMaxWidth - 40f;
-        pauseEndRow.style.maxWidth = pauseInnerMaxWidth - 40f;
+        pauseButtons.style.maxWidth = pauseInnerMaxWidth;
+        pauseEndRow.style.maxWidth = pauseInnerMaxWidth;
         pauseInfoLabel.style.maxWidth = pauseInfoMaxWidth;
-        speedSlider.style.maxWidth = pauseInnerMaxWidth - 40f;
-        speedValueLabel.style.minWidth = Mathf.Clamp(pauseInnerMaxWidth - 80f, 420f, 520f);
+        speedSlider.style.maxWidth = pauseInnerMaxWidth;
+        speedValueLabel.style.minWidth = Mathf.Clamp(pauseInnerMaxWidth, 320f, 520f);
 
         float settingsFrontPlateWidth = pauseFrontPlateWidth;
         float settingsBackplateWidth = pauseBackplateWidth;
         float settingsRegionWidth = pauseRegionWidth;
         float settingsShellWidth = pauseShellWidth;
         float settingsInnerMaxWidth = pauseInnerMaxWidth;
-        float settingsControlMaxWidth = settingsInnerMaxWidth - 40f;
+        float settingsControlMaxWidth = settingsInnerMaxWidth;
 
         settingsBackplate.style.width = settingsBackplateWidth;
         settingsFrontPlate.style.width = settingsFrontPlateWidth;
         settingsRegion.style.width = settingsRegionWidth;
-        settingsRegion.style.paddingLeft = Mathf.Clamp(screenWidth * 0.05f, 120f, 220f);
+        settingsRegion.style.paddingLeft = pauseRegionPadding;
+        settingsRegion.style.paddingRight = pauseRegionPadding;
+        settingsRegion.style.paddingTop = pauseVerticalPadding;
+        settingsRegion.style.paddingBottom = pauseVerticalPadding;
         settingsShell.style.width = settingsShellWidth;
         settingsShell.style.maxWidth = settingsShellWidth;
+        settingsTitleLabel.style.maxWidth = settingsShellWidth;
+        settingsTitleLabel.style.fontSize = Mathf.Clamp(settingsShellWidth * 0.155f, 74f, 108f);
+        settingsHintLabel.style.maxWidth = pauseInfoMaxWidth;
+        settingsHintLabel.style.fontSize = Mathf.Clamp(bodySize * 0.84f, 22f, 32f);
         settingsCard.style.maxWidth = settingsInnerMaxWidth;
         settingsOffsetRow.style.maxWidth = settingsInnerMaxWidth;
         settingsTabSpeedRow.style.maxWidth = settingsInnerMaxWidth;
@@ -18152,18 +18099,20 @@ public sealed class TabsSongHeaderOverlay
         gameModesBackplate.style.width = pauseBackplateWidth;
         gameModesFrontPlate.style.width = pauseFrontPlateWidth;
         gameModesRegion.style.width = pauseRegionWidth;
-        gameModesRegion.style.paddingTop = Mathf.Clamp(screenHeight * 0.05f, 36f, 88f);
-        gameModesRegion.style.paddingLeft = Mathf.Clamp(screenWidth * 0.05f, 120f, 220f);
+        gameModesRegion.style.paddingTop = pauseVerticalPadding;
+        gameModesRegion.style.paddingBottom = pauseVerticalPadding;
+        gameModesRegion.style.paddingLeft = pauseRegionPadding;
+        gameModesRegion.style.paddingRight = pauseRegionPadding;
         gameModesShell.style.width = pauseShellWidth;
         gameModesShell.style.maxWidth = pauseShellWidth;
         gameModesCard.style.maxWidth = pauseInnerMaxWidth;
         gameModesButtons.style.maxWidth = settingsControlMaxWidth;
         gameModesFooterRow.style.maxWidth = settingsControlMaxWidth;
         gameModesHintLabel.style.maxWidth = pauseInfoMaxWidth;
-        gameModesHintLabel.style.fontSize = Mathf.Clamp(bodySize * 0.80f, 22f, 30f);
+        gameModesHintLabel.style.fontSize = Mathf.Clamp(bodySize * 0.84f, 22f, 32f);
         gameModesHintLabel.style.marginBottom = Mathf.Clamp(menuLayoutHeight * 0.014f, 10f, 16f);
         gameModesInfoLabel.style.maxWidth = pauseInfoMaxWidth;
-        gameModesInfoLabel.style.fontSize = Mathf.Clamp(bodySize * 0.72f, 20f, 27f);
+        gameModesInfoLabel.style.fontSize = Mathf.Clamp(bodySize * 0.76f, 20f, 29f);
         gameModesInfoLabel.style.marginBottom = Mathf.Clamp(menuLayoutHeight * 0.018f, 14f, 22f);
         startupTuningReminderPopup?.ApplyResponsiveSizing(menuLayoutHeight, buttonFontSize);
 
@@ -18328,6 +18277,12 @@ public sealed class TabsSongHeaderOverlay
             arrowButton.style.fontSize = 76f;
 
         }
+
+        if (settingsTrackLeftArrowButton != null)
+            settingsTrackLeftArrowButton.style.display = DisplayStyle.None;
+
+        if (settingsTrackRightArrowButton != null)
+            settingsTrackRightArrowButton.style.display = DisplayStyle.None;
 
 
 
