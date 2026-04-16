@@ -11,6 +11,7 @@ public sealed class SongLibraryEntry
     public string DisplayName;
     public string Subtitle;
     public string ArtworkPath;
+    public int DifficultyRating;
     public string SongDirectory;
     public string Mp3Path;
     public string PrimaryNotationPath;
@@ -23,6 +24,8 @@ public sealed class SongLibraryEntry
 
 public static class SongLibraryService
 {
+    private const string SongDefinitionFileName = "song.json";
+
     private sealed class CachedSongEntry
     {
         public SongLibraryEntry Entry;
@@ -37,6 +40,21 @@ public static class SongLibraryService
     {
         public string songId;
         public string displayName;
+        public string subtitle;
+        public int difficulty;
+    }
+
+    public static string GetDifficultyLabel(int difficultyRating)
+    {
+        switch (Mathf.Clamp(difficultyRating, 0, 5))
+        {
+            case 1: return "Beginner";
+            case 2: return "Novice";
+            case 3: return "Standard";
+            case 4: return "Advanced";
+            case 5: return "Master";
+            default: return "Unknown";
+        }
     }
 
     public static bool TryGetFirstValidSong(out SongLibraryEntry entry)
@@ -140,8 +158,10 @@ public static class SongLibraryService
         }
 
         string metadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
-        string displayName = ResolveDisplayName(songDirectory, primaryNotationPath, primaryNotationKind, metadataPath, xmlPath);
-        string subtitle = SongNotationFacade.TryReadCreator(primaryNotationPath, primaryNotationKind);
+        string definitionPath = Path.Combine(songDirectory, SongDefinitionFileName);
+        SongFolderMetadata importedDefinition = TryReadSongFolderMetadata(definitionPath) ?? TryReadSongFolderMetadata(metadataPath);
+        string displayName = ResolveDisplayName(songDirectory, primaryNotationPath, primaryNotationKind, importedDefinition, xmlPath);
+        string subtitle = ResolveSubtitle(primaryNotationPath, primaryNotationKind, importedDefinition, xmlPath);
 
         entry = new SongLibraryEntry
         {
@@ -149,6 +169,7 @@ public static class SongLibraryService
             DisplayName = displayName,
             Subtitle = subtitle,
             ArtworkPath = artworkPath,
+            DifficultyRating = importedDefinition != null ? Mathf.Clamp(importedDefinition.difficulty, 0, 5) : 0,
             SongDirectory = songDirectory,
             Mp3Path = mp3Path,
             PrimaryNotationPath = primaryNotationPath,
@@ -238,13 +259,12 @@ public static class SongLibraryService
         return null;
     }
 
-    private static string ResolveDisplayName(string songDirectory, string notationPath, SongNotationSourceKind notationKind, string metadataPath, string xmlFallbackPath)
+    private static string ResolveDisplayName(string songDirectory, string notationPath, SongNotationSourceKind notationKind, SongFolderMetadata importedDefinition, string xmlFallbackPath)
     {
         string fallbackName = Path.GetFileName(songDirectory);
 
-        string metadataName = TryReadDisplayNameFromMetadata(metadataPath);
-        if (!string.IsNullOrWhiteSpace(metadataName))
-            return metadataName.Trim();
+        if (!string.IsNullOrWhiteSpace(importedDefinition?.displayName))
+            return importedDefinition.displayName.Trim();
 
         string notationName = SongNotationFacade.TryReadDisplayName(notationPath, notationKind);
         if (!string.IsNullOrWhiteSpace(notationName))
@@ -257,7 +277,7 @@ public static class SongLibraryService
         return fallbackName;
     }
 
-    private static string TryReadDisplayNameFromMetadata(string metadataPath)
+    private static SongFolderMetadata TryReadSongFolderMetadata(string metadataPath)
     {
         if (string.IsNullOrEmpty(metadataPath) || !File.Exists(metadataPath))
             return null;
@@ -265,14 +285,26 @@ public static class SongLibraryService
         try
         {
             string json = File.ReadAllText(metadataPath);
-            SongFolderMetadata metadata = JsonUtility.FromJson<SongFolderMetadata>(json);
-            return metadata != null ? metadata.displayName : null;
+            return JsonUtility.FromJson<SongFolderMetadata>(json);
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"[SongLibraryService] Failed to parse metadata '{metadataPath}': {ex.Message}");
             return null;
         }
+    }
+
+    private static string ResolveSubtitle(string notationPath, SongNotationSourceKind notationKind, SongFolderMetadata importedDefinition, string xmlFallbackPath)
+    {
+        if (!string.IsNullOrWhiteSpace(importedDefinition?.subtitle))
+            return importedDefinition.subtitle.Trim();
+
+        string notationCreator = SongNotationFacade.TryReadCreator(notationPath, notationKind);
+        if (!string.IsNullOrWhiteSpace(notationCreator))
+            return notationCreator.Trim();
+
+        string xmlCreator = TryReadCreatorFromXml(xmlFallbackPath);
+        return string.IsNullOrWhiteSpace(xmlCreator) ? string.Empty : xmlCreator.Trim();
     }
 
     internal static string TryReadDisplayNameFromXml(string xmlPath)
@@ -337,6 +369,7 @@ public static class SongLibraryService
             DisplayName = entry.DisplayName,
             Subtitle = entry.Subtitle,
             ArtworkPath = entry.ArtworkPath,
+            DifficultyRating = entry.DifficultyRating,
             SongDirectory = entry.SongDirectory,
             Mp3Path = entry.Mp3Path,
             PrimaryNotationPath = entry.PrimaryNotationPath,

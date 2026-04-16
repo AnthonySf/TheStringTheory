@@ -237,11 +237,13 @@ public sealed class GuitarGameplaySnapshot
     public List<string> availableSongNames;
     public List<string> availableSongSubtitles;
     public List<string> availableSongArtworkPaths;
+    public List<string> availableSongDifficultyLabels;
     public List<float> availableSongScores;
     public List<string> availableSongScoreTexts;
     public int selectedSongIndex;
     public string selectedLibrarySongSubtitle;
     public string selectedLibrarySongArtworkPath;
+    public string selectedLibrarySongDifficultyLabel;
     public int selectedLibrarySongTrackCount;
     public int selectedLibrarySongHeroBestHeartsRemaining;
     public int selectedLibrarySongHeroBestHeartsTotal;
