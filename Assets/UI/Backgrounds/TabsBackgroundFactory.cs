@@ -8,7 +8,11 @@ public static class TabsBackgroundFactory
         switch (owner.tabBackgroundMode)
         {
             case GuitarBridgeServer.TabsBackgroundMode.BlueSky:
-                return new TabsBlueSkyBackground(applyHighwayOverrides);
+                return owner.tabSkyUseStageBackdrop
+                    ? new TabsStageBackground(applyHighwayOverrides)
+                    : new TabsBlueSkyBackground(applyHighwayOverrides);
+            case GuitarBridgeServer.TabsBackgroundMode.Space:
+                return new TabsSpaceBackground(applyHighwayOverrides);
             case GuitarBridgeServer.TabsBackgroundMode.Starfield:
                 return new TabsStarfieldBackground(applyHighwayOverrides);
             case GuitarBridgeServer.TabsBackgroundMode.SolidColor:

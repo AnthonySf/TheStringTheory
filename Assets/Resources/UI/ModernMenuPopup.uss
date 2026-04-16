@@ -1,0 +1,58 @@
+.modern-popup-root {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.modern-popup-card {
+    width: 1040px;
+    max-width: 1120px;
+    padding-left: 42px;
+    padding-right: 42px;
+    padding-top: 38px;
+    padding-bottom: 34px;
+    align-items: center;
+}
+
+.modern-popup-eyebrow {
+    letter-spacing: 1.6px;
+    margin-bottom: 10px;
+}
+
+.modern-popup-title {
+    white-space: normal;
+    margin-bottom: 14px;
+}
+
+.modern-popup-message {
+    white-space: normal;
+    margin-bottom: 16px;
+}
+
+.modern-popup-callout {
+    white-space: normal;
+    margin-bottom: 14px;
+}
+
+.modern-popup-hint {
+    white-space: normal;
+}
+
+.modern-popup-content {
+    width: 100%;
+    align-items: center;
+    margin-top: 18px;
+}
+
+.modern-popup-primary-button {
+    margin-top: 22px;
+    min-width: 280px;
+    height: 86px;
+    padding-left: 28px;
+    padding-right: 28px;
+}

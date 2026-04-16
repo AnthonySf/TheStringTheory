@@ -1,0 +1,518 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using UnityEngine;
+
+[Serializable]
+public sealed class NativeDetectorInputDevice
+{
+    public int index = -1;
+    public string displayName = string.Empty;
+    public string name = string.Empty;
+    public string hostApiName = string.Empty;
+    public int maxInputChannels;
+    public float defaultSampleRate;
+    public float defaultLowInputLatency;
+}
+
+[Serializable]
+public sealed class NativeDetectorDeviceListPayload
+{
+    public int preferredDeviceIndex = -1;
+    public NativeDetectorInputDevice[] devices = Array.Empty<NativeDetectorInputDevice>();
+}
+
+[Serializable]
+public sealed class NativeDetectorRuntimeInfo
+{
+    public bool running;
+    public string backendLabel = "Native C++ Detector";
+    public int selectedInputDeviceIndex = -1;
+    public string selectedInputDeviceDisplayName = string.Empty;
+    public string selectedHostApiName = string.Empty;
+    public int sampleRate = 22050;
+    public int hopSize = 512;
+    public float captureSeconds = 0.3f;
+    public float inputLevelNormalized;
+    public string latestPacket = "--";
+    public string statusText = "Native detector idle.";
+    public string errorText = string.Empty;
+}
+
+public sealed class NativeNotesDetectorBridge
+{
+    private const string NativeLibraryName = "NativeNotesDetectorBridgeNative_v6";
+    private const int NativeBufferSize = 65536;
+
+    private bool initialized;
+    private bool presetStoreLoaded;
+    private string lastStatus = "Native detector idle.";
+    private string lastError = string.Empty;
+    private NativeDetectorDeviceListPayload cachedDevices = new NativeDetectorDeviceListPayload();
+    private NativeDetectorRuntimeInfo cachedRuntimeInfo = new NativeDetectorRuntimeInfo();
+    private NativeDetectorPresetStore presetStore = new NativeDetectorPresetStore();
+    private NativeDetectorSettingsData workingSettings = NativeDetectorSettingCatalog.CreateLevel2();
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_Initialize(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string modelPathUtf8,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string dataDirectoryUtf8,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string reservedUtf8);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_Start(int inputDeviceIndex);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_Stop();
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_SetHintPayload([MarshalAs(UnmanagedType.LPUTF8Str)] string payloadUtf8);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_PollLatestPacket(StringBuilder destination, int capacity);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_GetStatus(StringBuilder destination, int capacity);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_GetLastError(StringBuilder destination, int capacity);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_IsRunning();
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_ListInputDevicesJson(StringBuilder destination, int capacity);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_GetRuntimeInfoJson(StringBuilder destination, int capacity);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_SetSettingsJson([MarshalAs(UnmanagedType.LPUTF8Str)] string settingsJsonUtf8);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern void NativeDetector_Shutdown();
+
+    public string LastStatus => lastStatus;
+    public string LastError => lastError;
+    public NativeDetectorInputDevice[] InputDevices => cachedDevices?.devices ?? Array.Empty<NativeDetectorInputDevice>();
+    public int PreferredInputDeviceIndex => cachedDevices != null ? cachedDevices.preferredDeviceIndex : -1;
+    public NativeDetectorRuntimeInfo RuntimeInfo => cachedRuntimeInfo ?? new NativeDetectorRuntimeInfo();
+    public string SelectedPresetId
+    {
+        get
+        {
+            EnsurePresetStoreLoaded();
+            return presetStore.selectedPresetId;
+        }
+    }
+    public string SelectedPresetLabel => NativeDetectorSettingCatalog.GetPresetLabel(SelectedPresetId);
+    public int SelectedPresetIndex => NativeDetectorSettingCatalog.GetPresetIndex(SelectedPresetId);
+    public IReadOnlyList<NativeDetectorPresetDescriptor> Presets => NativeDetectorSettingCatalog.PresetDescriptors;
+    public NativeDetectorSettingsData WorkingSettings
+    {
+        get
+        {
+            EnsurePresetStoreLoaded();
+            return NativeDetectorSettingCatalog.Clone(workingSettings);
+        }
+    }
+
+    public bool Initialize()
+    {
+        EnsurePresetStoreLoaded();
+
+        if (initialized)
+        {
+            ApplyWorkingSettingsToNative();
+            return true;
+        }
+
+        try
+        {
+            string modelPath = Path.Combine(Application.streamingAssetsPath, "NotesReader", "Models", "basic_pitch_nmp.onnx");
+            if (!File.Exists(modelPath))
+            {
+                lastError = $"Detector model not found: {modelPath}";
+                lastStatus = lastError;
+                return false;
+            }
+
+            int result = NativeDetector_Initialize(modelPath, Application.persistentDataPath, string.Empty);
+            initialized = result != 0;
+            if (initialized)
+                ApplyWorkingSettingsToNative();
+            RefreshNativeStatus();
+            RefreshDevices();
+
+            if (!initialized && string.IsNullOrWhiteSpace(lastError))
+            {
+                lastError = "Native detector initialization failed.";
+                lastStatus = lastError;
+            }
+
+            return initialized;
+        }
+        catch (DllNotFoundException ex)
+        {
+            lastError = $"Native detector DLL not found: {ex.Message}";
+            lastStatus = lastError;
+            return false;
+        }
+        catch (EntryPointNotFoundException ex)
+        {
+            lastError = $"Native detector entry point missing: {ex.Message}";
+            lastStatus = lastError;
+            return false;
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector init failed: {ex.Message}";
+            lastStatus = lastError;
+            return false;
+        }
+    }
+
+    public bool Start(int inputDeviceIndex = -1)
+    {
+        if (!Initialize())
+            return false;
+
+        try
+        {
+            ApplyWorkingSettingsToNative();
+            bool ok = NativeDetector_Start(inputDeviceIndex) != 0;
+            RefreshNativeStatus();
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector start failed: {ex.Message}";
+            lastStatus = lastError;
+            return false;
+        }
+    }
+
+    public void Stop()
+    {
+        if (!initialized)
+            return;
+
+        try
+        {
+            NativeDetector_Stop();
+            RefreshNativeStatus();
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector stop failed: {ex.Message}";
+            lastStatus = lastError;
+        }
+    }
+
+    public void Shutdown()
+    {
+        if (!initialized)
+            return;
+
+        try
+        {
+            NativeDetector_Shutdown();
+        }
+        catch
+        {
+        }
+
+        initialized = false;
+    }
+
+    public List<string> BuildPresetLabels()
+    {
+        return NativeDetectorSettingCatalog.BuildPresetLabels();
+    }
+
+    public List<NativeDetectorSettingSnapshot> BuildSettingSnapshots()
+    {
+        EnsurePresetStoreLoaded();
+        return NativeDetectorSettingCatalog.BuildSettingSnapshots(workingSettings);
+    }
+
+    public void SelectPresetByIndex(int presetIndex)
+    {
+        EnsurePresetStoreLoaded();
+        string presetId = NativeDetectorSettingCatalog.GetPresetIdAtIndex(presetIndex);
+        presetStore.selectedPresetId = presetId;
+        workingSettings = ResolveSettingsForPresetId(presetId);
+        SavePresetStore();
+        ApplyWorkingSettingsToNative();
+        RefreshNativeStatus();
+    }
+
+    public void UpdateWorkingSetting(string key, float value)
+    {
+        EnsurePresetStoreLoaded();
+        NativeDetectorSettingCatalog.ApplySettingValue(workingSettings, key, value);
+        workingSettings = NativeDetectorSettingCatalog.Sanitize(workingSettings);
+        ApplyWorkingSettingsToNative();
+    }
+
+    public void SaveWorkingSettingsToCustomPreset()
+    {
+        EnsurePresetStoreLoaded();
+        presetStore.customSettings = NativeDetectorSettingCatalog.Clone(workingSettings);
+        presetStore.selectedPresetId = NativeDetectorSettingCatalog.CustomPresetId;
+        workingSettings = ResolveSettingsForPresetId(presetStore.selectedPresetId);
+        SavePresetStore();
+        ApplyWorkingSettingsToNative();
+        RefreshNativeStatus();
+    }
+
+    public void RestoreSelectedPresetWorkingSettings()
+    {
+        EnsurePresetStoreLoaded();
+        workingSettings = ResolveSettingsForPresetId(presetStore.selectedPresetId);
+        ApplyWorkingSettingsToNative();
+    }
+
+    public bool SetHintPayload(string payload)
+    {
+        if (!initialized)
+            return false;
+
+        try
+        {
+            return NativeDetector_SetHintPayload(payload ?? string.Empty) != 0;
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector hint send failed: {ex.Message}";
+            return false;
+        }
+    }
+
+    public string PollLatestPacket()
+    {
+        if (!initialized)
+            return string.Empty;
+
+        try
+        {
+            StringBuilder builder = new StringBuilder(NativeBufferSize);
+            if (NativeDetector_PollLatestPacket(builder, builder.Capacity) != 0)
+                return builder.ToString();
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector poll failed: {ex.Message}";
+            lastStatus = lastError;
+        }
+
+        return string.Empty;
+    }
+
+    public bool IsRunning()
+    {
+        if (!initialized)
+            return false;
+
+        try
+        {
+            return NativeDetector_IsRunning() != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public NativeDetectorDeviceListPayload RefreshDevices()
+    {
+        if (!Initialize())
+            return cachedDevices;
+
+        try
+        {
+            StringBuilder builder = new StringBuilder(NativeBufferSize);
+            if (NativeDetector_ListInputDevicesJson(builder, builder.Capacity) != 0)
+            {
+                string json = builder.ToString();
+                NativeDetectorDeviceListPayload parsed = JsonUtility.FromJson<NativeDetectorDeviceListPayload>(json);
+                if (parsed != null)
+                    cachedDevices = parsed;
+            }
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector device query failed: {ex.Message}";
+            lastStatus = lastError;
+        }
+
+        if (cachedDevices == null)
+            cachedDevices = new NativeDetectorDeviceListPayload();
+
+        return cachedDevices;
+    }
+
+    public NativeDetectorRuntimeInfo RefreshRuntimeInfo()
+    {
+        if (!initialized)
+            return cachedRuntimeInfo;
+
+        try
+        {
+            StringBuilder builder = new StringBuilder(NativeBufferSize);
+            if (NativeDetector_GetRuntimeInfoJson(builder, builder.Capacity) != 0)
+            {
+                string json = builder.ToString();
+                NativeDetectorRuntimeInfo parsed = JsonUtility.FromJson<NativeDetectorRuntimeInfo>(json);
+                if (parsed != null)
+                    cachedRuntimeInfo = parsed;
+            }
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector runtime info query failed: {ex.Message}";
+            lastStatus = lastError;
+        }
+
+        if (cachedRuntimeInfo == null)
+            cachedRuntimeInfo = new NativeDetectorRuntimeInfo();
+
+        return cachedRuntimeInfo;
+    }
+
+    public void RefreshNativeStatus()
+    {
+        if (!initialized)
+            return;
+
+        try
+        {
+            StringBuilder statusBuilder = new StringBuilder(NativeBufferSize);
+            if (NativeDetector_GetStatus(statusBuilder, statusBuilder.Capacity) != 0)
+                lastStatus = statusBuilder.ToString();
+
+            StringBuilder errorBuilder = new StringBuilder(NativeBufferSize);
+            if (NativeDetector_GetLastError(errorBuilder, errorBuilder.Capacity) != 0)
+                lastError = errorBuilder.ToString();
+
+            NativeDetectorRuntimeInfo info = RefreshRuntimeInfo();
+            if (info != null)
+            {
+                if (!string.IsNullOrWhiteSpace(info.statusText))
+                    lastStatus = info.statusText;
+                if (!string.IsNullOrWhiteSpace(info.errorText))
+                    lastError = info.errorText;
+            }
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector status query failed: {ex.Message}";
+            lastStatus = lastError;
+        }
+    }
+
+    public string GetInputDeviceDisplayName(int deviceIndex)
+    {
+        NativeDetectorInputDevice[] devices = InputDevices;
+        for (int i = 0; i < devices.Length; i++)
+        {
+            NativeDetectorInputDevice device = devices[i];
+            if (device != null && device.index == deviceIndex)
+                return string.IsNullOrWhiteSpace(device.displayName) ? device.name : device.displayName;
+        }
+
+        return deviceIndex >= 0 ? $"Device {deviceIndex}" : "Auto";
+    }
+
+    private void EnsurePresetStoreLoaded()
+    {
+        if (presetStoreLoaded)
+            return;
+
+        presetStoreLoaded = true;
+        presetStore = new NativeDetectorPresetStore();
+        string presetStorePath = GetPresetStorePath();
+
+        try
+        {
+            if (File.Exists(presetStorePath))
+            {
+                string json = File.ReadAllText(presetStorePath);
+                NativeDetectorPresetStore parsed = JsonUtility.FromJson<NativeDetectorPresetStore>(json);
+                if (parsed != null)
+                    presetStore = parsed;
+            }
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Detector preset load failed: {ex.Message}";
+        }
+
+        if (presetStore == null)
+            presetStore = new NativeDetectorPresetStore();
+
+        if (string.IsNullOrWhiteSpace(presetStore.selectedPresetId))
+            presetStore.selectedPresetId = NativeDetectorSettingCatalog.DefaultPresetId;
+
+        if (presetStore.customSettings == null)
+            presetStore.customSettings = NativeDetectorSettingCatalog.CreateLevel2();
+
+        workingSettings = ResolveSettingsForPresetId(presetStore.selectedPresetId);
+        SavePresetStore();
+    }
+
+    private string GetPresetStorePath()
+    {
+        return Path.Combine(Application.persistentDataPath, "NotesDetector", "native_detector_presets.json");
+    }
+
+    private void SavePresetStore()
+    {
+        EnsurePresetStoreLoaded();
+
+        try
+        {
+            string path = GetPresetStorePath();
+            string directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            presetStore.customSettings = NativeDetectorSettingCatalog.Sanitize(presetStore.customSettings);
+            string json = JsonUtility.ToJson(presetStore, true);
+            File.WriteAllText(path, json);
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Detector preset save failed: {ex.Message}";
+        }
+    }
+
+    private NativeDetectorSettingsData ResolveSettingsForPresetId(string presetId)
+    {
+        if (string.Equals(presetId, NativeDetectorSettingCatalog.CustomPresetId, StringComparison.OrdinalIgnoreCase))
+            return NativeDetectorSettingCatalog.Sanitize(presetStore.customSettings);
+
+        return NativeDetectorSettingCatalog.Sanitize(NativeDetectorSettingCatalog.CreatePresetById(presetId));
+    }
+
+    private void ApplyWorkingSettingsToNative()
+    {
+        EnsurePresetStoreLoaded();
+        workingSettings = NativeDetectorSettingCatalog.Sanitize(workingSettings);
+
+        if (!initialized)
+            return;
+
+        try
+        {
+            NativeDetector_SetSettingsJson(JsonUtility.ToJson(workingSettings));
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector settings apply failed: {ex.Message}";
+            lastStatus = lastError;
+        }
+    }
+}

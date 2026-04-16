@@ -1,0 +1,14 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" editor-extension-mode="False">
+    <Style src="project://database/Assets/Resources/UI/ModernMenuPopup.uss?fileID=7433441132597879392&amp;guid=c24b9ad3c3e441159211721eb2d9659a&amp;type=3#ModernMenuPopup" />
+    <ui:VisualElement name="modern-popup-root" class="modern-popup-root">
+        <ui:VisualElement name="modern-popup-card" class="modern-popup-card">
+            <ui:Label name="modern-popup-eyebrow" text="EYEBROW" class="modern-popup-eyebrow" />
+            <ui:Label name="modern-popup-title" text="TITLE" class="modern-popup-title" />
+            <ui:Label name="modern-popup-message" text="MESSAGE" class="modern-popup-message" />
+            <ui:Label name="modern-popup-callout" text="CALLOUT" class="modern-popup-callout" />
+            <ui:Label name="modern-popup-hint" text="HINT" class="modern-popup-hint" />
+            <ui:VisualElement name="modern-popup-content" class="modern-popup-content" />
+            <ui:Button name="modern-popup-primary-button" text="Continue" class="modern-popup-primary-button" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

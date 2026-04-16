@@ -1,4 +1,7 @@
 ﻿<Solution>
   <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="MidiPlayer.Editor.csproj" />
+  <Project Path="MidiPlayer.Demo.csproj" />
+  <Project Path="MidiPlayer.Run.csproj" />
   <Project Path="Assembly-CSharp-Editor.csproj" />
 </Solution>

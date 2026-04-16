@@ -51,5 +51,29 @@ Assets/StreamingAssets/ToneLab/build/
 Assets/StreamingAssets/ToneLab/*.log
 Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
 
+# Native detector generated artifacts
+Assets/Plugins/x86_64/*.pdb
+Assets/Plugins/x86_64/*.lib
+Assets/Plugins/x86_64/*.exp
+
+# Public source release: bundled libraries / binaries / packaged runtimes
+Assets/MidiPlayer/
+Assets/Plugins/**/*.dll
+Assets/Plugins/**/*.so
+Assets/Plugins/**/*.dylib
+Assets/Plugins/**/*.a
+Assets/Plugins/**/*.lib
+Assets/Plugins/**/*.exp
+Assets/Plugins/**/*.pdb
+Assets/StreamingAssets/NotesReader/*.exe
+Assets/StreamingAssets/NotesReader/Models/*.onnx
+Assets/StreamingAssets/NotesReader/__pycache__/
+Assets/StreamingAssets/ToneLab/build/
+Assets/StreamingAssets/ToneLab/dist/
+Assets/StreamingAssets/ToneLab/*.log
+Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
+NativeNotesDetectorBridge/build/
+External/
+
 # General
 *.log
