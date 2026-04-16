@@ -2,11 +2,19 @@
   "values": [
     {
       "id": "core.noteSpeed",
-      "value": "22"
+      "value": "29.1"
     },
     {
       "id": "core.invertStrings",
+      "value": "true"
+    },
+    {
+      "id": "core.forceStandardTuning",
       "value": "false"
+    },
+    {
+      "id": "render.mode",
+      "value": "Highway3D"
     },
     {
       "id": "timing.hitWindowEarly",
@@ -22,7 +30,7 @@
     },
     {
       "id": "tabs.tabSectionDuration",
-      "value": "4.5"
+      "value": "4.3"
     },
     {
       "id": "tabs.tabSectionLengthMultiplier",
@@ -110,7 +118,7 @@
     },
     {
       "id": "bg.skyStarTwinkleSpeedMax",
-      "value": "1.8"
+      "value": "1"
     },
     {
       "id": "bg.starStyle",
@@ -143,6 +151,78 @@
     {
       "id": "bg.skyCloudGlobalScale",
       "value": "3"
+    },
+    {
+      "id": "highway.totalFrets",
+      "value": "24"
+    },
+    {
+      "id": "highway.fretSpacing",
+      "value": "3.3"
+    },
+    {
+      "id": "highway.strikeLineZ",
+      "value": "-5"
+    },
+    {
+      "id": "highway.spawnZ",
+      "value": "100"
+    },
+    {
+      "id": "highway.defaultOpenAnchorFret",
+      "value": "2"
+    },
+    {
+      "id": "highway.hideOpenFretNumber",
+      "value": "true"
+    },
+    {
+      "id": "highway.cameraY",
+      "value": "16.85"
+    },
+    {
+      "id": "highway.cameraZ",
+      "value": "-18.2"
+    },
+    {
+      "id": "highway.cameraPitch",
+      "value": "26"
+    },
+    {
+      "id": "highway.lookaheadWindow",
+      "value": "5"
+    },
+    {
+      "id": "highway.cameraFarClip",
+      "value": "5000"
+    },
+    {
+      "id": "highway.cameraMoveSpeed",
+      "value": "3"
+    },
+    {
+      "id": "highway.noteHeightScale",
+      "value": "1.35"
+    },
+    {
+      "id": "highway.resolvedHoldTime",
+      "value": "0.18"
+    },
+    {
+      "id": "highway.outlineThickness",
+      "value": "0.06"
+    },
+    {
+      "id": "highway.outlineDepth",
+      "value": "0.04"
+    },
+    {
+      "id": "highway.showApproachLine",
+      "value": "false"
+    },
+    {
+      "id": "highway.showLandingDot",
+      "value": "true"
     },
     {
       "id": "highway.backgroundDistance",
@@ -193,20 +273,24 @@
       "value": "1"
     },
     {
-      "id": "highway.fretSpacing",
-      "value": "4.2"
+      "id": "highway.laneGuideThickness",
+      "value": "0.14"
     },
     {
-      "id": "highway.cameraY",
-      "value": "17"
+      "id": "highway.laneGuideYOffset",
+      "value": "-1.84"
     },
     {
-      "id": "highway.cameraZ",
-      "value": "-18"
+      "id": "highway.highlightFretBoundaries",
+      "value": "false"
     },
     {
-      "id": "highway.cameraPitch",
-      "value": "40"
+      "id": "highway.fretNumberYOffset",
+      "value": "0.45"
+    },
+    {
+      "id": "highway.fretNumberZOffset",
+      "value": "0.12"
     }
   ]
 }

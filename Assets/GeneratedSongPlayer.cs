@@ -173,8 +173,13 @@ public sealed class GeneratedSongPlayer : IDisposable
 
     public void Dispose()
     {
+        Dispose(clearSound: false);
+    }
+
+    public void Dispose(bool clearSound)
+    {
         UnsubscribeFromPresetLoaded();
-        ResetState(clearSound: true);
+        ResetState(clearSound);
 
         if (synthRoot != null)
             UnityEngine.Object.Destroy(synthRoot);
@@ -347,8 +352,26 @@ public sealed class GeneratedSongPlayer : IDisposable
 
     private void ClearAllSound()
     {
-        if (midiStreamPlayer != null)
+        if (midiStreamPlayer == null)
+            return;
+
+        if (synthRoot == null || !synthRoot.activeInHierarchy)
+            return;
+
+        if (midiStreamPlayer.gameObject == null || !midiStreamPlayer.gameObject.activeInHierarchy)
+            return;
+
+        if (!Application.isPlaying)
+            return;
+
+        try
+        {
             midiStreamPlayer.MPTK_ClearAllSound(false);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[GeneratedSong] Skipped ClearAllSound during shutdown: {ex.Message}");
+        }
     }
 
     private void SubscribeToPresetLoaded()
