@@ -2790,8 +2790,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float arrowFrontZ = visualNoteZ - (currentScale.z * 0.5f) - BendArrowFrontOffset;
             float arrowBaseY = y + (currentScale.y * 0.5f);
             bool showPrimaryArrow = !hideResolvedCoreVisuals && !hideTravelingNoteBox && !hideOverlaySymbol;
-            int roundedBendSemitones = Mathf.Max(0, Mathf.RoundToInt(state.data.bendStep));
-            bool showSecondaryArrow = showPrimaryArrow && roundedBendSemitones > 1;
+            int bendArrowCount = GetDisplayedBendArrowCount(state.data);
+            bool showSecondaryArrow = showPrimaryArrow && bendArrowCount > 1;
 
             view.bendArrow.transform.position = new Vector3(x, arrowBaseY, arrowFrontZ);
             view.bendArrow.transform.rotation = Quaternion.identity;
@@ -3062,6 +3062,22 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static bool HasBendRibbon(NoteData data)
     {
         return data.technique == NoteTechnique.Bend || data.bendStep > 0f || data.bendPreBend || data.bendRelease;
+    }
+
+    private static int GetDisplayedBendArrowCount(NoteData data)
+    {
+        float bendAmount = Mathf.Max(0f, data.bendStep);
+        if (bendAmount <= 0.01f)
+            return 0;
+
+        // Older/imported note sources do not agree on bend units:
+        // some encode half/full as 0.5/1.0, others as 1/2 semitones.
+        // Normalize here so visuals stay consistent.
+        float normalizedHalfStepUnits = bendAmount <= 1.25f
+            ? bendAmount * 2f
+            : bendAmount;
+
+        return Mathf.Clamp(Mathf.RoundToInt(normalizedHalfStepUnits), 1, 2);
     }
 
     private static bool HasTechniqueSegments(NoteData data)

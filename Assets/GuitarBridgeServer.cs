@@ -6085,6 +6085,7 @@ private void ParseDetectorPacket(string detectorPacket)
         SongMetadata pendingTrackMetadata = pendingTrackSelectionSong != null ? LoadSongMetadataForEntry(pendingTrackSelectionSong) : null;
         List<float> availableSongScores = new List<float>(availableSongs.Count);
         List<string> availableSongScoreTexts = new List<string>(availableSongs.Count);
+        List<string> availableSongDifficultyLabels = new List<string>(availableSongs.Count);
         for (int i = 0; i < availableSongs.Count; i++)
         {
             SongLibraryEntry song = availableSongs[i];
@@ -6097,6 +6098,7 @@ private void ParseDetectorPacket(string detectorPacket)
             HeroScoreSummary heroScore = GetHighestHeroTrackScoreSummary(metadata);
             availableSongScores.Add(normalScore);
             availableSongScoreTexts.Add(BuildCombinedScoreText(normalScore, heroScore));
+            availableSongDifficultyLabels.Add(SongLibraryService.GetDifficultyLabel(song?.DifficultyRating ?? 0));
         }
 
         List<float> availableTrackScores = new List<float>(pendingTrackSelectionParts.Count);
@@ -6187,11 +6189,13 @@ private void ParseDetectorPacket(string detectorPacket)
             availableSongNames = availableSongs.Select(song => song.DisplayName).ToList(),
             availableSongSubtitles = availableSongs.Select(song => song.Subtitle ?? string.Empty).ToList(),
             availableSongArtworkPaths = availableSongs.Select(song => song?.ArtworkPath ?? string.Empty).ToList(),
+            availableSongDifficultyLabels = availableSongDifficultyLabels,
             availableSongScores = availableSongScores,
             availableSongScoreTexts = availableSongScoreTexts,
             selectedSongIndex = selectedSongListIndex,
             selectedLibrarySongSubtitle = selectedLibrarySongEntry?.Subtitle ?? string.Empty,
             selectedLibrarySongArtworkPath = selectedLibrarySongEntry?.ArtworkPath ?? string.Empty,
+            selectedLibrarySongDifficultyLabel = SongLibraryService.GetDifficultyLabel(selectedLibrarySongEntry?.DifficultyRating ?? 0),
             selectedLibrarySongTrackCount = pendingTrackSelectionParts.Count,
             selectedLibrarySongHeroBestHeartsRemaining = Mathf.Max(0, selectedLibraryHeroScore.heartsRemaining),
             selectedLibrarySongHeroBestHeartsTotal = Mathf.Max(0, selectedLibraryHeroScore.heartsTotal),

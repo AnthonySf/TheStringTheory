@@ -266,6 +266,8 @@ public sealed class TabsSongHeaderOverlay
 
         public Label metaLabel;
 
+        public Label difficultyLabel;
+
         public Label scoreLabel;
 
     }
@@ -1195,7 +1197,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button generatedAudioTracksDeselectAllButton;
     private readonly Button generatedAudioTracksCloseButton;
     private readonly ScrollView generatedAudioTracksPopupScrollView;
-    private readonly List<Button> generatedAudioTracksPopupTrackButtons = new List<Button>();
+    private readonly List<GeneratedAudioTrackPopupRow> generatedAudioTracksPopupTrackButtons = new List<GeneratedAudioTrackPopupRow>();
 
     private readonly List<Button> songSettingsActionButtons = new List<Button>();
     private readonly List<int> songSettingsActionSelectionIndices = new List<int>();
@@ -5230,44 +5232,45 @@ public sealed class TabsSongHeaderOverlay
         settingsOverlay.Add(settingsRegion);
 
         generatedAudioTracksPopupOverlay = CreateFullscreenOverlay();
-        generatedAudioTracksPopupOverlay.style.backgroundColor = new Color(0.02f, 0.03f, 0.04f, 0.72f);
+        generatedAudioTracksPopupOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.03f, 0.78f);
         generatedAudioTracksPopupOverlay.style.alignItems = Align.Center;
         generatedAudioTracksPopupOverlay.style.justifyContent = Justify.Center;
         generatedAudioTracksPopupOverlay.style.display = DisplayStyle.None;
 
         VisualElement generatedAudioTracksPopupCard = new VisualElement();
-        generatedAudioTracksPopupCard.style.width = Length.Percent(82f);
-        generatedAudioTracksPopupCard.style.maxWidth = 1320f;
-        generatedAudioTracksPopupCard.style.minWidth = 760f;
-        generatedAudioTracksPopupCard.style.maxHeight = Length.Percent(82f);
-        generatedAudioTracksPopupCard.style.paddingLeft = 34f;
-        generatedAudioTracksPopupCard.style.paddingRight = 34f;
-        generatedAudioTracksPopupCard.style.paddingTop = 28f;
-        generatedAudioTracksPopupCard.style.paddingBottom = 28f;
-        generatedAudioTracksPopupCard.style.backgroundColor = GlobalPanelColor;
-        generatedAudioTracksPopupCard.style.borderTopLeftRadius = 24f;
-        generatedAudioTracksPopupCard.style.borderTopRightRadius = 24f;
-        generatedAudioTracksPopupCard.style.borderBottomLeftRadius = 24f;
-        generatedAudioTracksPopupCard.style.borderBottomRightRadius = 24f;
-        generatedAudioTracksPopupCard.style.borderTopWidth = 3f;
-        generatedAudioTracksPopupCard.style.borderRightWidth = 3f;
-        generatedAudioTracksPopupCard.style.borderBottomWidth = 3f;
-        generatedAudioTracksPopupCard.style.borderLeftWidth = 3f;
-        generatedAudioTracksPopupCard.style.borderTopColor = GlobalDeepPanelColor;
-        generatedAudioTracksPopupCard.style.borderRightColor = GlobalDeepPanelColor;
-        generatedAudioTracksPopupCard.style.borderBottomColor = GlobalDeepPanelColor;
-        generatedAudioTracksPopupCard.style.borderLeftColor = GlobalDeepPanelColor;
+        generatedAudioTracksPopupCard.style.width = Length.Percent(74f);
+        generatedAudioTracksPopupCard.style.maxWidth = 1160f;
+        generatedAudioTracksPopupCard.style.minWidth = 720f;
+        generatedAudioTracksPopupCard.style.maxHeight = Length.Percent(78f);
+        generatedAudioTracksPopupCard.style.paddingLeft = 38f;
+        generatedAudioTracksPopupCard.style.paddingRight = 38f;
+        generatedAudioTracksPopupCard.style.paddingTop = 30f;
+        generatedAudioTracksPopupCard.style.paddingBottom = 26f;
+        generatedAudioTracksPopupCard.style.backgroundColor = new Color(0.07f, 0.08f, 0.09f, 0.98f);
+        generatedAudioTracksPopupCard.style.borderTopLeftRadius = 22f;
+        generatedAudioTracksPopupCard.style.borderTopRightRadius = 22f;
+        generatedAudioTracksPopupCard.style.borderBottomLeftRadius = 22f;
+        generatedAudioTracksPopupCard.style.borderBottomRightRadius = 22f;
+        generatedAudioTracksPopupCard.style.borderTopWidth = 1f;
+        generatedAudioTracksPopupCard.style.borderRightWidth = 1f;
+        generatedAudioTracksPopupCard.style.borderBottomWidth = 1f;
+        generatedAudioTracksPopupCard.style.borderLeftWidth = 1f;
+        generatedAudioTracksPopupCard.style.borderTopColor = new Color(1f, 1f, 1f, 0.10f);
+        generatedAudioTracksPopupCard.style.borderRightColor = new Color(1f, 1f, 1f, 0.10f);
+        generatedAudioTracksPopupCard.style.borderBottomColor = new Color(1f, 1f, 1f, 0.10f);
+        generatedAudioTracksPopupCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.10f);
         generatedAudioTracksPopupCard.style.flexDirection = FlexDirection.Column;
 
-        Label generatedAudioTracksPopupEyebrow = CreateLabel("GENERATED AUDIO", 24f, GlobalSecondaryAccentColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        Label generatedAudioTracksPopupEyebrow = CreateLabel("GENERATED AUDIO", 20f, new Color(0.74f, 0.88f, 0.98f, 0.92f), true, TextAnchor.MiddleCenter, useTitleFont: false);
         generatedAudioTracksPopupEyebrow.style.unityFontDefinition = modernUiFontDefinition;
-        generatedAudioTracksPopupEyebrow.style.marginBottom = 10f;
+        generatedAudioTracksPopupEyebrow.style.marginBottom = 8f;
+        generatedAudioTracksPopupEyebrow.style.letterSpacing = 1.8f;
 
-        Label generatedAudioTracksPopupTitle = CreateLabel("AUDIO TRACKS", 92f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        Label generatedAudioTracksPopupTitle = CreateLabel("AUDIO TRACKS", 70f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
         generatedAudioTracksPopupTitle.style.unityFontDefinition = modernUiFontDefinition;
-        generatedAudioTracksPopupTitle.style.marginBottom = 10f;
+        generatedAudioTracksPopupTitle.style.marginBottom = 8f;
 
-        generatedAudioTracksPopupSummaryLabel = CreateLabel("Select which MusicXML parts should be played in generated mode.", 30f, new Color(0.95f, 0.97f, 0.99f, 1f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        generatedAudioTracksPopupSummaryLabel = CreateLabel("Select which generated tracks should be played.", 24f, new Color(0.88f, 0.92f, 0.96f, 0.94f), false, TextAnchor.MiddleCenter, useTitleFont: false);
         generatedAudioTracksPopupSummaryLabel.style.unityFontDefinition = modernUiFontDefinition;
         generatedAudioTracksPopupSummaryLabel.style.whiteSpace = WhiteSpace.Normal;
         generatedAudioTracksPopupSummaryLabel.style.marginBottom = 18f;
@@ -5276,7 +5279,7 @@ public sealed class TabsSongHeaderOverlay
         generatedAudioTracksPopupButtonsRow.style.flexDirection = FlexDirection.Row;
         generatedAudioTracksPopupButtonsRow.style.justifyContent = Justify.Center;
         generatedAudioTracksPopupButtonsRow.style.alignItems = Align.Center;
-        generatedAudioTracksPopupButtonsRow.style.marginBottom = 16f;
+        generatedAudioTracksPopupButtonsRow.style.marginBottom = 18f;
 
         generatedAudioTracksSelectAllButton = CreateActionButton("Select All", () => owner?.SelectAllGeneratedPlaybackPartsFromUi());
         generatedAudioTracksDeselectAllButton = CreateActionButton("Deselect All", () => owner?.DeselectAllGeneratedPlaybackPartsFromUi());
@@ -5287,33 +5290,50 @@ public sealed class TabsSongHeaderOverlay
         {
             Button button = generatedAudioTrackTopButtons[i];
             int popupSelectionIndex = i;
-            button.style.minWidth = 220f;
-            button.style.height = 96f;
-            button.style.marginLeft = 10f;
-            button.style.marginRight = 10f;
-            button.style.fontSize = 40f;
+            button.style.minWidth = 196f;
+            button.style.height = 74f;
+            button.style.marginLeft = 8f;
+            button.style.marginRight = 8f;
+            button.style.fontSize = 29f;
             button.style.unityFontDefinition = modernUiFontDefinition;
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            button.style.backgroundImage = StyleKeyword.None;
+            button.style.borderTopWidth = 2f;
+            button.style.borderRightWidth = 2f;
+            button.style.borderBottomWidth = 2f;
+            button.style.borderLeftWidth = 2f;
+            button.style.borderTopLeftRadius = 14f;
+            button.style.borderTopRightRadius = 14f;
+            button.style.borderBottomLeftRadius = 14f;
+            button.style.borderBottomRightRadius = 14f;
             button.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex));
             generatedAudioTracksPopupButtonsRow.Add(button);
         }
 
         generatedAudioTracksPopupScrollView = new ScrollView(ScrollViewMode.Vertical);
+        generatedAudioTracksPopupScrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+        generatedAudioTracksPopupScrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
         generatedAudioTracksPopupScrollView.style.flexGrow = 1f;
         generatedAudioTracksPopupScrollView.style.marginTop = 4f;
         generatedAudioTracksPopupScrollView.style.marginBottom = 12f;
-        generatedAudioTracksPopupScrollView.style.backgroundColor = new Color(0.05f, 0.06f, 0.07f, 0.62f);
-        generatedAudioTracksPopupScrollView.style.borderTopLeftRadius = 18f;
-        generatedAudioTracksPopupScrollView.style.borderTopRightRadius = 18f;
-        generatedAudioTracksPopupScrollView.style.borderBottomLeftRadius = 18f;
-        generatedAudioTracksPopupScrollView.style.borderBottomRightRadius = 18f;
-        generatedAudioTracksPopupScrollView.style.paddingLeft = 18f;
-        generatedAudioTracksPopupScrollView.style.paddingRight = 18f;
-        generatedAudioTracksPopupScrollView.style.paddingTop = 18f;
-        generatedAudioTracksPopupScrollView.style.paddingBottom = 18f;
+        generatedAudioTracksPopupScrollView.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        generatedAudioTracksPopupScrollView.style.borderTopWidth = 0f;
+        generatedAudioTracksPopupScrollView.style.borderRightWidth = 0f;
+        generatedAudioTracksPopupScrollView.style.borderBottomWidth = 0f;
+        generatedAudioTracksPopupScrollView.style.borderLeftWidth = 0f;
+        generatedAudioTracksPopupScrollView.style.paddingLeft = 0f;
+        generatedAudioTracksPopupScrollView.style.paddingRight = 0f;
+        generatedAudioTracksPopupScrollView.style.paddingTop = 0f;
+        generatedAudioTracksPopupScrollView.style.paddingBottom = 0f;
+        generatedAudioTracksPopupScrollView.contentContainer.style.paddingLeft = 0f;
+        generatedAudioTracksPopupScrollView.contentContainer.style.paddingRight = 0f;
+        generatedAudioTracksPopupScrollView.contentContainer.style.paddingTop = 0f;
+        generatedAudioTracksPopupScrollView.contentContainer.style.paddingBottom = 0f;
 
-        generatedAudioTracksPopupHintLabel = CreateLabel("Up/Down selects  •  Enter toggles  •  Esc closes", 28f, new Color(0.78f, 0.86f, 0.93f, 0.96f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        generatedAudioTracksPopupHintLabel = CreateLabel(string.Empty, 22f, new Color(0.72f, 0.80f, 0.88f, 0.92f), false, TextAnchor.MiddleCenter, useTitleFont: false);
         generatedAudioTracksPopupHintLabel.style.unityFontDefinition = modernUiFontDefinition;
         generatedAudioTracksPopupHintLabel.style.whiteSpace = WhiteSpace.Normal;
+        generatedAudioTracksPopupHintLabel.style.display = DisplayStyle.None;
 
         generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupEyebrow);
         generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupTitle);
@@ -5899,7 +5919,7 @@ public sealed class TabsSongHeaderOverlay
 
         selectionInfoScoreCard.Add(selectionInfoBestTrackLabel);
 
-        VisualElement selectionTracksStatBlock = CreateLibrarySelectionInlineStatBlock("TRACKS", out selectionInfoArrangementValueLabel, Color.white);
+        VisualElement selectionTracksStatBlock = CreateLibrarySelectionInlineStatBlock("ARRANGEMENTS", out selectionInfoArrangementValueLabel, Color.white);
 
         selectionInfoArrangementValueLabel.style.fontSize = 52f;
 
@@ -5999,7 +6019,7 @@ public sealed class TabsSongHeaderOverlay
 
         selectionArrangementCard.pickingMode = PickingMode.Position;
 
-        Label arrangementTitle = CreateLabel("TRACKS", 60f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label arrangementTitle = CreateLabel("ARRANGEMENTS", 60f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
 
         arrangementTitle.style.letterSpacing = 1.2f;
 
@@ -8792,6 +8812,13 @@ public sealed class TabsSongHeaderOverlay
     private static string GetAvailableSongScoreText(GuitarGameplaySnapshot snapshot, int songIndex)
 
     {
+        string difficultyLabel = "Unknown";
+        if (snapshot.availableSongDifficultyLabels != null && songIndex >= 0 && songIndex < snapshot.availableSongDifficultyLabels.Count)
+        {
+            string configured = snapshot.availableSongDifficultyLabels[songIndex];
+            if (!string.IsNullOrWhiteSpace(configured))
+                difficultyLabel = configured;
+        }
 
         if (snapshot.availableSongScoreTexts != null && songIndex >= 0 && songIndex < snapshot.availableSongScoreTexts.Count)
 
@@ -8801,7 +8828,7 @@ public sealed class TabsSongHeaderOverlay
 
             if (!string.IsNullOrWhiteSpace(text))
 
-                return text;
+                return $"{difficultyLabel}  {text}";
 
         }
 
@@ -8813,7 +8840,57 @@ public sealed class TabsSongHeaderOverlay
 
             : 0f;
 
-        return $"{score:F1}%";
+        return $"{difficultyLabel}  {score:F1}%";
+
+    }
+
+    private sealed class GeneratedAudioTrackPopupRow
+
+    {
+
+        public Button button;
+
+        public Label stateLabel;
+
+        public Label nameLabel;
+
+        public Label actionLabel;
+
+    }
+
+    private static void SplitLibraryDifficultyAndScore(string combinedText, out string difficultyText, out string scoreText)
+
+    {
+
+        difficultyText = "Unknown";
+
+        scoreText = "--";
+
+
+
+        if (string.IsNullOrWhiteSpace(combinedText))
+
+            return;
+
+
+
+        string[] parts = combinedText.Split(new[] { "  " }, 2, StringSplitOptions.None);
+
+        if (parts.Length == 2)
+
+        {
+
+            difficultyText = string.IsNullOrWhiteSpace(parts[0]) ? "Unknown" : parts[0].Trim();
+
+            scoreText = string.IsNullOrWhiteSpace(parts[1]) ? "--" : parts[1].Trim();
+
+            return;
+
+        }
+
+
+
+        scoreText = combinedText.Trim();
 
     }
 
@@ -9118,7 +9195,14 @@ public sealed class TabsSongHeaderOverlay
 
                 : string.Empty;
 
-            row.scoreLabel.text = GetAvailableSongScoreText(snapshot, songIndex);
+            SplitLibraryDifficultyAndScore(GetAvailableSongScoreText(snapshot, songIndex), out string difficultyText, out string scoreText);
+            if (row.difficultyLabel != null)
+            {
+                row.difficultyLabel.text = difficultyText;
+                row.difficultyLabel.style.color = new Color(0.88f, 0.92f, 0.96f, isSelected ? 0.76f : 0.58f);
+                row.difficultyLabel.style.display = DisplayStyle.Flex;
+            }
+            row.scoreLabel.text = scoreText;
 
 
 
@@ -9610,13 +9694,43 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+                VisualElement scoreColumn = new VisualElement();
+
+                scoreColumn.style.flexDirection = FlexDirection.Row;
+
+                scoreColumn.style.alignItems = Align.Center;
+
+                scoreColumn.style.justifyContent = Justify.FlexEnd;
+
+                scoreColumn.style.width = 250f;
+
+                scoreColumn.style.minWidth = 250f;
+
+                scoreColumn.style.maxWidth = 250f;
+
+                scoreColumn.style.flexShrink = 0f;
+
+                scoreColumn.style.alignSelf = Align.Center;
+
+
+
+                Label difficultyLabel = CreateLabel("Unknown", 28f, new Color(0.88f, 0.92f, 0.96f, 0.68f), false, TextAnchor.MiddleRight, useTitleFont: false);
+
+                difficultyLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+
+                difficultyLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+                difficultyLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+
+                difficultyLabel.style.marginRight = 14f;
+
+                difficultyLabel.style.whiteSpace = WhiteSpace.NoWrap;
+
+                difficultyLabel.style.flexShrink = 1f;
+
+
+
                 Label scoreLabel = CreateLabel("0%", 44f, Color.white, true, TextAnchor.MiddleRight, useTitleFont: false);
-
-                scoreLabel.style.width = 176f;
-
-                scoreLabel.style.minWidth = 176f;
-
-                scoreLabel.style.maxWidth = 176f;
 
                 scoreLabel.style.flexShrink = 0f;
 
@@ -9640,7 +9754,11 @@ public sealed class TabsSongHeaderOverlay
 
                 content.Add(textColumn);
 
-                content.Add(scoreLabel);
+                scoreColumn.Add(difficultyLabel);
+
+                scoreColumn.Add(scoreLabel);
+
+                content.Add(scoreColumn);
 
                 rowButton.Add(content);
 
@@ -9693,6 +9811,8 @@ public sealed class TabsSongHeaderOverlay
                     nameLabel = nameLabel,
 
                     metaLabel = metaLabel,
+
+                    difficultyLabel = difficultyLabel,
 
                     scoreLabel = scoreLabel
 
@@ -15013,6 +15133,246 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private void EnsureGeneratedAudioTrackPopupRows(int count)
+
+    {
+
+        if (generatedAudioTracksPopupScrollView == null)
+
+            return;
+
+
+
+        if (generatedAudioTracksPopupTrackButtons.Count == count)
+
+            return;
+
+
+
+        generatedAudioTracksPopupTrackButtons.Clear();
+
+        generatedAudioTracksPopupScrollView.contentContainer.Clear();
+
+
+
+        for (int i = 0; i < count; i++)
+
+        {
+
+            int popupSelectionIndex = i + 3;
+
+            Button rowButton = new Button();
+
+            rowButton.focusable = false;
+
+            rowButton.text = string.Empty;
+
+            rowButton.style.height = 82f;
+
+            rowButton.style.marginBottom = 12f;
+
+            rowButton.style.paddingLeft = 18f;
+
+            rowButton.style.paddingRight = 18f;
+
+            rowButton.style.paddingTop = 0f;
+
+            rowButton.style.paddingBottom = 0f;
+
+            rowButton.style.justifyContent = Justify.Center;
+
+            rowButton.style.unityFontDefinition = modernUiFontDefinition;
+
+            rowButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+            rowButton.style.backgroundImage = StyleKeyword.None;
+
+            rowButton.style.borderTopWidth = 2f;
+
+            rowButton.style.borderRightWidth = 2f;
+
+            rowButton.style.borderBottomWidth = 2f;
+
+            rowButton.style.borderLeftWidth = 2f;
+
+            rowButton.style.borderTopLeftRadius = 14f;
+
+            rowButton.style.borderTopRightRadius = 14f;
+
+            rowButton.style.borderBottomLeftRadius = 14f;
+
+            rowButton.style.borderBottomRightRadius = 14f;
+
+            rowButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex));
+
+            rowButton.clicked += () =>
+
+            {
+
+                owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex);
+
+                owner?.ActivateSelectedGeneratedAudioTrackSelectionFromUi();
+
+            };
+
+            rowButton.RegisterCallback<PointerDownEvent>(evt =>
+
+            {
+
+                if (evt.button != 0)
+
+                    return;
+
+
+
+                owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex);
+
+                owner?.ActivateSelectedGeneratedAudioTrackSelectionFromUi();
+
+                evt.StopPropagation();
+
+            });
+
+
+
+            VisualElement rowContent = new VisualElement();
+
+            rowContent.style.flexDirection = FlexDirection.Row;
+
+            rowContent.style.alignItems = Align.Center;
+
+            rowContent.style.justifyContent = Justify.SpaceBetween;
+
+            rowContent.style.flexGrow = 1f;
+
+            rowContent.style.height = Length.Percent(100f);
+
+            rowContent.style.width = Length.Percent(100f);
+
+            rowContent.pickingMode = PickingMode.Ignore;
+
+
+
+            VisualElement leftGroup = new VisualElement();
+
+            leftGroup.style.flexDirection = FlexDirection.Row;
+
+            leftGroup.style.alignItems = Align.Center;
+
+            leftGroup.style.flexGrow = 1f;
+
+            leftGroup.style.flexBasis = 0f;
+
+            leftGroup.style.minWidth = 0f;
+
+            leftGroup.pickingMode = PickingMode.Ignore;
+
+
+
+            Label stateLabel = CreateLabel("OFF", 20f, new Color(0.58f, 0.62f, 0.68f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+
+            stateLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+            stateLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            stateLabel.style.minWidth = 62f;
+
+            stateLabel.style.height = 34f;
+
+            stateLabel.style.paddingLeft = 12f;
+
+            stateLabel.style.paddingRight = 12f;
+
+            stateLabel.style.marginRight = 16f;
+
+            stateLabel.style.borderTopLeftRadius = 17f;
+
+            stateLabel.style.borderTopRightRadius = 17f;
+
+            stateLabel.style.borderBottomLeftRadius = 17f;
+
+            stateLabel.style.borderBottomRightRadius = 17f;
+
+            stateLabel.style.borderTopWidth = 1f;
+
+            stateLabel.style.borderRightWidth = 1f;
+
+            stateLabel.style.borderBottomWidth = 1f;
+
+            stateLabel.style.borderLeftWidth = 1f;
+
+            stateLabel.pickingMode = PickingMode.Ignore;
+
+
+
+            Label nameLabel = CreateLabel(string.Empty, 32f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+
+            nameLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+            nameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            nameLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+
+            nameLabel.style.flexGrow = 1f;
+
+            nameLabel.style.flexBasis = 0f;
+
+            nameLabel.style.minWidth = 0f;
+
+            nameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+
+            nameLabel.style.textOverflow = TextOverflow.Ellipsis;
+
+            nameLabel.pickingMode = PickingMode.Ignore;
+
+
+
+            Label actionLabel = CreateLabel(string.Empty, 23f, new Color(0.56f, 0.62f, 0.70f, 0.92f), false, TextAnchor.MiddleRight, useTitleFont: false);
+
+            actionLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+            actionLabel.style.minWidth = 108f;
+
+            actionLabel.style.marginLeft = 18f;
+
+            actionLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+
+            actionLabel.pickingMode = PickingMode.Ignore;
+
+
+
+            leftGroup.Add(stateLabel);
+
+            leftGroup.Add(nameLabel);
+
+            rowContent.Add(leftGroup);
+
+            rowContent.Add(actionLabel);
+
+            rowButton.Add(rowContent);
+
+
+
+            generatedAudioTracksPopupTrackButtons.Add(new GeneratedAudioTrackPopupRow
+
+            {
+
+                button = rowButton,
+
+                stateLabel = stateLabel,
+
+                nameLabel = nameLabel,
+
+                actionLabel = actionLabel
+
+            });
+
+            generatedAudioTracksPopupScrollView.Add(rowButton);
+
+        }
+
+    }
+
     private void UpdateGeneratedAudioTrackPopup(GuitarGameplaySnapshot snapshot)
 
     {
@@ -15027,7 +15387,7 @@ public sealed class TabsSongHeaderOverlay
 
             ? $"Now playing: {snapshot.generatedAudioTrackSelectionSummary}"
 
-            : "No generated MusicXML parts are available for this song.";
+            : "No generated tracks are available for this song.";
 
 
 
@@ -15041,31 +15401,28 @@ public sealed class TabsSongHeaderOverlay
 
             bool isSelected = snapshot.selectedGeneratedAudioTrackIndex == i;
 
-            button.style.color = isSelected ? LibraryConfirmedSongColor : LibraryPrimaryColor;
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
 
-            button.style.borderTopColor = isSelected ? LibraryConfirmedSongColor : LibraryPrimaryColor;
+            button.style.color = isSelected ? Color.white : new Color(0.82f, 0.87f, 0.92f, 0.92f);
 
-            button.style.borderRightColor = isSelected ? LibraryConfirmedSongColor : LibraryPrimaryColor;
+            button.style.borderTopColor = isSelected ? Color.white : new Color(1f, 1f, 1f, 0.14f);
 
-            button.style.borderBottomColor = isSelected ? LibraryConfirmedSongColor : LibraryPrimaryColor;
+            button.style.borderRightColor = button.style.borderTopColor;
 
-            button.style.borderLeftColor = isSelected ? LibraryConfirmedSongColor : LibraryPrimaryColor;
+            button.style.borderBottomColor = button.style.borderTopColor;
 
-            button.style.scale = isSelected ? new Scale(new Vector3(1.02f, 1.02f, 1f)) : new Scale(Vector3.one);
+            button.style.borderLeftColor = button.style.borderTopColor;
 
-            button.style.translate = isSelected ? new Translate(0f, -2f) : new Translate(0f, 0f);
+            button.style.scale = new Scale(Vector3.one);
+
+            button.style.translate = new Translate(0f, 0f);
 
         }
 
 
 
-        generatedAudioTracksPopupTrackButtons.Clear();
-
-        generatedAudioTracksPopupScrollView.contentContainer.Clear();
-
-
-
         int trackCount = Mathf.Min(snapshot.generatedAudioTrackNames?.Count ?? 0, snapshot.generatedAudioTrackEnabled?.Count ?? 0);
+        EnsureGeneratedAudioTrackPopupRows(trackCount);
 
         for (int i = 0; i < trackCount; i++)
 
@@ -15077,77 +15434,30 @@ public sealed class TabsSongHeaderOverlay
 
             string trackName = snapshot.generatedAudioTrackNames[i];
 
+            GeneratedAudioTrackPopupRow row = generatedAudioTracksPopupTrackButtons[i];
+            if (row == null || row.button == null)
+                continue;
 
+            row.stateLabel.text = enabled ? "ON" : "OFF";
+            row.stateLabel.style.color = enabled ? LibraryPrimaryColor : new Color(0.58f, 0.62f, 0.68f, 1f);
+            row.stateLabel.style.backgroundColor = enabled ? new Color(0.14f, 0.21f, 0.17f, 0.92f) : new Color(0.13f, 0.14f, 0.16f, 0.92f);
+            row.stateLabel.style.borderTopColor = enabled ? new Color(0.30f, 0.66f, 0.48f, 0.72f) : new Color(1f, 1f, 1f, 0.10f);
+            row.stateLabel.style.borderRightColor = row.stateLabel.style.borderTopColor;
+            row.stateLabel.style.borderBottomColor = row.stateLabel.style.borderTopColor;
+            row.stateLabel.style.borderLeftColor = row.stateLabel.style.borderTopColor;
 
-            Button rowButton = new Button(() =>
-
-            {
-
-                owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex);
-
-                owner?.ActivateSelectedGeneratedAudioTrackSelectionFromUi();
-
-            });
-
-            rowButton.focusable = false;
-
-            rowButton.text = $"{(enabled ? "[ON] " : "[OFF] ")}{FormatTrackName(trackName)}";
-
-            rowButton.style.height = 92f;
-
-            rowButton.style.marginBottom = 10f;
-
-            rowButton.style.paddingLeft = 22f;
-
-            rowButton.style.paddingRight = 22f;
-
-            rowButton.style.unityTextAlign = TextAnchor.MiddleLeft;
-
-            rowButton.style.fontSize = 34f;
-
-            rowButton.style.unityFontDefinition = modernUiFontDefinition;
-
-            rowButton.style.backgroundColor = new Color(0.08f, 0.09f, 0.11f, 0.90f);
-
-            rowButton.style.borderTopWidth = 2f;
-
-            rowButton.style.borderRightWidth = 2f;
-
-            rowButton.style.borderBottomWidth = 2f;
-
-            rowButton.style.borderLeftWidth = 2f;
-
-            rowButton.style.borderTopLeftRadius = 16f;
-
-            rowButton.style.borderTopRightRadius = 16f;
-
-            rowButton.style.borderBottomLeftRadius = 16f;
-
-            rowButton.style.borderBottomRightRadius = 16f;
-
-            rowButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGeneratedAudioTrackSelectionIndexFromUi(popupSelectionIndex));
-
-
+            row.nameLabel.text = FormatTrackName(trackName);
+            row.actionLabel.text = enabled ? "Included" : "Muted";
+            row.actionLabel.style.color = enabled ? new Color(0.82f, 0.89f, 0.95f, 0.92f) : new Color(0.56f, 0.62f, 0.70f, 0.92f);
 
             bool isSelected = snapshot.selectedGeneratedAudioTrackIndex == popupSelectionIndex;
 
-            rowButton.style.color = enabled ? new Color(0.95f, 0.97f, 0.99f, 1f) : new Color(0.62f, 0.68f, 0.75f, 1f);
-
-            rowButton.style.borderTopColor = isSelected ? LibraryConfirmedSongColor : new Color(0.19f, 0.24f, 0.30f, 1f);
-
-            rowButton.style.borderRightColor = rowButton.style.borderTopColor;
-
-            rowButton.style.borderBottomColor = rowButton.style.borderTopColor;
-
-            rowButton.style.borderLeftColor = rowButton.style.borderTopColor;
-
-            rowButton.style.scale = isSelected ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
-
-
-
-            generatedAudioTracksPopupTrackButtons.Add(rowButton);
-
-            generatedAudioTracksPopupScrollView.Add(rowButton);
+            row.button.style.color = enabled ? new Color(0.95f, 0.97f, 0.99f, 1f) : new Color(0.62f, 0.68f, 0.75f, 1f);
+            row.button.style.borderTopColor = isSelected ? Color.white : new Color(1f, 1f, 1f, 0.10f);
+            row.button.style.borderRightColor = row.button.style.borderTopColor;
+            row.button.style.borderBottomColor = row.button.style.borderTopColor;
+            row.button.style.borderLeftColor = row.button.style.borderTopColor;
+            row.button.style.scale = new Scale(Vector3.one);
 
         }
 
@@ -18040,13 +18350,10 @@ public sealed class TabsSongHeaderOverlay
 
             row.metaLabel.style.fontSize = (compactSelection ? 50.4f : 55.2f) * currentMenuLayoutScale;
 
+            if (row.difficultyLabel != null)
+                row.difficultyLabel.style.fontSize = (compactSelection ? 24f : 26f) * currentMenuLayoutScale;
+
             row.scoreLabel.style.fontSize = (compactSelection ? 48f : 52.8f) * currentMenuLayoutScale;
-
-            row.scoreLabel.style.width = (compactSelection ? 186f : 198f) * currentMenuLayoutScale;
-
-            row.scoreLabel.style.minWidth = (compactSelection ? 186f : 198f) * currentMenuLayoutScale;
-
-            row.scoreLabel.style.maxWidth = (compactSelection ? 186f : 198f) * currentMenuLayoutScale;
 
             if (row.artworkTile != null)
 

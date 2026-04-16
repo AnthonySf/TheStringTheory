@@ -1,50 +1,35 @@
 ## Third-Party Notices
 
-This project bundles or depends on the following third-party components for the native notes detector path.
+This project depends on third-party components that are not bundled in this public source repo.
 
-### aubio
+If you restore those runtimes locally or ship them in a build, include their upstream licenses with that build.
 
-- Upstream: https://github.com/aubio/aubio
-- License family: GPL-3.0-or-later
-- Vendored source location: [External/aubio](External/aubio)
-- Repo license text: [licenses/AUBIO-GPL-3.0.txt](licenses/AUBIO-GPL-3.0.txt)
-- Runtime copy location: `Application.persistentDataPath/Licenses/AUBIO-GPL-3.0.txt`
+### AlphaTab
 
-The native notes detector is currently built against vendored aubio source. The detector-side corresponding source is included in this repository under:
+- Upstream: https://github.com/CoderLine/alphaTab
+- License: MPL-2.0
 
-- [NativeNotesDetectorBridge](NativeNotesDetectorBridge)
-- [External/aubio](External/aubio)
+### AlphaSkia
+
+- Upstream: https://github.com/CoderLine/alphaSkia
+- License: BSD-3-Clause
 
 ### ONNX Runtime
 
 - Upstream: https://github.com/microsoft/onnxruntime
-- License family: MIT
-- Repo license text: [licenses/ONNXRUNTIME-MIT.txt](licenses/ONNXRUNTIME-MIT.txt)
-- Runtime copy location: `Application.persistentDataPath/Licenses/ONNXRUNTIME-MIT.txt`
-- Bundled runtime DLLs:
-  - [Assets/Plugins/x86_64/onnxruntime.dll](Assets/Plugins/x86_64/onnxruntime.dll)
-  - [Assets/Plugins/x86_64/onnxruntime_providers_shared.dll](Assets/Plugins/x86_64/onnxruntime_providers_shared.dll)
+- License: MIT
 
 ### PortAudio
 
 - Upstream: https://www.portaudio.com/
-- License family: permissive / MIT-style
-- Repo license text: [licenses/PORTAUDIO-LICENSE.txt](licenses/PORTAUDIO-LICENSE.txt)
-- Runtime copy location: `Application.persistentDataPath/Licenses/PORTAUDIO-LICENSE.txt`
-- Bundled runtime DLL:
-  - [Assets/Plugins/x86_64/libportaudio64bit-asio.dll](Assets/Plugins/x86_64/libportaudio64bit-asio.dll)
+- License: permissive / MIT-style
 
 ### Basic Pitch
 
 - Upstream: https://github.com/spotify/basic-pitch
-- License family: Apache-2.0
-- Repo license text: [licenses/BASIC_PITCH-APACHE-2.0.txt](licenses/BASIC_PITCH-APACHE-2.0.txt)
-- Runtime copy location: `Application.persistentDataPath/Licenses/BASIC_PITCH-APACHE-2.0.txt`
-- Bundled model:
-  - [Assets/StreamingAssets/NotesReader/Models/basic_pitch_nmp.onnx](Assets/StreamingAssets/NotesReader/Models/basic_pitch_nmp.onnx)
+- License: Apache-2.0
 
-## Notes
+Notes:
 
-- The game bootstrap syncs the packaged legal files into `Application.persistentDataPath/Licenses` on startup so shipped builds expose the same notices outside the repo.
-- This file is an engineering notice file, not legal advice.
-- If you add Steamworks SDK integration later, re-review license compatibility before release.
+- aubio is not bundled in this public repo
+- this file is an engineering notice file, not legal advice
