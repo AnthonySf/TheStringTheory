@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{7D0E5F49-477B-4E39-9A9E-7B5F82F9D3A6}</ProjectGuid>
+    <RootNamespace>NativeNotesDetectorBridge</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)..\Assets\Plugins\x86_64\</OutDir>
+    <IntDir>$(ProjectDir)build\$(Configuration)\</IntDir>
+    <TargetName>NativeNotesDetectorBridgeNative_v6</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;NATIVE_NOTES_DETECTOR_BRIDGE_EXPORTS;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\External\aubio\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ImportLibrary>$(ProjectDir)build\$(Configuration)\$(TargetName).lib</ImportLibrary>
+      <ProgramDatabaseFile>$(ProjectDir)build\$(Configuration)\$(TargetName).pdb</ProgramDatabaseFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;NATIVE_NOTES_DETECTOR_BRIDGE_EXPORTS;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\External\aubio\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ImportLibrary>$(ProjectDir)build\$(Configuration)\$(TargetName).lib</ImportLibrary>
+      <ProgramDatabaseFile>$(ProjectDir)build\$(Configuration)\$(TargetName).pdb</ProgramDatabaseFile>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="NativeNotesDetectorBridge.cpp" />
+    <ClCompile Include="..\External\aubio\src\cvec.c" />
+    <ClCompile Include="..\External\aubio\src\fmat.c" />
+    <ClCompile Include="..\External\aubio\src\fvec.c" />
+    <ClCompile Include="..\External\aubio\src\lvec.c" />
+    <ClCompile Include="..\External\aubio\src\mathutils.c" />
+    <ClCompile Include="..\External\aubio\src\musicutils.c" />
+    <ClCompile Include="..\External\aubio\src\vecutils.c" />
+    <ClCompile Include="..\External\aubio\src\onset\onset.c" />
+    <ClCompile Include="..\External\aubio\src\onset\peakpicker.c" />
+    <ClCompile Include="..\External\aubio\src\pitch\pitch.c" />
+    <ClCompile Include="..\External\aubio\src\pitch\pitchfcomb.c" />
+    <ClCompile Include="..\External\aubio\src\pitch\pitchmcomb.c" />
+    <ClCompile Include="..\External\aubio\src\pitch\pitchschmitt.c" />
+    <ClCompile Include="..\External\aubio\src\pitch\pitchspecacf.c" />
+    <ClCompile Include="..\External\aubio\src\pitch\pitchyin.c" />
+    <ClCompile Include="..\External\aubio\src\pitch\pitchyinfast.c" />
+    <ClCompile Include="..\External\aubio\src\pitch\pitchyinfft.c" />
+    <ClCompile Include="..\External\aubio\src\spectral\awhitening.c" />
+    <ClCompile Include="..\External\aubio\src\spectral\fft.c" />
+    <ClCompile Include="..\External\aubio\src\spectral\ooura_fft8g.c" />
+    <ClCompile Include="..\External\aubio\src\spectral\phasevoc.c" />
+    <ClCompile Include="..\External\aubio\src\spectral\specdesc.c" />
+    <ClCompile Include="..\External\aubio\src\spectral\statistics.c" />
+    <ClCompile Include="..\External\aubio\src\temporal\biquad.c" />
+    <ClCompile Include="..\External\aubio\src\temporal\c_weighting.c" />
+    <ClCompile Include="..\External\aubio\src\temporal\filter.c" />
+    <ClCompile Include="..\External\aubio\src\utils\hist.c" />
+    <ClCompile Include="..\External\aubio\src\utils\log.c" />
+    <ClCompile Include="..\External\aubio\src\utils\scale.c" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

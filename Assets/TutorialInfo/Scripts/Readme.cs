@@ -1,16 +1,22 @@
-﻿using System;
+//
+// MPTK Readme 
+// https://assetstore.unity.com/packages/tools/audio/midi-tool-kit-free-107994
+//
+using System;
 using UnityEngine;
-
-public class Readme : ScriptableObject
+namespace MidiPlayerTK
 {
-    public Texture2D icon;
-    public string title;
-    public Section[] sections;
-    public bool loadedLayout;
-
-    [Serializable]
-    public class Section
+    public class Readme : ScriptableObject
     {
-        public string heading, text, linkText, url;
+        public Texture2D icon;
+        public string title;
+        public Section[] sections;
+        public bool loadedLayout;
+
+        [Serializable]
+        public class Section
+        {
+            public string heading, text, linkText, url;
+        }
     }
 }
