@@ -574,6 +574,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private List<string> generatedEnabledPartIds = new List<string>();
     private bool showGeneratedAudioTrackSelectionPopup;
     private int selectedGeneratedAudioTrackSelectionIndex;
+    private bool showSongSettingsTrackSelectionPopup;
+    private int selectedSongSettingsTrackSelectionIndex;
     private float currentSongBestScorePercent;
     private float currentTrackBestScorePercent;
     private float currentTrackHeroBestScorePercent;
@@ -2047,29 +2049,41 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleSongSettingsControls()
     {
-        if (showGeneratedAudioTrackSelectionPopup)
+        if (showGeneratedAudioTrackSelectionPopup || showSongSettingsTrackSelectionPopup)
         {
             if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
             {
-                CloseGeneratedAudioTrackSelectionFromUi();
+                if (showGeneratedAudioTrackSelectionPopup)
+                    CloseGeneratedAudioTrackSelectionFromUi();
+                else
+                    CloseSongSettingsTrackSelectionPopupFromUi();
                 return;
             }
 
             if (Input.GetKeyDown(KeyCode.UpArrow))
             {
-                MoveGeneratedAudioTrackSelectionFromUi(-1);
+                if (showGeneratedAudioTrackSelectionPopup)
+                    MoveGeneratedAudioTrackSelectionFromUi(-1);
+                else
+                    MoveSongSettingsTrackSelectionPopupFromUi(-1);
                 return;
             }
 
             if (Input.GetKeyDown(KeyCode.DownArrow))
             {
-                MoveGeneratedAudioTrackSelectionFromUi(1);
+                if (showGeneratedAudioTrackSelectionPopup)
+                    MoveGeneratedAudioTrackSelectionFromUi(1);
+                else
+                    MoveSongSettingsTrackSelectionPopupFromUi(1);
                 return;
             }
 
             if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
-                ActivateSelectedGeneratedAudioTrackSelectionFromUi();
+                if (showGeneratedAudioTrackSelectionPopup)
+                    ActivateSelectedGeneratedAudioTrackSelectionFromUi();
+                else
+                    ActivateSelectedSongSettingsTrackSelectionPopupFromUi();
                 return;
             }
         }
@@ -2078,6 +2092,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             showSongSettings = false;
             showGeneratedAudioTrackSelectionPopup = false;
+            showSongSettingsTrackSelectionPopup = false;
             isPaused = true;
             SyncAudioToSongTimer(playImmediately: false);
             return;
@@ -2113,13 +2128,13 @@ public class GuitarBridgeServer : MonoBehaviour
         else
         {
             ConsumeHeldHorizontalUiStep("song-settings-slider", 0);
-            if ((selectedSongSettingsIndex == 5 || selectedSongSettingsIndex == 6) && IsSongSettingsOptionSelectable(selectedSongSettingsIndex) && Input.GetKeyDown(KeyCode.LeftArrow))
+            if (selectedSongSettingsIndex == 6 && IsSongSettingsOptionSelectable(selectedSongSettingsIndex) && Input.GetKeyDown(KeyCode.LeftArrow))
             {
                 AdjustSelectedSongSettingFromUi(-1);
                 return;
             }
 
-            if ((selectedSongSettingsIndex == 5 || selectedSongSettingsIndex == 6) && IsSongSettingsOptionSelectable(selectedSongSettingsIndex) && Input.GetKeyDown(KeyCode.RightArrow))
+            if (selectedSongSettingsIndex == 6 && IsSongSettingsOptionSelectable(selectedSongSettingsIndex) && Input.GetKeyDown(KeyCode.RightArrow))
             {
                 AdjustSelectedSongSettingFromUi(1);
                 return;
@@ -2280,6 +2295,11 @@ public class GuitarBridgeServer : MonoBehaviour
     private int GetTrackOptionCount()
     {
         return 1 + currentSongPartSummaries.Count;
+    }
+
+    private int GetSongSettingsTrackPopupOptionCount()
+    {
+        return currentSongPartSummaries?.Count ?? 0;
     }
 
     private int GetCurrentTrackOptionIndex()
@@ -3248,6 +3268,31 @@ public class GuitarBridgeServer : MonoBehaviour
         return 0;
     }
 
+    private int GetResolvedSongSettingsTrackPopupIndex()
+    {
+        if (currentSongPartSummaries == null || currentSongPartSummaries.Count == 0)
+            return 0;
+
+        if (!useAutoTrackSelection && !string.IsNullOrEmpty(selectedMusicXmlPartId))
+        {
+            int matchedIndex = currentSongPartSummaries.FindIndex(summary =>
+                string.Equals(summary.PartId, selectedMusicXmlPartId, StringComparison.OrdinalIgnoreCase));
+            if (matchedIndex >= 0)
+                return matchedIndex;
+        }
+
+        MusicXmlLoader.MusicXmlPartSummary resolvedSummary = GetResolvedActiveTrackSummary();
+        if (resolvedSummary != null)
+        {
+            int resolvedIndex = currentSongPartSummaries.FindIndex(summary =>
+                string.Equals(summary.PartId, resolvedSummary.PartId, StringComparison.OrdinalIgnoreCase));
+            if (resolvedIndex >= 0)
+                return resolvedIndex;
+        }
+
+        return 0;
+    }
+
     private bool IsGameModesSelectionVisible(int index)
     {
         return index switch
@@ -3603,10 +3648,6 @@ public class GuitarBridgeServer : MonoBehaviour
                 SetSongVolumePercentFromUi(songVolumePercent + (delta * 5f));
                 break;
             case 5:
-                if (delta < 0)
-                    MoveTrackSelectionFromUi(-1);
-                else if (delta > 0)
-                    MoveTrackSelectionFromUi(1);
                 break;
             case 6:
                 if (IsGeneratedSongSettingsMode())
@@ -3627,7 +3668,7 @@ public class GuitarBridgeServer : MonoBehaviour
                     OpenOffsetHelperFromUi();
                 break;
             case 5:
-                MoveTrackSelectionFromUi(1);
+                OpenSongSettingsTrackSelectionPopupFromUi();
                 break;
             case 6:
                 if (!IsGeneratedSongSettingsMode())
@@ -4094,6 +4135,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showNotesDetectorTestMenu = false;
         showSongSettings = true;
         showGeneratedAudioTrackSelectionPopup = false;
+        showSongSettingsTrackSelectionPopup = false;
         selectedSongSettingsIndex = 0;
         showMainMenu = false;
         mainMenuFlowActive = false;
@@ -4401,6 +4443,7 @@ public class GuitarBridgeServer : MonoBehaviour
         mainMenuFlowActive = false;
         showSongSettings = false;
         showGeneratedAudioTrackSelectionPopup = false;
+        showSongSettingsTrackSelectionPopup = false;
         showGameModes = false;
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
@@ -6723,6 +6766,9 @@ private void ParseDetectorPacket(string detectorPacket)
             generatedAudioTrackNames = GetAvailableGeneratedPlaybackParts().Select(part => part.displayName).ToList(),
             generatedAudioTrackEnabled = GetAvailableGeneratedPlaybackParts().Select(part => IsGeneratedPlaybackPartEnabled(part.partId)).ToList(),
             selectedGeneratedAudioTrackIndex = selectedGeneratedAudioTrackSelectionIndex,
+            showSongSettingsTrackSelectionPopup = showSongSettingsTrackSelectionPopup,
+            songSettingsTrackOptionNames = currentSongPartSummaries.Select(summary => summary.Name).ToList(),
+            selectedSongSettingsTrackOptionIndex = Mathf.Clamp(showSongSettingsTrackSelectionPopup ? selectedSongSettingsTrackSelectionIndex : GetResolvedSongSettingsTrackPopupIndex(), 0, Mathf.Max(0, currentSongPartSummaries.Count - 1)),
             selectedTrackDisplayName = GetTrackDisplayName(GetCurrentTrackOptionIndex()),
             selectedTrackTuningLabel = GetResolvedActiveTrackTuningLabel(),
             trackSelectionHint = GetTrackOptionCount() > 1 ? "Track: click row or Q/E" : "Track: single detected part",
@@ -7105,7 +7151,7 @@ private void ParseDetectorPacket(string detectorPacket)
     private static bool HasLegacyCustomizedGeneratedPlaybackSelection(SongMetadata metadata)
     {
         return metadata != null &&
-               (!metadata.useAllGeneratedPlaybackParts || (metadata.generatedEnabledPartIds?.Count ?? 0) > 0);
+               (metadata.useAllGeneratedPlaybackParts || (metadata.generatedEnabledPartIds?.Count ?? 0) > 0);
     }
 
     private void RestoreGeneratedPlaybackSelectionForCurrentTrack()
@@ -7363,6 +7409,84 @@ private void ParseDetectorPacket(string detectorPacket)
         showGeneratedAudioTrackSelectionPopup = false;
     }
 
+    public void OpenSongSettingsTrackSelectionPopupFromUi()
+    {
+        int optionCount = GetSongSettingsTrackPopupOptionCount();
+        if (!showSongSettings || optionCount <= 0)
+            return;
+
+        showSongSettingsTrackSelectionPopup = true;
+        selectedSongSettingsTrackSelectionIndex = Mathf.Clamp(GetResolvedSongSettingsTrackPopupIndex(), 0, Mathf.Max(0, optionCount - 1));
+    }
+
+    public void CloseSongSettingsTrackSelectionPopupFromUi()
+    {
+        showSongSettingsTrackSelectionPopup = false;
+    }
+
+    public void MoveSongSettingsTrackSelectionPopupFromUi(int delta)
+    {
+        int optionCount = GetSongSettingsTrackPopupOptionCount();
+        if (!showSongSettingsTrackSelectionPopup || optionCount <= 0)
+            return;
+
+        selectedSongSettingsTrackSelectionIndex = (selectedSongSettingsTrackSelectionIndex + delta + optionCount) % optionCount;
+    }
+
+    public void ActivateSelectedSongSettingsTrackSelectionPopupFromUi()
+    {
+        if (!showSongSettingsTrackSelectionPopup)
+            return;
+
+        int optionCount = GetSongSettingsTrackPopupOptionCount();
+        if (optionCount <= 0)
+            return;
+
+        int selectedIndex = Mathf.Clamp(selectedSongSettingsTrackSelectionIndex, 0, optionCount - 1);
+        SetTrackSelectionByOption(selectedIndex + 1);
+        showSongSettingsTrackSelectionPopup = false;
+    }
+
+    public void SetSelectedSongSettingsTrackSelectionPopupIndexFromUi(int index)
+    {
+        int optionCount = GetSongSettingsTrackPopupOptionCount();
+        if (optionCount <= 0)
+        {
+            selectedSongSettingsTrackSelectionIndex = 0;
+            return;
+        }
+
+        selectedSongSettingsTrackSelectionIndex = Mathf.Clamp(index, 0, optionCount - 1);
+    }
+
+    public void SetSelectedSongSettingsPopupTrackRowIndexFromUi(int index)
+    {
+        if (showSongSettingsTrackSelectionPopup)
+        {
+            SetSelectedSongSettingsTrackSelectionPopupIndexFromUi(index);
+            return;
+        }
+
+        if (showGeneratedAudioTrackSelectionPopup)
+            SetSelectedGeneratedAudioTrackSelectionIndexFromUi(index + 3);
+    }
+
+    public void ActivateSongSettingsPopupTrackRowFromUi(int index)
+    {
+        if (showSongSettingsTrackSelectionPopup)
+        {
+            SetSelectedSongSettingsTrackSelectionPopupIndexFromUi(index);
+            ActivateSelectedSongSettingsTrackSelectionPopupFromUi();
+            return;
+        }
+
+        if (showGeneratedAudioTrackSelectionPopup)
+        {
+            SetSelectedGeneratedAudioTrackSelectionIndexFromUi(index + 3);
+            ActivateSelectedGeneratedAudioTrackSelectionFromUi();
+        }
+    }
+
     public void MoveGeneratedAudioTrackSelectionFromUi(int delta)
     {
         int optionCount = GetAvailableGeneratedPlaybackParts().Count + 3;
@@ -7475,6 +7599,7 @@ private void ParseDetectorPacket(string detectorPacket)
             generatedPlaybackArrangement = null;
             generatedSongPlayer?.ClearArrangement();
             showGeneratedAudioTrackSelectionPopup = false;
+            showSongSettingsTrackSelectionPopup = false;
             hasBackingTrack = false;
             backingTrackLoadError = "No runtime song selected.";
             currentSongBestScorePercent = 0f;
@@ -7509,7 +7634,9 @@ private void ParseDetectorPacket(string detectorPacket)
             ? songMetadata.generatedEnabledPartIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             : new List<string>();
         showGeneratedAudioTrackSelectionPopup = false;
+        showSongSettingsTrackSelectionPopup = false;
         selectedGeneratedAudioTrackSelectionIndex = 0;
+        selectedSongSettingsTrackSelectionIndex = 0;
         currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
         currentTrackBestScorePercent = Mathf.Clamp(GetStoredTrackScore(songMetadata, selectedMusicXmlPartId), 0f, 100f);
         HeroScoreSummary currentHeroTrackBest = GetStoredHeroTrackScoreSummary(songMetadata, selectedMusicXmlPartId);

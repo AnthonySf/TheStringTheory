@@ -276,6 +276,9 @@ public sealed class GuitarGameplaySnapshot
     public List<string> generatedAudioTrackNames;
     public List<bool> generatedAudioTrackEnabled;
     public int selectedGeneratedAudioTrackIndex;
+    public bool showSongSettingsTrackSelectionPopup;
+    public List<string> songSettingsTrackOptionNames;
+    public int selectedSongSettingsTrackOptionIndex;
     public string selectedTrackDisplayName;
     public string selectedTrackTuningLabel;
     public string trackSelectionHint;
