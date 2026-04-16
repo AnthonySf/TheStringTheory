@@ -13691,7 +13691,7 @@ public sealed class TabsSongHeaderOverlay
 
         bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
 
-        if (isHighway3D && highwayCharacterVisible)
+        if (isHighway3D)
 
         {
 

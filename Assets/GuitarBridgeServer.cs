@@ -2663,17 +2663,30 @@ public class GuitarBridgeServer : MonoBehaviour
             return "--";
 
         bool hasMp3 = !string.IsNullOrWhiteSpace(song.Mp3Path);
+        string audioLabel = hasMp3 ? GetSongLibraryBackingAudioLabel(song.Mp3Path) : string.Empty;
         string notationLabel = GetSongLibraryNotationLabel(song);
-        if (hasMp3 && !string.IsNullOrWhiteSpace(notationLabel))
-            return $"MP3 / {notationLabel}";
+        if (!string.IsNullOrWhiteSpace(audioLabel) && !string.IsNullOrWhiteSpace(notationLabel))
+            return $"{audioLabel} / {notationLabel}";
 
-        if (hasMp3)
-            return "MP3";
+        if (!string.IsNullOrWhiteSpace(audioLabel))
+            return audioLabel;
 
         if (!string.IsNullOrWhiteSpace(notationLabel))
             return notationLabel;
 
         return "--";
+    }
+
+    private static string GetSongLibraryBackingAudioLabel(string audioPath)
+    {
+        if (string.IsNullOrWhiteSpace(audioPath))
+            return string.Empty;
+
+        string extension = Path.GetExtension(audioPath)?.TrimStart('.').ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(extension))
+            return "AUDIO";
+
+        return extension;
     }
 
     private bool IsSongFavorited(SongLibraryEntry entry)
@@ -7193,29 +7206,8 @@ private void ParseDetectorPacket(string detectorPacket)
     private void ApplyDefaultGeneratedPlaybackSelectionForCurrentTrack(List<GeneratedPlaybackPartInfo> availableParts = null)
     {
         availableParts ??= GetAvailableGeneratedPlaybackParts();
-        useAllGeneratedPlaybackParts = false;
-
-        string selectionKey = GetCurrentGeneratedPlaybackSelectionKey();
-        List<string> enabledIds = new List<string>();
-
-        if (!string.IsNullOrWhiteSpace(selectionKey))
-        {
-            enabledIds.AddRange(availableParts
-                .Where(part => string.Equals(part.partId, selectionKey, StringComparison.OrdinalIgnoreCase))
-                .Select(part => part.partId));
-        }
-
-        enabledIds.AddRange(availableParts
-            .Where(part => part.isDrum)
-            .Select(part => part.partId));
-
-        generatedEnabledPartIds = enabledIds
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (generatedEnabledPartIds.Count == 0 && availableParts.Count > 0)
-            generatedEnabledPartIds.Add(availableParts[0].partId);
+        useAllGeneratedPlaybackParts = true;
+        generatedEnabledPartIds.Clear();
     }
 
     private void NormalizeGeneratedPlaybackSelectionToAvailableParts(List<GeneratedPlaybackPartInfo> availableParts = null)
@@ -7254,23 +7246,7 @@ private void ParseDetectorPacket(string detectorPacket)
         if (string.IsNullOrWhiteSpace(selectionKey))
             return;
 
-        List<string> defaultEnabledIds = new List<string>();
-        if (!string.IsNullOrWhiteSpace(selectionKey))
-        {
-            defaultEnabledIds.AddRange(availableParts
-                .Where(part => string.Equals(part.partId, selectionKey, StringComparison.OrdinalIgnoreCase))
-                .Select(part => part.partId));
-        }
-
-        defaultEnabledIds.AddRange(availableParts.Where(part => part.isDrum).Select(part => part.partId));
-        defaultEnabledIds = defaultEnabledIds
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        bool matchesDefault = !useAllGeneratedPlaybackParts &&
-                              generatedEnabledPartIds.Count == defaultEnabledIds.Count &&
-                              generatedEnabledPartIds.All(id => defaultEnabledIds.Contains(id, StringComparer.OrdinalIgnoreCase));
+        bool matchesDefault = useAllGeneratedPlaybackParts;
 
         songMetadata.generatedPlaybackSelectionOverrides.RemoveAll(entry =>
             string.Equals(entry.partId ?? string.Empty, selectionKey, StringComparison.OrdinalIgnoreCase));

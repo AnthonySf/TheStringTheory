@@ -146,7 +146,9 @@ public static class SongLibraryService
     {
         entry = null;
 
-        string mp3Path = FindFirstFile(songDirectory, "*.mp3");
+        string mp3Path = FindFirstFile(songDirectory, "*.mp3")
+                         ?? FindFirstFile(songDirectory, "*.wav")
+                         ?? FindFirstFile(songDirectory, "*.ogg");
         string gpPath = FindPreferredGpNotation(songDirectory);
         string xmlPath = FindFirstFile(songDirectory, "*.musicxml") ?? FindFirstFile(songDirectory, "*.xml");
         string artworkPath = FindArtworkFile(songDirectory);
