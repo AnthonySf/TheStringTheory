@@ -48,6 +48,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private ParticleSystem highwayCharacterMissAuraParticles;
     private Texture2D highwayCharacterTexture;
     private float highwayCharacterAspect = 1f;
+    private int highwayCharacterSourcePixelWidth = 1;
+    private int highwayCharacterSourcePixelHeight = 1;
+    private float highwayCharacterManualLocalXOffset;
+    private float highwayCharacterManualLocalYOffset;
+    private Vector2 highwayCharacterTextureScale = Vector2.one;
+    private Vector2 highwayCharacterTextureOffset = Vector2.zero;
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
     private readonly Renderer[] stringVisualRenderers = new Renderer[6];
@@ -84,8 +90,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const float HighwayCharacterDepth = 44f;
     private const float HighwayCharacterHeightViewportFraction = 0.375f;
     private const float HighwayCharacterViewportCenterY = 0.57f;
-    private const float DefaultHighwayCharacterHudAspectEstimate = 0.79f;
-    private static float currentHighwayCharacterHudAspect = DefaultHighwayCharacterHudAspectEstimate;
+    private const float HighwayCharacterScaleMultiplier = 1.1f;
     private const float HighwayCharacterBottomFadeStart01 = 0.22f;
     private const float HighwayCharacterBottomFadeEnd01 = 0.12f;
     private const float HighwayCharacterBopGroupWindowSeconds = 0.045f;
@@ -134,7 +139,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly Color HighwayCharacterPortalBaseColor = new Color(0.07f, 0.10f, 0.19f, 1f); // [PORTAL] : color - outer/base fill
     private static readonly Color HighwayCharacterPortalCoreColor = new Color(0.03f, 0.05f, 0.12f, 1f); // [PORTAL] : color - inner dark void
     private static Color HighwayCharacterPortalRimColor => new Color(0.98f, 0.43f, 0.14f, 1f); // [PORTAL] : color - glowing orange rim, shared by miss particles
-    private static readonly Color HighwayCharacterPortalSwirlColor = new Color(0.94f, 0.57f, 0.24f, 1f); // [PORTAL] : color - swirl energy
     private const float HighwayCharacterPortalBaseOpacity = 1f; // [PORTAL] : transparency - outer/base fill opacity
     private const float HighwayCharacterPortalCoreOpacity = 1f; // [PORTAL] : transparency - inner dark void opacity
     private const float HighwayCharacterPortalRimOpacity = 1f; // [PORTAL] : transparency - rim opacity
@@ -269,27 +273,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         float safeScreenWidth = Mathf.Max(1f, screenWidth);
         float safeScreenHeight = Mathf.Max(1f, screenHeight);
-        float screenAspect = safeScreenWidth / safeScreenHeight;
-        float viewportHeight = Mathf.Min(HighwayCharacterHeightViewportFraction, 1f - (2f * HighwayCharacterViewportMarginY));
-        float viewportWidth = viewportHeight * currentHighwayCharacterHudAspect / Mathf.Max(0.1f, screenAspect);
-        float maxViewportWidth = Mathf.Max(0.05f, 1f - (2f * HighwayCharacterViewportMarginX));
-        if (viewportWidth > maxViewportWidth)
-        {
-            float shrink = maxViewportWidth / viewportWidth;
-            viewportWidth = maxViewportWidth;
-            viewportHeight *= shrink;
-        }
-
-        float left = HighwayCharacterViewportMarginX;
-        float centerY = Mathf.Clamp(
-            HighwayCharacterViewportCenterY,
-            HighwayCharacterViewportMarginY + (viewportHeight * 0.5f),
-            1f - HighwayCharacterViewportMarginY - (viewportHeight * 0.5f));
-        float bottom = centerY - (viewportHeight * 0.5f);
-        float characterLeft = left * safeScreenWidth;
-        float characterTop = (1f - (bottom + viewportHeight)) * safeScreenHeight;
-        float characterWidth = viewportWidth * safeScreenWidth;
-        float characterHeight = viewportHeight * safeScreenHeight;
+        Rect viewportRect = HighwayCharacterVisualUtility.GetCurrentHudScreenRect(
+            safeScreenWidth,
+            safeScreenHeight,
+            HighwayCharacterViewportMarginX,
+            HighwayCharacterViewportMarginY,
+            HighwayCharacterHeightViewportFraction,
+            HighwayCharacterViewportCenterY);
+        float characterLeft = viewportRect.x * safeScreenWidth;
+        float characterTop = (1f - (viewportRect.y + viewportRect.height)) * safeScreenHeight;
+        float characterWidth = viewportRect.width * safeScreenWidth;
+        float characterHeight = viewportRect.height * safeScreenHeight;
         return new Rect(characterLeft, characterTop, characterWidth, characterHeight);
     }
 
@@ -841,23 +835,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (characterRoot == null)
             return;
 
-        Sprite characterSprite = Resources.Load<Sprite>("char");
-        if (characterSprite != null)
-        {
-            highwayCharacterTexture = characterSprite.texture;
-            Rect spriteRect = characterSprite.rect;
-            highwayCharacterAspect = Mathf.Max(0.05f, spriteRect.width / Mathf.Max(1f, spriteRect.height));
-            currentHighwayCharacterHudAspect = highwayCharacterAspect;
-        }
-        else
-        {
-            highwayCharacterTexture = Resources.Load<Texture2D>("char");
-            if (highwayCharacterTexture == null)
-                return;
+        if (!HighwayCharacterVisualUtility.TryLoadTextureData(out HighwayCharacterTextureData characterData) ||
+            characterData.texture == null)
+            return;
 
-            highwayCharacterAspect = Mathf.Max(0.05f, highwayCharacterTexture.width / (float)Mathf.Max(1, highwayCharacterTexture.height));
-            currentHighwayCharacterHudAspect = highwayCharacterAspect;
-        }
+        highwayCharacterTexture = characterData.texture;
+        highwayCharacterAspect = characterData.aspect;
+        highwayCharacterSourcePixelWidth = characterData.sourcePixelWidth;
+        highwayCharacterSourcePixelHeight = characterData.sourcePixelHeight;
+        highwayCharacterTextureScale = characterData.textureScale;
+        highwayCharacterTextureOffset = characterData.textureOffset;
+        SyncHighwayCharacterHudLayoutState();
 
         GameObject characterObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
         characterObject.name = "HighwayCharacter";
@@ -948,36 +936,95 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             characterRoot.SetActive(shouldShow);
 
         if (!shouldShow)
-            return;
-
-        float viewportHeight = Mathf.Min(HighwayCharacterHeightViewportFraction, 1f - (2f * HighwayCharacterViewportMarginY));
-        float viewportWidth = viewportHeight * highwayCharacterAspect / Mathf.Max(0.1f, mainCamera.aspect);
-        float maxViewportWidth = Mathf.Max(0.05f, 1f - (2f * HighwayCharacterViewportMarginX));
-        if (viewportWidth > maxViewportWidth)
         {
-            float shrink = maxViewportWidth / viewportWidth;
-            viewportWidth = maxViewportWidth;
-            viewportHeight *= shrink;
+            UpdateHighwayCharacterPortalVisuals(false);
+            return;
         }
 
-        float left = HighwayCharacterViewportMarginX;
-        float centerY = Mathf.Clamp(
+        SyncHighwayCharacterHudLayoutState();
+        Rect viewportRect = HighwayCharacterVisualUtility.ComputeViewportRect(
+            mainCamera.pixelWidth,
+            mainCamera.pixelHeight,
+            highwayCharacterAspect,
+            highwayCharacterSourcePixelWidth,
+            highwayCharacterSourcePixelHeight,
+            HighwayCharacterViewportMarginX,
+            HighwayCharacterViewportMarginY,
+            HighwayCharacterHeightViewportFraction,
             HighwayCharacterViewportCenterY,
-            HighwayCharacterViewportMarginY + (viewportHeight * 0.5f),
-            1f - HighwayCharacterViewportMarginY - (viewportHeight * 0.5f));
-        float bottom = centerY - (viewportHeight * 0.5f);
-        Vector3 lowerLeft = mainCamera.ViewportToWorldPoint(new Vector3(left, bottom, HighwayCharacterDepth));
-        Vector3 lowerRight = mainCamera.ViewportToWorldPoint(new Vector3(left + viewportWidth, bottom, HighwayCharacterDepth));
-        Vector3 upperLeft = mainCamera.ViewportToWorldPoint(new Vector3(left, bottom + viewportHeight, HighwayCharacterDepth));
-        Vector3 upperRight = mainCamera.ViewportToWorldPoint(new Vector3(left + viewportWidth, bottom + viewportHeight, HighwayCharacterDepth));
+            owner != null ? owner.highwayCharacterScale : 1f,
+            0f,
+            owner != null ? owner.highwayCharacterRigOffsetY : 0f);
+        highwayCharacterManualLocalXOffset = HighwayCharacterVisualUtility.ComputeCharacterLocalXOffset(
+            viewportRect.width,
+            owner != null ? owner.highwayCharacterOffsetX : 0f,
+            HighwayCharacterScaleMultiplier);
+        highwayCharacterManualLocalYOffset = HighwayCharacterVisualUtility.ComputeCharacterLocalYOffset(
+            viewportRect.height,
+            owner != null ? owner.highwayCharacterOffsetY : 0f,
+            HighwayCharacterScaleMultiplier);
+        Vector3 lowerLeft = mainCamera.ViewportToWorldPoint(new Vector3(viewportRect.xMin, viewportRect.yMin, HighwayCharacterDepth));
+        Vector3 lowerRight = mainCamera.ViewportToWorldPoint(new Vector3(viewportRect.xMax, viewportRect.yMin, HighwayCharacterDepth));
+        Vector3 upperLeft = mainCamera.ViewportToWorldPoint(new Vector3(viewportRect.xMin, viewportRect.yMax, HighwayCharacterDepth));
+        Vector3 upperRight = mainCamera.ViewportToWorldPoint(new Vector3(viewportRect.xMax, viewportRect.yMax, HighwayCharacterDepth));
         float targetWidth = Vector3.Distance(lowerLeft, lowerRight);
         float targetHeight = Vector3.Distance(lowerLeft, upperLeft);
         Vector3 worldPosition = (lowerLeft + upperRight) * 0.5f;
 
         characterRoot.transform.position = worldPosition;
         characterRoot.transform.rotation = mainCamera.transform.rotation;
-        characterRoot.transform.localScale = new Vector3(targetWidth, targetHeight, 1f);
-        UpdateHighwayCharacterPortalPalette();
+        characterRoot.transform.localScale = new Vector3(
+            targetWidth * HighwayCharacterScaleMultiplier,
+            targetHeight * HighwayCharacterScaleMultiplier,
+            1f);
+        ApplyHighwayCharacterVerticalCompensation();
+        UpdateHighwayCharacterPortalVisuals(true);
+    }
+
+    private void SyncHighwayCharacterHudLayoutState()
+    {
+        HighwayCharacterVisualUtility.SetCurrentHudLayout(
+            highwayCharacterAspect,
+            highwayCharacterSourcePixelWidth,
+            highwayCharacterSourcePixelHeight,
+            owner != null ? owner.highwayCharacterScale : 1f,
+            owner != null ? owner.highwayCharacterOffsetX : 0f,
+            (owner != null ? owner.highwayCharacterRigOffsetY : 0f) + (owner != null ? owner.highwayCharacterOffsetY : 0f));
+    }
+
+    private void ApplyHighwayCharacterVerticalCompensation()
+    {
+        HighwayCharacterVisualUtility.ComputeVerticalCompensation(
+            highwayCharacterManualLocalYOffset,
+            HighwayCharacterBottomFadeStart01,
+            HighwayCharacterBottomFadeEnd01,
+            owner != null ? owner.highwayCharacterFadeSoftness : (HighwayCharacterBottomFadeStart01 - HighwayCharacterBottomFadeEnd01),
+            HighwayCharacterPortalLocalYInCharacterHeights,
+            out float fadeStart,
+            out float fadeEnd,
+            out float portalLocalY);
+
+        if (sharedHighwayCharacterMaterial != null)
+        {
+            if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeStartShaderId))
+                sharedHighwayCharacterMaterial.SetFloat(CharacterFadeStartShaderId, fadeStart);
+            if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeEndShaderId))
+                sharedHighwayCharacterMaterial.SetFloat(CharacterFadeEndShaderId, fadeEnd);
+        }
+
+        if (highwayCharacterPortalBackRenderer != null)
+        {
+            Vector3 position = highwayCharacterPortalBackRenderer.transform.localPosition;
+            position.y = HighwayCharacterPortalLocalYInCharacterHeights;
+            highwayCharacterPortalBackRenderer.transform.localPosition = position;
+        }
+
+        if (highwayCharacterPortalFrontRenderer != null)
+        {
+            Vector3 position = highwayCharacterPortalFrontRenderer.transform.localPosition;
+            position.y = HighwayCharacterPortalLocalYInCharacterHeights;
+            highwayCharacterPortalFrontRenderer.transform.localPosition = position;
+        }
     }
 
     private void UpdateHighwayCharacterAnimation(GuitarGameplaySnapshot snapshot)
@@ -985,7 +1032,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (highwayCharacterTransform == null)
             return;
 
-        if (snapshot == null ||
+        if ((owner != null && !owner.highwayCharacterAnimationsEnabled) ||
+            snapshot == null ||
             snapshot.isPaused ||
             characterRoot == null ||
             !characterRoot.activeSelf)
@@ -1072,9 +1120,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         else
             ApplyHighwayCharacterMissMaterialState(0f);
 
-        highwayCharacterTransform.localPosition = new Vector3(idleLocalX, localLift, 0f);
+        float uniformScale = Mathf.Max(0.82f, ((scaleX + scaleY) * 0.5f));
+        highwayCharacterTransform.localPosition = new Vector3(highwayCharacterManualLocalXOffset + idleLocalX, highwayCharacterManualLocalYOffset + localLift, 0f);
         highwayCharacterTransform.localRotation = Quaternion.Euler(0f, 0f, rotationZ);
-        highwayCharacterTransform.localScale = new Vector3(Mathf.Max(0.82f, scaleX), Mathf.Max(0.78f, scaleY), 1f);
+        highwayCharacterTransform.localScale = new Vector3(uniformScale, uniformScale, 1f);
     }
 
     private void ResetHighwayCharacterAnimation()
@@ -1082,7 +1131,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (highwayCharacterTransform == null)
             return;
 
-        highwayCharacterTransform.localPosition = Vector3.zero;
+        highwayCharacterTransform.localPosition = new Vector3(highwayCharacterManualLocalXOffset, highwayCharacterManualLocalYOffset, 0f);
         highwayCharacterTransform.localRotation = Quaternion.identity;
         highwayCharacterTransform.localScale = Vector3.one;
         ClearHighwayCharacterMissFeedback();
@@ -1223,6 +1272,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         sharedHighwayCharacterMaterial.color = Color.white;
         sharedHighwayCharacterMaterial.mainTexture = highwayCharacterTexture;
         sharedHighwayCharacterMaterial.SetTexture("_MainTex", highwayCharacterTexture);
+        sharedHighwayCharacterMaterial.mainTextureScale = highwayCharacterTextureScale;
+        sharedHighwayCharacterMaterial.mainTextureOffset = highwayCharacterTextureOffset;
+        sharedHighwayCharacterMaterial.SetTextureScale("_MainTex", highwayCharacterTextureScale);
+        sharedHighwayCharacterMaterial.SetTextureOffset("_MainTex", highwayCharacterTextureOffset);
         if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeStartShaderId))
             sharedHighwayCharacterMaterial.SetFloat(CharacterFadeStartShaderId, HighwayCharacterBottomFadeStart01);
         if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeEndShaderId))
@@ -1575,8 +1628,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return material;
     }
 
-    private void UpdateHighwayCharacterPortalPalette()
+    private void UpdateHighwayCharacterPortalVisuals(bool shouldShowPortal)
     {
+        bool portalEnabled = shouldShowPortal && owner != null && owner.highwayCharacterPortalEnabled;
+        if (highwayCharacterPortalBackRenderer != null)
+            highwayCharacterPortalBackRenderer.enabled = portalEnabled;
+        if (highwayCharacterPortalFrontRenderer != null)
+            highwayCharacterPortalFrontRenderer.enabled = portalEnabled;
+
+        if (!portalEnabled)
+            return;
+
         ApplyHighwayCharacterPortalPalette(sharedHighwayCharacterPortalBackMaterial);
         ApplyHighwayCharacterPortalPalette(sharedHighwayCharacterPortalFrontMaterial);
     }
@@ -1586,10 +1648,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (material == null || owner == null)
             return;
 
+        float bodyOpacity = owner != null ? Mathf.Clamp01(owner.highwayCharacterPortalBodyOpacity) : HighwayCharacterPortalInteriorAlphaFloor;
         Color baseColor = WithAlpha(HighwayCharacterPortalBaseColor, HighwayCharacterPortalBaseOpacity);
         Color coreColor = WithAlpha(HighwayCharacterPortalCoreColor, HighwayCharacterPortalCoreOpacity);
-        Color rimColor = WithAlpha(HighwayCharacterPortalRimColor, HighwayCharacterPortalRimOpacity);
-        Color accentColor = WithAlpha(HighwayCharacterPortalSwirlColor, HighwayCharacterPortalSwirlOpacity);
+        Color rimColor = WithAlpha(
+            HighwayCharacterVisualUtility.ResolvePortalEdgeColor(owner.highwayCharacterPortalEdgeColor),
+            HighwayCharacterPortalRimOpacity);
+        Color accentColor = owner != null && owner.highwayCharacterPortalSwirlsEnabled
+            ? WithAlpha(
+                HighwayCharacterVisualUtility.ResolvePortalSwirlColor(owner.highwayCharacterPortalSwirlColor),
+                HighwayCharacterPortalSwirlOpacity)
+            : new Color(0f, 0f, 0f, 0f);
 
         material.color = Color.Lerp(baseColor, rimColor, HighwayCharacterPortalPreviewTintMix);
         if (material.HasProperty(CharacterPortalBaseColorShaderId))
@@ -1600,6 +1669,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             material.SetColor(CharacterPortalAccentColorShaderId, accentColor);
         if (material.HasProperty(CharacterPortalCoreColorShaderId))
             material.SetColor(CharacterPortalCoreColorShaderId, coreColor);
+        if (material.HasProperty(CharacterPortalAlphaFloorShaderId))
+            material.SetFloat(CharacterPortalAlphaFloorShaderId, bodyOpacity);
         if (material.HasProperty(CharacterPortalGlowStrengthShaderId))
             material.SetFloat(CharacterPortalGlowStrengthShaderId, HighwayCharacterPortalGlowStrength);
     }

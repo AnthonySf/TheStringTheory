@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Xml;
@@ -8,6 +9,7 @@ using UnityEngine;
 public sealed class SongLibraryEntry
 {
     public string SongId;
+    public SongLibraryType LibraryType;
     public string DisplayName;
     public string Artist;
     public string Album;
@@ -22,6 +24,9 @@ public sealed class SongLibraryEntry
     public string XmlPath;
     public string MetadataPath;
     public string MidiPath;
+    public string ArcadeChartPath;
+    public string ArcadeSongIniPath;
+    public List<string> ArcadeAudioPaths = new List<string>();
 }
 
 public static class SongLibraryService
@@ -45,6 +50,16 @@ public static class SongLibraryService
         public string artist;
         public string album;
         public string subtitle;
+        public int difficulty;
+    }
+
+    private sealed class CloneHeroFolderMetadata
+    {
+        public string name;
+        public string artist;
+        public string album;
+        public string charter;
+        public string year;
         public int difficulty;
     }
 
@@ -149,6 +164,10 @@ public static class SongLibraryService
         string mp3Path = FindFirstFile(songDirectory, "*.mp3")
                          ?? FindFirstFile(songDirectory, "*.wav")
                          ?? FindFirstFile(songDirectory, "*.ogg");
+        string arcadeChartPath = FindCloneHeroChartFile(songDirectory);
+        string arcadeSongIniPath = Path.Combine(songDirectory, "song.ini");
+        bool hasArcadeSongIni = File.Exists(arcadeSongIniPath);
+        List<string> arcadeAudioPaths = FindCloneHeroAudioFiles(songDirectory);
         string gpPath = FindPreferredGpNotation(songDirectory);
         string xmlPath = FindFirstFile(songDirectory, "*.musicxml") ?? FindFirstFile(songDirectory, "*.xml");
         string artworkPath = FindArtworkFile(songDirectory);
@@ -159,8 +178,46 @@ public static class SongLibraryService
 
         if (string.IsNullOrEmpty(primaryNotationPath) || primaryNotationKind == SongNotationSourceKind.None)
         {
-            Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: supported Guitar Pro or MusicXML notation.");
-            return false;
+            if (string.IsNullOrWhiteSpace(arcadeChartPath) || !hasArcadeSongIni)
+            {
+                Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: supported Guitar Pro/MusicXML notation, or Clone Hero notes.chart/notes.mid plus song.ini.");
+                return false;
+            }
+
+            CloneHeroFolderMetadata cloneHeroMetadata = TryReadCloneHeroFolderMetadata(arcadeSongIniPath);
+            string arcadeDisplayName = ResolveCloneHeroDisplayName(songDirectory, cloneHeroMetadata);
+            string arcadeArtist = string.IsNullOrWhiteSpace(cloneHeroMetadata?.artist) ? "Unknown Artist" : cloneHeroMetadata.artist.Trim();
+            string arcadeAlbum = string.IsNullOrWhiteSpace(cloneHeroMetadata?.album) ? string.Empty : cloneHeroMetadata.album.Trim();
+            string arcadeSubtitle = BuildCloneHeroSubtitle(arcadeArtist, cloneHeroMetadata);
+            string arcadeMetadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
+
+            entry = new SongLibraryEntry
+            {
+                SongId = Path.GetFileName(songDirectory),
+                LibraryType = SongLibraryType.Arcade,
+                DisplayName = arcadeDisplayName,
+                Artist = arcadeArtist,
+                Album = arcadeAlbum,
+                Subtitle = arcadeSubtitle,
+                ArtworkPath = artworkPath,
+                DifficultyRating = cloneHeroMetadata != null ? Mathf.Clamp(cloneHeroMetadata.difficulty, 0, 5) : 0,
+                SongDirectory = songDirectory,
+                Mp3Path = arcadeAudioPaths.FirstOrDefault() ?? mp3Path,
+                PrimaryNotationPath = string.Empty,
+                PrimaryNotationKind = SongNotationSourceKind.None,
+                GpPath = null,
+                XmlPath = null,
+                MetadataPath = arcadeMetadataPath,
+                MidiPath = Path.GetExtension(arcadeChartPath).Equals(".mid", StringComparison.OrdinalIgnoreCase) ||
+                           Path.GetExtension(arcadeChartPath).Equals(".midi", StringComparison.OrdinalIgnoreCase)
+                    ? arcadeChartPath
+                    : null,
+                ArcadeChartPath = arcadeChartPath,
+                ArcadeSongIniPath = arcadeSongIniPath,
+                ArcadeAudioPaths = arcadeAudioPaths
+            };
+
+            return true;
         }
 
         string metadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
@@ -174,6 +231,7 @@ public static class SongLibraryService
         entry = new SongLibraryEntry
         {
             SongId = Path.GetFileName(songDirectory),
+            LibraryType = SongLibraryType.Guitar,
             DisplayName = displayName,
             Artist = artist,
             Album = album,
@@ -201,6 +259,98 @@ public static class SongLibraryService
         return Directory.GetFiles(directory, pattern)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
+    }
+
+    private static string FindCloneHeroChartFile(string directory)
+    {
+        if (!Directory.Exists(directory))
+            return null;
+
+        string[] preferredNames =
+        {
+            "notes.chart",
+            "notes.mid",
+            "notes.midi"
+        };
+
+        for (int i = 0; i < preferredNames.Length; i++)
+        {
+            string candidate = Path.Combine(directory, preferredNames[i]);
+            if (File.Exists(candidate))
+                return candidate;
+        }
+
+        return FindFirstFile(directory, "*.chart") ?? FindFirstFile(directory, "*.mid") ?? FindFirstFile(directory, "*.midi");
+    }
+
+    private static List<string> FindCloneHeroAudioFiles(string directory)
+    {
+        List<string> results = new List<string>();
+        if (!Directory.Exists(directory))
+            return results;
+
+        string[] preferredNames =
+        {
+            "song.ogg",
+            "guitar.ogg",
+            "rhythm.ogg",
+            "bass.ogg",
+            "drums.ogg",
+            "drums_1.ogg",
+            "drums_2.ogg",
+            "drums_3.ogg",
+            "drums_4.ogg",
+            "keys.ogg",
+            "crowd.ogg",
+            "song.mp3",
+            "guitar.mp3",
+            "rhythm.mp3",
+            "bass.mp3",
+            "drums.mp3",
+            "keys.mp3",
+            "song.wav",
+            "guitar.wav",
+            "rhythm.wav",
+            "bass.wav",
+            "drums.wav",
+            "keys.wav"
+        };
+
+        HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < preferredNames.Length; i++)
+        {
+            string candidate = Path.Combine(directory, preferredNames[i]);
+            if (File.Exists(candidate) && seen.Add(candidate))
+                results.Add(candidate);
+        }
+
+        string[] patterns = { "*.ogg", "*.mp3", "*.wav" };
+        for (int patternIndex = 0; patternIndex < patterns.Length; patternIndex++)
+        {
+            foreach (string candidate in Directory.GetFiles(directory, patterns[patternIndex]).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                string fileName = Path.GetFileName(candidate);
+                if (IsCloneHeroIgnoredMediaFile(fileName))
+                    continue;
+
+                if (seen.Add(candidate))
+                    results.Add(candidate);
+            }
+        }
+
+        return results;
+    }
+
+    private static bool IsCloneHeroIgnoredMediaFile(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return false;
+
+        string lower = fileName.ToLowerInvariant();
+        return lower.EndsWith(".mp4", StringComparison.OrdinalIgnoreCase) ||
+               lower.EndsWith(".webm", StringComparison.OrdinalIgnoreCase) ||
+               lower.EndsWith(".avi", StringComparison.OrdinalIgnoreCase) ||
+               lower.EndsWith(".mov", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FindPreferredGpNotation(string directory)
@@ -304,6 +454,79 @@ public static class SongLibraryService
         }
     }
 
+    private static CloneHeroFolderMetadata TryReadCloneHeroFolderMetadata(string iniPath)
+    {
+        if (string.IsNullOrEmpty(iniPath) || !File.Exists(iniPath))
+            return null;
+
+        CloneHeroFolderMetadata metadata = new CloneHeroFolderMetadata();
+        try
+        {
+            foreach (string rawLine in File.ReadAllLines(iniPath))
+            {
+                string line = rawLine?.Trim();
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith(";", StringComparison.Ordinal) || line.StartsWith("#", StringComparison.Ordinal))
+                    continue;
+
+                int equals = line.IndexOf('=');
+                if (equals <= 0)
+                    continue;
+
+                string key = line.Substring(0, equals).Trim().ToLowerInvariant();
+                string value = line.Substring(equals + 1).Trim().Trim('"');
+                switch (key)
+                {
+                    case "name":
+                        metadata.name = value;
+                        break;
+                    case "artist":
+                        metadata.artist = value;
+                        break;
+                    case "album":
+                        metadata.album = value;
+                        break;
+                    case "charter":
+                        metadata.charter = value;
+                        break;
+                    case "year":
+                        metadata.year = value;
+                        break;
+                    case "diff_guitar":
+                    case "diff_band":
+                        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedDifficulty))
+                            metadata.difficulty = Mathf.Clamp(parsedDifficulty, 0, 5);
+                        break;
+                }
+            }
+
+            return metadata;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[SongLibraryService] Failed to parse Clone Hero song.ini '{iniPath}': {ex.Message}");
+            return null;
+        }
+    }
+
+    private static string ResolveCloneHeroDisplayName(string songDirectory, CloneHeroFolderMetadata metadata)
+    {
+        if (!string.IsNullOrWhiteSpace(metadata?.name))
+            return metadata.name.Trim();
+
+        return Path.GetFileName(songDirectory);
+    }
+
+    private static string BuildCloneHeroSubtitle(string artist, CloneHeroFolderMetadata metadata)
+    {
+        List<string> parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(artist))
+            parts.Add(artist.Trim());
+        if (!string.IsNullOrWhiteSpace(metadata?.charter))
+            parts.Add($"Chart by {metadata.charter.Trim()}");
+
+        return string.Join("  |  ", parts);
+    }
+
     private static string ResolveArtist(string notationPath, SongNotationSourceKind notationKind, SongFolderMetadata importedDefinition, string xmlFallbackPath)
     {
         if (!string.IsNullOrWhiteSpace(importedDefinition?.artist))
@@ -398,6 +621,7 @@ public static class SongLibraryService
         return new SongLibraryEntry
         {
             SongId = entry.SongId,
+            LibraryType = entry.LibraryType,
             DisplayName = entry.DisplayName,
             Artist = entry.Artist,
             Album = entry.Album,
@@ -411,7 +635,10 @@ public static class SongLibraryService
             GpPath = entry.GpPath,
             XmlPath = entry.XmlPath,
             MetadataPath = entry.MetadataPath,
-            MidiPath = entry.MidiPath
+            MidiPath = entry.MidiPath,
+            ArcadeChartPath = entry.ArcadeChartPath,
+            ArcadeSongIniPath = entry.ArcadeSongIniPath,
+            ArcadeAudioPaths = entry.ArcadeAudioPaths != null ? new List<string>(entry.ArcadeAudioPaths) : new List<string>()
         };
     }
 

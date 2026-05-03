@@ -36,8 +36,15 @@ public class GuitarBridgeServer : MonoBehaviour
         Midnight = 2
     }
 
+    public enum HighwayCharacterPortalColorPreset
+    {
+        Orange = 0,
+        Black = 1
+    }
+
     [Header("Render Mode")]
     public GuitarRenderMode renderMode = GuitarRenderMode.Tabs;
+    public GuitarGameplayMode gameplayMode = GuitarGameplayMode.Guitar;
 
     [Header("Settings")]
     public bool invertStrings = true;
@@ -162,11 +169,22 @@ public class GuitarBridgeServer : MonoBehaviour
     public float highwayBackgroundCloudSpread = 1f;
     public float highwayLaneGuideThickness = 0.14f;
     public float highwayLaneGuideYOffset = 0f;
+    public float highwayCharacterScale = 1f;
+    public float highwayCharacterRigOffsetY = 0f;
+    public float highwayCharacterOffsetX = 0.03f;
+    public float highwayCharacterOffsetY = 0.045f;
+    public float highwayCharacterFadeSoftness = 0.10f;
+    public bool highwayCharacterAnimationsEnabled = true;
+    public bool highwayCharacterPortalEnabled = true;
+    public bool highwayCharacterPortalSwirlsEnabled = true;
+    public float highwayCharacterPortalBodyOpacity = 0.80f;
+    public HighwayCharacterPortalColorPreset highwayCharacterPortalEdgeColor = HighwayCharacterPortalColorPreset.Black;
+    public HighwayCharacterPortalColorPreset highwayCharacterPortalSwirlColor = HighwayCharacterPortalColorPreset.Black;
     public float highwayFretNumberYOffset = 0.45f;
     public float highwayFretNumberZOffset = 0.12f;
     public bool highwayHighlightFretBoundaries = false;
     public bool highwayShowApproachLine = false;
-    public bool highwayShowLandingDot = true;
+    public bool highwayShowLandingDot = false;
 
     [Header("Tabs Dimensions")]
     public float tabPanelWidth = 22f;
@@ -337,6 +355,35 @@ public class GuitarBridgeServer : MonoBehaviour
         public HashSet<int> consumedKeys = new HashSet<int>();
     }
 
+    private class ArcadeInputEvent
+    {
+        public int id;
+        public float time;
+        public bool[] heldLanes = new bool[5];
+        public bool[] pressedLanes = new bool[5];
+        public bool isStrum;
+        public bool isTap;
+        public bool isRelease;
+        public bool isOpenButton;
+        public bool overstrumJudged;
+        public HashSet<int> consumedChordIds = new HashSet<int>();
+    }
+
+    private sealed class ArcadeActiveSustain
+    {
+        public int chordId;
+        public ArcadeNoteData note;
+        public float endTime;
+        public float durationSeconds;
+        public float basePointsPerSecond;
+        public float lastProcessedTime;
+        public float pendingScoreRemainder;
+        public bool broken;
+    }
+
+    private const float ArcadeMinimumSustainDurationSeconds = 0.12f;
+    private const float ArcadeMinimumSustainBeats = 0.25f;
+
     private struct DetectorHintWindow
     {
         public float startTime;
@@ -363,6 +410,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private IGuitarGameplayRenderer activeRenderer;
     private GuitarRenderMode activeRendererMode = (GuitarRenderMode)(-1);
+    private GuitarGameplayMode activeRendererGameplayMode = (GuitarGameplayMode)(-1);
 
     private float songTimer;
     private float audioSongTimer;
@@ -426,6 +474,42 @@ public class GuitarBridgeServer : MonoBehaviour
     public int midiTrackIndex = -1;
     private int currentLoadedTrackIndex = -999;
 
+    [Header("Arcade Input")]
+    [Min(1)] public int arcadeHighwayLaneCount = 5;
+    public ArcadeInputSourceMode arcadeInputSource = ArcadeInputSourceMode.KeyboardAndController;
+    [Min(0)] public int arcadeControllerDeviceIndex = 0;
+    public bool arcadeGamepadMode;
+    public bool arcadeMidiInputEnabled = false;
+    [Min(0)] public int arcadeMidiInputDeviceIndex = 0;
+    public int arcadeMidiLane0Note = 60;
+    public int arcadeMidiLane1Note = 61;
+    public int arcadeMidiLane2Note = 62;
+    public int arcadeMidiLane3Note = 63;
+    public int arcadeMidiLane4Note = 64;
+    public int arcadeMidiOpenNote = 65;
+    public KeyCode arcadeKeyboardGreen = KeyCode.A;
+    public KeyCode arcadeKeyboardRed = KeyCode.S;
+    public KeyCode arcadeKeyboardYellow = KeyCode.J;
+    public KeyCode arcadeKeyboardBlue = KeyCode.K;
+    public KeyCode arcadeKeyboardOrange = KeyCode.L;
+    public KeyCode arcadeKeyboardStrumUp = KeyCode.UpArrow;
+    public KeyCode arcadeKeyboardStrumDown = KeyCode.DownArrow;
+    public KeyCode arcadeKeyboardOpen = KeyCode.None;
+    public KeyCode arcadeControllerGreen = KeyCode.JoystickButton0;
+    public KeyCode arcadeControllerRed = KeyCode.JoystickButton1;
+    public KeyCode arcadeControllerYellow = KeyCode.JoystickButton2;
+    public KeyCode arcadeControllerBlue = KeyCode.JoystickButton3;
+    public KeyCode arcadeControllerOrange = KeyCode.JoystickButton4;
+    public KeyCode arcadeControllerStrumUp = KeyCode.JoystickButton5;
+    public KeyCode arcadeControllerStrumDown = KeyCode.JoystickButton6;
+    public KeyCode arcadeControllerOpen = KeyCode.JoystickButton8;
+
+    [Header("Arcade Timing")]
+    [Min(0f)] public float arcadeHitWindowEarly = 0.14f;
+    [Min(0f)] public float arcadeHitWindowLate = 0.14f;
+    [Min(0f)] public float arcadeResolvedHoldTime = 0.0f;
+    public float arcadeNoteSpawnZ = 100.0f;
+
     [Header("Backing Track")]
     public AudioSource backingTrackSource;
     public string backingTrackFileName = "song.mp3";
@@ -455,11 +539,15 @@ public class GuitarBridgeServer : MonoBehaviour
         public float loopPauseDurationSeconds = 0f;
         public bool useAutoTrackSelection = true;
         public string selectedMusicXmlPartId;
+        public string selectedArcadeArrangementId;
+        public string selectedArcadeDifficulty = "Expert";
         public bool useAllGeneratedPlaybackParts = true;
         public List<string> generatedEnabledPartIds = new List<string>();
         public List<GeneratedPlaybackSelectionOverride> generatedPlaybackSelectionOverrides = new List<GeneratedPlaybackSelectionOverride>();
         public float bestScorePercent = 0f;
+        public int bestArcadeScoreValue = 0;
         public List<TrackScoreEntry> trackScores = new List<TrackScoreEntry>();
+        public List<ArcadeScoreEntry> arcadeScores = new List<ArcadeScoreEntry>();
         public List<TrackOffsetOverride> trackOffsetOverrides = new List<TrackOffsetOverride>();
     }
 
@@ -480,6 +568,17 @@ public class GuitarBridgeServer : MonoBehaviour
         public float heroBestScorePercent;
         public int heroBestHeartsRemaining;
         public int heroBestHeartsTotal;
+    }
+
+    [Serializable]
+    private class ArcadeScoreEntry
+    {
+        public string arrangementId;
+        public string displayName;
+        public string difficulty;
+        public float bestScorePercent;
+        public float bestAccuracyPercent;
+        public int bestScoreValue;
     }
 
     private readonly struct HeroScoreSummary
@@ -511,6 +610,19 @@ public class GuitarBridgeServer : MonoBehaviour
         public string value;
     }
 
+    [Serializable]
+    private class GameSaveState
+    {
+        public bool firstStartCompleted;
+    }
+
+    private enum StartMenuStep
+    {
+        SelectMode = 0,
+        GuitarSetup = 1,
+        ArcadeSetup = 2
+    }
+
     private enum SongLibraryBrowseMode
     {
         All = 0,
@@ -538,6 +650,13 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool showMainMenu;
     private bool mainMenuFlowActive;
     private int selectedMainMenuIndex;
+    private bool showStartMenu;
+    private bool firstStartCompleted;
+    private StartMenuStep startMenuStep = StartMenuStep.SelectMode;
+    private int selectedStartMenuModeIndex;
+    private int selectedStartMenuArcadeSetupIndex;
+    private int selectedStartMenuArcadeInputIndex;
+    private bool startMenuArcadeGamepadMode = true;
     private bool showSongSelection;
     private bool songSelectionSongConfirmed;
     private bool showTrackSelection;
@@ -578,6 +697,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private int selectedSongSettingsTrackSelectionIndex;
     private float currentSongBestScorePercent;
     private float currentTrackBestScorePercent;
+    private int currentSongBestArcadeScoreValue;
+    private int currentTrackBestArcadeScoreValue;
     private float currentTrackHeroBestScorePercent;
     private int currentTrackHeroBestHeartsRemaining;
     private int currentTrackHeroBestHeartsTotal;
@@ -586,10 +707,15 @@ public class GuitarBridgeServer : MonoBehaviour
     private int sessionScoreHits;
     private int sessionScoreMisses;
     private float currentSessionScorePercent;
+    private int currentSessionArcadeScoreValue;
+    private int arcadeComboCount;
+    private int arcadeTotalChordCount;
     private const string SelectedSongDirectoryPrefsKey = "guitar_selected_song_directory";
+    private const string SelectedSongLibraryTypePrefsKey = "guitar_selected_song_library_type";
     private const string HeroModeEnabledPrefsKey = "guitar_hero_mode_enabled";
     private const string HeroModeHeartCountPrefsKey = "guitar_hero_mode_heart_count";
     private const string NativeDetectorInputDevicePrefsKey = "guitar_native_detector_input_device";
+    private const string GameSaveStateFileName = "game_save.json";
     private UnityToneLabRuntime unityToneLabRuntime;
     private UnityToneLabOverlay unityToneLabOverlay;
     private bool isLoadingBackingTrack;
@@ -600,18 +726,56 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool songSelectionOpenedFromMainMenu;
     private bool showStartupTuningReminder;
     private bool resumeGameplayAfterStartupTuningReminder;
+    private int startupTuningReminderShownFrame = -1;
     private SongLibraryEntry currentSongEntry;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
+    private SongLibraryType selectedSongLibraryType = SongLibraryType.Guitar;
+    private ArcadeChartData currentArcadeChart = new ArcadeChartData();
+    private readonly List<ArcadeArrangementSummary> currentArcadeArrangementSummaries = new List<ArcadeArrangementSummary>();
+    private readonly List<ArcadeArrangementSummary> pendingArcadeArrangementSummaries = new List<ArcadeArrangementSummary>();
+    private string selectedArcadeArrangementId = string.Empty;
+    private ArcadeDifficulty selectedArcadeDifficulty = ArcadeDifficulty.Expert;
+    private List<ArcadeNoteState> arcadeNoteStates = new List<ArcadeNoteState>();
+    private readonly HashSet<int> arcadeSessionScoredNoteIds = new HashSet<int>();
+    private readonly List<ArcadeInputEvent> arcadeRecentInputEvents = new List<ArcadeInputEvent>();
+    private readonly Dictionary<int, ArcadeActiveSustain> activeArcadeSustains = new Dictionary<int, ArcadeActiveSustain>();
+    private readonly bool[] arcadeHeldLanes = new bool[5];
+    private readonly bool[] previousArcadeHeldLanes = new bool[5];
+    private readonly bool[] arcadeMidiHeldLanes = new bool[5];
+    private ArcadeMidiInputBridge arcadeMidiInputBridge;
+    private float nextArcadeMidiInputStartRealtime;
+    private bool arcadeMidiInputUnavailableLogged;
+    private bool arcadeMidiOpenButtonPressed;
+    private bool arcadeComboActive;
+    private bool arcadeInputNeedsUnpausedPrime;
+    private string activeArcadeBindingSettingId = string.Empty;
+    private int activeArcadeBindingStartFrame = -1;
+    private int latestArcadeInputEventId;
+    private readonly List<AudioSource> arcadeAudioSources = new List<AudioSource>();
+    private int pendingArcadeAudioLoadCount;
     private bool useAutoTrackSelection = true;
     private string selectedMusicXmlPartId = string.Empty;
-    private bool forceStandardTuning = false;
+    private bool forceStandardTuning = true;
     private float lastLeftArrowTapTime = -10f;
     private float lastRightArrowTapTime = -10f;
     private float lastMainMenuKeyboardInputTime = -10f;
+    private int cachedUiControllerInputFrame = -1;
+    private float previousUiControllerHorizontalAxis;
+    private float previousUiControllerVerticalAxis;
+    private float currentUiControllerHorizontalAxis;
+    private float currentUiControllerVerticalAxis;
     private const float ArrowDoubleTapThreshold = 0.35f;
+    private const float UiControllerAxisThreshold = 0.55f;
     private const float NoteByNoteTimeEpsilon = 0.0001f;
     private const int MainMenuOptionCount = 6;
+    private const int StartMenuModeOptionCount = 2;
+    private const int StartMenuGuitarSetupRowCount = 2;
+    private const int StartMenuArcadeSetupRowCount = 3;
+    private const int StartMenuArcadeInputOptionCount = 3;
     private const int NotesDetectorTestOptionCount = 3;
+    private const float NotesDetectorRoutineHintWindowSeconds = 1.25f;
+    private const float NotesDetectorTestHintTimelineBaseSeconds = 1000f;
+    private const float NotesDetectorTestHintTimelineStepSeconds = 10f;
     private const float MainMenuHoverLockSeconds = 0.20f;
     private ToneLabReturnContext toneLabReturnContext;
     private NotesDetectorBackendMode notesDetectorBackendMode = NotesDetectorBackendMode.NativeEmbeddedBridge;
@@ -756,6 +920,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private List<RuntimeSettingSectionSnapshot> cachedRuntimeSettingsSnapshot = new List<RuntimeSettingSectionSnapshot>();
     private bool runtimeSettingsSnapshotDirty = true;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
+    private const int ArcadeControllerSlotCount = 8;
 
 
     private sealed class RuntimeSettingDefinition
@@ -771,6 +936,24 @@ public class GuitarBridgeServer : MonoBehaviour
         public Func<string> Getter;
         public Action<string> Setter;
         public List<string> EnumOptions;
+        public Action Activator;
+        public ArcadeBindingCaptureKind BindingCaptureKind = ArcadeBindingCaptureKind.None;
+    }
+
+    public enum ArcadeInputSourceMode
+    {
+        Keyboard,
+        Controller,
+        KeyboardAndController,
+        Midi,
+        All
+    }
+
+    private enum ArcadeBindingCaptureKind
+    {
+        None,
+        Keyboard,
+        Controller
     }
 
     private static readonly string[] HighwayCharacterDisplayModeOptions =
@@ -778,6 +961,12 @@ public class GuitarBridgeServer : MonoBehaviour
         "Always",
         "Never",
         "Only In Hero Mode"
+    };
+
+    private static readonly string[] HighwayCharacterPortalColorPresetOptions =
+    {
+        "Orange",
+        "Black"
     };
 
     private enum ToneLabReturnContext
@@ -805,8 +994,10 @@ public class GuitarBridgeServer : MonoBehaviour
         EnsureGeneratedSongPlayerInitialized();
         RegisterRuntimeSettings();
         LoadGlobalRuntimeSettingsMetadata();
+        LoadGameSaveState();
         LoadHeroModePreferences();
         LoadNativeDetectorPreferences();
+        LoadSongLibraryTypePreference();
         StartConfiguredNotesDetectorBackend();
         bool startInMainMenu = true;
         showMainMenu = startInMainMenu;
@@ -855,26 +1046,45 @@ public class GuitarBridgeServer : MonoBehaviour
         ApplyPlaybackSpeedToAudio();
         SyncAudioToSongTimer(playImmediately: ShouldPlaybackAudio(loopPreviewActive, offsetHelperPreviewActive, loopGapActive));
 
-        if (midiTrackIndex != currentLoadedTrackIndex)
+        if (gameplayMode == GuitarGameplayMode.Guitar && midiTrackIndex != currentLoadedTrackIndex)
             LoadTestSong(preservePauseUiState: isPaused || showMainMenu || showSongSettings || showSongSelection || showTrackSelection || showGlobalSettings || showLoopPausePopup);
 
-        ParseDetectorState();
-        RefreshDetectorBackendStatus();
+        if (gameplayMode == GuitarGameplayMode.Guitar)
+        {
+            StopArcadeMidiInput();
+            ParseDetectorState();
+            RefreshDetectorBackendStatus();
+        }
+        else
+        {
+            UpdateArcadeInputState();
+        }
+
         if (isPaused)
             UpdateSessionScoreState();
 
         if (!isPaused)
         {
-            PruneHistory();
-            UpdateGameplayStates();
-            UpdateNoteByNoteWaitingStateAfterJudgment(loopPreviewActive, offsetHelperPreviewActive);
+            if (gameplayMode == GuitarGameplayMode.Guitar)
+            {
+                PruneHistory();
+                UpdateGameplayStates();
+                UpdateNoteByNoteWaitingStateAfterJudgment(loopPreviewActive, offsetHelperPreviewActive);
+            }
+            else
+            {
+                PruneArcadeInputHistory();
+                UpdateArcadeGameplayStates();
+            }
+
             UpdateSessionScoreState();
             TryTriggerHeroModeGameOver();
             UpdateAndPersistSongBestScore();
         }
 
         UpdateInputLevelEstimate();
-        SendDetectorHintPacketIfNeeded();
+        if (gameplayMode == GuitarGameplayMode.Guitar)
+            SendDetectorHintPacketIfNeeded();
 
         EnsureRenderer();
 
@@ -895,10 +1105,10 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         if (showStartupTuningReminder)
         {
-            if (Input.GetKeyDown(KeyCode.Space) ||
-                Input.GetKeyDown(KeyCode.Return) ||
-                Input.GetKeyDown(KeyCode.KeypadEnter) ||
-                Input.GetKeyDown(KeyCode.Escape))
+            if (IsUiSubmitPressed() ||
+                IsUiBackPressed() ||
+                IsUiPausePressed() ||
+                IsStartupTuningReminderHeldDismissPressed())
             {
                 DismissStartupTuningReminderFromUi();
             }
@@ -962,6 +1172,15 @@ public class GuitarBridgeServer : MonoBehaviour
             showSongSettings = false;
         }
 
+        if (!showGlobalSettings)
+            CancelArcadeBindingCapture();
+
+        if (showStartMenu)
+        {
+            HandleStartMenuControls();
+            return;
+        }
+
         if (showMainMenu)
         {
             HandleMainMenuControls();
@@ -999,7 +1218,13 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (IsRestartPressed())
+        {
+            RetrySongFromUi();
+            return;
+        }
+
+        if (IsUiPausePressed())
         {
             isPaused = !isPaused;
             if (isPaused)
@@ -1011,12 +1236,13 @@ public class GuitarBridgeServer : MonoBehaviour
             showTrackSelection = false;
             showGlobalSettings = false;
             SyncAudioToSongTimer(playImmediately: !isPaused);
+            return;
         }
 
         if (!isPaused)
             return;
 
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (IsUiBackPressed())
         {
             ResumePlaybackFromUi();
             return;
@@ -1043,19 +1269,19 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (IsUiUpPressed())
         {
             MovePauseActionSelectionFromUi(-1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.DownArrow))
+        if (IsUiDownPressed())
         {
             MovePauseActionSelectionFromUi(1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
         {
             ActivateSelectedPauseActionFromUi();
             return;
@@ -1101,7 +1327,7 @@ public class GuitarBridgeServer : MonoBehaviour
             SeekSongTimeFromUserNavigation(loopEndTime, false);
         }
 
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        if (IsUiLeftPressed())
         {
             if (Time.unscaledTime - lastLeftArrowTapTime <= ArrowDoubleTapThreshold)
             {
@@ -1112,7 +1338,7 @@ public class GuitarBridgeServer : MonoBehaviour
             lastLeftArrowTapTime = Time.unscaledTime;
         }
 
-        if (Input.GetKeyDown(KeyCode.RightArrow))
+        if (IsUiRightPressed())
         {
             if (Time.unscaledTime - lastRightArrowTapTime <= ArrowDoubleTapThreshold)
             {
@@ -1124,9 +1350,9 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         float seekDirection = 0f;
-        if (Input.GetKey(KeyCode.LeftArrow))
+        if (IsUiLeftHeld())
             seekDirection -= 1f;
-        if (Input.GetKey(KeyCode.RightArrow))
+        if (IsUiRightHeld())
             seekDirection += 1f;
 
         if (Mathf.Approximately(seekDirection, 0f))
@@ -1138,13 +1364,13 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleLoopSettingsControls()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+        if (IsUiBackPressed())
         {
             OpenLoopPausePopup();
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (IsUiPausePressed())
         {
             ToggleLoopSettingsPreviewPlayback();
             return;
@@ -1171,9 +1397,9 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         float seekDirection = 0f;
-        if (Input.GetKey(KeyCode.LeftArrow))
+        if (IsUiLeftHeld())
             seekDirection -= 1f;
-        if (Input.GetKey(KeyCode.RightArrow))
+        if (IsUiRightHeld())
             seekDirection += 1f;
 
         if (Mathf.Approximately(seekDirection, 0f))
@@ -1185,7 +1411,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleLoopPausePopupControls()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+        if (IsUiBackPressed())
         {
             CloseLoopPausePopupBackToLoopSettingsFromUi();
             return;
@@ -1201,7 +1427,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (horizontalDirection == 0)
             ConsumeHeldHorizontalUiStep("loop-pause-duration", 0);
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
         {
             ConfirmLoopPausePopupFromUi();
             return;
@@ -1210,25 +1436,25 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleGameModesControls()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+        if (IsUiBackPressed())
         {
             CloseGameModesFromUi();
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (IsUiUpPressed())
         {
             MoveGameModesSelectionFromUi(-1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.DownArrow))
+        if (IsUiDownPressed())
         {
             MoveGameModesSelectionFromUi(1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
         {
             ActivateSelectedGameModesActionFromUi();
             return;
@@ -1237,7 +1463,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleHeroModeSettingsControls()
     {
-        if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+        if (IsUiUpPressed() || IsUiDownPressed())
         {
             selectedHeroModeSettingsIndex = selectedHeroModeSettingsIndex == 0 ? 1 : 0;
             ConsumeHeldHorizontalUiStep("hero-mode-hearts", 0);
@@ -1254,14 +1480,13 @@ public class GuitarBridgeServer : MonoBehaviour
 
         ConsumeHeldHorizontalUiStep("hero-mode-hearts", 0);
 
-        if (Input.GetKeyDown(KeyCode.Escape) ||
-            Input.GetKeyDown(KeyCode.Backspace))
+        if (IsUiBackPressed())
         {
             CloseHeroModeSettingsFromUi();
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
         {
             if (selectedHeroModeSettingsIndex == 1)
                 CloseHeroModeSettingsFromUi();
@@ -1695,7 +1920,7 @@ public class GuitarBridgeServer : MonoBehaviour
         loopRestartPauseRemainingSeconds = 0f;
         offsetHelperReturnRenderMode = renderMode;
 
-        if (renderMode == GuitarRenderMode.Highway3D)
+        if (gameplayMode == GuitarGameplayMode.Guitar && renderMode == GuitarRenderMode.Highway3D)
             renderMode = GuitarRenderMode.Tabs;
 
         SeekOffsetHelperTime(offsetHelperAnchorTime, syncAudio: true, playImmediately: false);
@@ -1735,19 +1960,19 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleMainMenuControls()
     {
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (IsUiUpPressed())
         {
             MoveMainMenuSelectionFromUi(-1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.DownArrow))
+        if (IsUiDownPressed())
         {
             MoveMainMenuSelectionFromUi(1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Space))
+        if (IsUiSubmitPressed())
         {
             ActivateSelectedMainMenuFromUi();
             return;
@@ -1756,7 +1981,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.C))
         {
             SetMainMenuSelectionFromUi(0);
-            ContinueFromMainMenuFromUi();
+            StartFromMainMenuFromUi();
             return;
         }
 
@@ -1789,17 +2014,121 @@ public class GuitarBridgeServer : MonoBehaviour
         }
     }
 
+    private void HandleStartMenuControls()
+    {
+        if (IsUiBackPressed())
+        {
+            if (startMenuStep == StartMenuStep.GuitarSetup || startMenuStep == StartMenuStep.ArcadeSetup)
+            {
+                startMenuStep = StartMenuStep.SelectMode;
+                selectedStartMenuArcadeSetupIndex = 0;
+            }
+            else
+            {
+                CloseStartMenuToMainMenuFromUi();
+            }
+
+            return;
+        }
+
+        if (startMenuStep == StartMenuStep.SelectMode)
+        {
+            if (IsUiLeftPressed() || IsUiUpPressed())
+            {
+                MoveStartMenuModeSelection(-1);
+                return;
+            }
+
+            if (IsUiRightPressed() || IsUiDownPressed())
+            {
+                MoveStartMenuModeSelection(1);
+                return;
+            }
+
+            if (IsUiSubmitPressed())
+            {
+                ActivateStartMenuModeSelection();
+                return;
+            }
+
+            return;
+        }
+
+        if (startMenuStep == StartMenuStep.GuitarSetup)
+        {
+            if (IsUiUpPressed())
+            {
+                selectedStartMenuArcadeSetupIndex = WrapIndex(selectedStartMenuArcadeSetupIndex - 1, StartMenuGuitarSetupRowCount);
+                return;
+            }
+
+            if (IsUiDownPressed())
+            {
+                selectedStartMenuArcadeSetupIndex = WrapIndex(selectedStartMenuArcadeSetupIndex + 1, StartMenuGuitarSetupRowCount);
+                return;
+            }
+
+            if (IsUiLeftPressed() || IsUiRightPressed())
+            {
+                if (selectedStartMenuArcadeSetupIndex == 0)
+                    ToggleStartMenuGuitarForceStandardFromUi();
+                return;
+            }
+
+            if (IsUiSubmitPressed())
+            {
+                if (selectedStartMenuArcadeSetupIndex == 0)
+                    ToggleStartMenuGuitarForceStandardFromUi();
+                else
+                    ContinueStartMenuGuitarSetupFromUi();
+                return;
+            }
+
+            return;
+        }
+
+        if (IsUiUpPressed())
+        {
+            MoveStartMenuArcadeSetupSelection(-1);
+            return;
+        }
+
+        if (IsUiDownPressed())
+        {
+            MoveStartMenuArcadeSetupSelection(1);
+            return;
+        }
+
+        if (IsUiLeftPressed())
+        {
+            AdjustStartMenuArcadeSetupSelection(-1);
+            return;
+        }
+
+        if (IsUiRightPressed())
+        {
+            AdjustStartMenuArcadeSetupSelection(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed())
+        {
+            ActivateStartMenuArcadeSetupSelection();
+            return;
+        }
+    }
+
     private void HandleNotesDetectorTestControls()
     {
         if (showNotesDetectorRoutinePopup)
         {
             UpdateNotesDetectorRoutine();
-            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+            if (IsUiBackPressed())
                 CloseNotesDetectorRoutineFromUi();
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+        if (IsUiBackPressed())
         {
             CloseNotesDetectorTestFromUi();
             return;
@@ -1834,6 +2163,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 {
                     notesDetectorRoutineStageIndex++;
                     notesDetectorRoutineMatchedSinceTime = -1f;
+                    MarkDetectorHintDirty();
                 }
             }
             else
@@ -1851,6 +2181,7 @@ public class GuitarBridgeServer : MonoBehaviour
             {
                 notesDetectorRoutineStageIndex++;
                 notesDetectorRoutineMatchedSinceTime = -1f;
+                MarkDetectorHintDirty();
             }
         }
     }
@@ -1867,12 +2198,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (targetMidis == null || targetMidis.Length == 0)
             return false;
 
-        HashSet<int> combinedPitches = new HashSet<int>();
-        if (latestDetectedPitches != null)
-            combinedPitches.UnionWith(latestDetectedPitches);
-
-        if (!string.IsNullOrWhiteSpace(latestEventNotesText) && latestEventNotesText != "--")
-            ParseNoteCsvIntoSet(latestEventNotesText, combinedPitches);
+        HashSet<int> combinedPitches = BuildLatestDetectorCombinedPitches();
 
         for (int i = 0; i < targetMidis.Length; i++)
         {
@@ -1954,12 +2280,69 @@ public class GuitarBridgeServer : MonoBehaviour
         return rows;
     }
 
+    private List<int> GetNotesDetectorRoutineTabRowStates()
+    {
+        List<int> states = new List<int>(6);
+        for (int i = 0; i < 6; i++)
+            states.Add(-1);
+
+        if (!showNotesDetectorRoutinePopup)
+            return states;
+
+        if (notesDetectorRoutineStageIndex < 0 || notesDetectorRoutineStageIndex >= notesDetectorRoutineSteps.Count)
+            return states;
+
+        NotesDetectorRoutineStep currentStep = notesDetectorRoutineSteps[notesDetectorRoutineStageIndex];
+        if (currentStep == null || currentStep.RequireSilence)
+            return states;
+
+        string[] frets = currentStep.TabFretsTopDown ?? CreateNotesDetectorRoutineTabFrets("-", "-", "-", "-", "-", "-");
+        HashSet<int> detectedPitches = BuildLatestDetectorCombinedPitches();
+        for (int i = 0; i < 6; i++)
+        {
+            string fret = i < frets.Length ? frets[i] : "-";
+            if (!TryGetNotesDetectorRoutineRowMidi(i, fret, out int targetMidi))
+                continue;
+
+            states[i] = detectedPitches.Contains(targetMidi) ? 1 : 0;
+        }
+
+        return states;
+    }
+
+    private HashSet<int> BuildLatestDetectorCombinedPitches()
+    {
+        HashSet<int> combinedPitches = new HashSet<int>();
+        if (latestDetectedPitches != null)
+            combinedPitches.UnionWith(latestDetectedPitches);
+
+        if (!string.IsNullOrWhiteSpace(latestEventNotesText) && latestEventNotesText != "--")
+            ParseNoteCsvIntoSet(latestEventNotesText, combinedPitches);
+
+        return combinedPitches;
+    }
+
+    private static bool TryGetNotesDetectorRoutineRowMidi(int rowIndexTopDown, string fretText, out int midi)
+    {
+        midi = -1;
+        if (rowIndexTopDown < 0 || rowIndexTopDown >= 6)
+            return false;
+
+        fretText = string.IsNullOrWhiteSpace(fretText) ? "-" : fretText.Trim();
+        if (fretText == "-" || !int.TryParse(fretText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int fret) || fret < 0)
+            return false;
+
+        int[] topDownStandardTuning = { 64, 59, 55, 50, 45, 40 };
+        midi = topDownStandardTuning[rowIndexTopDown] + fret;
+        return true;
+    }
+
     private void HandleToneLabControls()
     {
         if (unityToneLabOverlay != null && unityToneLabOverlay.IsCapturingKeyboardInput)
             return;
 
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.T))
+        if (IsUiBackPressed() || Input.GetKeyDown(KeyCode.T))
         {
             CloseToneLabFromUi();
             return;
@@ -1968,7 +2351,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleSongSelectionControls()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.L))
+        if (IsUiBackPressed() || Input.GetKeyDown(KeyCode.L))
         {
             CloseSongSelectionFromUi();
             return;
@@ -1979,12 +2362,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (!songSelectionSongConfirmed)
         {
-            if (Input.GetKeyDown(KeyCode.UpArrow))
+            if (IsUiUpPressed())
                 MoveSongSelection(-1);
-            else if (Input.GetKeyDown(KeyCode.DownArrow))
+            else if (IsUiDownPressed())
                 MoveSongSelection(1);
 
-            if (Input.GetKeyDown(KeyCode.LeftArrow))
+            if (IsUiLeftPressed())
             {
                 if (IsSongLibraryScopeActive())
                 {
@@ -1999,37 +2382,46 @@ public class GuitarBridgeServer : MonoBehaviour
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.RightArrow))
+            if (IsUiRightPressed())
             {
                 if (!IsSongLibraryScopeActive() && songLibraryBrowseMode < SongLibraryBrowseMode.Albums)
                     SetSongLibraryBrowseMode((SongLibraryBrowseMode)((int)songLibraryBrowseMode + 1));
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            if (IsUiSubmitPressed())
                 ActivateSelectedSongLibraryEntry();
 
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.RightArrow))
+        if (IsUiRightPressed())
         {
-            songSelectionSongConfirmed = false;
+            if (pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
+                MoveArcadeDifficultySelection(1);
+            else
+                songSelectionSongConfirmed = false;
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (IsUiLeftPressed() && pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
+        {
+            MoveArcadeDifficultySelection(-1);
+            return;
+        }
+
+        if (IsUiUpPressed())
             MoveTrackSelectionInMenu(-1);
-        else if (Input.GetKeyDown(KeyCode.DownArrow))
+        else if (IsUiDownPressed())
             MoveTrackSelectionInMenu(1);
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
             ConfirmTrackSelection();
     }
 
     private void HandleTrackSelectionControls()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+        if (IsUiBackPressed())
         {
             CloseTrackSelection();
             return;
@@ -2038,12 +2430,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (pendingTrackSelectionParts.Count == 0)
             return;
 
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (IsUiUpPressed())
             MoveTrackSelectionInMenu(-1);
-        else if (Input.GetKeyDown(KeyCode.DownArrow))
+        else if (IsUiDownPressed())
             MoveTrackSelectionInMenu(1);
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
             ConfirmTrackSelection();
     }
 
@@ -2051,7 +2443,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         if (showGeneratedAudioTrackSelectionPopup || showSongSettingsTrackSelectionPopup)
         {
-            if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+            if (IsUiBackPressed())
             {
                 if (showGeneratedAudioTrackSelectionPopup)
                     CloseGeneratedAudioTrackSelectionFromUi();
@@ -2060,7 +2452,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.UpArrow))
+            if (IsUiUpPressed())
             {
                 if (showGeneratedAudioTrackSelectionPopup)
                     MoveGeneratedAudioTrackSelectionFromUi(-1);
@@ -2069,7 +2461,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.DownArrow))
+            if (IsUiDownPressed())
             {
                 if (showGeneratedAudioTrackSelectionPopup)
                     MoveGeneratedAudioTrackSelectionFromUi(1);
@@ -2078,7 +2470,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            if (IsUiSubmitPressed())
             {
                 if (showGeneratedAudioTrackSelectionPopup)
                     ActivateSelectedGeneratedAudioTrackSelectionFromUi();
@@ -2088,7 +2480,7 @@ public class GuitarBridgeServer : MonoBehaviour
             }
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+        if (IsUiBackPressed())
         {
             showSongSettings = false;
             showGeneratedAudioTrackSelectionPopup = false;
@@ -2098,19 +2490,19 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (IsUiUpPressed())
         {
             MoveSongSettingsSelectionFromUi(-1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.DownArrow))
+        if (IsUiDownPressed())
         {
             MoveSongSettingsSelectionFromUi(1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
         {
             ActivateSelectedSongSettingsItemFromUi();
             return;
@@ -2128,13 +2520,13 @@ public class GuitarBridgeServer : MonoBehaviour
         else
         {
             ConsumeHeldHorizontalUiStep("song-settings-slider", 0);
-            if (selectedSongSettingsIndex == 6 && IsSongSettingsOptionSelectable(selectedSongSettingsIndex) && Input.GetKeyDown(KeyCode.LeftArrow))
+            if (selectedSongSettingsIndex == 6 && IsSongSettingsOptionSelectable(selectedSongSettingsIndex) && IsUiLeftPressed())
             {
                 AdjustSelectedSongSettingFromUi(-1);
                 return;
             }
 
-            if (selectedSongSettingsIndex == 6 && IsSongSettingsOptionSelectable(selectedSongSettingsIndex) && Input.GetKeyDown(KeyCode.RightArrow))
+            if (selectedSongSettingsIndex == 6 && IsSongSettingsOptionSelectable(selectedSongSettingsIndex) && IsUiRightPressed())
             {
                 AdjustSelectedSongSettingFromUi(1);
                 return;
@@ -2144,7 +2536,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleOffsetHelperControls()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace))
+        if (IsUiBackPressed())
         {
             if (offsetHelperAdjusting)
             {
@@ -2163,11 +2555,11 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!offsetHelperAdjusting)
         {
             int moveDelta = 0;
-            if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.UpArrow))
+            if (IsUiLeftPressed() || IsUiUpPressed())
             {
                 moveDelta = -1;
             }
-            else if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            else if (IsUiRightPressed() || IsUiDownPressed())
             {
                 moveDelta = 1;
             }
@@ -2186,7 +2578,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 return;
             }
 
-            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+            if (IsUiSubmitPressed())
             {
                 StartOffsetHelperAdjustMode();
                 return;
@@ -2195,13 +2587,13 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (IsUiPausePressed())
         {
             ToggleOffsetHelperPreviewPlayback();
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
         {
             ConfirmOffsetHelperFromUi();
             return;
@@ -2220,19 +2612,19 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleSongEndControls()
     {
-        if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.LeftArrow))
+        if (IsUiUpPressed() || IsUiLeftPressed())
         {
             MoveSongEndActionSelectionFromUi(-1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.RightArrow))
+        if (IsUiDownPressed() || IsUiRightPressed())
         {
             MoveSongEndActionSelectionFromUi(1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
         {
             ActivateSelectedSongEndActionFromUi();
             return;
@@ -2241,7 +2633,10 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleGlobalSettingsControls()
     {
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Backspace) || Input.GetKeyDown(KeyCode.G))
+        if (HandleArcadeBindingCaptureInput())
+            return;
+
+        if (IsUiBackPressed() || Input.GetKeyDown(KeyCode.G))
         {
             if (!string.IsNullOrEmpty(activeGlobalSettingsCategory))
             {
@@ -2255,37 +2650,37 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.UpArrow))
+        if (IsUiUpPressed())
         {
             if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
-                selectedGlobalSettingsTopIndex = (selectedGlobalSettingsTopIndex + 6) % 7;
+                selectedGlobalSettingsTopIndex = (selectedGlobalSettingsTopIndex + 8) % 9;
             else
                 MoveGlobalSettingsItemSelection(-1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.DownArrow))
+        if (IsUiDownPressed())
         {
             if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
-                selectedGlobalSettingsTopIndex = (selectedGlobalSettingsTopIndex + 1) % 7;
+                selectedGlobalSettingsTopIndex = (selectedGlobalSettingsTopIndex + 1) % 9;
             else
                 MoveGlobalSettingsItemSelection(1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.LeftArrow))
+        if (IsUiLeftPressed())
         {
             AdjustCurrentGlobalSettingsValue(-1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.RightArrow))
+        if (IsUiRightPressed())
         {
             AdjustCurrentGlobalSettingsValue(1);
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        if (IsUiSubmitPressed())
         {
             ActivateCurrentGlobalSettingsSelection();
             return;
@@ -2459,6 +2854,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private void OpenSongSelectionMenu()
     {
         RefreshAvailableSongs();
+        showStartMenu = false;
         showMainMenu = false;
         showSongSelection = true;
         songSelectionSongConfirmed = false;
@@ -2468,6 +2864,7 @@ public class GuitarBridgeServer : MonoBehaviour
         loopSettingsOpenedFromGameModes = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingArcadeArrangementSummaries.Clear();
         showSongSettings = false;
         showGlobalSettings = false;
         isPaused = true;
@@ -2500,7 +2897,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private void RefreshAvailableSongs()
     {
         availableSongs.Clear();
-        availableSongs.AddRange(SongLibraryService.GetAvailableSongs());
+        availableSongs.AddRange(SongLibraryService.GetAvailableSongs()
+            .Where(song => song != null && song.LibraryType == selectedSongLibraryType));
         availableSongs.Sort((a, b) =>
         {
             bool favoriteA = IsSongFavorited(a);
@@ -2556,7 +2954,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private string GetSongLibraryListTitle()
     {
-        string root = "Songs";
+        string root = selectedSongLibraryType == SongLibraryType.Arcade ? "Arcade Songs" : "Guitar Songs";
         if (songLibraryBrowseMode == SongLibraryBrowseMode.All)
             return root;
 
@@ -2646,6 +3044,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (song == null)
             return string.Empty;
 
+        if (song.LibraryType == SongLibraryType.Arcade)
+        {
+            string extension = Path.GetExtension(song.ArcadeChartPath)?.TrimStart('.').ToUpperInvariant();
+            return string.IsNullOrWhiteSpace(extension) ? "CHART" : extension;
+        }
+
         switch (song.PrimaryNotationKind)
         {
             case SongNotationSourceKind.Gp5:
@@ -2661,6 +3065,20 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         if (song == null)
             return "--";
+
+        if (song.LibraryType == SongLibraryType.Arcade)
+        {
+            int stemCount = song.ArcadeAudioPaths?.Count(path => !string.IsNullOrWhiteSpace(path)) ?? 0;
+            string chartLabel = GetSongLibraryNotationLabel(song);
+            string arcadeAudioLabel = stemCount > 1 ? $"{stemCount} STEMS" : stemCount == 1 ? GetSongLibraryBackingAudioLabel(song.ArcadeAudioPaths[0]) : string.Empty;
+            if (!string.IsNullOrWhiteSpace(arcadeAudioLabel) && !string.IsNullOrWhiteSpace(chartLabel))
+                return $"{arcadeAudioLabel} / {chartLabel}";
+            if (!string.IsNullOrWhiteSpace(arcadeAudioLabel))
+                return arcadeAudioLabel;
+            if (!string.IsNullOrWhiteSpace(chartLabel))
+                return chartLabel;
+            return "--";
+        }
 
         bool hasMp3 = !string.IsNullOrWhiteSpace(song.Mp3Path);
         string audioLabel = hasMp3 ? GetSongLibraryBackingAudioLabel(song.Mp3Path) : string.Empty;
@@ -2842,6 +3260,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             pendingTrackSelectionSong = null;
             pendingTrackSelectionParts.Clear();
+            pendingArcadeArrangementSummaries.Clear();
             selectedTrackListIndex = 0;
             trackListScrollOffset = 0;
             return;
@@ -2870,7 +3289,11 @@ public class GuitarBridgeServer : MonoBehaviour
         SongLibraryEntry selected = availableSongs[songIndex];
         pendingTrackSelectionSong = selected;
         pendingTrackSelectionParts.Clear();
-        pendingTrackSelectionParts.AddRange(GetSortedTrackSummaries(selected));
+        pendingArcadeArrangementSummaries.Clear();
+        if (selected.LibraryType == SongLibraryType.Arcade)
+            pendingArcadeArrangementSummaries.AddRange(ArcadeCloneHeroLoader.GetArrangementSummaries(selected.ArcadeChartPath));
+        else
+            pendingTrackSelectionParts.AddRange(GetSortedTrackSummaries(selected));
 
         selectedTrackListIndex = 0;
         trackListScrollOffset = 0;
@@ -2886,12 +3309,55 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             pendingTrackSelectionSong = null;
             pendingTrackSelectionParts.Clear();
+            pendingArcadeArrangementSummaries.Clear();
             selectedTrackListIndex = 0;
             trackListScrollOffset = 0;
             return;
         }
 
         SongLibraryEntry selected = availableSongs[songIndex];
+        if (selected.LibraryType == SongLibraryType.Arcade)
+        {
+            SongMetadata arcadeSelectedMetadata = LoadSongMetadataForEntry(selected);
+            bool samePendingArcadeSong = pendingTrackSelectionSong != null &&
+                string.Equals(pendingTrackSelectionSong.SongDirectory, selected.SongDirectory, StringComparison.OrdinalIgnoreCase);
+            string previousArrangementId = preserveTrackIfPossible &&
+                samePendingArcadeSong &&
+                selectedTrackListIndex >= 0 &&
+                selectedTrackListIndex < pendingArcadeArrangementSummaries.Count
+                ? pendingArcadeArrangementSummaries[selectedTrackListIndex].ArrangementId
+                : string.Empty;
+            string savedArrangementId = arcadeSelectedMetadata?.selectedArcadeArrangementId ?? string.Empty;
+
+            pendingTrackSelectionSong = selected;
+            pendingTrackSelectionParts.Clear();
+            pendingArcadeArrangementSummaries.Clear();
+            pendingArcadeArrangementSummaries.AddRange(ArcadeCloneHeroLoader.GetArrangementSummaries(selected.ArcadeChartPath));
+            selectedTrackListIndex = 0;
+
+            string preferredArrangementId = !string.IsNullOrWhiteSpace(previousArrangementId) ? previousArrangementId : savedArrangementId;
+            if (!string.IsNullOrWhiteSpace(preferredArrangementId))
+            {
+                int arrangementIndex = pendingArcadeArrangementSummaries.FindIndex(summary =>
+                    string.Equals(summary.ArrangementId, preferredArrangementId, StringComparison.OrdinalIgnoreCase));
+                if (arrangementIndex >= 0)
+                    selectedTrackListIndex = arrangementIndex;
+            }
+
+            ArcadeArrangementSummary selectedSummary = GetPendingSelectedArcadeArrangementSummary();
+            if (selectedSummary != null)
+            {
+                ArcadeDifficulty savedDifficulty = ArcadeCloneHeroLoader.ParseDifficulty(arcadeSelectedMetadata?.selectedArcadeDifficulty, ArcadeCloneHeroLoader.GetBestDefaultDifficulty(selectedSummary.Difficulties));
+                selectedArcadeDifficulty = selectedSummary.Difficulties.Contains(savedDifficulty)
+                    ? savedDifficulty
+                    : ArcadeCloneHeroLoader.GetBestDefaultDifficulty(selectedSummary.Difficulties);
+            }
+
+            trackListScrollOffset = 0;
+            EnsureTrackSelectionVisible();
+            return;
+        }
+
         SongMetadata selectedMetadata = LoadSongMetadataForEntry(selected);
         bool samePendingSong = pendingTrackSelectionSong != null &&
             string.Equals(pendingTrackSelectionSong.SongDirectory, selected.SongDirectory, StringComparison.OrdinalIgnoreCase);
@@ -2907,6 +3373,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         pendingTrackSelectionSong = selected;
         pendingTrackSelectionParts.Clear();
+        pendingArcadeArrangementSummaries.Clear();
         pendingTrackSelectionParts.AddRange(GetSortedTrackSummaries(selected));
         selectedTrackListIndex = 0;
 
@@ -2937,6 +3404,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingArcadeArrangementSummaries.Clear();
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
     }
@@ -2954,10 +3422,14 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void MoveTrackSelectionInMenu(int delta)
     {
-        if (pendingTrackSelectionParts.Count == 0)
+        int count = pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade
+            ? pendingArcadeArrangementSummaries.Count
+            : pendingTrackSelectionParts.Count;
+        if (count == 0)
             return;
 
-        selectedTrackListIndex = Mathf.Clamp(selectedTrackListIndex + delta, 0, pendingTrackSelectionParts.Count - 1);
+        selectedTrackListIndex = Mathf.Clamp(selectedTrackListIndex + delta, 0, count - 1);
+        ClampSelectedArcadeDifficultyToPendingArrangement();
         EnsureTrackSelectionVisible();
     }
 
@@ -2976,22 +3448,40 @@ public class GuitarBridgeServer : MonoBehaviour
     private void EnsureTrackSelectionVisible()
     {
         const int visibleCount = 10;
+        int count = pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade
+            ? pendingArcadeArrangementSummaries.Count
+            : pendingTrackSelectionParts.Count;
         if (selectedTrackListIndex < trackListScrollOffset)
             trackListScrollOffset = selectedTrackListIndex;
 
         if (selectedTrackListIndex >= trackListScrollOffset + visibleCount)
             trackListScrollOffset = selectedTrackListIndex - visibleCount + 1;
 
-        trackListScrollOffset = Mathf.Clamp(trackListScrollOffset, 0, Mathf.Max(0, pendingTrackSelectionParts.Count - visibleCount));
+        trackListScrollOffset = Mathf.Clamp(trackListScrollOffset, 0, Mathf.Max(0, count - visibleCount));
     }
 
     private void ConfirmTrackSelection()
     {
+        if (pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
+        {
+            ConfirmArcadeArrangementSelection();
+            return;
+        }
+
         if (pendingTrackSelectionSong == null || selectedTrackListIndex < 0 || selectedTrackListIndex >= pendingTrackSelectionParts.Count)
             return;
 
         MusicXmlLoader.MusicXmlPartSummary selectedTrack = pendingTrackSelectionParts[selectedTrackListIndex];
         SelectSongAndTrack(pendingTrackSelectionSong, selectedTrack.PartId);
+    }
+
+    private void ConfirmArcadeArrangementSelection()
+    {
+        if (pendingTrackSelectionSong == null || selectedTrackListIndex < 0 || selectedTrackListIndex >= pendingArcadeArrangementSummaries.Count)
+            return;
+
+        ArcadeArrangementSummary selectedArrangement = pendingArcadeArrangementSummaries[selectedTrackListIndex];
+        SelectArcadeSongAndArrangement(pendingTrackSelectionSong, selectedArrangement.ArrangementId, selectedArcadeDifficulty);
     }
 
     private void SelectSongAndTrack(SongLibraryEntry songEntry, string selectedPartId)
@@ -3007,6 +3497,7 @@ public class GuitarBridgeServer : MonoBehaviour
             songSelectionSongConfirmed = false;
             pendingTrackSelectionSong = null;
             pendingTrackSelectionParts.Clear();
+            pendingArcadeArrangementSummaries.Clear();
 
             useAutoTrackSelection = false;
             selectedMusicXmlPartId = selectedPartId ?? string.Empty;
@@ -3035,8 +3526,9 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         showMainMenu = false;
         mainMenuFlowActive = false;
-        pendingTrackSelectionSong = null;
-        pendingTrackSelectionParts.Clear();
+            pendingTrackSelectionSong = null;
+            pendingTrackSelectionParts.Clear();
+            pendingArcadeArrangementSummaries.Clear();
     }
 
     private void LoadSongFromEntry(SongLibraryEntry entry, string preferredPartId = null)
@@ -3078,6 +3570,41 @@ public class GuitarBridgeServer : MonoBehaviour
             ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
         SeekSongTime(-songStartDelaySeconds, false);
         SyncAudioToSongTimer(playImmediately: autoplay && !showStartupTuningReminder);
+    }
+
+    private void SelectArcadeSongAndArrangement(SongLibraryEntry songEntry, string arrangementId, ArcadeDifficulty difficulty)
+    {
+        if (songEntry == null)
+            return;
+
+        gameplayMode = GuitarGameplayMode.Arcade;
+        renderMode = GuitarRenderMode.Highway3D;
+        selectedArcadeArrangementId = arrangementId ?? string.Empty;
+        selectedArcadeDifficulty = difficulty;
+
+        string metadataPath = BuildSongMetadataPath(songEntry);
+        string metadataFileName = ResolveSongMetadataFileName(songEntry);
+        SongMetadata metadata = LoadSongMetadata(metadataFileName, metadataPath);
+        metadata.selectedArcadeArrangementId = selectedArcadeArrangementId;
+        metadata.selectedArcadeDifficulty = ArcadeCloneHeroLoader.SerializeDifficulty(selectedArcadeDifficulty);
+        SaveSongMetadata(metadata, metadataPath, metadataFileName);
+
+        bool isCurrentSong = currentSongEntry != null && string.Equals(currentSongEntry.SongDirectory, songEntry.SongDirectory, StringComparison.OrdinalIgnoreCase);
+        if (isCurrentSong)
+        {
+            LoadSongFromEntry(songEntry);
+            return;
+        }
+
+        LoadSongFromEntry(songEntry);
+        showTrackSelection = false;
+        showSongSelection = false;
+        songSelectionSongConfirmed = false;
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        pendingTrackSelectionSong = null;
+        pendingTrackSelectionParts.Clear();
+        pendingArcadeArrangementSummaries.Clear();
     }
 
     private void HandleLoopPlayback()
@@ -3136,7 +3663,7 @@ public class GuitarBridgeServer : MonoBehaviour
         selectedLoopMarker = 3;
         loopSettingsReturnRenderMode = renderMode;
 
-        if (renderMode == GuitarRenderMode.Highway3D)
+        if (gameplayMode == GuitarGameplayMode.Guitar && renderMode == GuitarRenderMode.Highway3D)
             renderMode = GuitarRenderMode.Tabs;
 
         SyncAudioToSongTimer(playImmediately: false);
@@ -3226,9 +3753,57 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: ShouldPlaybackAudio(showLoopSettings && loopSettingsPreviewPlaying, showOffsetHelper && offsetHelperAdjusting && offsetHelperPreviewPlaying, loopRestartPauseRemainingSeconds > 0.0001f), forceSeek: noteByNoteWaitingForMatch);
     }
 
+    private int GetHeroModeLostHeartCount()
+    {
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+            return GetArcadeHeroModeLostHeartCount();
+
+        if (noteStates == null || noteStates.Count == 0)
+            return 0;
+
+        HashSet<int> missedChordIds = new HashSet<int>();
+        int missedSingles = 0;
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState noteState = noteStates[i];
+            if (noteState == null || !noteState.IsMissed)
+                continue;
+
+            if (noteState.data.chordId >= 0)
+                missedChordIds.Add(noteState.data.chordId);
+            else
+                missedSingles++;
+        }
+
+        return missedSingles + missedChordIds.Count;
+    }
+
+    private int GetArcadeHeroModeLostHeartCount()
+    {
+        if (arcadeNoteStates == null || arcadeNoteStates.Count == 0)
+            return 0;
+
+        HashSet<int> missedChordIds = new HashSet<int>();
+        int missedSingles = 0;
+        for (int i = 0; i < arcadeNoteStates.Count; i++)
+        {
+            ArcadeNoteState noteState = arcadeNoteStates[i];
+            if (noteState == null || !noteState.IsMissed)
+                continue;
+
+            int chordId = GetArcadeConsumeChordId(noteState.data);
+            if (chordId >= 0)
+                missedChordIds.Add(chordId);
+            else
+                missedSingles++;
+        }
+
+        return missedSingles + missedChordIds.Count;
+    }
+
     private int GetCurrentHeroHeartsRemaining()
     {
-        return Mathf.Clamp(heroModeHeartCount - sessionScoreMisses, 0, Mathf.Max(1, heroModeHeartCount));
+        return Mathf.Clamp(heroModeHeartCount - GetHeroModeLostHeartCount(), 0, Mathf.Max(1, heroModeHeartCount));
     }
 
     private void SetSongEndState(bool ended, bool asGameOver = false)
@@ -3537,10 +4112,168 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: false);
     }
 
+    private bool IsUiSubmitPressed()
+    {
+        return Input.GetKeyDown(KeyCode.Return) ||
+               Input.GetKeyDown(KeyCode.KeypadEnter) ||
+               Input.GetKeyDown(KeyCode.Space) ||
+               TryGetButtonDown("Submit") ||
+               Input.GetKeyDown(KeyCode.JoystickButton0) ||
+               Input.GetKeyDown(KeyCode.JoystickButton7) ||
+               Input.GetKeyDown(KeyCode.JoystickButton9);
+    }
+
+    private bool IsUiBackPressed()
+    {
+        return Input.GetKeyDown(KeyCode.Escape) ||
+               Input.GetKeyDown(KeyCode.Backspace) ||
+               TryGetButtonDown("Cancel") ||
+               Input.GetKeyDown(KeyCode.JoystickButton1) ||
+               Input.GetKeyDown(KeyCode.JoystickButton2);
+    }
+
+    private bool IsUiPausePressed()
+    {
+        return Input.GetKeyDown(KeyCode.Space) ||
+               Input.GetKeyDown(KeyCode.Escape) ||
+               Input.GetKeyDown(KeyCode.JoystickButton7) ||
+               Input.GetKeyDown(KeyCode.JoystickButton9);
+    }
+
+    private static bool IsRestartPressed()
+    {
+        return Input.GetKeyDown(KeyCode.R);
+    }
+
+    private bool IsStartupTuningReminderHeldDismissPressed()
+    {
+        if (startupTuningReminderShownFrame < 0 || Time.frameCount <= startupTuningReminderShownFrame)
+            return false;
+
+        return Input.GetKey(KeyCode.Return) ||
+               Input.GetKey(KeyCode.KeypadEnter) ||
+               Input.GetKeyUp(KeyCode.Return) ||
+               Input.GetKeyUp(KeyCode.KeypadEnter);
+    }
+
+    private bool IsUiUpPressed()
+    {
+        RefreshUiControllerAxes();
+        return Input.GetKeyDown(KeyCode.UpArrow) ||
+               Input.GetKeyDown(KeyCode.JoystickButton13) ||
+               CrossedUiAxisThreshold(previousUiControllerVerticalAxis, currentUiControllerVerticalAxis, 1);
+    }
+
+    private bool IsUiDownPressed()
+    {
+        RefreshUiControllerAxes();
+        return Input.GetKeyDown(KeyCode.DownArrow) ||
+               Input.GetKeyDown(KeyCode.JoystickButton14) ||
+               CrossedUiAxisThreshold(previousUiControllerVerticalAxis, currentUiControllerVerticalAxis, -1);
+    }
+
+    private bool IsUiLeftPressed()
+    {
+        RefreshUiControllerAxes();
+        return Input.GetKeyDown(KeyCode.LeftArrow) ||
+               Input.GetKeyDown(KeyCode.JoystickButton15) ||
+               CrossedUiAxisThreshold(previousUiControllerHorizontalAxis, currentUiControllerHorizontalAxis, -1);
+    }
+
+    private bool IsUiRightPressed()
+    {
+        RefreshUiControllerAxes();
+        return Input.GetKeyDown(KeyCode.RightArrow) ||
+               Input.GetKeyDown(KeyCode.JoystickButton16) ||
+               CrossedUiAxisThreshold(previousUiControllerHorizontalAxis, currentUiControllerHorizontalAxis, 1);
+    }
+
+    private bool IsUiLeftHeld()
+    {
+        RefreshUiControllerAxes();
+        return Input.GetKey(KeyCode.LeftArrow) ||
+               Input.GetKey(KeyCode.JoystickButton15) ||
+               currentUiControllerHorizontalAxis <= -UiControllerAxisThreshold;
+    }
+
+    private bool IsUiRightHeld()
+    {
+        RefreshUiControllerAxes();
+        return Input.GetKey(KeyCode.RightArrow) ||
+               Input.GetKey(KeyCode.JoystickButton16) ||
+               currentUiControllerHorizontalAxis >= UiControllerAxisThreshold;
+    }
+
+    private static bool CrossedUiAxisThreshold(float previous, float current, int direction)
+    {
+        if (direction > 0)
+            return previous < UiControllerAxisThreshold && current >= UiControllerAxisThreshold;
+
+        return previous > -UiControllerAxisThreshold && current <= -UiControllerAxisThreshold;
+    }
+
+    private void RefreshUiControllerAxes()
+    {
+        if (cachedUiControllerInputFrame == Time.frameCount)
+            return;
+
+        cachedUiControllerInputFrame = Time.frameCount;
+        previousUiControllerHorizontalAxis = currentUiControllerHorizontalAxis;
+        previousUiControllerVerticalAxis = currentUiControllerVerticalAxis;
+        currentUiControllerHorizontalAxis = ReadStrongestUiAxis("Horizontal", "DPadX", "DPad Horizontal", "JoystickHorizontal");
+        currentUiControllerVerticalAxis = ReadStrongestUiAxis("Vertical", "DPadY", "DPad Vertical", "JoystickVertical");
+    }
+
+    private static float ReadStrongestUiAxis(params string[] axisNames)
+    {
+        float strongest = 0f;
+        if (axisNames == null)
+            return strongest;
+
+        for (int i = 0; i < axisNames.Length; i++)
+        {
+            float value = TryGetAxisRaw(axisNames[i]);
+            if (Mathf.Abs(value) > Mathf.Abs(strongest))
+                strongest = value;
+        }
+
+        return Mathf.Clamp(strongest, -1f, 1f);
+    }
+
+    private static float TryGetAxisRaw(string axisName)
+    {
+        if (string.IsNullOrWhiteSpace(axisName))
+            return 0f;
+
+        try
+        {
+            return Input.GetAxisRaw(axisName);
+        }
+        catch (ArgumentException)
+        {
+            return 0f;
+        }
+    }
+
+    private static bool TryGetButtonDown(string buttonName)
+    {
+        if (string.IsNullOrWhiteSpace(buttonName))
+            return false;
+
+        try
+        {
+            return Input.GetButtonDown(buttonName);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
     private int GetHeldHorizontalArrowDirection()
     {
-        bool leftHeld = Input.GetKey(KeyCode.LeftArrow);
-        bool rightHeld = Input.GetKey(KeyCode.RightArrow);
+        bool leftHeld = IsUiLeftHeld();
+        bool rightHeld = IsUiRightHeld();
         if (leftHeld == rightHeld)
             return 0;
 
@@ -3576,8 +4309,8 @@ public class GuitarBridgeServer : MonoBehaviour
             return true;
         }
 
-        bool initialDown = (direction < 0 && Input.GetKeyDown(KeyCode.LeftArrow)) ||
-                           (direction > 0 && Input.GetKeyDown(KeyCode.RightArrow));
+        bool initialDown = (direction < 0 && IsUiLeftPressed()) ||
+                           (direction > 0 && IsUiRightPressed());
         if (initialDown)
         {
             heldUiHorizontalNextRepeatTime = now + initialDelaySeconds;
@@ -3800,6 +4533,7 @@ public class GuitarBridgeServer : MonoBehaviour
         HideToneLabUi();
         ResetTransientMenuNavigationState();
         showNotesDetectorTestMenu = false;
+        showStartMenu = false;
         showMainMenu = true;
         mainMenuFlowActive = true;
         selectedMainMenuIndex = 0;
@@ -3817,11 +4551,23 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: false);
     }
 
+    public void StartFromMainMenuFromUi()
+    {
+        if (!firstStartCompleted)
+        {
+            OpenStartMenuFromUi();
+            return;
+        }
+
+        ContinueFromMainMenuFromUi();
+    }
+
     public void ContinueFromMainMenuFromUi()
     {
         showToneLab = false;
         HideToneLabUi();
         SetSongEndState(false);
+        showStartMenu = false;
         showMainMenu = false;
         mainMenuFlowActive = false;
         showSongSettings = false;
@@ -3834,6 +4580,141 @@ public class GuitarBridgeServer : MonoBehaviour
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
         ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
+    }
+
+    public void OpenStartMenuFromUi()
+    {
+        showToneLab = false;
+        HideToneLabUi();
+        ResetTransientMenuNavigationState();
+        SetSongEndState(false);
+        if (!firstStartCompleted && !forceStandardTuning)
+        {
+            forceStandardTuning = true;
+            RefreshActiveTrackTuning();
+            SaveGlobalRuntimeSettingsMetadata();
+        }
+        showStartMenu = true;
+        showMainMenu = false;
+        mainMenuFlowActive = true;
+        showSongSettings = false;
+        showSongSelection = false;
+        songSelectionSongConfirmed = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        showNotesDetectorTestMenu = false;
+        showGameModes = false;
+        showHeroModeSettings = false;
+        showStartupTuningReminder = false;
+        resumeGameplayAfterStartupTuningReminder = false;
+        startMenuStep = StartMenuStep.SelectMode;
+        selectedStartMenuModeIndex = Mathf.Clamp((int)selectedSongLibraryType, 0, StartMenuModeOptionCount - 1);
+        selectedStartMenuArcadeSetupIndex = 0;
+        selectedStartMenuArcadeInputIndex = GetStartMenuArcadeInputIndexFromCurrentSettings();
+        startMenuArcadeGamepadMode = selectedStartMenuArcadeInputIndex == 0 || arcadeGamepadMode;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseStartMenuToMainMenuFromUi()
+    {
+        showStartMenu = false;
+        showMainMenu = true;
+        mainMenuFlowActive = true;
+        startMenuStep = StartMenuStep.SelectMode;
+        selectedStartMenuArcadeSetupIndex = 0;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void HoverStartMenuModeFromUi(int modeIndex)
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.SelectMode)
+            return;
+
+        selectedStartMenuModeIndex = Mathf.Clamp(modeIndex, 0, StartMenuModeOptionCount - 1);
+    }
+
+    public void SelectStartMenuModeFromUi(int modeIndex)
+    {
+        if (!showStartMenu)
+            return;
+
+        selectedStartMenuModeIndex = Mathf.Clamp(modeIndex, 0, StartMenuModeOptionCount - 1);
+        ActivateStartMenuModeSelection();
+    }
+
+    public void ContinueStartMenuGuitarSetupFromUi()
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.GuitarSetup)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = 1;
+        CompleteFirstStartAndOpenLibrary(SongLibraryType.Guitar);
+    }
+
+    public void HoverStartMenuGuitarSetupRowFromUi(int rowIndex)
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.GuitarSetup)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = Mathf.Clamp(rowIndex, 0, StartMenuGuitarSetupRowCount - 1);
+    }
+
+    public void ToggleStartMenuGuitarForceStandardFromUi()
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.GuitarSetup)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = 0;
+        forceStandardTuning = !forceStandardTuning;
+        RefreshActiveTrackTuning();
+        SaveGlobalRuntimeSettingsMetadata();
+    }
+
+    public void HoverStartMenuArcadeSetupRowFromUi(int rowIndex)
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.ArcadeSetup)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = Mathf.Clamp(rowIndex, 0, StartMenuArcadeSetupRowCount - 1);
+    }
+
+    public void HoverStartMenuArcadeInputFromUi(int inputIndex)
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.ArcadeSetup)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = 0;
+        selectedStartMenuArcadeInputIndex = Mathf.Clamp(inputIndex, 0, StartMenuArcadeInputOptionCount - 1);
+    }
+
+    public void SelectStartMenuArcadeInputFromUi(int inputIndex)
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.ArcadeSetup)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = 0;
+        SetStartMenuArcadeInputIndex(inputIndex, applyRecommendedGamepadMode: true);
+    }
+
+    public void ToggleStartMenuArcadeGamepadModeFromUi()
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.ArcadeSetup)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = 1;
+        startMenuArcadeGamepadMode = !startMenuArcadeGamepadMode;
+    }
+
+    public void ContinueStartMenuArcadeSetupFromUi()
+    {
+        if (!showStartMenu || startMenuStep != StartMenuStep.ArcadeSetup)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = 2;
+        ApplyStartMenuArcadeSetup();
+        CompleteFirstStartAndOpenLibrary(SongLibraryType.Arcade);
     }
 
     public void SetMainMenuSelectionFromUi(int index)
@@ -3869,12 +4750,140 @@ public class GuitarBridgeServer : MonoBehaviour
         selectedMainMenuIndex = normalized;
     }
 
+    private void MoveStartMenuModeSelection(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        selectedStartMenuModeIndex = WrapIndex(selectedStartMenuModeIndex + delta, StartMenuModeOptionCount);
+    }
+
+    private void MoveStartMenuArcadeSetupSelection(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        selectedStartMenuArcadeSetupIndex = WrapIndex(selectedStartMenuArcadeSetupIndex + delta, StartMenuArcadeSetupRowCount);
+    }
+
+    private void AdjustStartMenuArcadeSetupSelection(int delta)
+    {
+        if (selectedStartMenuArcadeSetupIndex == 0)
+        {
+            SetStartMenuArcadeInputIndex(selectedStartMenuArcadeInputIndex + delta, applyRecommendedGamepadMode: true);
+            return;
+        }
+
+        if (selectedStartMenuArcadeSetupIndex == 1)
+            startMenuArcadeGamepadMode = !startMenuArcadeGamepadMode;
+    }
+
+    private void ActivateStartMenuModeSelection()
+    {
+        if (selectedStartMenuModeIndex <= 0)
+        {
+            startMenuStep = StartMenuStep.GuitarSetup;
+            selectedStartMenuArcadeSetupIndex = 0;
+            return;
+        }
+
+        startMenuStep = StartMenuStep.ArcadeSetup;
+        selectedStartMenuArcadeSetupIndex = 0;
+        selectedStartMenuArcadeInputIndex = GetStartMenuArcadeInputIndexFromCurrentSettings();
+        startMenuArcadeGamepadMode = selectedStartMenuArcadeInputIndex == 0 || arcadeGamepadMode;
+    }
+
+    private void ActivateStartMenuArcadeSetupSelection()
+    {
+        switch (selectedStartMenuArcadeSetupIndex)
+        {
+            case 0:
+                SetStartMenuArcadeInputIndex(selectedStartMenuArcadeInputIndex + 1, applyRecommendedGamepadMode: true);
+                break;
+            case 1:
+                startMenuArcadeGamepadMode = !startMenuArcadeGamepadMode;
+                break;
+            default:
+                ApplyStartMenuArcadeSetup();
+                CompleteFirstStartAndOpenLibrary(SongLibraryType.Arcade);
+                break;
+        }
+    }
+
+    private void SetStartMenuArcadeInputIndex(int inputIndex, bool applyRecommendedGamepadMode)
+    {
+        selectedStartMenuArcadeInputIndex = WrapIndex(inputIndex, StartMenuArcadeInputOptionCount);
+        if (!applyRecommendedGamepadMode)
+            return;
+
+        startMenuArcadeGamepadMode = selectedStartMenuArcadeInputIndex == 0;
+    }
+
+    private int GetStartMenuArcadeInputIndexFromCurrentSettings()
+    {
+        switch (arcadeInputSource)
+        {
+            case ArcadeInputSourceMode.Controller:
+                return 1;
+            case ArcadeInputSourceMode.Midi:
+                return 2;
+            default:
+                return 0;
+        }
+    }
+
+    private void ApplyStartMenuArcadeSetup()
+    {
+        switch (selectedStartMenuArcadeInputIndex)
+        {
+            case 1:
+                arcadeInputSource = ArcadeInputSourceMode.Controller;
+                break;
+            case 2:
+                arcadeInputSource = ArcadeInputSourceMode.Midi;
+                break;
+            default:
+                arcadeInputSource = ArcadeInputSourceMode.KeyboardAndController;
+                break;
+        }
+
+        arcadeGamepadMode = startMenuArcadeGamepadMode;
+        arcadeMidiInputEnabled = UsesArcadeMidiInput();
+        if (!UsesArcadeMidiInput())
+            StopArcadeMidiInput();
+
+        SaveGlobalRuntimeSettingsMetadata();
+    }
+
+    private void CompleteFirstStartAndOpenLibrary(SongLibraryType type)
+    {
+        firstStartCompleted = true;
+        SaveGameSaveState();
+        SetSongLibraryType(type);
+        startMenuStep = StartMenuStep.SelectMode;
+        selectedStartMenuArcadeSetupIndex = 0;
+        showStartMenu = false;
+        showMainMenu = false;
+        mainMenuFlowActive = true;
+        songSelectionOpenedFromMainMenu = true;
+        OpenSongSelectionMenu();
+    }
+
+    private static int WrapIndex(int index, int count)
+    {
+        if (count <= 0)
+            return 0;
+
+        int result = index % count;
+        return result < 0 ? result + count : result;
+    }
+
     public void ActivateSelectedMainMenuFromUi()
     {
         switch (Mathf.Clamp(selectedMainMenuIndex, 0, MainMenuOptionCount - 1))
         {
             case 0:
-                ContinueFromMainMenuFromUi();
+                StartFromMainMenuFromUi();
                 break;
             case 1:
                 OpenSongSelectionFromUi();
@@ -3917,6 +4926,7 @@ public class GuitarBridgeServer : MonoBehaviour
             StartConfiguredNotesDetectorBackend();
         RefreshNativeNotesDetectorUiState();
         RefreshDetectorBackendStatus();
+        MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
     }
 
@@ -3929,6 +4939,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showMainMenu = true;
         mainMenuFlowActive = true;
         isPaused = true;
+        MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
     }
 
@@ -3995,6 +5006,7 @@ public class GuitarBridgeServer : MonoBehaviour
         notesDetectorRoutineStageIndex = 0;
         notesDetectorRoutineMatchedSinceTime = -1f;
         notesDetectorRoutineOpenedTime = Time.unscaledTime;
+        MarkDetectorHintDirty();
     }
 
     public void CloseNotesDetectorRoutineFromUi()
@@ -4003,6 +5015,7 @@ public class GuitarBridgeServer : MonoBehaviour
         notesDetectorRoutineStageIndex = 0;
         notesDetectorRoutineMatchedSinceTime = -1f;
         notesDetectorRoutineOpenedTime = 0f;
+        MarkDetectorHintDirty();
     }
 
     public void OpenSongSelectionFromUi()
@@ -4038,6 +5051,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showLoopPausePopup = false;
         showGameModes = false;
         showHeroModeSettings = false;
+        showStartMenu = false;
         showNotesDetectorTestMenu = false;
         showNotesDetectorRoutinePopup = false;
         loopSettingsOpenedFromGameModes = false;
@@ -4051,6 +5065,7 @@ public class GuitarBridgeServer : MonoBehaviour
         trackListScrollOffset = 0;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingArcadeArrangementSummaries.Clear();
         showStartupTuningReminder = false;
         resumeGameplayAfterStartupTuningReminder = false;
     }
@@ -4059,6 +5074,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showStartupTuningReminder = true;
         resumeGameplayAfterStartupTuningReminder = resumePlaybackAfterDismiss;
+        startupTuningReminderShownFrame = Time.frameCount;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
     }
@@ -4069,6 +5085,7 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         showStartupTuningReminder = false;
+        startupTuningReminderShownFrame = -1;
         bool shouldResume = resumeGameplayAfterStartupTuningReminder;
         resumeGameplayAfterStartupTuningReminder = false;
 
@@ -4119,6 +5136,11 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void RetrySongFromUi()
     {
+        RestartCurrentRunFromUi();
+    }
+
+    private void RestartCurrentRunFromUi()
+    {
         showToneLab = false;
         HideToneLabUi();
         SetSongEndState(false);
@@ -4134,9 +5156,30 @@ public class GuitarBridgeServer : MonoBehaviour
         showGameModes = false;
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
+        showStartupTuningReminder = false;
+        resumeGameplayAfterStartupTuningReminder = false;
+        showLoopPausePopup = false;
+        selectedLoopPausePopupIndex = 0;
+        loopRestartPauseRemainingSeconds = 0f;
+        loopSettingsPreviewPlaying = false;
         isPaused = false;
+        ClearNoteByNoteWaitingState();
         scoreSaveInvalidated = playbackSpeedPercent < 100f;
         ResetSessionScoreState();
+
+        if (loopEnabled && loopEndTime > loopStartTime + 0.01f)
+        {
+            if (loopPauseDurationSeconds > 0.001f)
+            {
+                StartLoopRestartPause();
+                return;
+            }
+
+            SeekSongTime(loopStartTime, false);
+            SyncAudioToSongTimer(playImmediately: true);
+            return;
+        }
+
         SeekSongTime(-songStartDelaySeconds, false);
         SyncAudioToSongTimer(playImmediately: true);
     }
@@ -4174,6 +5217,7 @@ public class GuitarBridgeServer : MonoBehaviour
         selectedGlobalSettingsItemIndex = 0;
         activeGlobalSettingsCategory = string.Empty;
         showSongSettings = false;
+        showStartMenu = false;
         showMainMenu = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -4379,6 +5423,30 @@ public class GuitarBridgeServer : MonoBehaviour
         SetSongLibraryBrowseMode(requestedMode);
     }
 
+    public void SetSongLibraryTypeFromUi(int typeIndex)
+    {
+        SongLibraryType requestedType = (SongLibraryType)Mathf.Clamp(typeIndex, (int)SongLibraryType.Guitar, (int)SongLibraryType.Arcade);
+        SetSongLibraryType(requestedType);
+    }
+
+    private void SetSongLibraryType(SongLibraryType type)
+    {
+        if (selectedSongLibraryType == type)
+            return;
+
+        selectedSongLibraryType = type;
+        PlayerPrefs.SetInt(SelectedSongLibraryTypePrefsKey, (int)selectedSongLibraryType);
+        PlayerPrefs.Save();
+        songLibraryBrowseScopeKey = string.Empty;
+        selectedSongListIndex = 0;
+        selectedTrackListIndex = 0;
+        songSelectionSongConfirmed = false;
+        pendingTrackSelectionSong = null;
+        pendingTrackSelectionParts.Clear();
+        pendingArcadeArrangementSummaries.Clear();
+        RefreshAvailableSongs();
+    }
+
     private void SetSongLibraryBrowseMode(SongLibraryBrowseMode mode)
     {
         if (songLibraryBrowseMode == mode && !IsSongLibraryScopeActive())
@@ -4432,7 +5500,11 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void SelectTrackByIndexFromUi(int trackIndex)
     {
-        selectedTrackListIndex = Mathf.Clamp(trackIndex, 0, Mathf.Max(0, pendingTrackSelectionParts.Count - 1));
+        int count = pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade
+            ? pendingArcadeArrangementSummaries.Count
+            : pendingTrackSelectionParts.Count;
+        selectedTrackListIndex = Mathf.Clamp(trackIndex, 0, Mathf.Max(0, count - 1));
+        ClampSelectedArcadeDifficultyToPendingArrangement();
         songSelectionSongConfirmed = true;
         EnsureTrackSelectionVisible();
     }
@@ -4441,6 +5513,112 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         songSelectionSongConfirmed = true;
         ConfirmTrackSelection();
+    }
+
+    public void SetArcadeDifficultyFromUi(int difficultyIndex)
+    {
+        ArcadeDifficulty requested = DifficultyFromUiIndex(difficultyIndex);
+        ArcadeArrangementSummary selectedSummary = GetPendingSelectedArcadeArrangementSummary();
+        if (selectedSummary == null || selectedSummary.Difficulties == null || !selectedSummary.Difficulties.Contains(requested))
+            return;
+
+        selectedArcadeDifficulty = requested;
+        songSelectionSongConfirmed = true;
+        if (pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
+        {
+            SongMetadata metadata = LoadSongMetadataForEntry(pendingTrackSelectionSong);
+            metadata.selectedArcadeArrangementId = selectedSummary.ArrangementId;
+            metadata.selectedArcadeDifficulty = ArcadeCloneHeroLoader.SerializeDifficulty(selectedArcadeDifficulty);
+            SaveSongMetadata(metadata, BuildSongMetadataPath(pendingTrackSelectionSong), ResolveSongMetadataFileName(pendingTrackSelectionSong));
+        }
+    }
+
+    private static ArcadeDifficulty DifficultyFromUiIndex(int difficultyIndex)
+    {
+        switch (difficultyIndex)
+        {
+            case 0:
+                return ArcadeDifficulty.Expert;
+            case 1:
+                return ArcadeDifficulty.Hard;
+            case 2:
+                return ArcadeDifficulty.Medium;
+            default:
+                return ArcadeDifficulty.Easy;
+        }
+    }
+
+    private static int DifficultyToUiIndex(ArcadeDifficulty difficulty)
+    {
+        switch (difficulty)
+        {
+            case ArcadeDifficulty.Expert:
+                return 0;
+            case ArcadeDifficulty.Hard:
+                return 1;
+            case ArcadeDifficulty.Medium:
+                return 2;
+            default:
+                return 3;
+        }
+    }
+
+    private ArcadeArrangementSummary GetPendingSelectedArcadeArrangementSummary()
+    {
+        if (selectedTrackListIndex < 0 || selectedTrackListIndex >= pendingArcadeArrangementSummaries.Count)
+            return null;
+
+        return pendingArcadeArrangementSummaries[selectedTrackListIndex];
+    }
+
+    private ArcadeArrangementSummary GetCurrentArcadeArrangementSummary()
+    {
+        if (currentArcadeArrangementSummaries == null)
+            return null;
+
+        return currentArcadeArrangementSummaries.FirstOrDefault(summary =>
+            string.Equals(summary.ArrangementId, selectedArcadeArrangementId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string GetSelectedArcadeArrangementDisplayName()
+    {
+        return GetCurrentArcadeArrangementSummary()?.DisplayName
+               ?? GetPendingSelectedArcadeArrangementSummary()?.DisplayName
+               ?? ArcadeCloneHeroLoader.GetArrangementDisplayName(ArcadeInstrument.Guitar);
+    }
+
+    private void ClampSelectedArcadeDifficultyToPendingArrangement()
+    {
+        ArcadeArrangementSummary selectedSummary = GetPendingSelectedArcadeArrangementSummary();
+        if (selectedSummary == null || selectedSummary.Difficulties == null || selectedSummary.Difficulties.Count == 0)
+            return;
+
+        if (!selectedSummary.Difficulties.Contains(selectedArcadeDifficulty))
+            selectedArcadeDifficulty = ArcadeCloneHeroLoader.GetBestDefaultDifficulty(selectedSummary.Difficulties);
+    }
+
+    private void MoveArcadeDifficultySelection(int delta)
+    {
+        ArcadeArrangementSummary selectedSummary = GetPendingSelectedArcadeArrangementSummary();
+        if (selectedSummary == null || selectedSummary.Difficulties == null || selectedSummary.Difficulties.Count == 0)
+            return;
+
+        List<ArcadeDifficulty> ordered = new List<ArcadeDifficulty>
+        {
+            ArcadeDifficulty.Expert,
+            ArcadeDifficulty.Hard,
+            ArcadeDifficulty.Medium,
+            ArcadeDifficulty.Easy
+        }.Where(difficulty => selectedSummary.Difficulties.Contains(difficulty)).ToList();
+        if (ordered.Count == 0)
+            return;
+
+        int currentIndex = ordered.IndexOf(selectedArcadeDifficulty);
+        if (currentIndex < 0)
+            currentIndex = 0;
+
+        int nextIndex = Mathf.Clamp(currentIndex + delta, 0, ordered.Count - 1);
+        SetArcadeDifficultyFromUi(DifficultyToUiIndex(ordered[nextIndex]));
     }
 
     public void BackToSongSelectionFromUi()
@@ -4468,6 +5646,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showToneLab = false;
         HideToneLabUi();
+        CancelArcadeBindingCapture();
         showGlobalSettings = false;
         activeGlobalSettingsCategory = string.Empty;
         selectedGlobalSettingsItemIndex = 0;
@@ -4482,6 +5661,14 @@ public class GuitarBridgeServer : MonoBehaviour
     public void SetGlobalRuntimeSettingFromUi(string settingId, string serializedValue)
     {
         ApplyRuntimeSettingValue(settingId, serializedValue, saveMetadata: true);
+    }
+
+    public void ActivateGlobalRuntimeSettingFromUi(string settingId)
+    {
+        if (string.IsNullOrWhiteSpace(settingId) || !runtimeSettingById.TryGetValue(settingId, out RuntimeSettingDefinition definition))
+            return;
+
+        definition.Activator?.Invoke();
     }
 
     public void ResetGlobalSettingsToDefaultsFromUi()
@@ -4530,7 +5717,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (delta == 0)
             return;
 
-        SongPlaybackAudioMode[] cycle = { SongPlaybackAudioMode.Generated, SongPlaybackAudioMode.Mp3, SongPlaybackAudioMode.Muted };
+        SongPlaybackAudioMode[] cycle = GetAvailableSongPlaybackAudioModesForCurrentGameMode();
         int currentIndex = Array.IndexOf(cycle, songPlaybackAudioMode);
         if (currentIndex < 0)
             currentIndex = 0;
@@ -4544,6 +5731,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void SetSongPlaybackAudioModeFromUi(SongPlaybackAudioMode mode)
     {
+        mode = NormalizeSongPlaybackAudioModeForCurrentGameMode(mode);
         if (songPlaybackAudioMode == mode)
             return;
 
@@ -4617,7 +5805,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!showGlobalSettings || !string.IsNullOrEmpty(activeGlobalSettingsCategory))
             return;
 
-        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 6);
+        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 8);
     }
 
     public void HoverGlobalSettingsItemSelectionFromUi(int index)
@@ -4634,7 +5822,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!showGlobalSettings)
             return;
 
-        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 6);
+        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 8);
         ActivateCurrentGlobalSettingsSelection();
     }
 
@@ -4643,7 +5831,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!showGlobalSettings)
             return;
 
-        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 6);
+        selectedGlobalSettingsTopIndex = Mathf.Clamp(index, 0, 8);
         AdjustCurrentGlobalSettingsValue(delta);
     }
 
@@ -5010,6 +6198,17 @@ private void OpenOrFocusToneLab()
                     noteState.isJudgeable = false;
                 }
             }
+
+            for (int i = 0; i < arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState noteState = arcadeNoteStates[i];
+                if (noteState.data.time > songTimer)
+                {
+                    noteState.result = GameplayNoteResult.Pending;
+                    noteState.resolvedAt = -1f;
+                    noteState.isJudgeable = false;
+                }
+            }
         }
         else
         {
@@ -5027,9 +6226,27 @@ private void OpenOrFocusToneLab()
                     noteState.isJudgeable = false;
                 }
             }
+
+            for (int i = 0; i < arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState noteState = arcadeNoteStates[i];
+                if (noteState.IsResolved)
+                    continue;
+
+                if (clampedTime > noteState.data.time + arcadeHitWindowLate)
+                {
+                    noteState.result = GameplayNoteResult.Missed;
+                    noteState.resolvedAt = clampedTime;
+                    noteState.isJudgeable = false;
+                }
+            }
         }
 
         recentNoteEvents.Clear();
+        arcadeRecentInputEvents.Clear();
+        activeArcadeSustains.Clear();
+        latestArcadeInputEventId = 0;
+        ResetArcadeCombo();
         latestDetectedPitches.Clear();
         latestEventNotesText = "--";
         latestNoteEventId = 0;
@@ -5053,10 +6270,21 @@ private void OpenOrFocusToneLab()
             ResetSessionScoreState();
             return;
         }
+
+        scoreSaveInvalidated = true;
+        ResetSessionScoreState(ignoreCurrentlyResolvedNotes: true);
     }
 
     private float GetScoreSaveResetTimeThreshold()
     {
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+        {
+            if (arcadeNoteStates == null || arcadeNoteStates.Count == 0)
+                return 0f;
+
+            return arcadeNoteStates.Min(note => note?.data.time ?? float.MaxValue);
+        }
+
         if (chartNotes == null || chartNotes.Count == 0)
             return 0f;
 
@@ -5083,6 +6311,7 @@ private void OpenOrFocusToneLab()
         if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
         if (udpClient != null) udpClient.Close();
         CloseDetectorHintClient();
+        StopArcadeMidiInput();
         ShutdownNativeNotesDetectorIfRunning();
         ShutdownNotesDetectorIfRunning();
     }
@@ -5090,6 +6319,7 @@ private void OpenOrFocusToneLab()
     private void OnDestroy()
     {
         CloseDetectorHintClient();
+        StopArcadeMidiInput();
         ShutdownNativeNotesDetectorIfRunning();
         ShutdownNotesDetectorIfRunning();
         ShutdownGeneratedSongPlayer();
@@ -5098,6 +6328,7 @@ private void OpenOrFocusToneLab()
     private void OnDisable()
     {
         CloseDetectorHintClient();
+        StopArcadeMidiInput();
         ShutdownNativeNotesDetectorIfRunning();
         ShutdownNotesDetectorIfRunning();
         ShutdownGeneratedSongPlayer();
@@ -5683,6 +6914,24 @@ private void OpenOrFocusToneLab()
         return chartNoteById.TryGetValue(id, out data);
     }
 
+    public IReadOnlyList<ArcadeNoteState> ArcadeNoteStates => arcadeNoteStates;
+
+    public int ArcadeLaneCount => currentArcadeChart != null ? Mathf.Max(5, currentArcadeChart.LaneCount) : 5;
+    public int ArcadeHighwayLaneCount => Mathf.Clamp(Mathf.Max(arcadeHighwayLaneCount, ArcadeLaneCount), 1, 8);
+    public float ArcadeSpawnZ => Mathf.Max(StrikeLineZ + 1f, arcadeNoteSpawnZ);
+    public float ArcadeResolvedHoldTime => Mathf.Max(0f, arcadeResolvedHoldTime);
+    public bool HasArcadeVisibleSustain(ArcadeNoteData note) => HasMeaningfulArcadeSustain(note.duration, note.sustainBeats);
+    public bool IsArcadeSustainActivelyHeld(ArcadeNoteData note)
+    {
+        int chordId = GetArcadeConsumeChordId(note);
+        return activeArcadeSustains.TryGetValue(chordId, out ArcadeActiveSustain sustain) &&
+               sustain != null &&
+               !sustain.broken &&
+               songTimer < sustain.endTime - 0.0001f;
+    }
+
+    public SongLibraryType CurrentSongLibraryType => selectedSongLibraryType;
+
     public bool TryGetNoteStateById(int id, out GameplayNoteState state)
     {
         for (int i = 0; i < noteStates.Count; i++)
@@ -5760,6 +7009,920 @@ private void OpenOrFocusToneLab()
         }
     }
 
+    private void UpdateArcadeInputState()
+    {
+        if (isPaused)
+        {
+            SyncArcadeInputHeldStateWithoutEvents();
+            arcadeInputNeedsUnpausedPrime = true;
+            return;
+        }
+
+        if (arcadeInputNeedsUnpausedPrime)
+        {
+            SyncArcadeInputHeldStateWithoutEvents();
+            arcadeInputNeedsUnpausedPrime = false;
+            return;
+        }
+
+        bool midiStrum = UpdateArcadeMidiInputState();
+
+        bool anyPreviousHeld = false;
+        for (int lane = 0; lane < arcadeHeldLanes.Length; lane++)
+        {
+            previousArcadeHeldLanes[lane] = arcadeHeldLanes[lane];
+            anyPreviousHeld |= previousArcadeHeldLanes[lane];
+            arcadeHeldLanes[lane] = IsArcadeLaneHeld(lane) || arcadeMidiHeldLanes[lane];
+        }
+
+        bool[] pressedLanes = new bool[arcadeHeldLanes.Length];
+        bool strum = GetArcadeStrumDown() || midiStrum;
+        bool openButton = GetArcadeOpenButtonDown() || arcadeMidiOpenButtonPressed;
+        bool tap = false;
+        bool anyHeld = false;
+        for (int lane = 0; lane < arcadeHeldLanes.Length; lane++)
+        {
+            anyHeld |= arcadeHeldLanes[lane];
+            if (arcadeHeldLanes[lane] && !previousArcadeHeldLanes[lane])
+            {
+                pressedLanes[lane] = true;
+                tap = true;
+            }
+        }
+
+        bool release = anyPreviousHeld && !anyHeld;
+        if (!strum && !tap && !release && !openButton)
+            return;
+
+        ArcadeInputEvent inputEvent = new ArcadeInputEvent
+        {
+            id = ++latestArcadeInputEventId,
+            time = Mathf.Max(0f, songTimer),
+            isStrum = strum,
+            isTap = tap,
+            isRelease = release,
+            isOpenButton = openButton
+        };
+        for (int lane = 0; lane < arcadeHeldLanes.Length; lane++)
+        {
+            inputEvent.heldLanes[lane] = arcadeHeldLanes[lane];
+            inputEvent.pressedLanes[lane] = pressedLanes[lane];
+        }
+
+        arcadeRecentInputEvents.Add(inputEvent);
+    }
+
+    private bool IsArcadeLaneHeld(int lane)
+    {
+        switch (lane)
+        {
+            case 0:
+                return IsArcadeKeyboardBindingHeld(arcadeKeyboardGreen) || IsArcadeControllerBindingHeld(arcadeControllerGreen);
+            case 1:
+                return IsArcadeKeyboardBindingHeld(arcadeKeyboardRed) || IsArcadeControllerBindingHeld(arcadeControllerRed);
+            case 2:
+                return IsArcadeKeyboardBindingHeld(arcadeKeyboardYellow) || IsArcadeControllerBindingHeld(arcadeControllerYellow);
+            case 3:
+                return IsArcadeKeyboardBindingHeld(arcadeKeyboardBlue) || IsArcadeControllerBindingHeld(arcadeControllerBlue);
+            case 4:
+                return IsArcadeKeyboardBindingHeld(arcadeKeyboardOrange) || IsArcadeControllerBindingHeld(arcadeControllerOrange);
+            default:
+                return false;
+        }
+    }
+
+    private bool GetArcadeStrumDown()
+    {
+        return IsArcadeKeyboardBindingDown(arcadeKeyboardStrumUp) ||
+               IsArcadeKeyboardBindingDown(arcadeKeyboardStrumDown) ||
+               IsArcadeControllerBindingDown(arcadeControllerStrumUp) ||
+               IsArcadeControllerBindingDown(arcadeControllerStrumDown) ||
+               GetArcadeControllerAxisStrumDown();
+    }
+
+    private void SyncArcadeInputHeldStateWithoutEvents()
+    {
+        bool midiStrum = UpdateArcadeMidiInputState();
+        for (int lane = 0; lane < arcadeHeldLanes.Length; lane++)
+        {
+            bool held = IsArcadeLaneHeld(lane) || arcadeMidiHeldLanes[lane];
+            arcadeHeldLanes[lane] = held;
+            previousArcadeHeldLanes[lane] = held;
+        }
+
+        if (midiStrum)
+            arcadeInputNeedsUnpausedPrime = true;
+    }
+
+    private bool GetArcadeControllerAxisStrumDown()
+    {
+        if (!UsesArcadeControllerInput())
+            return false;
+
+        RefreshUiControllerAxes();
+        return CrossedUiAxisThreshold(previousUiControllerVerticalAxis, currentUiControllerVerticalAxis, 1) ||
+               CrossedUiAxisThreshold(previousUiControllerVerticalAxis, currentUiControllerVerticalAxis, -1);
+    }
+
+    private bool GetArcadeOpenButtonDown()
+    {
+        return IsArcadeKeyboardBindingDown(arcadeKeyboardOpen) ||
+               IsArcadeControllerBindingDown(arcadeControllerOpen);
+    }
+
+    private bool IsArcadeKeyboardBindingHeld(KeyCode binding)
+    {
+        return UsesArcadeKeyboardInput() && binding != KeyCode.None && Input.GetKey(binding);
+    }
+
+    private bool IsArcadeKeyboardBindingDown(KeyCode binding)
+    {
+        return UsesArcadeKeyboardInput() && binding != KeyCode.None && Input.GetKeyDown(binding);
+    }
+
+    private bool IsArcadeControllerBindingHeld(KeyCode binding)
+    {
+        return UsesArcadeControllerInput() && QueryArcadeControllerBinding(binding, keyDownOnly: false);
+    }
+
+    private bool IsArcadeControllerBindingDown(KeyCode binding)
+    {
+        return UsesArcadeControllerInput() && QueryArcadeControllerBinding(binding, keyDownOnly: true);
+    }
+
+    private bool QueryArcadeControllerBinding(KeyCode binding, bool keyDownOnly)
+    {
+        if (binding == KeyCode.None)
+            return false;
+
+        KeyCode normalized = NormalizeArcadeBinding(binding);
+        if (arcadeControllerDeviceIndex <= 0)
+            return keyDownOnly ? Input.GetKeyDown(normalized) : Input.GetKey(normalized);
+
+        if (!TryGetSpecificArcadeControllerBinding(normalized, arcadeControllerDeviceIndex, out KeyCode specificBinding))
+            return keyDownOnly ? Input.GetKeyDown(normalized) : Input.GetKey(normalized);
+
+        return keyDownOnly ? Input.GetKeyDown(specificBinding) : Input.GetKey(specificBinding);
+    }
+
+    private static bool TryGetSpecificArcadeControllerBinding(KeyCode binding, int joystickIndex, out KeyCode specificBinding)
+    {
+        joystickIndex = Mathf.Clamp(joystickIndex, 1, ArcadeControllerSlotCount);
+        Match genericBinding = Regex.Match(binding.ToString(), @"JoystickButton(\d+)$", RegexOptions.CultureInvariant);
+        if (!genericBinding.Success)
+        {
+            specificBinding = binding;
+            return false;
+        }
+
+        string candidate = $"Joystick{joystickIndex}Button{genericBinding.Groups[1].Value}";
+        if (Enum.TryParse(candidate, true, out specificBinding))
+            return true;
+
+        specificBinding = binding;
+        return false;
+    }
+
+    private bool UsesArcadeKeyboardInput()
+    {
+        return arcadeInputSource == ArcadeInputSourceMode.Keyboard ||
+               arcadeInputSource == ArcadeInputSourceMode.KeyboardAndController ||
+               arcadeInputSource == ArcadeInputSourceMode.All;
+    }
+
+    private bool UsesArcadeControllerInput()
+    {
+        return arcadeInputSource == ArcadeInputSourceMode.Controller ||
+               arcadeInputSource == ArcadeInputSourceMode.KeyboardAndController ||
+               arcadeInputSource == ArcadeInputSourceMode.All;
+    }
+
+    private bool UsesArcadeMidiInput()
+    {
+        return arcadeInputSource == ArcadeInputSourceMode.Midi ||
+               arcadeInputSource == ArcadeInputSourceMode.All;
+    }
+
+    private bool UpdateArcadeMidiInputState()
+    {
+        arcadeMidiOpenButtonPressed = false;
+        for (int lane = 0; lane < arcadeMidiHeldLanes.Length; lane++)
+            arcadeMidiHeldLanes[lane] = false;
+
+        if (!UsesArcadeMidiInput())
+        {
+            StopArcadeMidiInput();
+            return false;
+        }
+
+        EnsureArcadeMidiInput();
+        if (arcadeMidiInputBridge == null || !arcadeMidiInputBridge.IsRunning)
+            return false;
+
+        HashSet<int> heldNotes = arcadeMidiInputBridge.GetHeldNotesSnapshot();
+        foreach (int note in heldNotes)
+        {
+            if (TryMapArcadeMidiInputNote(note, out int lane, out bool isOpen) && !isOpen && lane >= 0 && lane < arcadeMidiHeldLanes.Length)
+                arcadeMidiHeldLanes[lane] = true;
+        }
+
+        bool midiStrum = false;
+        List<ArcadeMidiInputBridge.MidiInputEvent> events = arcadeMidiInputBridge.ConsumeEvents();
+        for (int i = 0; i < events.Count; i++)
+        {
+            ArcadeMidiInputBridge.MidiInputEvent midiEvent = events[i];
+            if (!midiEvent.noteOn)
+                continue;
+
+            if (TryMapArcadeMidiInputNote(midiEvent.note, out _, out bool isOpen))
+            {
+                if (isOpen)
+                    arcadeMidiOpenButtonPressed = true;
+                midiStrum = true;
+            }
+        }
+
+        return midiStrum;
+    }
+
+    private void EnsureArcadeMidiInput()
+    {
+        if (arcadeMidiInputBridge == null)
+            arcadeMidiInputBridge = new ArcadeMidiInputBridge();
+
+        if (arcadeMidiInputBridge.IsRunning)
+            return;
+
+        if (Time.unscaledTime < nextArcadeMidiInputStartRealtime)
+            return;
+
+        nextArcadeMidiInputStartRealtime = Time.unscaledTime + 3f;
+        if (arcadeMidiInputBridge.Start(arcadeMidiInputDeviceIndex))
+        {
+            arcadeMidiInputUnavailableLogged = false;
+            return;
+        }
+
+        if (!arcadeMidiInputUnavailableLogged && !string.IsNullOrWhiteSpace(arcadeMidiInputBridge.LastError))
+        {
+            Debug.LogWarning($"[Arcade MIDI] {arcadeMidiInputBridge.LastError}");
+            arcadeMidiInputUnavailableLogged = true;
+        }
+    }
+
+    private void StopArcadeMidiInput()
+    {
+        if (arcadeMidiInputBridge != null && arcadeMidiInputBridge.IsRunning)
+            arcadeMidiInputBridge.Stop();
+
+        arcadeMidiOpenButtonPressed = false;
+        for (int lane = 0; lane < arcadeMidiHeldLanes.Length; lane++)
+            arcadeMidiHeldLanes[lane] = false;
+    }
+
+    public bool IsArcadeInputLaneHeld(int lane)
+    {
+        return lane >= 0 && lane < arcadeHeldLanes.Length && arcadeHeldLanes[lane];
+    }
+
+    private bool TryMapArcadeMidiInputNote(int midiNote, out int lane, out bool isOpen)
+    {
+        lane = -1;
+        isOpen = false;
+
+        if (midiNote == arcadeMidiOpenNote)
+        {
+            isOpen = true;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiLane0Note)
+        {
+            lane = 0;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiLane1Note)
+        {
+            lane = 1;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiLane2Note)
+        {
+            lane = 2;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiLane3Note)
+        {
+            lane = 3;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiLane4Note)
+        {
+            lane = 4;
+            return true;
+        }
+
+        return TryMapCloneHeroMidiInputNote(midiNote, out lane, out isOpen);
+    }
+
+    private static bool TryMapCloneHeroMidiInputNote(int midiNote, out int lane, out bool isOpen)
+    {
+        int[] difficultyRows = { 60, 72, 84, 96 };
+        for (int i = 0; i < difficultyRows.Length; i++)
+        {
+            int offset = midiNote - difficultyRows[i];
+            if (offset >= 0 && offset <= 4)
+            {
+                lane = offset;
+                isOpen = false;
+                return true;
+            }
+
+            if (offset == 5)
+            {
+                lane = -1;
+                isOpen = true;
+                return true;
+            }
+        }
+
+        lane = -1;
+        isOpen = false;
+        return false;
+    }
+
+    private void PruneArcadeInputHistory()
+    {
+        float cutoff = songTimer - 3.0f;
+        arcadeRecentInputEvents.RemoveAll(e => e.time < cutoff);
+    }
+
+    private void UpdateArcadeGameplayStates()
+    {
+        if (arcadeNoteStates == null)
+            return;
+
+        UpdateActiveArcadeSustains();
+
+        for (int i = 0; i < arcadeNoteStates.Count; i++)
+        {
+            ArcadeNoteState noteState = arcadeNoteStates[i];
+            if (noteState == null)
+                continue;
+
+            if (noteState.IsResolved)
+            {
+                noteState.isJudgeable = false;
+                continue;
+            }
+
+            noteState.isJudgeable = IsArcadeNoteInHitWindow(noteState, songTimer);
+            if (songTimer < noteState.data.time - arcadeHitWindowEarly)
+                continue;
+
+            if (TryFindMatchingArcadeInput(noteState, out ArcadeInputEvent matchedInput))
+            {
+                ResolveArcadeChord(noteState.data, GameplayNoteResult.Hit, songTimer);
+                matchedInput.consumedChordIds.Add(GetArcadeConsumeChordId(noteState.data));
+                continue;
+            }
+
+            if (CanPassivelyHitArcadeSpecialNote(noteState))
+            {
+                ResolveArcadeChord(noteState.data, GameplayNoteResult.Hit, songTimer);
+                continue;
+            }
+
+            if (songTimer > noteState.data.time + arcadeHitWindowLate)
+            {
+                ResolveArcadeChord(noteState.data, GameplayNoteResult.Missed, songTimer);
+            }
+        }
+
+        ResolveArcadeOverstrums();
+    }
+
+    private bool IsArcadeNoteInHitWindow(ArcadeNoteState noteState, float eventTime)
+    {
+        return noteState != null &&
+               eventTime >= noteState.data.time - arcadeHitWindowEarly &&
+               eventTime <= noteState.data.time + arcadeHitWindowLate;
+    }
+
+    private bool CanPassivelyHitArcadeSpecialNote(ArcadeNoteState noteState)
+    {
+        if (noteState == null || noteState.data.isOpen)
+            return false;
+
+        if (noteState.data.noteType != ArcadeNoteType.Hopo || !arcadeComboActive)
+            return false;
+
+        if (songTimer < noteState.data.time || songTimer > noteState.data.time + arcadeHitWindowLate)
+            return false;
+
+        if (IsSameArcadeChordShapeAsPrevious(noteState.data))
+            return false;
+
+        return DoesArcadeHeldStateMatchNote(noteState.data, arcadeHeldLanes, allowAnchoring: true, openButton: false);
+    }
+
+    private bool TryFindMatchingArcadeInput(ArcadeNoteState note, out ArcadeInputEvent matchedInput)
+    {
+        matchedInput = null;
+        if (note == null)
+            return false;
+
+        float windowStart = note.data.time - arcadeHitWindowEarly;
+        float windowEnd = note.data.time + arcadeHitWindowLate;
+        float bestDistance = float.MaxValue;
+
+        for (int i = arcadeRecentInputEvents.Count - 1; i >= 0; i--)
+        {
+            ArcadeInputEvent inputEvent = arcadeRecentInputEvents[i];
+            if (inputEvent.time < windowStart)
+                break;
+            if (inputEvent.time > windowEnd)
+                continue;
+
+            int consumeChordId = GetArcadeConsumeChordId(note.data);
+            if (inputEvent.consumedChordIds.Count > 0 && !inputEvent.consumedChordIds.Contains(consumeChordId))
+                continue;
+
+            if (!CanArcadeInputHitNote(note.data, inputEvent))
+                continue;
+
+            float distance = Mathf.Abs(inputEvent.time - note.data.time);
+            if (distance >= bestDistance)
+                continue;
+
+            matchedInput = inputEvent;
+            bestDistance = distance;
+        }
+
+        return matchedInput != null;
+    }
+
+    private bool CanArcadeInputHitNote(ArcadeNoteData note, ArcadeInputEvent inputEvent)
+    {
+        if (inputEvent == null)
+            return false;
+
+        if (inputEvent.isStrum &&
+            DoesArcadeHeldStateMatchNote(note, inputEvent.heldLanes, allowAnchoring: note.noteType != ArcadeNoteType.Strum, openButton: inputEvent.isOpenButton))
+        {
+            return true;
+        }
+
+        if (arcadeGamepadMode && DoesArcadeGamepadModeInputMatchNote(note, inputEvent))
+            return true;
+
+        if (inputEvent.isOpenButton && note.isOpen)
+            return true;
+
+        if (note.noteType == ArcadeNoteType.Tap)
+            return DoesArcadeTapInputMatchNote(note, inputEvent);
+
+        if (note.noteType == ArcadeNoteType.Hopo && arcadeComboActive)
+            return DoesArcadeTapInputMatchNote(note, inputEvent);
+
+        return false;
+    }
+
+    private bool DoesArcadeGamepadModeInputMatchNote(ArcadeNoteData note, ArcadeInputEvent inputEvent)
+    {
+        if (note.isOpen)
+        {
+            if (note.noteType == ArcadeNoteType.Strum)
+                return inputEvent.isOpenButton;
+
+            if (!inputEvent.isRelease && !inputEvent.isOpenButton)
+                return false;
+
+            return DoesArcadeHeldStateMatchNote(note, inputEvent.heldLanes, allowAnchoring: true, openButton: inputEvent.isOpenButton);
+        }
+
+        if (!inputEvent.isTap)
+            return false;
+
+        if (!AnyRequiredArcadeLanePressed(note, inputEvent.pressedLanes))
+            return false;
+
+        return DoesArcadeHeldStateMatchNote(note, inputEvent.heldLanes, allowAnchoring: true, openButton: false);
+    }
+
+    private bool DoesArcadeTapInputMatchNote(ArcadeNoteData note, ArcadeInputEvent inputEvent)
+    {
+        if (note.isOpen)
+        {
+            if (!inputEvent.isRelease && !inputEvent.isOpenButton)
+                return false;
+
+            return DoesArcadeHeldStateMatchNote(note, inputEvent.heldLanes, allowAnchoring: true, openButton: inputEvent.isOpenButton);
+        }
+
+        if (!inputEvent.isTap)
+            return false;
+
+        if (!AnyRequiredArcadeLanePressed(note, inputEvent.pressedLanes))
+            return false;
+
+        return DoesArcadeHeldStateMatchNote(note, inputEvent.heldLanes, allowAnchoring: true, openButton: false);
+    }
+
+    private static int GetArcadeConsumeChordId(ArcadeNoteData note)
+    {
+        return note.chordId >= 0 ? note.chordId : note.id;
+    }
+
+    private static int CountArcadeChordGroups(IReadOnlyList<ArcadeNoteState> states)
+    {
+        if (states == null || states.Count == 0)
+            return 0;
+
+        HashSet<int> chordIds = new HashSet<int>();
+        for (int i = 0; i < states.Count; i++)
+        {
+            ArcadeNoteState state = states[i];
+            if (state == null)
+                continue;
+
+            chordIds.Add(GetArcadeConsumeChordId(state.data));
+        }
+
+        return chordIds.Count;
+    }
+
+    private bool AnyRequiredArcadeLanePressed(ArcadeNoteData note, bool[] pressedLanes)
+    {
+        if (pressedLanes == null || pressedLanes.Length < 5)
+            return false;
+
+        bool[] requiredLanes = new bool[5];
+        if (!BuildArcadeRequiredLanes(note, requiredLanes, out _, out _))
+            return false;
+
+        for (int lane = 0; lane < 5; lane++)
+        {
+            if (requiredLanes[lane] && pressedLanes[lane])
+                return true;
+        }
+
+        return false;
+    }
+
+    private bool DoesArcadeHeldStateMatchNote(ArcadeNoteData note, bool[] heldLanes, bool allowAnchoring, bool openButton)
+    {
+        if (heldLanes == null || heldLanes.Length < 5)
+            return false;
+
+        if (note.isOpen)
+        {
+            if (openButton)
+                return true;
+
+            for (int lane = 0; lane < 5; lane++)
+            {
+                if (heldLanes[lane])
+                    return false;
+            }
+
+            return true;
+        }
+
+        bool hasRequiredLane = false;
+        bool[] requiredLanes = new bool[5];
+        int highestRequiredLane = -1;
+        int requiredCount = 0;
+        hasRequiredLane = BuildArcadeRequiredLanes(note, requiredLanes, out requiredCount, out highestRequiredLane);
+
+        if (!hasRequiredLane)
+            return false;
+
+        for (int lane = 0; lane < 5; lane++)
+        {
+            if (requiredLanes[lane] && !heldLanes[lane])
+                return false;
+        }
+
+        if (!allowAnchoring && requiredCount > 1)
+        {
+            for (int lane = 0; lane < 5; lane++)
+            {
+                if (!requiredLanes[lane] && heldLanes[lane])
+                    return false;
+            }
+
+            return true;
+        }
+
+        for (int lane = highestRequiredLane + 1; lane < 5; lane++)
+        {
+            if (heldLanes[lane])
+                return false;
+        }
+
+        return true;
+    }
+
+    private bool BuildArcadeRequiredLanes(ArcadeNoteData note, bool[] requiredLanes, out int requiredCount, out int highestRequiredLane)
+    {
+        requiredCount = 0;
+        highestRequiredLane = -1;
+        if (requiredLanes == null || requiredLanes.Length < 5)
+            return false;
+
+        for (int lane = 0; lane < 5; lane++)
+            requiredLanes[lane] = false;
+
+        if (note.chordId >= 0 && arcadeNoteStates != null)
+        {
+            for (int i = 0; i < arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState chordNoteState = arcadeNoteStates[i];
+                if (chordNoteState == null || chordNoteState.data.chordId != note.chordId)
+                    continue;
+
+                ArcadeNoteData chordNote = chordNoteState.data;
+                if (chordNote.lane < 0 || chordNote.lane >= 5)
+                    continue;
+
+                requiredLanes[chordNote.lane] = true;
+            }
+        }
+
+        if (note.lane >= 0 && note.lane < 5)
+            requiredLanes[note.lane] = true;
+
+        for (int lane = 0; lane < 5; lane++)
+        {
+            if (!requiredLanes[lane])
+                continue;
+
+            requiredCount++;
+            highestRequiredLane = Mathf.Max(highestRequiredLane, lane);
+        }
+
+        return requiredCount > 0;
+    }
+
+    private bool IsSameArcadeChordShapeAsPrevious(ArcadeNoteData note)
+    {
+        if (arcadeNoteStates == null || arcadeNoteStates.Count == 0)
+            return false;
+
+        int currentChordId = GetArcadeConsumeChordId(note);
+        ArcadeNoteData? previous = null;
+        float previousTime = -1f;
+
+        for (int i = 0; i < arcadeNoteStates.Count; i++)
+        {
+            ArcadeNoteState state = arcadeNoteStates[i];
+            if (state == null || GetArcadeConsumeChordId(state.data) == currentChordId)
+                continue;
+
+            float candidateTime = state.data.time;
+            if (candidateTime >= note.time - 0.0001f || candidateTime <= previousTime)
+                continue;
+
+            previous = state.data;
+            previousTime = candidateTime;
+        }
+
+        if (!previous.HasValue)
+            return false;
+
+        return ArcadeChordShapesEqual(note, previous.Value);
+    }
+
+    private bool ArcadeChordShapesEqual(ArcadeNoteData first, ArcadeNoteData second)
+    {
+        if (first.isOpen || second.isOpen)
+            return first.isOpen == second.isOpen;
+
+        bool[] firstRequired = new bool[5];
+        bool[] secondRequired = new bool[5];
+        if (!BuildArcadeRequiredLanes(first, firstRequired, out int firstCount, out _) ||
+            !BuildArcadeRequiredLanes(second, secondRequired, out int secondCount, out _) ||
+            firstCount != secondCount)
+        {
+            return false;
+        }
+
+        for (int lane = 0; lane < 5; lane++)
+        {
+            if (firstRequired[lane] != secondRequired[lane])
+                return false;
+        }
+
+        return true;
+    }
+
+    private void ResolveArcadeChord(ArcadeNoteData note, GameplayNoteResult result, float resolvedTime)
+    {
+        int consumeChordId = GetArcadeConsumeChordId(note);
+        bool changed = false;
+        for (int i = 0; i < arcadeNoteStates.Count; i++)
+        {
+            ArcadeNoteState state = arcadeNoteStates[i];
+            if (state == null || state.IsResolved || GetArcadeConsumeChordId(state.data) != consumeChordId)
+                continue;
+
+            state.result = result;
+            state.resolvedAt = resolvedTime;
+            state.isJudgeable = false;
+            changed = true;
+        }
+
+        if (changed)
+            ApplyArcadeChordScoreAndState(note, result);
+    }
+
+    private void ResolveArcadeOverstrums()
+    {
+        for (int i = 0; i < arcadeRecentInputEvents.Count; i++)
+        {
+            ArcadeInputEvent inputEvent = arcadeRecentInputEvents[i];
+            if (inputEvent == null || inputEvent.overstrumJudged)
+                continue;
+
+            bool overstrumCandidate =
+                inputEvent.isStrum ||
+                inputEvent.isOpenButton ||
+                (arcadeGamepadMode && inputEvent.isTap);
+            if (!overstrumCandidate)
+                continue;
+
+            inputEvent.overstrumJudged = true;
+            if (inputEvent.consumedChordIds.Count == 0)
+                ResetArcadeCombo();
+        }
+    }
+
+    private void ApplyArcadeChordScoreAndState(ArcadeNoteData note, GameplayNoteResult result)
+    {
+        int chordId = GetArcadeConsumeChordId(note);
+        activeArcadeSustains.Remove(chordId);
+
+        if (result != GameplayNoteResult.Hit)
+        {
+            ResetArcadeCombo();
+            return;
+        }
+
+        int noteCount = GetArcadeChordLaneCount(note);
+        currentSessionArcadeScoreValue += Mathf.Max(1, noteCount) * 50 * GetArcadeScoreMultiplier(arcadeComboCount);
+        arcadeComboCount++;
+        arcadeComboActive = true;
+        TryStartArcadeSustain(note);
+    }
+
+    private void TryStartArcadeSustain(ArcadeNoteData note)
+    {
+        float sustainDuration = GetArcadeChordSustainDuration(note);
+        float sustainBeats = GetArcadeChordSustainBeats(note);
+        if (!HasMeaningfulArcadeSustain(sustainDuration, sustainBeats))
+            return;
+
+        int chordId = GetArcadeConsumeChordId(note);
+        activeArcadeSustains[chordId] = new ArcadeActiveSustain
+        {
+            chordId = chordId,
+            note = note,
+            endTime = note.time + sustainDuration,
+            durationSeconds = sustainDuration,
+            basePointsPerSecond = sustainDuration > 0.0001f ? (25f * sustainBeats) / sustainDuration : 0f,
+            lastProcessedTime = Mathf.Max(songTimer, note.time),
+            pendingScoreRemainder = 0f,
+            broken = false
+        };
+    }
+
+    private void UpdateActiveArcadeSustains()
+    {
+        if (activeArcadeSustains.Count == 0)
+            return;
+
+        List<int> completed = null;
+        foreach (KeyValuePair<int, ArcadeActiveSustain> pair in activeArcadeSustains)
+        {
+            ArcadeActiveSustain sustain = pair.Value;
+            if (sustain == null)
+            {
+                completed ??= new List<int>();
+                completed.Add(pair.Key);
+                continue;
+            }
+
+            float clampedNow = Mathf.Min(songTimer, sustain.endTime);
+            if (clampedNow <= sustain.lastProcessedTime + 0.0001f)
+            {
+                if (songTimer >= sustain.endTime - 0.0001f || sustain.broken)
+                {
+                    completed ??= new List<int>();
+                    completed.Add(pair.Key);
+                }
+
+                continue;
+            }
+
+            if (sustain.broken || !DoesArcadeHeldStateMatchNote(sustain.note, arcadeHeldLanes, allowAnchoring: true, openButton: false))
+            {
+                sustain.broken = true;
+                completed ??= new List<int>();
+                completed.Add(pair.Key);
+                continue;
+            }
+
+            float elapsed = clampedNow - sustain.lastProcessedTime;
+            if (elapsed > 0.0001f && sustain.basePointsPerSecond > 0f)
+            {
+                float addedScore = (elapsed * sustain.basePointsPerSecond * GetArcadeScoreMultiplier(arcadeComboCount)) + sustain.pendingScoreRemainder;
+                int wholePoints = Mathf.FloorToInt(addedScore + 0.0001f);
+                if (wholePoints > 0)
+                    currentSessionArcadeScoreValue += wholePoints;
+                sustain.pendingScoreRemainder = Mathf.Max(0f, addedScore - wholePoints);
+            }
+
+            sustain.lastProcessedTime = clampedNow;
+            if (songTimer >= sustain.endTime - 0.0001f)
+            {
+                completed ??= new List<int>();
+                completed.Add(pair.Key);
+            }
+        }
+
+        if (completed == null)
+            return;
+
+        for (int i = 0; i < completed.Count; i++)
+            activeArcadeSustains.Remove(completed[i]);
+    }
+
+    private int GetArcadeScoreMultiplier(int comboCount)
+    {
+        return Mathf.Clamp(1 + Mathf.Max(0, comboCount) / 10, 1, 4);
+    }
+
+    private void ResetArcadeCombo()
+    {
+        arcadeComboCount = 0;
+        arcadeComboActive = false;
+    }
+
+    private int GetArcadeChordLaneCount(ArcadeNoteData note)
+    {
+        bool[] requiredLanes = new bool[5];
+        return BuildArcadeRequiredLanes(note, requiredLanes, out int requiredCount, out _) ? Mathf.Max(1, requiredCount) : 1;
+    }
+
+    private float GetArcadeChordSustainDuration(ArcadeNoteData note)
+    {
+        float best = Mathf.Max(0f, note.duration);
+        int chordId = GetArcadeConsumeChordId(note);
+        if (arcadeNoteStates == null)
+            return best;
+
+        for (int i = 0; i < arcadeNoteStates.Count; i++)
+        {
+            ArcadeNoteState state = arcadeNoteStates[i];
+            if (state == null || GetArcadeConsumeChordId(state.data) != chordId)
+                continue;
+
+            best = Mathf.Max(best, Mathf.Max(0f, state.data.duration));
+        }
+
+        return best;
+    }
+
+    private float GetArcadeChordSustainBeats(ArcadeNoteData note)
+    {
+        float best = Mathf.Max(0f, note.sustainBeats);
+        int chordId = GetArcadeConsumeChordId(note);
+        if (arcadeNoteStates == null)
+            return best;
+
+        for (int i = 0; i < arcadeNoteStates.Count; i++)
+        {
+            ArcadeNoteState state = arcadeNoteStates[i];
+            if (state == null || GetArcadeConsumeChordId(state.data) != chordId)
+                continue;
+
+            best = Mathf.Max(best, Mathf.Max(0f, state.data.sustainBeats));
+        }
+
+        return best;
+    }
+
+    private static bool HasMeaningfulArcadeSustain(float durationSeconds, float sustainBeats)
+    {
+        return durationSeconds >= ArcadeMinimumSustainDurationSeconds &&
+               sustainBeats >= ArcadeMinimumSustainBeats;
+    }
+
     private bool TryFindMatchingNoteEvent(GameplayNoteState note, out NoteEvent matchedEvent, out int consumeKey, out float matchedEventTime)
     {
         matchedEvent = null;
@@ -5777,12 +7940,12 @@ private void OpenOrFocusToneLab()
         for (int i = recentNoteEvents.Count - 1; i >= 0; i--)
         {
             NoteEvent ev = recentNoteEvents[i];
-            
+
             if (ev.time < windowStart) break;
             if (ev.time > windowEnd) continue;
 
             if (!TryGetAcceptedConsumeKey(note, ev.pitches, out int acceptedConsumeKey)) continue;
-            if (ev.consumedKeys.Contains(acceptedConsumeKey)) continue; 
+            if (ev.consumedKeys.Contains(acceptedConsumeKey)) continue;
 
             float distance = Mathf.Abs(ev.time - note.data.time);
             if (distance >= bestDistance) continue;
@@ -6015,15 +8178,8 @@ private void OpenOrFocusToneLab()
 
     private void SendDetectorHintPacketIfNeeded()
     {
-        if (!sendDetectorHintsToPython)
-            return;
-
         float realtimeNow = Time.realtimeSinceStartup;
         if (!detectorHintForceSend && (realtimeNow - lastDetectorHintSendRealtime) < detectorHintSendIntervalSeconds)
-            return;
-
-        EnsureDetectorHintClient();
-        if (detectorHintClient == null || detectorHintEndpoint == null)
             return;
 
         string payload = BuildDetectorHintPayload(songTimer);
@@ -6041,6 +8197,13 @@ private void OpenOrFocusToneLab()
             return;
         }
 
+        if (!sendDetectorHintsToPython)
+            return;
+
+        EnsureDetectorHintClient();
+        if (detectorHintClient == null || detectorHintEndpoint == null)
+            return;
+
         try
         {
             byte[] bytes = Encoding.UTF8.GetBytes(payload);
@@ -6057,6 +8220,9 @@ private void OpenOrFocusToneLab()
 
     private string BuildDetectorHintPayload(float currentSongTime)
     {
+        if (TryBuildNotesDetectorTestHintPayload(currentSongTime, out string testPayload))
+            return testPayload;
+
         var windows = new List<DetectorHintWindow>();
         BuildDetectorHintWindows(currentSongTime, windows);
 
@@ -6085,6 +8251,67 @@ private void OpenOrFocusToneLab()
         }
 
         return builder.ToString();
+    }
+
+    private bool TryBuildNotesDetectorTestHintPayload(float currentSongTime, out string payload)
+    {
+        payload = null;
+
+        if (!showNotesDetectorTestMenu)
+            return false;
+
+        float hintTimelineTime = GetNotesDetectorTestHintTimelineTime();
+
+        if (!showNotesDetectorRoutinePopup)
+        {
+            payload = BuildDetectorTestSyncPayload(hintTimelineTime);
+            return true;
+        }
+
+        if (notesDetectorRoutineStageIndex < 0 || notesDetectorRoutineStageIndex >= notesDetectorRoutineSteps.Count)
+        {
+            payload = BuildDetectorTestSyncPayload(hintTimelineTime);
+            return true;
+        }
+
+        NotesDetectorRoutineStep currentStep = notesDetectorRoutineSteps[notesDetectorRoutineStageIndex];
+        if (currentStep == null || currentStep.RequireSilence || currentStep.TargetMidis == null || currentStep.TargetMidis.Length == 0)
+        {
+            payload = BuildDetectorTestSyncPayload(hintTimelineTime);
+            return true;
+        }
+
+        string notesCsv = string.Join(",",
+            currentStep.TargetMidis
+                .Where(midi => midi >= 0)
+                .Distinct()
+                .OrderBy(midi => midi)
+                .Select(GetNoteNameFromMidi));
+        if (string.IsNullOrWhiteSpace(notesCsv))
+        {
+            payload = BuildDetectorTestSyncPayload(hintTimelineTime);
+            return true;
+        }
+
+        float hintStart = hintTimelineTime - NotesDetectorRoutineHintWindowSeconds;
+        float hintEnd = hintTimelineTime + NotesDetectorRoutineHintWindowSeconds;
+        payload =
+            $"HINT|{hintTimelineTime.ToString("F3", CultureInfo.InvariantCulture)}|" +
+            $"{hintStart.ToString("F3", CultureInfo.InvariantCulture)}:{hintEnd.ToString("F3", CultureInfo.InvariantCulture)}:{notesCsv}";
+        return true;
+    }
+
+    private float GetNotesDetectorTestHintTimelineTime()
+    {
+        int stepBucket = showNotesDetectorRoutinePopup
+            ? Mathf.Clamp(notesDetectorRoutineStageIndex + 1, 1, notesDetectorRoutineSteps.Count + 1)
+            : 0;
+        return NotesDetectorTestHintTimelineBaseSeconds + (stepBucket * NotesDetectorTestHintTimelineStepSeconds);
+    }
+
+    private static string BuildDetectorTestSyncPayload(float hintTimelineTime)
+    {
+        return $"SYNC|{hintTimelineTime.ToString("F3", CultureInfo.InvariantCulture)}";
     }
 
     private void BuildDetectorHintWindows(float currentSongTime, List<DetectorHintWindow> output)
@@ -6567,11 +8794,24 @@ private void ParseDetectorPacket(string detectorPacket)
         if (backingTrackSource != null && backingTrackSource.clip != null)
             duration = Mathf.Max(duration, backingTrackSource.clip.length);
 
+        if (gameplayMode == GuitarGameplayMode.Arcade && arcadeAudioSources != null)
+        {
+            for (int i = 0; i < arcadeAudioSources.Count; i++)
+            {
+                AudioSource source = arcadeAudioSources[i];
+                if (source != null && source.clip != null)
+                    duration = Mathf.Max(duration, source.clip.length);
+            }
+        }
+
         if (generatedSongPlayer != null && IsGeneratedPlaybackAvailable())
             duration = Mathf.Max(duration, generatedSongPlayer.ArrangementDurationSeconds);
 
         if (chartNotes != null && chartNotes.Count > 0)
             duration = Mathf.Max(duration, chartNotes.Max(note => note.time + Mathf.Max(0.05f, note.duration)));
+
+        if (gameplayMode == GuitarGameplayMode.Arcade && arcadeNoteStates != null && arcadeNoteStates.Count > 0)
+            duration = Mathf.Max(duration, arcadeNoteStates.Max(note => note.data.time + Mathf.Max(0.05f, note.data.duration)));
 
         return Mathf.Max(0f, duration);
     }
@@ -6635,11 +8875,20 @@ private void ParseDetectorPacket(string detectorPacket)
                     ? songMetadata
                     : LoadSongMetadataForEntry(song);
                 availableSongFavorited.Add(metadata != null && metadata.favoriteInLibrary);
-                float normalScore = Mathf.Clamp(GetHighestTrackScore(metadata), 0f, 100f);
-                HeroScoreSummary heroScore = GetHighestHeroTrackScoreSummary(metadata);
+                int arcadeBestScore = song.LibraryType == SongLibraryType.Arcade
+                    ? GetHighestArcadeScoreValue(metadata)
+                    : 0;
+                float normalScore = song.LibraryType == SongLibraryType.Arcade
+                    ? arcadeBestScore
+                    : Mathf.Clamp(GetHighestTrackScore(metadata), 0f, 100f);
+                HeroScoreSummary heroScore = song.LibraryType == SongLibraryType.Arcade
+                    ? default
+                    : GetHighestHeroTrackScoreSummary(metadata);
                 availableSongScores.Add(normalScore);
-                availableSongScoreTexts.Add(BuildCombinedScoreText(normalScore, heroScore));
-                availableSongDifficultyLabels.Add(SongLibraryService.GetDifficultyLabel(song.DifficultyRating));
+                availableSongScoreTexts.Add(song.LibraryType == SongLibraryType.Arcade
+                    ? FormatArcadeMenuScoreText(arcadeBestScore)
+                    : BuildCombinedScoreText(normalScore, heroScore));
+                availableSongDifficultyLabels.Add(song.LibraryType == SongLibraryType.Arcade ? "Arcade" : SongLibraryService.GetDifficultyLabel(song.DifficultyRating));
             }
             else
             {
@@ -6650,17 +8899,36 @@ private void ParseDetectorPacket(string detectorPacket)
             }
         }
 
-        List<float> availableTrackScores = new List<float>(pendingTrackSelectionParts.Count);
-        List<string> availableTrackScoreTexts = new List<string>(pendingTrackSelectionParts.Count);
-        for (int i = 0; i < pendingTrackSelectionParts.Count; i++)
+        bool pendingSongIsArcade = pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade;
+        List<float> availableTrackScores = new List<float>(pendingSongIsArcade ? pendingArcadeArrangementSummaries.Count : pendingTrackSelectionParts.Count);
+        List<string> availableTrackScoreTexts = new List<string>(pendingSongIsArcade ? pendingArcadeArrangementSummaries.Count : pendingTrackSelectionParts.Count);
+        if (pendingSongIsArcade)
         {
-            MusicXmlLoader.MusicXmlPartSummary track = pendingTrackSelectionParts[i];
-            float normalScore = pendingTrackMetadata != null ? GetStoredTrackScore(pendingTrackMetadata, track.PartId) : 0f;
-            HeroScoreSummary heroScore = pendingTrackMetadata != null
-                ? GetStoredHeroTrackScoreSummary(pendingTrackMetadata, track.PartId)
-                : default;
-            availableTrackScores.Add(normalScore);
-            availableTrackScoreTexts.Add(BuildCombinedScoreText(normalScore, heroScore));
+            for (int i = 0; i < pendingArcadeArrangementSummaries.Count; i++)
+            {
+                ArcadeArrangementSummary arrangement = pendingArcadeArrangementSummaries[i];
+                bool supportsSelectedDifficulty = arrangement?.Difficulties != null &&
+                                                  arrangement.Difficulties.Contains(selectedArcadeDifficulty);
+                int score = supportsSelectedDifficulty
+                    ? GetStoredArcadeScoreValue(pendingTrackMetadata, arrangement.ArrangementId, selectedArcadeDifficulty)
+                    : 0;
+
+                availableTrackScores.Add(score);
+                availableTrackScoreTexts.Add(supportsSelectedDifficulty ? FormatArcadeMenuScoreText(score) : "--");
+            }
+        }
+        else
+        {
+            for (int i = 0; i < pendingTrackSelectionParts.Count; i++)
+            {
+                MusicXmlLoader.MusicXmlPartSummary track = pendingTrackSelectionParts[i];
+                float normalScore = pendingTrackMetadata != null ? GetStoredTrackScore(pendingTrackMetadata, track.PartId) : 0f;
+                HeroScoreSummary heroScore = pendingTrackMetadata != null
+                    ? GetStoredHeroTrackScoreSummary(pendingTrackMetadata, track.PartId)
+                    : default;
+                availableTrackScores.Add(normalScore);
+                availableTrackScoreTexts.Add(BuildCombinedScoreText(normalScore, heroScore));
+            }
         }
 
         SongLibraryBrowseEntry selectedBrowseEntry = GetSelectedSongLibraryBrowseEntry();
@@ -6673,10 +8941,26 @@ private void ParseDetectorPacket(string detectorPacket)
             string.Equals(selectedLibrarySongEntry.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase)
                 ? songMetadata
                 : LoadSongMetadataForEntry(selectedLibrarySongEntry);
-        HeroScoreSummary selectedLibraryHeroScore = GetHighestHeroTrackScoreSummary(selectedLibrarySongMetadata);
+        HeroScoreSummary selectedLibraryHeroScore = selectedLibrarySongEntry != null && selectedLibrarySongEntry.LibraryType == SongLibraryType.Arcade
+            ? default
+            : GetHighestHeroTrackScoreSummary(selectedLibrarySongMetadata);
+        ArcadeArrangementSummary pendingArcadeArrangement = GetPendingSelectedArcadeArrangementSummary();
+        List<string> arcadeDifficultyLabels = new List<string> { "X", "H", "M", "E" };
+        List<bool> arcadeDifficultyAvailable = new List<bool>(4);
+        for (int i = 0; i < 4; i++)
+        {
+            ArcadeDifficulty difficulty = DifficultyFromUiIndex(i);
+            bool available = pendingArcadeArrangement != null &&
+                             pendingArcadeArrangement.Difficulties != null &&
+                             pendingArcadeArrangement.Difficulties.Contains(difficulty);
+            arcadeDifficultyAvailable.Add(available);
+        }
 
         return new GuitarGameplaySnapshot
         {
+            gameplayMode = gameplayMode,
+            songLibraryType = selectedSongLibraryType,
+            selectedSongLibraryTypeIndex = (int)selectedSongLibraryType,
             songTime = songTimer,
             isPaused = isPaused,
             noteByNoteModeEnabled = noteByNoteModeEnabled,
@@ -6685,6 +8969,7 @@ private void ParseDetectorPacket(string detectorPacket)
             heroModeHeartCount = heroModeHeartCount,
             currentHeroHeartsRemaining = GetCurrentHeroHeartsRemaining(),
             showHighwayCharacter = ShouldDisplayHighwayCharacter(heroModeEnabled),
+            forceStandardTuning = forceStandardTuning,
             selectedPauseActionIndex = selectedPauseActionIndex,
             selectedGameModesIndex = selectedGameModesIndex,
             selectedHeroModeSettingsIndex = selectedHeroModeSettingsIndex,
@@ -6711,7 +8996,18 @@ private void ParseDetectorPacket(string detectorPacket)
             currentSessionScoreHits = sessionScoreHits,
             currentSessionScoreMisses = sessionScoreMisses,
             currentSessionScorePercent = currentSessionScorePercent,
+            currentSessionArcadeScore = currentSessionArcadeScoreValue,
+            currentSessionArcadeCombo = arcadeComboCount,
+            currentSessionArcadeMultiplier = GetArcadeScoreMultiplier(arcadeComboCount),
             noteStates = noteStates,
+            arcadeNoteStates = arcadeNoteStates,
+            arcadeLaneCount = ArcadeLaneCount,
+            selectedArcadeArrangementId = selectedArcadeArrangementId,
+            selectedArcadeArrangementDisplayName = GetSelectedArcadeArrangementDisplayName(),
+            selectedArcadeDifficultyLabel = ArcadeCloneHeroLoader.GetDifficultyLabel(selectedArcadeDifficulty),
+            arcadeDifficultyLabels = arcadeDifficultyLabels,
+            arcadeDifficultyAvailable = arcadeDifficultyAvailable,
+            selectedArcadeDifficultyIndex = DifficultyToUiIndex(selectedArcadeDifficulty),
             sections = tabSections,
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
@@ -6725,6 +9021,12 @@ private void ParseDetectorPacket(string detectorPacket)
             showMainMenu = showMainMenu,
             mainMenuFlowActive = mainMenuFlowActive,
             selectedMainMenuIndex = selectedMainMenuIndex,
+            showStartMenu = showStartMenu,
+            selectedStartMenuStepIndex = (int)startMenuStep,
+            selectedStartMenuModeIndex = selectedStartMenuModeIndex,
+            selectedStartMenuArcadeSetupIndex = selectedStartMenuArcadeSetupIndex,
+            selectedStartMenuArcadeInputIndex = selectedStartMenuArcadeInputIndex,
+            startMenuArcadeGamepadMode = startMenuArcadeGamepadMode,
             showSongSelection = showSongSelection,
             songSelectionSongConfirmed = songSelectionSongConfirmed,
             showTrackSelection = showTrackSelection,
@@ -6752,8 +9054,8 @@ private void ParseDetectorPacket(string detectorPacket)
             selectedLibrarySongArtworkPath = selectedBrowseEntry?.ArtworkPath ?? string.Empty,
             selectedLibrarySongDifficultyLabel = selectedBrowseEntry?.DifficultyLabel ?? string.Empty,
             selectedLibrarySongAudioLabel = BuildSongLibraryAudioSummary(selectedLibrarySongEntry),
-            selectedLibrarySongTuningLabel = GetPendingTrackTuningLabel(),
-            selectedLibrarySongTrackCount = selectedLibrarySongEntry != null ? pendingTrackSelectionParts.Count : 0,
+            selectedLibrarySongTuningLabel = pendingSongIsArcade ? string.Empty : GetPendingTrackTuningLabel(),
+            selectedLibrarySongTrackCount = selectedLibrarySongEntry != null ? (pendingSongIsArcade ? pendingArcadeArrangementSummaries.Count : pendingTrackSelectionParts.Count) : 0,
             selectedLibrarySongHeroBestHeartsRemaining = Mathf.Max(0, selectedLibraryHeroScore.heartsRemaining),
             selectedLibrarySongHeroBestHeartsTotal = Mathf.Max(0, selectedLibraryHeroScore.heartsTotal),
             selectedLibrarySongHasMp3 = selectedLibrarySongEntry != null && !string.IsNullOrWhiteSpace(selectedLibrarySongEntry.Mp3Path),
@@ -6761,7 +9063,9 @@ private void ParseDetectorPacket(string detectorPacket)
             selectedLibrarySongIsCurrent = selectedLibrarySongEntry != null &&
                                           currentSongEntry != null &&
                                           string.Equals(selectedLibrarySongEntry.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase),
-            availableTrackNames = pendingTrackSelectionParts.Select(track => track.Name).ToList(),
+            availableTrackNames = pendingSongIsArcade
+                ? pendingArcadeArrangementSummaries.Select(track => track.DisplayName).ToList()
+                : pendingTrackSelectionParts.Select(track => track.Name).ToList(),
             availableTrackScores = availableTrackScores,
             availableTrackScoreTexts = availableTrackScoreTexts,
             selectedTrackIndex = selectedTrackListIndex,
@@ -6782,9 +9086,9 @@ private void ParseDetectorPacket(string detectorPacket)
             showSongSettingsTrackSelectionPopup = showSongSettingsTrackSelectionPopup,
             songSettingsTrackOptionNames = currentSongPartSummaries.Select(summary => summary.Name).ToList(),
             selectedSongSettingsTrackOptionIndex = Mathf.Clamp(showSongSettingsTrackSelectionPopup ? selectedSongSettingsTrackSelectionIndex : GetResolvedSongSettingsTrackPopupIndex(), 0, Mathf.Max(0, currentSongPartSummaries.Count - 1)),
-            selectedTrackDisplayName = GetTrackDisplayName(GetCurrentTrackOptionIndex()),
-            selectedTrackTuningLabel = GetResolvedActiveTrackTuningLabel(),
-            trackSelectionHint = GetTrackOptionCount() > 1 ? "Track: click row or Q/E" : "Track: single detected part",
+            selectedTrackDisplayName = gameplayMode == GuitarGameplayMode.Arcade ? $"{GetSelectedArcadeArrangementDisplayName()} {ArcadeCloneHeroLoader.GetDifficultyLabel(selectedArcadeDifficulty)}" : GetTrackDisplayName(GetCurrentTrackOptionIndex()),
+            selectedTrackTuningLabel = gameplayMode == GuitarGameplayMode.Arcade ? string.Empty : GetResolvedActiveTrackTuningLabel(),
+            trackSelectionHint = gameplayMode == GuitarGameplayMode.Arcade ? "Arcade arrangement and difficulty" : GetTrackOptionCount() > 1 ? "Track: click row or Q/E" : "Track: single detected part",
             offsetScopeLabel = useTrackOffsetForCurrentTrack ? "Track" : "Song",
             offsetScopeHint = "Offset scope: O toggles Song/Track",
             hasBackingTrack = hasBackingTrack,
@@ -6797,6 +9101,8 @@ private void ParseDetectorPacket(string detectorPacket)
             songEnded = songHasEnded,
             songEndedAsGameOver = songEndedAsGameOver,
             currentTrackBestScorePercent = Mathf.Clamp(currentTrackBestScorePercent, 0f, 100f),
+            currentTrackBestArcadeScore = currentTrackBestArcadeScoreValue,
+            currentSongBestArcadeScore = currentSongBestArcadeScoreValue,
             currentTrackHeroBestScorePercent = Mathf.Clamp(currentTrackHeroBestScorePercent, 0f, 100f),
             currentTrackHeroBestHeartsRemaining = Mathf.Max(0, currentTrackHeroBestHeartsRemaining),
             currentTrackHeroBestHeartsTotal = Mathf.Max(0, currentTrackHeroBestHeartsTotal),
@@ -6817,6 +9123,7 @@ private void ParseDetectorPacket(string detectorPacket)
             notesDetectorRoutineStatusText = GetNotesDetectorRoutineStatusText(),
             notesDetectorRoutineProgressText = GetNotesDetectorRoutineProgressText(),
             notesDetectorRoutineTabRows = GetNotesDetectorRoutineTabRows(),
+            notesDetectorRoutineTabRowStates = GetNotesDetectorRoutineTabRowStates(),
             notesDetectorRoutineStatusOk = showNotesDetectorRoutinePopup && (notesDetectorRoutineStageIndex >= notesDetectorRoutineSteps.Count || notesDetectorRoutineMatchedSinceTime >= 0f),
             notesDetectorRoutineCompleted = showNotesDetectorRoutinePopup && notesDetectorRoutineStageIndex >= notesDetectorRoutineSteps.Count,
             showStartupTuningReminder = showStartupTuningReminder,
@@ -6826,17 +9133,20 @@ private void ParseDetectorPacket(string detectorPacket)
 
     private void EnsureRenderer()
     {
-        if (activeRenderer != null && activeRendererMode == renderMode) return;
+        if (activeRenderer != null && activeRendererMode == renderMode && activeRendererGameplayMode == gameplayMode) return;
 
         if (activeRenderer != null) activeRenderer.DisposeRenderer();
 
-        if (renderMode == GuitarRenderMode.Tabs)
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+            activeRenderer = new ArcadeHighway3DRenderer();
+        else if (renderMode == GuitarRenderMode.Tabs)
             activeRenderer = new GuitarTabsRenderer();
         else
             activeRenderer = new GuitarHighway3DRenderer();
 
         activeRenderer.Initialize(this, chartNotes, tabSections);
         activeRendererMode = renderMode;
+        activeRendererGameplayMode = gameplayMode;
     }
 
     private void UpdateUiText()
@@ -6923,6 +9233,16 @@ private void ParseDetectorPacket(string detectorPacket)
         songVolumePercent = 100f;
 
         List<NoteData> loadedNotes = null;
+        currentArcadeChart = new ArcadeChartData();
+        arcadeNoteStates = new List<ArcadeNoteState>();
+        arcadeTotalChordCount = 0;
+        currentArcadeArrangementSummaries.Clear();
+        arcadeRecentInputEvents.Clear();
+        activeArcadeSustains.Clear();
+        latestArcadeInputEventId = 0;
+        ResetArcadeCombo();
+        if (useBuiltInDemoSong)
+            gameplayMode = GuitarGameplayMode.Guitar;
 
         // 1. Discover and load a valid runtime song from persistentDataPath/Songs.
         if (!useBuiltInDemoSong)
@@ -6941,55 +9261,69 @@ private void ParseDetectorPacket(string detectorPacket)
 
             if (currentSongEntry != null)
             {
+                gameplayMode = currentSongEntry.LibraryType == SongLibraryType.Arcade ? GuitarGameplayMode.Arcade : GuitarGameplayMode.Guitar;
+                if (gameplayMode == GuitarGameplayMode.Arcade)
+                    renderMode = GuitarRenderMode.Highway3D;
+
                 Debug.Log($"[GuitarBridgeServer] Selected runtime song '{currentSongEntry.SongId}' from {currentSongEntry.SongDirectory}");
                 SaveSelectedSongPreference(currentSongEntry);
                 currentSongFileName = ResolveSongMetadataFileName(currentSongEntry);
-                SongMetadata trackMetadata = LoadSongMetadata(currentSongFileName);
-                useAutoTrackSelection = trackMetadata.useAutoTrackSelection;
-                selectedMusicXmlPartId = string.IsNullOrEmpty(trackMetadata.selectedMusicXmlPartId) ? string.Empty : trackMetadata.selectedMusicXmlPartId;
 
-                currentSongPartSummaries.AddRange(GetPartSummariesWithFallback(currentSongEntry));
-                ApplyTrackSelectionPreference();
-
-                try
+                if (gameplayMode == GuitarGameplayMode.Arcade)
                 {
-                    loadedNotes = SongNotationFacade.LoadSong(currentSongEntry.PrimaryNotationPath, currentSongEntry.PrimaryNotationKind, midiTrackIndex);
-                    Debug.Log($"Notation load attempt: {currentSongEntry.PrimaryNotationPath} ({currentSongEntry.PrimaryNotationKind})");
+                    loadedNotes = new List<NoteData>();
+                    LoadArcadeSongContent(currentSongEntry);
                 }
-                catch (Exception e)
+                else
                 {
-                    Debug.LogWarning("Primary notation loader error: " + e.Message);
-                }
+                    SongMetadata trackMetadata = LoadSongMetadata(currentSongFileName);
+                    useAutoTrackSelection = trackMetadata.useAutoTrackSelection;
+                    selectedMusicXmlPartId = string.IsNullOrEmpty(trackMetadata.selectedMusicXmlPartId) ? string.Empty : trackMetadata.selectedMusicXmlPartId;
 
-                if ((loadedNotes == null || loadedNotes.Count == 0) &&
-                    currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.MusicXml &&
-                    !string.IsNullOrEmpty(currentSongEntry.XmlPath))
-                {
+                    currentSongPartSummaries.AddRange(GetPartSummariesWithFallback(currentSongEntry));
+                    ApplyTrackSelectionPreference();
+
                     try
                     {
-                        loadedNotes = MusicXmlLoader.LoadMusicXmlSong(currentSongEntry.XmlPath, midiTrackIndex);
-                        Debug.Log($"MusicXML fallback load attempt: {currentSongEntry.XmlPath}");
+                        loadedNotes = SongNotationFacade.LoadSong(currentSongEntry.PrimaryNotationPath, currentSongEntry.PrimaryNotationKind, midiTrackIndex);
+                        Debug.Log($"Notation load attempt: {currentSongEntry.PrimaryNotationPath} ({currentSongEntry.PrimaryNotationKind})");
                     }
                     catch (Exception e)
                     {
-                        Debug.LogWarning("MusicXmlLoader fallback error: " + e.Message);
+                        Debug.LogWarning("Primary notation loader error: " + e.Message);
                     }
-                }
 
-                if ((loadedNotes == null || loadedNotes.Count == 0) && !string.IsNullOrEmpty(currentSongEntry.MidiPath))
-                {
-                    try
+                    if ((loadedNotes == null || loadedNotes.Count == 0) &&
+                        currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.MusicXml &&
+                        !string.IsNullOrEmpty(currentSongEntry.XmlPath))
                     {
-                        loadedNotes = MidiLoader.LoadMidiSong(currentSongEntry.MidiPath, midiTrackIndex);
+                        try
+                        {
+                            loadedNotes = MusicXmlLoader.LoadMusicXmlSong(currentSongEntry.XmlPath, midiTrackIndex);
+                            Debug.Log($"MusicXML fallback load attempt: {currentSongEntry.XmlPath}");
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogWarning("MusicXmlLoader fallback error: " + e.Message);
+                        }
                     }
-                    catch (Exception e)
+
+                    if ((loadedNotes == null || loadedNotes.Count == 0) && !string.IsNullOrEmpty(currentSongEntry.MidiPath))
                     {
-                        Debug.LogWarning("MidiLoader Error: " + e.Message);
+                        try
+                        {
+                            loadedNotes = MidiLoader.LoadMidiSong(currentSongEntry.MidiPath, midiTrackIndex);
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.LogWarning("MidiLoader Error: " + e.Message);
+                        }
                     }
                 }
             }
             else
             {
+                gameplayMode = GuitarGameplayMode.Guitar;
                 currentSongPartSummaries.Clear();
                 Debug.LogWarning("[GuitarBridgeServer] No valid runtime songs were found in persistent storage.");
             }
@@ -6998,7 +9332,8 @@ private void ParseDetectorPacket(string detectorPacket)
 
         InitializeSongMetadataAndAudio();
 
-        bool useDemo = useBuiltInDemoSong || (useDemoSongIfMidiMissing && (loadedNotes == null || loadedNotes.Count == 0));
+        bool useDemo = gameplayMode == GuitarGameplayMode.Guitar &&
+                       (useBuiltInDemoSong || (useDemoSongIfMidiMissing && (loadedNotes == null || loadedNotes.Count == 0)));
 
         // 2. Load the demo song if no MIDI was found
         if (useDemo)
@@ -7008,7 +9343,7 @@ private void ParseDetectorPacket(string detectorPacket)
         }
 
         // 3. Fallback to random notes if absolutely everything fails
-        if (loadedNotes == null || loadedNotes.Count == 0)
+        if (gameplayMode == GuitarGameplayMode.Guitar && (loadedNotes == null || loadedNotes.Count == 0))
         {
             loadedNotes = new List<NoteData>();
             for (int i = 0; i < 50; i++)
@@ -7017,7 +9352,7 @@ private void ParseDetectorPacket(string detectorPacket)
             }
         }
 
-        chartNotes = loadedNotes;
+        chartNotes = loadedNotes ?? new List<NoteData>();
         chartNoteById.Clear();
 
         for (int i = 0; i < chartNotes.Count; i++)
@@ -7031,7 +9366,9 @@ private void ParseDetectorPacket(string detectorPacket)
         noteStates = chartNotes.Select(n => new GameplayNoteState(n)).ToList();
         
 
-        float songEndTime = chartNotes.Count > 0 ? chartNotes.Max(n => n.time + n.duration) : GetEffectiveTabSectionDuration();
+        float songEndTime = gameplayMode == GuitarGameplayMode.Arcade && arcadeNoteStates != null && arcadeNoteStates.Count > 0
+            ? arcadeNoteStates.Max(n => n.data.time + n.data.duration)
+            : chartNotes.Count > 0 ? chartNotes.Max(n => n.time + n.duration) : GetEffectiveTabSectionDuration();
         loopStartTime = Mathf.Clamp(loopStartTime, 0f, Mathf.Max(0f, songEndTime - 0.05f));
         loopEndTime = Mathf.Clamp(loopEndTime, loopStartTime + 0.05f, Mathf.Max(loopStartTime + 0.05f, songEndTime));
 
@@ -7047,6 +9384,62 @@ private void ParseDetectorPacket(string detectorPacket)
         SyncAudioToSongTimer(playImmediately: !isPaused);
     }
 
+    private void LoadArcadeSongContent(SongLibraryEntry entry)
+    {
+        currentArcadeArrangementSummaries.Clear();
+        currentArcadeChart = new ArcadeChartData();
+        arcadeNoteStates = new List<ArcadeNoteState>();
+        arcadeTotalChordCount = 0;
+        activeArcadeSustains.Clear();
+        ResetArcadeCombo();
+        selectedMusicXmlPartId = string.Empty;
+        useAutoTrackSelection = false;
+        midiTrackIndex = -1;
+        currentLoadedTrackIndex = -1;
+
+        if (entry == null || string.IsNullOrWhiteSpace(entry.ArcadeChartPath))
+            return;
+
+        List<ArcadeArrangementSummary> summaries = ArcadeCloneHeroLoader.GetArrangementSummaries(entry.ArcadeChartPath);
+        currentArcadeArrangementSummaries.AddRange(summaries.Select(summary => summary.Clone()));
+        SongMetadata metadata = LoadSongMetadata(ResolveSongMetadataFileName(entry), BuildSongMetadataPath(entry));
+
+        string savedArrangementId = metadata != null ? metadata.selectedArcadeArrangementId : string.Empty;
+        ArcadeArrangementSummary selectedSummary = !string.IsNullOrWhiteSpace(savedArrangementId)
+            ? currentArcadeArrangementSummaries.FirstOrDefault(summary => string.Equals(summary.ArrangementId, savedArrangementId, StringComparison.OrdinalIgnoreCase))
+            : null;
+        selectedSummary ??= currentArcadeArrangementSummaries.FirstOrDefault();
+
+        if (selectedSummary == null)
+        {
+            Debug.LogWarning($"[GuitarBridgeServer] Clone Hero chart had no playable arrangements: {entry.ArcadeChartPath}");
+            return;
+        }
+
+        selectedArcadeArrangementId = selectedSummary.ArrangementId;
+        ArcadeDifficulty savedDifficulty = ArcadeCloneHeroLoader.ParseDifficulty(metadata?.selectedArcadeDifficulty, ArcadeCloneHeroLoader.GetBestDefaultDifficulty(selectedSummary.Difficulties));
+        selectedArcadeDifficulty = selectedSummary.Difficulties.Contains(savedDifficulty)
+            ? savedDifficulty
+            : ArcadeCloneHeroLoader.GetBestDefaultDifficulty(selectedSummary.Difficulties);
+
+        currentArcadeChart = ArcadeCloneHeroLoader.Load(entry.ArcadeChartPath, selectedArcadeArrangementId, selectedArcadeDifficulty);
+        if (currentArcadeChart.Arrangements == null || currentArcadeChart.Arrangements.Count == 0)
+            currentArcadeChart.Arrangements = currentArcadeArrangementSummaries.Select(summary => summary.Clone()).ToList();
+
+        arcadeNoteStates = currentArcadeChart.Notes != null
+            ? currentArcadeChart.Notes.Select(note => new ArcadeNoteState(note)).ToList()
+            : new List<ArcadeNoteState>();
+        arcadeTotalChordCount = CountArcadeChordGroups(arcadeNoteStates);
+
+        currentTrackBestScorePercent = 0f;
+        currentTrackBestArcadeScoreValue = GetStoredArcadeScoreValue(metadata, selectedArcadeArrangementId, selectedArcadeDifficulty);
+        currentTrackHeroBestScorePercent = 0f;
+        currentTrackHeroBestHeartsRemaining = 0;
+        currentTrackHeroBestHeartsTotal = 0;
+        currentSongBestScorePercent = 0f;
+        currentSongBestArcadeScoreValue = GetHighestArcadeScoreValue(metadata);
+    }
+
     private void ResetActiveRendererContent()
     {
         if (activeRenderer == null)
@@ -7060,6 +9453,9 @@ private void ParseDetectorPacket(string detectorPacket)
 
         if (activeRenderer is GuitarHighway3DRenderer highwayRenderer)
             highwayRenderer.ResetRenderer(chartNotes, tabSections);
+
+        if (activeRenderer is ArcadeHighway3DRenderer arcadeRenderer)
+            arcadeRenderer.ResetRenderer(chartNotes, tabSections);
     }
 
     private void EnsureBackingTrackSource()
@@ -7527,6 +9923,9 @@ private void ParseDetectorPacket(string detectorPacket)
     {
         if (songPlaybackAudioMode == SongPlaybackAudioMode.Generated)
         {
+            if (gameplayMode == GuitarGameplayMode.Arcade)
+                return hasBackingTrack ? SongPlaybackAudioMode.Mp3 : SongPlaybackAudioMode.Muted;
+
             if (IsGeneratedPlaybackAvailable())
                 return SongPlaybackAudioMode.Generated;
 
@@ -7543,6 +9942,22 @@ private void ParseDetectorPacket(string detectorPacket)
             return $"{GetSongPlaybackAudioModeLabel(songPlaybackAudioMode)} (Fallback {GetSongPlaybackAudioModeLabel(effectiveMode)})";
 
         return GetSongPlaybackAudioModeLabel(songPlaybackAudioMode);
+    }
+
+    private SongPlaybackAudioMode[] GetAvailableSongPlaybackAudioModesForCurrentGameMode()
+    {
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+            return new[] { SongPlaybackAudioMode.Mp3, SongPlaybackAudioMode.Muted };
+
+        return new[] { SongPlaybackAudioMode.Generated, SongPlaybackAudioMode.Mp3, SongPlaybackAudioMode.Muted };
+    }
+
+    private SongPlaybackAudioMode NormalizeSongPlaybackAudioModeForCurrentGameMode(SongPlaybackAudioMode mode)
+    {
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+            return mode == SongPlaybackAudioMode.Muted ? SongPlaybackAudioMode.Muted : SongPlaybackAudioMode.Mp3;
+
+        return mode;
     }
 
     private static string ResolveSongMetadataFileName(SongLibraryEntry entry)
@@ -7580,6 +9995,8 @@ private void ParseDetectorPacket(string detectorPacket)
             backingTrackLoadError = "No runtime song selected.";
             currentSongBestScorePercent = 0f;
             currentTrackBestScorePercent = 0f;
+            currentSongBestArcadeScoreValue = 0;
+            currentTrackBestArcadeScoreValue = 0;
             currentTrackHeroBestScorePercent = 0f;
             currentTrackHeroBestHeartsRemaining = 0;
             currentTrackHeroBestHeartsTotal = 0;
@@ -7596,13 +10013,43 @@ private void ParseDetectorPacket(string detectorPacket)
         tabSpeedOffsetPercent = Mathf.Clamp(songMetadata.tabSpeedOffsetPercent <= 0f ? 100f : songMetadata.tabSpeedOffsetPercent, 50f, 150f);
         songStartDelaySeconds = Mathf.Clamp(songMetadata.songStartDelaySeconds <= 0f ? defaultSongStartDelaySeconds : songMetadata.songStartDelaySeconds, 0f, 8f);
         songVolumePercent = Mathf.Clamp(songMetadata.songVolumePercent, 0f, 100f);
-        songPlaybackAudioMode = songMetadata.playbackAudioMode;
+        songPlaybackAudioMode = NormalizeSongPlaybackAudioModeForCurrentGameMode(songMetadata.playbackAudioMode);
         loopPauseDurationSeconds = Mathf.Clamp(songMetadata.loopPauseDurationSeconds, 0f, 8f);
         if (songMetadata.hasSavedLoopWindow)
         {
             loopStartTime = Mathf.Max(0f, songMetadata.loopStartTime);
             loopEndTime = Mathf.Max(loopStartTime + 0.05f, songMetadata.loopEndTime);
         }
+
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+        {
+            if (songMetadata.playbackAudioMode != songPlaybackAudioMode)
+            {
+                songMetadata.playbackAudioMode = songPlaybackAudioMode;
+                SaveSongMetadata(songMetadata, GetMetadataPath(currentSongFileName), currentSongFileName);
+            }
+
+            generatedPlaybackSourceArrangement = null;
+            generatedPlaybackArrangement = null;
+            generatedSongPlayer?.ClearArrangement();
+            showGeneratedAudioTrackSelectionPopup = false;
+            showSongSettingsTrackSelectionPopup = false;
+            selectedArcadeArrangementId = string.IsNullOrWhiteSpace(songMetadata.selectedArcadeArrangementId)
+                ? selectedArcadeArrangementId
+                : songMetadata.selectedArcadeArrangementId;
+            selectedArcadeDifficulty = ArcadeCloneHeroLoader.ParseDifficulty(songMetadata.selectedArcadeDifficulty, selectedArcadeDifficulty);
+            currentSongBestScorePercent = 0f;
+            currentTrackBestScorePercent = 0f;
+            currentSongBestArcadeScoreValue = GetHighestArcadeScoreValue(songMetadata);
+            currentTrackBestArcadeScoreValue = GetStoredArcadeScoreValue(songMetadata, selectedArcadeArrangementId, selectedArcadeDifficulty);
+            currentTrackHeroBestScorePercent = 0f;
+            currentTrackHeroBestHeartsRemaining = 0;
+            currentTrackHeroBestHeartsTotal = 0;
+            RefreshEffectiveAudioOffset();
+            LoadArcadeBackingTracks(currentSongEntry);
+            return;
+        }
+
         useAutoTrackSelection = songMetadata.useAutoTrackSelection;
         selectedMusicXmlPartId = string.IsNullOrEmpty(songMetadata.selectedMusicXmlPartId) ? string.Empty : songMetadata.selectedMusicXmlPartId;
         useAllGeneratedPlaybackParts = songMetadata.useAllGeneratedPlaybackParts;
@@ -7615,6 +10062,8 @@ private void ParseDetectorPacket(string detectorPacket)
         selectedSongSettingsTrackSelectionIndex = 0;
         currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
         currentTrackBestScorePercent = Mathf.Clamp(GetStoredTrackScore(songMetadata, selectedMusicXmlPartId), 0f, 100f);
+        currentSongBestArcadeScoreValue = 0;
+        currentTrackBestArcadeScoreValue = 0;
         HeroScoreSummary currentHeroTrackBest = GetStoredHeroTrackScoreSummary(songMetadata, selectedMusicXmlPartId);
         currentTrackHeroBestScorePercent = currentHeroTrackBest.percent;
         currentTrackHeroBestHeartsRemaining = currentHeroTrackBest.heartsRemaining;
@@ -7626,6 +10075,7 @@ private void ParseDetectorPacket(string detectorPacket)
         backingTrackLoadError = string.Empty;
         isLoadingBackingTrack = false;
 
+        ClearArcadeAudioSources();
         if (backingTrackSource.clip != null)
             backingTrackSource.clip = null;
 
@@ -7686,6 +10136,127 @@ private void ParseDetectorPacket(string detectorPacket)
         isLoadingBackingTrack = false;
     }
 
+    private void LoadArcadeBackingTracks(SongLibraryEntry entry)
+    {
+        EnsureBackingTrackSource();
+        ShutdownGeneratedSongPlayer();
+        ClearArcadeAudioSources();
+
+        List<string> audioPaths = entry?.ArcadeAudioPaths != null
+            ? entry.ArcadeAudioPaths.Where(path => !string.IsNullOrWhiteSpace(path) && File.Exists(path)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+            : new List<string>();
+
+        if (audioPaths.Count == 0 && !string.IsNullOrWhiteSpace(entry?.Mp3Path) && File.Exists(entry.Mp3Path))
+            audioPaths.Add(entry.Mp3Path);
+
+        if (audioPaths.Count == 0)
+        {
+            hasBackingTrack = false;
+            isLoadingBackingTrack = false;
+            backingTrackLoadError = $"No Clone Hero audio files found for: {entry?.SongDirectory}";
+            Debug.LogWarning(backingTrackLoadError);
+            return;
+        }
+
+        EnsureArcadeAudioSourceCount(audioPaths.Count);
+        backingTrackLoadError = string.Empty;
+        hasBackingTrack = false;
+        isLoadingBackingTrack = true;
+        pendingArcadeAudioLoadCount = audioPaths.Count;
+
+        for (int i = 0; i < audioPaths.Count; i++)
+            StartCoroutine(LoadArcadeAudioStemFromFile(audioPaths[i], arcadeAudioSources[i]));
+    }
+
+    private void EnsureArcadeAudioSourceCount(int count)
+    {
+        EnsureBackingTrackSource();
+        if (!arcadeAudioSources.Contains(backingTrackSource))
+            arcadeAudioSources.Insert(0, backingTrackSource);
+
+        while (arcadeAudioSources.Count < count)
+        {
+            AudioSource source = gameObject.AddComponent<AudioSource>();
+            source.playOnAwake = false;
+            source.loop = false;
+            source.spatialBlend = 0f;
+            arcadeAudioSources.Add(source);
+        }
+
+        for (int i = 0; i < arcadeAudioSources.Count; i++)
+        {
+            AudioSource source = arcadeAudioSources[i];
+            if (source == null)
+                continue;
+
+            source.playOnAwake = false;
+            source.loop = false;
+            source.spatialBlend = 0f;
+            source.clip = null;
+            source.Stop();
+            source.enabled = i < count;
+        }
+    }
+
+    private void ClearArcadeAudioSources()
+    {
+        for (int i = 0; i < arcadeAudioSources.Count; i++)
+        {
+            AudioSource source = arcadeAudioSources[i];
+            if (source == null)
+                continue;
+
+            source.Stop();
+            source.clip = null;
+            if (source != backingTrackSource)
+                source.enabled = false;
+        }
+
+        if (backingTrackSource != null)
+        {
+            backingTrackSource.Stop();
+            backingTrackSource.clip = null;
+        }
+    }
+
+    private System.Collections.IEnumerator LoadArcadeAudioStemFromFile(string absolutePath, AudioSource targetSource)
+    {
+        string uri = "file://" + absolutePath.Replace("\\", "/");
+        using (UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(uri, AudioType.UNKNOWN))
+        {
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            bool failed = request.result != UnityWebRequest.Result.Success;
+#else
+            bool failed = request.isNetworkError || request.isHttpError;
+#endif
+            if (failed)
+            {
+                backingTrackLoadError = $"Failed to load Clone Hero audio '{absolutePath}': {request.error}";
+                Debug.LogWarning(backingTrackLoadError);
+            }
+            else
+            {
+                AudioClip loadedClip = DownloadHandlerAudioClip.GetContent(request);
+                if (loadedClip != null && targetSource != null)
+                {
+                    loadedClip.name = Path.GetFileNameWithoutExtension(absolutePath);
+                    targetSource.clip = loadedClip;
+                    hasBackingTrack = true;
+                }
+            }
+        }
+
+        pendingArcadeAudioLoadCount = Mathf.Max(0, pendingArcadeAudioLoadCount - 1);
+        if (pendingArcadeAudioLoadCount <= 0)
+        {
+            isLoadingBackingTrack = false;
+            ApplyPlaybackSpeedToAudio();
+            SyncAudioToSongTimer(playImmediately: !isPaused);
+        }
+    }
+
     private static string BuildSongMetadataPath(SongLibraryEntry entry)
     {
         if (entry != null)
@@ -7723,6 +10294,18 @@ private void ParseDetectorPacket(string detectorPacket)
         return highest;
     }
 
+    private static int GetHighestArcadeScoreValue(SongMetadata metadata)
+    {
+        if (metadata == null || metadata.arcadeScores == null || metadata.arcadeScores.Count == 0)
+            return 0;
+
+        int highest = 0;
+        for (int i = 0; i < metadata.arcadeScores.Count; i++)
+            highest = Mathf.Max(highest, Mathf.Max(0, metadata.arcadeScores[i].bestScoreValue));
+
+        return highest;
+    }
+
     private static HeroScoreSummary GetHighestHeroTrackScoreSummary(SongMetadata metadata)
     {
         if (metadata == null || metadata.trackScores == null || metadata.trackScores.Count == 0)
@@ -7747,6 +10330,18 @@ private void ParseDetectorPacket(string detectorPacket)
 
         TrackScoreEntry entry = metadata.trackScores.FirstOrDefault(score => string.Equals(score.partId ?? string.Empty, partId, StringComparison.OrdinalIgnoreCase));
         return entry != null ? Mathf.Clamp(entry.bestScorePercent, 0f, 100f) : 0f;
+    }
+
+    private static int GetStoredArcadeScoreValue(SongMetadata metadata, string arrangementId, ArcadeDifficulty difficulty)
+    {
+        if (metadata == null || metadata.arcadeScores == null || string.IsNullOrEmpty(arrangementId))
+            return 0;
+
+        string difficultyKey = ArcadeCloneHeroLoader.SerializeDifficulty(difficulty);
+        ArcadeScoreEntry entry = metadata.arcadeScores.FirstOrDefault(score =>
+            string.Equals(score.arrangementId ?? string.Empty, arrangementId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(score.difficulty ?? string.Empty, difficultyKey, StringComparison.OrdinalIgnoreCase));
+        return entry != null ? Mathf.Max(0, entry.bestScoreValue) : 0;
     }
 
     private static HeroScoreSummary GetStoredHeroTrackScoreSummary(SongMetadata metadata, string partId)
@@ -7782,6 +10377,48 @@ private void ParseDetectorPacket(string detectorPacket)
 
         existing.displayName = string.IsNullOrEmpty(displayName) ? existing.displayName : displayName;
         existing.bestScorePercent = Mathf.Max(existing.bestScorePercent, Mathf.Clamp(percent, 0f, 100f));
+    }
+
+    private static void UpsertArcadeScore(SongMetadata metadata, string arrangementId, string displayName, ArcadeDifficulty difficulty, int scoreValue, float accuracyPercent)
+    {
+        if (metadata == null || string.IsNullOrEmpty(arrangementId))
+            return;
+
+        if (metadata.arcadeScores == null)
+            metadata.arcadeScores = new List<ArcadeScoreEntry>();
+
+        string difficultyKey = ArcadeCloneHeroLoader.SerializeDifficulty(difficulty);
+        ArcadeScoreEntry existing = metadata.arcadeScores.FirstOrDefault(score =>
+            string.Equals(score.arrangementId ?? string.Empty, arrangementId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(score.difficulty ?? string.Empty, difficultyKey, StringComparison.OrdinalIgnoreCase));
+        if (existing == null)
+        {
+            metadata.arcadeScores.Add(new ArcadeScoreEntry
+            {
+                arrangementId = arrangementId,
+                displayName = displayName,
+                difficulty = difficultyKey,
+                bestScorePercent = Mathf.Clamp(accuracyPercent, 0f, 100f),
+                bestAccuracyPercent = Mathf.Clamp(accuracyPercent, 0f, 100f),
+                bestScoreValue = Mathf.Max(0, scoreValue)
+            });
+            return;
+        }
+
+        existing.displayName = string.IsNullOrEmpty(displayName) ? existing.displayName : displayName;
+        existing.difficulty = difficultyKey;
+        float clampedAccuracy = Mathf.Clamp(accuracyPercent, 0f, 100f);
+        if (scoreValue > existing.bestScoreValue)
+        {
+            existing.bestScoreValue = Mathf.Max(0, scoreValue);
+            existing.bestAccuracyPercent = clampedAccuracy;
+            existing.bestScorePercent = clampedAccuracy;
+        }
+        else if (scoreValue == existing.bestScoreValue)
+        {
+            existing.bestAccuracyPercent = Mathf.Max(existing.bestAccuracyPercent, clampedAccuracy);
+            existing.bestScorePercent = Mathf.Max(existing.bestScorePercent, clampedAccuracy);
+        }
     }
 
     private static bool ShouldReplaceHeroBest(HeroScoreSummary existing, float percent, int heartsRemaining, int heartsTotal)
@@ -7857,6 +10494,27 @@ private void ParseDetectorPacket(string detectorPacket)
             : heroText;
     }
 
+    private static string FormatArcadeMenuScoreText(int scoreValue)
+    {
+        if (scoreValue <= 0)
+            return "--";
+
+        return scoreValue >= 100000
+            ? FormatArcadeCompactScoreText(scoreValue)
+            : scoreValue.ToString("N0", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatArcadeCompactScoreText(int scoreValue)
+    {
+        if (scoreValue <= 0)
+            return "--";
+        if (scoreValue >= 1000000)
+            return FormattableString.Invariant($"{scoreValue / 1000000f:0.#}M");
+        if (scoreValue >= 1000)
+            return FormattableString.Invariant($"{scoreValue / 1000f:0.#}k");
+        return scoreValue.ToString(CultureInfo.InvariantCulture);
+    }
+
     private SongMetadata LoadSongMetadataForEntry(SongLibraryEntry entry)
     {
         if (entry == null)
@@ -7873,10 +10531,14 @@ private void ParseDetectorPacket(string detectorPacket)
             return 0f;
 
         if (currentSongEntry != null && string.Equals(currentSongEntry.SongDirectory, entry.SongDirectory, StringComparison.OrdinalIgnoreCase))
-            return Mathf.Clamp(currentSongBestScorePercent, 0f, 100f);
+            return entry.LibraryType == SongLibraryType.Arcade
+                ? Mathf.Max(0f, currentSongBestArcadeScoreValue)
+                : Mathf.Clamp(currentSongBestScorePercent, 0f, 100f);
 
         SongMetadata metadata = LoadSongMetadataForEntry(entry);
-        return Mathf.Clamp(GetHighestTrackScore(metadata), 0f, 100f);
+        return entry.LibraryType == SongLibraryType.Arcade
+            ? Mathf.Max(0f, GetHighestArcadeScoreValue(metadata))
+            : Mathf.Clamp(GetHighestTrackScore(metadata), 0f, 100f);
     }
 
     private List<MusicXmlLoader.MusicXmlPartSummary> GetPartSummariesWithFallback(SongLibraryEntry entry)
@@ -7942,12 +10604,56 @@ private void ParseDetectorPacket(string detectorPacket)
             return;
 
         PlayerPrefs.SetString(SelectedSongDirectoryPrefsKey, entry.SongDirectory);
+        PlayerPrefs.SetInt(SelectedSongLibraryTypePrefsKey, (int)entry.LibraryType);
         PlayerPrefs.Save();
     }
 
     private static string LoadSelectedSongPreference()
     {
         return PlayerPrefs.GetString(SelectedSongDirectoryPrefsKey, string.Empty);
+    }
+
+    private void LoadGameSaveState()
+    {
+        firstStartCompleted = false;
+        string path = Path.Combine(ExternalContentPaths.PersistentRoot, GameSaveStateFileName);
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            if (!File.Exists(path))
+            {
+                SaveGameSaveState();
+                return;
+            }
+
+            string json = File.ReadAllText(path);
+            GameSaveState state = JsonUtility.FromJson<GameSaveState>(json);
+            firstStartCompleted = state != null && state.firstStartCompleted;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to load game save state: {ex.Message}");
+        }
+    }
+
+    private void SaveGameSaveState()
+    {
+        string path = Path.Combine(ExternalContentPaths.PersistentRoot, GameSaveStateFileName);
+
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            GameSaveState state = new GameSaveState
+            {
+                firstStartCompleted = firstStartCompleted
+            };
+            File.WriteAllText(path, JsonUtility.ToJson(state, true));
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to save game save state: {ex.Message}");
+        }
     }
 
     private void LoadHeroModePreferences()
@@ -7968,6 +10674,14 @@ private void ParseDetectorPacket(string detectorPacket)
         selectedNativeNotesDetectorInputDeviceIndex = PlayerPrefs.GetInt(NativeDetectorInputDevicePrefsKey, -1);
     }
 
+    private void LoadSongLibraryTypePreference()
+    {
+        selectedSongLibraryType = (SongLibraryType)Mathf.Clamp(
+            PlayerPrefs.GetInt(SelectedSongLibraryTypePrefsKey, (int)SongLibraryType.Guitar),
+            (int)SongLibraryType.Guitar,
+            (int)SongLibraryType.Arcade);
+    }
+
     private void SaveNativeDetectorPreferences()
     {
         PlayerPrefs.SetInt(NativeDetectorInputDevicePrefsKey, selectedNativeNotesDetectorInputDeviceIndex);
@@ -7977,11 +10691,36 @@ private void ParseDetectorPacket(string detectorPacket)
     private void ResetSessionScoreState(bool ignoreCurrentlyResolvedNotes = false)
     {
         sessionScoredNoteIds.Clear();
+        arcadeSessionScoredNoteIds.Clear();
         sessionScoreHits = 0;
         sessionScoreMisses = 0;
         currentSessionScorePercent = 0f;
+        currentSessionArcadeScoreValue = 0;
+        activeArcadeSustains.Clear();
+        ResetArcadeCombo();
 
-        if (!ignoreCurrentlyResolvedNotes || noteStates == null)
+        if (!ignoreCurrentlyResolvedNotes)
+            return;
+
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+        {
+            if (arcadeNoteStates == null)
+                return;
+
+            for (int i = 0; i < arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState noteState = arcadeNoteStates[i];
+                if (noteState == null || !noteState.IsResolved)
+                    continue;
+
+                int noteKey = GetArcadeConsumeChordId(noteState.data);
+                arcadeSessionScoredNoteIds.Add(noteKey);
+            }
+
+            return;
+        }
+
+        if (noteStates == null)
             return;
 
         for (int i = 0; i < noteStates.Count; i++)
@@ -7997,6 +10736,12 @@ private void ParseDetectorPacket(string detectorPacket)
 
     private void UpdateSessionScoreState()
     {
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+        {
+            UpdateArcadeSessionScoreState();
+            return;
+        }
+
         if (loopEnabled || noteStates == null || noteStates.Count == 0)
             return;
 
@@ -8022,8 +10767,41 @@ private void ParseDetectorPacket(string detectorPacket)
             : 0f;
     }
 
+    private void UpdateArcadeSessionScoreState()
+    {
+        if (loopEnabled || arcadeNoteStates == null || arcadeNoteStates.Count == 0)
+            return;
+
+        for (int i = 0; i < arcadeNoteStates.Count; i++)
+        {
+            ArcadeNoteState noteState = arcadeNoteStates[i];
+            if (noteState == null || !noteState.IsResolved)
+                continue;
+
+            int noteKey = GetArcadeConsumeChordId(noteState.data);
+            if (!arcadeSessionScoredNoteIds.Add(noteKey))
+                continue;
+
+            if (noteState.IsHit)
+                sessionScoreHits++;
+            else if (noteState.IsMissed)
+                sessionScoreMisses++;
+        }
+
+        int total = arcadeTotalChordCount > 0 ? arcadeTotalChordCount : CountArcadeChordGroups(arcadeNoteStates);
+        currentSessionScorePercent = total > 0
+            ? Mathf.Clamp(100f * sessionScoreHits / total, 0f, 100f)
+            : 0f;
+    }
+
     private void UpdateAndPersistSongBestScore()
     {
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+        {
+            UpdateAndPersistArcadeBestScore();
+            return;
+        }
+
         if (scoreSaveInvalidated || loopEnabled || currentSongEntry == null || noteStates == null || noteStates.Count == 0 || string.IsNullOrEmpty(selectedMusicXmlPartId))
             return;
 
@@ -8051,6 +10829,22 @@ private void ParseDetectorPacket(string detectorPacket)
         currentTrackBestScorePercent = percent;
         UpsertTrackScore(songMetadata, selectedMusicXmlPartId, trackName, percent);
         currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
+        SaveSongMetadata();
+    }
+
+    private void UpdateAndPersistArcadeBestScore()
+    {
+        if (scoreSaveInvalidated || loopEnabled || currentSongEntry == null || arcadeNoteStates == null || arcadeNoteStates.Count == 0 || string.IsNullOrEmpty(selectedArcadeArrangementId))
+            return;
+
+        int scoreValue = Mathf.Max(0, currentSessionArcadeScoreValue);
+        if (scoreValue < currentTrackBestArcadeScoreValue)
+            return;
+
+        string arrangementName = GetSelectedArcadeArrangementDisplayName();
+        currentTrackBestArcadeScoreValue = scoreValue;
+        UpsertArcadeScore(songMetadata, selectedArcadeArrangementId, arrangementName, selectedArcadeDifficulty, scoreValue, currentSessionScorePercent);
+        currentSongBestArcadeScoreValue = GetHighestArcadeScoreValue(songMetadata);
         SaveSongMetadata();
     }
 
@@ -8089,10 +10883,14 @@ private void ParseDetectorPacket(string detectorPacket)
             loopPauseDurationSeconds = 0f,
             useAutoTrackSelection = true,
             selectedMusicXmlPartId = string.Empty,
+            selectedArcadeArrangementId = string.Empty,
+            selectedArcadeDifficulty = ArcadeDifficulty.Expert.ToString(),
             useAllGeneratedPlaybackParts = true,
             generatedEnabledPartIds = new List<string>(),
             generatedPlaybackSelectionOverrides = new List<GeneratedPlaybackSelectionOverride>(),
+            bestArcadeScoreValue = 0,
             trackScores = new List<TrackScoreEntry>(),
+            arcadeScores = new List<ArcadeScoreEntry>(),
             trackOffsetOverrides = new List<TrackOffsetOverride>()
         };
 
@@ -8110,6 +10908,23 @@ private void ParseDetectorPacket(string detectorPacket)
                     data.trackOffsetOverrides = new List<TrackOffsetOverride>();
                 if (data.trackScores == null)
                     data.trackScores = new List<TrackScoreEntry>();
+                if (data.arcadeScores == null)
+                    data.arcadeScores = new List<ArcadeScoreEntry>();
+                if (data.bestArcadeScoreValue < 0)
+                    data.bestArcadeScoreValue = 0;
+                for (int i = 0; i < data.arcadeScores.Count; i++)
+                {
+                    ArcadeScoreEntry arcadeScore = data.arcadeScores[i];
+                    if (arcadeScore == null)
+                        continue;
+
+                    if (arcadeScore.bestAccuracyPercent <= 0.01f && arcadeScore.bestScorePercent > 0.01f)
+                        arcadeScore.bestAccuracyPercent = Mathf.Clamp(arcadeScore.bestScorePercent, 0f, 100f);
+                    arcadeScore.bestScoreValue = Mathf.Max(0, arcadeScore.bestScoreValue);
+                }
+                data.bestArcadeScoreValue = Mathf.Max(data.bestArcadeScoreValue, GetHighestArcadeScoreValue(data));
+                if (string.IsNullOrWhiteSpace(data.selectedArcadeDifficulty))
+                    data.selectedArcadeDifficulty = ArcadeDifficulty.Expert.ToString();
                 if (data.generatedEnabledPartIds == null)
                     data.generatedEnabledPartIds = new List<string>();
                 if (data.generatedPlaybackSelectionOverrides == null)
@@ -8162,6 +10977,8 @@ private void ParseDetectorPacket(string detectorPacket)
         songMetadata.loopPauseDurationSeconds = loopPauseDurationSeconds;
         songMetadata.useAutoTrackSelection = useAutoTrackSelection;
         songMetadata.selectedMusicXmlPartId = selectedMusicXmlPartId;
+        songMetadata.selectedArcadeArrangementId = selectedArcadeArrangementId;
+        songMetadata.selectedArcadeDifficulty = ArcadeCloneHeroLoader.SerializeDifficulty(selectedArcadeDifficulty);
         songMetadata.useAllGeneratedPlaybackParts = useAllGeneratedPlaybackParts;
         songMetadata.generatedEnabledPartIds = useAllGeneratedPlaybackParts
             ? new List<string>()
@@ -8169,7 +10986,9 @@ private void ParseDetectorPacket(string detectorPacket)
             ? generatedEnabledPartIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             : new List<string>();
         songMetadata.bestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
+        songMetadata.bestArcadeScoreValue = GetHighestArcadeScoreValue(songMetadata);
         currentSongBestScorePercent = songMetadata.bestScorePercent;
+        currentSongBestArcadeScoreValue = songMetadata.bestArcadeScoreValue;
 
         SaveSongMetadata(songMetadata, GetMetadataPath(currentSongFileName), currentSongFileName);
     }
@@ -8181,6 +11000,7 @@ private void ParseDetectorPacket(string detectorPacket)
 
         metadata.songFileName = songFileName;
         metadata.bestScorePercent = Mathf.Clamp(GetHighestTrackScore(metadata), 0f, 100f);
+        metadata.bestArcadeScoreValue = GetHighestArcadeScoreValue(metadata);
 
         try
         {
@@ -8216,6 +11036,8 @@ private void ParseDetectorPacket(string detectorPacket)
             loopPauseDurationSeconds = source.loopPauseDurationSeconds,
             useAutoTrackSelection = source.useAutoTrackSelection,
             selectedMusicXmlPartId = source.selectedMusicXmlPartId,
+            selectedArcadeArrangementId = source.selectedArcadeArrangementId,
+            selectedArcadeDifficulty = string.IsNullOrWhiteSpace(source.selectedArcadeDifficulty) ? ArcadeDifficulty.Expert.ToString() : source.selectedArcadeDifficulty,
             useAllGeneratedPlaybackParts = source.useAllGeneratedPlaybackParts,
             generatedEnabledPartIds = source.generatedEnabledPartIds != null
                 ? source.generatedEnabledPartIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
@@ -8233,6 +11055,7 @@ private void ParseDetectorPacket(string detectorPacket)
                     }).ToList()
                 : new List<GeneratedPlaybackSelectionOverride>(),
             bestScorePercent = source.bestScorePercent,
+            bestArcadeScoreValue = source.bestArcadeScoreValue,
             trackScores = source.trackScores != null
                 ? source.trackScores.Select(score => new TrackScoreEntry
                 {
@@ -8244,6 +11067,19 @@ private void ParseDetectorPacket(string detectorPacket)
                     heroBestHeartsTotal = score.heroBestHeartsTotal
                 }).ToList()
                 : new List<TrackScoreEntry>(),
+            arcadeScores = source.arcadeScores != null
+                ? source.arcadeScores
+                    .Where(score => score != null)
+                    .Select(score => new ArcadeScoreEntry
+                    {
+                        arrangementId = score.arrangementId,
+                        displayName = score.displayName,
+                        difficulty = score.difficulty,
+                        bestScorePercent = score.bestScorePercent,
+                        bestAccuracyPercent = score.bestAccuracyPercent,
+                        bestScoreValue = score.bestScoreValue
+                    }).ToList()
+                : new List<ArcadeScoreEntry>(),
             trackOffsetOverrides = source.trackOffsetOverrides != null
                 ? source.trackOffsetOverrides.Select(entry => new TrackOffsetOverride
                 {
@@ -8286,7 +11122,34 @@ private void ParseDetectorPacket(string detectorPacket)
 
         RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line. This also controls the visible distance between notes.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
-        RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "Treats all gameplay pitch validation as E Standard even when the song uses another tuning.", () => forceStandardTuning, v => { forceStandardTuning = v; RefreshActiveTrackTuning(); });
+        RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "When ON, pitch validation uses E Standard so you can play songs that are not in E Standard without retuning your guitar. When OFF, tune your guitar to the song's required tuning.", () => forceStandardTuning, v => { forceStandardTuning = v; RefreshActiveTrackTuning(); });
+        RegisterIntSetting("arcade.highwayLaneCount", "Arcade Mode", "Arcade Lanes", "Minimum number of lane columns used by the Arcade highway.", 1, 8, 1, () => arcadeHighwayLaneCount, v => arcadeHighwayLaneCount = Mathf.Clamp(v, 1, 8));
+        RegisterFloatSetting("arcade.hitWindowEarly", "Arcade Mode", "Early Hit Window", "How far before the strike line an Arcade input can hit.", 0.02f, 0.30f, 0.005f, () => arcadeHitWindowEarly, v => arcadeHitWindowEarly = Mathf.Max(0f, v));
+        RegisterFloatSetting("arcade.hitWindowLate", "Arcade Mode", "Late Hit Window", "How far after the strike line an Arcade input can hit after the gem has visually passed.", 0.02f, 0.30f, 0.005f, () => arcadeHitWindowLate, v => arcadeHitWindowLate = Mathf.Max(0f, v));
+        RegisterFloatSetting("arcade.noteSpawnZ", "Arcade Mode", "Note Spawn Z", "How far back Arcade notes first appear on the 3D highway.", 10f, 180f, 0.5f, () => arcadeNoteSpawnZ, v => arcadeNoteSpawnZ = Mathf.Max(StrikeLineZ + 1f, v));
+        RegisterFloatSetting("arcade.resolvedHoldTime", "Arcade Mode", "Resolved Hold Time", "How long hit Arcade gems remain visible. Zero matches Clone Hero-style immediate disappearance.", 0f, 0.5f, 0.005f, () => arcadeResolvedHoldTime, v => arcadeResolvedHoldTime = Mathf.Max(0f, v));
+        RegisterEnumSetting("arcade.controls.inputSource", "Arcade Controls", "Input Source", "Selects which Arcade input sources are live. Clone Hero-style keyboard defaults use A S J K L with Up/Down strum.", new []{"Keyboard","Controller","Keyboard + Controller","MIDI","All"}, () => SerializeArcadeInputSource(arcadeInputSource), v => { arcadeInputSource = ParseArcadeInputSource(v); arcadeMidiInputEnabled = UsesArcadeMidiInput(); if (!UsesArcadeMidiInput()) StopArcadeMidiInput(); });
+        RegisterEnumSetting("arcade.controls.controllerDevice", "Arcade Controls", "Controller Device", "Selects which connected joystick slot Arcade mode listens to. 'Any' matches every connected controller, while numbered slots map to Unity's joystick slots.", BuildArcadeControllerDeviceOptions(), () => SerializeArcadeControllerDevice(), v => arcadeControllerDeviceIndex = ParseArcadeControllerDevice(v));
+        RegisterBoolSetting("arcade.controls.gamepadMode", "Arcade Controls", "Gamepad Mode", "Clone Hero-style gamepad mode: each fret/button press acts like a strum for fretted notes. Open strum notes use the Open Button; open HOPO/tap notes can use release or the Open Button.", () => arcadeGamepadMode, v => arcadeGamepadMode = v);
+        RegisterIntSetting("arcade.midiDeviceIndex", "Arcade Controls", "MIDI Device", "Windows MIDI input device index used when Arcade input source includes MIDI.", 0, 16, 1, () => arcadeMidiInputDeviceIndex, v => { arcadeMidiInputDeviceIndex = v; StopArcadeMidiInput(); });
+        RegisterBindingSetting("arcade.controls.keyboard.green", "Arcade Controls", "Keyboard Green", "Clone Hero default keyboard green fret.", () => arcadeKeyboardGreen, v => arcadeKeyboardGreen = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.red", "Arcade Controls", "Keyboard Red", "Clone Hero default keyboard red fret.", () => arcadeKeyboardRed, v => arcadeKeyboardRed = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.yellow", "Arcade Controls", "Keyboard Yellow", "Clone Hero default keyboard yellow fret.", () => arcadeKeyboardYellow, v => arcadeKeyboardYellow = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.blue", "Arcade Controls", "Keyboard Blue", "Clone Hero default keyboard blue fret.", () => arcadeKeyboardBlue, v => arcadeKeyboardBlue = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.orange", "Arcade Controls", "Keyboard Orange", "Clone Hero default keyboard orange fret.", () => arcadeKeyboardOrange, v => arcadeKeyboardOrange = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.strumUp", "Arcade Controls", "Keyboard Strum Up", "Clone Hero default keyboard strum-up key.", () => arcadeKeyboardStrumUp, v => arcadeKeyboardStrumUp = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.strumDown", "Arcade Controls", "Keyboard Strum Down", "Clone Hero default keyboard strum-down key.", () => arcadeKeyboardStrumDown, v => arcadeKeyboardStrumDown = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.open", "Arcade Controls", "Keyboard Open Button", "Optional keyboard open-button binding. Clone Hero's default keyboard layout leaves this unbound.", () => arcadeKeyboardOpen, v => arcadeKeyboardOpen = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterActionSetting("arcade.controls.keyboard.reset", "Arcade Controls", "Reset Keyboard Defaults", "Restores Clone Hero's default keyboard layout: A S J K L with Up/Down strum.", "RESET", () => { ResetArcadeKeyboardBindingsToDefaults(); SaveGlobalRuntimeSettingsMetadata(); });
+        RegisterBindingSetting("arcade.controls.controller.green", "Arcade Controls", "Controller Green", "Primary green fret button for controller or Clone Hero guitar input.", () => arcadeControllerGreen, v => arcadeControllerGreen = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.red", "Arcade Controls", "Controller Red", "Primary red fret button for controller or Clone Hero guitar input.", () => arcadeControllerRed, v => arcadeControllerRed = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.yellow", "Arcade Controls", "Controller Yellow", "Primary yellow fret button for controller or Clone Hero guitar input.", () => arcadeControllerYellow, v => arcadeControllerYellow = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.blue", "Arcade Controls", "Controller Blue", "Primary blue fret button for controller or Clone Hero guitar input.", () => arcadeControllerBlue, v => arcadeControllerBlue = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.orange", "Arcade Controls", "Controller Orange", "Primary orange fret button for controller or Clone Hero guitar input.", () => arcadeControllerOrange, v => arcadeControllerOrange = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.strumUp", "Arcade Controls", "Controller Strum Up", "Controller or guitar strum-up input.", () => arcadeControllerStrumUp, v => arcadeControllerStrumUp = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.strumDown", "Arcade Controls", "Controller Strum Down", "Controller or guitar strum-down input.", () => arcadeControllerStrumDown, v => arcadeControllerStrumDown = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.open", "Arcade Controls", "Controller Open Button", "Optional open-button binding for gamepad-style or guitar controller play.", () => arcadeControllerOpen, v => arcadeControllerOpen = v, ArcadeBindingCaptureKind.Controller);
+        RegisterActionSetting("arcade.controls.controller.reset", "Arcade Controls", "Reset Controller Defaults", "Restores the default generic joystick button layout used by Arcade mode.", "RESET", () => { ResetArcadeControllerBindingsToDefaults(); SaveGlobalRuntimeSettingsMetadata(); });
         RegisterEnumSetting("render.mode", "Highway 3D", "Render Mode", "Switches between Tabs and Highway3D presentation.", new []{"Tabs","Highway3D"}, () => renderMode.ToString(), v => { if (Enum.TryParse(v, out GuitarRenderMode mode)) renderMode = mode; });
 
         RegisterFloatSetting("timing.hitWindowEarly", "Timing & Forgiveness", "Hit Window Early", "How far before a note you can strike and still get credit.", 0.05f, 0.6f, 0.005f, () => hitWindowEarly, v => hitWindowEarly = v);
@@ -8315,6 +11178,17 @@ private void ParseDetectorPacket(string detectorPacket)
             HighwayCharacterDisplayModeOptions,
             () => SerializeHighwayCharacterDisplayMode(highwayCharacterDisplayMode),
             value => highwayCharacterDisplayMode = ParseHighwayCharacterDisplayMode(value));
+        RegisterFloatSetting("fx.characterScale", "Visuals - Character", "Character Scale", "Scales the highway character up or down. Pixel-art scaling still snaps cleanly.", 0.5f, 3f, 0.05f, () => highwayCharacterScale, v => highwayCharacterScale = v);
+        RegisterFloatSetting("fx.characterRigOffsetY", "Visuals - Character", "Character Rig Position Y", "Moves the entire character + portal rig up or down without changing the character's position relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterRigOffsetY, v => highwayCharacterRigOffsetY = v);
+        RegisterFloatSetting("fx.characterOffsetX", "Visuals - Character", "Character Position X", "Moves the highway character left or right relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterOffsetX, v => highwayCharacterOffsetX = v);
+        RegisterFloatSetting("fx.characterOffsetY", "Visuals - Character", "Character Position Y", "Moves the highway character up or down relative to the portal and automatically rebalances the fade/portal blend.", -0.20f, 0.20f, 0.005f, () => highwayCharacterOffsetY, v => highwayCharacterOffsetY = v);
+        RegisterFloatSetting("fx.characterFadeSoftness", "Visuals - Character", "Character Fade Softness", "Controls how gradually the character fades into the portal.", 0.02f, 0.40f, 0.005f, () => highwayCharacterFadeSoftness, v => highwayCharacterFadeSoftness = v);
+        RegisterBoolSetting("fx.characterAnimationsEnabled", "Visuals - Character", "Character Animations", "Enables the character idle motion, note bop, miss flash, and miss particles.", () => highwayCharacterAnimationsEnabled, v => highwayCharacterAnimationsEnabled = v);
+        RegisterBoolSetting("fx.characterPortalEnabled", "Visuals - Character", "Character Portal", "Shows or hides the portal behind the highway character.", () => highwayCharacterPortalEnabled, v => highwayCharacterPortalEnabled = v);
+        RegisterBoolSetting("fx.characterPortalSwirlsEnabled", "Visuals - Character", "Portal Swirls", "Toggles the animated swirl energy inside the character portal.", () => highwayCharacterPortalSwirlsEnabled, v => highwayCharacterPortalSwirlsEnabled = v);
+        RegisterFloatSetting("fx.characterPortalBodyOpacity", "Visuals - Character", "Portal Body Opacity", "Controls how solid the portal body appears behind the character.", 0.15f, 1f, 0.01f, () => highwayCharacterPortalBodyOpacity, v => highwayCharacterPortalBodyOpacity = Mathf.Clamp01(v));
+        RegisterEnumSetting("fx.characterPortalEdgeColor", "Visuals - Character", "Portal Edge Color", "Selects the glowing edge color for the character portal.", HighwayCharacterPortalColorPresetOptions, () => SerializeHighwayCharacterPortalColorPreset(highwayCharacterPortalEdgeColor), value => highwayCharacterPortalEdgeColor = ParseHighwayCharacterPortalColorPreset(value));
+        RegisterEnumSetting("fx.characterPortalSwirlColor", "Visuals - Character", "Portal Swirl Color", "Selects the swirl-energy color inside the character portal.", HighwayCharacterPortalColorPresetOptions, () => SerializeHighwayCharacterPortalColorPreset(highwayCharacterPortalSwirlColor), value => highwayCharacterPortalSwirlColor = ParseHighwayCharacterPortalColorPreset(value));
         RegisterFloatSetting("fx.judgeableDarkenMultiplier", "Visuals", "Judgeable Darken", "Darkens upcoming notes until they enter the hit window.", 1f, 8f, 0.1f, () => judgeableDarkenMultiplier, v => judgeableDarkenMultiplier = v);
         RegisterFloatSetting("fx.tabIdleFillDarken", "Colors - Status", "Idle Fill Darken", "Controls how muted unresolved tab notes appear.", 0f, 1f, 0.01f, () => tabIdleFillDarken, v => tabIdleFillDarken = v);
 
@@ -8455,6 +11329,42 @@ private void ParseDetectorPacket(string detectorPacket)
         });
     }
 
+    private void RegisterBindingSetting(string id, string section, string label, string tooltip, Func<KeyCode> getter, Action<KeyCode> setter, ArcadeBindingCaptureKind captureKind)
+    {
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = id,
+            Section = section,
+            Label = label,
+            Tooltip = tooltip,
+            ValueType = "binding",
+            Getter = () =>
+            {
+                if (string.Equals(activeArcadeBindingSettingId, id, StringComparison.OrdinalIgnoreCase))
+                    return captureKind == ArcadeBindingCaptureKind.Controller ? "PRESS A CONTROLLER BUTTON" : "PRESS A KEY";
+                return SerializeArcadeBinding(getter());
+            },
+            Setter = value => setter(ParseArcadeBinding(value, getter())),
+            Activator = () => BeginArcadeBindingCapture(id),
+            BindingCaptureKind = captureKind
+        });
+    }
+
+    private void RegisterActionSetting(string id, string section, string label, string tooltip, string valueLabel, Action activator)
+    {
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = id,
+            Section = section,
+            Label = label,
+            Tooltip = tooltip,
+            ValueType = "action",
+            Getter = () => string.IsNullOrWhiteSpace(valueLabel) ? "RUN" : valueLabel,
+            Setter = null,
+            Activator = activator
+        });
+    }
+
     private void RegisterSetting(RuntimeSettingDefinition definition)
     {
         if (definition == null || string.IsNullOrEmpty(definition.Id))
@@ -8464,6 +11374,211 @@ private void ParseDetectorPacket(string detectorPacket)
         runtimeSettingById[definition.Id] = definition;
         runtimeSettingDefaultValues[definition.Id] = definition.Getter != null ? definition.Getter() : string.Empty;
         runtimeSettingsSnapshotDirty = true;
+    }
+
+    private static string SerializeArcadeInputSource(ArcadeInputSourceMode source)
+    {
+        switch (source)
+        {
+            case ArcadeInputSourceMode.Keyboard:
+                return "Keyboard";
+            case ArcadeInputSourceMode.Controller:
+                return "Controller";
+            case ArcadeInputSourceMode.Midi:
+                return "MIDI";
+            case ArcadeInputSourceMode.All:
+                return "All";
+            default:
+                return "Keyboard + Controller";
+        }
+    }
+
+    private static List<string> BuildArcadeControllerDeviceOptions()
+    {
+        List<string> options = new List<string> { "Any Connected Controller" };
+        string[] joystickNames = Input.GetJoystickNames();
+        for (int i = 0; i < ArcadeControllerSlotCount; i++)
+        {
+            string deviceName = joystickNames != null && i < joystickNames.Length ? joystickNames[i] : string.Empty;
+            string label = string.IsNullOrWhiteSpace(deviceName)
+                ? $"Joystick {i + 1}"
+                : $"Joystick {i + 1} ({deviceName.Trim()})";
+            options.Add(label);
+        }
+
+        return options;
+    }
+
+    private string SerializeArcadeControllerDevice()
+    {
+        List<string> options = BuildArcadeControllerDeviceOptions();
+        int index = Mathf.Clamp(arcadeControllerDeviceIndex, 0, options.Count - 1);
+        return options[index];
+    }
+
+    private static int ParseArcadeControllerDevice(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.StartsWith("Any", StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        Match match = Regex.Match(value, @"Joystick\s+(\d+)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            return Mathf.Clamp(parsed, 0, ArcadeControllerSlotCount);
+
+        return 0;
+    }
+
+    private static ArcadeInputSourceMode ParseArcadeInputSource(string value)
+    {
+        if (string.Equals(value, "Keyboard", StringComparison.OrdinalIgnoreCase))
+            return ArcadeInputSourceMode.Keyboard;
+        if (string.Equals(value, "Controller", StringComparison.OrdinalIgnoreCase))
+            return ArcadeInputSourceMode.Controller;
+        if (string.Equals(value, "MIDI", StringComparison.OrdinalIgnoreCase))
+            return ArcadeInputSourceMode.Midi;
+        if (string.Equals(value, "All", StringComparison.OrdinalIgnoreCase))
+            return ArcadeInputSourceMode.All;
+        return ArcadeInputSourceMode.KeyboardAndController;
+    }
+
+    private static string SerializeArcadeBinding(KeyCode binding)
+    {
+        return binding == KeyCode.None ? "None" : NormalizeArcadeBinding(binding).ToString();
+    }
+
+    private static KeyCode ParseArcadeBinding(string value, KeyCode fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return fallback;
+        if (string.Equals(value, "None", StringComparison.OrdinalIgnoreCase))
+            return KeyCode.None;
+        return Enum.TryParse(value, true, out KeyCode parsed) ? NormalizeArcadeBinding(parsed) : fallback;
+    }
+
+    private static KeyCode NormalizeArcadeBinding(KeyCode binding)
+    {
+        string name = binding.ToString();
+        Match specificJoystickMatch = Regex.Match(name, @"^Joystick\d+Button(\d+)$", RegexOptions.CultureInvariant);
+        if (specificJoystickMatch.Success && Enum.TryParse($"JoystickButton{specificJoystickMatch.Groups[1].Value}", out KeyCode normalized))
+            return normalized;
+        return binding;
+    }
+
+    private void ResetArcadeKeyboardBindingsToDefaults()
+    {
+        arcadeKeyboardGreen = KeyCode.A;
+        arcadeKeyboardRed = KeyCode.S;
+        arcadeKeyboardYellow = KeyCode.J;
+        arcadeKeyboardBlue = KeyCode.K;
+        arcadeKeyboardOrange = KeyCode.L;
+        arcadeKeyboardStrumUp = KeyCode.UpArrow;
+        arcadeKeyboardStrumDown = KeyCode.DownArrow;
+        arcadeKeyboardOpen = KeyCode.None;
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    private void ResetArcadeControllerBindingsToDefaults()
+    {
+        arcadeControllerGreen = KeyCode.JoystickButton0;
+        arcadeControllerRed = KeyCode.JoystickButton1;
+        arcadeControllerYellow = KeyCode.JoystickButton2;
+        arcadeControllerBlue = KeyCode.JoystickButton3;
+        arcadeControllerOrange = KeyCode.JoystickButton4;
+        arcadeControllerStrumUp = KeyCode.JoystickButton5;
+        arcadeControllerStrumDown = KeyCode.JoystickButton6;
+        arcadeControllerOpen = KeyCode.JoystickButton8;
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    private void BeginArcadeBindingCapture(string settingId)
+    {
+        if (string.IsNullOrWhiteSpace(settingId) || !runtimeSettingById.TryGetValue(settingId, out RuntimeSettingDefinition definition) || definition.BindingCaptureKind == ArcadeBindingCaptureKind.None)
+            return;
+
+        activeArcadeBindingSettingId = settingId;
+        activeArcadeBindingStartFrame = Time.frameCount;
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    private void CancelArcadeBindingCapture()
+    {
+        if (string.IsNullOrEmpty(activeArcadeBindingSettingId))
+            return;
+
+        activeArcadeBindingSettingId = string.Empty;
+        activeArcadeBindingStartFrame = -1;
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    private bool HandleArcadeBindingCaptureInput()
+    {
+        if (string.IsNullOrEmpty(activeArcadeBindingSettingId))
+            return false;
+
+        if (Time.frameCount <= activeArcadeBindingStartFrame)
+            return true;
+
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            CancelArcadeBindingCapture();
+            return true;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Delete))
+        {
+            ApplyRuntimeSettingValue(activeArcadeBindingSettingId, "None", saveMetadata: true);
+            CancelArcadeBindingCapture();
+            return true;
+        }
+
+        if (!runtimeSettingById.TryGetValue(activeArcadeBindingSettingId, out RuntimeSettingDefinition definition))
+        {
+            CancelArcadeBindingCapture();
+            return true;
+        }
+
+        if (TryGetPressedArcadeBinding(definition.BindingCaptureKind, out KeyCode binding))
+        {
+            ApplyRuntimeSettingValue(activeArcadeBindingSettingId, SerializeArcadeBinding(binding), saveMetadata: true);
+            CancelArcadeBindingCapture();
+        }
+
+        return true;
+    }
+
+    private static bool TryGetPressedArcadeBinding(ArcadeBindingCaptureKind captureKind, out KeyCode binding)
+    {
+        Array allCodes = Enum.GetValues(typeof(KeyCode));
+        for (int i = 0; i < allCodes.Length; i++)
+        {
+            KeyCode candidate = (KeyCode)allCodes.GetValue(i);
+            if (candidate == KeyCode.None || !Input.GetKeyDown(candidate))
+                continue;
+
+            bool valid = captureKind == ArcadeBindingCaptureKind.Controller
+                ? IsArcadeControllerBindingKeyCode(candidate)
+                : IsArcadeKeyboardBindingKeyCode(candidate);
+            if (!valid)
+                continue;
+
+            binding = NormalizeArcadeBinding(candidate);
+            return true;
+        }
+
+        binding = KeyCode.None;
+        return false;
+    }
+
+    private static bool IsArcadeKeyboardBindingKeyCode(KeyCode code)
+    {
+        return code != KeyCode.None && !IsArcadeControllerBindingKeyCode(code) && !code.ToString().StartsWith("Mouse", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsArcadeControllerBindingKeyCode(KeyCode code)
+    {
+        string name = code.ToString();
+        return name.StartsWith("JoystickButton", StringComparison.OrdinalIgnoreCase) ||
+               Regex.IsMatch(name, @"^Joystick\d+Button\d+$", RegexOptions.CultureInvariant);
     }
 
     private static string SerializeHighwayCharacterDisplayMode(HighwayCharacterDisplayMode mode)
@@ -8489,6 +11604,25 @@ private void ParseDetectorPacket(string detectorPacket)
             return HighwayCharacterDisplayMode.HeroModeOnly;
 
         return HighwayCharacterDisplayMode.Always;
+    }
+
+    private static string SerializeHighwayCharacterPortalColorPreset(HighwayCharacterPortalColorPreset preset)
+    {
+        switch (preset)
+        {
+            case HighwayCharacterPortalColorPreset.Black:
+                return "Black";
+            default:
+                return "Orange";
+        }
+    }
+
+    private static HighwayCharacterPortalColorPreset ParseHighwayCharacterPortalColorPreset(string value)
+    {
+        if (string.Equals(value, "Black", StringComparison.OrdinalIgnoreCase))
+            return HighwayCharacterPortalColorPreset.Black;
+
+        return HighwayCharacterPortalColorPreset.Orange;
     }
 
     private bool ShouldDisplayHighwayCharacter(bool heroModeActive)
@@ -8520,14 +11654,14 @@ private void ParseDetectorPacket(string detectorPacket)
     {
         if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
         {
-            if (selectedGlobalSettingsTopIndex >= 2 && selectedGlobalSettingsTopIndex <= 5)
+            if (selectedGlobalSettingsTopIndex >= 2 && selectedGlobalSettingsTopIndex <= 7)
             {
                 activeGlobalSettingsCategory = GetGlobalSettingsCategoryFromTopIndex(selectedGlobalSettingsTopIndex);
                 selectedGlobalSettingsItemIndex = 0;
                 return;
             }
 
-            if (selectedGlobalSettingsTopIndex == 6)
+            if (selectedGlobalSettingsTopIndex == 8)
                 ResetGlobalSettingsToDefaultsFromUi();
 
             return;
@@ -8541,7 +11675,12 @@ private void ParseDetectorPacket(string detectorPacket)
         if (setting == null)
             return;
 
-        if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
+        if (runtimeSettingById.TryGetValue(setting.id, out RuntimeSettingDefinition definition) && definition.Activator != null &&
+            (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) || string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase)))
+        {
+            definition.Activator();
+        }
+        else if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
         {
             string nextValue = string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase) ? "false" : "true";
             ApplyRuntimeSettingValue(setting.id, nextValue, saveMetadata: true);
@@ -8582,7 +11721,7 @@ private void ParseDetectorPacket(string detectorPacket)
                         ApplyRuntimeSettingValue("render.mode", renderDefinition.EnumOptions[nextIndex], saveMetadata: true);
                     }
                     break;
-                case 6:
+                case 8:
                     if (delta != 0)
                         ResetGlobalSettingsToDefaultsFromUi();
                     break;
@@ -8597,6 +11736,9 @@ private void ParseDetectorPacket(string detectorPacket)
 
         RuntimeSettingSnapshot setting = settings[Mathf.Clamp(selectedGlobalSettingsItemIndex, 0, settings.Count - 1)];
         if (setting == null)
+            return;
+
+        if (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) || string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase))
             return;
 
         if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
@@ -8650,7 +11792,9 @@ private void ParseDetectorPacket(string detectorPacket)
             case 2: return "Gameplay";
             case 3: return "2D Tabs";
             case 4: return "Highway3D";
-            case 5: return "Visuals";
+            case 5: return "Arcade";
+            case 6: return "Controls";
+            case 7: return "Visuals";
             default: return string.Empty;
         }
     }
@@ -8659,6 +11803,12 @@ private void ParseDetectorPacket(string detectorPacket)
     {
         string normalizedTitle = section?.title?.ToLowerInvariant() ?? string.Empty;
         List<RuntimeSettingSnapshot> sectionSettings = section?.settings;
+
+        if (normalizedTitle.Contains("control") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "arcade.controls."))
+            return "Controls";
+
+        if (normalizedTitle.Contains("arcade") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "arcade."))
+            return "Arcade";
 
         if (normalizedTitle.Contains("timing") || normalizedTitle.Contains("forgiveness") || normalizedTitle.Contains("settings") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "core.") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "timing."))
             return "Gameplay";
@@ -8737,6 +11887,9 @@ private void ParseDetectorPacket(string detectorPacket)
         bool requiresRendererRefresh =
             requiresSectionRebuild ||
             settingId.StartsWith("render.", StringComparison.OrdinalIgnoreCase) ||
+            settingId.StartsWith("arcade.highway", StringComparison.OrdinalIgnoreCase) ||
+            settingId.StartsWith("arcade.noteSpawn", StringComparison.OrdinalIgnoreCase) ||
+            settingId.StartsWith("arcade.resolvedHold", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("highway.", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("layout.", StringComparison.OrdinalIgnoreCase) ||
@@ -8895,6 +12048,21 @@ private void ParseDetectorPacket(string detectorPacket)
 
         if (!Mathf.Approximately(backingTrackSource.volume, volume))
             backingTrackSource.volume = volume;
+
+        if (gameplayMode == GuitarGameplayMode.Arcade && arcadeAudioSources != null)
+        {
+            for (int i = 0; i < arcadeAudioSources.Count; i++)
+            {
+                AudioSource source = arcadeAudioSources[i];
+                if (source == null || source == backingTrackSource)
+                    continue;
+
+                if (!Mathf.Approximately(source.pitch, speed))
+                    source.pitch = speed;
+                if (!Mathf.Approximately(source.volume, volume))
+                    source.volume = volume;
+            }
+        }
     }
 
     private void SyncAudioToSongTimer(bool playImmediately, bool forceSeek = false)
@@ -8906,6 +12074,7 @@ private void ParseDetectorPacket(string detectorPacket)
         {
             if (backingTrackSource != null && backingTrackSource.isPlaying)
                 backingTrackSource.Pause();
+            PauseArcadeAudioSources(skipPrimary: true);
 
             generatedSongPlayer?.SyncTransport(audioSongTimer, playbackSpeedScale, playImmediately, forceSeek);
             return;
@@ -8917,6 +12086,7 @@ private void ParseDetectorPacket(string detectorPacket)
         {
             if (backingTrackSource != null && backingTrackSource.isPlaying)
                 backingTrackSource.Pause();
+            PauseArcadeAudioSources(skipPrimary: true);
             return;
         }
 
@@ -8945,6 +12115,50 @@ private void ParseDetectorPacket(string detectorPacket)
         else if (backingTrackSource.isPlaying)
         {
             backingTrackSource.Pause();
+        }
+
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+            SyncArcadeAudioSources(timelineAudioTime, playImmediately, forceSeek);
+    }
+
+    private void SyncArcadeAudioSources(float timelineAudioTime, bool playImmediately, bool forceSeek)
+    {
+        if (arcadeAudioSources == null || arcadeAudioSources.Count <= 1)
+            return;
+
+        bool shouldBeSilentForCountdown = timelineAudioTime <= 0f;
+        for (int i = 1; i < arcadeAudioSources.Count; i++)
+        {
+            AudioSource source = arcadeAudioSources[i];
+            if (source == null || source.clip == null)
+                continue;
+
+            float audioTime = Mathf.Clamp(timelineAudioTime, 0f, source.clip.length);
+            if (forceSeek || Mathf.Abs(source.time - audioTime) > 0.04f)
+                source.time = audioTime;
+
+            if (shouldBeSilentForCountdown || !playImmediately)
+            {
+                if (source.isPlaying)
+                    source.Pause();
+                continue;
+            }
+
+            if (!source.isPlaying && audioTime < source.clip.length)
+                source.Play();
+        }
+    }
+
+    private void PauseArcadeAudioSources(bool skipPrimary)
+    {
+        if (arcadeAudioSources == null)
+            return;
+
+        for (int i = skipPrimary ? 1 : 0; i < arcadeAudioSources.Count; i++)
+        {
+            AudioSource source = arcadeAudioSources[i];
+            if (source != null && source.isPlaying)
+                source.Pause();
         }
     }
 
