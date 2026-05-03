@@ -10,7 +10,7 @@
     },
     {
       "id": "core.forceStandardTuning",
-      "value": "false"
+      "value": "true"
     },
     {
       "id": "render.mode",
@@ -75,6 +75,50 @@
     {
       "id": "fx.characterDisplay",
       "value": "Always"
+    },
+    {
+      "id": "fx.characterScale",
+      "value": "1"
+    },
+    {
+      "id": "fx.characterRigOffsetY",
+      "value": "-0.05"
+    },
+    {
+      "id": "fx.characterOffsetX",
+      "value": "0.03"
+    },
+    {
+      "id": "fx.characterOffsetY",
+      "value": "0.045"
+    },
+    {
+      "id": "fx.characterFadeSoftness",
+      "value": "0.1"
+    },
+    {
+      "id": "fx.characterAnimationsEnabled",
+      "value": "true"
+    },
+    {
+      "id": "fx.characterPortalEnabled",
+      "value": "true"
+    },
+    {
+      "id": "fx.characterPortalSwirlsEnabled",
+      "value": "true"
+    },
+    {
+      "id": "fx.characterPortalBodyOpacity",
+      "value": "0.8"
+    },
+    {
+      "id": "fx.characterPortalEdgeColor",
+      "value": "Black"
+    },
+    {
+      "id": "fx.characterPortalSwirlColor",
+      "value": "Black"
     },
     {
       "id": "fx.judgeableDarkenMultiplier",
@@ -222,7 +266,7 @@
     },
     {
       "id": "highway.showLandingDot",
-      "value": "true"
+      "value": "false"
     },
     {
       "id": "highway.backgroundDistance",

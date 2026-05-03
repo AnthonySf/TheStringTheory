@@ -8,6 +8,8 @@ using System.IO;
 
 using System.Linq;
 
+using System.Text.RegularExpressions;
+
 using UnityEngine;
 
 using UnityEngine.Rendering;
@@ -85,6 +87,8 @@ public sealed class TabsSongHeaderOverlay
     private const float SongEndButtonFontScale = 1.32f;
 
     private const float SongEndButtonHeightScale = 1.18f;
+
+    private const float StartMenuScale = 1.5f;
 
 
 
@@ -332,6 +336,18 @@ public sealed class TabsSongHeaderOverlay
         public Label subtitleLabel;
 
         public Color accentColor;
+
+    }
+
+    private sealed class StartMenuOption
+
+    {
+
+        public Button button;
+
+        public Label titleLabel;
+
+        public Label bodyLabel;
 
     }
 
@@ -1131,6 +1147,50 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly List<MainMenuEntry> mainMenuEntries = new List<MainMenuEntry>();
 
+    private readonly VisualElement startMenuOverlay;
+
+    private readonly VisualElement startMenuShell;
+
+    private readonly Label startMenuTitleLabel;
+
+    private readonly Label startMenuSubtitleLabel;
+
+    private readonly VisualElement startMenuModeRow;
+
+    private readonly List<StartMenuOption> startMenuModeOptions = new List<StartMenuOption>();
+
+    private readonly VisualElement startMenuGuitarSetupPanel;
+
+    private readonly Label startMenuGuitarSetupTitleLabel;
+
+    private readonly Label startMenuGuitarSetupInfoLabel;
+
+    private readonly Label startMenuGuitarSetupTuningLabel;
+
+    private readonly Button startMenuGuitarSetupForceStandardButton;
+
+    private readonly Label startMenuGuitarSetupHintLabel;
+
+    private readonly Button startMenuGuitarSetupContinueButton;
+
+    private readonly VisualElement startMenuArcadeSetupPanel;
+
+    private readonly Label startMenuArcadeSetupTitleLabel;
+
+    private readonly List<Button> startMenuArcadeInputButtons = new List<Button>();
+
+    private readonly Button startMenuArcadeGamepadModeButton;
+
+    private readonly Button startMenuArcadeContinueButton;
+
+    private readonly Label startMenuArcadeInputHintLabel;
+
+    private readonly Label startMenuArcadeGamepadHintLabel;
+
+    private readonly Label startMenuFooterHintLabel;
+
+    private readonly Label gameplayShortcutLabel;
+
     private readonly Slider speedSlider;
 
     private readonly Label speedValueLabel;
@@ -1262,6 +1322,10 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Label selectionSongsListTitleLabel;
 
+    private readonly Button selectionLibraryGuitarButton;
+
+    private readonly Button selectionLibraryArcadeButton;
+
     private readonly Label selectionSubtitleLabel;
 
     private readonly Button selectionBrowseAllButton;
@@ -1297,6 +1361,10 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Label selectionInfoHintLabel;
 
+    private readonly VisualElement selectionArcadeDifficultyRow;
+
+    private readonly List<Button> selectionArcadeDifficultyButtons = new List<Button>();
+
     private readonly List<Label> selectionInfoStatTitleLabels = new List<Label>();
 
     private readonly ScrollView selectionTrackScrollView;
@@ -1318,6 +1386,10 @@ public sealed class TabsSongHeaderOverlay
     private readonly List<SongSelectionRow> selectionRows = new List<SongSelectionRow>();
 
     private int hoveredLibraryBrowseModeIndex = -1;
+
+    private int hoveredLibraryTypeIndex = -1;
+
+    private int hoveredArcadeDifficultyIndex = -1;
 
     private int currentLibraryBrowseModeIndex;
 
@@ -1874,6 +1946,16 @@ public sealed class TabsSongHeaderOverlay
         techniqueLegendCard.style.borderBottomColor = legendBorder;
 
         techniqueLegendCard.style.borderLeftColor = legendBorder;
+
+        gameplayShortcutLabel = CreateLabel(string.Empty, 24f, new Color(0.76f, 0.84f, 0.92f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        gameplayShortcutLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayShortcutLabel.style.position = Position.Absolute;
+        gameplayShortcutLabel.style.left = 24f;
+        gameplayShortcutLabel.style.bottom = 18f;
+        gameplayShortcutLabel.style.maxWidth = 1680f;
+        gameplayShortcutLabel.style.whiteSpace = WhiteSpace.Normal;
+        gameplayShortcutLabel.style.display = DisplayStyle.None;
+        gameplayShortcutLabel.pickingMode = PickingMode.Ignore;
 
 
 
@@ -3766,6 +3848,24 @@ public sealed class TabsSongHeaderOverlay
             Label rowLabel = CreateLabel("e|-------|", 46f, new Color(0.92f, 0.95f, 0.99f, 1f), true, TextAnchor.MiddleLeft, useTitleFont: false);
             rowLabel.style.unityFontDefinition = modernUiFontDefinition;
             rowLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+            rowLabel.style.width = Length.Percent(100f);
+            rowLabel.style.paddingLeft = 14f;
+            rowLabel.style.paddingRight = 14f;
+            rowLabel.style.paddingTop = 8f;
+            rowLabel.style.paddingBottom = 8f;
+            rowLabel.style.borderTopLeftRadius = 10f;
+            rowLabel.style.borderTopRightRadius = 10f;
+            rowLabel.style.borderBottomLeftRadius = 10f;
+            rowLabel.style.borderBottomRightRadius = 10f;
+            rowLabel.style.borderTopWidth = 1f;
+            rowLabel.style.borderRightWidth = 1f;
+            rowLabel.style.borderBottomWidth = 1f;
+            rowLabel.style.borderLeftWidth = 1f;
+            rowLabel.style.backgroundColor = new Color(0.08f, 0.09f, 0.11f, 0.62f);
+            rowLabel.style.borderTopColor = new Color(0.22f, 0.24f, 0.27f, 0.92f);
+            rowLabel.style.borderRightColor = new Color(0.18f, 0.19f, 0.22f, 0.92f);
+            rowLabel.style.borderBottomColor = new Color(0.14f, 0.15f, 0.18f, 0.92f);
+            rowLabel.style.borderLeftColor = new Color(0.18f, 0.19f, 0.22f, 0.92f);
             rowLabel.style.marginBottom = i < 5 ? 8f : 0f;
             notesDetectorRoutineTabRowLabels.Add(rowLabel);
             notesDetectorRoutineTabCard.Add(rowLabel);
@@ -4103,7 +4203,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        Button continueButton = CreateActionButton("Continue", () => owner?.ContinueFromMainMenuFromUi());
+        Button continueButton = CreateActionButton("Start", () => owner?.StartFromMainMenuFromUi());
 
         Button libraryButton = CreateActionButton("Song Selection", () => owner?.OpenSongSelectionFromUi());
 
@@ -4303,7 +4403,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        CreateMainMenuEntry("Continue", string.Empty, new Color(0.29f, 0.85f, 0.58f, 1f), () => owner?.ContinueFromMainMenuFromUi());
+        CreateMainMenuEntry("Start", string.Empty, new Color(0.29f, 0.85f, 0.58f, 1f), () => owner?.StartFromMainMenuFromUi());
 
         CreateMainMenuEntry("Library", string.Empty, new Color(0.28f, 0.77f, 1f, 1f), () => owner?.OpenSongSelectionFromUi());
 
@@ -4469,7 +4569,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        Label mainMenuStatusBody = CreateLabel("Start from Continue, jump into Library, or fine tune the experience from Settings. Tuner support can be added next as a dedicated flow instead of a dead menu item.", 24f, new Color(0.77f, 0.88f, 0.98f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label mainMenuStatusBody = CreateLabel("Start playing, jump into Library, or fine tune the experience from Settings. Tuner support can be added next as a dedicated flow instead of a dead menu item.", 24f, new Color(0.77f, 0.88f, 0.98f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
 
         mainMenuStatusBody.style.whiteSpace = WhiteSpace.Normal;
 
@@ -4502,6 +4602,162 @@ public sealed class TabsSongHeaderOverlay
         mainMenuShell.Add(mainMenuRightColumn);
 
         mainMenuOverlay.Add(mainMenuShell);
+
+        startMenuOverlay = CreateFullscreenOverlay();
+        startMenuOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.44f);
+        startMenuOverlay.style.alignItems = Align.Center;
+        startMenuOverlay.style.justifyContent = Justify.Center;
+        startMenuOverlay.style.paddingLeft = 72f;
+        startMenuOverlay.style.paddingRight = 72f;
+        startMenuOverlay.style.paddingTop = 108f;
+        startMenuOverlay.style.paddingBottom = 78f;
+        startMenuOverlay.style.display = DisplayStyle.None;
+
+        startMenuShell = new VisualElement();
+        startMenuShell.style.width = Length.Percent(100f);
+        startMenuShell.style.maxWidth = 1680f;
+        startMenuShell.style.alignItems = Align.Center;
+        startMenuShell.style.justifyContent = Justify.Center;
+
+        startMenuTitleLabel = CreateLabel("SELECT MODE", 144f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        startMenuTitleLabel.style.unityFontDefinition = logoFontDefinition;
+        startMenuTitleLabel.style.marginBottom = 27f;
+        startMenuTitleLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        startMenuSubtitleLabel = CreateLabel("Choose how you want to play. You can change detailed controls later from General Settings.", 42f, new Color(0.82f, 0.90f, 0.98f, 0.96f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        startMenuSubtitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        startMenuSubtitleLabel.style.maxWidth = 1290f;
+        startMenuSubtitleLabel.style.whiteSpace = WhiteSpace.Normal;
+        startMenuSubtitleLabel.style.marginBottom = 63f;
+
+        startMenuModeRow = new VisualElement();
+        startMenuModeRow.style.flexDirection = FlexDirection.Row;
+        startMenuModeRow.style.alignItems = Align.Stretch;
+        startMenuModeRow.style.justifyContent = Justify.Center;
+        startMenuModeRow.style.width = Length.Percent(100f);
+        startMenuModeRow.style.flexWrap = Wrap.Wrap;
+
+        startMenuModeOptions.Add(CreateStartMenuModeOption(
+            "Guitar",
+            "Use a real guitar plugged into your input device. Tone Lab and Notes Detector let you tune the sound and detection later.",
+            0));
+        startMenuModeOptions.Add(CreateStartMenuModeOption(
+            "Arcade",
+            "Play rhythm game charts with a keyboard, a gamepad, or a guitar controller.",
+            1));
+
+        foreach (StartMenuOption option in startMenuModeOptions)
+            startMenuModeRow.Add(option.button);
+
+        startMenuGuitarSetupPanel = new VisualElement();
+        startMenuGuitarSetupPanel.style.width = Length.Percent(100f);
+        startMenuGuitarSetupPanel.style.maxWidth = 1470f;
+        startMenuGuitarSetupPanel.style.alignItems = Align.Center;
+        startMenuGuitarSetupPanel.style.display = DisplayStyle.None;
+
+        startMenuGuitarSetupTitleLabel = CreateLabel("INSTRUMENT CHECK", 36f, new Color(0.72f, 0.86f, 0.98f, 0.96f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        startMenuGuitarSetupTitleLabel.style.unityFontDefinition = logoFontDefinition;
+        startMenuGuitarSetupTitleLabel.style.letterSpacing = 2.2f;
+        startMenuGuitarSetupTitleLabel.style.marginBottom = 21f;
+        startMenuGuitarSetupTitleLabel.style.display = DisplayStyle.None;
+
+        startMenuGuitarSetupInfoLabel = CreateLabel("Tune your real guitar before opening the Guitar library. Stable tuning gives cleaner note detection and better tracking.", 36f, new Color(0.82f, 0.90f, 0.98f, 0.96f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        startMenuGuitarSetupInfoLabel.style.unityFontDefinition = modernUiFontDefinition;
+        startMenuGuitarSetupInfoLabel.style.maxWidth = 1230f;
+        startMenuGuitarSetupInfoLabel.style.whiteSpace = WhiteSpace.Normal;
+        startMenuGuitarSetupInfoLabel.style.marginBottom = 24f;
+        startMenuGuitarSetupInfoLabel.style.display = DisplayStyle.None;
+
+        startMenuGuitarSetupTuningLabel = CreateLabel("If the song is not in E Standard, this lets you play it without retuning your guitar.", 38f, LibraryConfirmedSongColor, false, TextAnchor.MiddleCenter, useTitleFont: false);
+        startMenuGuitarSetupTuningLabel.style.unityFontDefinition = modernUiFontDefinition;
+        startMenuGuitarSetupTuningLabel.style.maxWidth = 1230f;
+        startMenuGuitarSetupTuningLabel.style.whiteSpace = WhiteSpace.Normal;
+        startMenuGuitarSetupTuningLabel.style.marginBottom = 15f;
+
+        startMenuGuitarSetupForceStandardButton = CreateStartMenuSetupButton("Force Standard Tuning: ON", () => owner?.ToggleStartMenuGuitarForceStandardFromUi());
+        startMenuGuitarSetupForceStandardButton.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverStartMenuGuitarSetupRowFromUi(0));
+        startMenuGuitarSetupForceStandardButton.style.maxWidth = 930f;
+        startMenuGuitarSetupForceStandardButton.style.marginBottom = 15f;
+
+        startMenuGuitarSetupHintLabel = CreateLabel("Editable later in General Settings.", 36f, new Color(0.76f, 0.84f, 0.92f, 0.94f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        startMenuGuitarSetupHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        startMenuGuitarSetupHintLabel.style.maxWidth = 1230f;
+        startMenuGuitarSetupHintLabel.style.whiteSpace = WhiteSpace.Normal;
+        startMenuGuitarSetupHintLabel.style.marginBottom = 48f;
+
+        startMenuGuitarSetupContinueButton = CreateStartMenuSetupButton("Open Guitar Library", () => owner?.ContinueStartMenuGuitarSetupFromUi());
+        startMenuGuitarSetupContinueButton.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverStartMenuGuitarSetupRowFromUi(1));
+        startMenuGuitarSetupContinueButton.style.maxWidth = 930f;
+
+        startMenuGuitarSetupPanel.Add(startMenuGuitarSetupTuningLabel);
+        startMenuGuitarSetupPanel.Add(startMenuGuitarSetupForceStandardButton);
+        startMenuGuitarSetupPanel.Add(startMenuGuitarSetupHintLabel);
+        startMenuGuitarSetupPanel.Add(startMenuGuitarSetupContinueButton);
+
+        startMenuArcadeSetupPanel = new VisualElement();
+        startMenuArcadeSetupPanel.style.width = Length.Percent(100f);
+        startMenuArcadeSetupPanel.style.maxWidth = 1470f;
+        startMenuArcadeSetupPanel.style.alignItems = Align.Center;
+        startMenuArcadeSetupPanel.style.display = DisplayStyle.None;
+
+        startMenuArcadeSetupTitleLabel = CreateLabel("ARCADE INPUT", 36f, new Color(0.72f, 0.86f, 0.98f, 0.96f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        startMenuArcadeSetupTitleLabel.style.unityFontDefinition = logoFontDefinition;
+        startMenuArcadeSetupTitleLabel.style.letterSpacing = 2.2f;
+        startMenuArcadeSetupTitleLabel.style.marginBottom = 21f;
+
+        VisualElement startMenuArcadeInputRow = new VisualElement();
+        startMenuArcadeInputRow.style.flexDirection = FlexDirection.Row;
+        startMenuArcadeInputRow.style.alignItems = Align.Stretch;
+        startMenuArcadeInputRow.style.justifyContent = Justify.Center;
+        startMenuArcadeInputRow.style.flexWrap = Wrap.Wrap;
+        startMenuArcadeInputRow.style.marginBottom = 15f;
+
+        startMenuArcadeInputButtons.Add(CreateStartMenuArcadeInputButton("Keyboard / Gamepad", 0));
+        startMenuArcadeInputButtons.Add(CreateStartMenuArcadeInputButton("Guitar Controller", 1));
+        startMenuArcadeInputButtons.Add(CreateStartMenuArcadeInputButton("MIDI", 2));
+
+        foreach (Button button in startMenuArcadeInputButtons)
+            startMenuArcadeInputRow.Add(button);
+
+        startMenuArcadeInputHintLabel = CreateLabel("Keyboard / Gamepad listens to both keyboard and normal controller buttons.", 36f, new Color(0.76f, 0.84f, 0.92f, 0.94f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        startMenuArcadeInputHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        startMenuArcadeInputHintLabel.style.maxWidth = 1230f;
+        startMenuArcadeInputHintLabel.style.whiteSpace = WhiteSpace.Normal;
+        startMenuArcadeInputHintLabel.style.marginBottom = 42f;
+
+        startMenuArcadeGamepadModeButton = CreateStartMenuSetupButton("Gamepad Mode: ON", () => owner?.ToggleStartMenuArcadeGamepadModeFromUi());
+        startMenuArcadeGamepadModeButton.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverStartMenuArcadeSetupRowFromUi(1));
+        startMenuArcadeGamepadModeButton.style.maxWidth = 930f;
+        startMenuArcadeGamepadModeButton.style.marginBottom = 15f;
+
+        startMenuArcadeGamepadHintLabel = CreateLabel("Recommended ON for keyboard and gamepad. Turn it OFF for guitar controllers with a strum bar. You can edit this later in General Settings.", 36f, new Color(0.76f, 0.84f, 0.92f, 0.94f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        startMenuArcadeGamepadHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        startMenuArcadeGamepadHintLabel.style.maxWidth = 1230f;
+        startMenuArcadeGamepadHintLabel.style.whiteSpace = WhiteSpace.Normal;
+        startMenuArcadeGamepadHintLabel.style.marginBottom = 48f;
+
+        startMenuArcadeContinueButton = CreateStartMenuSetupButton("Open Arcade Library", () => owner?.ContinueStartMenuArcadeSetupFromUi());
+        startMenuArcadeContinueButton.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverStartMenuArcadeSetupRowFromUi(2));
+        startMenuArcadeContinueButton.style.maxWidth = 930f;
+
+        startMenuArcadeSetupPanel.Add(startMenuArcadeSetupTitleLabel);
+        startMenuArcadeSetupPanel.Add(startMenuArcadeInputRow);
+        startMenuArcadeSetupPanel.Add(startMenuArcadeInputHintLabel);
+        startMenuArcadeSetupPanel.Add(startMenuArcadeGamepadModeButton);
+        startMenuArcadeSetupPanel.Add(startMenuArcadeGamepadHintLabel);
+        startMenuArcadeSetupPanel.Add(startMenuArcadeContinueButton);
+
+        startMenuFooterHintLabel = CreateLabel("Use mouse, arrows or D-pad, and Enter. Esc goes back.", 34.5f, new Color(0.62f, 0.78f, 0.94f, 0.92f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        startMenuFooterHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        startMenuFooterHintLabel.style.marginTop = 51f;
+
+        startMenuShell.Add(startMenuTitleLabel);
+        startMenuShell.Add(startMenuSubtitleLabel);
+        startMenuShell.Add(startMenuModeRow);
+        startMenuShell.Add(startMenuGuitarSetupPanel);
+        startMenuShell.Add(startMenuArcadeSetupPanel);
+        startMenuShell.Add(startMenuFooterHintLabel);
+        startMenuOverlay.Add(startMenuShell);
 
 
 
@@ -5732,6 +5988,46 @@ public sealed class TabsSongHeaderOverlay
         selectionInfoTuningLabel.style.unityFontDefinition = modernUiFontDefinition;
         selectionInfoTuningLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
 
+        selectionArcadeDifficultyRow = new VisualElement();
+        selectionArcadeDifficultyRow.style.flexDirection = FlexDirection.Row;
+        selectionArcadeDifficultyRow.style.alignItems = Align.Center;
+        selectionArcadeDifficultyRow.style.justifyContent = Justify.FlexStart;
+        selectionArcadeDifficultyRow.style.marginTop = 2f;
+        selectionArcadeDifficultyRow.style.marginBottom = 20f;
+        selectionArcadeDifficultyRow.style.flexWrap = Wrap.Wrap;
+        for (int i = 0; i < 4; i++)
+        {
+            int difficultyIndex = i;
+            VisualElement difficultyColumn = new VisualElement();
+            difficultyColumn.style.marginRight = 12f;
+            difficultyColumn.style.alignItems = Align.Center;
+            Button difficultyButton = new Button(() => owner?.SetArcadeDifficultyFromUi(difficultyIndex)) { text = "--" };
+            difficultyButton.focusable = false;
+            difficultyButton.style.width = 74f;
+            difficultyButton.style.height = 58f;
+            difficultyButton.style.borderTopLeftRadius = 10f;
+            difficultyButton.style.borderTopRightRadius = 10f;
+            difficultyButton.style.borderBottomLeftRadius = 10f;
+            difficultyButton.style.borderBottomRightRadius = 10f;
+            difficultyButton.style.borderTopWidth = 2f;
+            difficultyButton.style.borderRightWidth = 2f;
+            difficultyButton.style.borderBottomWidth = 2f;
+            difficultyButton.style.borderLeftWidth = 2f;
+            difficultyButton.style.unityFontDefinition = modernUiFontDefinition;
+            difficultyButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+            difficultyButton.style.fontSize = 28f;
+            difficultyButton.RegisterCallback<MouseEnterEvent>(_ => hoveredArcadeDifficultyIndex = difficultyIndex);
+            difficultyButton.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                if (hoveredArcadeDifficultyIndex == difficultyIndex)
+                    hoveredArcadeDifficultyIndex = -1;
+            });
+
+            difficultyColumn.Add(difficultyButton);
+            selectionArcadeDifficultyButtons.Add(difficultyButton);
+            selectionArcadeDifficultyRow.Add(difficultyColumn);
+        }
+
         VisualElement selectionInfoStatsRow = new VisualElement();
 
         selectionInfoStatsRow.style.flexDirection = FlexDirection.Row;
@@ -5793,6 +6089,8 @@ public sealed class TabsSongHeaderOverlay
         selectionInfoTextColumn.Add(selectionInfoSummaryLabel);
 
         selectionInfoTextColumn.Add(selectionInfoTuningLabel);
+
+        selectionInfoTextColumn.Add(selectionArcadeDifficultyRow);
 
         selectionInfoTextColumn.Add(selectionInfoStatsRow);
 
@@ -6132,6 +6430,25 @@ public sealed class TabsSongHeaderOverlay
 
         selectionSongsListTitleLabel.style.overflow = Overflow.Hidden;
 
+        VisualElement selectionTitleRow = new VisualElement();
+        selectionTitleRow.style.flexDirection = FlexDirection.Row;
+        selectionTitleRow.style.alignItems = Align.Center;
+        selectionTitleRow.style.justifyContent = Justify.SpaceBetween;
+        selectionTitleRow.style.marginBottom = 6f;
+
+        VisualElement selectionLibraryTypeButtonsRow = new VisualElement();
+        selectionLibraryTypeButtonsRow.style.flexDirection = FlexDirection.Row;
+        selectionLibraryTypeButtonsRow.style.alignItems = Align.Center;
+        selectionLibraryTypeButtonsRow.style.flexShrink = 0f;
+
+        selectionLibraryGuitarButton = CreateLibraryTypeButton("Guitar", 0);
+        selectionLibraryArcadeButton = CreateLibraryTypeButton("Arcade", 1);
+        selectionLibraryTypeButtonsRow.Add(selectionLibraryGuitarButton);
+        selectionLibraryTypeButtonsRow.Add(selectionLibraryArcadeButton);
+
+        selectionTitleRow.Add(selectionSongsListTitleLabel);
+        selectionTitleRow.Add(selectionLibraryTypeButtonsRow);
+
         selectionSubtitleLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
 
         selectionSubtitleLabel.style.alignSelf = Align.FlexStart;
@@ -6220,7 +6537,7 @@ public sealed class TabsSongHeaderOverlay
 
         selectionListCard.style.overflow = Overflow.Visible;
 
-        selectionListCard.Add(selectionSongsListTitleLabel);
+        selectionListCard.Add(selectionTitleRow);
 
         selectionListCard.Add(selectionLibraryToolbarRow);
 
@@ -7548,6 +7865,8 @@ public sealed class TabsSongHeaderOverlay
 
         root.Add(mainMenuOverlay);
 
+        root.Add(startMenuOverlay);
+
         root.Add(settingsOverlay);
         root.Add(generatedAudioTracksPopupOverlay);
 
@@ -7566,6 +7885,8 @@ public sealed class TabsSongHeaderOverlay
         songEndOverlay.Add(songEndCard);
 
         root.Add(songEndOverlay);
+
+        root.Add(gameplayShortcutLabel);
 
 
 
@@ -7615,6 +7936,8 @@ public sealed class TabsSongHeaderOverlay
         int resolvedCount = 0;
 
         GameplayNoteState latestResolved = null;
+        bool latestResolvedWasHit = false;
+        float latestResolvedAt = -1f;
 
 
 
@@ -7644,7 +7967,41 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        if (snapshot.noteStates != null)
+        if (snapshot.gameplayMode == GuitarGameplayMode.Arcade && snapshot.arcadeNoteStates != null)
+        {
+            HashSet<int> loopArcadeChordIds = new HashSet<int>();
+            for (int i = 0; i < snapshot.arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState noteState = snapshot.arcadeNoteStates[i];
+                if (noteState == null)
+                    continue;
+
+                bool inLoopWindow = !loopEnabled || IsNoteInsideLoopWindow(noteState.data.time, snapshot.loopStartTime, snapshot.loopEndTime);
+                if (!inLoopWindow || !noteState.IsResolved)
+                    continue;
+
+                int noteKey = noteState.data.chordId >= 0 ? noteState.data.chordId : (noteState.data.id >= 0 ? noteState.data.id : i);
+                if (!loopArcadeChordIds.Add(noteKey))
+                    continue;
+
+                resolvedCount++;
+                if (noteState.resolvedAt > latestResolvedAt)
+                {
+                    latestResolvedAt = noteState.resolvedAt;
+                    latestResolvedWasHit = noteState.IsHit;
+                }
+
+                if (scoredNoteIds.Contains(noteKey))
+                    continue;
+
+                scoredNoteIds.Add(noteKey);
+                if (noteState.IsHit)
+                    scoreHits++;
+                else if (noteState.IsMissed)
+                    scoreMisses++;
+            }
+        }
+        else if (snapshot.noteStates != null)
 
         { 
 
@@ -7678,7 +8035,11 @@ public sealed class TabsSongHeaderOverlay
 
                 if (latestResolved == null || noteState.resolvedAt > latestResolved.resolvedAt)
 
+                {
                     latestResolved = noteState;
+                    latestResolvedAt = noteState.resolvedAt;
+                    latestResolvedWasHit = noteState.IsHit;
+                }
 
 
 
@@ -7706,7 +8067,13 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        int denominator = snapshot.noteStates?.Count(state => state != null && (!loopEnabled || IsNoteInsideLoopWindow(state.data.time, snapshot.loopStartTime, snapshot.loopEndTime))) ?? 0;
+        int denominator = snapshot.gameplayMode == GuitarGameplayMode.Arcade
+            ? snapshot.arcadeNoteStates?
+                .Where(state => state != null && (!loopEnabled || IsNoteInsideLoopWindow(state.data.time, snapshot.loopStartTime, snapshot.loopEndTime)))
+                .Select((state, index) => state.data.chordId >= 0 ? state.data.chordId : (state.data.id >= 0 ? state.data.id : index))
+                .Distinct()
+                .Count() ?? 0
+            : snapshot.noteStates?.Count(state => state != null && (!loopEnabled || IsNoteInsideLoopWindow(state.data.time, snapshot.loopStartTime, snapshot.loopEndTime))) ?? 0;
 
 
 
@@ -7736,8 +8103,16 @@ public sealed class TabsSongHeaderOverlay
         scoreTitleLabel.text = loopEnabled && loopDurationSeconds > 0.01f
             ? $"{scoreTitle}  ?  LOOP: {loopDurationSeconds:F2}s"
             : scoreTitle;
-        scorePercentLabel.text = $"{scorePercent:F1}%";
-        noteTallyLabel.text = $"Hits {displayHits}  /  Misses {displayMisses}";
+        if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
+        {
+            scorePercentLabel.text = FormatArcadeScoreValue(snapshot.currentSessionArcadeScore);
+            noteTallyLabel.text = $"Combo {snapshot.currentSessionArcadeCombo}  |  {snapshot.currentSessionArcadeMultiplier}x  |  Hits {displayHits}  /  Misses {displayMisses}";
+        }
+        else
+        {
+            scorePercentLabel.text = $"{scorePercent:F1}%";
+            noteTallyLabel.text = $"Hits {displayHits}  /  Misses {displayMisses}";
+        }
         UpdateCharacterHealthHearts(displayMisses, snapshot.heroModeHeartCount);
 
         wasLoopEnabled = loopEnabled;
@@ -7758,11 +8133,11 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
-        else if (resolvedCount > lastResolvedCount && latestResolved != null)
+        else if (resolvedCount > lastResolvedCount && latestResolvedAt >= 0f)
 
         {
 
-            bool success = latestResolved.IsHit;
+            bool success = latestResolvedWasHit;
 
             if (success)
 
@@ -7893,7 +8268,9 @@ public sealed class TabsSongHeaderOverlay
         bool showToneLab = snapshot.showToneLab && !showEnd;
         bool showNotesDetectorTest = snapshot.showNotesDetectorTestMenu && !showEnd && !showToneLab;
 
-        bool showMainMenu = snapshot.showMainMenu && !showEnd && !showToneLab && !showNotesDetectorTest;
+        bool showStartMenu = snapshot.showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest;
+
+        bool showMainMenu = snapshot.showMainMenu && !showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest;
 
         bool showLoopPausePopup = snapshot.showLoopPausePopup && !showEnd;
 
@@ -7905,7 +8282,7 @@ public sealed class TabsSongHeaderOverlay
 
         bool showOffsetHelper = snapshot.showOffsetHelper && !showEnd && !showToneLab;
 
-        bool showPause = snapshot.isPaused && !showEnd && !showToneLab && !showNotesDetectorTest && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
 
         bool showSettings = snapshot.showSongSettings && !showEnd && !showToneLab;
 
@@ -7915,11 +8292,11 @@ public sealed class TabsSongHeaderOverlay
 
         bool showGlobalSettings = snapshot.showGlobalSettings && !showEnd && !showToneLab;
 
-        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showEnd && !showToneLab && !showMainMenu && !showSelection && !showTrackSelection;
+        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showEnd && !showToneLab && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
 
         bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
 
-        bool showTechniqueLegend = !isHighway3D && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool showTechniqueLegend = !isHighway3D && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
 
 
@@ -7946,6 +8323,10 @@ public sealed class TabsSongHeaderOverlay
         }
 
 
+        if (showStartMenu)
+            UpdateStartMenu(snapshot);
+
+
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -7963,6 +8344,8 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
 
+        startMenuOverlay.style.display = showStartMenu ? DisplayStyle.Flex : DisplayStyle.None;
+
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
         generatedAudioTracksPopupOverlay.style.display = showSettings && (snapshot.showGeneratedAudioTrackSelectionPopup || snapshot.showSongSettingsTrackSelectionPopup) ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -7974,16 +8357,29 @@ public sealed class TabsSongHeaderOverlay
 
         if (showStartupTuningReminder)
         {
-            string popupTuningLabel = string.IsNullOrWhiteSpace(snapshot.selectedTrackTuningLabel)
-                ? "E Standard"
-                : snapshot.selectedTrackTuningLabel;
-            startupTuningReminderPopup?.SetContent(
-                "INSTRUMENT CHECK",
-                "Before You Play",
-                $"Tune your guitar to <color=#F99E6B>{popupTuningLabel}</color>.",
-                "This song is charted for that tuning. You can force Standard Tuning in General Settings > Gameplay.",
-                "If the song and notes feel mismatched, adjust the song/notes offset in Song Settings. If notes look too close or too far apart, adjust Tabs Sections duration settings.",
-                "Continue");
+            if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
+            {
+                startupTuningReminderPopup?.SetContent(
+                    "ARCADE CONTROLS",
+                    "Before You Play",
+                    GetArcadeStartupPrimaryMessage(),
+                    GetArcadeStartupCalloutMessage(),
+                    "You can configure details later in General Settings > Arcade Controls.",
+                    "Continue");
+            }
+            else
+            {
+                string popupTuningLabel = string.IsNullOrWhiteSpace(snapshot.selectedTrackTuningLabel)
+                    ? "E Standard"
+                    : snapshot.selectedTrackTuningLabel;
+                startupTuningReminderPopup?.SetContent(
+                    "INSTRUMENT CHECK",
+                    "Before You Play",
+                    $"Tune your guitar to <color=#F99E6B>{popupTuningLabel}</color>.",
+                    "This song is charted for that tuning. You can force Standard Tuning in General Settings > Gameplay.",
+                    "If the song and notes feel mismatched, adjust the song/notes offset in Song Settings. If notes look too close or too far apart, adjust Tabs Sections duration settings.",
+                    "Continue");
+            }
         }
 
         startupTuningReminderOverlay.style.display = showStartupTuningReminder ? DisplayStyle.Flex : DisplayStyle.None;
@@ -7991,6 +8387,38 @@ public sealed class TabsSongHeaderOverlay
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
 
         techniqueLegendCard.style.display = showTechniqueLegend ? DisplayStyle.Flex : DisplayStyle.None;
+
+        bool showGameplayShortcuts = !showEnd
+            && !showToneLab
+            && !showNotesDetectorTest
+            && !showMainMenu
+            && !showStartMenu
+            && !showSettings
+            && !showSelection
+            && !showTrackSelection
+            && !showGlobalSettings
+            && !showLoopSetup
+            && !showLoopPausePopup
+            && !showGameModes
+            && !showHeroModeSettings
+            && !showOffsetHelper
+            && !showStartupTuningReminder
+            && !snapshot.mainMenuFlowActive;
+        if (gameplayShortcutLabel != null)
+        {
+            string restartTarget = snapshot.loopEnabled ? "restart loop" : "restart song";
+            if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
+            {
+                gameplayShortcutLabel.text = BuildArcadeGameplayShortcutText(showPause, restartTarget);
+            }
+            else
+            {
+                gameplayShortcutLabel.text = showPause
+                    ? $"Space resume  •  R {restartTarget}  •  T Tone Lab  •  Esc back  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
+                    : $"Space pause  •  R {restartTarget}";
+            }
+            gameplayShortcutLabel.style.display = showGameplayShortcuts ? DisplayStyle.Flex : DisplayStyle.None;
+        }
 
         bool showLoopPauseCountdown = snapshot.loopRestartPauseRemainingSeconds > 0.0001f
 
@@ -8112,7 +8540,39 @@ public sealed class TabsSongHeaderOverlay
                         string rowText = snapshot.notesDetectorRoutineTabRows != null && i < snapshot.notesDetectorRoutineTabRows.Count
                             ? snapshot.notesDetectorRoutineTabRows[i]
                             : "--";
-                        notesDetectorRoutineTabRowLabels[i].text = rowText;
+                        Label rowLabel = notesDetectorRoutineTabRowLabels[i];
+                        rowLabel.text = rowText;
+
+                        int rowState = snapshot.notesDetectorRoutineTabRowStates != null && i < snapshot.notesDetectorRoutineTabRowStates.Count
+                            ? snapshot.notesDetectorRoutineTabRowStates[i]
+                            : -1;
+                        if (rowState > 0)
+                        {
+                            rowLabel.style.color = new Color(0.76f, 1.00f, 0.82f, 1f);
+                            rowLabel.style.backgroundColor = new Color(0.09f, 0.20f, 0.12f, 0.86f);
+                            rowLabel.style.borderTopColor = new Color(0.34f, 0.86f, 0.50f, 0.98f);
+                            rowLabel.style.borderRightColor = new Color(0.22f, 0.56f, 0.32f, 0.98f);
+                            rowLabel.style.borderBottomColor = new Color(0.18f, 0.46f, 0.26f, 0.98f);
+                            rowLabel.style.borderLeftColor = new Color(0.22f, 0.56f, 0.32f, 0.98f);
+                        }
+                        else if (rowState == 0)
+                        {
+                            rowLabel.style.color = new Color(1.00f, 0.78f, 0.78f, 1f);
+                            rowLabel.style.backgroundColor = new Color(0.21f, 0.08f, 0.09f, 0.86f);
+                            rowLabel.style.borderTopColor = new Color(0.88f, 0.33f, 0.35f, 0.98f);
+                            rowLabel.style.borderRightColor = new Color(0.58f, 0.22f, 0.24f, 0.98f);
+                            rowLabel.style.borderBottomColor = new Color(0.48f, 0.18f, 0.20f, 0.98f);
+                            rowLabel.style.borderLeftColor = new Color(0.58f, 0.22f, 0.24f, 0.98f);
+                        }
+                        else
+                        {
+                            rowLabel.style.color = new Color(0.92f, 0.95f, 0.99f, 1f);
+                            rowLabel.style.backgroundColor = new Color(0.08f, 0.09f, 0.11f, 0.62f);
+                            rowLabel.style.borderTopColor = new Color(0.22f, 0.24f, 0.27f, 0.92f);
+                            rowLabel.style.borderRightColor = new Color(0.18f, 0.19f, 0.22f, 0.92f);
+                            rowLabel.style.borderBottomColor = new Color(0.14f, 0.15f, 0.18f, 0.92f);
+                            rowLabel.style.borderLeftColor = new Color(0.18f, 0.19f, 0.22f, 0.92f);
+                        }
                     }
                     if (notesDetectorRoutineRestartButton != null)
                         notesDetectorRoutineRestartButton.text = snapshot.notesDetectorRoutineCompleted ? "Run Again" : "Restart";
@@ -8128,6 +8588,7 @@ public sealed class TabsSongHeaderOverlay
 
             UpdateSongEndSelection(snapshot.selectedSongEndActionIndex);
 
+            bool arcadeMode = snapshot.gameplayMode == GuitarGameplayMode.Arcade;
             string rating = GetScoreLetterGrade(scorePercent);
 
             float savedTrackBest = Mathf.Clamp(snapshot.currentTrackBestScorePercent, 0f, 100f);
@@ -8135,31 +8596,56 @@ public sealed class TabsSongHeaderOverlay
             int savedHeroHeartsRemaining = Mathf.Max(0, snapshot.currentTrackHeroBestHeartsRemaining);
             int savedHeroHeartsTotal = Mathf.Max(0, snapshot.currentTrackHeroBestHeartsTotal);
             bool hasHeroBest = savedHeroTrackBest > 0.01f && savedHeroHeartsTotal > 0;
-            float comparisonBest = snapshot.heroModeEnabled
-                ? savedHeroTrackBest
-                : savedTrackBest;
+            bool newRecord;
+            string bestSummaryText;
+            string deltaText;
+            string statsText;
+            string scoreDisplayText;
+            string performanceNote;
 
-            float deltaToBest = scorePercent - comparisonBest;
-
-            bool newRecord = deltaToBest >= -0.05f;
-            string bestSummaryText = hasHeroBest
-                ? FormattableString.Invariant($"Normal {savedTrackBest:F1}%\nHero {savedHeroTrackBest:F1}% ({savedHeroHeartsRemaining}/{savedHeroHeartsTotal})")
-                : $"{savedTrackBest:F1}%";
-            string deltaText = snapshot.heroModeEnabled
-                ? (newRecord
-                    ? FormattableString.Invariant($"New hero record saved ({snapshot.currentHeroHeartsRemaining}/{snapshot.heroModeHeartCount})")
-                    : $"{Mathf.Abs(deltaToBest):F1}% to beat your hero best")
-                : (newRecord
+            if (arcadeMode)
+            {
+                int runScore = Mathf.Max(0, snapshot.currentSessionArcadeScore);
+                int savedArcadeBest = Mathf.Max(0, snapshot.currentTrackBestArcadeScore);
+                newRecord = runScore >= savedArcadeBest;
+                bestSummaryText = FormatArcadeScoreValue(savedArcadeBest);
+                deltaText = newRecord
                     ? "New record saved"
-                    : $"{Mathf.Abs(deltaToBest):F1}% to beat your best");
-            string statsText = snapshot.heroModeEnabled
-                ? FormattableString.Invariant($"HITS {scoreHits}   |   MISSES {scoreMisses}   |   HEARTS {snapshot.currentHeroHeartsRemaining}/{snapshot.heroModeHeartCount}")
-                : FormattableString.Invariant($"HITS {scoreHits}   |   MISSES {scoreMisses}");
+                    : $"{FormatArcadeScoreValue(Mathf.Max(0, savedArcadeBest - runScore))} to beat your best";
+                statsText = FormattableString.Invariant($"ACCURACY {scorePercent:F1}%   |   HITS {scoreHits}   |   MISSES {scoreMisses}");
+                scoreDisplayText = FormatArcadeScoreValue(runScore);
+                performanceNote = GetSongEndPerformanceNote(scorePercent, newRecord);
+            }
+            else
+            {
+                float comparisonBest = snapshot.heroModeEnabled
+                    ? savedHeroTrackBest
+                    : savedTrackBest;
+
+                float deltaToBest = scorePercent - comparisonBest;
+
+                newRecord = deltaToBest >= -0.05f;
+                bestSummaryText = hasHeroBest
+                    ? FormattableString.Invariant($"Normal {savedTrackBest:F1}%\nHero {savedHeroTrackBest:F1}% ({savedHeroHeartsRemaining}/{savedHeroHeartsTotal})")
+                    : $"{savedTrackBest:F1}%";
+                deltaText = snapshot.heroModeEnabled
+                    ? (newRecord
+                        ? FormattableString.Invariant($"New hero record saved ({snapshot.currentHeroHeartsRemaining}/{snapshot.heroModeHeartCount})")
+                        : $"{Mathf.Abs(deltaToBest):F1}% to beat your hero best")
+                    : (newRecord
+                        ? "New record saved"
+                        : $"{Mathf.Abs(deltaToBest):F1}% to beat your best");
+                statsText = snapshot.heroModeEnabled
+                    ? FormattableString.Invariant($"HITS {scoreHits}   |   MISSES {scoreMisses}   |   HEARTS {snapshot.currentHeroHeartsRemaining}/{snapshot.heroModeHeartCount}")
+                    : FormattableString.Invariant($"HITS {scoreHits}   |   MISSES {scoreMisses}");
+                scoreDisplayText = $"{scorePercent:F1}%";
+                performanceNote = GetSongEndPerformanceNote(scorePercent, newRecord);
+            }
             string songEndTitleText = snapshot.songEndedAsGameOver ? "GAME OVER" : "SONG COMPLETE";
 
-            string songEndSignature = FormattableString.Invariant(
-
-                $"{songEndTitleText}|{songName}|{trackName}|{speedPercent:F0}|{scorePercent:F1}|{savedTrackBest:F1}|{savedHeroTrackBest:F1}|{savedHeroHeartsRemaining}|{savedHeroHeartsTotal}|{scoreHits}|{scoreMisses}|{snapshot.heroModeEnabled}|{snapshot.currentHeroHeartsRemaining}|{snapshot.heroModeHeartCount}|{snapshot.songEndedAsGameOver}|{newRecord}|{rating}");
+            string songEndSignature = arcadeMode
+                ? FormattableString.Invariant($"{songEndTitleText}|{songName}|{trackName}|arcade|{snapshot.currentSessionArcadeScore}|{snapshot.currentTrackBestArcadeScore}|{scorePercent:F1}|{scoreHits}|{scoreMisses}|{snapshot.songEndedAsGameOver}|{newRecord}|{rating}")
+                : FormattableString.Invariant($"{songEndTitleText}|{songName}|{trackName}|{speedPercent:F0}|{scorePercent:F1}|{savedTrackBest:F1}|{savedHeroTrackBest:F1}|{savedHeroHeartsRemaining}|{savedHeroHeartsTotal}|{scoreHits}|{scoreMisses}|{snapshot.heroModeEnabled}|{snapshot.currentHeroHeartsRemaining}|{snapshot.heroModeHeartCount}|{snapshot.songEndedAsGameOver}|{newRecord}|{rating}");
 
 
 
@@ -8177,7 +8663,7 @@ public sealed class TabsSongHeaderOverlay
 
                 songEndSpeedValueLabel.text = $"SPEED  {speedPercent:F0}%";
 
-                songEndScoreLabel.text = $"{scorePercent:F1}%";
+                songEndScoreLabel.text = scoreDisplayText;
 
                 songEndBestLabel.text = bestSummaryText;
 
@@ -8187,7 +8673,7 @@ public sealed class TabsSongHeaderOverlay
 
                 songEndStatsLabel.text = statsText;
 
-                songEndNoteLabel.text = GetSongEndPerformanceNote(scorePercent, newRecord);
+                songEndNoteLabel.text = performanceNote;
 
                 songEndSongLabel.style.color = GameplayHudPrimaryTextColor;
 
@@ -8758,6 +9244,130 @@ public sealed class TabsSongHeaderOverlay
         startupTuningReminderPopup?.SetContent(eyebrow, title, message, callout, hint, primaryText);
     }
 
+    private string BuildArcadeGameplayShortcutText(bool showPause, string restartTarget)
+    {
+        string controls = GetArcadeFooterControlSummary();
+        return showPause
+            ? $"{controls}  •  Space resume  •  R {restartTarget}  •  Esc back  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
+            : $"{controls}  •  Space pause  •  R {restartTarget}";
+    }
+
+    private string GetArcadeStartupPrimaryMessage()
+    {
+        if (UsesArcadeKeyboardInput())
+            return $"Keyboard: <color=#F99E6B>{GetArcadeKeyboardFretSummary()}</color>  •  <color=#F99E6B>{GetArcadeKeyboardStrumSummary()}</color>.";
+
+        if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
+            return "Use your guitar controller or MIDI controller.";
+
+        if (UsesArcadeMidiInput())
+            return "Use your MIDI controller.";
+
+        return "Use your gamepad or guitar controller.";
+    }
+
+    private string GetArcadeStartupCalloutMessage()
+    {
+        if (UsesArcadeKeyboardInput())
+            return "You can also use a guitar controller or MIDI controller.";
+
+        if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
+            return "Controller and MIDI input are enabled for Arcade mode.";
+
+        if (UsesArcadeMidiInput())
+            return "MIDI input is enabled for Arcade mode.";
+
+        return "Controller input is enabled for Arcade mode.";
+    }
+
+    private string GetArcadeFooterControlSummary()
+    {
+        if (UsesArcadeKeyboardInput())
+            return $"{GetArcadeKeyboardFretSummary()} frets  •  {GetArcadeKeyboardStrumSummary()}";
+
+        if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
+            return "Use guitar controller or MIDI controller  •  Configure Arcade Controls in Settings";
+
+        if (UsesArcadeMidiInput())
+            return "Use MIDI controller  •  Configure Arcade Controls in Settings";
+
+        return "Use guitar/controller  •  Configure Arcade Controls in Settings";
+    }
+
+    private string GetArcadeKeyboardFretSummary()
+    {
+        KeyCode green = owner != null ? owner.arcadeKeyboardGreen : KeyCode.A;
+        KeyCode red = owner != null ? owner.arcadeKeyboardRed : KeyCode.S;
+        KeyCode yellow = owner != null ? owner.arcadeKeyboardYellow : KeyCode.J;
+        KeyCode blue = owner != null ? owner.arcadeKeyboardBlue : KeyCode.K;
+        KeyCode orange = owner != null ? owner.arcadeKeyboardOrange : KeyCode.L;
+        return $"{FormatControlKeyLabel(green)} / {FormatControlKeyLabel(red)} / {FormatControlKeyLabel(yellow)} / {FormatControlKeyLabel(blue)} / {FormatControlKeyLabel(orange)}";
+    }
+
+    private static string GetArcadeKeyboardStrumSummary()
+    {
+        return "Up / Down strum";
+    }
+
+    private bool UsesArcadeKeyboardInput()
+    {
+        GuitarBridgeServer.ArcadeInputSourceMode source = owner != null
+            ? owner.arcadeInputSource
+            : GuitarBridgeServer.ArcadeInputSourceMode.KeyboardAndController;
+
+        return source == GuitarBridgeServer.ArcadeInputSourceMode.Keyboard ||
+               source == GuitarBridgeServer.ArcadeInputSourceMode.KeyboardAndController ||
+               source == GuitarBridgeServer.ArcadeInputSourceMode.All;
+    }
+
+    private bool UsesArcadeControllerInput()
+    {
+        GuitarBridgeServer.ArcadeInputSourceMode source = owner != null
+            ? owner.arcadeInputSource
+            : GuitarBridgeServer.ArcadeInputSourceMode.KeyboardAndController;
+
+        return source == GuitarBridgeServer.ArcadeInputSourceMode.Controller ||
+               source == GuitarBridgeServer.ArcadeInputSourceMode.KeyboardAndController ||
+               source == GuitarBridgeServer.ArcadeInputSourceMode.All;
+    }
+
+    private bool UsesArcadeMidiInput()
+    {
+        GuitarBridgeServer.ArcadeInputSourceMode source = owner != null
+            ? owner.arcadeInputSource
+            : GuitarBridgeServer.ArcadeInputSourceMode.KeyboardAndController;
+
+        return source == GuitarBridgeServer.ArcadeInputSourceMode.Midi ||
+               source == GuitarBridgeServer.ArcadeInputSourceMode.All;
+    }
+
+    private static string FormatControlKeyLabel(KeyCode key)
+    {
+        return key switch
+        {
+            KeyCode.None => "--",
+            KeyCode.UpArrow => "Up",
+            KeyCode.DownArrow => "Down",
+            KeyCode.LeftArrow => "Left",
+            KeyCode.RightArrow => "Right",
+            _ => FormatGenericControlKeyLabel(key.ToString())
+        };
+    }
+
+    private static string FormatGenericControlKeyLabel(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "--";
+
+        if (raw.StartsWith("Alpha", StringComparison.OrdinalIgnoreCase))
+            return raw.Substring(5);
+
+        if (raw.StartsWith("Keypad", StringComparison.OrdinalIgnoreCase))
+            return $"Pad {raw.Substring(6)}";
+
+        return raw;
+    }
+
     private sealed class GeneratedAudioTrackPopupRow
 
     {
@@ -8917,6 +9527,71 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private Button CreateLibraryTypeButton(string text, int typeIndex)
+    {
+        Button button = new Button(() => owner?.SetSongLibraryTypeFromUi(typeIndex)) { text = text };
+        button.focusable = false;
+        button.style.height = 54f;
+        button.style.minWidth = 136f;
+        button.style.marginLeft = 8f;
+        button.style.paddingLeft = 18f;
+        button.style.paddingRight = 18f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.borderTopLeftRadius = 10f;
+        button.style.borderTopRightRadius = 10f;
+        button.style.borderBottomLeftRadius = 10f;
+        button.style.borderBottomRightRadius = 10f;
+        button.style.borderTopWidth = 2f;
+        button.style.borderRightWidth = 2f;
+        button.style.borderBottomWidth = 2f;
+        button.style.borderLeftWidth = 2f;
+        button.style.unityFontDefinition = modernUiFontDefinition;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.fontSize = 23f;
+        button.style.letterSpacing = 0.2f;
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            hoveredLibraryTypeIndex = typeIndex;
+            UpdateLibraryTypeButtons(owner != null ? (int)owner.CurrentSongLibraryType : 0);
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            if (hoveredLibraryTypeIndex == typeIndex)
+                hoveredLibraryTypeIndex = -1;
+            UpdateLibraryTypeButtons(owner != null ? (int)owner.CurrentSongLibraryType : 0);
+        });
+        return button;
+    }
+
+    private void UpdateLibraryTypeButtons(int selectedTypeIndex)
+    {
+        UpdateLibraryTypeButton(selectionLibraryGuitarButton, 0, selectedTypeIndex);
+        UpdateLibraryTypeButton(selectionLibraryArcadeButton, 1, selectedTypeIndex);
+    }
+
+    private void UpdateLibraryTypeButton(Button button, int typeIndex, int selectedTypeIndex)
+    {
+        if (button == null)
+            return;
+
+        bool selected = typeIndex == selectedTypeIndex;
+        bool hovered = hoveredLibraryTypeIndex == typeIndex;
+        Color fill = selected
+            ? LibraryConfirmedSongColor
+            : hovered ? new Color(0.16f, 0.22f, 0.28f, 0.95f) : new Color(0.04f, 0.07f, 0.10f, 0.86f);
+        Color border = selected
+            ? LibraryConfirmedSongColor
+            : hovered ? new Color(0.70f, 0.84f, 0.95f, 0.88f) : new Color(0.22f, 0.30f, 0.38f, 0.72f);
+        button.style.backgroundColor = fill;
+        button.style.color = selected ? LibraryConfirmedSongTextColor : new Color(0.88f, 0.93f, 0.97f, 0.96f);
+        button.style.borderTopColor = border;
+        button.style.borderRightColor = border;
+        button.style.borderBottomColor = border;
+        button.style.borderLeftColor = border;
+        button.style.opacity = selected || hovered ? 1f : 0.92f;
+    }
+
     private void UpdateLibraryBrowseModeButton(Button button, int modeIndex, int selectedModeIndex)
 
     {
@@ -8983,6 +9658,11 @@ public sealed class TabsSongHeaderOverlay
 
         return $"{score:F1}%";
 
+    }
+
+    private static string FormatArcadeScoreValue(int scoreValue)
+    {
+        return Mathf.Max(0, scoreValue).ToString("N0", CultureInfo.InvariantCulture);
     }
 
     private static string FormatLibraryHeroHeartsText(int heartsRemaining, int heartsTotal)
@@ -9223,6 +9903,8 @@ public sealed class TabsSongHeaderOverlay
         if (selectionSongsListTitleLabel != null)
             selectionSongsListTitleLabel.text = string.IsNullOrWhiteSpace(snapshot.songLibraryListTitle) ? "Songs" : snapshot.songLibraryListTitle;
 
+        UpdateLibraryTypeButtons(snapshot.selectedSongLibraryTypeIndex);
+
         UpdateLibraryBrowseModeButtons(currentLibraryBrowseModeIndex);
 
         selectionSubtitleLabel.text = string.IsNullOrWhiteSpace(snapshot.songLibraryListStatusText)
@@ -9408,6 +10090,7 @@ public sealed class TabsSongHeaderOverlay
                 selectionInfoTuningLabel.text = tuningText;
                 selectionInfoTuningLabel.style.display = string.IsNullOrWhiteSpace(tuningText) ? DisplayStyle.None : DisplayStyle.Flex;
             }
+            UpdateArcadeDifficultyButtons(snapshot);
             if (selectionArtworkGlyphLabel != null)
                 selectionArtworkGlyphLabel.text = BuildLibraryArtworkGlyph(selectedSongName);
             ApplyLibraryArtworkToTile(selectionArtworkCard, selectionArtworkGlyphLabel, snapshot.selectedLibrarySongArtworkPath, selectedSongName);
@@ -9444,6 +10127,7 @@ public sealed class TabsSongHeaderOverlay
                 selectionInfoTuningLabel.text = string.Empty;
                 selectionInfoTuningLabel.style.display = DisplayStyle.None;
             }
+            UpdateArcadeDifficultyButtons(snapshot);
             if (selectionArtworkGlyphLabel != null)
             {
                 selectionArtworkGlyphLabel.text = "--";
@@ -10200,10 +10884,21 @@ public sealed class TabsSongHeaderOverlay
         if (total > 0)
 
         {
-
-            selectionInfoScoreLabel.text = bestTrackIndex >= 0 ? GetAvailableTrackScoreText(snapshot, bestTrackIndex) : "--";
-
-            selectionInfoBestTrackLabel.text = bestTrackName;
+            bool isArcadeLibrary = snapshot.songLibraryType == SongLibraryType.Arcade;
+            if (isArcadeLibrary && selectedTrackIndex >= 0 && selectedTrackIndex < total)
+            {
+                string selectedTrackName = snapshot.availableTrackNames[selectedTrackIndex];
+                string selectedDifficulty = snapshot.selectedArcadeDifficultyLabel;
+                selectionInfoScoreLabel.text = GetAvailableTrackScoreText(snapshot, selectedTrackIndex);
+                selectionInfoBestTrackLabel.text = string.IsNullOrWhiteSpace(selectedDifficulty)
+                    ? selectedTrackName
+                    : $"{selectedTrackName}  •  {selectedDifficulty}";
+            }
+            else
+            {
+                selectionInfoScoreLabel.text = bestTrackIndex >= 0 ? GetAvailableTrackScoreText(snapshot, bestTrackIndex) : "--";
+                selectionInfoBestTrackLabel.text = bestTrackName;
+            }
 
             selectionInfoHintLabel.text = total > 1
 
@@ -11169,7 +11864,13 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsTopCategoryRow(menuList, 4, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 4);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 5, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 5);
+            AddGlobalSettingsTopCategoryRow(menuList, 5, "Arcade", snapshot.selectedGlobalSettingsTopIndex == 5);
+
+            AddGlobalSettingsTopCategoryRow(menuList, 6, "Controls", snapshot.selectedGlobalSettingsTopIndex == 6);
+
+            AddGlobalSettingsTopCategoryRow(menuList, 7, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 7);
+
+            AddGlobalSettingsTopCategoryRow(menuList, 8, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 8);
 
             return;
 
@@ -11270,8 +11971,9 @@ public sealed class TabsSongHeaderOverlay
 
 
         string value = FormatGlobalSettingsValue(setting);
-
-        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(setting.label, value, isSelected, showArrows: true, onHover: () => owner?.HoverGlobalSettingsItemSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsItemSelectionFromUi(index), onLeft: () => owner?.AdjustGlobalSettingsItemValueFromUi(index, -1), onRight: () => owner?.AdjustGlobalSettingsItemValueFromUi(index, 1), metaText: setting.tooltip);
+        bool adjustable = !string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) &&
+                          !string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase);
+        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(setting.label, value, isSelected, showArrows: adjustable, onHover: () => owner?.HoverGlobalSettingsItemSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsItemSelectionFromUi(index), onLeft: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, -1)) : null, onRight: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, 1)) : null, metaText: setting.tooltip);
 
         parent.Add(row.row);
 
@@ -11513,6 +12215,10 @@ public sealed class TabsSongHeaderOverlay
 
             return string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF";
 
+        if (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase))
+
+            return FormatBindingDisplayValue(setting.value);
+
 
 
         return setting.value ?? string.Empty;
@@ -11572,6 +12278,70 @@ public sealed class TabsSongHeaderOverlay
         ConfigureInteractiveButtonHover(button, new Color(0.15f, 0.17f, 0.20f, 1f), new Color(0.90f, 0.94f, 0.97f, 1f));
 
         return button;
+
+    }
+
+    private static string FormatBindingDisplayValue(string value)
+
+    {
+
+        if (string.IsNullOrWhiteSpace(value))
+
+            return "UNBOUND";
+
+
+
+        if (value.StartsWith("PRESS ", StringComparison.OrdinalIgnoreCase))
+
+            return value;
+
+
+
+        if (string.Equals(value, "None", StringComparison.OrdinalIgnoreCase))
+
+            return "UNBOUND";
+
+
+
+        if (Regex.IsMatch(value, @"^JoystickButton\d+$", RegexOptions.CultureInvariant))
+
+            return "PAD " + value.Substring("JoystickButton".Length);
+
+
+
+        if (Regex.IsMatch(value, @"^Joystick\d+Button\d+$", RegexOptions.CultureInvariant))
+
+        {
+
+            Match match = Regex.Match(value, @"Button(\d+)$", RegexOptions.CultureInvariant);
+
+            return match.Success ? "PAD " + match.Groups[1].Value : value;
+
+        }
+
+
+
+        return value
+
+            .Replace("UpArrow", "UP ARROW")
+
+            .Replace("DownArrow", "DOWN ARROW")
+
+            .Replace("LeftArrow", "LEFT ARROW")
+
+            .Replace("RightArrow", "RIGHT ARROW")
+
+            .Replace("KeypadEnter", "NUM ENTER")
+
+            .Replace("Keypad", "NUM ")
+
+            .Replace("Alpha", string.Empty)
+
+            .Replace("Semicolon", ";")
+
+            .Replace("Quote", "'")
+
+            .Replace("BackQuote", "`");
 
     }
 
@@ -11761,9 +12531,13 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsFullscreenTopCategoryRow(menuList, 4, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 4);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 5);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "Arcade", snapshot.selectedGlobalSettingsTopIndex == 5);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 6, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 6, "DEFAULTS");
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 6, "Controls", snapshot.selectedGlobalSettingsTopIndex == 6);
+
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 7, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 7);
+
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 8, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 8, "DEFAULTS");
 
             return;
 
@@ -12553,7 +13327,7 @@ public sealed class TabsSongHeaderOverlay
 
         columnsWrapper.style.flexWrap = Wrap.NoWrap;
 
-        columnsWrapper.style.minWidth = 1380f;
+        columnsWrapper.style.minWidth = 1680f;
 
         columnsWrapper.style.width = Length.Percent(100f);
 
@@ -12564,6 +13338,10 @@ public sealed class TabsSongHeaderOverlay
         AddGlobalSettingsColumn(columnsWrapper, "Tabs Visuals", addRightSpacing: true);
 
         AddGlobalSettingsColumn(columnsWrapper, "Highway 3D", addRightSpacing: true);
+
+        AddGlobalSettingsColumn(columnsWrapper, "Arcade", addRightSpacing: true);
+
+        AddGlobalSettingsColumn(columnsWrapper, "Controls", addRightSpacing: true);
 
         AddGlobalSettingsColumn(columnsWrapper, "General Visuals", addRightSpacing: false);
 
@@ -12795,6 +13573,16 @@ public sealed class TabsSongHeaderOverlay
 
         List<RuntimeSettingSnapshot> sectionSettings = section.settings;
 
+        if (normalizedTitle.Contains("control") || IsSectionIdPrefix(sectionSettings, "arcade.controls."))
+
+            return "Controls";
+
+
+
+        if (normalizedTitle.Contains("arcade") || IsSectionIdPrefix(sectionSettings, "arcade."))
+
+            return "Arcade";
+
 
 
         if (normalizedTitle.Contains("timing") || normalizedTitle.Contains("forgiveness") || normalizedTitle.Contains("settings") || IsSectionIdPrefix(sectionSettings, "core.") || IsSectionIdPrefix(sectionSettings, "timing."))
@@ -13007,6 +13795,40 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
+        else if (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) || string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase))
+
+        {
+
+            string buttonLabel = string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) ? "REMAP" : "RUN";
+
+            Button actionButton = CreateActionButton(buttonLabel, () =>
+
+            {
+
+                if (suppressCallbacks)
+
+                    return;
+
+
+
+                PreserveGlobalSettingsScrollOffset();
+
+                owner?.ActivateGlobalRuntimeSettingFromUi(setting.id);
+
+            });
+
+            actionButton.focusable = false;
+
+            actionButton.style.marginTop = 4f;
+
+            actionButton.style.alignSelf = Align.FlexStart;
+
+            actionButton.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
+
+            input = actionButton;
+
+        }
+
         else
 
         {
@@ -13062,6 +13884,7 @@ public sealed class TabsSongHeaderOverlay
 
 
         Label valueLabel = CreateLabel(setting.value, 24f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        valueLabel.text = FormatGlobalSettingsValue(setting);
 
         valueLabel.style.unityFontDefinition = modernUiFontDefinition;
 
@@ -14542,6 +15365,332 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private StartMenuOption CreateStartMenuModeOption(string title, string body, int modeIndex)
+
+    {
+
+        Button button = new Button(() => owner?.SelectStartMenuModeFromUi(modeIndex));
+
+        button.focusable = false;
+
+        button.text = string.Empty;
+
+        button.style.width = 750f;
+
+        button.style.minHeight = 390f;
+
+        button.style.marginLeft = 24f;
+
+        button.style.marginRight = 24f;
+
+        button.style.marginBottom = 30f;
+
+        button.style.paddingLeft = 45f;
+
+        button.style.paddingRight = 45f;
+
+        button.style.paddingTop = 45f;
+
+        button.style.paddingBottom = 45f;
+
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+        button.style.borderTopLeftRadius = 0f;
+
+        button.style.borderTopRightRadius = 0f;
+
+        button.style.borderBottomLeftRadius = 0f;
+
+        button.style.borderBottomRightRadius = 0f;
+
+        button.style.borderTopWidth = 2f;
+
+        button.style.borderRightWidth = 2f;
+
+        button.style.borderBottomWidth = 2f;
+
+        button.style.borderLeftWidth = 2f;
+
+        button.style.borderTopColor = Color.white;
+
+        button.style.borderRightColor = Color.white;
+
+        button.style.borderBottomColor = Color.white;
+
+        button.style.borderLeftColor = Color.white;
+
+        button.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverStartMenuModeFromUi(modeIndex));
+
+
+
+        Label titleLabel = CreateLabel(title, 87f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        titleLabel.style.unityFontDefinition = logoFontDefinition;
+
+        titleLabel.style.marginBottom = 33f;
+
+        titleLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        Label bodyLabel = CreateLabel(body, 37.5f, new Color(0.82f, 0.90f, 0.98f, 0.96f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        bodyLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+        bodyLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        button.Add(titleLabel);
+
+        button.Add(bodyLabel);
+
+
+
+        return new StartMenuOption
+
+        {
+
+            button = button,
+
+            titleLabel = titleLabel,
+
+            bodyLabel = bodyLabel
+
+        };
+
+    }
+
+    private Button CreateStartMenuArcadeInputButton(string text, int inputIndex)
+
+    {
+
+        Button button = CreateStartMenuSetupButton(text, () => owner?.SelectStartMenuArcadeInputFromUi(inputIndex));
+
+        button.style.width = 423f;
+
+        button.style.marginLeft = 12f;
+
+        button.style.marginRight = 12f;
+
+        button.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverStartMenuArcadeInputFromUi(inputIndex));
+
+        return button;
+
+    }
+
+    private Button CreateStartMenuSetupButton(string text, Action onClick)
+
+    {
+
+        Button button = new Button(onClick) { text = text };
+
+        button.focusable = false;
+
+        button.style.height = 108f;
+
+        button.style.minWidth = 360f;
+
+        button.style.paddingLeft = 36f;
+
+        button.style.paddingRight = 36f;
+
+        button.style.marginBottom = 18f;
+
+        button.style.unityFontDefinition = modernUiFontDefinition;
+
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+        button.style.fontSize = 37.5f;
+
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+        button.style.borderTopLeftRadius = 0f;
+
+        button.style.borderTopRightRadius = 0f;
+
+        button.style.borderBottomLeftRadius = 0f;
+
+        button.style.borderBottomRightRadius = 0f;
+
+        button.style.borderTopWidth = 2f;
+
+        button.style.borderRightWidth = 2f;
+
+        button.style.borderBottomWidth = 2f;
+
+        button.style.borderLeftWidth = 2f;
+
+        return button;
+
+    }
+
+    private void UpdateStartMenu(GuitarGameplaySnapshot snapshot)
+
+    {
+
+        bool guitarSetup = snapshot.selectedStartMenuStepIndex == 1;
+
+        bool arcadeSetup = snapshot.selectedStartMenuStepIndex == 2;
+
+        startMenuTitleLabel.text = guitarSetup ? "GUITAR SETUP" : arcadeSetup ? "ARCADE SETUP" : "SELECT MODE";
+
+        startMenuSubtitleLabel.text = guitarSetup
+
+            ? "Make sure your guitar is properly tuned before opening the library. Stable tuning gives cleaner note detection and better tracking. You can change tuning behavior later from General Settings."
+
+            : arcadeSetup
+
+                ? "Choose the controller style for Arcade mode. These controls remain editable in General Settings."
+
+                : "Choose how you want to play. You can change detailed controls later from General Settings.";
+
+        startMenuModeRow.style.display = guitarSetup || arcadeSetup ? DisplayStyle.None : DisplayStyle.Flex;
+
+        startMenuGuitarSetupPanel.style.display = guitarSetup ? DisplayStyle.Flex : DisplayStyle.None;
+
+        startMenuArcadeSetupPanel.style.display = arcadeSetup ? DisplayStyle.Flex : DisplayStyle.None;
+
+
+
+        for (int i = 0; i < startMenuModeOptions.Count; i++)
+
+            StyleStartMenuModeOption(startMenuModeOptions[i], i == snapshot.selectedStartMenuModeIndex);
+
+        if (guitarSetup)
+
+        {
+
+            if (snapshot.forceStandardTuning)
+
+            {
+
+                startMenuGuitarSetupForceStandardButton.text = "Force Standard Tuning: ON";
+
+                startMenuGuitarSetupTuningLabel.text = "If the song is not in E Standard, this lets you play it without retuning your guitar.";
+
+            }
+
+            else
+
+            {
+
+                startMenuGuitarSetupForceStandardButton.text = "Force Standard Tuning: OFF";
+
+                startMenuGuitarSetupTuningLabel.text = "If this is OFF, tune your guitar to the selected song's required tuning.";
+
+            }
+
+            startMenuGuitarSetupHintLabel.text = "Editable later in General Settings.";
+
+            StyleStartMenuSetupButton(startMenuGuitarSetupForceStandardButton, snapshot.selectedStartMenuArcadeSetupIndex == 0, snapshot.forceStandardTuning);
+
+            StyleStartMenuSetupButton(startMenuGuitarSetupContinueButton, snapshot.selectedStartMenuArcadeSetupIndex == 1, false, forceAccent: true);
+
+            return;
+
+        }
+
+
+
+        if (!arcadeSetup)
+
+            return;
+
+
+
+        string[] inputHints =
+
+        {
+
+            "Keyboard / Gamepad listens to keyboard and normal controller buttons.",
+
+            "Guitar Controller expects fret buttons plus strum input. Gamepad Mode should usually be OFF.",
+
+            "MIDI listens to the configured MIDI device. You can choose the device later in General Settings."
+
+        };
+
+        int inputIndex = Mathf.Clamp(snapshot.selectedStartMenuArcadeInputIndex, 0, startMenuArcadeInputButtons.Count - 1);
+
+        startMenuArcadeInputHintLabel.text = inputHints[Mathf.Clamp(inputIndex, 0, inputHints.Length - 1)];
+
+        startMenuArcadeGamepadModeButton.text = snapshot.startMenuArcadeGamepadMode ? "Gamepad Mode: ON" : "Gamepad Mode: OFF";
+
+
+
+        for (int i = 0; i < startMenuArcadeInputButtons.Count; i++)
+
+            StyleStartMenuSetupButton(startMenuArcadeInputButtons[i], snapshot.selectedStartMenuArcadeSetupIndex == 0 && i == inputIndex, i == inputIndex);
+
+
+
+        StyleStartMenuSetupButton(startMenuArcadeGamepadModeButton, snapshot.selectedStartMenuArcadeSetupIndex == 1, snapshot.startMenuArcadeGamepadMode);
+
+        StyleStartMenuSetupButton(startMenuArcadeContinueButton, snapshot.selectedStartMenuArcadeSetupIndex == 2, false, forceAccent: true);
+
+    }
+
+    private static void StyleStartMenuModeOption(StartMenuOption option, bool selected)
+
+    {
+
+        if (option == null || option.button == null)
+
+            return;
+
+        Color border = selected ? LibraryConfirmedSongColor : new Color(1f, 1f, 1f, 0.82f);
+
+        option.button.style.scale = selected ? new Scale(new Vector3(1.045f, 1.045f, 1f)) : new Scale(new Vector3(1f, 1f, 1f));
+
+        option.button.style.borderTopColor = border;
+
+        option.button.style.borderRightColor = border;
+
+        option.button.style.borderBottomColor = border;
+
+        option.button.style.borderLeftColor = border;
+
+        option.button.style.color = Color.white;
+
+        option.button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+        if (option.titleLabel != null)
+
+            option.titleLabel.style.color = Color.white;
+
+        if (option.bodyLabel != null)
+
+            option.bodyLabel.style.color = selected ? new Color(0.96f, 0.99f, 1f, 1f) : new Color(0.82f, 0.90f, 0.98f, 0.92f);
+
+    }
+
+    private static void StyleStartMenuSetupButton(Button button, bool focused, bool active, bool forceAccent = false)
+
+    {
+
+        if (button == null)
+
+            return;
+
+        Color neutral = new Color(1f, 1f, 1f, 0.74f);
+
+        Color activeColor = forceAccent || active ? LibraryConfirmedSongColor : neutral;
+
+        Color border = focused ? LibraryConfirmedSongColor : activeColor;
+
+        button.style.scale = focused ? new Scale(new Vector3(1.045f, 1.045f, 1f)) : new Scale(new Vector3(1f, 1f, 1f));
+
+        button.style.color = activeColor;
+
+        button.style.borderTopColor = border;
+
+        button.style.borderRightColor = border;
+
+        button.style.borderBottomColor = border;
+
+        button.style.borderLeftColor = border;
+
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+    }
+
 
 
     private void CreateMainMenuEntry(string title, string subtitle, Color accentColor, Action onClick)
@@ -15498,6 +16647,44 @@ public sealed class TabsSongHeaderOverlay
         if (settingsTrackRightArrowButton != null)
             settingsTrackRightArrowButton.style.display = DisplayStyle.None;
 
+    }
+
+    private void UpdateArcadeDifficultyButtons(GuitarGameplaySnapshot snapshot)
+    {
+        bool show = snapshot != null &&
+                    snapshot.songLibraryType == SongLibraryType.Arcade &&
+                    snapshot.selectedLibrarySongTrackCount > 0;
+        if (selectionArcadeDifficultyRow != null)
+            selectionArcadeDifficultyRow.style.display = show ? DisplayStyle.Flex : DisplayStyle.None;
+        if (!show)
+            return;
+
+        for (int i = 0; i < selectionArcadeDifficultyButtons.Count; i++)
+        {
+            Button button = selectionArcadeDifficultyButtons[i];
+            string label = snapshot.arcadeDifficultyLabels != null && i < snapshot.arcadeDifficultyLabels.Count
+                ? snapshot.arcadeDifficultyLabels[i]
+                : "--";
+            bool available = snapshot.arcadeDifficultyAvailable != null && i < snapshot.arcadeDifficultyAvailable.Count && snapshot.arcadeDifficultyAvailable[i];
+            bool selected = i == snapshot.selectedArcadeDifficultyIndex;
+            bool hovered = i == hoveredArcadeDifficultyIndex;
+
+            button.text = label;
+            button.SetEnabled(available);
+            Color border = selected
+                ? LibraryConfirmedSongColor
+                : hovered && available ? new Color(0.92f, 0.96f, 1f, 0.96f) : new Color(0.32f, 0.40f, 0.50f, available ? 0.82f : 0.30f);
+            Color fill = selected
+                ? LibraryConfirmedSongColor
+                : available ? new Color(0.045f, 0.075f, 0.115f, 0.92f) : new Color(0.03f, 0.035f, 0.045f, 0.48f);
+            button.style.backgroundColor = fill;
+            button.style.color = selected ? LibraryConfirmedSongTextColor : new Color(0.90f, 0.94f, 0.98f, available ? 0.96f : 0.32f);
+            button.style.borderTopColor = border;
+            button.style.borderRightColor = border;
+            button.style.borderBottomColor = border;
+            button.style.borderLeftColor = border;
+            button.style.opacity = available ? 1f : 0.42f;
+        }
     }
 
     private void EnsureGeneratedAudioTrackPopupRows(int count)
@@ -18416,6 +19603,112 @@ public sealed class TabsSongHeaderOverlay
 
             mainMenuSubtitleLabel.style.maxWidth = 720f;
 
+        }
+
+        float startMenuTitleSize = Mathf.Clamp(menuTitleSize * 1.08f, 92f, 154f);
+        float startMenuSubtitleSize = Mathf.Clamp(bodySize * 0.94f, 34f, 64f);
+        float startMenuCardTitleSize = Mathf.Clamp(menuItemTitleSize * 1.02f, 62f, 112f);
+        float startMenuCardBodySize = Mathf.Clamp(bodySize * 0.82f, 28f, 52f);
+        float startMenuButtonFontSize = Mathf.Clamp(buttonFontSize * 1.34f, 42f, 66f);
+        float startMenuButtonHeight = Mathf.Clamp(buttonHeight * 1.55f, 116f, 164f);
+        float startMenuButtonWidth = Mathf.Clamp(menuLayoutWidth * 0.33f, 480f, 640f);
+        float startMenuModeCardWidth = Mathf.Clamp(menuLayoutWidth * 0.44f, 620f, 860f);
+        float startMenuModeCardHeight = Mathf.Clamp(menuLayoutHeight * 0.46f, 360f, 520f);
+
+        if (startMenuTitleLabel != null)
+            startMenuTitleLabel.style.fontSize = startMenuTitleSize;
+        if (startMenuSubtitleLabel != null)
+        {
+            startMenuSubtitleLabel.style.fontSize = startMenuSubtitleSize;
+            startMenuSubtitleLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.86f, 980f, 1500f);
+        }
+        if (startMenuArcadeSetupTitleLabel != null)
+            startMenuArcadeSetupTitleLabel.style.fontSize = Mathf.Clamp(startMenuTitleSize * 0.82f, 74f, 126f);
+        if (startMenuGuitarSetupTitleLabel != null)
+            startMenuGuitarSetupTitleLabel.style.fontSize = Mathf.Clamp(startMenuTitleSize * 0.82f, 74f, 126f);
+        if (startMenuGuitarSetupInfoLabel != null)
+        {
+            startMenuGuitarSetupInfoLabel.style.fontSize = startMenuSubtitleSize;
+            startMenuGuitarSetupInfoLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.88f, 1100f, 1560f);
+        }
+        if (startMenuGuitarSetupTuningLabel != null)
+        {
+            startMenuGuitarSetupTuningLabel.style.fontSize = Mathf.Clamp(startMenuSubtitleSize * 0.96f, 32f, 58f);
+            startMenuGuitarSetupTuningLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.88f, 1100f, 1560f);
+        }
+        if (startMenuGuitarSetupHintLabel != null)
+        {
+            startMenuGuitarSetupHintLabel.style.fontSize = startMenuSubtitleSize;
+            startMenuGuitarSetupHintLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.88f, 1100f, 1560f);
+        }
+        if (startMenuArcadeInputHintLabel != null)
+        {
+            startMenuArcadeInputHintLabel.style.fontSize = startMenuSubtitleSize;
+            startMenuArcadeInputHintLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.88f, 1100f, 1560f);
+        }
+        if (startMenuArcadeGamepadHintLabel != null)
+        {
+            startMenuArcadeGamepadHintLabel.style.fontSize = startMenuSubtitleSize;
+            startMenuArcadeGamepadHintLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.88f, 1100f, 1560f);
+        }
+        if (startMenuFooterHintLabel != null)
+            startMenuFooterHintLabel.style.fontSize = Mathf.Clamp(startMenuSubtitleSize * 0.90f, 28f, 52f);
+
+        foreach (StartMenuOption option in startMenuModeOptions)
+        {
+            if (option == null || option.button == null)
+                continue;
+
+            option.button.style.width = startMenuModeCardWidth;
+            option.button.style.minHeight = startMenuModeCardHeight;
+            option.button.style.paddingLeft = Mathf.Clamp(menuLayoutWidth * 0.030f, 40f, 60f);
+            option.button.style.paddingRight = Mathf.Clamp(menuLayoutWidth * 0.030f, 40f, 60f);
+            option.button.style.paddingTop = Mathf.Clamp(menuLayoutHeight * 0.055f, 42f, 64f);
+            option.button.style.paddingBottom = Mathf.Clamp(menuLayoutHeight * 0.055f, 42f, 64f);
+            if (option.titleLabel != null)
+                option.titleLabel.style.fontSize = startMenuCardTitleSize;
+            if (option.bodyLabel != null)
+                option.bodyLabel.style.fontSize = startMenuCardBodySize;
+        }
+
+        foreach (Button button in startMenuArcadeInputButtons)
+        {
+            if (button == null)
+                continue;
+
+            button.style.width = startMenuButtonWidth;
+            button.style.minWidth = startMenuButtonWidth;
+            button.style.height = startMenuButtonHeight;
+            button.style.fontSize = startMenuButtonFontSize;
+        }
+
+        foreach (Button button in new[] { startMenuArcadeGamepadModeButton, startMenuArcadeContinueButton })
+        {
+            if (button == null)
+                continue;
+
+            button.style.minWidth = Mathf.Clamp(menuLayoutWidth * 0.44f, 720f, 980f);
+            button.style.height = startMenuButtonHeight;
+            button.style.fontSize = startMenuButtonFontSize;
+        }
+        if (startMenuGuitarSetupContinueButton != null)
+        {
+            startMenuGuitarSetupContinueButton.style.minWidth = Mathf.Clamp(menuLayoutWidth * 0.44f, 720f, 980f);
+            startMenuGuitarSetupContinueButton.style.height = startMenuButtonHeight;
+            startMenuGuitarSetupContinueButton.style.fontSize = startMenuButtonFontSize;
+        }
+        if (startMenuGuitarSetupForceStandardButton != null)
+        {
+            startMenuGuitarSetupForceStandardButton.style.minWidth = Mathf.Clamp(menuLayoutWidth * 0.44f, 720f, 980f);
+            startMenuGuitarSetupForceStandardButton.style.height = startMenuButtonHeight;
+            startMenuGuitarSetupForceStandardButton.style.fontSize = startMenuButtonFontSize;
+        }
+        if (gameplayShortcutLabel != null)
+        {
+            gameplayShortcutLabel.style.fontSize = Mathf.Clamp(bodySize * 0.54f, 20f, 30f);
+            gameplayShortcutLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.55f, 880f, 1800f);
+            gameplayShortcutLabel.style.left = Mathf.Clamp(menuLayoutWidth * 0.010f, 18f, 32f);
+            gameplayShortcutLabel.style.bottom = Mathf.Clamp(menuLayoutHeight * 0.012f, 14f, 26f);
         }
 
 

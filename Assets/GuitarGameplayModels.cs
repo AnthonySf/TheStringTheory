@@ -8,6 +8,18 @@ public enum GuitarRenderMode
     Tabs
 }
 
+public enum GuitarGameplayMode
+{
+    Guitar,
+    Arcade
+}
+
+public enum SongLibraryType
+{
+    Guitar,
+    Arcade
+}
+
 public enum HighwayCharacterDisplayMode
 {
     Always,
@@ -20,6 +32,31 @@ public enum GameplayNoteResult
     Pending,
     Hit,
     Missed
+}
+
+public enum ArcadeDifficulty
+{
+    Easy,
+    Medium,
+    Hard,
+    Expert
+}
+
+public enum ArcadeInstrument
+{
+    Guitar,
+    Bass,
+    Rhythm,
+    CoopGuitar,
+    Keys,
+    Drums
+}
+
+public enum ArcadeNoteType
+{
+    Strum,
+    Hopo,
+    Tap
 }
 
 public enum NoteTechnique
@@ -171,6 +208,86 @@ public sealed class GameplayNoteState
 }
 
 [Serializable]
+public struct ArcadeNoteData
+{
+    public int id;
+    public float time;
+    public float duration;
+    public float sustainBeats;
+    public int lane;
+    public bool isOpen;
+    public bool isHopo;
+    public bool isTap;
+    public ArcadeNoteType noteType;
+    public int chordId;
+
+    public ArcadeNoteData(int noteId, float startTime, float noteDuration, float noteSustainBeats, int laneIndex, bool openNote, bool hopoNote, bool tapNote, int assignedChordId)
+    {
+        id = noteId;
+        time = startTime;
+        duration = noteDuration;
+        sustainBeats = noteSustainBeats;
+        lane = laneIndex;
+        isOpen = openNote;
+        isHopo = hopoNote && !tapNote;
+        isTap = tapNote;
+        noteType = tapNote ? ArcadeNoteType.Tap : hopoNote ? ArcadeNoteType.Hopo : ArcadeNoteType.Strum;
+        chordId = assignedChordId;
+    }
+
+    public ArcadeNoteData(int noteId, float startTime, float noteDuration, float noteSustainBeats, int laneIndex, bool openNote, bool tapNote, int assignedChordId)
+        : this(noteId, startTime, noteDuration, noteSustainBeats, laneIndex, openNote, false, tapNote, assignedChordId)
+    {
+    }
+}
+
+[Serializable]
+public sealed class ArcadeNoteState
+{
+    public ArcadeNoteData data;
+    public GameplayNoteResult result = GameplayNoteResult.Pending;
+    public float resolvedAt = -1f;
+    public bool isJudgeable;
+
+    public bool IsResolved => result != GameplayNoteResult.Pending;
+    public bool IsHit => result == GameplayNoteResult.Hit;
+    public bool IsMissed => result == GameplayNoteResult.Missed;
+
+    public ArcadeNoteState(ArcadeNoteData note)
+    {
+        data = note;
+    }
+}
+
+public sealed class ArcadeArrangementSummary
+{
+    public string ArrangementId;
+    public string DisplayName;
+    public ArcadeInstrument Instrument;
+    public List<ArcadeDifficulty> Difficulties = new List<ArcadeDifficulty>();
+
+    public ArcadeArrangementSummary Clone()
+    {
+        return new ArcadeArrangementSummary
+        {
+            ArrangementId = ArrangementId,
+            DisplayName = DisplayName,
+            Instrument = Instrument,
+            Difficulties = Difficulties != null ? new List<ArcadeDifficulty>(Difficulties) : new List<ArcadeDifficulty>()
+        };
+    }
+}
+
+public sealed class ArcadeChartData
+{
+    public string SourcePath;
+    public int LaneCount = 5;
+    public List<ArcadeArrangementSummary> Arrangements = new List<ArcadeArrangementSummary>();
+    public List<ArcadeNoteData> Notes = new List<ArcadeNoteData>();
+    public float DurationSeconds;
+}
+
+[Serializable]
 public sealed class TabSectionData
 {
     public int index;
@@ -181,6 +298,9 @@ public sealed class TabSectionData
 
 public sealed class GuitarGameplaySnapshot
 {
+    public GuitarGameplayMode gameplayMode;
+    public SongLibraryType songLibraryType;
+    public int selectedSongLibraryTypeIndex;
     public float songTime;
     public bool isPaused;
     public bool noteByNoteModeEnabled;
@@ -189,6 +309,7 @@ public sealed class GuitarGameplaySnapshot
     public int heroModeHeartCount;
     public int currentHeroHeartsRemaining;
     public bool showHighwayCharacter;
+    public bool forceStandardTuning;
     public bool loopEnabled;
     public float loopStartTime;
     public float loopEndTime;
@@ -208,7 +329,18 @@ public sealed class GuitarGameplaySnapshot
     public int currentSessionScoreHits;
     public int currentSessionScoreMisses;
     public float currentSessionScorePercent;
+    public int currentSessionArcadeScore;
+    public int currentSessionArcadeCombo;
+    public int currentSessionArcadeMultiplier;
     public List<GameplayNoteState> noteStates;
+    public List<ArcadeNoteState> arcadeNoteStates;
+    public int arcadeLaneCount;
+    public string selectedArcadeArrangementId;
+    public string selectedArcadeArrangementDisplayName;
+    public string selectedArcadeDifficultyLabel;
+    public List<string> arcadeDifficultyLabels;
+    public List<bool> arcadeDifficultyAvailable;
+    public int selectedArcadeDifficultyIndex;
     public List<TabSectionData> sections;
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
@@ -222,6 +354,12 @@ public sealed class GuitarGameplaySnapshot
     public bool showMainMenu;
     public bool mainMenuFlowActive;
     public int selectedMainMenuIndex;
+    public bool showStartMenu;
+    public int selectedStartMenuStepIndex;
+    public int selectedStartMenuModeIndex;
+    public int selectedStartMenuArcadeSetupIndex;
+    public int selectedStartMenuArcadeInputIndex;
+    public bool startMenuArcadeGamepadMode;
     public bool showSongSelection;
     public bool songSelectionSongConfirmed;
     public bool showTrackSelection;
@@ -295,6 +433,8 @@ public sealed class GuitarGameplaySnapshot
     public bool songEndedAsGameOver;
     public int selectedSongEndActionIndex;
     public float currentTrackBestScorePercent;
+    public int currentTrackBestArcadeScore;
+    public int currentSongBestArcadeScore;
     public float currentTrackHeroBestScorePercent;
     public int currentTrackHeroBestHeartsRemaining;
     public int currentTrackHeroBestHeartsTotal;
@@ -315,6 +455,7 @@ public sealed class GuitarGameplaySnapshot
     public string notesDetectorRoutineStatusText;
     public string notesDetectorRoutineProgressText;
     public List<string> notesDetectorRoutineTabRows;
+    public List<int> notesDetectorRoutineTabRowStates;
     public bool notesDetectorRoutineStatusOk;
     public bool notesDetectorRoutineCompleted;
     public bool showStartupTuningReminder;

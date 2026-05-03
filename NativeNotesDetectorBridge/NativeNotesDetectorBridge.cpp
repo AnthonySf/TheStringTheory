@@ -998,6 +998,7 @@ class HintState
 {
 public:
     void SetSync(double unitySongTime, double pythonAudioTime);
+    void ClearWindows();
     void AddHintWindow(double startTime, double endTime, const std::set<int>& midiNotes);
     std::set<int> GetExpectedNotesForPythonTime(double pythonAudioTime, double* unitySongTime);
     std::set<int> GetExpectedNotesNearPythonTime(double pythonAudioTime, double lookaheadSeconds, double* unitySongTime);
@@ -1048,6 +1049,12 @@ void HintState::AddHintWindow(double startTime, double endTime, const std::set<i
     std::lock_guard<std::mutex> lock(mutex_);
     windows_.push_back(std::move(window));
     pruneLocked_();
+}
+
+void HintState::ClearWindows()
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    windows_.clear();
 }
 
 std::set<int> HintState::GetExpectedNotesForPythonTime(double pythonAudioTime, double* unitySongTime)
@@ -1122,6 +1129,68 @@ void HintState::ParsePayload(const std::string& payload, double pythonAudioTime)
         }
         catch (...)
         {
+        }
+        return;
+    }
+
+    if (command == "CLEAR" || command == "SYNCCLEAR" || command == "TIMECLEAR")
+    {
+        if (parts.size() >= 2)
+        {
+            try
+            {
+                SetSync(std::stod(parts.back()), pythonAudioTime);
+            }
+            catch (...)
+            {
+            }
+        }
+
+        ClearWindows();
+        return;
+    }
+
+    if ((command == "HINTCLEAR" || command == "EXPECTCLEAR") && parts.size() >= 2)
+    {
+        double currentSongTime = 0.0;
+        try
+        {
+            currentSongTime = std::stod(parts[1]);
+        }
+        catch (...)
+        {
+            return;
+        }
+
+        SetSync(currentSongTime, pythonAudioTime);
+        ClearWindows();
+
+        if (parts.size() == 3)
+        {
+            AddHintWindow(currentSongTime - 0.07, currentSongTime + 0.22, parseMidiSet_(parts[2]));
+            return;
+        }
+
+        for (size_t i = 2; i < parts.size(); ++i)
+        {
+            if (parts[i].empty())
+                continue;
+
+            std::vector<std::string> fields = split_(parts[i], ':');
+            if (fields.size() >= 3)
+            {
+                try
+                {
+                    AddHintWindow(std::stod(fields[0]), std::stod(fields[1]), parseMidiSet_(fields[2]));
+                }
+                catch (...)
+                {
+                }
+            }
+            else
+            {
+                AddHintWindow(currentSongTime - 0.07, currentSongTime + 0.22, parseMidiSet_(parts[i]));
+            }
         }
         return;
     }

@@ -134,6 +134,10 @@ class UnityHintState:
             self.offset = None
             self.expected_windows.clear()
 
+    def clear_windows(self):
+        with self.lock:
+            self.expected_windows.clear()
+
     def set_sync(self, unity_song_time, python_audio_time):
         new_offset = python_audio_time - unity_song_time
         with self.lock:
@@ -235,6 +239,46 @@ def parse_unity_message(message):
     python_now = get_python_audio_time()
 
     try:
+        if cmd in ("CLEAR", "SYNCCLEAR", "TIMECLEAR"):
+            if len(parts) >= 2:
+                try:
+                    unity_song_time = float(parts[-1])
+                    unity_hint_state.set_sync(unity_song_time, python_now)
+                except Exception:
+                    pass
+            unity_hint_state.clear_windows()
+            return
+
+        if cmd in ("HINTCLEAR", "EXPECTCLEAR"):
+            current_song_time = float(parts[1])
+            unity_hint_state.set_sync(current_song_time, python_now)
+            unity_hint_state.clear_windows()
+
+            if len(parts) == 3:
+                notes = [n.strip() for n in parts[2].split(",") if n.strip()]
+                unity_hint_state.add_hint_window(
+                    current_song_time - DEFAULT_HINT_LOOKBACK_SEC,
+                    current_song_time + DEFAULT_HINT_LOOKAHEAD_SEC,
+                    notes,
+                )
+            else:
+                for entry in parts[2:]:
+                    entry = entry.strip()
+                    if not entry:
+                        continue
+                    try:
+                        start_s, end_s, notes_csv = entry.split(":", 2)
+                        notes = [n.strip() for n in notes_csv.split(",") if n.strip()]
+                        unity_hint_state.add_hint_window(float(start_s), float(end_s), notes)
+                    except ValueError:
+                        notes = [n.strip() for n in entry.split(",") if n.strip()]
+                        unity_hint_state.add_hint_window(
+                            current_song_time - DEFAULT_HINT_LOOKBACK_SEC,
+                            current_song_time + DEFAULT_HINT_LOOKAHEAD_SEC,
+                            notes,
+                        )
+            return
+
         if cmd in ("SYNC", "TIME"):
             unity_song_time = float(parts[-1])
             unity_hint_state.set_sync(unity_song_time, python_now)
