@@ -2319,6 +2319,32 @@ public class GuitarBridgeServer : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(latestEventNotesText) && latestEventNotesText != "--")
             ParseNoteCsvIntoSet(latestEventNotesText, combinedPitches);
 
+        float newestEventTime = -999f;
+        for (int i = recentNoteEvents.Count - 1; i >= 0; i--)
+        {
+            if (recentNoteEvents[i] == null)
+                continue;
+
+            newestEventTime = recentNoteEvents[i].time;
+            break;
+        }
+
+        if (newestEventTime > -998f)
+        {
+            const float chordMergeWindowSeconds = 0.05f;
+            float cutoff = newestEventTime - chordMergeWindowSeconds;
+            for (int i = recentNoteEvents.Count - 1; i >= 0; i--)
+            {
+                NoteEvent ev = recentNoteEvents[i];
+                if (ev == null)
+                    continue;
+                if (ev.time < cutoff)
+                    break;
+
+                combinedPitches.UnionWith(ev.pitches);
+            }
+        }
+
         return combinedPitches;
     }
 

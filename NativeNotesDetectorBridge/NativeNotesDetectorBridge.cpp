@@ -61,6 +61,7 @@ constexpr float kHighStringRmsMultiplier = 0.50f;
 constexpr int kHighStringBenefitMatchMaxDistance = 0;
 constexpr float kOnsetExpectLookaheadSeconds = 0.120f;
 constexpr int kMaxEventNotes = 6;
+constexpr float kChordResultMergeSeconds = 0.050f;
 constexpr float kOnsetThreshold = 0.50f;
 constexpr float kFrameThreshold = 0.30f;
 constexpr int kMinimumNoteLengthFrames = 11;
@@ -197,6 +198,13 @@ struct NoteEventCandidate
 {
     int midi = 0;
     float amplitude = 0.0f;
+};
+
+enum class ExpectedContextKind
+{
+    Normal,
+    HighStringFocused,
+    MixedChord
 };
 
 std::wstring Utf8ToWide(const char* text)
@@ -399,14 +407,47 @@ int SemitoneDistance(int midiA, int midiB)
     return std::abs(midiA - midiB);
 }
 
-bool IsHighStringContext(const std::set<int>& expectedMidi, const DetectorSettings& settings)
+size_t CountSetOverlap(const std::set<int>& left, const std::set<int>& right)
 {
+    if (left.empty() || right.empty())
+        return 0;
+
+    const std::set<int>& smaller = left.size() <= right.size() ? left : right;
+    const std::set<int>& larger = left.size() <= right.size() ? right : left;
+    size_t overlap = 0;
+    for (int value : smaller)
+    {
+        if (larger.find(value) != larger.end())
+            ++overlap;
+    }
+
+    return overlap;
+}
+
+ExpectedContextKind GetExpectedContextKind(const std::set<int>& expectedMidi, const DetectorSettings& settings)
+{
+    if (expectedMidi.empty())
+        return ExpectedContextKind::Normal;
+
+    size_t highCount = 0;
     for (int midi : expectedMidi)
     {
         if (midi >= settings.highStringMinMidi)
-            return true;
+            ++highCount;
     }
-    return false;
+
+    if (highCount == 0)
+        return ExpectedContextKind::Normal;
+
+    if (highCount == expectedMidi.size())
+        return ExpectedContextKind::HighStringFocused;
+
+    return ExpectedContextKind::MixedChord;
+}
+
+bool IsHighStringContext(const std::set<int>& expectedMidi, const DetectorSettings& settings)
+{
+    return GetExpectedContextKind(expectedMidi, settings) == ExpectedContextKind::HighStringFocused;
 }
 
 DetectorSettings ClampDetectorSettings(const DetectorSettings& source)
@@ -1398,6 +1439,7 @@ private:
     double broadcastEventOnsetTime_ = 0.0;
     double broadcastEventUntil_ = 0.0;
     std::set<int> broadcastEventNotes_;
+    std::set<int> broadcastExpectedNotes_;
 };
 
 NativeDetectorEngine::NativeDetectorEngine()
@@ -1789,6 +1831,7 @@ void NativeDetectorEngine::resetStateLocked_()
         broadcastEventId_ = 0;
         broadcastEventOnsetTime_ = 0.0;
         broadcastEventUntil_ = 0.0;
+        broadcastExpectedNotes_.clear();
     }
 }
 
@@ -1959,10 +2002,31 @@ void NativeDetectorEngine::pumpDeepResults_(double currentTime)
         const DeepResult& result = localResults.front();
         {
             std::lock_guard<std::mutex> lock(stateMutex_);
-            broadcastEventId_ = result.eventId;
-            broadcastEventOnsetTime_ = result.onsetTime;
-            broadcastEventUntil_ = currentTime + kEventBroadcastSeconds;
-            broadcastEventNotes_ = result.eventNotes;
+            const bool closeEnoughToMerge = broadcastEventId_ > 0 &&
+                !broadcastEventNotes_.empty() &&
+                !result.eventNotes.empty() &&
+                std::abs(result.onsetTime - broadcastEventOnsetTime_) <= kChordResultMergeSeconds;
+            const size_t expectedOverlap = CountSetOverlap(broadcastExpectedNotes_, result.expectedMidiNotes);
+            const size_t minExpectedSize = std::min(broadcastExpectedNotes_.size(), result.expectedMidiNotes.size());
+            const bool mergeableChordExpectation = minExpectedSize >= 2 &&
+                expectedOverlap > 0 &&
+                (expectedOverlap * 2) >= minExpectedSize;
+
+            if (closeEnoughToMerge && mergeableChordExpectation)
+            {
+                broadcastEventOnsetTime_ = std::min(broadcastEventOnsetTime_, result.onsetTime);
+                broadcastEventUntil_ = currentTime + kEventBroadcastSeconds;
+                broadcastEventNotes_.insert(result.eventNotes.begin(), result.eventNotes.end());
+                broadcastExpectedNotes_.insert(result.expectedMidiNotes.begin(), result.expectedMidiNotes.end());
+            }
+            else
+            {
+                broadcastEventId_ = result.eventId;
+                broadcastEventOnsetTime_ = result.onsetTime;
+                broadcastEventUntil_ = currentTime + kEventBroadcastSeconds;
+                broadcastEventNotes_ = result.eventNotes;
+                broadcastExpectedNotes_ = result.expectedMidiNotes;
+            }
         }
         localResults.pop();
     }
@@ -2015,7 +2079,8 @@ void NativeDetectorEngine::updateContinuousNotes_(
     const DetectorSettings settings = getSettingsSnapshot_();
     double unityTime = -1.0;
     const std::set<int> expectedMidi = hintState_.GetExpectedNotesForPythonTime(currentTime, &unityTime);
-    const bool highStringContext = IsHighStringContext(expectedMidi, settings);
+    const ExpectedContextKind expectedContext = GetExpectedContextKind(expectedMidi, settings);
+    const bool highStringContext = expectedContext == ExpectedContextKind::HighStringFocused;
     const float rmsGate = highStringContext ? (settings.continuousRmsGate * settings.highStringRmsMultiplier) : settings.continuousRmsGate;
     const float relaxedConfidenceGate = std::min(
         settings.continuousConfidenceGate,
@@ -2109,7 +2174,8 @@ bool NativeDetectorEngine::detectOnset_(const std::vector<float>& hop, const std
         return false;
 
     const DetectorSettings settings = getSettingsSnapshot_();
-    aubio_onset_set_threshold(aubioOnset_, IsHighStringContext(expectedMidi, settings) ? settings.highStringOnsetThreshold : settings.standardOnsetThreshold);
+    const ExpectedContextKind expectedContext = GetExpectedContextKind(expectedMidi, settings);
+    aubio_onset_set_threshold(aubioOnset_, expectedContext == ExpectedContextKind::HighStringFocused ? settings.highStringOnsetThreshold : settings.standardOnsetThreshold);
     memcpy(aubioHopInput_->data, hop.data(), static_cast<size_t>(kHopSize) * sizeof(float));
     aubio_onset_do(aubioOnset_, aubioHopInput_, aubioOnsetOutput_);
     return aubioOnsetOutput_->data[0] > 0.0f;
@@ -2334,6 +2400,9 @@ std::set<int> NativeDetectorEngine::scoreAiCandidates_(const std::vector<NoteEve
         return {};
 
     const DetectorSettings settings = getSettingsSnapshot_();
+    const ExpectedContextKind expectedContext = GetExpectedContextKind(expectedMidi, settings);
+    const bool mixedChordContext = expectedContext == ExpectedContextKind::MixedChord;
+    const int lowestExpectedMidi = expectedMidi.empty() ? -1 : *expectedMidi.begin();
 
     struct ScoredCandidate
     {
@@ -2407,21 +2476,91 @@ std::set<int> NativeDetectorEngine::scoreAiCandidates_(const std::vector<NoteEve
     }
 
     const float keepRatio = expectedExactPresent ? settings.chordExpectedScoreKeepRatio : settings.chordScoreKeepRatio;
-    std::set<int> selected;
+    std::set<int> primarySelected;
     for (const ScoredCandidate& candidate : scored)
     {
-        if (selected.size() >= static_cast<size_t>(kMaxEventNotes))
+        if (primarySelected.size() >= static_cast<size_t>(kMaxEventNotes))
             break;
         if (candidate.score < bestScore * keepRatio)
             continue;
         if (!expectedMidi.empty() && candidate.hasDistance && candidate.distance > settings.expectMaxDistanceAi && candidate.relativeAmplitude < 0.95f)
             continue;
-        selected.insert(candidate.midi);
+        primarySelected.insert(candidate.midi);
     }
 
-    if (!selected.empty())
-        return selected;
+    std::vector<int> orderedSelected;
+    orderedSelected.reserve(static_cast<size_t>(kMaxEventNotes));
+    auto appendSelectedMidi = [&](int midi)
+    {
+        if (midi < 0)
+            return;
+        if (std::find(orderedSelected.begin(), orderedSelected.end(), midi) != orderedSelected.end())
+            return;
+        if (orderedSelected.size() >= static_cast<size_t>(kMaxEventNotes))
+            return;
+        orderedSelected.push_back(midi);
+    };
 
+    if (!expectedMidi.empty())
+    {
+        for (int expected : expectedMidi)
+        {
+            const bool isLowestExpected = mixedChordContext && expected == lowestExpectedMidi;
+            const ScoredCandidate* bestCoverageCandidate = nullptr;
+            float bestCoverageScore = -std::numeric_limits<float>::infinity();
+
+            for (const ScoredCandidate& candidate : scored)
+            {
+                const int distance = SemitoneDistance(candidate.midi, expected);
+                if (distance > settings.expectMaxDistanceAi)
+                    continue;
+
+                const float minimumAmplitude = isLowestExpected ? 0.10f : 0.16f;
+                if (candidate.relativeAmplitude < minimumAmplitude)
+                    continue;
+
+                float coverageScore = candidate.relativeAmplitude;
+                if (distance == 0)
+                    coverageScore += isLowestExpected ? 0.85f : 0.65f;
+                else if (distance == 1)
+                    coverageScore += 0.15f;
+                else
+                    coverageScore += 0.05f;
+
+                coverageScore -= static_cast<float>(distance) * 0.22f;
+
+                if (isLowestExpected && candidate.midi <= expected)
+                    coverageScore += 0.10f;
+
+                if (coverageScore > bestCoverageScore)
+                {
+                    bestCoverageScore = coverageScore;
+                    bestCoverageCandidate = &candidate;
+                }
+            }
+
+            if (bestCoverageCandidate == nullptr)
+                continue;
+
+            const float minimumCoverageScore = isLowestExpected ? 0.30f : 0.42f;
+            if (bestCoverageScore < minimumCoverageScore)
+                continue;
+
+            appendSelectedMidi(bestCoverageCandidate->midi);
+        }
+    }
+
+    for (const ScoredCandidate& candidate : scored)
+    {
+        if (primarySelected.find(candidate.midi) == primarySelected.end())
+            continue;
+        appendSelectedMidi(candidate.midi);
+    }
+
+    if (!orderedSelected.empty())
+        return std::set<int>(orderedSelected.begin(), orderedSelected.end());
+
+    std::set<int> selected;
     for (const ScoredCandidate& candidate : scored)
     {
         if (candidate.relativeAmplitude > 0.40f)
