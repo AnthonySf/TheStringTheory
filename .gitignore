@@ -75,5 +75,11 @@ Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
 NativeNotesDetectorBridge/build/
 External/
 
+# Local song content should not be published in the source repo
+Assets/StreamingAssets/Songs/**
+Assets/song.gp
+Assets/song.mid
+Assets/song1.mid
+
 # General
 *.log
