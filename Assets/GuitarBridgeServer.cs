@@ -5786,55 +5786,61 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool IsUiUpPressed()
     {
         RefreshUiControllerAxes();
+        bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
         return Input.GetKeyDown(KeyCode.UpArrow) ||
                IsAnyGamepadDpadUpPressedThisFrame() ||
-               Input.GetKeyDown(KeyCode.JoystickButton13) ||
-               CrossedUiAxisThreshold(previousUiControllerVerticalAxis, currentUiControllerVerticalAxis, 1);
+               (!hasInputSystemGamepad && Input.GetKeyDown(KeyCode.JoystickButton13)) ||
+               (!hasInputSystemGamepad && CrossedUiAxisThreshold(previousUiControllerVerticalAxis, currentUiControllerVerticalAxis, 1));
     }
 
     private bool IsUiDownPressed()
     {
         RefreshUiControllerAxes();
+        bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
         return Input.GetKeyDown(KeyCode.DownArrow) ||
                IsAnyGamepadDpadDownPressedThisFrame() ||
-               Input.GetKeyDown(KeyCode.JoystickButton14) ||
-               CrossedUiAxisThreshold(previousUiControllerVerticalAxis, currentUiControllerVerticalAxis, -1);
+               (!hasInputSystemGamepad && Input.GetKeyDown(KeyCode.JoystickButton14)) ||
+               (!hasInputSystemGamepad && CrossedUiAxisThreshold(previousUiControllerVerticalAxis, currentUiControllerVerticalAxis, -1));
     }
 
     private bool IsUiLeftPressed()
     {
         RefreshUiControllerAxes();
+        bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
         return Input.GetKeyDown(KeyCode.LeftArrow) ||
                IsAnyGamepadDpadLeftPressedThisFrame() ||
-               Input.GetKeyDown(KeyCode.JoystickButton15) ||
-               CrossedUiAxisThreshold(previousUiControllerHorizontalAxis, currentUiControllerHorizontalAxis, -1);
+               (!hasInputSystemGamepad && Input.GetKeyDown(KeyCode.JoystickButton15)) ||
+               (!hasInputSystemGamepad && CrossedUiAxisThreshold(previousUiControllerHorizontalAxis, currentUiControllerHorizontalAxis, -1));
     }
 
     private bool IsUiRightPressed()
     {
         RefreshUiControllerAxes();
+        bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
         return Input.GetKeyDown(KeyCode.RightArrow) ||
                IsAnyGamepadDpadRightPressedThisFrame() ||
-               Input.GetKeyDown(KeyCode.JoystickButton16) ||
-               CrossedUiAxisThreshold(previousUiControllerHorizontalAxis, currentUiControllerHorizontalAxis, 1);
+               (!hasInputSystemGamepad && Input.GetKeyDown(KeyCode.JoystickButton16)) ||
+               (!hasInputSystemGamepad && CrossedUiAxisThreshold(previousUiControllerHorizontalAxis, currentUiControllerHorizontalAxis, 1));
     }
 
     private bool IsUiLeftHeld()
     {
         RefreshUiControllerAxes();
+        bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
         return Input.GetKey(KeyCode.LeftArrow) ||
                IsAnyGamepadDpadLeftHeld() ||
-               Input.GetKey(KeyCode.JoystickButton15) ||
-               currentUiControllerHorizontalAxis <= -UiControllerAxisThreshold;
+               (!hasInputSystemGamepad && Input.GetKey(KeyCode.JoystickButton15)) ||
+               (!hasInputSystemGamepad && currentUiControllerHorizontalAxis <= -UiControllerAxisThreshold);
     }
 
     private bool IsUiRightHeld()
     {
         RefreshUiControllerAxes();
+        bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
         return Input.GetKey(KeyCode.RightArrow) ||
                IsAnyGamepadDpadRightHeld() ||
-               Input.GetKey(KeyCode.JoystickButton16) ||
-               currentUiControllerHorizontalAxis >= UiControllerAxisThreshold;
+               (!hasInputSystemGamepad && Input.GetKey(KeyCode.JoystickButton16)) ||
+               (!hasInputSystemGamepad && currentUiControllerHorizontalAxis >= UiControllerAxisThreshold);
     }
 
 #if ENABLE_INPUT_SYSTEM
