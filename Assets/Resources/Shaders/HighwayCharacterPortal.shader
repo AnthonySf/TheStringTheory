@@ -81,10 +81,11 @@ Shader "Custom/HighwayCharacterPortal"
                 float ringInner = 1.0 - smoothstep(1.0 - _RingThickness - crispRimSoftness, 1.0 - _RingThickness + crispRimSoftness, radius);
                 float ring = saturate(ringOuter * (1.0 - ringInner));
                 float splitBlend = smoothstep(_SplitY - _SplitSoftness, _SplitY + _SplitSoftness, i.uv.y);
-                float backHalfMask = 1.0 - splitBlend;
+                float seamLift = saturate(1.0 - (abs(i.uv.y - _SplitY) / max(0.0001, _SplitSoftness * 2.4)));
+                float backHalfMask = saturate(splitBlend + (seamLift * 0.22));
+                float frontHalfMask = saturate((1.0 - splitBlend) + (seamLift * 0.22));
                 float frontArcMask = smoothstep(0.10, 0.92, -sin(angle));
-                frontArcMask *= smoothstep(0.72, 0.95, radius);
-                frontArcMask *= splitBlend;
+                frontArcMask *= frontHalfMask;
 
                 float core = pow(saturate(1.0 - radius), 1.55);
                 float spiralA = 0.5 + 0.5 * sin((angle * 7.0) - (radius * 17.0) - (t * 4.6));
@@ -101,21 +102,42 @@ Shader "Custom/HighwayCharacterPortal"
                 float shadow = saturate(core * 1.1);
                 float emberRim = saturate(pow(ring, 0.78) * (_GlowStrength * 1.02));
                 float rimInnerGlow = saturate(pow(ring, 1.12) * (_GlowStrength * 0.48));
+                float accentLuma = dot(_AccentColor.rgb, float3(0.2126, 0.7152, 0.0722));
+                float darkAccentWeight = saturate((0.12 - accentLuma) / 0.12);
+                float darkSwirlMask = saturate(pow(swirlMask, 0.34) * 1.95);
 
                 if (_HalfMode > 0.5)
                 {
-                    float frontRing = ring * frontArcMask;
-                    fixed3 frontColor = _RimColor.rgb * (frontRing * (1.0 + rimInnerGlow * 0.55));
-                    frontColor += _AccentColor.rgb * (frontRing * 0.12);
-                    float frontAlpha = frontRing * _RimColor.a;
-                    return fixed4(saturate(frontColor), saturate(frontAlpha));
-                }
+                    float frontRing = ring;
+                    float frontSwirl = swirlMask;
+                    float frontDeepVoid = deepVoid;
+                    float frontInnerShadow = innerShadow;
+                    float frontEmberRim = emberRim;
+                    float frontRimInnerGlow = rimInnerGlow;
+                    float frontArcAccent = frontRing * frontArcMask;
 
-                if (_HalfMode < -0.5)
-                {
-                    swirlMask *= backHalfMask;
-                    deepVoid *= lerp(1.0, backHalfMask, 0.88);
-                    innerShadow *= lerp(1.0, backHalfMask, 0.82);
+                    fixed3 frontColor = lerp(_BaseColor.rgb, _CoreColor.rgb, frontDeepVoid);
+                    frontColor *= lerp(0.78, 1.0, ripple * 0.08);
+                    frontColor = lerp(frontColor, _RimColor.rgb, frontRing * 0.85);
+                    frontColor += _RimColor.rgb * (frontEmberRim * 0.84);
+                    frontColor += _AccentColor.rgb * (frontRimInnerGlow * 0.14);
+                    frontColor += _AccentColor.rgb * (frontSwirl * 0.82);
+                    frontColor += _CoreColor.rgb * (frontInnerShadow * 0.08);
+                    frontColor += _RimColor.rgb * (frontArcAccent * (0.55 + frontRimInnerGlow * 0.35));
+                    frontColor += _AccentColor.rgb * (frontArcAccent * 0.06);
+                    float frontDarkSwirlMask = saturate(pow(darkSwirlMask, 0.82) * 1.08);
+                    fixed3 darkFrontColor = lerp(frontColor, _AccentColor.rgb, frontDarkSwirlMask);
+                    frontColor = lerp(frontColor, darkFrontColor, darkAccentWeight);
+
+                    float frontAlpha = lerp(_AlphaFloor, 1.0, frontDeepVoid);
+                    frontAlpha = max(frontAlpha, frontDeepVoid * _CoreColor.a);
+                    frontAlpha = max(frontAlpha, frontRing * _RimColor.a);
+                    frontAlpha = max(frontAlpha, frontSwirl * _AccentColor.a);
+                    frontAlpha = max(frontAlpha, frontInnerShadow * _BaseColor.a);
+                    frontAlpha = max(frontAlpha, frontArcAccent * _RimColor.a);
+                    frontAlpha = lerp(frontAlpha, 1.0, frontDarkSwirlMask * darkAccentWeight);
+                    frontAlpha = saturate(frontAlpha * portalMask * frontHalfMask);
+                    return fixed4(saturate(frontColor), saturate(frontAlpha));
                 }
 
                 fixed3 color = lerp(_BaseColor.rgb, _CoreColor.rgb, deepVoid);
@@ -125,6 +147,9 @@ Shader "Custom/HighwayCharacterPortal"
                 color += _AccentColor.rgb * (rimInnerGlow * 0.14);
                 color += _AccentColor.rgb * (swirlMask * 0.82);
                 color += _CoreColor.rgb * (innerShadow * 0.08);
+                float backDarkSwirlMask = saturate(pow(darkSwirlMask, 0.82) * 1.08);
+                fixed3 darkBackColor = lerp(color, _AccentColor.rgb, backDarkSwirlMask);
+                color = lerp(color, darkBackColor, darkAccentWeight);
                 color = saturate(color);
 
                 float alpha = lerp(_AlphaFloor, 1.0, deepVoid);
@@ -132,7 +157,10 @@ Shader "Custom/HighwayCharacterPortal"
                 alpha = max(alpha, ring * _RimColor.a);
                 alpha = max(alpha, swirlMask * _AccentColor.a);
                 alpha = max(alpha, shadow * _BaseColor.a);
+                alpha = lerp(alpha, 1.0, backDarkSwirlMask * darkAccentWeight);
                 alpha = saturate(alpha * portalMask);
+                if (_HalfMode < -0.5)
+                    alpha *= backHalfMask;
 
                 return fixed4(color, alpha);
             }

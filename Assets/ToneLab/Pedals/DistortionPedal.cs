@@ -38,6 +38,8 @@ public sealed class DistortionPedalProcessor : IToneLabPedalProcessor
             return;
 
         float drive = ToneLabPedalUtility.DbToLinear(settings.drive_db);
+        float normalizedDrive = Mathf.InverseLerp(0f, 36f, settings.drive_db);
+        float makeupGain = Mathf.Lerp(1.04f, 1.34f, normalizedDrive);
         for (int frame = 0; frame < data.Length; frame += channels)
         {
             for (int channel = 0; channel < channels; channel++)
@@ -47,7 +49,7 @@ public sealed class DistortionPedalProcessor : IToneLabPedalProcessor
                 float mid = 0.5f * (previousInput[channel] + current);
                 float shapedMid = ToneLabPedalUtility.SoftClipAtan(mid, drive);
                 float shapedCurrent = ToneLabPedalUtility.SoftClipAtan(current, drive);
-                data[index] = 0.5f * (shapedMid + shapedCurrent);
+                data[index] = Mathf.Clamp(0.5f * (shapedMid + shapedCurrent) * makeupGain, -1f, 1f);
                 previousInput[channel] = current;
             }
         }
