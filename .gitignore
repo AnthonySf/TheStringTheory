@@ -81,5 +81,21 @@ Assets/song.gp
 Assets/song.mid
 Assets/song1.mid
 
+# Local character art should not be published in the source repo
+Assets/Resources/Hero.png
+Assets/Resources/Hero.png.meta
+Assets/Resources/HeroOld.png
+Assets/Resources/HeroOld.png.meta
+Assets/Resources/Skullhead_Monochrome.png
+Assets/Resources/Skullhead_Monochrome.png.meta
+Assets/Resources/char2.png
+Assets/Resources/char2.png.meta
+Assets/Resources/char3.png
+Assets/Resources/char3.png.meta
+Assets/Resources/charOld.png
+Assets/Resources/charOld.png.meta
+Assets/Resources/filler2.png
+Assets/Resources/filler2.png.meta
+
 # General
 *.log
