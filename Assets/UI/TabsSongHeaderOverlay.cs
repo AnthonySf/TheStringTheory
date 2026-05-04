@@ -7,12 +7,16 @@ using System.Globalization;
 using System.IO;
 
 using System.Linq;
+using System.Text;
 
 using System.Text.RegularExpressions;
 
 using UnityEngine;
 
 using UnityEngine.Rendering;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 
 #if UNITY_RENDER_PIPELINE_UNIVERSAL
 
@@ -88,6 +92,16 @@ public sealed class TabsSongHeaderOverlay
 
     private const float SongEndButtonHeightScale = 1.18f;
 
+    private const float SongEndIntroDurationSeconds = 0.72f;
+
+    private const float SongEndFooterRevealDelaySeconds = 0.18f;
+
+    private const float SongEndFooterRevealDurationSeconds = 0.26f;
+
+    private const float SongEndIdleFloatAmplitude = 4.0f;
+
+    private const float SongEndScoreIdleFloatAmplitude = 6.5f;
+
     private const float StartMenuScale = 1.5f;
 
 
@@ -120,6 +134,30 @@ public sealed class TabsSongHeaderOverlay
     private static readonly Color GameplayHudMutedTextColor = new Color(0.64f, 0.72f, 0.81f, 0.96f);
 
     private static readonly Color GameplayHudEyebrowColor = new Color(0.57f, 0.68f, 0.81f, 0.94f);
+    private static readonly Color GameplayScoreCardCoolColor = new Color(0.56f, 0.87f, 1f, 1f);
+    private static readonly Color GameplayScoreCardWarmColor = new Color(1f, 0.78f, 0.36f, 1f);
+    private static readonly Color GameplayScoreCardMissColor = new Color(1f, 0.40f, 0.28f, 1f);
+    private static readonly Color GameplayScoreCardInvalidColor = new Color(1f, 0.63f, 0.30f, 1f);
+    private static readonly Color ArcadeComboTierOneColor = new Color(0.82f, 0.91f, 1f, 0.98f);
+    private static readonly Color ArcadeComboTierTwoColor = new Color(0.98f, 0.84f, 0.22f, 1f);
+    private static readonly Color ArcadeComboTierThreeColor = new Color(0.34f, 0.92f, 0.50f, 1f);
+    private static readonly Color ArcadeComboTierFourColor = new Color(0.78f, 0.44f, 1f, 1f);
+    private static readonly Color ArcadeComboLostColor = new Color(1f, 0.40f, 0.28f, 1f);
+    private const float ArcadeComboBadgeWidthInCharacterWidths = 0.79f;
+    private const float ArcadeComboBadgeHeightInCharacterHeights = 0.36f;
+    private const float ArcadeComboBadgeHorizontalOffsetInCharacterWidths = 0.2f;
+    private const float ArcadeComboBadgeVerticalOffsetInCharacterHeights = 0.05f;
+    private const float GuitarComboBadgeRightOffsetFromSongCard = 10f;
+    private const float GuitarComboBadgeGapBelowSongCard = 35f;
+    private const float ArcadeComboCaptionFontScale = 0.24f;
+    private const float ArcadeComboMultiplierFontScale = 0.68f;
+    private const float ArcadeComboCountFontScale = 0.25f;
+    private const float ArcadeComboCaptionFontMin = 24f;
+    private const float ArcadeComboCaptionFontMax = 38f;
+    private const float ArcadeComboMultiplierFontMin = 66f;
+    private const float ArcadeComboMultiplierFontMax = 108f;
+    private const float ArcadeComboCountFontMin = 24f;
+    private const float ArcadeComboCountFontMax = 38f;
 
     private static readonly Color GameplayHudChipBackgroundColor = new Color(0.055f, 0.082f, 0.135f, 0.96f);
 
@@ -169,6 +207,10 @@ public sealed class TabsSongHeaderOverlay
     private readonly VisualElement gameplayScoreDock;
 
     private readonly VisualElement songCardScoreBlock;
+    private readonly VisualElement scoreCardGlow;
+    private readonly VisualElement scoreCardSheen;
+    private readonly VisualElement scoreCardTopLine;
+    private readonly VisualElement scoreCardBottomLine;
 
     private readonly Label songNameLabel;
 
@@ -219,6 +261,12 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label scorePercentLabel;
 
     private readonly Label noteTallyLabel;
+    private float lastGameplayScoreCardValue = float.NegativeInfinity;
+    private int lastGameplayScoreCardHits = -1;
+    private int lastGameplayScoreCardMisses = -1;
+    private float gameplayScoreCardLastGainTime = float.NegativeInfinity;
+    private float gameplayScoreCardLastMissTime = float.NegativeInfinity;
+    private bool gameplayScoreCardAnimationInitialized;
 
     private readonly VisualElement inputMeterWrap;
 
@@ -240,17 +288,43 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly List<VisualElement> inputMeterTicks = new List<VisualElement>();
 
+    private readonly VisualElement arcadeComboLayer;
+    private readonly VisualElement arcadeComboBadge;
+    private readonly VisualElement arcadeComboBadgeGlow;
+    private readonly Label arcadeComboCaptionLabel;
+    private readonly Label arcadeComboMultiplierLabel;
+    private readonly Label arcadeComboCountLabel;
     private readonly VisualElement judgePopupLayer;
 
 
 
     private readonly List<JudgePopupEntry> activeJudgePopups = new List<JudgePopupEntry>();
+    private int lastArcadeComboValue = -1;
+    private int lastArcadeMultiplierValue = -1;
+    private float arcadeComboLastGainTime = float.NegativeInfinity;
+    private float arcadeComboLastLossTime = float.NegativeInfinity;
+    private bool arcadeComboAnimationInitialized;
+    private readonly int[] lastMultiplayerRhythmComboValues = { -1, -1 };
+    private readonly int[] lastMultiplayerRhythmMultiplierValues = { -1, -1 };
+    private readonly float[] multiplayerRhythmComboLastGainTimes = { float.NegativeInfinity, float.NegativeInfinity };
+    private readonly float[] multiplayerRhythmComboLastLossTimes = { float.NegativeInfinity, float.NegativeInfinity };
+    private readonly bool[] multiplayerRhythmComboAnimationInitialized = new bool[2];
+    private readonly float[] lastMultiplayerRhythmScoreValues = { float.NegativeInfinity, float.NegativeInfinity };
+    private readonly int[] lastMultiplayerRhythmScoreHits = { -1, -1 };
+    private readonly int[] lastMultiplayerRhythmScoreMisses = { -1, -1 };
+    private readonly float[] multiplayerRhythmScoreLastGainTimes = { float.NegativeInfinity, float.NegativeInfinity };
+    private readonly float[] multiplayerRhythmScoreLastMissTimes = { float.NegativeInfinity, float.NegativeInfinity };
+    private readonly bool[] multiplayerRhythmScoreAnimationInitialized = new bool[2];
+    private readonly bool[] hasSeenMultiplayerResolvedSnapshots = new bool[2];
+    private readonly int[] lastMultiplayerResolvedCounts = new int[2];
+    private readonly int[] multiplayerHitStreaks = new int[2];
 
 
 
     private sealed class SongSelectionRow
 
     {
+        public int boundSongIndex = -1;
 
         public Button button;
 
@@ -351,6 +425,21 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private sealed class MultiplayerRhythmHudPanel
+    {
+        public VisualElement root;
+        public Label playerLabel;
+        public Label deviceLabel;
+        public Label scoreLabel;
+        public VisualElement comboRoot;
+        public VisualElement comboBadge;
+        public VisualElement comboGlow;
+        public Label comboCaptionLabel;
+        public Label comboMultiplierLabel;
+        public Label comboCountLabel;
+        public Label statsLabel;
+    }
+
 
 
     private sealed class GlobalSettingsMenuRow
@@ -388,6 +477,8 @@ public sealed class TabsSongHeaderOverlay
         public float duration;
 
         public float fontSize;
+
+        public int groupId;
 
     }
 
@@ -869,6 +960,290 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+    private sealed class SongEndEdgeShineController : MonoBehaviour
+
+    {
+
+        private const string ShaderName = "Hidden/StringTheory/SongEndEdgeShine";
+
+        private const string ShaderResourcePath = "Shaders/SongEndEdgeShine";
+
+        private static readonly int ResolutionId = Shader.PropertyToID("_Resolution");
+
+        private static readonly int TimeValueId = Shader.PropertyToID("_TimeValue");
+
+        private static readonly int EdgeWidthPxId = Shader.PropertyToID("_EdgeWidthPx");
+
+        private static readonly int CornerRadiusPxId = Shader.PropertyToID("_CornerRadiusPx");
+
+        private static readonly int SoftnessPxId = Shader.PropertyToID("_SoftnessPx");
+
+        private static readonly int BaseAlphaId = Shader.PropertyToID("_BaseAlpha");
+
+        private static readonly int ShineAlphaId = Shader.PropertyToID("_ShineAlpha");
+
+        private static readonly int ShineLengthId = Shader.PropertyToID("_ShineLength");
+
+        private static readonly int ShineSoftnessId = Shader.PropertyToID("_ShineSoftness");
+
+        private static readonly int ShineSpeedId = Shader.PropertyToID("_ShineSpeed");
+
+
+
+        public VisualElement TargetElement { get; set; }
+
+        public float EdgeWidthPx { get; set; } = 4f;
+
+        public float CornerRadiusPx { get; set; } = 30f;
+
+        public float SoftnessPx { get; set; } = 1.7f;
+
+        public float BaseAlpha { get; set; } = 0.14f;
+
+        public float ShineAlpha { get; set; } = 0.95f;
+
+        public float ShineLength { get; set; } = 0.10f;
+
+        public float ShineSoftness { get; set; } = 0.08f;
+
+        public float ShineSpeed { get; set; } = 0.085f;
+
+
+
+        private Material material;
+
+        private RenderTexture shineTexture;
+
+        private int textureWidth = -1;
+
+        private int textureHeight = -1;
+
+
+
+        private void LateUpdate()
+
+        {
+
+            if (!ShouldRender())
+
+                return;
+
+
+
+            EnsureMaterial();
+
+            if (material == null || material.shader == null || !material.shader.isSupported)
+
+            {
+
+                if (TargetElement != null)
+
+                    TargetElement.style.backgroundImage = StyleKeyword.None;
+
+                return;
+
+            }
+
+
+
+            int width = Mathf.Max(256, Mathf.CeilToInt(TargetElement.worldBound.width));
+
+            int height = Mathf.Max(144, Mathf.CeilToInt(TargetElement.worldBound.height));
+
+            EnsureRenderTexture(width, height);
+
+
+
+            material.SetVector(ResolutionId, new Vector4(width, height, 0f, 0f));
+
+            material.SetFloat(TimeValueId, Time.unscaledTime);
+
+            material.SetFloat(EdgeWidthPxId, EdgeWidthPx);
+
+            material.SetFloat(CornerRadiusPxId, CornerRadiusPx);
+
+            material.SetFloat(SoftnessPxId, SoftnessPx);
+
+            material.SetFloat(BaseAlphaId, BaseAlpha);
+
+            material.SetFloat(ShineAlphaId, ShineAlpha);
+
+            material.SetFloat(ShineLengthId, ShineLength);
+
+            material.SetFloat(ShineSoftnessId, ShineSoftness);
+
+            material.SetFloat(ShineSpeedId, ShineSpeed);
+
+
+
+            Graphics.Blit(Texture2D.blackTexture, shineTexture, material, 0);
+
+
+
+            TargetElement.style.backgroundImage = StyleKeyword.None;
+
+            TargetElement.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(shineTexture));
+
+            TargetElement.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
+
+            TargetElement.style.unityBackgroundImageTintColor = Color.white;
+
+        }
+
+
+
+        private bool ShouldRender()
+
+        {
+
+            return TargetElement != null
+
+                && TargetElement.style.display.value != DisplayStyle.None
+
+                && TargetElement.worldBound.width > 32f
+
+                && TargetElement.worldBound.height > 32f;
+
+        }
+
+
+
+        private void EnsureMaterial()
+
+        {
+
+            if (material != null)
+
+                return;
+
+
+
+            Shader shader = Resources.Load<Shader>(ShaderResourcePath);
+
+            if (shader == null)
+
+                shader = Shader.Find(ShaderName);
+
+            if (shader == null)
+
+                return;
+
+
+
+            material = new Material(shader)
+
+            {
+
+                hideFlags = HideFlags.HideAndDontSave
+
+            };
+
+        }
+
+
+
+        private void EnsureRenderTexture(int width, int height)
+
+        {
+
+            if (width == textureWidth && height == textureHeight && shineTexture != null)
+
+                return;
+
+
+
+            ReleaseRenderTexture();
+
+            textureWidth = width;
+
+            textureHeight = height;
+
+            shineTexture = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32)
+
+            {
+
+                name = "SongEndEdgeShine",
+
+                filterMode = FilterMode.Bilinear,
+
+                wrapMode = TextureWrapMode.Clamp,
+
+                hideFlags = HideFlags.HideAndDontSave
+
+            };
+
+            shineTexture.Create();
+
+        }
+
+
+
+        private void ReleaseRenderTexture()
+
+        {
+
+            if (shineTexture == null)
+
+                return;
+
+
+
+            shineTexture.Release();
+
+            Destroy(shineTexture);
+
+            shineTexture = null;
+
+            textureWidth = -1;
+
+            textureHeight = -1;
+
+        }
+
+
+
+        private void OnDisable()
+
+        {
+
+            Cleanup();
+
+        }
+
+
+
+        private void OnDestroy()
+
+        {
+
+            Cleanup();
+
+        }
+
+
+
+        private void Cleanup()
+
+        {
+
+            ReleaseRenderTexture();
+
+            if (material != null)
+
+            {
+
+                Destroy(material);
+
+                material = null;
+
+            }
+
+        }
+
+    }
+
+
+
     private sealed class EnumCycleControl : VisualElement
 
     {
@@ -1031,6 +1406,24 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label loopSetupStatusLabel;
 
     private readonly Label loopSetupHintLabel;
+    private readonly VisualElement loopBookmarksCard;
+    private readonly Label loopBookmarksTitleLabel;
+    private readonly Label loopBookmarksTrackLabel;
+    private readonly Label loopBookmarksHintLabel;
+    private readonly Button loopBookmarkAddButton;
+    private readonly Button loopBookmarkSaveButton;
+    private readonly Button loopBookmarkRenameButton;
+    private readonly Button loopBookmarkDeleteButton;
+    private readonly ScrollView loopBookmarksListView;
+    private readonly Label loopBookmarksEmptyLabel;
+    private readonly VisualElement loopBookmarkRenameRow;
+    private readonly TextField loopBookmarkRenameField;
+    private readonly Button loopBookmarkRenameConfirmButton;
+    private readonly Button loopBookmarkRenameCancelButton;
+    private readonly List<Button> loopBookmarkRowButtons = new List<Button>();
+    private readonly Label loopConfigurationTitleLabel;
+    private string lastLoopBookmarksSignature;
+    private bool wasLoopBookmarkRenameActive;
 
     private readonly VisualElement offsetHelperOverlay;
 
@@ -1127,6 +1520,10 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly VisualElement mainMenuRightColumn;
 
+    private readonly VisualElement mainMenuBrandWrap;
+
+    private readonly VisualElement sharedMainMenuWordmarkLogo;
+
     private readonly VisualElement mainMenuNavColumn;
 
     private readonly Label mainMenuEyebrowLabel;
@@ -1188,6 +1585,26 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label startMenuArcadeGamepadHintLabel;
 
     private readonly Label startMenuFooterHintLabel;
+
+    private readonly VisualElement multiplayerRhythmSetupOverlay;
+    private readonly VisualElement multiplayerRhythmSetupShell;
+    private readonly Label multiplayerRhythmSetupTitleLabel;
+    private readonly Label multiplayerRhythmSetupSubtitleLabel;
+    private readonly Label multiplayerRhythmSetupPlayerOneLabel;
+    private readonly VisualElement multiplayerRhythmSetupPlayerOneDevicesRow;
+    private readonly Label multiplayerRhythmSetupPlayerTwoLabel;
+    private readonly VisualElement multiplayerRhythmSetupPlayerTwoDevicesRow;
+    private readonly Label multiplayerRhythmSetupStatusLabel;
+    private readonly Button multiplayerRhythmSetupContinueButton;
+    private readonly Button multiplayerRhythmSetupBackButton;
+    private readonly Label multiplayerRhythmSetupHintLabel;
+    private readonly List<Button> multiplayerRhythmPlayerOneDeviceButtons = new List<Button>();
+    private readonly List<Button> multiplayerRhythmPlayerTwoDeviceButtons = new List<Button>();
+
+    private readonly VisualElement multiplayerRhythmHudLayer;
+    private readonly MultiplayerRhythmHudPanel[] multiplayerRhythmHudPanels = new MultiplayerRhythmHudPanel[2];
+
+    private readonly ReusableLoadingOverlay libraryLoadingOverlay;
 
     private readonly Label gameplayShortcutLabel;
 
@@ -1326,6 +1743,8 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Button selectionLibraryArcadeButton;
 
+    private readonly VisualElement selectionLibraryTypeButtonsRow;
+
     private readonly Label selectionSubtitleLabel;
 
     private readonly Button selectionBrowseAllButton;
@@ -1352,6 +1771,16 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label selectionInfoScoreLabel;
 
     private readonly Label selectionInfoBestTrackLabel;
+
+    private readonly VisualElement selectionInfoStatsRow;
+
+    private readonly VisualElement selectionInfoScoreCard;
+
+    private readonly VisualElement selectionInfoArrangementCard;
+
+    private readonly VisualElement selectionInfoAudioCard;
+
+    private readonly VisualElement selectionInfoHeroHeartsCard;
 
     private readonly Label selectionInfoArrangementValueLabel;
 
@@ -1384,6 +1813,14 @@ public sealed class TabsSongHeaderOverlay
     private readonly ScrollView selectionScrollView;
 
     private readonly List<SongSelectionRow> selectionRows = new List<SongSelectionRow>();
+
+    private readonly VisualElement selectionRowsTopSpacer = new VisualElement();
+
+    private readonly VisualElement selectionRowsBottomSpacer = new VisualElement();
+
+    private GuitarGameplaySnapshot latestSongSelectionSnapshot;
+
+    private int selectionVirtualizedSongCount;
 
     private int hoveredLibraryBrowseModeIndex = -1;
 
@@ -1429,6 +1866,38 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly VisualElement songEndCard;
 
+    private readonly VisualElement songEndMainFrame;
+
+    private readonly VisualElement songEndShadowPlate;
+
+    private readonly VisualElement songEndBackPlate;
+
+    private readonly VisualElement songEndMainPlate;
+
+    private readonly VisualElement songEndInnerFrame;
+
+    private readonly VisualElement songEndPanelGrid;
+
+    private readonly VisualElement songEndAccentPlate;
+
+    private readonly VisualElement songEndContent;
+
+    private readonly VisualElement songEndEdgeShineOverlay;
+
+    private readonly VisualElement songEndStatsStrip;
+
+    private readonly VisualElement songEndScoreColumn;
+
+    private readonly VisualElement songEndGradeGlow;
+
+    private readonly VisualElement songEndGradeBlock;
+
+    private readonly VisualElement songEndFooterRow;
+
+    private readonly VisualElement songEndRule;
+
+    private readonly Label songEndEyebrow;
+
     private readonly Label songEndTitleLabel;
 
     private readonly Label songEndSongLabel;
@@ -1442,6 +1911,10 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label songEndBestLabel;
 
     private readonly Label songEndDeltaLabel;
+
+    private readonly Label songEndScoreEyebrow;
+
+    private readonly Label songEndGradeCaption;
 
     private readonly Label songEndRatingLabel;
 
@@ -1474,6 +1947,10 @@ public sealed class TabsSongHeaderOverlay
     private readonly VisualElement loopPauseCountdownHost;
 
     private readonly VisualElement loopPauseCountdownDial;
+
+    private readonly Label loopPauseCountdownLabel;
+    private readonly VisualElement controllerCursor;
+    private readonly VisualElement controllerCursorInner;
 
 
 
@@ -1509,6 +1986,10 @@ public sealed class TabsSongHeaderOverlay
 
     private string lastSongEndSignature;
 
+    private bool wasSongEndVisible;
+
+    private float songEndShownAtUnscaledTime = -1f;
+
     private Texture2D libraryConfirmedSongGradientTexture;
 
     private Texture2D librarySelectionRailGradientTexture;
@@ -1532,6 +2013,8 @@ public sealed class TabsSongHeaderOverlay
     private readonly LibraryBackdropBlurController settingsBackdropBlur;
 
     private readonly LibraryBackdropBlurController songEndBackdropBlur;
+
+    private readonly SongEndEdgeShineController songEndEdgeShine;
 
 
 
@@ -1566,6 +2049,11 @@ public sealed class TabsSongHeaderOverlay
     private string lastGlobalSettingsCenteredSelectionSignature = string.Empty;
 
     private float lastLoopPauseCountdownProgress = -1f;
+    private bool controllerCursorActive;
+    private bool controllerCursorInitialized;
+    private Vector2 controllerCursorPanelPosition;
+    private Vector3 lastPhysicalMousePosition;
+    private VisualElement lastControllerCursorTarget;
 
 
 
@@ -1885,6 +2373,8 @@ public sealed class TabsSongHeaderOverlay
 
         songCardScoreBlock = new VisualElement();
 
+        songCardScoreBlock.style.flexDirection = FlexDirection.Column;
+
         songCardScoreBlock.style.alignItems = Align.Center;
 
         songCardScoreBlock.style.justifyContent = Justify.Center;
@@ -1902,6 +2392,78 @@ public sealed class TabsSongHeaderOverlay
         StyleGameplayHudCard(songCardScoreBlock, GameplayHudCardBackgroundColor, radius: 14f);
 
         songCardScoreBlock.pickingMode = PickingMode.Ignore;
+
+        scoreCardGlow = new VisualElement();
+
+        scoreCardGlow.style.position = Position.Absolute;
+
+        scoreCardGlow.style.left = 0f;
+
+        scoreCardGlow.style.right = 0f;
+
+        scoreCardGlow.style.top = 0f;
+
+        scoreCardGlow.style.bottom = 0f;
+
+        scoreCardGlow.style.backgroundColor = new Color(GameplayScoreCardWarmColor.r, GameplayScoreCardWarmColor.g, GameplayScoreCardWarmColor.b, 0.10f);
+
+        scoreCardGlow.style.opacity = 0.18f;
+
+        scoreCardGlow.pickingMode = PickingMode.Ignore;
+
+        scoreCardSheen = new VisualElement();
+
+        scoreCardSheen.style.position = Position.Absolute;
+
+        scoreCardSheen.style.left = -40f;
+
+        scoreCardSheen.style.right = -40f;
+
+        scoreCardSheen.style.top = -10f;
+
+        scoreCardSheen.style.height = 56f;
+
+        scoreCardSheen.style.backgroundColor = new Color(0.96f, 0.99f, 1f, 0.08f);
+
+        scoreCardSheen.style.rotate = new Rotate(new Angle(-4f, AngleUnit.Degree));
+
+        scoreCardSheen.style.opacity = 0.10f;
+
+        scoreCardSheen.pickingMode = PickingMode.Ignore;
+
+        scoreCardTopLine = CreateGameplayHudAccentLine(GameplayScoreCardWarmColor);
+
+        scoreCardBottomLine = CreateGameplayHudAccentLine(new Color(GameplayScoreCardCoolColor.r, GameplayScoreCardCoolColor.g, GameplayScoreCardCoolColor.b, 0.72f), anchorToBottom: true);
+
+        scoreCardBottomLine.style.opacity = 0.55f;
+
+        songCardScoreBlock.Add(scoreCardGlow);
+
+        songCardScoreBlock.Add(scoreCardSheen);
+
+        songCardScoreBlock.Add(scoreCardTopLine);
+
+        songCardScoreBlock.Add(scoreCardBottomLine);
+
+        scoreCardGlow.style.display = DisplayStyle.None;
+
+        scoreCardSheen.style.display = DisplayStyle.None;
+
+        scoreCardTopLine.style.display = DisplayStyle.None;
+
+        scoreCardBottomLine.style.display = DisplayStyle.None;
+
+        songCardScoreBlock.style.backgroundColor = Color.clear;
+
+        songCardScoreBlock.style.borderTopWidth = 0f;
+
+        songCardScoreBlock.style.borderRightWidth = 0f;
+
+        songCardScoreBlock.style.borderBottomWidth = 0f;
+
+        songCardScoreBlock.style.borderLeftWidth = 0f;
+
+        songCardScoreBlock.style.overflow = Overflow.Visible;
 
 
 
@@ -2527,13 +3089,13 @@ public sealed class TabsSongHeaderOverlay
 
         scoreTitleLabel.style.marginTop = 0f;
 
-        scoreTitleLabel.style.marginBottom = 6f;
+        scoreTitleLabel.style.marginBottom = 4f;
 
         scoreTitleLabel.style.flexShrink = 0f;
 
         scoreTitleLabel.style.width = Length.Percent(100f);
 
-        scoreTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        scoreTitleLabel.style.unityFontDefinition = logoFontDefinition;
 
         scoreTitleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
 
@@ -2545,23 +3107,25 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        scorePercentLabel = CreateLabel("0.0%", 58f, GameplayHudAccentWarmColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        scorePercentLabel = CreateLabel("0.0%", 58f, GameplayScoreCardWarmColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
 
-        scorePercentLabel.style.letterSpacing = 0.12f;
+        scorePercentLabel.style.letterSpacing = 0.34f;
 
-        scorePercentLabel.style.marginTop = -2f;
+        scorePercentLabel.style.marginTop = -4f;
 
-        scorePercentLabel.style.marginBottom = 4f;
+        scorePercentLabel.style.marginBottom = 6f;
 
         scorePercentLabel.style.flexShrink = 0f;
 
         scorePercentLabel.style.width = Length.Percent(100f);
 
-        scorePercentLabel.style.unityFontDefinition = modernUiFontDefinition;
+        scorePercentLabel.style.unityFontDefinition = logoFontDefinition;
 
         scorePercentLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
 
         scorePercentLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        scorePercentLabel.style.opacity = 0.98f;
 
 
 
@@ -2569,13 +3133,15 @@ public sealed class TabsSongHeaderOverlay
 
         noteTallyLabel.text = "Hits 0  /  Misses 0";
 
-        noteTallyLabel.style.marginTop = 0f;
+        noteTallyLabel.enableRichText = true;
+
+        noteTallyLabel.style.marginTop = 1f;
 
         noteTallyLabel.style.flexShrink = 0f;
 
         noteTallyLabel.style.width = Length.Percent(100f);
 
-        noteTallyLabel.style.letterSpacing = 0.18f;
+        noteTallyLabel.style.letterSpacing = 0.24f;
 
         noteTallyLabel.style.unityFontDefinition = modernUiFontDefinition;
 
@@ -2628,6 +3194,140 @@ public sealed class TabsSongHeaderOverlay
         songCardScoreBlock.Add(scorePercentLabel);
 
         songCardScoreBlock.Add(noteTallyLabel);
+
+
+
+        arcadeComboLayer = new VisualElement();
+
+        arcadeComboLayer.style.position = Position.Absolute;
+
+        arcadeComboLayer.style.left = 0f;
+
+        arcadeComboLayer.style.right = 0f;
+
+        arcadeComboLayer.style.top = 0f;
+
+        arcadeComboLayer.style.bottom = 0f;
+
+        arcadeComboLayer.style.display = DisplayStyle.None;
+
+        arcadeComboLayer.pickingMode = PickingMode.Ignore;
+
+
+
+        arcadeComboBadge = new VisualElement();
+
+        arcadeComboBadge.style.position = Position.Absolute;
+
+        arcadeComboBadge.style.alignItems = Align.Center;
+
+        arcadeComboBadge.style.justifyContent = Justify.Center;
+
+        arcadeComboBadge.style.paddingLeft = 18f;
+
+        arcadeComboBadge.style.paddingRight = 18f;
+
+        arcadeComboBadge.style.paddingTop = 10f;
+
+        arcadeComboBadge.style.paddingBottom = 12f;
+
+        arcadeComboBadge.style.backgroundColor = new Color(0.03f, 0.05f, 0.10f, 0.76f);
+
+        arcadeComboBadge.style.borderTopLeftRadius = 18f;
+
+        arcadeComboBadge.style.borderTopRightRadius = 18f;
+
+        arcadeComboBadge.style.borderBottomLeftRadius = 18f;
+
+        arcadeComboBadge.style.borderBottomRightRadius = 18f;
+
+        arcadeComboBadge.style.borderTopWidth = 2f;
+
+        arcadeComboBadge.style.borderRightWidth = 2f;
+
+        arcadeComboBadge.style.borderBottomWidth = 2f;
+
+        arcadeComboBadge.style.borderLeftWidth = 2f;
+
+        arcadeComboBadge.style.transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(50f), 0f);
+
+        arcadeComboBadge.pickingMode = PickingMode.Ignore;
+
+
+
+        arcadeComboBadgeGlow = new VisualElement();
+
+        arcadeComboBadgeGlow.style.position = Position.Absolute;
+
+        arcadeComboBadgeGlow.style.left = 0f;
+
+        arcadeComboBadgeGlow.style.right = 0f;
+
+        arcadeComboBadgeGlow.style.top = 0f;
+
+        arcadeComboBadgeGlow.style.bottom = 0f;
+
+        arcadeComboBadgeGlow.style.borderTopLeftRadius = 18f;
+
+        arcadeComboBadgeGlow.style.borderTopRightRadius = 18f;
+
+        arcadeComboBadgeGlow.style.borderBottomLeftRadius = 18f;
+
+        arcadeComboBadgeGlow.style.borderBottomRightRadius = 18f;
+
+        arcadeComboBadgeGlow.style.opacity = 0.18f;
+
+        arcadeComboBadgeGlow.pickingMode = PickingMode.Ignore;
+
+        arcadeComboBadge.Add(arcadeComboBadgeGlow);
+
+
+
+        arcadeComboCaptionLabel = CreateLabel("MULTIPLIER", 58f, GameplayHudEyebrowColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+
+        arcadeComboCaptionLabel.style.unityFontDefinition = logoFontDefinition;
+
+        arcadeComboCaptionLabel.style.letterSpacing = 0.9f;
+
+        arcadeComboCaptionLabel.style.marginBottom = -4f;
+
+        arcadeComboCaptionLabel.style.opacity = 0.94f;
+
+
+
+        arcadeComboMultiplierLabel = CreateLabel("1x", 92f, ArcadeComboTierOneColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+
+        arcadeComboMultiplierLabel.style.unityFontDefinition = logoFontDefinition;
+
+        arcadeComboMultiplierLabel.style.letterSpacing = 0.9f;
+
+        arcadeComboMultiplierLabel.style.marginTop = -4f;
+
+        arcadeComboMultiplierLabel.style.marginBottom = -4f;
+
+        arcadeComboMultiplierLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+
+
+        arcadeComboCountLabel = CreateLabel("COMBO 0", 34f, GameplayHudPrimaryTextColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+
+        arcadeComboCountLabel.style.unityFontDefinition = logoFontDefinition;
+
+        arcadeComboCountLabel.style.letterSpacing = 0.7f;
+
+        arcadeComboCountLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        arcadeComboCountLabel.style.opacity = 0.98f;
+
+
+
+        arcadeComboBadge.Add(arcadeComboCaptionLabel);
+
+        arcadeComboBadge.Add(arcadeComboMultiplierLabel);
+
+        arcadeComboBadge.Add(arcadeComboCountLabel);
+
+        arcadeComboLayer.Add(arcadeComboBadge);
 
 
 
@@ -2725,11 +3425,11 @@ public sealed class TabsSongHeaderOverlay
 
         pauseTitleLabel.style.marginBottom = 8f;
 
-        pauseHintLabel = CreateLabel("SPACE Resume   \u2022   Left/Right Seek   \u2022   1/2 Marker", 34f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
+        pauseHintLabel = CreateLabel("Esc resume   \u2022   Left/Right seek", 34f, new Color(0.82f, 0.92f, 1f, 1f), false, TextAnchor.MiddleCenter);
 
         pauseHintLabel.style.unityFontDefinition = modernUiFontDefinition;
 
-        pauseHintLabel.text = "Space resumes  \u2022  Left/Right seeks  \u2022  1/2 drops markers";
+        pauseHintLabel.text = "Esc resumes  \u2022  Left/Right seeks";
 
         pauseHintLabel.text = "Up/Down selects  \u2022  Left/Right seeks";
 
@@ -4026,10 +4726,11 @@ public sealed class TabsSongHeaderOverlay
         loopSetupStatusLabel.style.whiteSpace = WhiteSpace.Normal;
 
         loopSetupStatusLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        loopSetupStatusLabel.style.display = DisplayStyle.None;
 
 
 
-        loopSetupHintLabel = CreateLabel("Space preview  \u2022  1 set start  \u2022  2 set end  \u2022  3 move time  \u2022  Esc back", 34f, new Color(0.78f, 0.86f, 0.93f, 0.96f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        loopSetupHintLabel = CreateLabel("Arrows move time  \u2022  1 set start  \u2022  2 set end  \u2022  B bookmark  \u2022  Space preview  \u2022  Esc continue", 34f, new Color(0.78f, 0.86f, 0.93f, 0.96f), false, TextAnchor.MiddleCenter, useTitleFont: false);
 
         loopSetupHintLabel.style.unityFontDefinition = modernUiFontDefinition;
 
@@ -4044,6 +4745,191 @@ public sealed class TabsSongHeaderOverlay
         loopSetupBar.Add(loopSetupHintLabel);
 
         loopSetupOverlay.Add(loopSetupBar);
+
+        loopConfigurationTitleLabel = CreateLabel("LOOP CONFIGURATION", 78f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: true);
+        loopConfigurationTitleLabel.style.unityFontDefinition = logoFontDefinition;
+        loopConfigurationTitleLabel.style.position = Position.Absolute;
+        loopConfigurationTitleLabel.style.top = 26f;
+        loopConfigurationTitleLabel.style.left = 28f;
+        loopConfigurationTitleLabel.style.display = DisplayStyle.None;
+        loopConfigurationTitleLabel.style.color = new Color(0.94f, 0.97f, 1f, 1f);
+        loopConfigurationTitleLabel.style.letterSpacing = 1.8f;
+
+        loopBookmarksCard = new VisualElement();
+        loopBookmarksCard.style.position = Position.Absolute;
+        loopBookmarksCard.style.top = 22f;
+        loopBookmarksCard.style.left = 0f;
+        loopBookmarksCard.style.right = 0f;
+        loopBookmarksCard.style.width = 1240f;
+        loopBookmarksCard.style.maxWidth = 1480f;
+        loopBookmarksCard.style.minWidth = 980f;
+        loopBookmarksCard.style.marginLeft = StyleKeyword.Auto;
+        loopBookmarksCard.style.marginRight = StyleKeyword.Auto;
+        loopBookmarksCard.style.paddingLeft = 36f;
+        loopBookmarksCard.style.paddingRight = 36f;
+        loopBookmarksCard.style.paddingTop = 32f;
+        loopBookmarksCard.style.paddingBottom = 34f;
+        loopBookmarksCard.style.display = DisplayStyle.None;
+        loopBookmarksCard.style.alignItems = Align.Stretch;
+        loopBookmarksCard.style.justifyContent = Justify.FlexStart;
+        StyleGameplayHudCard(loopBookmarksCard, GameplayHudCardBackgroundColor, radius: 16f);
+
+        VisualElement loopBookmarksTopRow = new VisualElement();
+        loopBookmarksTopRow.style.flexDirection = FlexDirection.Row;
+        loopBookmarksTopRow.style.alignItems = Align.FlexStart;
+        loopBookmarksTopRow.style.justifyContent = Justify.SpaceBetween;
+        loopBookmarksTopRow.style.marginBottom = 12f;
+
+        VisualElement loopBookmarksTitleColumn = new VisualElement();
+        loopBookmarksTitleColumn.style.flexGrow = 1f;
+        loopBookmarksTitleColumn.style.marginRight = 18f;
+
+        loopBookmarksTitleLabel = CreateLabel("BOOKMARKS", 38f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        loopBookmarksTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        loopBookmarksTitleLabel.style.marginBottom = 4f;
+        loopBookmarksTitleLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+
+        loopBookmarksTrackLabel = CreateLabel("Track", 28f, new Color(0.76f, 0.88f, 0.98f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        loopBookmarksTrackLabel.style.unityFontDefinition = modernUiFontDefinition;
+        loopBookmarksTrackLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        loopBookmarksTrackLabel.style.whiteSpace = WhiteSpace.Normal;
+        loopBookmarksTrackLabel.style.display = DisplayStyle.None;
+
+        loopBookmarksTitleColumn.Add(loopBookmarksTitleLabel);
+        loopBookmarksTitleColumn.Add(loopBookmarksTrackLabel);
+
+        VisualElement loopBookmarksActionsRow = new VisualElement();
+        loopBookmarksActionsRow.style.flexDirection = FlexDirection.Row;
+        loopBookmarksActionsRow.style.alignItems = Align.Center;
+        loopBookmarksActionsRow.style.justifyContent = Justify.FlexEnd;
+
+        loopBookmarkAddButton = CreateActionButton("Bookmark", () => owner?.ActivateLoopCardPrimaryActionFromUi());
+        loopBookmarkSaveButton = CreateActionButton("Save", () => owner?.ActivateLoopCardSecondaryActionFromUi());
+        loopBookmarkRenameButton = CreateActionButton("Rename", () => owner?.ActivateLoopCardTertiaryActionFromUi());
+        loopBookmarkDeleteButton = CreateActionButton("Delete", () => owner?.ActivateLoopCardQuaternaryActionFromUi());
+
+        foreach (Button actionButton in new[] { loopBookmarkAddButton, loopBookmarkSaveButton, loopBookmarkRenameButton, loopBookmarkDeleteButton })
+        {
+            actionButton.style.minWidth = 0f;
+            actionButton.style.width = StyleKeyword.Auto;
+            actionButton.style.height = 64f;
+            actionButton.style.paddingLeft = 24f;
+            actionButton.style.paddingRight = 24f;
+            actionButton.style.paddingTop = 12f;
+            actionButton.style.paddingBottom = 12f;
+            actionButton.style.marginLeft = 12f;
+            actionButton.style.fontSize = 28f;
+            actionButton.style.unityFontDefinition = modernUiFontDefinition;
+            actionButton.style.borderTopWidth = 2f;
+            actionButton.style.borderRightWidth = 2f;
+            actionButton.style.borderBottomWidth = 2f;
+            actionButton.style.borderLeftWidth = 2f;
+            actionButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        }
+
+        loopBookmarksActionsRow.Add(loopBookmarkAddButton);
+        loopBookmarksActionsRow.Add(loopBookmarkSaveButton);
+        loopBookmarksActionsRow.Add(loopBookmarkRenameButton);
+        loopBookmarksActionsRow.Add(loopBookmarkDeleteButton);
+
+        loopBookmarksTopRow.Add(loopBookmarksTitleColumn);
+        loopBookmarksTopRow.Add(loopBookmarksActionsRow);
+
+        loopBookmarksHintLabel = CreateLabel(string.Empty, 24f, new Color(0.78f, 0.86f, 0.93f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        loopBookmarksHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        loopBookmarksHintLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        loopBookmarksHintLabel.style.whiteSpace = WhiteSpace.Normal;
+        loopBookmarksHintLabel.style.marginBottom = 18f;
+        loopBookmarksHintLabel.style.display = DisplayStyle.None;
+
+        loopBookmarkRenameRow = new VisualElement();
+        loopBookmarkRenameRow.style.flexDirection = FlexDirection.Row;
+        loopBookmarkRenameRow.style.alignItems = Align.Center;
+        loopBookmarkRenameRow.style.marginBottom = 18f;
+        loopBookmarkRenameRow.style.display = DisplayStyle.None;
+
+        loopBookmarkRenameField = new TextField();
+        loopBookmarkRenameField.style.flexGrow = 1f;
+        loopBookmarkRenameField.style.height = 58f;
+        loopBookmarkRenameField.style.marginRight = 12f;
+        loopBookmarkRenameField.style.fontSize = 28f;
+        loopBookmarkRenameField.style.unityFontDefinition = modernUiFontDefinition;
+        loopBookmarkRenameField.style.backgroundColor = new Color(0.08f, 0.10f, 0.14f, 0.96f);
+        loopBookmarkRenameField.style.color = new Color(0.95f, 0.98f, 1f, 1f);
+        loopBookmarkRenameField.style.borderTopWidth = 2f;
+        loopBookmarkRenameField.style.borderRightWidth = 2f;
+        loopBookmarkRenameField.style.borderBottomWidth = 2f;
+        loopBookmarkRenameField.style.borderLeftWidth = 2f;
+        loopBookmarkRenameField.style.borderTopColor = new Color(0.23f, 0.32f, 0.42f, 1f);
+        loopBookmarkRenameField.style.borderRightColor = new Color(0.23f, 0.32f, 0.42f, 1f);
+        loopBookmarkRenameField.style.borderBottomColor = new Color(0.23f, 0.32f, 0.42f, 1f);
+        loopBookmarkRenameField.style.borderLeftColor = new Color(0.23f, 0.32f, 0.42f, 1f);
+        VisualElement loopBookmarkRenameInputElement =
+            loopBookmarkRenameField.Q(className: "unity-text-field__input") ??
+            loopBookmarkRenameField.Q(className: "unity-base-text-field__input") ??
+            loopBookmarkRenameField.Q(className: "unity-base-field__input");
+        if (loopBookmarkRenameInputElement != null)
+        {
+            loopBookmarkRenameInputElement.style.backgroundColor = new Color(0.08f, 0.10f, 0.14f, 0.96f);
+            loopBookmarkRenameInputElement.style.color = new Color(0.95f, 0.98f, 1f, 1f);
+            loopBookmarkRenameInputElement.style.unityFontDefinition = modernUiFontDefinition;
+            loopBookmarkRenameInputElement.style.fontSize = 28f;
+            loopBookmarkRenameInputElement.style.borderTopLeftRadius = 10f;
+            loopBookmarkRenameInputElement.style.borderTopRightRadius = 10f;
+            loopBookmarkRenameInputElement.style.borderBottomLeftRadius = 10f;
+            loopBookmarkRenameInputElement.style.borderBottomRightRadius = 10f;
+        }
+        loopBookmarkRenameField.RegisterValueChangedCallback(evt => owner?.SetLoopBookmarkRenameDraftFromUi(evt.newValue));
+
+        loopBookmarkRenameConfirmButton = CreateActionButton("Save Name", () => owner?.ConfirmLoopBookmarkRenameFromUi());
+        loopBookmarkRenameCancelButton = CreateActionButton("Cancel", () => owner?.CancelLoopBookmarkRenameFromUi());
+        foreach (Button renameButton in new[] { loopBookmarkRenameConfirmButton, loopBookmarkRenameCancelButton })
+        {
+            renameButton.style.minWidth = 0f;
+            renameButton.style.width = StyleKeyword.Auto;
+            renameButton.style.height = 58f;
+            renameButton.style.paddingLeft = 20f;
+            renameButton.style.paddingRight = 20f;
+            renameButton.style.fontSize = 24f;
+            renameButton.style.unityFontDefinition = modernUiFontDefinition;
+            renameButton.style.marginLeft = 12f;
+            renameButton.style.borderTopWidth = 2f;
+            renameButton.style.borderRightWidth = 2f;
+            renameButton.style.borderBottomWidth = 2f;
+            renameButton.style.borderLeftWidth = 2f;
+        }
+
+        loopBookmarkRenameRow.Add(loopBookmarkRenameField);
+        loopBookmarkRenameRow.Add(loopBookmarkRenameConfirmButton);
+        loopBookmarkRenameRow.Add(loopBookmarkRenameCancelButton);
+
+        loopBookmarksListView = new ScrollView(ScrollViewMode.Vertical);
+        loopBookmarksListView.style.height = 620f;
+        loopBookmarksListView.style.maxHeight = 780f;
+        loopBookmarksListView.style.flexGrow = 1f;
+        loopBookmarksListView.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        loopBookmarksListView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+        loopBookmarksListView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        loopBookmarksListView.style.borderTopWidth = 0f;
+        loopBookmarksListView.style.borderRightWidth = 0f;
+        loopBookmarksListView.style.borderBottomWidth = 0f;
+        loopBookmarksListView.style.borderLeftWidth = 0f;
+        loopBookmarksListView.style.paddingTop = 12f;
+        loopBookmarksListView.style.paddingBottom = 12f;
+        loopBookmarksListView.contentContainer.style.paddingLeft = 16f;
+        loopBookmarksListView.contentContainer.style.paddingRight = 16f;
+
+        loopBookmarksEmptyLabel = CreateLabel("No bookmarks yet.", 32f, new Color(0.72f, 0.80f, 0.88f, 0.92f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        loopBookmarksEmptyLabel.style.unityFontDefinition = modernUiFontDefinition;
+        loopBookmarksEmptyLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        loopBookmarksEmptyLabel.style.marginTop = 28f;
+        loopBookmarksEmptyLabel.style.marginBottom = 28f;
+        loopBookmarksListView.Add(loopBookmarksEmptyLabel);
+
+        loopBookmarksCard.Add(loopBookmarksTopRow);
+        loopBookmarksCard.Add(loopBookmarksHintLabel);
+        loopBookmarksCard.Add(loopBookmarkRenameRow);
+        loopBookmarksCard.Add(loopBookmarksListView);
 
         offsetHelperOverlay = CreateFullscreenOverlay();
 
@@ -4353,7 +5239,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement mainMenuBrandWrap = new VisualElement();
+        mainMenuBrandWrap = new VisualElement();
 
         mainMenuBrandWrap.style.marginLeft = 0f;
 
@@ -4361,7 +5247,8 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuBrandWrap.style.alignItems = Align.FlexStart;
 
-        mainMenuBrandWrap.Add(CreateStringTheoryLogo(188f, 178f, 0f, 3.0f, -14f, 2.8f));
+        sharedMainMenuWordmarkLogo = CreateMainMenuWordmarkLogo();
+        mainMenuBrandWrap.Add(sharedMainMenuWordmarkLogo);
 
 
 
@@ -4406,6 +5293,8 @@ public sealed class TabsSongHeaderOverlay
         CreateMainMenuEntry("Start", string.Empty, new Color(0.29f, 0.85f, 0.58f, 1f), () => owner?.StartFromMainMenuFromUi());
 
         CreateMainMenuEntry("Library", string.Empty, new Color(0.28f, 0.77f, 1f, 1f), () => owner?.OpenSongSelectionFromUi());
+
+        CreateMainMenuEntry("Multiplayer", string.Empty, new Color(0.98f, 0.62f, 0.42f, 1f), () => owner?.OpenMultiplayerRhythmSetupFromUi());
 
         CreateMainMenuEntry("Settings", string.Empty, new Color(0.68f, 0.61f, 1f, 1f), () => owner?.OpenGlobalSettingsFromUi());
 
@@ -4642,7 +5531,7 @@ public sealed class TabsSongHeaderOverlay
             "Use a real guitar plugged into your input device. Tone Lab and Notes Detector let you tune the sound and detection later.",
             0));
         startMenuModeOptions.Add(CreateStartMenuModeOption(
-            "Arcade",
+            "Rhythm",
             "Play rhythm game charts with a keyboard, a gamepad, or a guitar controller.",
             1));
 
@@ -4700,7 +5589,7 @@ public sealed class TabsSongHeaderOverlay
         startMenuArcadeSetupPanel.style.alignItems = Align.Center;
         startMenuArcadeSetupPanel.style.display = DisplayStyle.None;
 
-        startMenuArcadeSetupTitleLabel = CreateLabel("ARCADE INPUT", 36f, new Color(0.72f, 0.86f, 0.98f, 0.96f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        startMenuArcadeSetupTitleLabel = CreateLabel("RHYTHM INPUT", 36f, new Color(0.72f, 0.86f, 0.98f, 0.96f), true, TextAnchor.MiddleCenter, useTitleFont: true);
         startMenuArcadeSetupTitleLabel.style.unityFontDefinition = logoFontDefinition;
         startMenuArcadeSetupTitleLabel.style.letterSpacing = 2.2f;
         startMenuArcadeSetupTitleLabel.style.marginBottom = 21f;
@@ -4736,7 +5625,7 @@ public sealed class TabsSongHeaderOverlay
         startMenuArcadeGamepadHintLabel.style.whiteSpace = WhiteSpace.Normal;
         startMenuArcadeGamepadHintLabel.style.marginBottom = 48f;
 
-        startMenuArcadeContinueButton = CreateStartMenuSetupButton("Open Arcade Library", () => owner?.ContinueStartMenuArcadeSetupFromUi());
+        startMenuArcadeContinueButton = CreateStartMenuSetupButton("Open Rhythm Library", () => owner?.ContinueStartMenuArcadeSetupFromUi());
         startMenuArcadeContinueButton.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverStartMenuArcadeSetupRowFromUi(2));
         startMenuArcadeContinueButton.style.maxWidth = 930f;
 
@@ -4758,6 +5647,125 @@ public sealed class TabsSongHeaderOverlay
         startMenuShell.Add(startMenuArcadeSetupPanel);
         startMenuShell.Add(startMenuFooterHintLabel);
         startMenuOverlay.Add(startMenuShell);
+
+        multiplayerRhythmSetupOverlay = CreateFullscreenOverlay();
+        multiplayerRhythmSetupOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.44f);
+        multiplayerRhythmSetupOverlay.style.alignItems = Align.Center;
+        multiplayerRhythmSetupOverlay.style.justifyContent = Justify.Center;
+        multiplayerRhythmSetupOverlay.style.paddingLeft = 72f;
+        multiplayerRhythmSetupOverlay.style.paddingRight = 72f;
+        multiplayerRhythmSetupOverlay.style.paddingTop = 108f;
+        multiplayerRhythmSetupOverlay.style.paddingBottom = 78f;
+        multiplayerRhythmSetupOverlay.style.display = DisplayStyle.None;
+
+        multiplayerRhythmSetupShell = new VisualElement();
+        multiplayerRhythmSetupShell.style.width = Length.Percent(100f);
+        multiplayerRhythmSetupShell.style.maxWidth = 1680f;
+        multiplayerRhythmSetupShell.style.alignItems = Align.Center;
+        multiplayerRhythmSetupShell.style.justifyContent = Justify.Center;
+
+        multiplayerRhythmSetupTitleLabel = CreateLabel("MULTIPLAYER SETUP", 144f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        multiplayerRhythmSetupTitleLabel.style.unityFontDefinition = logoFontDefinition;
+        multiplayerRhythmSetupTitleLabel.style.marginBottom = 27f;
+        multiplayerRhythmSetupTitleLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        multiplayerRhythmSetupSubtitleLabel = CreateLabel(
+            "Choose separate input devices for each player. Multiplayer uses Rhythm mode only, shares the same song and difficulty, and never saves scores.",
+            42f,
+            new Color(0.82f, 0.90f, 0.98f, 0.96f),
+            false,
+            TextAnchor.MiddleCenter,
+            useTitleFont: false);
+        multiplayerRhythmSetupSubtitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        multiplayerRhythmSetupSubtitleLabel.style.maxWidth = 1320f;
+        multiplayerRhythmSetupSubtitleLabel.style.whiteSpace = WhiteSpace.Normal;
+        multiplayerRhythmSetupSubtitleLabel.style.marginBottom = 54f;
+
+        multiplayerRhythmSetupPlayerOneLabel = CreateLabel("PLAYER 1", 36f, new Color(0.72f, 0.86f, 0.98f, 0.96f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        multiplayerRhythmSetupPlayerOneLabel.style.unityFontDefinition = logoFontDefinition;
+        multiplayerRhythmSetupPlayerOneLabel.style.letterSpacing = 2.2f;
+        multiplayerRhythmSetupPlayerOneLabel.style.marginBottom = 18f;
+
+        multiplayerRhythmSetupPlayerOneDevicesRow = new VisualElement();
+        multiplayerRhythmSetupPlayerOneDevicesRow.style.flexDirection = FlexDirection.Row;
+        multiplayerRhythmSetupPlayerOneDevicesRow.style.alignItems = Align.Stretch;
+        multiplayerRhythmSetupPlayerOneDevicesRow.style.justifyContent = Justify.Center;
+        multiplayerRhythmSetupPlayerOneDevicesRow.style.flexWrap = Wrap.Wrap;
+        multiplayerRhythmSetupPlayerOneDevicesRow.style.marginBottom = 36f;
+
+        multiplayerRhythmSetupPlayerTwoLabel = CreateLabel("PLAYER 2", 36f, new Color(0.72f, 0.86f, 0.98f, 0.96f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        multiplayerRhythmSetupPlayerTwoLabel.style.unityFontDefinition = logoFontDefinition;
+        multiplayerRhythmSetupPlayerTwoLabel.style.letterSpacing = 2.2f;
+        multiplayerRhythmSetupPlayerTwoLabel.style.marginBottom = 18f;
+
+        multiplayerRhythmSetupPlayerTwoDevicesRow = new VisualElement();
+        multiplayerRhythmSetupPlayerTwoDevicesRow.style.flexDirection = FlexDirection.Row;
+        multiplayerRhythmSetupPlayerTwoDevicesRow.style.alignItems = Align.Stretch;
+        multiplayerRhythmSetupPlayerTwoDevicesRow.style.justifyContent = Justify.Center;
+        multiplayerRhythmSetupPlayerTwoDevicesRow.style.flexWrap = Wrap.Wrap;
+        multiplayerRhythmSetupPlayerTwoDevicesRow.style.marginBottom = 30f;
+
+        multiplayerRhythmSetupStatusLabel = CreateLabel("--", 34f, LibraryConfirmedSongColor, false, TextAnchor.MiddleCenter, useTitleFont: false);
+        multiplayerRhythmSetupStatusLabel.style.unityFontDefinition = modernUiFontDefinition;
+        multiplayerRhythmSetupStatusLabel.style.maxWidth = 1280f;
+        multiplayerRhythmSetupStatusLabel.style.whiteSpace = WhiteSpace.Normal;
+        multiplayerRhythmSetupStatusLabel.style.marginBottom = 42f;
+
+        VisualElement multiplayerRhythmSetupActionsRow = new VisualElement();
+        multiplayerRhythmSetupActionsRow.style.flexDirection = FlexDirection.Row;
+        multiplayerRhythmSetupActionsRow.style.alignItems = Align.Center;
+        multiplayerRhythmSetupActionsRow.style.justifyContent = Justify.Center;
+        multiplayerRhythmSetupActionsRow.style.flexWrap = Wrap.Wrap;
+        multiplayerRhythmSetupActionsRow.style.marginBottom = 18f;
+
+        multiplayerRhythmSetupBackButton = CreateStartMenuSetupButton("Back", () => owner?.CloseMultiplayerRhythmSetupToMainMenuFromUi());
+        multiplayerRhythmSetupBackButton.style.minWidth = 320f;
+        multiplayerRhythmSetupBackButton.style.marginLeft = 12f;
+        multiplayerRhythmSetupBackButton.style.marginRight = 12f;
+        multiplayerRhythmSetupBackButton.style.display = DisplayStyle.None;
+
+        multiplayerRhythmSetupContinueButton = CreateStartMenuSetupButton("Open Rhythm Library", () => owner?.ContinueMultiplayerRhythmSetupFromUi());
+        multiplayerRhythmSetupContinueButton.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverMultiplayerRhythmSetupRowFromUi(2));
+        multiplayerRhythmSetupContinueButton.style.minWidth = 520f;
+        multiplayerRhythmSetupContinueButton.style.marginLeft = 12f;
+        multiplayerRhythmSetupContinueButton.style.marginRight = 12f;
+
+        multiplayerRhythmSetupActionsRow.Add(multiplayerRhythmSetupContinueButton);
+
+        multiplayerRhythmSetupHintLabel = CreateLabel("Click or press Enter on a player slot, then press any controller or keyboard input. Esc goes back.", 34.5f, new Color(0.62f, 0.78f, 0.94f, 0.92f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        multiplayerRhythmSetupHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        multiplayerRhythmSetupHintLabel.style.marginTop = 18f;
+
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupTitleLabel);
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupSubtitleLabel);
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupPlayerOneLabel);
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupPlayerOneDevicesRow);
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupPlayerTwoLabel);
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupPlayerTwoDevicesRow);
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupStatusLabel);
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupActionsRow);
+        multiplayerRhythmSetupShell.Add(multiplayerRhythmSetupHintLabel);
+        multiplayerRhythmSetupOverlay.Add(multiplayerRhythmSetupShell);
+
+        libraryLoadingOverlay = ReusableLoadingOverlay.CreateStringTheoryLibraryLoadingOverlay(root);
+
+        multiplayerRhythmHudLayer = new VisualElement();
+        multiplayerRhythmHudLayer.style.position = Position.Absolute;
+        multiplayerRhythmHudLayer.style.left = 0f;
+        multiplayerRhythmHudLayer.style.right = 0f;
+        multiplayerRhythmHudLayer.style.top = 0f;
+        multiplayerRhythmHudLayer.style.bottom = 0f;
+        multiplayerRhythmHudLayer.style.display = DisplayStyle.None;
+        multiplayerRhythmHudLayer.pickingMode = PickingMode.Ignore;
+
+        for (int i = 0; i < multiplayerRhythmHudPanels.Length; i++)
+        {
+            MultiplayerRhythmHudPanel panel = CreateMultiplayerRhythmHudPanel();
+            multiplayerRhythmHudPanels[i] = panel;
+            multiplayerRhythmHudLayer.Add(panel.root);
+            if (panel.comboRoot != null)
+                multiplayerRhythmHudLayer.Add(panel.comboRoot);
+        }
 
 
 
@@ -5447,7 +6455,7 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsOverlay.style.justifyContent = Justify.FlexStart;
 
-        Label globalSettingsTopTag = CreateLabel("PRESS ESC TO RETURN", 24f, LibraryPrimaryColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        Label globalSettingsTopTag = CreateLabel("ESC BACK  /  O TOGGLE BACKGROUND", 24f, LibraryPrimaryColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
 
         globalSettingsTopTag.style.unityFontDefinition = modernUiFontDefinition;
 
@@ -6028,7 +7036,7 @@ public sealed class TabsSongHeaderOverlay
             selectionArcadeDifficultyRow.Add(difficultyColumn);
         }
 
-        VisualElement selectionInfoStatsRow = new VisualElement();
+        selectionInfoStatsRow = new VisualElement();
 
         selectionInfoStatsRow.style.flexDirection = FlexDirection.Row;
 
@@ -6040,11 +7048,11 @@ public sealed class TabsSongHeaderOverlay
 
         selectionInfoStatsRow.style.marginTop = 2f;
 
-        VisualElement selectionInfoScoreCard = CreateLibrarySelectionInlineStatBlock("BEST SCORE", out selectionInfoScoreLabel, Color.white);
+        selectionInfoScoreCard = CreateLibrarySelectionInlineStatBlock("BEST SCORE", out selectionInfoScoreLabel, Color.white);
 
         selectionInfoScoreLabel.style.fontSize = 52f;
 
-        selectionInfoScoreLabel.style.whiteSpace = WhiteSpace.Normal;
+        selectionInfoScoreLabel.style.whiteSpace = WhiteSpace.NoWrap;
 
         selectionInfoBestTrackLabel = CreateLabel("--", 22f, new Color(0.82f, 0.85f, 0.90f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
 
@@ -6054,17 +7062,17 @@ public sealed class TabsSongHeaderOverlay
 
         selectionInfoScoreCard.Add(selectionInfoBestTrackLabel);
 
-        VisualElement selectionTracksStatBlock = CreateLibrarySelectionInlineStatBlock("ARRANGEMENTS", out selectionInfoArrangementValueLabel, Color.white);
+        selectionInfoArrangementCard = CreateLibrarySelectionInlineStatBlock("ARRANGEMENTS", out selectionInfoArrangementValueLabel, Color.white);
 
         selectionInfoArrangementValueLabel.style.fontSize = 52f;
 
-        VisualElement selectionAudioCard = CreateLibrarySelectionInlineStatBlock("AUDIO", out selectionInfoAudioValueLabel, Color.white);
+        selectionInfoAudioCard = CreateLibrarySelectionInlineStatBlock("AUDIO", out selectionInfoAudioValueLabel, Color.white);
 
         selectionInfoAudioValueLabel.style.fontSize = 52f;
 
         selectionInfoAudioValueLabel.style.whiteSpace = WhiteSpace.Normal;
 
-        VisualElement selectionHeroHeartsCard = CreateLibrarySelectionInlineStatBlock("HERO HEARTS", out selectionInfoHeroHeartsValueLabel, Color.white);
+        selectionInfoHeroHeartsCard = CreateLibrarySelectionInlineStatBlock("HERO HEARTS", out selectionInfoHeroHeartsValueLabel, Color.white);
 
         selectionInfoHeroHeartsValueLabel.style.fontSize = 52f;
 
@@ -6074,11 +7082,11 @@ public sealed class TabsSongHeaderOverlay
 
         selectionInfoStatsRow.Add(selectionInfoScoreCard);
 
-        selectionInfoStatsRow.Add(selectionTracksStatBlock);
+        selectionInfoStatsRow.Add(selectionInfoArrangementCard);
 
-        selectionInfoStatsRow.Add(selectionAudioCard);
+        selectionInfoStatsRow.Add(selectionInfoAudioCard);
 
-        selectionInfoStatsRow.Add(selectionHeroHeartsCard);
+        selectionInfoStatsRow.Add(selectionInfoHeroHeartsCard);
 
         selectionInfoTextColumn.Add(selectionInfoEyebrow);
 
@@ -6436,13 +7444,13 @@ public sealed class TabsSongHeaderOverlay
         selectionTitleRow.style.justifyContent = Justify.SpaceBetween;
         selectionTitleRow.style.marginBottom = 6f;
 
-        VisualElement selectionLibraryTypeButtonsRow = new VisualElement();
+        selectionLibraryTypeButtonsRow = new VisualElement();
         selectionLibraryTypeButtonsRow.style.flexDirection = FlexDirection.Row;
         selectionLibraryTypeButtonsRow.style.alignItems = Align.Center;
         selectionLibraryTypeButtonsRow.style.flexShrink = 0f;
 
         selectionLibraryGuitarButton = CreateLibraryTypeButton("Guitar", 0);
-        selectionLibraryArcadeButton = CreateLibraryTypeButton("Arcade", 1);
+        selectionLibraryArcadeButton = CreateLibraryTypeButton("Rhythm", 1);
         selectionLibraryTypeButtonsRow.Add(selectionLibraryGuitarButton);
         selectionLibraryTypeButtonsRow.Add(selectionLibraryArcadeButton);
 
@@ -6524,6 +7532,18 @@ public sealed class TabsSongHeaderOverlay
         selectionScrollView.contentContainer.style.paddingLeft = 0f;
 
         selectionScrollView.contentContainer.style.paddingRight = 0f;
+
+        selectionRowsTopSpacer.pickingMode = PickingMode.Ignore;
+
+        selectionRowsBottomSpacer.pickingMode = PickingMode.Ignore;
+
+        selectionScrollView.contentContainer.Add(selectionRowsTopSpacer);
+
+        selectionScrollView.contentContainer.Add(selectionRowsBottomSpacer);
+
+        selectionScrollView.verticalScroller.valueChanged += _ => RefreshVisibleModernSongSelectionRows();
+
+        selectionScrollView.contentViewport.RegisterCallback<GeometryChangedEvent>(_ => RefreshVisibleModernSongSelectionRows());
 
         AttachWheelScrolling(selectionRailPanel, selectionScrollView);
 
@@ -6692,6 +7712,16 @@ public sealed class TabsSongHeaderOverlay
         songEndBackdropBlur.UpdateContinuously = false;
 
         songEndBackdropBlur.Brightness = 0.34f;
+
+        songEndEdgeShine = rootObject.AddComponent<SongEndEdgeShineController>();
+        songEndEdgeShine.EdgeWidthPx = 3f;
+        songEndEdgeShine.CornerRadiusPx = 30f;
+        songEndEdgeShine.SoftnessPx = 1.5f;
+        songEndEdgeShine.BaseAlpha = 0.11f;
+        songEndEdgeShine.ShineAlpha = 1.00f;
+        songEndEdgeShine.ShineLength = 0.11f;
+        songEndEdgeShine.ShineSoftness = 0.09f;
+        songEndEdgeShine.ShineSpeed = 0.22f;
 
 
 
@@ -7285,169 +8315,200 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        VisualElement songEndAccentPlate = songEndTemplate.QRequired<VisualElement>("song-end-accent-plate");
+        songEndMainFrame = songEndTemplate.QRequired<VisualElement>("song-end-main-frame");
 
-        VisualElement songEndMainPlate = songEndTemplate.QRequired<VisualElement>("song-end-main-plate");
+        songEndShadowPlate = songEndTemplate.QRequired<VisualElement>("song-end-shadow-plate");
 
-        VisualElement songEndPanelGrid = songEndTemplate.QRequired<VisualElement>("song-end-panel-grid");
+        songEndBackPlate = songEndTemplate.QRequired<VisualElement>("song-end-back-plate");
+
+        songEndMainPlate = songEndTemplate.QRequired<VisualElement>("song-end-main-plate");
+
+        songEndInnerFrame = songEndTemplate.QRequired<VisualElement>("song-end-inner-frame");
+
+        songEndPanelGrid = songEndTemplate.QRequired<VisualElement>("song-end-panel-grid");
+
+        songEndAccentPlate = songEndTemplate.QRequired<VisualElement>("song-end-accent-plate");
+
+        songEndContent = songEndTemplate.QRequired<VisualElement>("song-end-content");
 
         VisualElement songEndTitleColumn = songEndTemplate.QRequired<VisualElement>("song-end-title-column");
 
-        VisualElement songEndScoreColumn = songEndTemplate.QRequired<VisualElement>("song-end-score-column");
+        songEndScoreColumn = songEndTemplate.QRequired<VisualElement>("song-end-score-column");
 
-        VisualElement songEndStatsStrip = songEndTemplate.QRequired<VisualElement>("song-end-stats-strip");
+        songEndStatsStrip = songEndTemplate.QRequired<VisualElement>("song-end-stats-strip");
 
-        VisualElement songEndGradeGlow = songEndTemplate.QRequired<VisualElement>("song-end-grade-glow");
+        VisualElement songEndMiddleBand = songEndTemplate.QRequired<VisualElement>("song-end-middle-band");
 
-        VisualElement songEndGradeBlock = songEndTemplate.QRequired<VisualElement>("song-end-grade-block");
+        songEndGradeGlow = songEndTemplate.QRequired<VisualElement>("song-end-grade-glow");
 
-        VisualElement songEndFooterRow = songEndTemplate.QRequired<VisualElement>("song-end-footer-row");
+        songEndGradeBlock = songEndTemplate.QRequired<VisualElement>("song-end-grade-block");
+
+        songEndFooterRow = songEndTemplate.QRequired<VisualElement>("song-end-footer-row");
 
         VisualElement songEndTemplateButtons = songEndTemplate.QRequired<VisualElement>("song-end-buttons");
 
-        Label songEndEyebrow = songEndTemplate.QRequired<Label>("song-end-eyebrow");
+        songEndEyebrow = songEndTemplate.QRequired<Label>("song-end-eyebrow");
 
-        Label songEndScoreEyebrow = songEndTemplate.QRequired<Label>("song-end-score-eyebrow");
+        songEndScoreEyebrow = songEndTemplate.QRequired<Label>("song-end-score-eyebrow");
 
-        Label songEndGradeCaption = songEndTemplate.QRequired<Label>("song-end-grade-caption");
+        songEndGradeCaption = songEndTemplate.QRequired<Label>("song-end-grade-caption");
 
-        VisualElement songEndRule = songEndTemplate.QRequired<VisualElement>("song-end-rule");
+        songEndRule = songEndTemplate.QRequired<VisualElement>("song-end-rule");
 
         songEndNoteLabel = songEndTemplate.QRequired<Label>("song-end-note");
 
 
 
-        songEndAccentPlate.style.backgroundImage = StyleKeyword.None;
-        songEndAccentPlate.style.backgroundColor = new Color(GameplayHudAccentWarmColor.r, GameplayHudAccentWarmColor.g, GameplayHudAccentWarmColor.b, 0.10f);
-        songEndAccentPlate.style.opacity = 1f;
+        songEndMainFrame.style.left = Length.Percent(14f);
+        songEndMainFrame.style.top = Length.Percent(48f);
+        songEndMainFrame.style.width = Length.Percent(72f);
+        songEndMainFrame.style.height = Length.Percent(68f);
+        songEndMainFrame.style.translate = new Translate(0f, Length.Percent(-50f), 0f);
+
+        songEndShadowPlate.style.display = DisplayStyle.None;
+        songEndBackPlate.style.display = DisplayStyle.None;
+
+        songEndMainPlate.style.backgroundColor = new Color(0.018f, 0.023f, 0.032f, 0.975f);
+        songEndMainPlate.style.borderTopWidth = 1f;
+        songEndMainPlate.style.borderRightWidth = 1f;
+        songEndMainPlate.style.borderBottomWidth = 1f;
+        songEndMainPlate.style.borderLeftWidth = 1f;
+        songEndMainPlate.style.borderTopColor = GameplayHudCardBorderTopColor;
+        songEndMainPlate.style.borderRightColor = GameplayHudCardBorderSideColor;
+        songEndMainPlate.style.borderBottomColor = GameplayHudCardBorderBottomColor;
+        songEndMainPlate.style.borderLeftColor = GameplayHudCardBorderSideColor;
+        songEndMainPlate.style.borderTopLeftRadius = 30f;
+        songEndMainPlate.style.borderTopRightRadius = 30f;
+        songEndMainPlate.style.borderBottomLeftRadius = 30f;
+        songEndMainPlate.style.borderBottomRightRadius = 30f;
+
+        songEndInnerFrame.style.left = 20f;
+        songEndInnerFrame.style.right = 20f;
+        songEndInnerFrame.style.top = 20f;
+        songEndInnerFrame.style.bottom = 20f;
+        songEndInnerFrame.style.borderTopWidth = 0f;
+        songEndInnerFrame.style.borderRightWidth = 0f;
+        songEndInnerFrame.style.borderBottomWidth = 0f;
+        songEndInnerFrame.style.borderLeftWidth = 0f;
+
+        songEndAccentPlate.style.left = 28f;
+        songEndAccentPlate.style.right = 28f;
+        songEndAccentPlate.style.top = 20f;
+        songEndAccentPlate.style.height = 12f;
+        songEndAccentPlate.style.backgroundImage = new StyleBackground(GetSongEndAccentGradientTexture());
+        songEndAccentPlate.style.unityBackgroundImageTintColor = Color.white;
+        songEndAccentPlate.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        songEndAccentPlate.style.opacity = 0.66f;
+        songEndAccentPlate.style.borderTopLeftRadius = 10f;
+        songEndAccentPlate.style.borderTopRightRadius = 10f;
+        songEndAccentPlate.style.borderBottomLeftRadius = 10f;
+        songEndAccentPlate.style.borderBottomRightRadius = 10f;
+        songEndAccentPlate.style.display = DisplayStyle.None;
+
+        songEndEdgeShineOverlay = new VisualElement();
+        songEndEdgeShineOverlay.style.position = Position.Absolute;
+        songEndEdgeShineOverlay.style.left = 0f;
+        songEndEdgeShineOverlay.style.right = 0f;
+        songEndEdgeShineOverlay.style.top = 0f;
+        songEndEdgeShineOverlay.style.bottom = 0f;
+        songEndEdgeShineOverlay.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        songEndEdgeShineOverlay.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
+        songEndEdgeShineOverlay.style.borderTopLeftRadius = 30f;
+        songEndEdgeShineOverlay.style.borderTopRightRadius = 30f;
+        songEndEdgeShineOverlay.style.borderBottomLeftRadius = 30f;
+        songEndEdgeShineOverlay.style.borderBottomRightRadius = 30f;
+        songEndEdgeShineOverlay.style.opacity = 0.92f;
+        songEndEdgeShineOverlay.pickingMode = PickingMode.Ignore;
+        songEndMainFrame.Add(songEndEdgeShineOverlay);
+        songEndEdgeShineOverlay.BringToFront();
+        if (songEndEdgeShine != null)
+            songEndEdgeShine.TargetElement = songEndEdgeShineOverlay;
 
         songEndPanelGrid.style.backgroundImage = StyleKeyword.None;
         songEndPanelGrid.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         songEndPanelGrid.style.display = DisplayStyle.None;
+        songEndPanelGrid.style.opacity = 0f;
 
         songEndGradeGlow.style.backgroundImage = StyleKeyword.None;
         songEndGradeGlow.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         songEndGradeGlow.style.display = DisplayStyle.None;
+        songEndGradeGlow.style.opacity = 0f;
 
-        songEndMainPlate.style.backgroundColor = new Color(0.018f, 0.026f, 0.043f, 1f);
-
-        songEndMainPlate.style.borderTopWidth = 1f;
-
-        songEndMainPlate.style.borderRightWidth = 1f;
-
-        songEndMainPlate.style.borderBottomWidth = 1f;
-
-        songEndMainPlate.style.borderLeftWidth = 1f;
-
-        songEndMainPlate.style.borderTopColor = GameplayHudCardBorderTopColor;
-
-        songEndMainPlate.style.borderRightColor = GameplayHudCardBorderSideColor;
-
-        songEndMainPlate.style.borderBottomColor = GameplayHudCardBorderBottomColor;
-
-        songEndMainPlate.style.borderLeftColor = GameplayHudCardBorderSideColor;
-
-
+        songEndContent.style.left = Length.Percent(6.4f);
+        songEndContent.style.right = Length.Percent(6.4f);
+        songEndContent.style.top = Length.Percent(8.2f);
+        songEndContent.style.bottom = Length.Percent(8.0f);
 
         songEndEyebrow.text = "RUN COMPLETE";
-
         songEndEyebrow.style.fontSize = 24f;
-
         songEndEyebrow.style.color = GameplayHudAccentCoolColor;
-
         songEndEyebrow.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndEyebrow.style.unityFontStyleAndWeight = FontStyle.Bold;
-
-        songEndEyebrow.style.letterSpacing = 1.6f;
+        songEndEyebrow.style.letterSpacing = 1.8f;
+        songEndEyebrow.style.marginBottom = 14f;
 
         songEndTitleLabel.text = "SONG COMPLETE";
-
         songEndScoreEyebrow.text = "TRACK BEST";
-
-        songEndGradeCaption.text = "GRADE";
-
-
+        songEndGradeCaption.text = "FINAL SCORE";
 
         songEndTitleColumn.Clear();
-
         songEndScoreColumn.Clear();
-
         songEndStatsStrip.Clear();
-
         songEndGradeBlock.Clear();
-
         songEndFooterRow.Clear();
-
         songEndTemplateButtons.Clear();
 
-        songEndStatsStrip.style.width = Length.Percent(78f);
+        songEndStatsStrip.style.width = Length.Percent(96f);
         songEndStatsStrip.style.alignSelf = Align.Center;
         songEndStatsStrip.style.justifyContent = Justify.SpaceBetween;
         songEndStatsStrip.style.alignItems = Align.Center;
+        songEndStatsStrip.style.marginBottom = 32f;
+        songEndStatsStrip.style.paddingLeft = 0f;
+        songEndStatsStrip.style.paddingRight = 0f;
+        songEndStatsStrip.style.paddingTop = 0f;
+        songEndStatsStrip.style.paddingBottom = 0f;
+        songEndStatsStrip.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        songEndStatsStrip.style.borderTopWidth = 0f;
+        songEndStatsStrip.style.borderRightWidth = 0f;
+        songEndStatsStrip.style.borderBottomWidth = 0f;
+        songEndStatsStrip.style.borderLeftWidth = 0f;
+        songEndStatsStrip.style.borderTopLeftRadius = 0f;
+        songEndStatsStrip.style.borderTopRightRadius = 0f;
+        songEndStatsStrip.style.borderBottomLeftRadius = 0f;
+        songEndStatsStrip.style.borderBottomRightRadius = 0f;
 
-
+        songEndMiddleBand.style.marginBottom = 30f;
 
         songEndTitleLabel.style.color = GameplayHudPrimaryTextColor;
-
-        songEndTitleLabel.style.whiteSpace = WhiteSpace.Normal;
-
+        songEndTitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
         songEndTitleLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-
-        songEndTitleLabel.style.fontSize = 74f;
-
-        songEndTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
-
-        songEndTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-
+        songEndTitleLabel.style.fontSize = 92f;
+        songEndTitleLabel.style.unityFontDefinition = logoFontDefinition;
+        songEndTitleLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
         songEndTitleLabel.style.marginLeft = 0f;
-
         songEndTitleLabel.style.marginTop = 0f;
-
         songEndTitleLabel.style.marginRight = 0f;
-
-        songEndTitleLabel.style.marginBottom = 8f;
-
-
+        songEndTitleLabel.style.marginBottom = 10f;
 
         songEndSongLabel.style.color = GameplayHudPrimaryTextColor;
-
         songEndSongLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-
-        songEndSongLabel.style.fontSize = 50f;
-
+        songEndSongLabel.style.fontSize = 58f;
         songEndSongLabel.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndSongLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-
-        songEndSongLabel.style.marginBottom = 12f;
-
-
+        songEndSongLabel.style.marginBottom = 10f;
 
         songEndMetaLabel.style.color = GameplayHudSecondaryTextColor;
-
         songEndMetaLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-
-        songEndMetaLabel.style.fontSize = 28f;
-
+        songEndMetaLabel.style.fontSize = 34f;
         songEndMetaLabel.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndMetaLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-
         songEndMetaLabel.style.marginBottom = 0f;
 
-
-
         songEndStatsLabel.style.color = GameplayHudMutedTextColor;
-
         songEndStatsLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
-
-        songEndStatsLabel.style.fontSize = 30f;
-
+        songEndStatsLabel.style.fontSize = 26f;
         songEndStatsLabel.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndStatsLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-
         songEndStatsLabel.style.marginBottom = 0f;
         songEndStatsLabel.style.marginRight = 0f;
         songEndStatsLabel.style.paddingLeft = 0f;
@@ -7459,49 +8520,35 @@ public sealed class TabsSongHeaderOverlay
         songEndStatsLabel.style.borderRightWidth = 0f;
         songEndStatsLabel.style.borderBottomWidth = 0f;
         songEndStatsLabel.style.borderLeftWidth = 0f;
-        songEndStatsLabel.style.letterSpacing = 0.2f;
-        songEndStatsLabel.style.width = Length.Percent(30f);
+        songEndStatsLabel.style.letterSpacing = 0.15f;
+        songEndStatsLabel.style.width = Length.Percent(40f);
+        songEndStatsLabel.style.flexShrink = 1f;
+        songEndStatsLabel.style.whiteSpace = WhiteSpace.Normal;
+        songEndStatsLabel.style.marginRight = 0f;
 
-
-
-        songEndScoreEyebrow.style.fontSize = 22f;
-
+        songEndScoreEyebrow.style.fontSize = 20f;
         songEndScoreEyebrow.style.color = GameplayHudEyebrowColor;
-
         songEndScoreEyebrow.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndScoreEyebrow.style.unityFontStyleAndWeight = FontStyle.Bold;
-
-        songEndScoreEyebrow.style.letterSpacing = 1.3f;
-
-
+        songEndScoreEyebrow.style.unityTextAlign = TextAnchor.MiddleCenter;
+        songEndScoreEyebrow.style.letterSpacing = 1.4f;
+        songEndScoreEyebrow.style.marginBottom = 8f;
 
         songEndBestLabel.style.color = GameplayHudPrimaryTextColor;
-
         songEndBestLabel.style.unityTextAlign = TextAnchor.MiddleRight;
-
-        songEndBestLabel.style.fontSize = 58f;
-
+        songEndBestLabel.style.fontSize = 38f;
         songEndBestLabel.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndBestLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-
+        songEndBestLabel.style.whiteSpace = WhiteSpace.Normal;
         songEndBestLabel.style.marginBottom = 8f;
 
-
-
         songEndSpeedValueLabel.style.color = GameplayHudAccentWarmColor;
-
         songEndSpeedValueLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-
-        songEndSpeedValueLabel.style.fontSize = 30f;
-
+        songEndSpeedValueLabel.style.fontSize = 34f;
         songEndSpeedValueLabel.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndSpeedValueLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-
         songEndSpeedValueLabel.style.marginLeft = 0f;
-
+        songEndSpeedValueLabel.style.marginRight = 0f;
         songEndSpeedValueLabel.style.marginBottom = 0f;
         songEndSpeedValueLabel.style.paddingLeft = 0f;
         songEndSpeedValueLabel.style.paddingRight = 0f;
@@ -7512,70 +8559,51 @@ public sealed class TabsSongHeaderOverlay
         songEndSpeedValueLabel.style.borderRightWidth = 0f;
         songEndSpeedValueLabel.style.borderBottomWidth = 0f;
         songEndSpeedValueLabel.style.borderLeftWidth = 0f;
+        songEndSpeedValueLabel.style.borderTopLeftRadius = 0f;
+        songEndSpeedValueLabel.style.borderTopRightRadius = 0f;
+        songEndSpeedValueLabel.style.borderBottomLeftRadius = 0f;
+        songEndSpeedValueLabel.style.borderBottomRightRadius = 0f;
         songEndSpeedValueLabel.style.width = Length.Percent(20f);
 
-
-
         songEndDeltaLabel.style.unityTextAlign = TextAnchor.MiddleRight;
-
-        songEndDeltaLabel.style.fontSize = 26f;
-
+        songEndDeltaLabel.style.fontSize = 22f;
         songEndDeltaLabel.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndDeltaLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        songEndDeltaLabel.style.whiteSpace = WhiteSpace.Normal;
+        songEndDeltaLabel.style.display = DisplayStyle.None;
 
-
-
-        songEndGradeCaption.style.fontSize = 22f;
-
+        songEndGradeCaption.style.fontSize = 20f;
         songEndGradeCaption.style.color = GameplayHudMutedTextColor;
-
         songEndGradeCaption.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndGradeCaption.style.unityFontStyleAndWeight = FontStyle.Bold;
-
         songEndGradeCaption.style.letterSpacing = 1.6f;
-
-
+        songEndGradeCaption.style.marginBottom = 10f;
 
         songEndRatingLabel.style.color = GetScoreLetterGradeColor(100f);
-
         songEndRatingLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-
-        songEndRatingLabel.style.fontSize = 60f;
-
+        songEndRatingLabel.style.fontSize = 52f;
         songEndRatingLabel.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndRatingLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-
         songEndRatingLabel.style.marginBottom = -4f;
 
-
-
         songEndScoreLabel.style.color = GameplayHudAccentWarmColor;
-
         songEndScoreLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        songEndScoreLabel.style.fontSize = 180f;
+        songEndScoreLabel.style.unityFontDefinition = logoFontDefinition;
+        songEndScoreLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+        songEndScoreLabel.style.marginBottom = 16f;
 
-        songEndScoreLabel.style.fontSize = 148f;
+        songEndRule.style.width = 240f;
+        songEndRule.style.height = 2f;
+        songEndRule.style.marginBottom = 18f;
+        songEndRule.style.backgroundColor = new Color(GameplayHudAccentWarmColor.r, GameplayHudAccentWarmColor.g, GameplayHudAccentWarmColor.b, 0.46f);
 
-        songEndScoreLabel.style.unityFontDefinition = modernUiFontDefinition;
-
-        songEndScoreLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-
-        songEndScoreLabel.style.marginBottom = 14f;
-
-
-
-        songEndRule.style.backgroundColor = new Color(GameplayHudAccentWarmColor.r, GameplayHudAccentWarmColor.g, GameplayHudAccentWarmColor.b, 0.34f);
-
-        songEndNoteLabel.style.fontSize = 26f;
-        songEndNoteLabel.style.width = 700f;
-
+        songEndNoteLabel.style.fontSize = 32f;
+        songEndNoteLabel.style.width = 920f;
         songEndNoteLabel.style.color = GameplayHudMutedTextColor;
-
         songEndNoteLabel.style.unityFontDefinition = modernUiFontDefinition;
-
         songEndNoteLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        songEndNoteLabel.style.whiteSpace = WhiteSpace.Normal;
 
         songEndTitleColumn.style.width = Length.Percent(100f);
         songEndTitleColumn.style.alignItems = Align.Center;
@@ -7590,7 +8618,7 @@ public sealed class TabsSongHeaderOverlay
         songEndTitleColumn.style.borderBottomWidth = 0f;
         songEndTitleColumn.style.borderLeftWidth = 0f;
 
-        songEndScoreColumn.style.width = Length.Percent(30f);
+        songEndScoreColumn.style.width = Length.Percent(40f);
         songEndScoreColumn.style.alignItems = Align.FlexEnd;
         songEndScoreColumn.style.justifyContent = Justify.Center;
         songEndScoreColumn.style.paddingLeft = 0f;
@@ -7602,6 +8630,10 @@ public sealed class TabsSongHeaderOverlay
         songEndScoreColumn.style.borderRightWidth = 0f;
         songEndScoreColumn.style.borderBottomWidth = 0f;
         songEndScoreColumn.style.borderLeftWidth = 0f;
+        songEndScoreColumn.style.borderTopLeftRadius = 0f;
+        songEndScoreColumn.style.borderTopRightRadius = 0f;
+        songEndScoreColumn.style.borderBottomLeftRadius = 0f;
+        songEndScoreColumn.style.borderBottomRightRadius = 0f;
 
         songEndGradeBlock.style.width = Length.Percent(100f);
         songEndGradeBlock.style.minHeight = 0f;
@@ -7609,11 +8641,15 @@ public sealed class TabsSongHeaderOverlay
         songEndGradeBlock.style.paddingRight = 0f;
         songEndGradeBlock.style.paddingTop = 0f;
         songEndGradeBlock.style.paddingBottom = 0f;
+        songEndGradeBlock.style.alignItems = Align.Center;
+        songEndGradeBlock.style.justifyContent = Justify.Center;
         songEndGradeBlock.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         songEndGradeBlock.style.borderTopWidth = 0f;
         songEndGradeBlock.style.borderRightWidth = 0f;
         songEndGradeBlock.style.borderBottomWidth = 0f;
         songEndGradeBlock.style.borderLeftWidth = 0f;
+
+        songEndFooterRow.style.opacity = 0f;
 
 
 
@@ -7707,9 +8743,9 @@ public sealed class TabsSongHeaderOverlay
 
             string.Empty,
 
-            "Left/Right adjusts  \u2022  Enter saves  \u2022  Esc back",
+            "Left/Right adjusts  \u2022  Enter continues  \u2022  Esc back",
 
-            "Save & Return",
+            "Continue",
 
             () => owner?.ConfirmLoopPausePopupFromUi(),
 
@@ -7737,7 +8773,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        loopPauseDurationLabel = CreateLabel("Loop Pause  0.00s", 34f, new Color(0.96f, 0.98f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        loopPauseDurationLabel = CreateLabel("Loop Pause  0s", 34f, new Color(0.96f, 0.98f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: false);
 
         loopPauseDurationLabel.style.unityFontDefinition = modernUiFontDefinition;
 
@@ -7793,9 +8829,9 @@ public sealed class TabsSongHeaderOverlay
 
         loopPauseCountdownHost.style.right = 0f;
 
-        loopPauseCountdownHost.style.top = 20f;
+        loopPauseCountdownHost.style.top = 0f;
 
-        loopPauseCountdownHost.style.height = 72f;
+        loopPauseCountdownHost.style.bottom = 0f;
 
         loopPauseCountdownHost.style.alignItems = Align.Center;
 
@@ -7817,11 +8853,21 @@ public sealed class TabsSongHeaderOverlay
 
         loopPauseCountdownDial.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
 
-        loopPauseCountdownDial.style.opacity = 0.94f;
+        loopPauseCountdownDial.style.opacity = 0f;
 
         loopPauseCountdownDial.pickingMode = PickingMode.Ignore;
 
         loopPauseCountdownHost.Add(loopPauseCountdownDial);
+
+        loopPauseCountdownLabel = CreateLabel("3", 220f, GlobalSecondaryAccentColor, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        loopPauseCountdownLabel.style.unityFontDefinition = logoFontDefinition;
+        loopPauseCountdownLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        loopPauseCountdownLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        loopPauseCountdownLabel.style.color = new Color(1f, 0.78f, 0.52f, 0.98f);
+        loopPauseCountdownLabel.style.translate = new Translate(0f, -36f);
+        loopPauseCountdownLabel.style.opacity = 0f;
+        loopPauseCountdownLabel.pickingMode = PickingMode.Ignore;
+        loopPauseCountdownHost.Add(loopPauseCountdownLabel);
 
 
 
@@ -7842,10 +8888,16 @@ public sealed class TabsSongHeaderOverlay
         root.Add(characterHealthRow);
 
         root.Add(gameplayScoreDock);
+        root.Add(loopConfigurationTitleLabel);
+        root.Add(loopBookmarksCard);
 
         root.Add(techniqueLegendCard);
 
         root.Add(scorePlate);
+
+        root.Add(arcadeComboLayer);
+
+        root.Add(multiplayerRhythmHudLayer);
 
         root.Add(judgePopupLayer);
 
@@ -7867,6 +8919,8 @@ public sealed class TabsSongHeaderOverlay
 
         root.Add(startMenuOverlay);
 
+        root.Add(multiplayerRhythmSetupOverlay);
+
         root.Add(settingsOverlay);
         root.Add(generatedAudioTracksPopupOverlay);
 
@@ -7878,6 +8932,8 @@ public sealed class TabsSongHeaderOverlay
 
         root.Add(startupTuningReminderOverlay);
 
+        root.Add(libraryLoadingOverlay.RootElement);
+
         root.Add(loopPausePopupOverlay);
 
         songEndOverlay.Add(songEndBlurBackdrop);
@@ -7887,6 +8943,45 @@ public sealed class TabsSongHeaderOverlay
         root.Add(songEndOverlay);
 
         root.Add(gameplayShortcutLabel);
+
+        controllerCursor = new VisualElement();
+        controllerCursor.style.position = Position.Absolute;
+        controllerCursor.style.width = 40f;
+        controllerCursor.style.height = 40f;
+        controllerCursor.style.borderTopWidth = 3f;
+        controllerCursor.style.borderRightWidth = 3f;
+        controllerCursor.style.borderBottomWidth = 3f;
+        controllerCursor.style.borderLeftWidth = 3f;
+        controllerCursor.style.borderTopColor = new Color(1f, 1f, 1f, 0.96f);
+        controllerCursor.style.borderRightColor = new Color(1f, 1f, 1f, 0.96f);
+        controllerCursor.style.borderBottomColor = new Color(1f, 1f, 1f, 0.96f);
+        controllerCursor.style.borderLeftColor = new Color(1f, 1f, 1f, 0.96f);
+        controllerCursor.style.borderTopLeftRadius = 999f;
+        controllerCursor.style.borderTopRightRadius = 999f;
+        controllerCursor.style.borderBottomLeftRadius = 999f;
+        controllerCursor.style.borderBottomRightRadius = 999f;
+        controllerCursor.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
+        controllerCursor.style.opacity = 0f;
+        controllerCursor.style.display = DisplayStyle.None;
+        controllerCursor.style.translate = new Translate(-20f, -20f, 0f);
+        controllerCursor.pickingMode = PickingMode.Ignore;
+
+        controllerCursorInner = new VisualElement();
+        controllerCursorInner.style.position = Position.Absolute;
+        controllerCursorInner.style.left = new Length(50f, LengthUnit.Percent);
+        controllerCursorInner.style.top = new Length(50f, LengthUnit.Percent);
+        controllerCursorInner.style.width = 12f;
+        controllerCursorInner.style.height = 12f;
+        controllerCursorInner.style.translate = new Translate(-6f, -6f, 0f);
+        controllerCursorInner.style.borderTopLeftRadius = 999f;
+        controllerCursorInner.style.borderTopRightRadius = 999f;
+        controllerCursorInner.style.borderBottomLeftRadius = 999f;
+        controllerCursorInner.style.borderBottomRightRadius = 999f;
+        controllerCursorInner.style.backgroundColor = new Color(1f, 1f, 1f, 0.98f);
+        controllerCursorInner.pickingMode = PickingMode.Ignore;
+        controllerCursor.Add(controllerCursorInner);
+
+        root.Add(controllerCursor);
 
 
 
@@ -7905,8 +9000,6 @@ public sealed class TabsSongHeaderOverlay
         if (snapshot == null)
 
             return;
-
-
 
         string songName = string.IsNullOrWhiteSpace(snapshot.currentSongDisplayName)
 
@@ -8101,18 +9194,22 @@ public sealed class TabsSongHeaderOverlay
 
         string scoreTitle = snapshot.scoreSaveInvalidated ? "RUN SCORE (x)" : "RUN SCORE";
         scoreTitleLabel.text = loopEnabled && loopDurationSeconds > 0.01f
-            ? $"{scoreTitle}  ?  LOOP: {loopDurationSeconds:F2}s"
+            ? $"LOOP COMPLETE  •  {loopDurationSeconds:F2}s"
             : scoreTitle;
-        if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
+        if (loopEnabled)
+        {
+            scorePercentLabel.text = $"{Mathf.Clamp(scorePercent, 0f, 100f):F1}%";
+        }
+        else if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
         {
             scorePercentLabel.text = FormatArcadeScoreValue(snapshot.currentSessionArcadeScore);
-            noteTallyLabel.text = $"Combo {snapshot.currentSessionArcadeCombo}  |  {snapshot.currentSessionArcadeMultiplier}x  |  Hits {displayHits}  /  Misses {displayMisses}";
         }
         else
         {
-            scorePercentLabel.text = $"{scorePercent:F1}%";
-            noteTallyLabel.text = $"Hits {displayHits}  /  Misses {displayMisses}";
+            scorePercentLabel.text = FormatGuitarScoreValue(snapshot.currentSessionScoreValue);
         }
+        UpdateGameplayScoreCard(snapshot, scorePercent, displayHits, displayMisses);
+        UpdateArcadeComboBadge(snapshot);
         UpdateCharacterHealthHearts(displayMisses, snapshot.heroModeHeartCount);
 
         wasLoopEnabled = loopEnabled;
@@ -8123,7 +9220,62 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        if (!hasSeenSnapshot)
+        if (snapshot.multiplayerRhythmMode && snapshot.multiplayerRhythmPlayers != null)
+        {
+            for (int playerIndex = 0; playerIndex < Mathf.Min(2, snapshot.multiplayerRhythmPlayers.Count); playerIndex++)
+            {
+                MultiplayerRhythmPlayerSnapshot multiplayerPlayer = snapshot.multiplayerRhythmPlayers[playerIndex];
+                if (multiplayerPlayer?.arcadeNoteStates == null)
+                    continue;
+
+                int playerResolvedCount = 0;
+                bool playerLatestResolvedWasHit = false;
+                float playerLatestResolvedAt = -1f;
+                for (int noteIndex = 0; noteIndex < multiplayerPlayer.arcadeNoteStates.Count; noteIndex++)
+                {
+                    ArcadeNoteState noteState = multiplayerPlayer.arcadeNoteStates[noteIndex];
+                    if (noteState == null || !noteState.IsResolved)
+                        continue;
+
+                    playerResolvedCount++;
+                    if (noteState.resolvedAt > playerLatestResolvedAt)
+                    {
+                        playerLatestResolvedAt = noteState.resolvedAt;
+                        playerLatestResolvedWasHit = noteState.IsHit;
+                    }
+                }
+
+                if (!hasSeenMultiplayerResolvedSnapshots[playerIndex])
+                {
+                    hasSeenMultiplayerResolvedSnapshots[playerIndex] = true;
+                    lastMultiplayerResolvedCounts[playerIndex] = playerResolvedCount;
+                }
+                else if (playerResolvedCount > lastMultiplayerResolvedCounts[playerIndex] && playerLatestResolvedAt >= 0f)
+                {
+                    bool success = playerLatestResolvedWasHit;
+                    if (success)
+                        multiplayerHitStreaks[playerIndex]++;
+                    else
+                        multiplayerHitStreaks[playerIndex] = 0;
+
+                    float width = document != null && document.rootVisualElement != null && document.rootVisualElement.worldBound.width > 1f
+                        ? document.rootVisualElement.worldBound.width
+                        : Screen.width;
+                    float height = document != null && document.rootVisualElement != null && document.rootVisualElement.worldBound.height > 1f
+                        ? document.rootVisualElement.worldBound.height
+                        : Screen.height;
+                    Rect characterRect = MultiplayerRhythm3DRenderer.GetPlayerCharacterHudScreenRect(playerIndex, width, height);
+                    SpawnJudgePopupForMultiplayerPlayer(success, multiplayerHitStreaks[playerIndex], playerIndex, characterRect);
+                    lastMultiplayerResolvedCounts[playerIndex] = playerResolvedCount;
+                }
+                else if (playerResolvedCount < lastMultiplayerResolvedCounts[playerIndex])
+                {
+                    lastMultiplayerResolvedCounts[playerIndex] = playerResolvedCount;
+                    multiplayerHitStreaks[playerIndex] = 0;
+                }
+            }
+        }
+        else if (!hasSeenSnapshot)
 
         {
 
@@ -8239,7 +9391,7 @@ public sealed class TabsSongHeaderOverlay
 
         settingsVolumeLabel.text = $"Song Volume  {snapshot.songVolumePercent:F0}%";
 
-        loopPauseDurationLabel.text = $"Loop Pause  {snapshot.loopPauseDurationSeconds:F2}s";
+        loopPauseDurationLabel.text = $"Loop Pause  {snapshot.loopPauseDurationSeconds:F0}s";
 
         bool generatedSongMode = snapshot.songPlaybackUsesGeneratedMode;
         settingsPrimaryToolButton.text = generatedSongMode ? "Audio Track Selection" : "Offset Helper";
@@ -8269,8 +9421,13 @@ public sealed class TabsSongHeaderOverlay
         bool showNotesDetectorTest = snapshot.showNotesDetectorTestMenu && !showEnd && !showToneLab;
 
         bool showStartMenu = snapshot.showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest;
+        bool showMultiplayerRhythmSetup = snapshot.showMultiplayerRhythmSetup && !showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest;
 
-        bool showMainMenu = snapshot.showMainMenu && !showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest;
+        bool showLibraryLoading = snapshot.showLibraryLoadingOverlay && !showEnd && !showToneLab && !showNotesDetectorTest;
+
+        SetWordmarkParentForLibraryLoading(showLibraryLoading);
+
+        bool showMainMenu = snapshot.showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest;
 
         bool showLoopPausePopup = snapshot.showLoopPausePopup && !showEnd;
 
@@ -8282,21 +9439,21 @@ public sealed class TabsSongHeaderOverlay
 
         bool showOffsetHelper = snapshot.showOffsetHelper && !showEnd && !showToneLab;
 
-        bool showPause = snapshot.isPaused && !showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
 
-        bool showSettings = snapshot.showSongSettings && !showEnd && !showToneLab;
+        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab;
 
-        bool showSelection = snapshot.showSongSelection && !showEnd && !showToneLab;
+        bool showSelection = snapshot.showSongSelection && !showLibraryLoading && !showEnd && !showToneLab;
 
-        bool showTrackSelection = snapshot.showTrackSelection && !showEnd && !showToneLab;
+        bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showEnd && !showToneLab;
 
-        bool showGlobalSettings = snapshot.showGlobalSettings && !showEnd && !showToneLab;
+        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab;
 
-        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showEnd && !showToneLab && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
+        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showLibraryLoading && !showEnd && !showToneLab && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
 
         bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
 
-        bool showTechniqueLegend = !isHighway3D && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool showTechniqueLegend = !isHighway3D && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
 
 
@@ -8326,6 +9483,9 @@ public sealed class TabsSongHeaderOverlay
         if (showStartMenu)
             UpdateStartMenu(snapshot);
 
+        if (showMultiplayerRhythmSetup)
+            UpdateMultiplayerRhythmSetup(snapshot);
+
 
 
         pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
@@ -8346,25 +9506,32 @@ public sealed class TabsSongHeaderOverlay
 
         startMenuOverlay.style.display = showStartMenu ? DisplayStyle.Flex : DisplayStyle.None;
 
+        multiplayerRhythmSetupOverlay.style.display = showMultiplayerRhythmSetup ? DisplayStyle.Flex : DisplayStyle.None;
+
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
         generatedAudioTracksPopupOverlay.style.display = showSettings && (snapshot.showGeneratedAudioTrackSelectionPopup || snapshot.showSongSettingsTrackSelectionPopup) ? DisplayStyle.Flex : DisplayStyle.None;
 
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
+        if (selectionLibraryTypeButtonsRow != null)
+            selectionLibraryTypeButtonsRow.style.display = snapshot.multiplayerRhythmMode ? DisplayStyle.None : DisplayStyle.Flex;
 
         trackSelectionOverlay.style.display = showTrackSelection ? DisplayStyle.Flex : DisplayStyle.None;
 
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
+        globalSettingsOverlay.style.backgroundColor = new Color(0.08f, 0.08f, 0.09f, snapshot.globalSettingsTransparentBackground ? 0f : 0.992f);
+
+        libraryLoadingOverlay.SetVisible(showLibraryLoading, Time.unscaledTime);
 
         if (showStartupTuningReminder)
         {
             if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
             {
                 startupTuningReminderPopup?.SetContent(
-                    "ARCADE CONTROLS",
+                    "RHYTHM CONTROLS",
                     "Before You Play",
                     GetArcadeStartupPrimaryMessage(),
                     GetArcadeStartupCalloutMessage(),
-                    "You can configure details later in General Settings > Arcade Controls.",
+                    "You can configure details later in General Settings > Rhythm Controls.",
                     "Continue");
             }
             else
@@ -8386,7 +9553,29 @@ public sealed class TabsSongHeaderOverlay
 
         songEndOverlay.style.display = showEnd ? DisplayStyle.Flex : DisplayStyle.None;
 
+        if (showEnd && !wasSongEndVisible)
+
+            songEndShownAtUnscaledTime = Time.unscaledTime;
+
+        else if (!showEnd && wasSongEndVisible)
+
+            songEndShownAtUnscaledTime = -1f;
+
+        wasSongEndVisible = showEnd;
+
         techniqueLegendCard.style.display = showTechniqueLegend ? DisplayStyle.Flex : DisplayStyle.None;
+        loopBookmarksCard.style.display = showLoopSetup ? DisplayStyle.Flex : DisplayStyle.None;
+        loopConfigurationTitleLabel.style.display = showLoopSetup ? DisplayStyle.Flex : DisplayStyle.None;
+        if (showLoopSetup)
+        {
+            UpdateLoopBookmarksCard(snapshot);
+        }
+        else
+        {
+            loopBookmarkRenameRow.style.display = DisplayStyle.None;
+            wasLoopBookmarkRenameActive = false;
+            lastLoopBookmarksSignature = string.Empty;
+        }
 
         bool showGameplayShortcuts = !showEnd
             && !showToneLab
@@ -8406,7 +9595,7 @@ public sealed class TabsSongHeaderOverlay
             && !snapshot.mainMenuFlowActive;
         if (gameplayShortcutLabel != null)
         {
-            string restartTarget = snapshot.loopEnabled ? "restart loop" : "restart song";
+            string restartTarget = snapshot.loopEnabled ? "restart" : "restart";
             if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
             {
                 gameplayShortcutLabel.text = BuildArcadeGameplayShortcutText(showPause, restartTarget);
@@ -8414,8 +9603,8 @@ public sealed class TabsSongHeaderOverlay
             else
             {
                 gameplayShortcutLabel.text = showPause
-                    ? $"Space resume  •  R {restartTarget}  •  T Tone Lab  •  Esc back  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
-                    : $"Space pause  •  R {restartTarget}";
+                    ? $"Esc resume  •  R {restartTarget}  •  T Tone Lab  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
+                    : $"Esc pause  •  R {restartTarget}";
             }
             gameplayShortcutLabel.style.display = showGameplayShortcuts ? DisplayStyle.Flex : DisplayStyle.None;
         }
@@ -8444,18 +9633,49 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showGlobalSettings || showEnd || showToneLab || showNotesDetectorTest || showGameModes || showHeroModeSettings || showOffsetHelper;
+        bool pauseLikeHudMenu = showPause || showSettings || showGlobalSettings || showGameModes || showHeroModeSettings;
+        bool showGameplayHudPreviewInMenus = snapshot.showGameplayHudPreviewInMenus;
+        bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
         highwayCharacterVisible = snapshot.showHighwayCharacter;
 
         songCard.style.display = hideGameplayHudCards ? DisplayStyle.None : DisplayStyle.Flex;
+        songCard.style.alignSelf = snapshot.multiplayerRhythmMode ? Align.Center : Align.FlexStart;
 
         characterHealthRow.style.display = hideGameplayHudCards || !snapshot.heroModeEnabled ? DisplayStyle.None : DisplayStyle.Flex;
 
-        gameplayScoreDock.style.display = hideGameplayHudCards ? DisplayStyle.None : DisplayStyle.Flex;
+        gameplayScoreDock.style.display = hideGameplayHudCards || snapshot.multiplayerRhythmMode ? DisplayStyle.None : DisplayStyle.Flex;
 
         scorePlate.style.display = DisplayStyle.None;
 
-        judgePopupLayer.style.display = hideGameplayHudCards || showLoopSetup || showLoopPausePopup || showOffsetHelper ? DisplayStyle.None : DisplayStyle.Flex;
+        arcadeComboLayer.style.display = hideGameplayHudCards ||
+                                         snapshot.multiplayerRhythmMode ||
+                                         (snapshot.gameplayMode != GuitarGameplayMode.Arcade && snapshot.gameplayMode != GuitarGameplayMode.Guitar)
+            ? DisplayStyle.None
+            : DisplayStyle.Flex;
+
+        bool showMultiplayerRhythmHud = snapshot.multiplayerRhythmMode &&
+                                        !snapshot.showMultiplayerRhythmSetup &&
+                                        !showSelection &&
+                                        !showTrackSelection &&
+                                        !showLibraryLoading &&
+                                        !showMainMenu &&
+                                        !showStartMenu &&
+                                        !showEnd &&
+                                        !showLoopPausePopup &&
+                                        !showLoopSetup &&
+                                        !showToneLab &&
+                                        !showNotesDetectorTest &&
+                                        !showOffsetHelper &&
+                                        !snapshot.showStartupTuningReminder &&
+                                        !snapshot.mainMenuFlowActive &&
+                                        (!pauseLikeHudMenu || showGameplayHudPreviewInMenus);
+        multiplayerRhythmHudLayer.style.display = showMultiplayerRhythmHud ? DisplayStyle.Flex : DisplayStyle.None;
+        if (showMultiplayerRhythmHud)
+            UpdateMultiplayerRhythmHud(snapshot);
+
+        UpdateControllerCursor(snapshot);
+
+        judgePopupLayer.style.display = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showLoopPausePopup || showMultiplayerRhythmSetup || pauseLikeHudMenu ? DisplayStyle.None : DisplayStyle.Flex;
 
         if (showPause || showSettings || showNotesDetectorTest || showGameModes || showHeroModeSettings)
 
@@ -8466,6 +9686,10 @@ public sealed class TabsSongHeaderOverlay
             characterHealthRow.BringToFront();
 
             gameplayScoreDock.BringToFront();
+
+            arcadeComboLayer.BringToFront();
+
+            multiplayerRhythmHudLayer.BringToFront();
 
         }
 
@@ -8588,14 +9812,110 @@ public sealed class TabsSongHeaderOverlay
 
             UpdateSongEndSelection(snapshot.selectedSongEndActionIndex);
 
+            if (snapshot.multiplayerRhythmMode)
+            {
+                MultiplayerRhythmPlayerSnapshot playerOne = snapshot.multiplayerRhythmPlayers != null && snapshot.multiplayerRhythmPlayers.Count > 0
+                    ? snapshot.multiplayerRhythmPlayers[0]
+                    : null;
+                MultiplayerRhythmPlayerSnapshot playerTwo = snapshot.multiplayerRhythmPlayers != null && snapshot.multiplayerRhythmPlayers.Count > 1
+                    ? snapshot.multiplayerRhythmPlayers[1]
+                    : null;
+
+                int playerOneScore = Mathf.Max(0, playerOne?.scoreValue ?? 0);
+                int playerTwoScore = Mathf.Max(0, playerTwo?.scoreValue ?? 0);
+                string winnerTitle = snapshot.multiplayerRhythmDraw
+                    ? "DRAW"
+                    : snapshot.multiplayerRhythmWinningPlayerIndex == 0
+                        ? "PLAYER 1 WINS"
+                        : "PLAYER 2 WINS";
+                string multiplayerMetaText = $"TRACK  {trackName}";
+                string multiplayerScoreDisplayText = $"P1 {FormatArcadeScoreValue(playerOneScore)}\nP2 {FormatArcadeScoreValue(playerTwoScore)}";
+                /*
+                string multiplayerBestSummaryText =
+                    $"P1  ACC {Mathf.Clamp(playerOne?.scorePercent ?? 0f, 0f, 100f):F1}%   •   MAX {Mathf.Max(0, playerOne?.maxCombo ?? 0):N0}\n" +
+                    $"P2  ACC {Mathf.Clamp(playerTwo?.scorePercent ?? 0f, 0f, 100f):F1}%   •   MAX {Mathf.Max(0, playerTwo?.maxCombo ?? 0):N0}");
+                string multiplayerDeltaText = snapshot.multiplayerRhythmDraw
+                    ? "Perfect draw. Both players finished with identical match stats."
+                    : FormattableString.Invariant($"{FormatArcadeScoreValue(Mathf.Abs(playerOneScore - playerTwoScore))} margin");
+                string multiplayerStatsText =
+                    $"P1  H {Mathf.Max(0, playerOne?.hitCount ?? 0):N0}   •   M {Mathf.Max(0, playerOne?.missCount ?? 0):N0}\n" +
+                    $"P2  H {Mathf.Max(0, playerTwo?.hitCount ?? 0):N0}   •   M {Mathf.Max(0, playerTwo?.missCount ?? 0):N0}");
+                */
+                string multiplayerBestSummaryText =
+                    $"P1  ACC {Mathf.Clamp(playerOne?.scorePercent ?? 0f, 0f, 100f):F1}%   •   MAX {Mathf.Max(0, playerOne?.maxCombo ?? 0):N0}\n" +
+                    $"P2  ACC {Mathf.Clamp(playerTwo?.scorePercent ?? 0f, 0f, 100f):F1}%   •   MAX {Mathf.Max(0, playerTwo?.maxCombo ?? 0):N0}";
+                string multiplayerDeltaText = snapshot.multiplayerRhythmDraw
+                    ? "Perfect draw. Both players finished with identical match stats."
+                    : $"{FormatArcadeScoreValue(Mathf.Abs(playerOneScore - playerTwoScore))} margin";
+                string multiplayerStatsText =
+                    $"P1  H {Mathf.Max(0, playerOne?.hitCount ?? 0):N0}   •   M {Mathf.Max(0, playerOne?.missCount ?? 0):N0}\n" +
+                    $"P2  H {Mathf.Max(0, playerTwo?.hitCount ?? 0):N0}   •   M {Mathf.Max(0, playerTwo?.missCount ?? 0):N0}";
+                multiplayerStatsText =
+                    $"P1 ACCURACY  {Mathf.Clamp(playerOne?.scorePercent ?? 0f, 0f, 100f):F1}%\n" +
+                    $"P1 HITS  {Mathf.Max(0, playerOne?.hitCount ?? 0):N0}\n" +
+                    $"P1 MISSES  {Mathf.Max(0, playerOne?.missCount ?? 0):N0}\n\n" +
+                    $"P2 ACCURACY  {Mathf.Clamp(playerTwo?.scorePercent ?? 0f, 0f, 100f):F1}%\n" +
+                    $"P2 HITS  {Mathf.Max(0, playerTwo?.hitCount ?? 0):N0}\n" +
+                    $"P2 MISSES  {Mathf.Max(0, playerTwo?.missCount ?? 0):N0}";
+                string multiplayerPerformanceNote = snapshot.multiplayerRhythmDraw
+                    ? "Tight match. Run it back and break the tie."
+                    : snapshot.multiplayerRhythmWinningPlayerIndex == 0
+                        ? "Player 1 takes the round. Queue another track and keep the pressure on."
+                        : "Player 2 takes the round. Queue another track and answer it immediately.";
+                string multiplayerSongEndSignature = FormattableString.Invariant(
+                    $"multiplayer|{winnerTitle}|{songName}|{trackName}|{speedPercent:F0}|{playerOneScore}|{playerTwoScore}|{playerOne?.scorePercent ?? 0f:F1}|{playerTwo?.scorePercent ?? 0f:F1}|{playerOne?.hitCount ?? 0}|{playerTwo?.hitCount ?? 0}|{playerOne?.missCount ?? 0}|{playerTwo?.missCount ?? 0}|{playerOne?.maxCombo ?? 0}|{playerTwo?.maxCombo ?? 0}");
+
+                if (!string.Equals(multiplayerSongEndSignature, lastSongEndSignature, StringComparison.Ordinal))
+                {
+                    lastSongEndSignature = multiplayerSongEndSignature;
+                    songEndTitleLabel.text = winnerTitle;
+                    songEndSongLabel.text = songName;
+                    songEndMetaLabel.text = multiplayerMetaText;
+                    songEndSpeedValueLabel.text = $"SPEED  {speedPercent:F0}%";
+                    songEndScoreLabel.text = multiplayerScoreDisplayText;
+                    songEndBestLabel.text = multiplayerBestSummaryText;
+                    songEndDeltaLabel.text = multiplayerDeltaText;
+                    songEndRatingLabel.text = snapshot.multiplayerRhythmDraw ? "Dead Even" : "Match Result";
+                    songEndStatsLabel.text = multiplayerStatsText;
+                    songEndNoteLabel.text = multiplayerPerformanceNote;
+                    songEndEyebrow.text = "MULTIPLAYER RHYTHM";
+                    songEndScoreEyebrow.text = "MATCH SCORES";
+                    songEndGradeCaption.text = "FINAL SCORE";
+
+                    songEndSongLabel.style.color = GameplayHudPrimaryTextColor;
+                    songEndMetaLabel.style.color = GameplayHudSecondaryTextColor;
+                    songEndStatsLabel.style.color = GameplayHudMutedTextColor;
+                    songEndSpeedValueLabel.style.color = GameplayHudSecondaryTextColor;
+                    songEndScoreLabel.style.color = GameplayHudPrimaryTextColor;
+                    songEndBestLabel.style.color = GameplayHudPrimaryTextColor;
+                    songEndRatingLabel.style.color = snapshot.multiplayerRhythmDraw
+                        ? GameplayHudAccentCoolColor
+                        : GlobalPrimaryAccentColor;
+                }
+
+                songEndScoreLabel.style.fontSize = 128f;
+                songEndBestLabel.style.fontSize = 30f;
+                songEndBestLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+                songEndStatsLabel.style.fontSize = 42f;
+                songEndStatsLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+                songEndNoteLabel.style.fontSize = 28f;
+                songEndMetaLabel.style.fontSize = 34f;
+                songEndRatingLabel.style.fontSize = 42f;
+
+                UpdateSongEndVisualState(Mathf.Max(playerOne?.scorePercent ?? 0f, playerTwo?.scorePercent ?? 0f), false, false);
+                goto SongEndDone;
+            }
+
             bool arcadeMode = snapshot.gameplayMode == GuitarGameplayMode.Arcade;
             string rating = GetScoreLetterGrade(scorePercent);
 
+            int savedTrackBestScore = Mathf.Max(0, snapshot.currentTrackBestScoreValue);
             float savedTrackBest = Mathf.Clamp(snapshot.currentTrackBestScorePercent, 0f, 100f);
+            int savedHeroTrackBestScore = Mathf.Max(0, snapshot.currentTrackHeroBestScoreValue);
             float savedHeroTrackBest = Mathf.Clamp(snapshot.currentTrackHeroBestScorePercent, 0f, 100f);
             int savedHeroHeartsRemaining = Mathf.Max(0, snapshot.currentTrackHeroBestHeartsRemaining);
             int savedHeroHeartsTotal = Mathf.Max(0, snapshot.currentTrackHeroBestHeartsTotal);
-            bool hasHeroBest = savedHeroTrackBest > 0.01f && savedHeroHeartsTotal > 0;
+            bool hasHeroBest = savedHeroHeartsTotal > 0;
             bool newRecord;
             string bestSummaryText;
             string deltaText;
@@ -8606,46 +9926,56 @@ public sealed class TabsSongHeaderOverlay
             if (arcadeMode)
             {
                 int runScore = Mathf.Max(0, snapshot.currentSessionArcadeScore);
-                int savedArcadeBest = Mathf.Max(0, snapshot.currentTrackBestArcadeScore);
+                int savedArcadeBest = Mathf.Max(0, snapshot.heroModeEnabled ? snapshot.currentTrackBestArcadeHeroScore : snapshot.currentTrackBestArcadeScore);
                 newRecord = runScore >= savedArcadeBest;
-                bestSummaryText = FormatArcadeScoreValue(savedArcadeBest);
+                bestSummaryText = snapshot.heroModeEnabled
+                    ? (savedArcadeBest > 0 && snapshot.currentTrackHeroBestHeartsTotal > 0
+                        ? FormattableString.Invariant($"{FormatArcadeScoreValue(savedArcadeBest)} ({snapshot.currentTrackHeroBestHeartsTotal}H)")
+                        : "--")
+                    : FormatArcadeScoreValue(savedArcadeBest);
                 deltaText = newRecord
-                    ? "New record saved"
+                    ? (snapshot.heroModeEnabled ? FormattableString.Invariant($"New hero record saved ({snapshot.heroModeHeartCount}H)") : "New record saved")
                     : $"{FormatArcadeScoreValue(Mathf.Max(0, savedArcadeBest - runScore))} to beat your best";
                 statsText = FormattableString.Invariant($"ACCURACY {scorePercent:F1}%   |   HITS {scoreHits}   |   MISSES {scoreMisses}");
+                deltaText = string.Empty;
+                statsText = FormattableString.Invariant($"ACCURACY  {scorePercent:F1}%\nHITS  {scoreHits}\nMISSES  {scoreMisses}");
                 scoreDisplayText = FormatArcadeScoreValue(runScore);
                 performanceNote = GetSongEndPerformanceNote(scorePercent, newRecord);
             }
             else
             {
-                float comparisonBest = snapshot.heroModeEnabled
-                    ? savedHeroTrackBest
-                    : savedTrackBest;
+                int runScore = Mathf.Max(0, snapshot.currentSessionScoreValue);
+                int comparisonBest = snapshot.heroModeEnabled
+                    ? savedHeroTrackBestScore
+                    : savedTrackBestScore;
+                int deltaToBest = comparisonBest - runScore;
 
-                float deltaToBest = scorePercent - comparisonBest;
-
-                newRecord = deltaToBest >= -0.05f;
+                newRecord = runScore >= comparisonBest;
                 bestSummaryText = hasHeroBest
-                    ? FormattableString.Invariant($"Normal {savedTrackBest:F1}%\nHero {savedHeroTrackBest:F1}% ({savedHeroHeartsRemaining}/{savedHeroHeartsTotal})")
-                    : $"{savedTrackBest:F1}%";
+                    ? FormattableString.Invariant($"Normal {FormatGuitarScoreValue(savedTrackBestScore)}\nHero {FormatGuitarScoreValue(savedHeroTrackBestScore)} ({savedHeroHeartsTotal}H)")
+                    : FormatGuitarMenuScoreText(savedTrackBestScore);
                 deltaText = snapshot.heroModeEnabled
                     ? (newRecord
-                        ? FormattableString.Invariant($"New hero record saved ({snapshot.currentHeroHeartsRemaining}/{snapshot.heroModeHeartCount})")
-                        : $"{Mathf.Abs(deltaToBest):F1}% to beat your hero best")
+                        ? FormattableString.Invariant($"New hero record saved ({snapshot.heroModeHeartCount}H)")
+                        : $"{FormatGuitarScoreValue(Mathf.Max(0, deltaToBest))} to beat your hero best")
                     : (newRecord
                         ? "New record saved"
-                        : $"{Mathf.Abs(deltaToBest):F1}% to beat your best");
+                        : $"{FormatGuitarScoreValue(Mathf.Max(0, deltaToBest))} to beat your best");
                 statsText = snapshot.heroModeEnabled
-                    ? FormattableString.Invariant($"HITS {scoreHits}   |   MISSES {scoreMisses}   |   HEARTS {snapshot.currentHeroHeartsRemaining}/{snapshot.heroModeHeartCount}")
-                    : FormattableString.Invariant($"HITS {scoreHits}   |   MISSES {scoreMisses}");
-                scoreDisplayText = $"{scorePercent:F1}%";
+                    ? FormattableString.Invariant($"ACCURACY {scorePercent:F1}%   |   HITS {scoreHits}   |   MISSES {scoreMisses}   |   HEARTS {snapshot.currentHeroHeartsRemaining}/{snapshot.heroModeHeartCount}")
+                    : FormattableString.Invariant($"ACCURACY {scorePercent:F1}%   |   HITS {scoreHits}   |   MISSES {scoreMisses}");
+                deltaText = string.Empty;
+                statsText = snapshot.heroModeEnabled
+                    ? FormattableString.Invariant($"ACCURACY  {scorePercent:F1}%\nHITS  {scoreHits}\nMISSES  {scoreMisses}\nHEARTS  {snapshot.currentHeroHeartsRemaining}/{snapshot.heroModeHeartCount}")
+                    : FormattableString.Invariant($"ACCURACY  {scorePercent:F1}%\nHITS  {scoreHits}\nMISSES  {scoreMisses}");
+                scoreDisplayText = FormatGuitarScoreValue(runScore);
                 performanceNote = GetSongEndPerformanceNote(scorePercent, newRecord);
             }
             string songEndTitleText = snapshot.songEndedAsGameOver ? "GAME OVER" : "SONG COMPLETE";
 
             string songEndSignature = arcadeMode
                 ? FormattableString.Invariant($"{songEndTitleText}|{songName}|{trackName}|arcade|{snapshot.currentSessionArcadeScore}|{snapshot.currentTrackBestArcadeScore}|{scorePercent:F1}|{scoreHits}|{scoreMisses}|{snapshot.songEndedAsGameOver}|{newRecord}|{rating}")
-                : FormattableString.Invariant($"{songEndTitleText}|{songName}|{trackName}|{speedPercent:F0}|{scorePercent:F1}|{savedTrackBest:F1}|{savedHeroTrackBest:F1}|{savedHeroHeartsRemaining}|{savedHeroHeartsTotal}|{scoreHits}|{scoreMisses}|{snapshot.heroModeEnabled}|{snapshot.currentHeroHeartsRemaining}|{snapshot.heroModeHeartCount}|{snapshot.songEndedAsGameOver}|{newRecord}|{rating}");
+                : FormattableString.Invariant($"{songEndTitleText}|{songName}|{trackName}|{speedPercent:F0}|{snapshot.currentSessionScoreValue}|{scorePercent:F1}|{savedTrackBestScore}|{savedHeroTrackBestScore}|{savedHeroHeartsRemaining}|{savedHeroHeartsTotal}|{scoreHits}|{scoreMisses}|{snapshot.heroModeEnabled}|{snapshot.currentHeroHeartsRemaining}|{snapshot.heroModeHeartCount}|{snapshot.songEndedAsGameOver}|{newRecord}|{rating}");
 
 
 
@@ -8675,27 +10005,51 @@ public sealed class TabsSongHeaderOverlay
 
                 songEndNoteLabel.text = performanceNote;
 
+                songEndEyebrow.text = snapshot.songEndedAsGameOver
+                    ? "RUN FAILED"
+                    : (newRecord
+                        ? (snapshot.heroModeEnabled ? "NEW HERO RECORD" : "NEW RECORD")
+                        : (snapshot.heroModeEnabled ? "HERO RUN" : "PERFORMANCE SUMMARY"));
+
+                songEndScoreEyebrow.text = arcadeMode
+                    ? (snapshot.heroModeEnabled ? "HERO BEST" : "TRACK BEST")
+                    : (hasHeroBest ? "TRACK RECORDS" : "TRACK BEST");
+
+                songEndGradeCaption.text = snapshot.songEndedAsGameOver ? "FINAL SCORE" : "FINAL SCORE";
+
                 songEndSongLabel.style.color = GameplayHudPrimaryTextColor;
 
                 songEndMetaLabel.style.color = GameplayHudSecondaryTextColor;
 
                 songEndStatsLabel.style.color = GameplayHudMutedTextColor;
 
-                songEndSpeedValueLabel.style.color = GameplayHudAccentWarmColor;
+                songEndSpeedValueLabel.style.color = snapshot.songEndedAsGameOver ? GameplayHudSecondaryTextColor : GameplayHudAccentWarmColor;
 
-                songEndScoreLabel.style.color = GameplayHudAccentWarmColor;
+                songEndScoreLabel.style.color = snapshot.songEndedAsGameOver ? GameplayHudPrimaryTextColor : GameplayHudAccentWarmColor;
 
                 songEndBestLabel.style.color = GameplayHudPrimaryTextColor;
-
-                songEndDeltaLabel.style.color = newRecord
-
-                    ? GlobalPrimaryAccentColor
-
-                    : GameplayHudAccentWarmColor;
 
                 songEndRatingLabel.style.color = GetScoreLetterGradeColor(scorePercent);
 
             }
+
+            songEndTitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            songEndTitleLabel.style.fontSize = snapshot.songEndedAsGameOver ? 112f : 92f;
+            songEndTitleLabel.style.marginBottom = snapshot.songEndedAsGameOver ? 14f : 10f;
+            songEndEyebrow.style.marginBottom = snapshot.songEndedAsGameOver ? 20f : 14f;
+
+            songEndScoreLabel.style.fontSize = 180f;
+            songEndBestLabel.style.fontSize = 38f;
+            songEndBestLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+            songEndStatsLabel.style.fontSize = 44f;
+            songEndStatsLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            songEndNoteLabel.style.fontSize = 32f;
+            songEndMetaLabel.style.fontSize = 34f;
+            songEndRatingLabel.style.fontSize = 52f;
+
+            UpdateSongEndVisualState(scorePercent, newRecord, snapshot.songEndedAsGameOver);
+
+        SongEndDone:;
 
         }
 
@@ -8705,6 +10059,8 @@ public sealed class TabsSongHeaderOverlay
 
             lastSongEndSignature = null;
 
+            songEndShownAtUnscaledTime = -1f;
+
         }
 
 
@@ -8712,10 +10068,12 @@ public sealed class TabsSongHeaderOverlay
         if (showPause)
 
         {
+            string pauseLoopStartText = snapshot.loopStartConfigured ? $"{snapshot.loopStartTime:F2}s" : "--";
+            string pauseLoopEndText = snapshot.loopEndConfigured ? $"{snapshot.loopEndTime:F2}s" : "--";
 
             pauseInfoLabel.text =
 
-                $"Marker: {snapshot.selectedLoopMarker}   " +
+                $"Loop: {pauseLoopStartText} - {pauseLoopEndText}   " +
 
                 $"Time: {snapshot.songTime:F2}s";
 
@@ -8733,6 +10091,7 @@ public sealed class TabsSongHeaderOverlay
             }
 
             gameModesButton.text = "Game Modes";
+            gameModesButton.style.display = snapshot.multiplayerRhythmMode ? DisplayStyle.None : DisplayStyle.Flex;
             if (audioModeButton != null)
                 audioModeButton.text = $"Audio: {snapshot.songPlaybackAudioModeLabel}";
 
@@ -8745,9 +10104,13 @@ public sealed class TabsSongHeaderOverlay
         if (showGameModes)
 
         {
-
+            bool loopModeAvailable = !snapshot.multiplayerRhythmMode &&
+                                     (snapshot.gameplayMode == GuitarGameplayMode.Guitar || snapshot.gameplayMode == GuitarGameplayMode.Arcade);
+            bool showNoteByNote = snapshot.gameplayMode == GuitarGameplayMode.Guitar;
+            loopButton.style.display = loopModeAvailable ? DisplayStyle.Flex : DisplayStyle.None;
             loopButton.text = snapshot.loopEnabled ? "Loop: ON" : "Loop: OFF";
-            gameModesLoopConfigButton.style.display = snapshot.loopEnabled ? DisplayStyle.Flex : DisplayStyle.None;
+            gameModesLoopConfigButton.style.display = loopModeAvailable && (snapshot.loopEnabled || snapshot.gameplayMode == GuitarGameplayMode.Arcade) ? DisplayStyle.Flex : DisplayStyle.None;
+            noteByNoteButton.style.display = showNoteByNote ? DisplayStyle.Flex : DisplayStyle.None;
             noteByNoteButton.text = snapshot.noteByNoteModeEnabled
                 ? (snapshot.noteByNoteWaitingForMatch ? "Note By Note: ON  (Waiting)" : "Note By Note: ON")
                 : "Note By Note: OFF";
@@ -8777,26 +10140,9 @@ public sealed class TabsSongHeaderOverlay
         if (showLoopSetup)
 
         {
-
-            string selectedLoopTarget = snapshot.selectedLoopMarker switch
-
-            {
-
-                1 => "START",
-
-                2 => "END",
-
-                _ => "TIME"
-
-            };
-
-            float loopWindowSeconds = Mathf.Max(0f, snapshot.loopEndTime - snapshot.loopStartTime);
-
-            loopSetupStatusLabel.text =
-
-                $"EDITING {selectedLoopTarget}  \u2022  START {snapshot.loopStartTime:F2}s  \u2022  END {snapshot.loopEndTime:F2}s  \u2022  LOOP {loopWindowSeconds:F2}s";
-
-            loopSetupHintLabel.text = "Space preview  \u2022  1 set start  \u2022  2 set end  \u2022  3 move time  \u2022  Esc continue";
+            loopSetupHintLabel.text = snapshot.gameplayMode == GuitarGameplayMode.Arcade
+                ? "Up/Down choose section  \u2022  Enter select  \u2022  Space preview  \u2022  Esc start"
+                : "Arrows move time  \u2022  1 set start  \u2022  2 set end  \u2022  B bookmark  \u2022  Space preview  \u2022  Esc continue";
 
         }
 
@@ -8993,13 +10339,16 @@ public sealed class TabsSongHeaderOverlay
 
     {
 
-        if (!visible || loopPauseCountdownHost == null || loopPauseCountdownDial == null || durationSeconds <= 0.0001f)
+        if (!visible || loopPauseCountdownHost == null || loopPauseCountdownLabel == null || durationSeconds <= 0.0001f)
 
         {
 
             if (loopPauseCountdownHost != null)
 
                 loopPauseCountdownHost.style.display = DisplayStyle.None;
+
+            if (loopPauseCountdownLabel != null)
+                loopPauseCountdownLabel.style.opacity = 0f;
 
             lastLoopPauseCountdownProgress = -1f;
 
@@ -9013,37 +10362,380 @@ public sealed class TabsSongHeaderOverlay
 
         loopPauseCountdownHost.BringToFront();
 
-        float progress = Mathf.Clamp01(remainingSeconds / Mathf.Max(0.01f, durationSeconds));
+        float clampedRemaining = Mathf.Clamp(remainingSeconds, 0f, durationSeconds);
+        int displayedCount = Mathf.Max(1, Mathf.CeilToInt(clampedRemaining));
+        float secondFraction = clampedRemaining - Mathf.Floor(clampedRemaining);
+        if (Mathf.Approximately(secondFraction, 0f) && clampedRemaining > 0.0001f)
+            secondFraction = 1f;
 
-        if (loopPauseCountdownTexture == null)
+        float tickProgress = 1f - Mathf.Clamp01(secondFraction);
+        float scale = Mathf.Lerp(1.34f, 1.00f, Mathf.SmoothStep(0f, 1f, tickProgress));
+        float opacity = Mathf.Lerp(0.58f, 1f, Mathf.SmoothStep(0f, 1f, tickProgress));
+        float liftPixels = Mathf.Lerp(18f, 0f, tickProgress);
 
-        {
+        loopPauseCountdownLabel.text = displayedCount.ToString(CultureInfo.InvariantCulture);
+        loopPauseCountdownLabel.style.opacity = opacity;
+        loopPauseCountdownLabel.style.scale = new Scale(new Vector3(scale, scale, 1f));
+        loopPauseCountdownLabel.style.translate = new Translate(0f, -liftPixels);
 
-            loopPauseCountdownTexture = CreateLoopPauseCountdownTexture(96);
+        if (loopPauseCountdownDial != null)
+            loopPauseCountdownDial.style.display = DisplayStyle.None;
 
-            loopPauseCountdownDial.style.backgroundImage = new StyleBackground(loopPauseCountdownTexture);
-
-            lastLoopPauseCountdownProgress = -1f;
-
-        }
-
-
-
-        if (Mathf.Abs(progress - lastLoopPauseCountdownProgress) > 0.003f)
-
-        {
-
-            UpdateLoopPauseCountdownTexture(loopPauseCountdownTexture, progress);
-
-            loopPauseCountdownDial.style.backgroundImage = new StyleBackground(loopPauseCountdownTexture);
-
-            lastLoopPauseCountdownProgress = progress;
-
-        }
+        lastLoopPauseCountdownProgress = clampedRemaining;
 
     }
 
+    private void UpdateControllerCursor(GuitarGameplaySnapshot snapshot)
+    {
+        if (controllerCursor == null || document?.rootVisualElement == null)
+            return;
 
+        bool eligible = ShouldDisplayControllerCursor(snapshot);
+        if (!eligible)
+        {
+            HideControllerCursor();
+            return;
+        }
+
+        Vector2 panelSize = ResolveControllerCursorPanelSize();
+        bool cursorPositionInvalid = !IsFiniteVector2(controllerCursorPanelPosition);
+
+        if (!controllerCursorInitialized || cursorPositionInvalid)
+        {
+            controllerCursorPanelPosition = panelSize * 0.5f;
+            lastPhysicalMousePosition = Input.mousePosition;
+            controllerCursorInitialized = true;
+        }
+        else
+        {
+            controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+        }
+
+        Vector3 currentMousePosition = Input.mousePosition;
+        bool mouseMoved = (currentMousePosition - lastPhysicalMousePosition).sqrMagnitude > 1f;
+        bool mouseClicked = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1) || Input.GetMouseButtonDown(2);
+        lastPhysicalMousePosition = currentMousePosition;
+
+        if (mouseMoved || mouseClicked)
+            controllerCursorActive = false;
+
+        float axisX = ReadControllerCursorHorizontalAxis();
+        float axisY = ReadControllerCursorVerticalAxis();
+        bool controllerButtonPressed = WasAnyControllerUiButtonPressedThisFrame();
+        bool controllerMovementDetected = Mathf.Abs(axisX) >= 0.2f || Mathf.Abs(axisY) >= 0.2f;
+
+        if (!controllerCursorActive && (controllerButtonPressed || controllerMovementDetected))
+        {
+            controllerCursorActive = true;
+            ClearNativeUiFocusForControllerCursor();
+            controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+            controllerCursor.style.display = DisplayStyle.Flex;
+            controllerCursor.style.opacity = 1f;
+        }
+
+        if (!controllerCursorActive)
+        {
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+            return;
+        }
+
+        controllerCursor.style.display = DisplayStyle.Flex;
+        controllerCursor.style.opacity = 1f;
+
+        Vector2 movement = new Vector2(axisX, -axisY);
+        if (movement.sqrMagnitude > 0.0001f)
+        {
+            float speed = 2200f;
+            if (movement.sqrMagnitude > 1f)
+                movement.Normalize();
+            controllerCursorPanelPosition += movement * speed * Time.unscaledDeltaTime;
+        }
+
+        controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+        PositionControllerCursorVisual();
+
+        VisualElement pickedTarget = PickControllerCursorTarget();
+        if (pickedTarget != null && pickedTarget != lastControllerCursorTarget && movement.sqrMagnitude > 0.0001f)
+            DispatchControllerCursorMove(pickedTarget);
+        lastControllerCursorTarget = pickedTarget;
+
+        if (WasControllerPrimaryActionPressedThisFrame())
+        {
+            ClearNativeUiFocusForControllerCursor();
+            DispatchControllerCursorClick(pickedTarget);
+        }
+    }
+
+    private bool ShouldDisplayControllerCursor(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null)
+            return false;
+
+        return snapshot.showMainMenu ||
+               snapshot.showStartMenu ||
+               snapshot.showSongSelection ||
+               snapshot.showTrackSelection ||
+               snapshot.showSongSettings ||
+               snapshot.showGlobalSettings ||
+               snapshot.showLoopSettings ||
+               snapshot.showLoopPausePopup ||
+               snapshot.showGameModes ||
+               snapshot.showHeroModeSettings ||
+               snapshot.showNotesDetectorTestMenu ||
+               snapshot.showToneLab ||
+               snapshot.showGeneratedAudioTrackSelectionPopup ||
+               snapshot.showSongSettingsTrackSelectionPopup ||
+               snapshot.showStartupTuningReminder ||
+               snapshot.showLibraryLoadingOverlay ||
+               snapshot.showOffsetHelper ||
+               snapshot.showMultiplayerRhythmSetup ||
+               snapshot.songEnded ||
+               snapshot.isPaused;
+    }
+
+    private void HideControllerCursor()
+    {
+        controllerCursorActive = false;
+        lastControllerCursorTarget = null;
+        if (controllerCursor != null)
+        {
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+        }
+    }
+
+    private void PositionControllerCursorVisual()
+    {
+        controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, ResolveControllerCursorPanelSize());
+        controllerCursor.style.left = controllerCursorPanelPosition.x;
+        controllerCursor.style.top = controllerCursorPanelPosition.y;
+    }
+
+    private void ClearNativeUiFocusForControllerCursor()
+    {
+        FocusController focusController = document?.rootVisualElement?.panel?.focusController;
+        if (focusController?.focusedElement is Focusable focusedElement)
+            focusedElement.Blur();
+    }
+
+    private Vector2 ResolveControllerCursorPanelSize()
+    {
+        float panelWidth = document?.rootVisualElement?.resolvedStyle.width ?? float.NaN;
+        float panelHeight = document?.rootVisualElement?.resolvedStyle.height ?? float.NaN;
+        if (!IsFiniteFloat(panelWidth) || panelWidth < 8f)
+            panelWidth = Screen.width;
+        if (!IsFiniteFloat(panelHeight) || panelHeight < 8f)
+            panelHeight = Screen.height;
+        if (!IsFiniteFloat(panelWidth) || panelWidth < 8f)
+            panelWidth = 1920f;
+        if (!IsFiniteFloat(panelHeight) || panelHeight < 8f)
+            panelHeight = 1080f;
+
+        return new Vector2(Mathf.Max(1f, panelWidth), Mathf.Max(1f, panelHeight));
+    }
+
+    private static Vector2 SanitizeControllerCursorPosition(Vector2 position, Vector2 panelSize)
+    {
+        Vector2 fallback = panelSize * 0.5f;
+        if (!IsFiniteVector2(position))
+            return fallback;
+
+        float minX = 8f;
+        float minY = 8f;
+        float maxX = Mathf.Max(minX, panelSize.x - 8f);
+        float maxY = Mathf.Max(minY, panelSize.y - 8f);
+        position.x = Mathf.Clamp(position.x, minX, maxX);
+        position.y = Mathf.Clamp(position.y, minY, maxY);
+
+        return IsFiniteVector2(position) ? position : fallback;
+    }
+
+    private static bool IsFiniteVector2(Vector2 value)
+    {
+        return IsFiniteFloat(value.x) && IsFiniteFloat(value.y);
+    }
+
+    private static bool IsFiniteFloat(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    private VisualElement PickControllerCursorTarget()
+    {
+        IPanel panel = document?.rootVisualElement?.panel;
+        if (panel == null)
+            return null;
+
+        VisualElement picked = panel.Pick(controllerCursorPanelPosition);
+        if (picked == controllerCursor || picked == controllerCursorInner)
+            return null;
+
+        return picked;
+    }
+
+    private void DispatchControllerCursorMove(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        Event systemEvent = CreateControllerCursorMouseEvent(EventType.MouseMove, 0, 0);
+        PointerMoveEvent pointerMove = PointerMoveEvent.GetPooled(systemEvent);
+        target.SendEvent(pointerMove);
+    }
+
+    private void DispatchControllerCursorClick(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        DispatchControllerCursorMove(target);
+
+        Event downEvent = CreateControllerCursorMouseEvent(EventType.MouseDown, 0, 1);
+        PointerDownEvent pointerDown = PointerDownEvent.GetPooled(downEvent);
+        target.SendEvent(pointerDown);
+
+        Event upEvent = CreateControllerCursorMouseEvent(EventType.MouseUp, 0, 1);
+        PointerUpEvent pointerUp = PointerUpEvent.GetPooled(upEvent);
+        target.SendEvent(pointerUp);
+    }
+
+    private Event CreateControllerCursorMouseEvent(EventType eventType, int button, int clickCount)
+    {
+        return new Event
+        {
+            type = eventType,
+            mousePosition = controllerCursorPanelPosition,
+            button = button,
+            clickCount = clickCount
+        };
+    }
+
+    private static float ReadControllerCursorHorizontalAxis()
+    {
+        float axis = ReadInputSystemCursorAxis().x;
+        if (Mathf.Abs(axis) < 0.001f)
+            axis = TryReadCursorAxis("JoystickHorizontal");
+
+        return Mathf.Abs(axis) < 0.18f ? 0f : Mathf.Clamp(axis, -1f, 1f);
+    }
+
+    private static float ReadControllerCursorVerticalAxis()
+    {
+        float axis = ReadInputSystemCursorAxis().y;
+        if (Mathf.Abs(axis) < 0.001f)
+            axis = TryReadCursorAxis("JoystickVertical");
+
+        return Mathf.Abs(axis) < 0.18f ? 0f : Mathf.Clamp(axis, -1f, 1f);
+    }
+
+    private static float TryReadCursorAxis(string axisName)
+    {
+        if (string.IsNullOrWhiteSpace(axisName))
+            return 0f;
+
+        try
+        {
+            return Input.GetAxisRaw(axisName);
+        }
+        catch (ArgumentException)
+        {
+            return 0f;
+        }
+    }
+
+    private static bool WasAnyControllerUiButtonPressedThisFrame()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad == null)
+                continue;
+
+            if (gamepad.buttonSouth.wasPressedThisFrame ||
+                gamepad.buttonEast.wasPressedThisFrame ||
+                gamepad.buttonNorth.wasPressedThisFrame ||
+                gamepad.buttonWest.wasPressedThisFrame ||
+                gamepad.startButton.wasPressedThisFrame ||
+                gamepad.selectButton.wasPressedThisFrame ||
+                gamepad.dpad.up.wasPressedThisFrame ||
+                gamepad.dpad.down.wasPressedThisFrame ||
+                gamepad.dpad.left.wasPressedThisFrame ||
+                gamepad.dpad.right.wasPressedThisFrame)
+            {
+                return true;
+            }
+        }
+#endif
+
+        if (HasInputSystemGamepadConnected())
+            return false;
+
+        for (int buttonIndex = 0; buttonIndex <= 19; buttonIndex++)
+        {
+            KeyCode key = (KeyCode)((int)KeyCode.JoystickButton0 + buttonIndex);
+            if (Input.GetKeyDown(key))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool WasControllerPrimaryActionPressedThisFrame()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad?.buttonSouth.wasPressedThisFrame == true)
+                return true;
+        }
+#endif
+        if (HasInputSystemGamepadConnected())
+            return false;
+        return Input.GetKeyDown(KeyCode.JoystickButton0);
+    }
+
+    private static bool HasInputSystemGamepadConnected()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad != null)
+                return true;
+        }
+#endif
+        return false;
+    }
+
+    private static Vector2 ReadInputSystemCursorAxis()
+    {
+#if ENABLE_INPUT_SYSTEM
+        Vector2 strongest = Vector2.zero;
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad == null)
+                continue;
+
+            Vector2 candidate = gamepad.leftStick.ReadValue();
+            if (candidate.sqrMagnitude > strongest.sqrMagnitude)
+                strongest = candidate;
+        }
+
+        foreach (Joystick joystick in Joystick.all)
+        {
+            if (joystick == null)
+                continue;
+
+            Vector2 candidate = joystick.stick.ReadValue();
+            if (candidate.sqrMagnitude > strongest.sqrMagnitude)
+                strongest = candidate;
+        }
+
+        return Vector2.ClampMagnitude(strongest, 1f);
+#else
+        return Vector2.zero;
+#endif
+    }
 
     private static Texture2D CreateLoopPauseCountdownTexture(int size)
 
@@ -9235,7 +10927,10 @@ public sealed class TabsSongHeaderOverlay
 
             : 0f;
 
-        return string.IsNullOrWhiteSpace(difficultyLabel) ? $"{score:F1}%" : $"{difficultyLabel}  {score:F1}%";
+        string fallbackText = snapshot.songLibraryType == SongLibraryType.Arcade
+            ? FormatArcadeMenuScoreText(Mathf.RoundToInt(score))
+            : FormatGuitarMenuScoreText(Mathf.RoundToInt(score));
+        return string.IsNullOrWhiteSpace(difficultyLabel) ? fallbackText : $"{difficultyLabel}  {fallbackText}";
 
     }
 
@@ -9248,8 +10943,8 @@ public sealed class TabsSongHeaderOverlay
     {
         string controls = GetArcadeFooterControlSummary();
         return showPause
-            ? $"{controls}  •  Space resume  •  R {restartTarget}  •  Esc back  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
-            : $"{controls}  •  Space pause  •  R {restartTarget}";
+            ? $"{controls}  •  Esc resume  •  R {restartTarget}  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
+            : $"{controls}  •  Esc pause  •  R {restartTarget}";
     }
 
     private string GetArcadeStartupPrimaryMessage()
@@ -9272,12 +10967,12 @@ public sealed class TabsSongHeaderOverlay
             return "You can also use a guitar controller or MIDI controller.";
 
         if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
-            return "Controller and MIDI input are enabled for Arcade mode.";
+            return "Controller and MIDI input are enabled for Rhythm mode.";
 
         if (UsesArcadeMidiInput())
-            return "MIDI input is enabled for Arcade mode.";
+            return "MIDI input is enabled for Rhythm mode.";
 
-        return "Controller input is enabled for Arcade mode.";
+        return "Controller input is enabled for Rhythm mode.";
     }
 
     private string GetArcadeFooterControlSummary()
@@ -9286,12 +10981,12 @@ public sealed class TabsSongHeaderOverlay
             return $"{GetArcadeKeyboardFretSummary()} frets  •  {GetArcadeKeyboardStrumSummary()}";
 
         if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
-            return "Use guitar controller or MIDI controller  •  Configure Arcade Controls in Settings";
+            return "Use guitar controller or MIDI controller  •  Configure Rhythm Controls in Settings";
 
         if (UsesArcadeMidiInput())
-            return "Use MIDI controller  •  Configure Arcade Controls in Settings";
+            return "Use MIDI controller  •  Configure Rhythm Controls in Settings";
 
-        return "Use guitar/controller  •  Configure Arcade Controls in Settings";
+        return "Use guitar/controller  •  Configure Rhythm Controls in Settings";
     }
 
     private string GetArcadeKeyboardFretSummary()
@@ -9304,9 +10999,13 @@ public sealed class TabsSongHeaderOverlay
         return $"{FormatControlKeyLabel(green)} / {FormatControlKeyLabel(red)} / {FormatControlKeyLabel(yellow)} / {FormatControlKeyLabel(blue)} / {FormatControlKeyLabel(orange)}";
     }
 
-    private static string GetArcadeKeyboardStrumSummary()
+    private string GetArcadeKeyboardStrumSummary()
     {
-        return "Up / Down strum";
+        KeyCode primaryStrum = owner != null ? owner.arcadeKeyboardStrumUp : KeyCode.Space;
+        KeyCode secondaryStrum = owner != null ? owner.arcadeKeyboardStrumDown : KeyCode.None;
+        string primaryLabel = FormatControlKeyLabel(primaryStrum);
+        string secondaryLabel = FormatControlKeyLabel(secondaryStrum);
+        return secondaryStrum == KeyCode.None ? $"{primaryLabel} strum" : $"{primaryLabel} / {secondaryLabel} strum";
     }
 
     private bool UsesArcadeKeyboardInput()
@@ -9448,6 +11147,23 @@ public sealed class TabsSongHeaderOverlay
 
         return "Unknown Artist";
 
+    }
+
+    private static string BuildSongCardDurationDifficultyText(string durationText, string difficultyText)
+    {
+        bool hasDuration = !string.IsNullOrWhiteSpace(durationText);
+        bool hasDifficulty = !string.IsNullOrWhiteSpace(difficultyText);
+
+        if (hasDuration && hasDifficulty)
+            return $"{durationText.Trim()}  {difficultyText.Trim()}";
+
+        if (hasDuration)
+            return durationText.Trim();
+
+        if (hasDifficulty)
+            return difficultyText.Trim();
+
+        return string.Empty;
     }
 
     private Button CreateLibraryBrowseModeButton(string text, int modeIndex)
@@ -9656,7 +11372,9 @@ public sealed class TabsSongHeaderOverlay
 
             : 0f;
 
-        return $"{score:F1}%";
+        return snapshot.songLibraryType == SongLibraryType.Arcade
+            ? FormatArcadeMenuScoreText(Mathf.RoundToInt(score))
+            : FormatGuitarMenuScoreText(Mathf.RoundToInt(score));
 
     }
 
@@ -9665,9 +11383,36 @@ public sealed class TabsSongHeaderOverlay
         return Mathf.Max(0, scoreValue).ToString("N0", CultureInfo.InvariantCulture);
     }
 
+    private static string FormatArcadeMenuScoreText(int scoreValue)
+    {
+        return scoreValue > 0 ? FormatArcadeScoreValue(scoreValue) : "--";
+    }
+
+    private static string FormatGuitarScoreValue(int scoreValue)
+    {
+        return Mathf.Max(0, scoreValue).ToString("N0", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatGuitarMenuScoreText(int scoreValue)
+    {
+        return scoreValue > 0 ? FormatGuitarScoreValue(scoreValue) : "--";
+    }
+
+    private static string FormatSelectedArcadeLibraryScoreValue(int scoreValue)
+    {
+        return Mathf.Max(0, scoreValue).ToString("N0", CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatSelectedGuitarLibraryScoreValue(int scoreValue)
+    {
+        return scoreValue > 0 ? FormatGuitarScoreValue(scoreValue) : "--";
+    }
+
     private static string FormatLibraryHeroHeartsText(int heartsRemaining, int heartsTotal)
 
     {
+        if (heartsTotal <= 0)
+            return "--";
 
         int safeRemaining = Mathf.Max(0, heartsRemaining);
 
@@ -9677,6 +11422,15 @@ public sealed class TabsSongHeaderOverlay
 
         return $"{safeRemaining} {redHeart} / {safeTotal} {redHeart}";
 
+    }
+
+    private static void SetLibrarySelectionStatBlockTitle(VisualElement block, string title)
+    {
+        if (block == null || block.childCount == 0)
+            return;
+
+        if (block[0] is Label titleLabel)
+            titleLabel.text = title;
     }
 
 
@@ -9870,6 +11624,8 @@ public sealed class TabsSongHeaderOverlay
 
     {
 
+        latestSongSelectionSnapshot = snapshot;
+
         int total = snapshot.availableSongNames?.Count ?? 0;
 
         int selectedIndex = Mathf.Clamp(snapshot.selectedSongIndex, 0, Mathf.Max(0, total - 1));
@@ -9915,7 +11671,8 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        EnsureModernSongSelectionRows(total);
+        EnsureVirtualizedModernSongSelectionRows(total);
+        RefreshVisibleModernSongSelectionRows(forceRebind: true);
 
 
 
@@ -9924,6 +11681,8 @@ public sealed class TabsSongHeaderOverlay
         {
 
             SongSelectionRow row = selectionRows[songIndex];
+            row.boundSongIndex = songIndex;
+            row.button.style.display = DisplayStyle.Flex;
 
             bool isSelected = songIndex == snapshot.selectedSongIndex;
 
@@ -9952,16 +11711,22 @@ public sealed class TabsSongHeaderOverlay
                 : string.Empty;
 
             SplitLibraryDifficultyAndScore(GetAvailableSongScoreText(snapshot, songIndex), out string difficultyText, out string scoreText);
+            string configuredDurationText = snapshot.availableSongDurationLabels != null && songIndex < snapshot.availableSongDurationLabels.Count
+                ? snapshot.availableSongDurationLabels[songIndex] ?? string.Empty
+                : string.Empty;
             string configuredDifficultyText = snapshot.availableSongDifficultyLabels != null && songIndex < snapshot.availableSongDifficultyLabels.Count
                 ? snapshot.availableSongDifficultyLabels[songIndex] ?? string.Empty
                 : string.Empty;
+            string durationDifficultyText = BuildSongCardDurationDifficultyText(configuredDurationText, configuredDifficultyText);
             if (row.difficultyLabel != null)
             {
-                row.difficultyLabel.text = configuredDifficultyText;
+                row.difficultyLabel.text = durationDifficultyText;
                 row.difficultyLabel.style.color = new Color(0.88f, 0.92f, 0.96f, isSelected ? 0.76f : 0.58f);
-                row.difficultyLabel.style.display = string.IsNullOrWhiteSpace(configuredDifficultyText) ? DisplayStyle.None : DisplayStyle.Flex;
+                row.difficultyLabel.style.display = string.IsNullOrWhiteSpace(durationDifficultyText) ? DisplayStyle.None : DisplayStyle.Flex;
             }
-            row.scoreLabel.text = scoreText;
+            row.scoreLabel.text = string.Empty;
+            if (row.scoreColumn != null)
+                row.scoreColumn.style.display = DisplayStyle.None;
 
             if (row.favoriteButton != null && row.favoriteLabel != null)
             {
@@ -10081,7 +11846,7 @@ public sealed class TabsSongHeaderOverlay
             selectionInfoMetaLabel.text = selectedSongSubtitle;
 
             if (selectionInfoSummaryLabel != null)
-                selectionInfoSummaryLabel.text = $"Song {selectedIndex + 1} of {total} | Focused track: {selectedTrackName}";
+                selectionInfoSummaryLabel.text = $"Selected track: {selectedTrackName}";
             if (selectionInfoTuningLabel != null)
             {
                 string tuningText = string.IsNullOrWhiteSpace(snapshot.selectedLibrarySongTuningLabel)
@@ -10102,11 +11867,11 @@ public sealed class TabsSongHeaderOverlay
                     : DisplayStyle.None;
             }
             if (selectionInfoArrangementValueLabel != null)
-                selectionInfoArrangementValueLabel.text = Mathf.Max(0, snapshot.selectedLibrarySongTrackCount).ToString();
+                selectionInfoArrangementValueLabel.text = string.IsNullOrWhiteSpace(snapshot.selectedLibraryHeroScoreText) ? "--" : snapshot.selectedLibraryHeroScoreText;
             if (selectionInfoAudioValueLabel != null)
                 selectionInfoAudioValueLabel.text = audioSummary;
             if (selectionInfoHeroHeartsValueLabel != null)
-                selectionInfoHeroHeartsValueLabel.text = FormatLibraryHeroHeartsText(snapshot.selectedLibrarySongHeroBestHeartsRemaining, snapshot.selectedLibrarySongHeroBestHeartsTotal);
+                selectionInfoHeroHeartsValueLabel.text = "--";
 
             UpdateModernLibraryTrackRows(snapshot);
 
@@ -10144,6 +11909,29 @@ public sealed class TabsSongHeaderOverlay
                 selectionArtworkCard.style.backgroundColor = new Color(0.76f, 0.98f, 0.54f, 1f);
             }
 
+            if (selectionInfoScoreCard != null)
+            {
+                selectionInfoScoreCard.style.flexGrow = 1f;
+                selectionInfoScoreCard.style.flexBasis = 0f;
+                selectionInfoScoreCard.style.minWidth = 178f;
+                selectionInfoScoreCard.style.paddingRight = 0f;
+            }
+            if (selectionInfoArrangementCard != null)
+            {
+                selectionInfoArrangementCard.style.flexGrow = 1f;
+                selectionInfoArrangementCard.style.flexBasis = 0f;
+                selectionInfoArrangementCard.style.minWidth = 178f;
+            }
+            if (selectionInfoArrangementCard != null)
+                selectionInfoArrangementCard.style.display = DisplayStyle.Flex;
+            if (selectionInfoAudioCard != null)
+                selectionInfoAudioCard.style.display = DisplayStyle.Flex;
+            if (selectionInfoHeroHeartsCard != null)
+                selectionInfoHeroHeartsCard.style.display = DisplayStyle.None;
+
+            if (selectionInfoArrangementCard != null)
+                SetLibrarySelectionStatBlockTitle(selectionInfoArrangementCard, "HERO SCORE");
+
             selectionInfoScoreLabel.text = "--";
 
             selectionInfoBestTrackLabel.text = "--";
@@ -10153,7 +11941,7 @@ public sealed class TabsSongHeaderOverlay
             if (selectionInfoAudioValueLabel != null)
                 selectionInfoAudioValueLabel.text = "--";
             if (selectionInfoHeroHeartsValueLabel != null)
-                selectionInfoHeroHeartsValueLabel.text = FormatLibraryHeroHeartsText(0, 0);
+                selectionInfoHeroHeartsValueLabel.text = "--";
 
             EnsureModernLibraryTrackRows(0);
 
@@ -10165,17 +11953,17 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        if (snapshot.selectedSongIndex != lastAutoScrolledSongIndex &&
+        if (selectedIndex != lastAutoScrolledSongIndex &&
 
-            snapshot.selectedSongIndex >= 0 &&
+            selectedIndex >= 0 &&
 
-            snapshot.selectedSongIndex < selectionRows.Count)
+            selectedIndex < selectionVirtualizedSongCount)
 
         {
 
-            CenterModernSongSelectionRow(snapshot.selectedSongIndex);
+            CenterModernSongSelectionRow(selectedIndex);
 
-            lastAutoScrolledSongIndex = snapshot.selectedSongIndex;
+            lastAutoScrolledSongIndex = selectedIndex;
 
         }
 
@@ -10481,7 +12269,7 @@ public sealed class TabsSongHeaderOverlay
 
                 scoreBadge.style.display = DisplayStyle.None;
 
-                const float songRowRightGap = 14f;
+                const float songRowRightGap = 8f;
 
                 VisualElement difficultyColumn = new VisualElement();
 
@@ -10491,13 +12279,13 @@ public sealed class TabsSongHeaderOverlay
 
                 difficultyColumn.style.justifyContent = Justify.FlexEnd;
 
-                difficultyColumn.style.width = 140f;
+                difficultyColumn.style.width = 272f;
 
-                difficultyColumn.style.minWidth = 140f;
+                difficultyColumn.style.minWidth = 272f;
 
-                difficultyColumn.style.maxWidth = 140f;
+                difficultyColumn.style.maxWidth = 272f;
 
-                difficultyColumn.style.flexBasis = 140f;
+                difficultyColumn.style.flexBasis = 272f;
 
                 difficultyColumn.style.marginRight = songRowRightGap;
 
@@ -10515,13 +12303,13 @@ public sealed class TabsSongHeaderOverlay
 
                 favoriteColumn.style.justifyContent = Justify.FlexStart;
 
-                favoriteColumn.style.width = 80f;
+                favoriteColumn.style.width = 56f;
 
-                favoriteColumn.style.minWidth = 80f;
+                favoriteColumn.style.minWidth = 56f;
 
-                favoriteColumn.style.maxWidth = 80f;
+                favoriteColumn.style.maxWidth = 56f;
 
-                favoriteColumn.style.flexBasis = 80f;
+                favoriteColumn.style.flexBasis = 56f;
 
                 favoriteColumn.style.marginLeft = 0f;
 
@@ -10563,13 +12351,13 @@ public sealed class TabsSongHeaderOverlay
 
                 favoriteButton.text = string.Empty;
 
-                favoriteButton.style.width = 80f;
+                favoriteButton.style.width = 56f;
 
-                favoriteButton.style.minWidth = 80f;
+                favoriteButton.style.minWidth = 56f;
 
-                favoriteButton.style.height = 80f;
+                favoriteButton.style.height = 56f;
 
-                favoriteButton.style.minHeight = 80f;
+                favoriteButton.style.minHeight = 56f;
 
                 favoriteButton.style.marginRight = 0f;
 
@@ -10617,9 +12405,9 @@ public sealed class TabsSongHeaderOverlay
 
                 difficultyLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
 
-                difficultyLabel.style.width = 132f;
-                difficultyLabel.style.minWidth = 132f;
-                difficultyLabel.style.maxWidth = 132f;
+                difficultyLabel.style.width = 260f;
+                difficultyLabel.style.minWidth = 260f;
+                difficultyLabel.style.maxWidth = 260f;
 
                 difficultyLabel.style.whiteSpace = WhiteSpace.NoWrap;
                 difficultyLabel.style.textOverflow = TextOverflow.Ellipsis;
@@ -10775,14 +12563,565 @@ public sealed class TabsSongHeaderOverlay
 
     {
 
-        if (rowIndex < 0 || rowIndex >= selectionRows.Count || selectionScrollView == null)
+        if (rowIndex < 0 || rowIndex >= selectionVirtualizedSongCount || selectionScrollView == null)
 
             return;
 
+        if (rowIndex >= selectionRows.Count)
+            AppendModernSongSelectionRowsUntil(Mathf.Min(selectionVirtualizedSongCount, rowIndex + 10));
+
+        if (rowIndex < selectionRows.Count)
+        {
+            selectionScrollView.ScrollTo(selectionRows[rowIndex].button);
+            RefreshVisibleModernSongSelectionRows(forceRebind: true);
+            return;
+        }
 
 
-        selectionScrollView.ScrollTo(selectionRows[rowIndex].button);
 
+        float slotHeight = Mathf.Max(1f, GetModernSongSelectionRowSlotHeight());
+        float viewportHeight = selectionScrollView.contentViewport.resolvedStyle.height;
+        if (viewportHeight <= 1f)
+            viewportHeight = selectionScrollView.resolvedStyle.height;
+        if (viewportHeight <= 1f)
+            viewportHeight = currentCompactSelectionLayout ? 900f : 1040f;
+
+        float maxScroll = Mathf.Max(0f, selectionVirtualizedSongCount * slotHeight - viewportHeight);
+        float targetY = Mathf.Clamp(rowIndex * slotHeight - Mathf.Max(0f, (viewportHeight - slotHeight) * 0.5f), 0f, maxScroll);
+        Vector2 scrollOffset = selectionScrollView.scrollOffset;
+        selectionScrollView.scrollOffset = new Vector2(scrollOffset.x, targetY);
+        RefreshVisibleModernSongSelectionRows(forceRebind: true);
+
+    }
+
+    private float GetModernSongSelectionBaseHeight(bool isSelected)
+    {
+        return isSelected
+            ? (currentCompactSelectionLayout ? 176f : 168f)
+            : (currentCompactSelectionLayout ? 164f : 156f);
+    }
+
+    private float GetModernSongSelectionRowSlotHeight()
+    {
+        return GetModernSongSelectionBaseHeight(isSelected: true) * currentMenuLayoutScale + 12f;
+    }
+
+    private int GetVirtualizedModernSongSelectionPoolCapacity()
+    {
+        if (selectionScrollView == null)
+            return 0;
+
+        float viewportHeight = selectionScrollView.contentViewport.resolvedStyle.height;
+        if (viewportHeight <= 1f)
+            viewportHeight = selectionScrollView.resolvedStyle.height;
+        if (viewportHeight <= 1f)
+            viewportHeight = currentCompactSelectionLayout ? 900f : 1040f;
+
+        float slotHeight = Mathf.Max(1f, GetModernSongSelectionRowSlotHeight());
+        return Mathf.Max(8, Mathf.CeilToInt(viewportHeight / slotHeight) + 4);
+    }
+
+    private SongSelectionRow CreateVirtualizedModernSongSelectionRow()
+    {
+        SongSelectionRow row = new SongSelectionRow();
+
+        Button rowButton = new Button();
+
+        rowButton.focusable = false;
+        rowButton.text = string.Empty;
+        rowButton.pickingMode = PickingMode.Position;
+        rowButton.style.height = 176f;
+        rowButton.style.marginTop = 6f;
+        rowButton.style.marginBottom = 6f;
+        rowButton.style.marginLeft = 0f;
+        rowButton.style.marginRight = 0f;
+        rowButton.style.paddingLeft = 0f;
+        rowButton.style.paddingRight = 20f;
+        rowButton.style.paddingTop = 0f;
+        rowButton.style.paddingBottom = 0f;
+        rowButton.style.position = Position.Relative;
+        rowButton.style.overflow = Overflow.Hidden;
+        rowButton.style.width = Length.Percent(100f);
+        rowButton.style.alignSelf = Align.Stretch;
+        rowButton.style.borderTopLeftRadius = 14f;
+        rowButton.style.borderTopRightRadius = 14f;
+        rowButton.style.borderBottomLeftRadius = 14f;
+        rowButton.style.borderBottomRightRadius = 14f;
+        rowButton.style.borderTopWidth = 3f;
+        rowButton.style.borderRightWidth = 3f;
+        rowButton.style.borderBottomWidth = 3f;
+        rowButton.style.borderLeftWidth = 3f;
+        rowButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        rowButton.style.borderTopColor = new Color(1f, 1f, 1f, 0f);
+        rowButton.style.borderRightColor = new Color(1f, 1f, 1f, 0f);
+        rowButton.style.borderBottomColor = new Color(1f, 1f, 1f, 0f);
+        rowButton.style.borderLeftColor = new Color(1f, 1f, 1f, 0f);
+        rowButton.style.color = Color.white;
+        rowButton.style.unityFontDefinition = bodyFontDefinition;
+        rowButton.style.minWidth = 0f;
+        rowButton.style.maxWidth = StyleKeyword.None;
+        rowButton.RegisterCallback<MouseEnterEvent>(_ => hoveredSongRowIndex = row.boundSongIndex);
+        rowButton.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            if (hoveredSongRowIndex == row.boundSongIndex)
+                hoveredSongRowIndex = -1;
+            if (hoveredSongFavoriteRowIndex == row.boundSongIndex)
+                hoveredSongFavoriteRowIndex = -1;
+        });
+        VisualElement slantPlate = new VisualElement();
+        slantPlate.style.position = Position.Absolute;
+        slantPlate.style.left = -54f;
+        slantPlate.style.top = -28f;
+        slantPlate.style.width = 310f;
+        slantPlate.style.height = 320f;
+        slantPlate.style.rotate = new Rotate(new Angle(-13f, AngleUnit.Degree));
+        slantPlate.style.backgroundColor = new Color(0.24f, 0.24f, 0.24f, 1f);
+        slantPlate.pickingMode = PickingMode.Ignore;
+
+        VisualElement slantEdge = new VisualElement();
+        slantEdge.style.position = Position.Absolute;
+        slantEdge.style.right = -6f;
+        slantEdge.style.top = -18f;
+        slantEdge.style.width = 10f;
+        slantEdge.style.height = 340f;
+        slantEdge.style.rotate = new Rotate(new Angle(0f, AngleUnit.Degree));
+        slantEdge.style.backgroundColor = new Color(0.46f, 0.52f, 0.58f, 0.40f);
+        slantEdge.style.borderTopLeftRadius = 8f;
+        slantEdge.style.borderTopRightRadius = 8f;
+        slantEdge.style.borderBottomLeftRadius = 8f;
+        slantEdge.style.borderBottomRightRadius = 8f;
+        slantEdge.pickingMode = PickingMode.Ignore;
+        slantPlate.Add(slantEdge);
+
+        VisualElement content = new VisualElement();
+        content.style.flexDirection = FlexDirection.Row;
+        content.style.justifyContent = Justify.FlexStart;
+        content.style.alignItems = Align.Stretch;
+        content.style.flexGrow = 1f;
+        content.style.height = Length.Percent(100f);
+        content.style.width = Length.Percent(100f);
+        content.style.position = Position.Relative;
+        content.style.paddingLeft = 0f;
+        content.style.paddingRight = 0f;
+        content.pickingMode = PickingMode.Position;
+
+        VisualElement accentBar = new VisualElement();
+        accentBar.style.display = DisplayStyle.None;
+
+        VisualElement artworkTile = new VisualElement();
+        artworkTile.style.width = 156f;
+        artworkTile.style.minWidth = 156f;
+        artworkTile.style.height = Length.Percent(100f);
+        artworkTile.style.marginRight = 18f;
+        artworkTile.style.alignItems = Align.Center;
+        artworkTile.style.justifyContent = Justify.Center;
+        artworkTile.style.backgroundColor = new Color(0.76f, 0.98f, 0.54f, 1f);
+        artworkTile.style.borderTopLeftRadius = 14f;
+        artworkTile.style.borderTopRightRadius = 0f;
+        artworkTile.style.borderBottomLeftRadius = 14f;
+        artworkTile.style.borderBottomRightRadius = 0f;
+        artworkTile.style.flexShrink = 0f;
+        artworkTile.style.alignSelf = Align.Stretch;
+        artworkTile.pickingMode = PickingMode.Ignore;
+
+        Label artworkGlyphLabel = CreateLabel("--", 44f, new Color(0.03f, 0.05f, 0.03f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        artworkGlyphLabel.style.unityFontDefinition = modernUiFontDefinition;
+        artworkGlyphLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        artworkGlyphLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        artworkTile.Add(artworkGlyphLabel);
+
+        Label indexLabel = CreateLabel("00", 28f, new Color(0.58f, 0.81f, 0.97f, 0.90f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        indexLabel.style.minWidth = 0f;
+        indexLabel.style.marginRight = 0f;
+        indexLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        indexLabel.style.unityFontDefinition = modernUiFontDefinition;
+        indexLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        indexLabel.style.alignSelf = Align.Center;
+        indexLabel.pickingMode = PickingMode.Ignore;
+
+        VisualElement textColumn = new VisualElement();
+        textColumn.style.flexGrow = 1f;
+        textColumn.style.flexBasis = 0f;
+        textColumn.style.flexShrink = 1f;
+        textColumn.style.minWidth = 0f;
+        textColumn.style.justifyContent = Justify.Center;
+        textColumn.style.overflow = Overflow.Hidden;
+        textColumn.style.paddingRight = 8f;
+        textColumn.style.marginRight = 10f;
+        textColumn.style.alignSelf = Align.Stretch;
+        textColumn.pickingMode = PickingMode.Ignore;
+
+        Label nameLabel = CreateLabel(string.Empty, 37.2f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        nameLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        nameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        nameLabel.style.textOverflow = TextOverflow.Ellipsis;
+        nameLabel.style.flexShrink = 1f;
+        nameLabel.style.maxWidth = Length.Percent(100f);
+        nameLabel.style.overflow = Overflow.Hidden;
+        nameLabel.style.unityFontDefinition = modernUiFontDefinition;
+        nameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        nameLabel.pickingMode = PickingMode.Ignore;
+
+        Label metaLabel = CreateLabel(string.Empty, 36f, new Color(0.64f, 0.76f, 0.90f, 0.88f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        metaLabel.style.display = DisplayStyle.None;
+        metaLabel.style.marginTop = 2f;
+        metaLabel.style.unityFontDefinition = modernUiFontDefinition;
+        metaLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        metaLabel.style.textOverflow = TextOverflow.Ellipsis;
+        metaLabel.pickingMode = PickingMode.Ignore;
+
+        VisualElement scoreBadge = new VisualElement();
+        scoreBadge.style.display = DisplayStyle.None;
+        const float songRowRightGap = 8f;
+
+        VisualElement difficultyColumn = new VisualElement();
+        difficultyColumn.style.flexDirection = FlexDirection.Row;
+        difficultyColumn.style.alignItems = Align.Center;
+        difficultyColumn.style.justifyContent = Justify.FlexEnd;
+                difficultyColumn.style.width = 272f;
+                difficultyColumn.style.minWidth = 272f;
+                difficultyColumn.style.maxWidth = 272f;
+                difficultyColumn.style.flexBasis = 272f;
+        difficultyColumn.style.marginRight = songRowRightGap;
+        difficultyColumn.style.flexShrink = 0f;
+        difficultyColumn.style.alignSelf = Align.Center;
+        difficultyColumn.style.overflow = Overflow.Hidden;
+        difficultyColumn.pickingMode = PickingMode.Ignore;
+
+        VisualElement favoriteColumn = new VisualElement();
+        favoriteColumn.style.flexDirection = FlexDirection.Row;
+        favoriteColumn.style.alignItems = Align.Center;
+        favoriteColumn.style.justifyContent = Justify.FlexStart;
+                favoriteColumn.style.width = 56f;
+                favoriteColumn.style.minWidth = 56f;
+                favoriteColumn.style.maxWidth = 56f;
+                favoriteColumn.style.flexBasis = 56f;
+        favoriteColumn.style.marginLeft = 0f;
+        favoriteColumn.style.marginRight = 0f;
+        favoriteColumn.style.flexShrink = 0f;
+        favoriteColumn.style.alignSelf = Align.Center;
+        favoriteColumn.pickingMode = PickingMode.Position;
+
+        VisualElement scoreColumn = new VisualElement();
+        scoreColumn.style.flexDirection = FlexDirection.Row;
+        scoreColumn.style.alignItems = Align.Center;
+        scoreColumn.style.justifyContent = Justify.FlexStart;
+        scoreColumn.style.width = 136f;
+        scoreColumn.style.minWidth = 136f;
+        scoreColumn.style.maxWidth = 136f;
+        scoreColumn.style.flexBasis = 136f;
+        scoreColumn.style.flexShrink = 0f;
+        scoreColumn.style.alignSelf = Align.Center;
+        scoreColumn.style.marginRight = songRowRightGap;
+        scoreColumn.style.overflow = Overflow.Visible;
+        scoreColumn.pickingMode = PickingMode.Ignore;
+
+        Button favoriteButton = new Button();
+        favoriteButton.focusable = false;
+        favoriteButton.text = string.Empty;
+        favoriteButton.pickingMode = PickingMode.Ignore;
+                favoriteButton.style.width = 56f;
+                favoriteButton.style.minWidth = 56f;
+                favoriteButton.style.height = 56f;
+                favoriteButton.style.minHeight = 56f;
+        favoriteButton.style.marginRight = 0f;
+        favoriteButton.style.paddingLeft = 0f;
+        favoriteButton.style.paddingRight = 0f;
+        favoriteButton.style.paddingTop = 0f;
+        favoriteButton.style.paddingBottom = 0f;
+        favoriteButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        favoriteButton.style.borderTopWidth = 0f;
+        favoriteButton.style.borderRightWidth = 0f;
+        favoriteButton.style.borderBottomWidth = 0f;
+        favoriteButton.style.borderLeftWidth = 0f;
+        favoriteButton.style.unityTextAlign = TextAnchor.MiddleCenter;
+        favoriteButton.style.alignItems = Align.Center;
+        favoriteButton.style.justifyContent = Justify.Center;
+
+        Label favoriteLabel = CreateLabel("\u2606", 62f, new Color(1f, 1f, 1f, 0.82f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        favoriteLabel.style.unityFontDefinition = bodyFontDefinition;
+        favoriteLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        favoriteLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        favoriteLabel.style.width = Length.Percent(100f);
+        favoriteLabel.style.height = Length.Percent(100f);
+        favoriteLabel.style.alignSelf = Align.Center;
+        favoriteLabel.pickingMode = PickingMode.Ignore;
+        favoriteButton.Add(favoriteLabel);
+
+        Label difficultyLabel = CreateLabel("Unknown", 28f, new Color(0.88f, 0.92f, 0.96f, 0.68f), false, TextAnchor.MiddleRight, useTitleFont: false);
+        difficultyLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+        difficultyLabel.style.unityFontDefinition = modernUiFontDefinition;
+        difficultyLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+                difficultyLabel.style.width = 260f;
+                difficultyLabel.style.minWidth = 260f;
+                difficultyLabel.style.maxWidth = 260f;
+        difficultyLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        difficultyLabel.style.textOverflow = TextOverflow.Ellipsis;
+        difficultyLabel.style.overflow = Overflow.Hidden;
+        difficultyLabel.style.flexShrink = 1f;
+        difficultyLabel.pickingMode = PickingMode.Ignore;
+
+        Label scoreLabel = CreateLabel("0%", 44f, Color.white, true, TextAnchor.MiddleRight, useTitleFont: false);
+        scoreLabel.style.flexShrink = 0f;
+        scoreLabel.style.width = 136f;
+        scoreLabel.style.minWidth = 136f;
+        scoreLabel.style.maxWidth = 136f;
+        scoreLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        scoreLabel.style.overflow = Overflow.Visible;
+        scoreLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        scoreLabel.style.unityFontDefinition = modernUiFontDefinition;
+        scoreLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        scoreLabel.style.alignSelf = Align.Center;
+        scoreLabel.pickingMode = PickingMode.Ignore;
+
+        textColumn.Add(nameLabel);
+        textColumn.Add(metaLabel);
+        content.Add(artworkTile);
+        content.Add(indexLabel);
+        content.Add(textColumn);
+        difficultyColumn.Add(difficultyLabel);
+        content.Add(difficultyColumn);
+        scoreColumn.Add(scoreLabel);
+        content.Add(scoreColumn);
+        favoriteColumn.Add(favoriteButton);
+        content.Add(favoriteColumn);
+        rowButton.Add(content);
+
+        AttachWheelScrolling(rowButton, selectionScrollView);
+        AttachWheelScrolling(content, selectionScrollView);
+        AttachWheelScrolling(favoriteColumn, selectionScrollView);
+
+        void HandleSongPointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0 || row.boundSongIndex < 0)
+                return;
+
+            hoveredSongRowIndex = row.boundSongIndex;
+            OnSongRowClicked(row.boundSongIndex);
+            evt.PreventDefault();
+            evt.StopImmediatePropagation();
+            evt.StopPropagation();
+        }
+
+        void HandleFavoritePointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0 || row.boundSongIndex < 0)
+                return;
+
+            hoveredSongFavoriteRowIndex = row.boundSongIndex;
+            OnSongFavoriteClicked(row.boundSongIndex);
+            evt.PreventDefault();
+            evt.StopImmediatePropagation();
+            evt.StopPropagation();
+        }
+
+        content.RegisterCallback<PointerDownEvent>(HandleSongPointerDown);
+        favoriteColumn.RegisterCallback<MouseEnterEvent>(_ => hoveredSongFavoriteRowIndex = row.boundSongIndex);
+        favoriteColumn.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            if (hoveredSongFavoriteRowIndex == row.boundSongIndex)
+                hoveredSongFavoriteRowIndex = -1;
+        });
+        favoriteColumn.RegisterCallback<PointerDownEvent>(HandleFavoritePointerDown);
+
+        row.button = rowButton;
+        row.artworkTile = artworkTile;
+        row.artworkGlyphLabel = artworkGlyphLabel;
+        row.slantPlate = slantPlate;
+        row.slantEdge = slantEdge;
+        row.accentBar = accentBar;
+        row.scoreBadge = scoreBadge;
+        row.indexLabel = indexLabel;
+        row.nameLabel = nameLabel;
+        row.metaLabel = metaLabel;
+        row.difficultyColumn = difficultyColumn;
+        row.difficultyLabel = difficultyLabel;
+        row.scoreLabel = scoreLabel;
+        row.favoriteColumn = favoriteColumn;
+        row.scoreColumn = scoreColumn;
+        row.favoriteButton = favoriteButton;
+        row.favoriteLabel = favoriteLabel;
+        return row;
+    }
+
+    private void ClearVirtualizedModernSongSelectionRow(SongSelectionRow row)
+    {
+        if (row?.button == null)
+            return;
+
+        row.boundSongIndex = -1;
+        row.button.style.display = DisplayStyle.None;
+    }
+
+    private void BindVirtualizedModernSongSelectionRow(SongSelectionRow row, GuitarGameplaySnapshot snapshot, int songIndex, int total)
+    {
+        if (row?.button == null || snapshot == null || songIndex < 0 || songIndex >= total)
+        {
+            ClearVirtualizedModernSongSelectionRow(row);
+            return;
+        }
+
+        int selectedIndex = Mathf.Clamp(snapshot.selectedSongIndex, 0, Mathf.Max(0, total - 1));
+        bool isSelected = songIndex == selectedIndex;
+        bool isHovered = songIndex == hoveredSongRowIndex;
+        bool isFavoriteHovered = songIndex == hoveredSongFavoriteRowIndex;
+        string name = snapshot.availableSongNames[songIndex];
+        string artworkPath = snapshot.availableSongArtworkPaths != null && songIndex < snapshot.availableSongArtworkPaths.Count
+            ? snapshot.availableSongArtworkPaths[songIndex]
+            : string.Empty;
+        bool isFavorited = snapshot.availableSongFavorited != null &&
+            songIndex < snapshot.availableSongFavorited.Count &&
+            snapshot.availableSongFavorited[songIndex];
+        string configuredDurationText = snapshot.availableSongDurationLabels != null && songIndex < snapshot.availableSongDurationLabels.Count
+            ? snapshot.availableSongDurationLabels[songIndex] ?? string.Empty
+            : string.Empty;
+        string configuredDifficultyText = snapshot.availableSongDifficultyLabels != null && songIndex < snapshot.availableSongDifficultyLabels.Count
+            ? snapshot.availableSongDifficultyLabels[songIndex] ?? string.Empty
+            : string.Empty;
+        string durationDifficultyText = BuildSongCardDurationDifficultyText(configuredDurationText, configuredDifficultyText);
+
+        row.boundSongIndex = songIndex;
+        row.button.style.display = DisplayStyle.Flex;
+        row.indexLabel.text = (songIndex + 1).ToString("00");
+        row.nameLabel.text = name;
+        row.metaLabel.text = snapshot.availableSongSubtitles != null && songIndex < snapshot.availableSongSubtitles.Count
+            ? snapshot.availableSongSubtitles[songIndex]
+            : string.Empty;
+        ApplyLibraryArtworkToTile(row.artworkTile, row.artworkGlyphLabel, artworkPath, name);
+        SplitLibraryDifficultyAndScore(GetAvailableSongScoreText(snapshot, songIndex), out _, out string scoreText);
+
+        row.difficultyLabel.text = durationDifficultyText;
+        row.difficultyLabel.style.color = new Color(0.88f, 0.92f, 0.96f, isSelected ? 0.76f : 0.58f);
+        row.difficultyLabel.style.display = string.IsNullOrWhiteSpace(durationDifficultyText) ? DisplayStyle.None : DisplayStyle.Flex;
+        row.scoreLabel.text = scoreText;
+
+        bool showFavorite = !string.IsNullOrWhiteSpace(configuredDifficultyText);
+        if (row.favoriteColumn != null)
+            row.favoriteColumn.style.display = showFavorite ? DisplayStyle.Flex : DisplayStyle.None;
+        row.favoriteButton.style.display = showFavorite ? DisplayStyle.Flex : DisplayStyle.None;
+        row.favoriteLabel.text = isFavorited ? "\u2605" : "\u2606";
+        row.favoriteLabel.style.color = isFavorited
+            ? new Color(0.95f, 0.54f, 0.22f, 1f)
+            : new Color(0.88f, 0.92f, 0.96f, isFavoriteHovered ? 0.78f : (isSelected ? 0.70f : 0.58f));
+        row.favoriteButton.style.opacity = isSelected || isFavorited || isFavoriteHovered ? 1f : 0.9f;
+        row.favoriteButton.style.scale = new Scale(isFavoriteHovered ? new Vector3(1.12f, 1.12f, 1f) : Vector3.one);
+
+        row.button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        row.button.style.backgroundImage = StyleKeyword.None;
+        Color borderColor = isSelected || isHovered
+            ? new Color(1f, 1f, 1f, 0.96f)
+            : new Color(1f, 1f, 1f, 0f);
+        row.button.style.borderTopColor = borderColor;
+        row.button.style.borderRightColor = borderColor;
+        row.button.style.borderBottomColor = borderColor;
+        row.button.style.borderLeftColor = borderColor;
+        row.button.style.borderTopWidth = 3f;
+        row.button.style.borderRightWidth = 3f;
+        row.button.style.borderBottomWidth = 3f;
+        row.button.style.borderLeftWidth = 3f;
+        row.button.style.height = GetModernSongSelectionBaseHeight(isSelected) * currentMenuLayoutScale;
+        row.button.style.marginLeft = 0f;
+        row.button.style.marginRight = 0f;
+        row.button.style.scale = new Scale(Vector3.one);
+        row.button.style.translate = new Translate(0f, 0f, 0f);
+        row.button.style.opacity = 1f;
+        row.slantPlate.style.display = DisplayStyle.None;
+        row.slantEdge.style.display = DisplayStyle.None;
+        row.accentBar.style.display = DisplayStyle.None;
+        row.scoreBadge.style.display = DisplayStyle.None;
+        row.indexLabel.style.display = DisplayStyle.None;
+
+        float rowHeight = GetModernSongSelectionBaseHeight(isSelected) * currentMenuLayoutScale;
+        row.artworkTile.style.width = rowHeight;
+        row.artworkTile.style.minWidth = rowHeight;
+        row.artworkTile.style.height = Length.Percent(100f);
+        row.artworkTile.style.opacity = isSelected ? 1f : 0.94f;
+        row.artworkTile.style.scale = isSelected ? new Scale(new Vector3(1.02f, 1.02f, 1f)) : new Scale(Vector3.one);
+        row.nameLabel.style.color = new Color(1f, 1f, 1f, isSelected ? 1f : 0.94f);
+        row.metaLabel.style.display = string.IsNullOrWhiteSpace(row.metaLabel.text) ? DisplayStyle.None : DisplayStyle.Flex;
+        row.metaLabel.style.color = new Color(1f, 1f, 1f, isSelected ? 0.72f : 0.56f);
+        row.scoreLabel.style.color = new Color(1f, 1f, 1f, isSelected ? 0.92f : 0.70f);
+    }
+
+    private void EnsureVirtualizedModernSongSelectionRows(int count)
+    {
+        count = Mathf.Max(0, count);
+        if (selectionVirtualizedSongCount != count)
+        {
+            selectionVirtualizedSongCount = count;
+            lastAutoScrolledSongIndex = -1;
+            hoveredSongRowIndex = -1;
+            hoveredSongFavoriteRowIndex = -1;
+        }
+
+        while (selectionRows.Count > count)
+        {
+            SongSelectionRow row = selectionRows[selectionRows.Count - 1];
+            selectionRows.RemoveAt(selectionRows.Count - 1);
+            row.button.RemoveFromHierarchy();
+        }
+
+        int minimumLoadedCount = Mathf.Min(count, 18);
+        if (selectionRows.Count < minimumLoadedCount)
+            AppendModernSongSelectionRowsUntil(minimumLoadedCount);
+
+        selectionScrollView.contentContainer.style.paddingTop = 8f;
+        selectionScrollView.contentContainer.style.paddingBottom = 8f;
+        UpdateModernSongSelectionLoadSpacer();
+    }
+
+    private void RefreshVisibleModernSongSelectionRows(bool forceRebind = false)
+    {
+        if (selectionScrollView == null)
+            return;
+
+        if (selectionVirtualizedSongCount <= 0 || latestSongSelectionSnapshot == null)
+        {
+            selectionRowsTopSpacer.style.height = 0f;
+            selectionRowsBottomSpacer.style.height = 0f;
+            return;
+        }
+
+        int selectedIndex = Mathf.Clamp(latestSongSelectionSnapshot.selectedSongIndex, 0, Mathf.Max(0, selectionVirtualizedSongCount - 1));
+        int desiredLoadedCount = selectionRows.Count;
+
+        if (forceRebind && selectionRows.Count == 0)
+            desiredLoadedCount = Mathf.Min(selectionVirtualizedSongCount, 18);
+
+        if (selectedIndex >= selectionRows.Count - 6)
+            desiredLoadedCount = Mathf.Max(desiredLoadedCount, Mathf.Min(selectionVirtualizedSongCount, selectedIndex + 10));
+
+        float contentBottom = selectionScrollView.scrollOffset.y + Mathf.Max(selectionScrollView.contentViewport.resolvedStyle.height, selectionScrollView.resolvedStyle.height);
+        float loadedHeight = selectionRows.Count * Mathf.Max(1f, GetModernSongSelectionRowSlotHeight());
+        if (selectionRows.Count < selectionVirtualizedSongCount && contentBottom >= loadedHeight - (GetModernSongSelectionRowSlotHeight() * 3f))
+            desiredLoadedCount = Mathf.Max(desiredLoadedCount, Mathf.Min(selectionVirtualizedSongCount, selectionRows.Count + 16));
+
+        if (desiredLoadedCount > selectionRows.Count)
+            AppendModernSongSelectionRowsUntil(desiredLoadedCount);
+
+        UpdateModernSongSelectionLoadSpacer();
+    }
+
+    private void AppendModernSongSelectionRowsUntil(int targetCount)
+    {
+        targetCount = Mathf.Clamp(targetCount, 0, selectionVirtualizedSongCount);
+        while (selectionRows.Count < targetCount)
+        {
+            SongSelectionRow row = CreateVirtualizedModernSongSelectionRow();
+            int insertIndex = selectionScrollView.contentContainer.IndexOf(selectionRowsBottomSpacer);
+            if (insertIndex < 0)
+                selectionScrollView.contentContainer.Add(row.button);
+            else
+                selectionScrollView.contentContainer.Insert(insertIndex, row.button);
+            selectionRows.Add(row);
+        }
+    }
+
+    private void UpdateModernSongSelectionLoadSpacer()
+    {
+        selectionRowsTopSpacer.style.height = 0f;
+        float remainingRows = Mathf.Max(0, selectionVirtualizedSongCount - selectionRows.Count);
+        selectionRowsBottomSpacer.style.height = remainingRows * Mathf.Max(1f, GetModernSongSelectionRowSlotHeight());
     }
 
 
@@ -10885,19 +13224,52 @@ public sealed class TabsSongHeaderOverlay
 
         {
             bool isArcadeLibrary = snapshot.songLibraryType == SongLibraryType.Arcade;
+            if (selectionInfoStatsRow != null)
+                selectionInfoStatsRow.style.width = Length.Percent(100f);
+            if (selectionInfoScoreCard != null)
+            {
+                selectionInfoScoreCard.style.flexGrow = isArcadeLibrary ? 2.2f : 1f;
+                selectionInfoScoreCard.style.flexBasis = 0f;
+                selectionInfoScoreCard.style.minWidth = isArcadeLibrary ? 260f : 178f;
+                selectionInfoScoreCard.style.paddingRight = isArcadeLibrary ? 18f : 0f;
+            }
+            if (selectionInfoArrangementCard != null)
+            {
+                selectionInfoArrangementCard.style.flexGrow = isArcadeLibrary ? 1f : 1f;
+                selectionInfoArrangementCard.style.flexBasis = 0f;
+                selectionInfoArrangementCard.style.minWidth = isArcadeLibrary ? 120f : 178f;
+                SetLibrarySelectionStatBlockTitle(selectionInfoArrangementCard, "HERO SCORE");
+            }
+            if (selectionInfoArrangementCard != null)
+                selectionInfoArrangementCard.style.display = DisplayStyle.Flex;
+            if (selectionInfoAudioCard != null)
+                selectionInfoAudioCard.style.display = isArcadeLibrary ? DisplayStyle.None : DisplayStyle.Flex;
+            if (selectionInfoHeroHeartsCard != null)
+                selectionInfoHeroHeartsCard.style.display = DisplayStyle.None;
             if (isArcadeLibrary && selectedTrackIndex >= 0 && selectedTrackIndex < total)
             {
                 string selectedTrackName = snapshot.availableTrackNames[selectedTrackIndex];
                 string selectedDifficulty = snapshot.selectedArcadeDifficultyLabel;
-                selectionInfoScoreLabel.text = GetAvailableTrackScoreText(snapshot, selectedTrackIndex);
+                int selectedScore = 0;
+                if (snapshot.availableTrackScores != null && selectedTrackIndex < snapshot.availableTrackScores.Count)
+                    selectedScore = Mathf.RoundToInt(snapshot.availableTrackScores[selectedTrackIndex]);
+                selectionInfoScoreLabel.text = FormatSelectedArcadeLibraryScoreValue(selectedScore);
+                if (selectionInfoArrangementValueLabel != null)
+                    selectionInfoArrangementValueLabel.text = string.IsNullOrWhiteSpace(snapshot.selectedLibraryHeroScoreText) ? "--" : snapshot.selectedLibraryHeroScoreText;
                 selectionInfoBestTrackLabel.text = string.IsNullOrWhiteSpace(selectedDifficulty)
                     ? selectedTrackName
                     : $"{selectedTrackName}  •  {selectedDifficulty}";
             }
             else
             {
-                selectionInfoScoreLabel.text = bestTrackIndex >= 0 ? GetAvailableTrackScoreText(snapshot, bestTrackIndex) : "--";
-                selectionInfoBestTrackLabel.text = bestTrackName;
+                selectionInfoScoreLabel.text = selectedTrackIndex >= 0 && snapshot.availableTrackScores != null && selectedTrackIndex < snapshot.availableTrackScores.Count
+                    ? FormatSelectedGuitarLibraryScoreValue(Mathf.RoundToInt(snapshot.availableTrackScores[selectedTrackIndex]))
+                    : "--";
+                if (selectionInfoArrangementValueLabel != null)
+                    selectionInfoArrangementValueLabel.text = string.IsNullOrWhiteSpace(snapshot.selectedLibraryHeroScoreText) ? "--" : snapshot.selectedLibraryHeroScoreText;
+                selectionInfoBestTrackLabel.text = selectedTrackIndex >= 0 && snapshot.availableTrackNames != null && selectedTrackIndex < snapshot.availableTrackNames.Count
+                    ? snapshot.availableTrackNames[selectedTrackIndex]
+                    : bestTrackName;
             }
 
             selectionInfoHintLabel.text = total > 1
@@ -11144,7 +13516,8 @@ public sealed class TabsSongHeaderOverlay
 
             row.metaLabel.text = isSelected ? "READY TO OPEN ARRANGEMENTS" : "PRESS ENTER OR CLICK";
 
-            row.scoreLabel.text = GetAvailableSongScoreText(snapshot, songIndex);
+            row.scoreLabel.text = string.Empty;
+            row.scoreLabel.style.display = DisplayStyle.None;
 
 
 
@@ -11222,7 +13595,7 @@ public sealed class TabsSongHeaderOverlay
 
             selectionInfoTitleLabel.text = selectedName;
 
-            selectionInfoMetaLabel.text = $"Song {selectedIndex + 1} of {total}  \u2022  Open to inspect track arrangements and launch directly into play.";
+            selectionInfoMetaLabel.text = "Open to inspect track arrangements and launch directly into play.";
 
             selectionInfoScoreLabel.text = GetAvailableSongScoreText(snapshot, selectedIndex);
 
@@ -11828,9 +14201,9 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsHelpLabel.text = inSubmenu
 
-            ? "Up/Down selects  \u2022  Left/Right changes value  \u2022  Esc goes back"
+            ? "Up/Down selects  \u2022  Left/Right changes value  \u2022  O toggles background  \u2022  P toggles HUD  \u2022  Esc goes back"
 
-            : "Up/Down selects  \u2022  Enter opens category  \u2022  Left/Right changes values";
+            : "Up/Down selects  \u2022  Enter opens category  \u2022  Left/Right changes values  \u2022  O toggles background  \u2022  P toggles HUD";
 
 
 
@@ -11864,13 +14237,15 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsTopCategoryRow(menuList, 4, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 4);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 5, "Arcade", snapshot.selectedGlobalSettingsTopIndex == 5);
+            AddGlobalSettingsTopCategoryRow(menuList, 5, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 5);
 
             AddGlobalSettingsTopCategoryRow(menuList, 6, "Controls", snapshot.selectedGlobalSettingsTopIndex == 6);
 
             AddGlobalSettingsTopCategoryRow(menuList, 7, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 7);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 8, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 8);
+            AddGlobalSettingsTopCategoryRow(menuList, 8, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 8);
+
+            AddGlobalSettingsTopCategoryRow(menuList, 9, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 9);
 
             return;
 
@@ -12453,9 +14828,9 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsHelpLabel.text = inSubmenu
 
-            ? "UP/DOWN NAVIGATES   LEFT/RIGHT CHANGES VALUES   ENTER TOGGLES OR CYCLES   ESC GOES BACK"
+            ? "UP/DOWN NAVIGATES   LEFT/RIGHT CHANGES VALUES   ENTER TOGGLES OR CYCLES   O TOGGLES BACKGROUND   ESC GOES BACK"
 
-            : "UP/DOWN NAVIGATES   LEFT/RIGHT CHANGES VALUES   ENTER OPENS A CATEGORY   ESC RETURNS";
+            : "UP/DOWN NAVIGATES   LEFT/RIGHT CHANGES VALUES   ENTER OPENS A CATEGORY   O TOGGLES BACKGROUND   ESC RETURNS";
 
 
 
@@ -12531,13 +14906,15 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsFullscreenTopCategoryRow(menuList, 4, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 4);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "Arcade", snapshot.selectedGlobalSettingsTopIndex == 5);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 5);
 
             AddGlobalSettingsFullscreenTopCategoryRow(menuList, 6, "Controls", snapshot.selectedGlobalSettingsTopIndex == 6);
 
             AddGlobalSettingsFullscreenTopCategoryRow(menuList, 7, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 7);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 8, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 8, "DEFAULTS");
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 8, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 8);
+
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 9, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 9, "DEFAULTS");
 
             return;
 
@@ -13339,7 +15716,7 @@ public sealed class TabsSongHeaderOverlay
 
         AddGlobalSettingsColumn(columnsWrapper, "Highway 3D", addRightSpacing: true);
 
-        AddGlobalSettingsColumn(columnsWrapper, "Arcade", addRightSpacing: true);
+        AddGlobalSettingsColumn(columnsWrapper, "Rhythm", addRightSpacing: true);
 
         AddGlobalSettingsColumn(columnsWrapper, "Controls", addRightSpacing: true);
 
@@ -13573,6 +15950,10 @@ public sealed class TabsSongHeaderOverlay
 
         List<RuntimeSettingSnapshot> sectionSettings = section.settings;
 
+        if (normalizedTitle.Contains("multiplayer") || IsSectionIdPrefix(sectionSettings, "mp."))
+
+            return "Multiplayer Visuals";
+
         if (normalizedTitle.Contains("control") || IsSectionIdPrefix(sectionSettings, "arcade.controls."))
 
             return "Controls";
@@ -13581,7 +15962,7 @@ public sealed class TabsSongHeaderOverlay
 
         if (normalizedTitle.Contains("arcade") || IsSectionIdPrefix(sectionSettings, "arcade."))
 
-            return "Arcade";
+            return "Rhythm";
 
 
 
@@ -14164,6 +16545,109 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+    private void UpdateSongEndVisualState(float scorePercent, bool newRecord, bool songEndedAsGameOver)
+
+    {
+
+        if (songEndMainPlate == null || songEndGradeGlow == null || songEndScoreLabel == null)
+
+            return;
+
+
+
+        float now = Time.unscaledTime;
+
+        float shownFor = songEndShownAtUnscaledTime >= 0f ? Mathf.Max(0f, now - songEndShownAtUnscaledTime) : 0f;
+
+        float introProgress = Mathf.Clamp01(shownFor / SongEndIntroDurationSeconds);
+
+        float introEase = 1f - Mathf.Pow(1f - introProgress, 3f);
+
+        float buttonReveal = Mathf.Clamp01((shownFor - SongEndFooterRevealDelaySeconds) / SongEndFooterRevealDurationSeconds);
+
+        float buttonRevealEase = buttonReveal * buttonReveal * (3f - (2f * buttonReveal));
+
+        float idlePulse = 0.5f + (0.5f * Mathf.Sin((now * 1.85f) + 0.45f));
+
+        float shimmer = 0.5f + (0.5f * Mathf.Sin((now * 2.55f) + 0.15f));
+
+        float idleFloat = Mathf.Sin(now * 1.10f) * SongEndIdleFloatAmplitude;
+
+        Color gradeColor = GetScoreLetterGradeColor(scorePercent);
+
+        Color accentColor = songEndedAsGameOver
+
+            ? Color.Lerp(GameplayScoreCardMissColor, Color.white, 0.12f)
+
+            : Color.Lerp(GameplayHudAccentWarmColor, gradeColor, newRecord ? 0.44f : 0.20f);
+
+        Color plateFill = songEndedAsGameOver
+
+            ? new Color(0.040f, 0.020f, 0.024f, 0.985f)
+
+            : new Color(0.018f, 0.023f, 0.032f, 0.975f);
+
+        float accentOpacity = songEndedAsGameOver
+            ? 0f
+            : Mathf.Lerp(0.40f, 0.66f, introEase) + (idlePulse * (newRecord ? 0.06f : 0.04f));
+
+        float gradeBlockPulse = Mathf.Sin(shownFor * 11.5f) * Mathf.Exp(-shownFor * 3.4f);
+
+        float scoreScale = (0.84f + (introEase * 0.16f)) + (gradeBlockPulse * 0.05f) + ((idlePulse - 0.5f) * 0.016f);
+
+        float titleScale = 0.96f + (introEase * 0.04f);
+
+        songEndBlurBackdrop.style.backgroundColor = new Color(0.010f, 0.016f, 0.028f, songEndedAsGameOver ? 0.52f : 0.42f + (idlePulse * 0.03f));
+
+        songEndMainPlate.style.backgroundColor = plateFill;
+        songEndMainPlate.style.borderTopColor = Color.Lerp(GameplayHudCardBorderTopColor, accentColor, 0.30f);
+        songEndMainPlate.style.borderRightColor = Color.Lerp(GameplayHudCardBorderSideColor, accentColor, 0.14f);
+        songEndMainPlate.style.borderBottomColor = Color.Lerp(GameplayHudCardBorderBottomColor, accentColor, 0.10f);
+        songEndMainPlate.style.borderLeftColor = Color.Lerp(GameplayHudCardBorderSideColor, accentColor, 0.14f);
+        if (songEndEdgeShineOverlay != null)
+            songEndEdgeShineOverlay.style.opacity = Mathf.Lerp(0f, songEndedAsGameOver ? 0.78f : 0.92f, introEase) + (idlePulse * 0.02f);
+
+        songEndAccentPlate.style.display = DisplayStyle.None;
+
+        songEndPanelGrid.style.opacity = 0f;
+
+        songEndGradeGlow.style.opacity = 0f;
+
+        songEndStatsStrip.style.translate = new Translate(0f, Mathf.Lerp(18f, 0f, introEase), 0f);
+        songEndStatsStrip.style.opacity = Mathf.Lerp(0.18f, 1f, introEase);
+
+        songEndTitleLabel.style.scale = new Scale(new Vector3(titleScale, titleScale, 1f));
+        songEndTitleLabel.style.translate = new Translate(0f, Mathf.Lerp(12f, 0f, introEase) + (idleFloat * 0.25f), 0f);
+
+        songEndSongLabel.style.translate = new Translate(0f, idleFloat * 0.16f, 0f);
+        songEndMetaLabel.style.opacity = 0.88f + (idlePulse * 0.08f);
+        songEndSpeedValueLabel.style.opacity = 0.88f + (idlePulse * 0.08f);
+
+        songEndRatingLabel.style.color = gradeColor;
+        songEndRatingLabel.style.translate = new Translate(0f, (idleFloat * 0.30f) - 2f, 0f);
+        songEndRatingLabel.style.scale = new Scale(new Vector3(0.96f + (introEase * 0.04f) + (gradeBlockPulse * 0.03f), 0.96f + (introEase * 0.04f) + (gradeBlockPulse * 0.03f), 1f));
+
+        songEndScoreLabel.style.color = accentColor;
+        songEndScoreLabel.style.scale = new Scale(new Vector3(scoreScale, scoreScale, 1f));
+        songEndScoreLabel.style.translate = new Translate(0f, (Mathf.Sin(now * 1.20f) * SongEndScoreIdleFloatAmplitude) - (Mathf.Lerp(18f, 0f, introEase)), 0f);
+
+        songEndRule.style.backgroundColor = new Color(accentColor.r, accentColor.g, accentColor.b, 0.46f + (shimmer * 0.10f));
+
+        songEndStatsLabel.style.color = Color.Lerp(GameplayHudMutedTextColor, GameplayHudPrimaryTextColor, 0.16f + (shimmer * 0.18f));
+        songEndStatsLabel.style.scale = new Scale(new Vector3(0.985f + (idlePulse * 0.035f), 0.985f + (idlePulse * 0.035f), 1f));
+        songEndStatsLabel.style.translate = new Translate(0f, Mathf.Sin(now * 1.05f) * 1.4f, 0f);
+        songEndStatsLabel.style.opacity = Mathf.Lerp(0.42f, 1f, introEase);
+
+        songEndNoteLabel.style.opacity = Mathf.Lerp(0.30f, 0.98f, introEase);
+        songEndNoteLabel.style.translate = new Translate(0f, Mathf.Lerp(12f, 0f, introEase), 0f);
+
+        songEndFooterRow.style.opacity = Mathf.Lerp(0f, 1f, buttonRevealEase);
+        songEndFooterRow.style.translate = new Translate(0f, Mathf.Lerp(16f, 0f, buttonRevealEase), 0f);
+
+    }
+
+
+
     private Texture2D GetSongEndAccentGradientTexture()
 
     {
@@ -14444,6 +16928,393 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+    private void UpdateGameplayScoreCard(GuitarGameplaySnapshot snapshot, float scorePercent, int displayHits, int displayMisses)
+
+    {
+
+        if (snapshot == null || songCardScoreBlock == null || scorePercentLabel == null)
+
+            return;
+
+
+
+        bool arcadeMode = snapshot.gameplayMode == GuitarGameplayMode.Arcade;
+        bool loopMode = snapshot.loopEnabled;
+
+        float scoreValue = loopMode
+            ? Mathf.Clamp(scorePercent, 0f, 100f)
+            : arcadeMode
+                ? Mathf.Max(0f, snapshot.currentSessionArcadeScore)
+                : Mathf.Max(0f, snapshot.currentSessionScoreValue);
+
+        float now = Time.unscaledTime;
+
+        if (!gameplayScoreCardAnimationInitialized)
+
+        {
+
+            lastGameplayScoreCardValue = scoreValue;
+
+            lastGameplayScoreCardHits = displayHits;
+
+            lastGameplayScoreCardMisses = displayMisses;
+
+            gameplayScoreCardAnimationInitialized = true;
+
+        }
+
+        else
+
+        {
+
+            float scoreThreshold = loopMode ? 0.05f : (arcadeMode ? 0.5f : 0.01f);
+
+            if (scoreValue > lastGameplayScoreCardValue + scoreThreshold || displayHits > lastGameplayScoreCardHits)
+
+                gameplayScoreCardLastGainTime = now;
+
+            if (displayMisses > lastGameplayScoreCardMisses)
+
+                gameplayScoreCardLastMissTime = now;
+
+            lastGameplayScoreCardValue = scoreValue;
+
+            lastGameplayScoreCardHits = displayHits;
+
+            lastGameplayScoreCardMisses = displayMisses;
+
+        }
+
+
+
+        float gainProgress = Mathf.Clamp01((now - gameplayScoreCardLastGainTime) / 0.38f);
+
+        float missProgress = Mathf.Clamp01((now - gameplayScoreCardLastMissTime) / 0.42f);
+
+        bool gainAnimating = gameplayScoreCardLastGainTime > float.NegativeInfinity && gainProgress < 1f;
+
+        bool missAnimating = gameplayScoreCardLastMissTime > float.NegativeInfinity && missProgress < 1f;
+
+        float gainPunch = gainAnimating ? Mathf.Sin(gainProgress * Mathf.PI) : 0f;
+
+        float missPunch = missAnimating ? Mathf.Sin(missProgress * Mathf.PI) : 0f;
+
+        float idlePulse = Mathf.Sin((now * 1.04f) + 0.35f) * 0.018f;
+
+        float idleFloat = Mathf.Sin((now * 0.94f) + 0.18f) * 2.2f;
+
+        float idleTilt = Mathf.Sin((now * 0.82f) + 0.72f) * 1.2f;
+
+        Color baseAccent = arcadeMode
+            ? GetArcadeComboAccentColor(arcadeMode ? snapshot.currentSessionArcadeMultiplier : snapshot.currentSessionScoreMultiplier)
+            : Color.Lerp(GameplayScoreCardCoolColor, GameplayScoreCardWarmColor, 0.18f);
+
+        if (snapshot.scoreSaveInvalidated)
+
+            baseAccent = GameplayScoreCardInvalidColor;
+
+        Color animatedAccent = Color.Lerp(baseAccent, GameplayScoreCardMissColor, missAnimating ? (1f - missProgress) * 0.72f : 0f);
+
+        float numberScale = 1f + idlePulse + (gainPunch * 0.12f) - (missPunch * 0.07f);
+
+        float numberTranslateY = idleFloat - (gainPunch * 7f) + (missPunch * 5f);
+
+        float numberRotation = idleTilt + (gainPunch * 2.2f) - (missPunch * 2.8f);
+
+        songCardScoreBlock.style.scale = new Scale(Vector3.one);
+
+        songCardScoreBlock.style.translate = new Translate(0f, 0f, 0f);
+
+        songCardScoreBlock.style.backgroundColor = Color.clear;
+
+        scoreTitleLabel.style.color = snapshot.scoreSaveInvalidated
+            ? new Color(1f, 0.88f, 0.76f, 0.98f)
+            : new Color(0.87f, 0.93f, 1f, 0.94f);
+
+        scorePercentLabel.style.color = Color.Lerp(animatedAccent, Color.white, 0.10f + (gainPunch * 0.10f));
+
+        scorePercentLabel.style.scale = new Scale(new Vector3(numberScale, numberScale, 1f));
+
+        scorePercentLabel.style.translate = new Translate(0f, numberTranslateY, 0f);
+
+        scorePercentLabel.style.rotate = new Rotate(new Angle(numberRotation, AngleUnit.Degree));
+
+        scorePercentLabel.style.opacity = 0.96f + (gainPunch * 0.04f);
+
+        string hitsColor = ColorUtility.ToHtmlStringRGB(new Color(0.58f, 0.90f, 1f, 1f));
+
+        string missesColor = ColorUtility.ToHtmlStringRGB(Color.Lerp(GameplayScoreCardMissColor, Color.white, 0.08f));
+
+        string valueColor = ColorUtility.ToHtmlStringRGB(GameplayHudPrimaryTextColor);
+
+        noteTallyLabel.text = FormattableString.Invariant(
+            $"<color=#{hitsColor}>HITS</color> <color=#{valueColor}>{displayHits:N0}</color>   \u2022   <color=#{missesColor}>MISSES</color> <color=#{valueColor}>{displayMisses:N0}</color>");
+
+        noteTallyLabel.style.color = new Color(0.80f, 0.86f, 0.94f, 0.94f);
+
+        noteTallyLabel.style.opacity = snapshot.scoreSaveInvalidated ? 0.86f : 0.94f;
+
+    }
+
+
+
+    private static Color GetArcadeComboAccentColor(int multiplier)
+
+    {
+
+        return Mathf.Clamp(multiplier, 1, 4) switch
+
+        {
+
+            2 => ArcadeComboTierTwoColor,
+
+            3 => ArcadeComboTierThreeColor,
+
+            4 => ArcadeComboTierFourColor,
+
+            _ => ArcadeComboTierOneColor
+
+        };
+
+    }
+
+
+
+    private void UpdateArcadeComboBadge(GuitarGameplaySnapshot snapshot)
+
+    {
+
+        if (arcadeComboLayer == null || arcadeComboBadge == null || snapshot == null)
+
+            return;
+
+
+
+        if (snapshot.gameplayMode != GuitarGameplayMode.Arcade && snapshot.gameplayMode != GuitarGameplayMode.Guitar)
+
+        {
+
+            arcadeComboAnimationInitialized = false;
+
+            lastArcadeComboValue = -1;
+
+            lastArcadeMultiplierValue = -1;
+
+            return;
+
+        }
+
+
+
+        float panelWidth = document != null && document.rootVisualElement != null && document.rootVisualElement.worldBound.width > 1f
+            ? document.rootVisualElement.worldBound.width
+            : Screen.width;
+
+        float panelHeight = document != null && document.rootVisualElement != null && document.rootVisualElement.worldBound.height > 1f
+            ? document.rootVisualElement.worldBound.height
+            : Screen.height;
+
+        Rect comboLayerBounds = arcadeComboLayer.worldBound.width > 1f && arcadeComboLayer.worldBound.height > 1f
+            ? arcadeComboLayer.worldBound
+            : new Rect(0f, 0f, panelWidth, panelHeight);
+
+        bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
+        bool guitarMode = snapshot.gameplayMode == GuitarGameplayMode.Guitar;
+
+        Rect characterRect = isHighway3D
+            ? GuitarHighway3DRenderer.GetHighwayCharacterHudScreenRect(panelWidth, panelHeight)
+            : new Rect(panelWidth * 0.41f, panelHeight * 0.10f, panelWidth * 0.18f, panelHeight * 0.24f);
+
+        characterRect.position -= comboLayerBounds.position;
+        Rect songCardBounds = songCard != null && songCard.worldBound.width > 1f && songCard.worldBound.height > 1f
+            ? songCard.worldBound
+            : new Rect(0f, 0f, 0f, 0f);
+        songCardBounds.position -= comboLayerBounds.position;
+
+        float layerWidth = comboLayerBounds.width > 1f ? comboLayerBounds.width : panelWidth;
+
+        float layerHeight = comboLayerBounds.height > 1f ? comboLayerBounds.height : panelHeight;
+
+
+
+        int comboValue = snapshot.gameplayMode == GuitarGameplayMode.Arcade
+            ? Mathf.Max(0, snapshot.currentSessionArcadeCombo)
+            : Mathf.Max(0, snapshot.currentSessionScoreCombo);
+
+        int multiplierValue = snapshot.gameplayMode == GuitarGameplayMode.Arcade
+            ? Mathf.Clamp(snapshot.currentSessionArcadeMultiplier, 1, 4)
+            : Mathf.Clamp(snapshot.currentSessionScoreMultiplier, 1, 4);
+
+        float now = Time.unscaledTime;
+
+        if (!arcadeComboAnimationInitialized)
+
+        {
+
+            lastArcadeComboValue = comboValue;
+
+            lastArcadeMultiplierValue = multiplierValue;
+
+            arcadeComboAnimationInitialized = true;
+
+        }
+
+        else if (comboValue != lastArcadeComboValue || multiplierValue != lastArcadeMultiplierValue)
+
+        {
+
+            if (lastArcadeComboValue > 0 && comboValue == 0)
+
+                arcadeComboLastLossTime = now;
+
+            else if (comboValue > lastArcadeComboValue || multiplierValue > lastArcadeMultiplierValue)
+
+                arcadeComboLastGainTime = now;
+
+
+
+            lastArcadeComboValue = comboValue;
+
+            lastArcadeMultiplierValue = multiplierValue;
+
+        }
+
+
+
+        bool comboActive = comboValue > 0;
+
+        Color accentColor = comboActive ? GetArcadeComboAccentColor(multiplierValue) : Color.Lerp(GameplayHudMutedTextColor, ArcadeComboTierOneColor, 0.35f);
+
+        float gainProgress = Mathf.Clamp01((now - arcadeComboLastGainTime) / 0.34f);
+
+        float lossProgress = Mathf.Clamp01((now - arcadeComboLastLossTime) / 0.38f);
+
+        bool gainAnimating = arcadeComboLastGainTime > float.NegativeInfinity && gainProgress < 1f;
+
+        bool lossAnimating = arcadeComboLastLossTime > float.NegativeInfinity && lossProgress < 1f;
+
+        float gainPunch = gainAnimating ? Mathf.Sin(gainProgress * Mathf.PI) : 0f;
+
+        float lossPunch = lossAnimating ? Mathf.Sin(lossProgress * Mathf.PI) : 0f;
+
+        float idleBob = Mathf.Sin(now * 1.28f) * 3.5f;
+
+        float idleTilt = Mathf.Sin((now * 0.92f) + 0.6f) * 1.35f;
+
+        float idleScale = 1f + (Mathf.Sin(now * 1.06f) * 0.018f);
+
+        float badgeWidth = isHighway3D
+            ? Mathf.Clamp(characterRect.width * ArcadeComboBadgeWidthInCharacterWidths, 228f, 360f)
+            : Mathf.Clamp(layerWidth * 0.19f, 230f, 340f);
+
+        float badgeHeight = isHighway3D
+            ? Mathf.Clamp(characterRect.height * ArcadeComboBadgeHeightInCharacterHeights, 108f, 172f)
+            : Mathf.Clamp(layerHeight * 0.16f, 108f, 160f);
+
+        float badgeLeft;
+        float badgeTop;
+        if (guitarMode && isHighway3D)
+        {
+            float targetLeft;
+            float targetTop;
+            if (songCardBounds.width > 1f && songCardBounds.height > 1f)
+            {
+                float targetRight = songCardBounds.xMax + GuitarComboBadgeRightOffsetFromSongCard;
+                targetLeft = targetRight - badgeWidth;
+                targetTop = songCardBounds.yMax + GuitarComboBadgeGapBelowSongCard;
+            }
+            else
+            {
+                targetLeft = characterRect.xMax - badgeWidth;
+                targetTop = characterRect.yMin + 12f;
+            }
+
+            badgeLeft = Mathf.Clamp(targetLeft, 18f, layerWidth - badgeWidth - 18f);
+            badgeTop = Mathf.Clamp(targetTop, 18f, layerHeight - badgeHeight - 112f);
+        }
+        else
+        {
+            badgeLeft = isHighway3D
+                ? Mathf.Clamp(
+                    (characterRect.center.x - (badgeWidth * 0.5f)) + (characterRect.width * ArcadeComboBadgeHorizontalOffsetInCharacterWidths),
+                    18f,
+                    layerWidth - badgeWidth - 18f)
+                : Mathf.Clamp((layerWidth * 0.5f) - (badgeWidth * 0.5f), 18f, layerWidth - badgeWidth - 18f);
+
+            badgeTop = isHighway3D
+                ? Mathf.Clamp(
+                    characterRect.yMax + (characterRect.height * ArcadeComboBadgeVerticalOffsetInCharacterHeights),
+                    18f,
+                    layerHeight - badgeHeight - 112f)
+                : Mathf.Clamp(layerHeight * 0.21f, 18f, layerHeight - badgeHeight - 112f);
+        }
+
+        float baseScale = idleScale + (gainPunch * 0.17f) - (lossPunch * 0.09f);
+
+        float translateY = idleBob - (gainPunch * 7f) + (lossPunch * 6f);
+
+        float rotationDegrees = idleTilt + (gainPunch * 2.1f) - (lossPunch * 4.8f);
+
+        Color lossColor = Color.Lerp(accentColor, ArcadeComboLostColor, lossAnimating ? (1f - lossProgress) * 0.84f : 0f);
+
+        Color borderColor = Color.Lerp(lossColor, Color.white, comboActive ? 0.12f : 0.06f);
+
+        Color badgeFill = comboActive
+            ? Color.Lerp(new Color(0.03f, 0.05f, 0.10f, 0.78f), lossColor, 0.12f)
+            : new Color(0.03f, 0.05f, 0.10f, 0.60f);
+
+        arcadeComboMultiplierLabel.text = $"{multiplierValue}x";
+
+        arcadeComboCountLabel.text = $"COMBO {comboValue:N0}";
+
+        arcadeComboBadge.style.left = badgeLeft;
+
+        arcadeComboBadge.style.top = badgeTop;
+
+        arcadeComboBadge.style.width = badgeWidth;
+
+        arcadeComboBadge.style.minHeight = badgeHeight;
+
+        arcadeComboBadge.style.maxHeight = badgeHeight;
+
+        arcadeComboBadge.style.scale = new Scale(new Vector3(baseScale, baseScale, 1f));
+
+        arcadeComboBadge.style.translate = new Translate(0f, translateY, 0f);
+
+        arcadeComboBadge.style.rotate = new Rotate(new Angle(rotationDegrees, AngleUnit.Degree));
+
+        arcadeComboBadge.style.opacity = comboActive ? 1f : 0.90f;
+
+        arcadeComboBadge.style.backgroundColor = badgeFill;
+
+        arcadeComboBadge.style.borderTopColor = borderColor;
+
+        arcadeComboBadge.style.borderRightColor = borderColor;
+
+        arcadeComboBadge.style.borderBottomColor = borderColor;
+
+        arcadeComboBadge.style.borderLeftColor = borderColor;
+
+        arcadeComboBadgeGlow.style.backgroundColor = new Color(lossColor.r, lossColor.g, lossColor.b, comboActive ? 0.18f + (gainPunch * 0.16f) : 0.08f);
+
+        arcadeComboBadgeGlow.style.opacity = comboActive ? 0.22f + (gainPunch * 0.22f) : 0.12f;
+
+        arcadeComboCaptionLabel.style.color = comboActive ? new Color(0.90f, 0.95f, 1f, 0.95f) : new Color(0.70f, 0.77f, 0.84f, 0.90f);
+
+        arcadeComboMultiplierLabel.style.color = comboActive ? lossColor : new Color(0.76f, 0.82f, 0.89f, 0.90f);
+
+        arcadeComboCountLabel.style.color = comboActive ? Color.Lerp(lossColor, Color.white, 0.20f) : new Color(0.78f, 0.82f, 0.87f, 0.92f);
+
+        arcadeComboCaptionLabel.style.fontSize = Mathf.Clamp(badgeHeight * ArcadeComboCaptionFontScale, ArcadeComboCaptionFontMin, ArcadeComboCaptionFontMax);
+
+        arcadeComboMultiplierLabel.style.fontSize = Mathf.Clamp(badgeHeight * ArcadeComboMultiplierFontScale, ArcadeComboMultiplierFontMin, ArcadeComboMultiplierFontMax);
+
+        arcadeComboCountLabel.style.fontSize = Mathf.Clamp(badgeHeight * ArcadeComboCountFontScale, ArcadeComboCountFontMin, ArcadeComboCountFontMax);
+
+    }
+
+
+
     private void ResetScoreCounters()
 
     {
@@ -14454,49 +17325,58 @@ public sealed class TabsSongHeaderOverlay
 
         scoredNoteIds.Clear();
 
+        gameplayScoreCardAnimationInitialized = false;
+
+        lastGameplayScoreCardValue = float.NegativeInfinity;
+
+        lastGameplayScoreCardHits = -1;
+
+        lastGameplayScoreCardMisses = -1;
+
+        gameplayScoreCardLastGainTime = float.NegativeInfinity;
+
+        gameplayScoreCardLastMissTime = float.NegativeInfinity;
+
     }
 
 
 
+    private int CountActiveJudgePopupsForGroup(int groupId)
+    {
+        int count = 0;
+        for (int i = 0; i < activeJudgePopups.Count; i++)
+        {
+            JudgePopupEntry entry = activeJudgePopups[i];
+            if (entry != null && entry.groupId == groupId)
+                count++;
+        }
+
+        return count;
+    }
+
     private void SpawnJudgePopup(bool success, int streak)
 
     {
-
-        string text;
-
-        if (success)
-
+        string[] hitTexts =
         {
+            "Awesome!",
+            "Perfect!",
+            "Great!",
+            "Nice!",
+            "Clean!"
+        };
 
-            if (streak >= 8)
-
-                text = "UNSTOPPABLE!";
-
-            else if (streak >= 5)
-
-                text = "ON FIRE!";
-
-            else
-
-            {
-
-                string[] hitTexts = { "Great!", "Awesome!", "Perfect!", "Nice!" };
-
-                text = hitTexts[UnityEngine.Random.Range(0, hitTexts.Length)];
-
-            }
-
-        }
-
-        else
-
+        string[] missTexts =
         {
+            "Missed!",
+            "Oops!",
+            "Too Late!",
+            "Dropped!",
+            "Off Beat!"
+        };
 
-            string[] missTexts = { "Miss!", "Oops!", "Late!" };
-
-            text = missTexts[UnityEngine.Random.Range(0, missTexts.Length)];
-
-        }
+        string[] source = success ? hitTexts : missTexts;
+        string text = source[UnityEngine.Random.Range(0, source.Length)];
 
 
 
@@ -14508,10 +17388,39 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+        SpawnJudgePopupInternal(success, text, popupColor, groupId: 0, characterRectOverride: null, mirrorTowardCenter: false);
+    }
+
+    private void SpawnJudgePopupForMultiplayerPlayer(bool success, int streak, int playerIndex, Rect characterRect)
+    {
+        string[] hitTexts =
+        {
+            "Awesome!",
+            "Perfect!",
+            "Great!",
+            "Nice!",
+            "Clean!"
+        };
+
+        string[] missTexts =
+        {
+            "Missed!",
+            "Oops!",
+            "Too Late!",
+            "Dropped!",
+            "Off Beat!"
+        };
+
+        string[] source = success ? hitTexts : missTexts;
+        string text = source[UnityEngine.Random.Range(0, source.Length)];
+        Color popupColor = success ? GameplayHudAccentCoolColor : GameplayHudAccentWarmColor;
+        SpawnJudgePopupInternal(success, text, popupColor, 10 + Mathf.Clamp(playerIndex, 0, 1), characterRect, playerIndex == 1);
+    }
+
+    private void SpawnJudgePopupInternal(bool success, string text, Color popupColor, int groupId, Rect? characterRectOverride, bool mirrorTowardCenter)
+    {
         Label popup = CreateLabel(text, judgePopupFontSize, popupColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
-
         popup.style.position = Position.Absolute;
-
         bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
 
         if (isHighway3D)
@@ -14530,13 +17439,13 @@ public sealed class TabsSongHeaderOverlay
                 ? judgePopupLayer.worldBound
                 : new Rect(0f, 0f, panelWidth, panelHeight);
 
-            Rect characterRect = GuitarHighway3DRenderer.GetHighwayCharacterHudScreenRect(panelWidth, panelHeight);
+            Rect characterRect = characterRectOverride ?? GuitarHighway3DRenderer.GetHighwayCharacterHudScreenRect(panelWidth, panelHeight);
             characterRect.position -= popupLayerBounds.position;
 
             float layerWidth = popupLayerBounds.width > 1f ? popupLayerBounds.width : panelWidth;
             float layerHeight = popupLayerBounds.height > 1f ? popupLayerBounds.height : panelHeight;
 
-            const float popupTopAnchorY01 = 0.12f;
+            const float popupTopAnchorY01 = 0.08f;
 
             const float popupRightGapX01 = -0.2f;
 
@@ -14546,7 +17455,9 @@ public sealed class TabsSongHeaderOverlay
 
             float popupFontSize = Mathf.Clamp(characterRect.height * 0.072f, 30f, 58f);
 
-            float popupLeft = characterRect.xMax + (characterRect.width * popupRightGapX01);
+            float popupLeft = mirrorTowardCenter
+                ? characterRect.xMin - popupWidth - (characterRect.width * popupRightGapX01)
+                : characterRect.xMax + (characterRect.width * popupRightGapX01);
 
             float maxPopupWidth = Mathf.Max(140f, layerWidth - popupLeft - 18f);
             popupWidth = Mathf.Min(popupWidth, maxPopupWidth);
@@ -14561,7 +17472,7 @@ public sealed class TabsSongHeaderOverlay
                 18f,
                 layerHeight - popupHeight - 18f);
 
-            int highwayPopupLayer = Mathf.Min(activeJudgePopups.Count, 4);
+            int highwayPopupLayer = Mathf.Min(CountActiveJudgePopupsForGroup(groupId), 4);
 
             float highwayPopupStartY = highwayPopupBaseY + highwayPopupLayer * Mathf.Clamp(judgePopupFontSize * 0.42f, 18f, 28f);
 
@@ -14603,7 +17514,8 @@ public sealed class TabsSongHeaderOverlay
 
                 duration = 1.05f,
 
-                fontSize = popupFontSize
+                fontSize = popupFontSize,
+                groupId = groupId
 
             });
 
@@ -14629,7 +17541,7 @@ public sealed class TabsSongHeaderOverlay
 
         float baseY = Mathf.Clamp(Screen.height * 0.62f, 430f, 780f);
 
-        int layer = Mathf.Min(activeJudgePopups.Count, 4);
+        int layer = Mathf.Min(CountActiveJudgePopupsForGroup(groupId), 4);
 
         float startY = baseY + layer * 24f;
 
@@ -14651,7 +17563,8 @@ public sealed class TabsSongHeaderOverlay
 
             endY = startY - 150f,
 
-            duration = 1.05f
+            duration = 1.05f,
+            groupId = groupId
 
         });
 
@@ -14969,6 +17882,27 @@ public sealed class TabsSongHeaderOverlay
 
         return logoWrap;
 
+    }
+
+    private VisualElement CreateMainMenuWordmarkLogo()
+    {
+        return CreateStringTheoryLogo(188f, 178f, 0f, 3.0f, -14f, 2.8f);
+    }
+
+    private void SetWordmarkParentForLibraryLoading(bool showLibraryLoading)
+    {
+        if (sharedMainMenuWordmarkLogo == null || mainMenuBrandWrap == null || libraryLoadingOverlay == null)
+            return;
+
+        VisualElement targetParent = showLibraryLoading
+            ? libraryLoadingOverlay.ContentHost
+            : mainMenuBrandWrap;
+
+        if (sharedMainMenuWordmarkLogo.parent == targetParent)
+            return;
+
+        sharedMainMenuWordmarkLogo.RemoveFromHierarchy();
+        targetParent.Add(sharedMainMenuWordmarkLogo);
     }
 
 
@@ -15521,6 +18455,422 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private MultiplayerRhythmHudPanel CreateMultiplayerRhythmHudPanel()
+    {
+        MultiplayerRhythmHudPanel panel = new MultiplayerRhythmHudPanel();
+
+        panel.root = new VisualElement();
+        panel.root.style.position = Position.Absolute;
+        panel.root.style.width = 420f;
+        panel.root.style.minHeight = 220f;
+        panel.root.style.paddingLeft = 0f;
+        panel.root.style.paddingRight = 0f;
+        panel.root.style.paddingTop = 0f;
+        panel.root.style.paddingBottom = 0f;
+        panel.root.style.alignItems = Align.Center;
+        panel.root.style.justifyContent = Justify.FlexStart;
+        panel.root.pickingMode = PickingMode.Ignore;
+
+        panel.playerLabel = CreateLabel("PLAYER 1", 40f, new Color(0.90f, 0.95f, 1f, 0.96f), true, TextAnchor.MiddleCenter, useTitleFont: true);
+        panel.playerLabel.style.unityFontDefinition = logoFontDefinition;
+        panel.playerLabel.style.letterSpacing = 1.4f;
+        panel.playerLabel.style.marginBottom = 0f;
+
+        panel.deviceLabel = CreateLabel("Keyboard", 28f, GameplayHudMutedTextColor, false, TextAnchor.MiddleCenter, useTitleFont: false);
+        panel.deviceLabel.style.unityFontDefinition = modernUiFontDefinition;
+        panel.deviceLabel.style.marginBottom = 8f;
+
+        panel.scoreLabel = CreateLabel("0", 144f, GameplayHudAccentWarmColor, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        panel.scoreLabel.style.unityFontDefinition = logoFontDefinition;
+        panel.scoreLabel.style.marginBottom = 2f;
+
+        panel.statsLabel = CreateLabel("HITS 0   \u2022   MISSES 0", 32f, GameplayHudMutedTextColor, false, TextAnchor.MiddleCenter, useTitleFont: false);
+        panel.statsLabel.style.unityFontDefinition = modernUiFontDefinition;
+        panel.statsLabel.style.whiteSpace = WhiteSpace.Normal;
+        panel.statsLabel.style.opacity = 0.92f;
+
+        panel.comboRoot = new VisualElement();
+        panel.comboRoot.style.position = Position.Absolute;
+        panel.comboRoot.style.left = 0f;
+        panel.comboRoot.style.top = 0f;
+        panel.comboRoot.style.width = 0f;
+        panel.comboRoot.style.height = 0f;
+        panel.comboRoot.pickingMode = PickingMode.Ignore;
+
+        panel.comboBadge = new VisualElement();
+        panel.comboBadge.style.width = 240f;
+        panel.comboBadge.style.minHeight = 116f;
+        panel.comboBadge.style.position = Position.Absolute;
+        panel.comboBadge.style.paddingTop = 10f;
+        panel.comboBadge.style.paddingBottom = 12f;
+        panel.comboBadge.style.paddingLeft = 18f;
+        panel.comboBadge.style.paddingRight = 18f;
+        panel.comboBadge.style.alignItems = Align.Center;
+        panel.comboBadge.style.justifyContent = Justify.Center;
+        panel.comboBadge.style.backgroundColor = new Color(0.03f, 0.05f, 0.10f, 0.76f);
+        panel.comboBadge.style.borderTopWidth = 2f;
+        panel.comboBadge.style.borderRightWidth = 2f;
+        panel.comboBadge.style.borderBottomWidth = 2f;
+        panel.comboBadge.style.borderLeftWidth = 2f;
+        panel.comboBadge.style.borderTopColor = new Color(0.74f, 0.82f, 0.92f, 0.94f);
+        panel.comboBadge.style.borderRightColor = panel.comboBadge.style.borderTopColor;
+        panel.comboBadge.style.borderBottomColor = panel.comboBadge.style.borderTopColor;
+        panel.comboBadge.style.borderLeftColor = panel.comboBadge.style.borderTopColor;
+        panel.comboBadge.style.borderTopLeftRadius = 18f;
+        panel.comboBadge.style.borderTopRightRadius = 18f;
+        panel.comboBadge.style.borderBottomLeftRadius = 18f;
+        panel.comboBadge.style.borderBottomRightRadius = 18f;
+        panel.comboBadge.style.transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(50f), 0f);
+
+        panel.comboGlow = new VisualElement();
+        panel.comboGlow.style.position = Position.Absolute;
+        panel.comboGlow.style.left = 0f;
+        panel.comboGlow.style.right = 0f;
+        panel.comboGlow.style.top = 0f;
+        panel.comboGlow.style.bottom = 0f;
+        panel.comboGlow.style.backgroundColor = new Color(0.74f, 0.82f, 0.92f, 0.14f);
+        panel.comboGlow.style.borderTopLeftRadius = 18f;
+        panel.comboGlow.style.borderTopRightRadius = 18f;
+        panel.comboGlow.style.borderBottomLeftRadius = 18f;
+        panel.comboGlow.style.borderBottomRightRadius = 18f;
+        panel.comboGlow.style.opacity = 0.18f;
+        panel.comboGlow.pickingMode = PickingMode.Ignore;
+
+        panel.comboCaptionLabel = CreateLabel("MULTIPLIER", 58f, GameplayHudEyebrowColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        panel.comboCaptionLabel.style.unityFontDefinition = logoFontDefinition;
+        panel.comboCaptionLabel.style.letterSpacing = 0.9f;
+        panel.comboCaptionLabel.style.marginBottom = -4f;
+        panel.comboCaptionLabel.style.opacity = 0.94f;
+
+        panel.comboMultiplierLabel = CreateLabel("1x", 92f, ArcadeComboTierOneColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        panel.comboMultiplierLabel.style.unityFontDefinition = logoFontDefinition;
+        panel.comboMultiplierLabel.style.letterSpacing = 0.9f;
+        panel.comboMultiplierLabel.style.marginTop = -4f;
+        panel.comboMultiplierLabel.style.marginBottom = -4f;
+        panel.comboMultiplierLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+
+        panel.comboCountLabel = CreateLabel("COMBO 0", 34f, GameplayHudPrimaryTextColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        panel.comboCountLabel.style.unityFontDefinition = logoFontDefinition;
+        panel.comboCountLabel.style.letterSpacing = 0.7f;
+        panel.comboCountLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        panel.comboCountLabel.style.opacity = 0.98f;
+
+        panel.comboBadge.Add(panel.comboGlow);
+        panel.comboBadge.Add(panel.comboCaptionLabel);
+        panel.comboBadge.Add(panel.comboMultiplierLabel);
+        panel.comboBadge.Add(panel.comboCountLabel);
+
+
+        panel.root.Add(panel.playerLabel);
+        panel.root.Add(panel.deviceLabel);
+        panel.root.Add(panel.scoreLabel);
+        panel.comboRoot.Add(panel.comboBadge);
+        panel.root.Add(panel.statsLabel);
+
+        return panel;
+    }
+
+    private void RebuildMultiplayerRhythmSetupButton(
+        VisualElement row,
+        List<Button> cache,
+        string buttonText,
+        Action onClick,
+        int hoverRowIndex,
+        bool focused,
+        bool captureActive)
+    {
+        if (row == null || cache == null)
+            return;
+
+        Button button = cache.Count > 0 ? cache[0] : null;
+        if (button == null)
+        {
+            row.Clear();
+            cache.Clear();
+
+            button = CreateStartMenuSetupButton(buttonText, null);
+            button.style.width = 860f;
+            button.style.maxWidth = Length.Percent(100f);
+            button.style.marginLeft = 12f;
+            button.style.marginRight = 12f;
+            button.style.marginBottom = 18f;
+            button.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverMultiplayerRhythmSetupRowFromUi(hoverRowIndex));
+            button.RegisterCallback<PointerDownEvent>(evt =>
+            {
+                owner?.HoverMultiplayerRhythmSetupRowFromUi(hoverRowIndex);
+                evt.StopPropagation();
+            });
+            button.RegisterCallback<ClickEvent>(evt =>
+            {
+                evt.StopPropagation();
+            });
+            button.clicked += () =>
+            {
+                owner?.HoverMultiplayerRhythmSetupRowFromUi(hoverRowIndex);
+                onClick?.Invoke();
+            };
+            row.Add(button);
+            cache.Add(button);
+        }
+
+        button.text = buttonText;
+        StyleStartMenuSetupButton(button, focused, captureActive, forceAccent: captureActive);
+        button.style.opacity = 1f;
+    }
+
+    private void UpdateMultiplayerRhythmSetup(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null)
+            return;
+
+        multiplayerRhythmSetupStatusLabel.text = snapshot.multiplayerRhythmSetupStatusText ?? string.Empty;
+        multiplayerRhythmSetupStatusLabel.style.color = snapshot.multiplayerRhythmSetupCanContinue
+            ? LibraryConfirmedSongColor
+            : new Color(0.92f, 0.58f, 0.50f, 0.96f);
+
+        RebuildMultiplayerRhythmSetupButton(
+            multiplayerRhythmSetupPlayerOneDevicesRow,
+            multiplayerRhythmPlayerOneDeviceButtons,
+            snapshot.multiplayerRhythmPlayerOneSetupLabel ?? "Press to setup",
+            () => owner?.ActivateMultiplayerRhythmSetupRowFromUi(0),
+            0,
+            snapshot.selectedMultiplayerRhythmSetupIndex == 0,
+            snapshot.multiplayerRhythmSetupCapturePlayerIndex == 0);
+
+        RebuildMultiplayerRhythmSetupButton(
+            multiplayerRhythmSetupPlayerTwoDevicesRow,
+            multiplayerRhythmPlayerTwoDeviceButtons,
+            snapshot.multiplayerRhythmPlayerTwoSetupLabel ?? "Press to setup",
+            () => owner?.ActivateMultiplayerRhythmSetupRowFromUi(1),
+            1,
+            snapshot.selectedMultiplayerRhythmSetupIndex == 1,
+            snapshot.multiplayerRhythmSetupCapturePlayerIndex == 1);
+
+        StyleStartMenuSetupButton(multiplayerRhythmSetupContinueButton, snapshot.selectedMultiplayerRhythmSetupIndex == 2, false, forceAccent: true);
+        multiplayerRhythmSetupContinueButton.SetEnabled(snapshot.multiplayerRhythmSetupCanContinue);
+        multiplayerRhythmSetupContinueButton.style.opacity = snapshot.multiplayerRhythmSetupCanContinue ? 1f : 0.48f;
+    }
+
+    private void UpdateMultiplayerRhythmHud(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || multiplayerRhythmHudPanels == null)
+            return;
+
+        float panelWidth = document != null && document.rootVisualElement != null && document.rootVisualElement.worldBound.width > 1f
+            ? document.rootVisualElement.worldBound.width
+            : Screen.width;
+        float panelHeight = document != null && document.rootVisualElement != null && document.rootVisualElement.worldBound.height > 1f
+            ? document.rootVisualElement.worldBound.height
+            : Screen.height;
+
+        for (int i = 0; i < multiplayerRhythmHudPanels.Length; i++)
+        {
+            MultiplayerRhythmHudPanel panel = multiplayerRhythmHudPanels[i];
+            MultiplayerRhythmPlayerSnapshot player = snapshot.multiplayerRhythmPlayers != null && i < snapshot.multiplayerRhythmPlayers.Count
+                ? snapshot.multiplayerRhythmPlayers[i]
+                : null;
+
+            if (panel == null || panel.root == null || player == null)
+            {
+                if (panel?.root != null)
+                    panel.root.style.display = DisplayStyle.None;
+                if (panel?.comboRoot != null)
+                    panel.comboRoot.style.display = DisplayStyle.None;
+                continue;
+            }
+
+            panel.root.style.display = DisplayStyle.Flex;
+            if (panel.comboRoot != null)
+                panel.comboRoot.style.display = DisplayStyle.Flex;
+            panel.playerLabel.text = player.playerLabel ?? $"Player {i + 1}";
+            panel.deviceLabel.text = player.deviceLabel ?? "--";
+            panel.scoreLabel.text = FormatArcadeScoreValue(player.scoreValue);
+            panel.comboMultiplierLabel.text = $"{Mathf.Clamp(player.multiplier, 1, 4)}x";
+            panel.comboCountLabel.text = $"COMBO {Mathf.Max(0, player.comboCount):N0}";
+            panel.statsLabel.text = FormattableString.Invariant($"HITS {Mathf.Max(0, player.hitCount):N0}   \u2022   MISSES {Mathf.Max(0, player.missCount):N0}");
+
+            Color accent = player.comboCount > 0 ? GetArcadeComboAccentColor(player.multiplier) : ArcadeComboTierOneColor;
+            if (player.winner)
+                accent = Color.Lerp(accent, Color.white, 0.12f);
+
+            panel.scoreLabel.style.color = Color.Lerp(GameplayHudAccentWarmColor, accent, 0.16f);
+            panel.comboBadge.style.borderTopColor = accent;
+            panel.comboBadge.style.borderRightColor = accent;
+            panel.comboBadge.style.borderBottomColor = accent;
+            panel.comboBadge.style.borderLeftColor = accent;
+            panel.comboGlow.style.backgroundColor = new Color(accent.r, accent.g, accent.b, player.comboCount > 0 ? 0.16f : 0.08f);
+            panel.comboMultiplierLabel.style.color = accent;
+            panel.comboCountLabel.style.color = Color.Lerp(accent, Color.white, 0.20f);
+
+            float hudWidth = Mathf.Clamp(panelWidth * 0.12f, 340f, 460f);
+            float hudHeight = 220f;
+            float scoreCenterX = GetMultiplayerRhythmScoreCenterX(i, panelWidth);
+            float scoreTop = GetMultiplayerRhythmScoreTop(panelHeight);
+            float left = scoreCenterX - (hudWidth * 0.5f);
+            float top = scoreTop;
+
+            panel.root.style.width = hudWidth;
+            panel.root.style.minHeight = hudHeight;
+            panel.root.style.left = left;
+            panel.root.style.top = top;
+            UpdateMultiplayerRhythmScoreAnimation(panel, player, i);
+            UpdateMultiplayerRhythmComboBadge(panel, player, i, panelWidth, panelHeight);
+        }
+    }
+
+    private float GetMultiplayerRhythmScoreCenterX(int playerIndex, float layerWidth)
+    {
+        float baseCenterX = layerWidth * (playerIndex == 0 ? 0.25f : 0.75f);
+        float mirroredOffset = (owner != null ? owner.multiplayerScoreHorizontalOffset : 0f) * layerWidth;
+        return playerIndex == 0 ? baseCenterX - mirroredOffset : baseCenterX + mirroredOffset;
+    }
+
+    private float GetMultiplayerRhythmScoreTop(float layerHeight)
+    {
+        float baseTop = layerHeight * 0.16f;
+        float verticalOffset = (owner != null ? owner.multiplayerScoreVerticalOffset : 0f) * layerHeight;
+        return baseTop + verticalOffset;
+    }
+
+    private void UpdateMultiplayerRhythmScoreAnimation(MultiplayerRhythmHudPanel panel, MultiplayerRhythmPlayerSnapshot player, int playerIndex)
+    {
+        if (panel == null || panel.scoreLabel == null || player == null)
+            return;
+
+        float now = Time.unscaledTime;
+        float scoreValue = Mathf.Max(0f, player.scoreValue);
+        int hitCount = Mathf.Max(0, player.hitCount);
+        int missCount = Mathf.Max(0, player.missCount);
+
+        if (!multiplayerRhythmScoreAnimationInitialized[playerIndex])
+        {
+            lastMultiplayerRhythmScoreValues[playerIndex] = scoreValue;
+            lastMultiplayerRhythmScoreHits[playerIndex] = hitCount;
+            lastMultiplayerRhythmScoreMisses[playerIndex] = missCount;
+            multiplayerRhythmScoreAnimationInitialized[playerIndex] = true;
+        }
+        else
+        {
+            if (scoreValue > lastMultiplayerRhythmScoreValues[playerIndex] + 0.5f || hitCount > lastMultiplayerRhythmScoreHits[playerIndex])
+                multiplayerRhythmScoreLastGainTimes[playerIndex] = now;
+            if (missCount > lastMultiplayerRhythmScoreMisses[playerIndex])
+                multiplayerRhythmScoreLastMissTimes[playerIndex] = now;
+
+            lastMultiplayerRhythmScoreValues[playerIndex] = scoreValue;
+            lastMultiplayerRhythmScoreHits[playerIndex] = hitCount;
+            lastMultiplayerRhythmScoreMisses[playerIndex] = missCount;
+        }
+
+        float gainProgress = Mathf.Clamp01((now - multiplayerRhythmScoreLastGainTimes[playerIndex]) / 0.38f);
+        float missProgress = Mathf.Clamp01((now - multiplayerRhythmScoreLastMissTimes[playerIndex]) / 0.42f);
+        bool gainAnimating = multiplayerRhythmScoreLastGainTimes[playerIndex] > float.NegativeInfinity && gainProgress < 1f;
+        bool missAnimating = multiplayerRhythmScoreLastMissTimes[playerIndex] > float.NegativeInfinity && missProgress < 1f;
+        float gainPunch = gainAnimating ? Mathf.Sin(gainProgress * Mathf.PI) : 0f;
+        float missPunch = missAnimating ? Mathf.Sin(missProgress * Mathf.PI) : 0f;
+        float idlePulse = Mathf.Sin((now * 1.06f) + (playerIndex * 0.35f)) * 0.018f;
+        float idleFloat = Mathf.Sin((now * 0.94f) + (playerIndex * 0.52f)) * 2.4f;
+        float idleTilt = Mathf.Sin((now * 0.82f) + 0.72f + (playerIndex * 0.37f)) * 1.15f;
+        Color accent = player.comboCount > 0 ? GetArcadeComboAccentColor(player.multiplier) : ArcadeComboTierOneColor;
+        Color animatedAccent = Color.Lerp(accent, GameplayScoreCardMissColor, missAnimating ? (1f - missProgress) * 0.72f : 0f);
+        float numberScale = 1f + idlePulse + (gainPunch * 0.12f) - (missPunch * 0.07f);
+        float numberTranslateY = idleFloat - (gainPunch * 7f) + (missPunch * 5f);
+        float numberRotation = idleTilt + (gainPunch * 2.2f) - (missPunch * 2.8f);
+
+        panel.scoreLabel.style.color = Color.Lerp(animatedAccent, Color.white, 0.10f + (gainPunch * 0.10f));
+        panel.scoreLabel.style.scale = new Scale(new Vector3(numberScale, numberScale, 1f));
+        panel.scoreLabel.style.translate = new Translate(0f, numberTranslateY, 0f);
+        panel.scoreLabel.style.rotate = new Rotate(new Angle(numberRotation, AngleUnit.Degree));
+        panel.scoreLabel.style.opacity = 0.96f + (gainPunch * 0.04f);
+    }
+
+    private void UpdateMultiplayerRhythmComboBadge(
+        MultiplayerRhythmHudPanel panel,
+        MultiplayerRhythmPlayerSnapshot player,
+        int playerIndex,
+        float layerWidth,
+        float layerHeight)
+    {
+        if (panel == null || panel.comboRoot == null || panel.comboBadge == null || player == null)
+            return;
+
+        int comboValue = Mathf.Max(0, player.comboCount);
+        int multiplierValue = Mathf.Clamp(player.multiplier, 1, 4);
+        float now = Time.unscaledTime;
+
+        if (!multiplayerRhythmComboAnimationInitialized[playerIndex])
+        {
+            lastMultiplayerRhythmComboValues[playerIndex] = comboValue;
+            lastMultiplayerRhythmMultiplierValues[playerIndex] = multiplierValue;
+            multiplayerRhythmComboAnimationInitialized[playerIndex] = true;
+        }
+        else if (comboValue != lastMultiplayerRhythmComboValues[playerIndex] || multiplierValue != lastMultiplayerRhythmMultiplierValues[playerIndex])
+        {
+            if (lastMultiplayerRhythmComboValues[playerIndex] > 0 && comboValue == 0)
+                multiplayerRhythmComboLastLossTimes[playerIndex] = now;
+            else if (comboValue > lastMultiplayerRhythmComboValues[playerIndex] || multiplierValue > lastMultiplayerRhythmMultiplierValues[playerIndex])
+                multiplayerRhythmComboLastGainTimes[playerIndex] = now;
+
+            lastMultiplayerRhythmComboValues[playerIndex] = comboValue;
+            lastMultiplayerRhythmMultiplierValues[playerIndex] = multiplierValue;
+        }
+
+        bool comboActive = comboValue > 0;
+        Color accentColor = comboActive ? GetArcadeComboAccentColor(multiplierValue) : Color.Lerp(GameplayHudMutedTextColor, ArcadeComboTierOneColor, 0.35f);
+        float gainProgress = Mathf.Clamp01((now - multiplayerRhythmComboLastGainTimes[playerIndex]) / 0.34f);
+        float lossProgress = Mathf.Clamp01((now - multiplayerRhythmComboLastLossTimes[playerIndex]) / 0.38f);
+        bool gainAnimating = multiplayerRhythmComboLastGainTimes[playerIndex] > float.NegativeInfinity && gainProgress < 1f;
+        bool lossAnimating = multiplayerRhythmComboLastLossTimes[playerIndex] > float.NegativeInfinity && lossProgress < 1f;
+        float gainPunch = gainAnimating ? Mathf.Sin(gainProgress * Mathf.PI) : 0f;
+        float lossPunch = lossAnimating ? Mathf.Sin(lossProgress * Mathf.PI) : 0f;
+        float idleBob = Mathf.Sin(now * 1.28f) * 3.5f;
+        float idleTilt = Mathf.Sin((now * 0.92f) + 0.6f) * 1.35f;
+        float idleScale = 1f + (Mathf.Sin(now * 1.06f) * 0.018f);
+
+        float badgeWidth = Mathf.Clamp(layerHeight * 0.15f, 228f, 360f);
+        float badgeHeight = Mathf.Clamp(layerHeight * 0.07f, 108f, 172f);
+        float baseCenterX = layerWidth * (playerIndex == 0 ? 0.34f : 0.66f);
+        float baseTop = layerHeight * 0.325f;
+        float mirroredHorizontalOffset = (owner != null ? owner.multiplayerComboBadgeHorizontalOffset : 0f) * layerWidth;
+        float verticalOffset = (owner != null ? owner.multiplayerComboBadgeVerticalOffset : 0f) * layerHeight;
+        float badgeCenterX = playerIndex == 0 ? baseCenterX + mirroredHorizontalOffset : baseCenterX - mirroredHorizontalOffset;
+        float badgeLeft = badgeCenterX - (badgeWidth * 0.5f);
+        float badgeTop = baseTop + verticalOffset;
+
+        float baseScale = idleScale + (gainPunch * 0.17f) - (lossPunch * 0.09f);
+        float translateY = idleBob - (gainPunch * 7f) + (lossPunch * 6f);
+        float rotationDegrees = idleTilt + (gainPunch * 2.1f) - (lossPunch * 4.8f);
+        Color lossColor = Color.Lerp(accentColor, ArcadeComboLostColor, lossAnimating ? (1f - lossProgress) * 0.84f : 0f);
+        Color borderColor = Color.Lerp(lossColor, Color.white, comboActive ? 0.12f : 0.06f);
+        Color badgeFill = comboActive
+            ? Color.Lerp(new Color(0.03f, 0.05f, 0.10f, 0.78f), lossColor, 0.12f)
+            : new Color(0.03f, 0.05f, 0.10f, 0.60f);
+
+        panel.comboMultiplierLabel.text = $"{multiplierValue}x";
+        panel.comboCountLabel.text = $"COMBO {comboValue:N0}";
+        panel.comboBadge.style.left = badgeLeft;
+        panel.comboBadge.style.top = badgeTop;
+        panel.comboBadge.style.width = badgeWidth;
+        panel.comboBadge.style.minHeight = badgeHeight;
+        panel.comboBadge.style.maxHeight = badgeHeight;
+        panel.comboBadge.style.scale = new Scale(new Vector3(baseScale, baseScale, 1f));
+        panel.comboBadge.style.translate = new Translate(0f, translateY, 0f);
+        panel.comboBadge.style.rotate = new Rotate(new Angle(rotationDegrees, AngleUnit.Degree));
+        panel.comboBadge.style.opacity = comboActive ? 1f : 0.90f;
+        panel.comboBadge.style.backgroundColor = badgeFill;
+        panel.comboBadge.style.borderTopColor = borderColor;
+        panel.comboBadge.style.borderRightColor = borderColor;
+        panel.comboBadge.style.borderBottomColor = borderColor;
+        panel.comboBadge.style.borderLeftColor = borderColor;
+        panel.comboGlow.style.backgroundColor = new Color(lossColor.r, lossColor.g, lossColor.b, comboActive ? 0.18f + (gainPunch * 0.16f) : 0.08f);
+        panel.comboGlow.style.opacity = comboActive ? 0.22f + (gainPunch * 0.22f) : 0.12f;
+        panel.comboCaptionLabel.style.color = comboActive ? new Color(0.90f, 0.95f, 1f, 0.95f) : new Color(0.70f, 0.77f, 0.84f, 0.90f);
+        panel.comboMultiplierLabel.style.color = comboActive ? lossColor : new Color(0.76f, 0.82f, 0.89f, 0.90f);
+        panel.comboCountLabel.style.color = comboActive ? Color.Lerp(lossColor, Color.white, 0.20f) : new Color(0.78f, 0.82f, 0.87f, 0.92f);
+        panel.comboCaptionLabel.style.fontSize = Mathf.Clamp(badgeHeight * ArcadeComboCaptionFontScale, ArcadeComboCaptionFontMin, ArcadeComboCaptionFontMax);
+        panel.comboMultiplierLabel.style.fontSize = Mathf.Clamp(badgeHeight * ArcadeComboMultiplierFontScale, ArcadeComboMultiplierFontMin, ArcadeComboMultiplierFontMax);
+        panel.comboCountLabel.style.fontSize = Mathf.Clamp(badgeHeight * ArcadeComboCountFontScale, ArcadeComboCountFontMin, ArcadeComboCountFontMax);
+    }
+
     private void UpdateStartMenu(GuitarGameplaySnapshot snapshot)
 
     {
@@ -15529,7 +18879,7 @@ public sealed class TabsSongHeaderOverlay
 
         bool arcadeSetup = snapshot.selectedStartMenuStepIndex == 2;
 
-        startMenuTitleLabel.text = guitarSetup ? "GUITAR SETUP" : arcadeSetup ? "ARCADE SETUP" : "SELECT MODE";
+        startMenuTitleLabel.text = guitarSetup ? "GUITAR SETUP" : arcadeSetup ? "RHYTHM SETUP" : "SELECT MODE";
 
         startMenuSubtitleLabel.text = guitarSetup
 
@@ -15537,7 +18887,7 @@ public sealed class TabsSongHeaderOverlay
 
             : arcadeSetup
 
-                ? "Choose the controller style for Arcade mode. These controls remain editable in General Settings."
+                ? "Choose the controller style for Rhythm mode. These controls remain editable in General Settings."
 
                 : "Choose how you want to play. You can change detailed controls later from General Settings.";
 
@@ -15689,6 +19039,303 @@ public sealed class TabsSongHeaderOverlay
 
         button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
 
+    }
+
+    private void UpdateLoopBookmarksCard(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || loopBookmarksCard == null)
+            return;
+
+        loopBookmarksCard.BringToFront();
+        loopConfigurationTitleLabel.BringToFront();
+        bool rhythmPracticeMode = snapshot.gameplayMode == GuitarGameplayMode.Arcade && !snapshot.multiplayerRhythmMode;
+        loopBookmarksTitleLabel.text = rhythmPracticeMode ? "SECTIONS" : "BOOKMARKS";
+        loopConfigurationTitleLabel.text = rhythmPracticeMode ? "PRACTICE SECTIONS" : "LOOP CONFIGURATION";
+        loopBookmarksTrackLabel.text = rhythmPracticeMode
+            ? $"{snapshot.selectedArcadeArrangementDisplayName}  {snapshot.selectedArcadeDifficultyLabel}"
+            : $"Selected Track: {(!string.IsNullOrWhiteSpace(snapshot.loopBookmarkTrackLabel) ? snapshot.loopBookmarkTrackLabel : "--")}";
+        loopBookmarksHintLabel.text = rhythmPracticeMode
+            ? "1 set start  •  2 set end  •  Enter apply  •  Del clear"
+            : "B bookmark current loop  •  Save updates selected  •  Rename renames selected";
+
+        loopBookmarkAddButton.text = rhythmPracticeMode ? "Start" : "Bookmark";
+        loopBookmarkSaveButton.text = rhythmPracticeMode ? "End" : "Save";
+        loopBookmarkRenameButton.text = rhythmPracticeMode ? "Apply" : "Rename";
+        loopBookmarkDeleteButton.text = rhythmPracticeMode ? "Clear" : "Delete";
+        if (rhythmPracticeMode)
+        {
+            loopBookmarksHintLabel.text = "Enter select  •  Space preview  •  Esc start";
+            loopBookmarkSaveButton.text = string.Empty;
+            loopBookmarkRenameButton.text = string.Empty;
+        }
+
+        bool hasSelection = rhythmPracticeMode
+                            ? snapshot.rhythmPracticeSectionNames != null
+                              && snapshot.selectedRhythmPracticeSectionIndex >= 0
+                              && snapshot.selectedRhythmPracticeSectionIndex < snapshot.rhythmPracticeSectionNames.Count
+                            : snapshot.loopBookmarkNames != null
+                              && snapshot.selectedLoopBookmarkIndex >= 0
+                              && snapshot.selectedLoopBookmarkIndex < snapshot.loopBookmarkNames.Count;
+        bool renameActive = !rhythmPracticeMode && snapshot.loopBookmarkRenameActive;
+        bool canPrimaryAction = rhythmPracticeMode
+            ? hasSelection && !renameActive
+            : snapshot.loopStartConfigured && snapshot.loopEndConfigured && !renameActive;
+        bool canSecondaryAction = rhythmPracticeMode
+            ? hasSelection && !renameActive
+            : hasSelection && snapshot.selectedLoopBookmarkModified && !renameActive;
+        bool canTertiaryAction = hasSelection && !renameActive;
+        bool canQuaternaryAction = rhythmPracticeMode
+            ? (snapshot.loopEnabled || snapshot.rhythmPracticeLoopStartSectionIndex >= 0)
+            : hasSelection && !renameActive;
+        if (rhythmPracticeMode)
+        {
+            hasSelection = snapshot.rhythmPracticeLoopStartSectionIndex >= 0;
+            canPrimaryAction = !renameActive;
+            canSecondaryAction = false;
+            canTertiaryAction = false;
+            canQuaternaryAction = snapshot.loopEnabled || snapshot.rhythmPracticeLoopStartSectionIndex >= 0;
+        }
+
+        UpdateLoopBookmarkActionButtonState(loopBookmarkAddButton, canPrimaryAction, accent: true);
+        UpdateLoopBookmarkActionButtonState(loopBookmarkSaveButton, canSecondaryAction);
+        UpdateLoopBookmarkActionButtonState(loopBookmarkRenameButton, canTertiaryAction, accent: rhythmPracticeMode);
+        UpdateLoopBookmarkActionButtonState(loopBookmarkDeleteButton, canQuaternaryAction, accent: true, danger: !rhythmPracticeMode);
+        loopBookmarkSaveButton.style.display = rhythmPracticeMode ? DisplayStyle.None : DisplayStyle.Flex;
+        loopBookmarkRenameButton.style.display = rhythmPracticeMode ? DisplayStyle.None : DisplayStyle.Flex;
+
+        loopBookmarkRenameRow.style.display = renameActive ? DisplayStyle.Flex : DisplayStyle.None;
+        if (renameActive)
+        {
+            string draft = snapshot.loopBookmarkRenameDraft ?? string.Empty;
+            if (!string.Equals(loopBookmarkRenameField.value, draft, StringComparison.Ordinal))
+                loopBookmarkRenameField.SetValueWithoutNotify(draft);
+            UpdateLoopBookmarkActionButtonState(loopBookmarkRenameConfirmButton, !string.IsNullOrWhiteSpace(draft), accent: true);
+            UpdateLoopBookmarkActionButtonState(loopBookmarkRenameCancelButton, true);
+        }
+
+        string signature = BuildLoopBookmarksSignature(snapshot);
+        if (!string.Equals(signature, lastLoopBookmarksSignature, StringComparison.Ordinal))
+        {
+            RebuildLoopBookmarkRows(snapshot);
+            lastLoopBookmarksSignature = signature;
+        }
+
+        if (renameActive && !wasLoopBookmarkRenameActive)
+        {
+            loopBookmarkRenameField.Focus();
+            loopBookmarkRenameField.SelectAll();
+        }
+
+        int scrollIndex = rhythmPracticeMode ? snapshot.selectedRhythmPracticeSectionIndex : snapshot.selectedLoopBookmarkIndex;
+        bool shouldScrollToSelection = rhythmPracticeMode
+            ? scrollIndex >= 0 && scrollIndex < loopBookmarkRowButtons.Count
+            : hasSelection && scrollIndex >= 0 && scrollIndex < loopBookmarkRowButtons.Count;
+        if (shouldScrollToSelection)
+            loopBookmarksListView.ScrollTo(loopBookmarkRowButtons[scrollIndex]);
+
+        wasLoopBookmarkRenameActive = renameActive;
+    }
+
+    private static string BuildLoopBookmarksSignature(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null)
+            return string.Empty;
+
+        if (snapshot.gameplayMode == GuitarGameplayMode.Arcade && !snapshot.multiplayerRhythmMode)
+        {
+            string practiceNames = snapshot.rhythmPracticeSectionNames != null ? string.Join("\u001F", snapshot.rhythmPracticeSectionNames) : string.Empty;
+            string practiceDetails = snapshot.rhythmPracticeSectionDetails != null ? string.Join("\u001F", snapshot.rhythmPracticeSectionDetails) : string.Empty;
+            return string.Join("\u001E", new[]
+            {
+                snapshot.selectedArcadeArrangementDisplayName ?? string.Empty,
+                snapshot.selectedArcadeDifficultyLabel ?? string.Empty,
+                snapshot.selectedRhythmPracticeSectionIndex.ToString(CultureInfo.InvariantCulture),
+                snapshot.rhythmPracticeLoopStartSectionIndex.ToString(CultureInfo.InvariantCulture),
+                snapshot.rhythmPracticeLoopEndSectionIndex.ToString(CultureInfo.InvariantCulture),
+                snapshot.loopEnabled ? "1" : "0",
+                practiceNames,
+                practiceDetails
+            });
+        }
+
+        string names = snapshot.loopBookmarkNames != null ? string.Join("\u001F", snapshot.loopBookmarkNames) : string.Empty;
+        string details = snapshot.loopBookmarkDetails != null ? string.Join("\u001F", snapshot.loopBookmarkDetails) : string.Empty;
+        return string.Join("\u001E", new[]
+        {
+            snapshot.loopBookmarkTrackLabel ?? string.Empty,
+            snapshot.selectedLoopBookmarkIndex.ToString(CultureInfo.InvariantCulture),
+            snapshot.selectedLoopBookmarkModified ? "1" : "0",
+            snapshot.loopBookmarkRenameActive ? "1" : "0",
+            snapshot.loopBookmarkRenameDraft ?? string.Empty,
+            names,
+            details
+        });
+    }
+
+    private void RebuildLoopBookmarkRows(GuitarGameplaySnapshot snapshot)
+    {
+        loopBookmarkRowButtons.Clear();
+        loopBookmarksListView.contentContainer.Clear();
+
+        bool rhythmPracticeMode = snapshot != null && snapshot.gameplayMode == GuitarGameplayMode.Arcade && !snapshot.multiplayerRhythmMode;
+        int rowCount = rhythmPracticeMode
+            ? snapshot?.rhythmPracticeSectionNames?.Count ?? 0
+            : snapshot?.loopBookmarkNames?.Count ?? 0;
+        if (rowCount <= 0)
+        {
+            loopBookmarksEmptyLabel.text = rhythmPracticeMode ? "No chart sections found." : "No bookmarks yet.";
+            loopBookmarksListView.Add(loopBookmarksEmptyLabel);
+            return;
+        }
+
+        for (int i = 0; i < rowCount; i++)
+        {
+            int rowIndex = i;
+            bool focused = rhythmPracticeMode ? rowIndex == snapshot.selectedRhythmPracticeSectionIndex : rowIndex == snapshot.selectedLoopBookmarkIndex;
+            string name = rhythmPracticeMode
+                ? (snapshot.rhythmPracticeSectionNames != null && rowIndex < snapshot.rhythmPracticeSectionNames.Count
+                    ? snapshot.rhythmPracticeSectionNames[rowIndex]
+                    : $"Section {rowIndex + 1}")
+                : (snapshot.loopBookmarkNames != null && rowIndex < snapshot.loopBookmarkNames.Count
+                    ? snapshot.loopBookmarkNames[rowIndex]
+                    : $"bookmark {rowIndex + 1}");
+            string detail = rhythmPracticeMode
+                ? (snapshot.rhythmPracticeSectionDetails != null && rowIndex < snapshot.rhythmPracticeSectionDetails.Count
+                    ? snapshot.rhythmPracticeSectionDetails[rowIndex]
+                    : string.Empty)
+                : (snapshot.loopBookmarkDetails != null && rowIndex < snapshot.loopBookmarkDetails.Count
+                    ? snapshot.loopBookmarkDetails[rowIndex]
+                    : string.Empty);
+            bool inSelectedRange = false;
+            if (rhythmPracticeMode && snapshot.rhythmPracticeLoopStartSectionIndex >= 0)
+            {
+                int selectedStartIndex = snapshot.rhythmPracticeLoopStartSectionIndex;
+                int selectedEndIndex = snapshot.rhythmPracticeLoopEndSectionIndex;
+                int focusedIndex = snapshot.selectedRhythmPracticeSectionIndex;
+                if (selectedEndIndex >= 0)
+                {
+                    int rangeStart = Math.Min(selectedStartIndex, selectedEndIndex);
+                    int rangeEnd = Math.Max(selectedStartIndex, selectedEndIndex);
+                    inSelectedRange = rowIndex >= rangeStart && rowIndex <= rangeEnd;
+                }
+                else if (focusedIndex == selectedStartIndex)
+                {
+                    inSelectedRange = rowIndex == selectedStartIndex;
+                }
+                else
+                {
+                    int previewStart = Math.Min(selectedStartIndex, focusedIndex);
+                    int previewEnd = Math.Max(selectedStartIndex, focusedIndex);
+                    inSelectedRange = rowIndex >= previewStart && rowIndex <= previewEnd && rowIndex != focusedIndex;
+                }
+            }
+
+            bool selected = rhythmPracticeMode ? inSelectedRange : rowIndex == snapshot.selectedLoopBookmarkIndex;
+
+            Button rowButton = new Button(() =>
+            {
+                if (rhythmPracticeMode)
+                    owner?.ActivateArcadePracticeSectionFromUi(rowIndex);
+                else
+                    owner?.SelectLoopBookmarkFromUi(rowIndex);
+            });
+            Color defaultBorderColor = inSelectedRange ? LibraryConfirmedSongColor : new Color(0.20f, 0.27f, 0.36f, 0.94f);
+            Color hoverBorderColor = selected || inSelectedRange ? defaultBorderColor : new Color(0.78f, 0.86f, 0.93f, 0.96f);
+            rowButton.focusable = false;
+            rowButton.text = string.Empty;
+            rowButton.style.width = Length.Percent(100f);
+            rowButton.style.alignSelf = Align.Stretch;
+            rowButton.style.minHeight = 124f;
+            rowButton.style.scale = focused ? new Scale(new Vector3(1.022f, 1.022f, 1f)) : new Scale(Vector3.one);
+            rowButton.style.marginLeft = 0f;
+            rowButton.style.marginRight = 0f;
+            rowButton.style.marginTop = 6f;
+            rowButton.style.marginBottom = 6f;
+            rowButton.style.paddingLeft = 20f;
+            rowButton.style.paddingRight = 20f;
+            rowButton.style.paddingTop = 16f;
+            rowButton.style.paddingBottom = 16f;
+            rowButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            rowButton.style.borderTopWidth = 2f;
+            rowButton.style.borderRightWidth = 2f;
+            rowButton.style.borderBottomWidth = 2f;
+            rowButton.style.borderLeftWidth = 2f;
+            rowButton.style.borderTopLeftRadius = 12f;
+            rowButton.style.borderTopRightRadius = 12f;
+            rowButton.style.borderBottomLeftRadius = 12f;
+            rowButton.style.borderBottomRightRadius = 12f;
+            rowButton.style.borderTopColor = inSelectedRange ? LibraryConfirmedSongColor : defaultBorderColor;
+            rowButton.style.borderRightColor = rowButton.style.borderTopColor;
+            rowButton.style.borderBottomColor = rowButton.style.borderTopColor;
+            rowButton.style.borderLeftColor = rowButton.style.borderTopColor;
+            rowButton.style.unityTextAlign = TextAnchor.MiddleLeft;
+            rowButton.style.color = inSelectedRange ? Color.white : new Color(0.95f, 0.98f, 1f, 0.98f);
+            rowButton.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                if (!inSelectedRange)
+                    rowButton.style.borderTopColor = hoverBorderColor;
+                if (!inSelectedRange)
+                {
+                    rowButton.style.borderRightColor = rowButton.style.borderTopColor;
+                    rowButton.style.borderBottomColor = rowButton.style.borderTopColor;
+                    rowButton.style.borderLeftColor = rowButton.style.borderTopColor;
+                }
+            });
+            rowButton.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                if (!inSelectedRange)
+                {
+                    rowButton.style.borderTopColor = defaultBorderColor;
+                    rowButton.style.borderRightColor = rowButton.style.borderTopColor;
+                    rowButton.style.borderBottomColor = rowButton.style.borderTopColor;
+                    rowButton.style.borderLeftColor = rowButton.style.borderTopColor;
+                }
+            });
+
+            VisualElement rowContent = new VisualElement();
+            rowContent.style.flexDirection = FlexDirection.Column;
+            rowContent.style.alignItems = Align.FlexStart;
+            rowContent.style.justifyContent = Justify.Center;
+            rowContent.style.width = Length.Percent(100f);
+            rowContent.pickingMode = PickingMode.Ignore;
+
+            Label nameLabel = CreateLabel(name, 32f, inSelectedRange ? Color.white : new Color(0.95f, 0.98f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+            nameLabel.style.unityFontDefinition = modernUiFontDefinition;
+            nameLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+            nameLabel.style.whiteSpace = WhiteSpace.Normal;
+            nameLabel.style.marginBottom = 3f;
+            nameLabel.style.scale = focused ? new Scale(new Vector3(1.032f, 1.032f, 1f)) : new Scale(Vector3.one);
+
+            Label detailLabel = CreateLabel(detail, 22f, inSelectedRange ? new Color(0.82f, 0.92f, 1f, 0.98f) : new Color(0.72f, 0.81f, 0.90f, 0.90f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+            detailLabel.style.unityFontDefinition = modernUiFontDefinition;
+            detailLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+            detailLabel.style.whiteSpace = WhiteSpace.Normal;
+
+            rowContent.Add(nameLabel);
+            rowContent.Add(detailLabel);
+            rowButton.Add(rowContent);
+            loopBookmarksListView.Add(rowButton);
+            loopBookmarkRowButtons.Add(rowButton);
+        }
+    }
+
+    private static void UpdateLoopBookmarkActionButtonState(Button button, bool enabled, bool accent = false, bool danger = false)
+    {
+        if (button == null)
+            return;
+
+        button.SetEnabled(enabled);
+        Color enabledColor = danger
+            ? new Color(0.96f, 0.36f, 0.42f, 0.96f)
+            : accent ? LibraryConfirmedSongColor : new Color(0.92f, 0.96f, 1f, 0.96f);
+        Color disabledColor = new Color(0.60f, 0.66f, 0.74f, 0.40f);
+        Color border = enabled ? enabledColor : disabledColor;
+        button.style.color = enabled ? enabledColor : new Color(0.72f, 0.78f, 0.86f, 0.44f);
+        button.style.borderTopColor = border;
+        button.style.borderRightColor = border;
+        button.style.borderBottomColor = border;
+        button.style.borderLeftColor = border;
+        button.style.opacity = enabled ? 1f : 0.48f;
     }
 
 
@@ -17047,58 +20694,18 @@ public sealed class TabsSongHeaderOverlay
     private void UpdateLoopPausePopupSelection(int selectedIndex)
 
     {
-
-        int resolvedIndex = Mathf.Clamp(selectedIndex, 0, 1);
-
-        UpdateSongSettingsSliderSelection(loopPauseDurationLabel, loopPauseDurationSlider, resolvedIndex == 0);
-
-
+        UpdateSongSettingsSliderSelection(loopPauseDurationLabel, loopPauseDurationSlider, true);
 
         if (loopPauseAcceptButton == null)
-
             return;
 
-
-
-        if (resolvedIndex == 1)
-
-        {
-
-            loopPauseAcceptButton.style.scale = new Scale(new Vector3(1.04f, 1.04f, 1f));
-
-            loopPauseAcceptButton.style.translate = new Translate(-8f, 0f);
-
-            loopPauseAcceptButton.style.color = GlobalSecondaryAccentColor;
-
-            loopPauseAcceptButton.style.borderTopColor = GlobalSecondaryAccentColor;
-
-            loopPauseAcceptButton.style.borderRightColor = GlobalSecondaryAccentColor;
-
-            loopPauseAcceptButton.style.borderBottomColor = GlobalSecondaryAccentColor;
-
-            loopPauseAcceptButton.style.borderLeftColor = GlobalSecondaryAccentColor;
-
-        }
-
-        else
-
-        {
-
-            loopPauseAcceptButton.style.scale = new Scale(Vector3.one);
-
-            loopPauseAcceptButton.style.translate = new Translate(0f, 0f);
-
-            loopPauseAcceptButton.style.color = GlobalPrimaryAccentColor;
-
-            loopPauseAcceptButton.style.borderTopColor = GlobalPrimaryAccentColor;
-
-            loopPauseAcceptButton.style.borderRightColor = GlobalPrimaryAccentColor;
-
-            loopPauseAcceptButton.style.borderBottomColor = GlobalPrimaryAccentColor;
-
-            loopPauseAcceptButton.style.borderLeftColor = GlobalPrimaryAccentColor;
-
-        }
+        loopPauseAcceptButton.style.scale = new Scale(Vector3.one);
+        loopPauseAcceptButton.style.translate = new Translate(0f, 0f);
+        loopPauseAcceptButton.style.color = GlobalPrimaryAccentColor;
+        loopPauseAcceptButton.style.borderTopColor = GlobalPrimaryAccentColor;
+        loopPauseAcceptButton.style.borderRightColor = GlobalPrimaryAccentColor;
+        loopPauseAcceptButton.style.borderBottomColor = GlobalPrimaryAccentColor;
+        loopPauseAcceptButton.style.borderLeftColor = GlobalPrimaryAccentColor;
 
     }
 
@@ -18838,19 +22445,19 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
-        scoreTitleLabel.style.fontSize = bodySize * 0.42f;
+        scoreTitleLabel.style.fontSize = Mathf.Clamp(bodySize * 0.54f, 18f, 30f);
 
-        scorePercentLabel.style.fontSize = bodySize * 1.44f;
+        scorePercentLabel.style.fontSize = Mathf.Clamp(bodySize * 1.74f, 58f, 96f);
 
-        noteTallyLabel.style.fontSize = bodySize * 0.58f;
+        noteTallyLabel.style.fontSize = Mathf.Clamp(bodySize * 0.62f, 20f, 30f);
 
         float gameplayScoreTop = Mathf.Clamp(screenHeight * 0.010f, 10f, 24f);
 
         float gameplayScoreWidth = isHighway3D
 
-            ? Mathf.Clamp(screenWidth * 0.20f, 380f, 640f)
+            ? Mathf.Clamp(screenWidth * 0.23f, 420f, 700f)
 
-            : Mathf.Clamp(screenWidth * 0.26f, 420f, 780f);
+            : Mathf.Clamp(screenWidth * 0.28f, 450f, 820f);
 
         float gameplayScoreHorizontalPadding = Mathf.Clamp(screenWidth * 0.008f, 22f, 36f);
 
@@ -18863,6 +22470,10 @@ public sealed class TabsSongHeaderOverlay
         songCardScoreBlock.style.minWidth = gameplayScoreWidth;
 
         songCardScoreBlock.style.maxWidth = gameplayScoreWidth;
+
+        float gameplayScoreHeight = Mathf.Clamp(screenHeight * 0.14f, 120f, 188f);
+
+        songCardScoreBlock.style.minHeight = gameplayScoreHeight;
 
         songCardScoreBlock.style.paddingLeft = gameplayScoreHorizontalPadding;
 
@@ -19075,6 +22686,39 @@ public sealed class TabsSongHeaderOverlay
         loopSetupBar.style.paddingTop = Mathf.Clamp(menuLayoutHeight * 0.022f, 20f, 28f);
 
         loopSetupBar.style.paddingBottom = Mathf.Clamp(menuLayoutHeight * 0.022f, 20f, 28f);
+
+        loopBookmarksCard.style.top = Mathf.Clamp(screenHeight * 0.030f, 22f, 36f);
+        loopBookmarksCard.style.width = Mathf.Clamp(screenWidth * 0.74f, 980f, 1520f);
+        loopBookmarksCard.style.minWidth = Mathf.Clamp(screenWidth * 0.64f, 900f, 1120f);
+        loopBookmarksCard.style.maxWidth = Mathf.Clamp(screenWidth * 0.86f, 1240f, 1640f);
+        loopBookmarksCard.style.paddingLeft = Mathf.Clamp(menuLayoutWidth * 0.020f, 24f, 40f);
+        loopBookmarksCard.style.paddingRight = Mathf.Clamp(menuLayoutWidth * 0.020f, 24f, 40f);
+        loopBookmarksCard.style.paddingTop = Mathf.Clamp(menuLayoutHeight * 0.024f, 24f, 34f);
+        loopBookmarksCard.style.paddingBottom = Mathf.Clamp(menuLayoutHeight * 0.024f, 24f, 34f);
+        loopBookmarksTitleLabel.style.fontSize = Mathf.Clamp(bodySize * 0.96f, 34f, 48f);
+        loopBookmarksTrackLabel.style.fontSize = Mathf.Clamp(bodySize * 0.64f, 22f, 32f);
+        loopBookmarksHintLabel.style.fontSize = Mathf.Clamp(bodySize * 0.54f, 18f, 26f);
+        loopBookmarksListView.style.height = Mathf.Clamp(screenHeight * 0.54f, 520f, 820f);
+        loopBookmarksListView.style.maxHeight = Mathf.Clamp(screenHeight * 0.64f, 620f, 940f);
+        loopBookmarkRenameField.style.fontSize = Mathf.Clamp(bodySize * 0.60f, 22f, 30f);
+        loopBookmarkRenameField.style.height = Mathf.Clamp(screenHeight * 0.060f, 50f, 64f);
+        loopConfigurationTitleLabel.style.top = Mathf.Clamp(screenHeight * 0.030f, 20f, 36f);
+        loopConfigurationTitleLabel.style.left = Mathf.Clamp(screenWidth * 0.020f, 20f, 40f);
+        loopConfigurationTitleLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.065f, 48f, 88f);
+
+        foreach (Button actionButton in new[] { loopBookmarkAddButton, loopBookmarkSaveButton, loopBookmarkRenameButton, loopBookmarkDeleteButton })
+        {
+            actionButton.style.height = Mathf.Clamp(screenHeight * 0.066f, 54f, 70f);
+            actionButton.style.fontSize = Mathf.Clamp(bodySize * 0.58f, 22f, 30f);
+            actionButton.style.paddingLeft = Mathf.Clamp(screenWidth * 0.012f, 20f, 30f);
+            actionButton.style.paddingRight = Mathf.Clamp(screenWidth * 0.012f, 20f, 30f);
+        }
+
+        foreach (Button renameButton in new[] { loopBookmarkRenameConfirmButton, loopBookmarkRenameCancelButton })
+        {
+            renameButton.style.height = Mathf.Clamp(screenHeight * 0.060f, 48f, 62f);
+            renameButton.style.fontSize = Mathf.Clamp(bodySize * 0.52f, 20f, 28f);
+        }
 
         speedValueLabel.style.fontSize = bodySize * 0.85f;
 
@@ -19341,15 +22985,10 @@ public sealed class TabsSongHeaderOverlay
 
         loopPauseDurationSlider.style.height = Mathf.Clamp(menuLayoutHeight * 0.075f, 62f, 76f);
 
-        loopPauseCountdownHost.style.top = Mathf.Clamp(screenHeight * 0.020f, 18f, 34f);
-
-        loopPauseCountdownHost.style.height = Mathf.Clamp(menuLayoutHeight * 0.10f, 72f, 96f);
-
-        float loopCountdownSize = Mathf.Clamp(menuLayoutHeight * 0.060f, 52f, 72f);
-
+        float loopCountdownSize = Mathf.Clamp(menuLayoutHeight * 0.22f, 180f, 340f);
         loopPauseCountdownDial.style.width = loopCountdownSize;
-
         loopPauseCountdownDial.style.height = loopCountdownSize;
+        loopPauseCountdownLabel.style.fontSize = loopCountdownSize;
 
 
 
@@ -20092,18 +23731,18 @@ public sealed class TabsSongHeaderOverlay
 
             if (row.difficultyColumn != null)
             {
-                float difficultyColumnWidth = (compactSelection ? 132f : 140f) * currentMenuLayoutScale;
+                float difficultyColumnWidth = (compactSelection ? 248f : 272f) * currentMenuLayoutScale;
                 row.difficultyColumn.style.width = difficultyColumnWidth;
                 row.difficultyColumn.style.minWidth = difficultyColumnWidth;
                 row.difficultyColumn.style.maxWidth = difficultyColumnWidth;
                 row.difficultyColumn.style.flexBasis = difficultyColumnWidth;
-                row.difficultyColumn.style.marginRight = (compactSelection ? 12f : 14f) * currentMenuLayoutScale;
+                row.difficultyColumn.style.marginRight = (compactSelection ? 8f : 10f) * currentMenuLayoutScale;
             }
 
             if (row.difficultyLabel != null)
             {
                 row.difficultyLabel.style.fontSize = (compactSelection ? 24f : 26f) * currentMenuLayoutScale;
-                float difficultySlotWidth = (compactSelection ? 124f : 132f) * currentMenuLayoutScale;
+                float difficultySlotWidth = (compactSelection ? 236f : 260f) * currentMenuLayoutScale;
                 row.difficultyLabel.style.width = difficultySlotWidth;
                 row.difficultyLabel.style.minWidth = difficultySlotWidth;
                 row.difficultyLabel.style.maxWidth = difficultySlotWidth;
@@ -20111,7 +23750,7 @@ public sealed class TabsSongHeaderOverlay
 
             if (row.favoriteColumn != null)
             {
-                float favoriteColumnWidth = (compactSelection ? 76f : 80f) * currentMenuLayoutScale;
+                float favoriteColumnWidth = 56f * currentMenuLayoutScale;
                 row.favoriteColumn.style.width = favoriteColumnWidth;
                 row.favoriteColumn.style.minWidth = favoriteColumnWidth;
                 row.favoriteColumn.style.maxWidth = favoriteColumnWidth;
@@ -20122,7 +23761,7 @@ public sealed class TabsSongHeaderOverlay
 
             if (row.favoriteButton != null)
             {
-                float favoriteSize = (compactSelection ? 76f : 80f) * currentMenuLayoutScale;
+                float favoriteSize = 56f * currentMenuLayoutScale;
                 row.favoriteButton.style.width = favoriteSize;
                 row.favoriteButton.style.minWidth = favoriteSize;
                 row.favoriteButton.style.height = favoriteSize;
@@ -20140,7 +23779,7 @@ public sealed class TabsSongHeaderOverlay
                 row.scoreColumn.style.minWidth = scoreColumnWidth;
                 row.scoreColumn.style.maxWidth = scoreColumnWidth;
                 row.scoreColumn.style.flexBasis = scoreColumnWidth;
-                row.scoreColumn.style.marginRight = (compactSelection ? 12f : 14f) * currentMenuLayoutScale;
+                row.scoreColumn.style.marginRight = (compactSelection ? 8f : 10f) * currentMenuLayoutScale;
             }
 
             row.scoreLabel.style.fontSize = (compactSelection ? 48f : 52.8f) * currentMenuLayoutScale;

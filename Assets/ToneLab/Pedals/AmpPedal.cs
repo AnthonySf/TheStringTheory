@@ -65,8 +65,8 @@ public sealed class AmpPedalProcessor : IToneLabPedalProcessor
             return;
 
         float normalizedGain = Mathf.InverseLerp(0f, 42f, settings.gain_db);
-        float baseDrive = Mathf.Lerp(1.15f, 7.0f, normalizedGain);
-        float master = ToneLabPedalUtility.DbToLinear(settings.master_db) * Mathf.Lerp(1.0f, 0.58f, normalizedGain);
+        float baseDrive = Mathf.Lerp(1.15f, 7.4f, normalizedGain);
+        float master = ToneLabPedalUtility.DbToLinear(settings.master_db) * Mathf.Lerp(1.08f, 0.84f, normalizedGain);
         float supplyRelease = Mathf.Exp(-1f / Mathf.Max(1f, preparedSampleRate * 0.060f));
 
         for (int frame = 0; frame < data.Length; frame += channels)
@@ -122,8 +122,8 @@ public sealed class AmpPedalProcessor : IToneLabPedalProcessor
         float stage1 = ToneLabPedalUtility.SoftClipAtan(sample * preGain, drive);
         float stage2Drive = 1.35f + (drive * 0.35f);
         float stage2 = ToneLabPedalUtility.SoftClipAtan(stage1 * (1.04f + (presence * 0.12f)), stage2Drive);
-        float blend = Mathf.Lerp(stage1, stage2, 0.42f);
-        return blend * 0.74f;
+        float blend = Mathf.Lerp(stage1, stage2, 0.44f);
+        return blend * 0.86f;
     }
 
     private static ToneLabBiquadFilter[] CreateFilterBank(int channels)

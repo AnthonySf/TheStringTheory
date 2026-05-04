@@ -61,6 +61,7 @@ public static class ArcadeCloneHeroLoader
     {
         public string name;
         public List<MidiNoteEvent> notes = new List<MidiNoteEvent>();
+        public List<MidiTextEvent> textEvents = new List<MidiTextEvent>();
     }
 
     private readonly struct MidiNoteEvent
@@ -74,6 +75,18 @@ public static class ArcadeCloneHeroLoader
             this.startTick = startTick;
             this.endTick = endTick;
             this.pitch = pitch;
+        }
+    }
+
+    private readonly struct MidiTextEvent
+    {
+        public readonly long tick;
+        public readonly string text;
+
+        public MidiTextEvent(long tick, string text)
+        {
+            this.tick = tick;
+            this.text = text;
         }
     }
 
@@ -207,12 +220,14 @@ public static class ArcadeCloneHeroLoader
 
         List<ArcadeNoteData> notes = ConvertRawNotes(rawNotes, resolution, tempos);
         float duration = notes.Count > 0 ? notes.Max(note => note.time + Mathf.Max(0.05f, note.duration)) : 0f;
+        List<ArcadePracticeSectionData> practiceSections = BuildChartPracticeSections(sections, resolution, tempos, duration);
         return new ArcadeChartData
         {
             SourcePath = chartPath,
             LaneCount = 5,
             Arrangements = summaries,
             Notes = notes,
+            PracticeSections = practiceSections,
             DurationSeconds = duration
         };
     }
@@ -375,6 +390,55 @@ public static class ArcadeCloneHeroLoader
     private static string GetChartSectionName(ArcadeDifficulty difficulty, ArcadeInstrument instrument)
     {
         return $"{GetChartDifficultyPrefix(difficulty)}{GetChartInstrumentSuffix(instrument)}";
+    }
+
+    private static List<ArcadePracticeSectionData> BuildChartPracticeSections(
+        Dictionary<string, List<string>> sections,
+        int resolution,
+        List<TempoPoint> tempos,
+        float fallbackDuration)
+    {
+        if (sections == null ||
+            !sections.TryGetValue("Events", out List<string> eventLines) ||
+            eventLines == null ||
+            eventLines.Count == 0)
+        {
+            return BuildFallbackPracticeSections(fallbackDuration);
+        }
+
+        List<(long tick, string name)> markers = new List<(long tick, string name)>();
+        for (int i = 0; i < eventLines.Count; i++)
+        {
+            string line = eventLines[i];
+            if (string.IsNullOrWhiteSpace(line))
+                continue;
+
+            int equalsIndex = line.IndexOf('=');
+            if (equalsIndex <= 0)
+                continue;
+
+            string tickText = line.Substring(0, equalsIndex).Trim();
+            string payload = line.Substring(equalsIndex + 1).Trim();
+            if (!long.TryParse(tickText, NumberStyles.Integer, CultureInfo.InvariantCulture, out long tick) ||
+                string.IsNullOrWhiteSpace(payload) ||
+                !payload.StartsWith("E", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            int firstQuote = payload.IndexOf('"');
+            int lastQuote = payload.LastIndexOf('"');
+            if (firstQuote < 0 || lastQuote <= firstQuote)
+                continue;
+
+            string rawText = payload.Substring(firstQuote + 1, lastQuote - firstQuote - 1).Trim();
+            if (!TryExtractPracticeSectionName(rawText, out string sectionName))
+                continue;
+
+            markers.Add((tick, sectionName));
+        }
+
+        return BuildPracticeSectionsFromMarkers(markers, resolution, tempos, fallbackDuration);
     }
 
     private static string GetChartDifficultyPrefix(ArcadeDifficulty difficulty)
@@ -582,6 +646,83 @@ public static class ArcadeCloneHeroLoader
         return Math.Max(0L, ticks) * (60.0 / Math.Max(1.0, bpm)) / Math.Max(1, resolution);
     }
 
+    private static List<ArcadePracticeSectionData> BuildPracticeSectionsFromMarkers(
+        List<(long tick, string name)> markers,
+        int resolution,
+        List<TempoPoint> tempos,
+        float fallbackDuration)
+    {
+        List<(long tick, string name)> orderedMarkers = markers?
+            .Where(marker => !string.IsNullOrWhiteSpace(marker.name))
+            .OrderBy(marker => marker.tick)
+            .GroupBy(marker => marker.tick)
+            .Select(group => group.First())
+            .ToList() ?? new List<(long tick, string name)>();
+
+        if (orderedMarkers.Count == 0)
+            return BuildFallbackPracticeSections(fallbackDuration);
+
+        List<ArcadePracticeSectionData> sections = new List<ArcadePracticeSectionData>();
+        for (int i = 0; i < orderedMarkers.Count; i++)
+        {
+            (long tick, string name) marker = orderedMarkers[i];
+            float startTime = (float)TicksToSeconds(marker.tick, resolution, tempos);
+            float endTime = i + 1 < orderedMarkers.Count
+                ? (float)TicksToSeconds(orderedMarkers[i + 1].tick, resolution, tempos)
+                : Mathf.Max(startTime + 0.25f, fallbackDuration);
+
+            if (endTime <= startTime + 0.01f)
+                endTime = startTime + 0.25f;
+
+            sections.Add(new ArcadePracticeSectionData
+            {
+                index = sections.Count,
+                name = string.IsNullOrWhiteSpace(marker.name) ? $"Section {sections.Count + 1}" : marker.name.Trim(),
+                startTime = Mathf.Max(0f, startTime),
+                endTime = Mathf.Max(startTime + 0.01f, endTime)
+            });
+        }
+
+        return sections;
+    }
+
+    private static List<ArcadePracticeSectionData> BuildFallbackPracticeSections(float durationSeconds)
+    {
+        float endTime = Mathf.Max(1f, durationSeconds);
+        return new List<ArcadePracticeSectionData>
+        {
+            new ArcadePracticeSectionData
+            {
+                index = 0,
+                name = "Full Song",
+                startTime = 0f,
+                endTime = endTime
+            }
+        };
+    }
+
+    private static bool TryExtractPracticeSectionName(string rawText, out string sectionName)
+    {
+        sectionName = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawText))
+            return false;
+
+        string trimmed = rawText.Trim();
+        if (trimmed.StartsWith("section ", StringComparison.OrdinalIgnoreCase))
+        {
+            sectionName = trimmed.Substring("section ".Length).Trim();
+            return !string.IsNullOrWhiteSpace(sectionName);
+        }
+
+        if (trimmed.StartsWith("[section ", StringComparison.OrdinalIgnoreCase) && trimmed.EndsWith("]", StringComparison.Ordinal))
+        {
+            sectionName = trimmed.Substring("[section ".Length, trimmed.Length - "[section ".Length - 1).Trim();
+            return !string.IsNullOrWhiteSpace(sectionName);
+        }
+
+        return false;
+    }
+
     private static ArcadeChartData LoadMidiFile(string chartPath, string arrangementId, ArcadeDifficulty difficulty)
     {
         MidiParseResult parsed = ParseMidi(chartPath);
@@ -593,12 +734,14 @@ public static class ArcadeCloneHeroLoader
             : new List<ArcadeNoteData>();
 
         float duration = notes.Count > 0 ? notes.Max(note => note.time + Mathf.Max(0.05f, note.duration)) : 0f;
+        List<ArcadePracticeSectionData> practiceSections = BuildMidiPracticeSections(parsed, duration);
         return new ArcadeChartData
         {
             SourcePath = chartPath,
             LaneCount = 5,
             Arrangements = summaries,
             Notes = notes,
+            PracticeSections = practiceSections,
             DurationSeconds = duration
         };
     }
@@ -606,6 +749,25 @@ public static class ArcadeCloneHeroLoader
     private static List<ArcadeArrangementSummary> GetMidiArrangementSummaries(string chartPath)
     {
         return BuildMidiSummaries(ParseMidi(chartPath));
+    }
+
+    private static List<ArcadePracticeSectionData> BuildMidiPracticeSections(MidiParseResult parsed, float fallbackDuration)
+    {
+        if (parsed?.tracks == null || parsed.tracks.Count == 0)
+            return BuildFallbackPracticeSections(fallbackDuration);
+
+        List<(long tick, string name)> markers = parsed.tracks
+            .Where(track => track?.textEvents != null)
+            .SelectMany(track => track.textEvents)
+            .Where(textEvent => TryExtractPracticeSectionName(textEvent.text, out _))
+            .Select(textEvent =>
+            {
+                TryExtractPracticeSectionName(textEvent.text, out string sectionName);
+                return (textEvent.tick, sectionName);
+            })
+            .ToList();
+
+        return BuildPracticeSectionsFromMarkers(markers, parsed.timeDivision, parsed.tempos, fallbackDuration);
     }
 
     private sealed class MidiParseResult
@@ -745,6 +907,12 @@ public static class ArcadeCloneHeroLoader
                     byte[] meta = reader.ReadBytes(length);
                     if ((metaType == 0x03 || metaType == 0x04) && string.IsNullOrWhiteSpace(track.name))
                         track.name = DecodeMidiText(meta);
+                    if (metaType == 0x01 || metaType == 0x05 || metaType == 0x06 || metaType == 0x07)
+                    {
+                        string text = DecodeMidiText(meta);
+                        if (!string.IsNullOrWhiteSpace(text))
+                            track.textEvents.Add(new MidiTextEvent(tick, text));
+                    }
                     continue;
                 }
 

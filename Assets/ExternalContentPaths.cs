@@ -15,6 +15,7 @@ public static class ExternalContentPaths
     public const string ToneLabPresetsFolderName = "Presets";
     public const string SongMetadataFileName = "metadata.json";
     public const string SongSaveDataFileName = "saveData.json";
+    public const string SongLibraryCacheFileName = "song_library_cache.json";
 
     public static string StreamingRoot => Application.streamingAssetsPath;
     public static string PersistentRoot => Application.persistentDataPath;
@@ -27,6 +28,7 @@ public static class ExternalContentPaths
     public static string PersistentToneLabDistDirectory => Path.Combine(PersistentToneLabDirectory, ToneLabDistFolderName, ToneLabDistAppFolderName);
     public static string StreamingSongsDirectory => Path.Combine(StreamingRoot, SongsFolderName);
     public static string PersistentSongsDirectory => Path.Combine(PersistentRoot, SongsFolderName);
+    public static string PersistentSongLibraryCachePath => Path.Combine(PersistentSongsDirectory, SongLibraryCacheFileName);
 
     public static string PersistentToneLabScriptPath => Path.Combine(PersistentToneLabDirectory, ToneLabScriptFileName);
     public static string PersistentToneLabExePath => Path.Combine(PersistentToneLabDistDirectory, ToneLabExeFileName);

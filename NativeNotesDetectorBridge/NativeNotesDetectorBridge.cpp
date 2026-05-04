@@ -62,6 +62,18 @@ constexpr int kHighStringBenefitMatchMaxDistance = 0;
 constexpr float kOnsetExpectLookaheadSeconds = 0.120f;
 constexpr int kMaxEventNotes = 6;
 constexpr float kChordResultMergeSeconds = 0.050f;
+constexpr int kBassRescuePrimaryWindowStartSamples = 640;
+constexpr int kBassRescueSecondaryWindowStartSamples = 1280;
+constexpr int kBassRescueAnalysisWindowSamples = 3072;
+constexpr size_t kBassRescueMinExpectedOverlap = 2;
+constexpr float kBassRescueNeighborRatio = 1.22f;
+constexpr float kBassRescueSliceRmsRatio = 0.08f;
+constexpr float kBassRescueAbsoluteAmplitudeFloor = 0.0065f;
+constexpr float kBassRescueFundamentalWeight = 1.00f;
+constexpr float kBassRescueSecondHarmonicWeight = 0.42f;
+constexpr float kBassRescueThirdHarmonicWeight = 0.18f;
+constexpr float kBassRescueOctaveSupportMultiplier = 1.10f;
+constexpr float kBassRescueFundamentalRelaxedScale = 0.72f;
 constexpr float kOnsetThreshold = 0.50f;
 constexpr float kFrameThreshold = 0.30f;
 constexpr int kMinimumNoteLengthFrames = 11;
@@ -393,6 +405,55 @@ int NoteNameToMidi(const std::string& noteName)
     }
 }
 
+std::string SanitizeHintNoteToken(std::string token)
+{
+    auto isTrimByte = [](unsigned char ch)
+    {
+        return ch <= 32 || ch == 127;
+    };
+
+    while (!token.empty())
+    {
+        const unsigned char ch = static_cast<unsigned char>(token.front());
+        if (!isTrimByte(ch) && ch != 0xEF && ch != 0xBB && ch != 0xBF)
+            break;
+        token.erase(token.begin());
+    }
+
+    while (!token.empty() && isTrimByte(static_cast<unsigned char>(token.back())))
+        token.pop_back();
+
+    const size_t firstUseful = token.find_first_of("ABCDEFGabcdefg0123456789-");
+    if (firstUseful != std::string::npos && firstUseful > 0)
+        token.erase(0, firstUseful);
+
+    return token;
+}
+
+int ParseHintTokenToMidi(const std::string& rawToken)
+{
+    std::string token = SanitizeHintNoteToken(rawToken);
+    if (token.empty())
+        return -1;
+
+    int midi = NoteNameToMidi(token);
+    if (midi >= 0)
+        return midi;
+
+    try
+    {
+        size_t parsedLength = 0;
+        const int numericMidi = std::stoi(token, &parsedLength);
+        if (parsedLength == token.size() && numericMidi >= 0 && numericMidi <= 127)
+            return numericMidi;
+    }
+    catch (...)
+    {
+    }
+
+    return -1;
+}
+
 std::string MidiToNoteName(int midi)
 {
     const int note = ((midi % 12) + 12) % 12;
@@ -405,6 +466,100 @@ std::string MidiToNoteName(int midi)
 int SemitoneDistance(int midiA, int midiB)
 {
     return std::abs(midiA - midiB);
+}
+
+float MidiToFrequencyHz(int midi)
+{
+    return 440.0f * std::pow(2.0f, static_cast<float>(midi - 69) / 12.0f);
+}
+
+float ComputeWindowRms(const std::vector<float>& audio, int startSample, int sampleCount)
+{
+    if (sampleCount <= 0 || startSample < 0 || startSample >= static_cast<int>(audio.size()))
+        return 0.0f;
+
+    const int available = std::min(sampleCount, static_cast<int>(audio.size()) - startSample);
+    if (available <= 0)
+        return 0.0f;
+
+    double energy = 0.0;
+    for (int i = 0; i < available; ++i)
+    {
+        const double sample = audio[static_cast<size_t>(startSample + i)];
+        energy += sample * sample;
+    }
+
+    return static_cast<float>(std::sqrt(energy / static_cast<double>(available)));
+}
+
+float ComputeGoertzelAmplitude(const std::vector<float>& audio, int startSample, int sampleCount, float frequencyHz)
+{
+    if (!std::isfinite(frequencyHz) || frequencyHz <= 0.0f || frequencyHz >= (static_cast<float>(kSampleRate) * 0.5f) - 5.0f)
+        return 0.0f;
+
+    if (sampleCount <= 0 || startSample < 0 || startSample >= static_cast<int>(audio.size()))
+        return 0.0f;
+
+    const int available = std::min(sampleCount, static_cast<int>(audio.size()) - startSample);
+    if (available < 256)
+        return 0.0f;
+
+    const double omega = (2.0 * kPi * static_cast<double>(frequencyHz)) / static_cast<double>(kSampleRate);
+    const double coeff = 2.0 * std::cos(omega);
+    double q0 = 0.0;
+    double q1 = 0.0;
+    double q2 = 0.0;
+    double windowSum = 0.0;
+
+    for (int i = 0; i < available; ++i)
+    {
+        const double phase = available > 1 ? (2.0 * kPi * static_cast<double>(i) / static_cast<double>(available - 1)) : 0.0;
+        const double window = 0.5 - (0.5 * std::cos(phase));
+        const double sample = static_cast<double>(audio[static_cast<size_t>(startSample + i)]) * window;
+        q0 = (coeff * q1) - q2 + sample;
+        q2 = q1;
+        q1 = q0;
+        windowSum += window;
+    }
+
+    const double power = std::max(0.0, (q1 * q1) + (q2 * q2) - (coeff * q1 * q2));
+    const double magnitude = std::sqrt(power);
+    if (windowSum <= std::numeric_limits<double>::epsilon())
+        return 0.0f;
+
+    return static_cast<float>((2.0 * magnitude) / windowSum);
+}
+
+float ComputeHarmonicSalience(
+    const std::vector<float>& audio,
+    int startSample,
+    int sampleCount,
+    int midi,
+    float* outFundamentalAmplitude = nullptr)
+{
+    const float f0 = MidiToFrequencyHz(midi);
+    if (!std::isfinite(f0) || f0 <= 0.0f)
+    {
+        if (outFundamentalAmplitude != nullptr)
+            *outFundamentalAmplitude = 0.0f;
+        return 0.0f;
+    }
+
+    const float fundamentalAmplitude = ComputeGoertzelAmplitude(audio, startSample, sampleCount, f0);
+    if (outFundamentalAmplitude != nullptr)
+        *outFundamentalAmplitude = fundamentalAmplitude;
+
+    float salience = kBassRescueFundamentalWeight * fundamentalAmplitude;
+
+    const float secondHarmonicFrequency = f0 * 2.0f;
+    if (secondHarmonicFrequency < (static_cast<float>(kSampleRate) * 0.5f) - 5.0f)
+        salience += kBassRescueSecondHarmonicWeight * ComputeGoertzelAmplitude(audio, startSample, sampleCount, secondHarmonicFrequency);
+
+    const float thirdHarmonicFrequency = f0 * 3.0f;
+    if (thirdHarmonicFrequency < (static_cast<float>(kSampleRate) * 0.5f) - 5.0f)
+        salience += kBassRescueThirdHarmonicWeight * ComputeGoertzelAmplitude(audio, startSample, sampleCount, thirdHarmonicFrequency);
+
+    return salience;
 }
 
 size_t CountSetOverlap(const std::set<int>& left, const std::set<int>& right)
@@ -1206,12 +1361,6 @@ void HintState::ParsePayload(const std::string& payload, double pythonAudioTime)
         SetSync(currentSongTime, pythonAudioTime);
         ClearWindows();
 
-        if (parts.size() == 3)
-        {
-            AddHintWindow(currentSongTime - 0.07, currentSongTime + 0.22, parseMidiSet_(parts[2]));
-            return;
-        }
-
         for (size_t i = 2; i < parts.size(); ++i)
         {
             if (parts[i].empty())
@@ -1249,12 +1398,6 @@ void HintState::ParsePayload(const std::string& payload, double pythonAudioTime)
         }
 
         SetSync(currentSongTime, pythonAudioTime);
-
-        if (parts.size() == 3)
-        {
-            AddHintWindow(currentSongTime - 0.07, currentSongTime + 0.22, parseMidiSet_(parts[2]));
-            return;
-        }
 
         for (size_t i = 2; i < parts.size(); ++i)
         {
@@ -1316,7 +1459,7 @@ std::set<int> HintState::parseMidiSet_(const std::string& csv)
         {
             if (!current.empty())
             {
-                const int midi = NoteNameToMidi(current);
+                const int midi = ParseHintTokenToMidi(current);
                 if (midi >= 0)
                     result.insert(midi);
             }
@@ -1348,7 +1491,7 @@ public:
     NativeDetectorEngine();
     ~NativeDetectorEngine();
 
-    bool Initialize(const std::wstring& modelPath, std::wstring& error);
+    bool Initialize(const std::wstring& modelPath, const std::wstring& dataDirectory, std::wstring& error);
     bool Start(int inputDeviceIndex, std::wstring& error);
     void Stop();
     void Shutdown();
@@ -1377,6 +1520,7 @@ private:
     void inferOnsets_(std::vector<float>& onsets, const std::vector<float>& frames, int nFrames) const;
     std::vector<NoteEventCandidate> outputToNotesPolyphonic_(const std::vector<float>& frames, const std::vector<float>& onsets, int nFrames) const;
     std::set<int> scoreAiCandidates_(const std::vector<NoteEventCandidate>& candidates, const std::set<int>& expectedMidi) const;
+    std::set<int> applyLowestExpectedBassRescue_(const std::vector<float>& audio, const std::set<int>& expectedMidi, const std::set<int>& selectedMidi) const;
     void buildLatestPacket_(double currentTime, const std::set<int>& currentActiveNotes);
     void readRecentWindow_(uint64_t endFrameExclusive, std::vector<float>& destination, int windowSize) const;
     void readRange_(uint64_t startFrame, std::vector<float>& destination, int count) const;
@@ -1454,7 +1598,7 @@ NativeDetectorEngine::~NativeDetectorEngine()
     Shutdown();
 }
 
-bool NativeDetectorEngine::Initialize(const std::wstring& modelPath, std::wstring& error)
+bool NativeDetectorEngine::Initialize(const std::wstring& modelPath, const std::wstring& dataDirectory, std::wstring& error)
 {
     std::lock_guard<std::mutex> lock(controlMutex_);
     if (initialized_)
@@ -1487,7 +1631,6 @@ bool NativeDetectorEngine::Initialize(const std::wstring& modelPath, std::wstrin
 
     inputDevices_ = portAudio_.EnumerateInputDevices();
     preferredDeviceIndex_ = portAudio_.GetPreferredInputDeviceIndex(inputDevices_);
-
     if (!ortRuntime_.Initialize(pluginDirectory_, modelPath_, error))
     {
         setError_(error);
@@ -1974,7 +2117,8 @@ void NativeDetectorEngine::DeepLoop_()
 
         double unityTime = -1.0;
         const std::set<int> expectedMidi = hintState_.GetExpectedNotesForPythonTime(task.onsetTime, &unityTime);
-        const std::set<int> selectedMidi = scoreAiCandidates_(decodedCandidates, expectedMidi);
+        std::set<int> selectedMidi = scoreAiCandidates_(decodedCandidates, expectedMidi);
+        selectedMidi = applyLowestExpectedBassRescue_(audio, expectedMidi, selectedMidi);
 
         DeepResult result;
         result.eventId = task.eventId;
@@ -2571,6 +2715,106 @@ std::set<int> NativeDetectorEngine::scoreAiCandidates_(const std::vector<NoteEve
     return selected;
 }
 
+std::set<int> NativeDetectorEngine::applyLowestExpectedBassRescue_(const std::vector<float>& audio, const std::set<int>& expectedMidi, const std::set<int>& selectedMidi) const
+{
+    if (audio.empty() || expectedMidi.size() < 2 || selectedMidi.empty())
+        return selectedMidi;
+
+    const int lowestExpectedMidi = *expectedMidi.begin();
+    if (selectedMidi.find(lowestExpectedMidi) != selectedMidi.end())
+        return selectedMidi;
+
+    const DetectorSettings settings = getSettingsSnapshot_();
+    if (lowestExpectedMidi >= settings.highStringMinMidi)
+        return selectedMidi;
+
+    const size_t expectedOverlap = CountSetOverlap(expectedMidi, selectedMidi);
+    if (expectedOverlap < kBassRescueMinExpectedOverlap)
+        return selectedMidi;
+
+    const float targetFrequency = MidiToFrequencyHz(lowestExpectedMidi);
+    if (!std::isfinite(targetFrequency) || targetFrequency < 60.0f || targetFrequency > 220.0f)
+        return selectedMidi;
+
+    bool hasOctaveSupport = false;
+    const int lowestPitchClass = ((lowestExpectedMidi % 12) + 12) % 12;
+    for (int midi : selectedMidi)
+    {
+        if (midi <= lowestExpectedMidi)
+            continue;
+        if (midi > lowestExpectedMidi + 24)
+            continue;
+        if ((((midi % 12) + 12) % 12) == lowestPitchClass)
+        {
+            hasOctaveSupport = true;
+            break;
+        }
+    }
+
+    const std::array<int, 2> windowStarts = { kBassRescuePrimaryWindowStartSamples, kBassRescueSecondaryWindowStartSamples };
+    bool rescued = false;
+
+    for (int windowStart : windowStarts)
+    {
+        const float sliceRms = ComputeWindowRms(audio, windowStart, kBassRescueAnalysisWindowSamples);
+        if (!std::isfinite(sliceRms) || sliceRms <= std::numeric_limits<float>::epsilon())
+            continue;
+
+        float targetFundamentalAmplitude = 0.0f;
+        float targetSalience = ComputeHarmonicSalience(
+            audio,
+            windowStart,
+            kBassRescueAnalysisWindowSamples,
+            lowestExpectedMidi,
+            &targetFundamentalAmplitude);
+        if (!std::isfinite(targetSalience) || !std::isfinite(targetFundamentalAmplitude))
+            continue;
+
+        float strongestNeighborFundamentalAmplitude = 0.0f;
+        float strongestNeighborSalience = 0.0f;
+        for (int offset : { -2, -1, 1, 2 })
+        {
+            const int neighborMidi = lowestExpectedMidi + offset;
+            if (neighborMidi < kContinuousMinMidi || neighborMidi > kContinuousMaxMidi)
+                continue;
+
+            float neighborFundamentalAmplitude = 0.0f;
+            const float neighborSalience = ComputeHarmonicSalience(
+                audio,
+                windowStart,
+                kBassRescueAnalysisWindowSamples,
+                neighborMidi,
+                &neighborFundamentalAmplitude);
+            strongestNeighborFundamentalAmplitude = std::max(strongestNeighborFundamentalAmplitude, neighborFundamentalAmplitude);
+            strongestNeighborSalience = std::max(strongestNeighborSalience, neighborSalience);
+        }
+
+        if (hasOctaveSupport)
+            targetSalience *= kBassRescueOctaveSupportMultiplier;
+
+        const float minimumFundamentalAmplitude = std::max(
+            kBassRescueAbsoluteAmplitudeFloor,
+            sliceRms * kBassRescueSliceRmsRatio * (hasOctaveSupport ? kBassRescueFundamentalRelaxedScale : 1.0f));
+        const float neighborFundamentalThreshold = strongestNeighborFundamentalAmplitude * (hasOctaveSupport ? 1.08f : 1.15f);
+        const float neighborSalienceThreshold = strongestNeighborSalience * (hasOctaveSupport ? 1.08f : kBassRescueNeighborRatio);
+
+        if (targetFundamentalAmplitude >= minimumFundamentalAmplitude &&
+            targetFundamentalAmplitude >= neighborFundamentalThreshold &&
+            targetSalience >= neighborSalienceThreshold)
+        {
+            rescued = true;
+            break;
+        }
+    }
+
+    if (!rescued)
+        return selectedMidi;
+
+    std::set<int> rescuedMidi = selectedMidi;
+    rescuedMidi.insert(lowestExpectedMidi);
+    return rescuedMidi;
+}
+
 void NativeDetectorEngine::buildLatestPacket_(double currentTime, const std::set<int>& currentActiveNotes)
 {
     std::set<int> broadcastNotes;
@@ -2612,14 +2856,14 @@ std::unique_ptr<NativeDetectorEngine> g_detector;
 
 extern "C"
 {
-__declspec(dllexport) int NativeDetector_Initialize(const char* modelPathUtf8, const char*, const char*)
+__declspec(dllexport) int NativeDetector_Initialize(const char* modelPathUtf8, const char* dataDirectoryUtf8, const char*)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
         g_detector = std::make_unique<NativeDetectorEngine>();
 
     std::wstring error;
-    return g_detector->Initialize(Utf8ToWide(modelPathUtf8), error) ? 1 : 0;
+    return g_detector->Initialize(Utf8ToWide(modelPathUtf8), Utf8ToWide(dataDirectoryUtf8), error) ? 1 : 0;
 }
 
 __declspec(dllexport) int NativeDetector_Start(int inputDeviceIndex)

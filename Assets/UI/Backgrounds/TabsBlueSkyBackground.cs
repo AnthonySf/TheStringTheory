@@ -1405,7 +1405,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
     private static Material CreateSpriteAdditiveMaterial()
     {
-        Shader shader = Shader.Find("Custom/HighwayCloudEdgeGlow");
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayCloudEdgeGlow");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayCloudEdgeGlow");
         if (shader == null)
             shader = Shader.Find("Sprites/Default");
         if (shader == null)
