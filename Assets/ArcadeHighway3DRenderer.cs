@@ -2101,20 +2101,35 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         float accentWidthScale = note.isOpen ? 1.13f : 1.17f;
         float accentHeightScale = note.isOpen ? 1.44f : 1.34f;
         float accentDepthScale = note.isOpen ? 1.18f : 1.22f;
+        float minimumOutlineHeightPadding = 0.035f;
+        float minimumAccentHeightPadding = 0.07f;
+
+        if (note.noteType == ArcadeNoteType.Hopo)
+        {
+            float gap = owner != null ? owner.GetRhythmHopoOutlineGap() : 0f;
+            outlineWidthScale += gap;
+            outlineHeightScale += gap * 1.35f;
+            outlineDepthScale += gap * 0.85f;
+            accentWidthScale += gap * 1.85f;
+            accentHeightScale += gap * 2.20f;
+            accentDepthScale += gap * 1.30f;
+            minimumOutlineHeightPadding += gap * 0.55f;
+            minimumAccentHeightPadding += gap * 0.95f;
+        }
 
         if (view.outline != null)
         {
             view.outline.transform.localPosition = new Vector3(0f, 0f, bodyLocalZ);
             view.outline.transform.localScale = new Vector3(
                 bodyScale.x * outlineWidthScale,
-                Mathf.Max(bodyScale.y * outlineHeightScale, bodyScale.y + 0.035f),
+                Mathf.Max(bodyScale.y * outlineHeightScale, bodyScale.y + minimumOutlineHeightPadding),
                 bodyScale.z * outlineDepthScale);
         }
 
         view.accent.transform.localPosition = new Vector3(0f, 0f, bodyLocalZ);
         view.accent.transform.localScale = new Vector3(
             bodyScale.x * accentWidthScale,
-            Mathf.Max(bodyScale.y * accentHeightScale, bodyScale.y + 0.07f),
+            Mathf.Max(bodyScale.y * accentHeightScale, bodyScale.y + minimumAccentHeightPadding),
             bodyScale.z * accentDepthScale);
     }
 
@@ -2279,14 +2294,16 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             return new Color(1f, 0.42f, 1f, 1f);
 
         if (note.noteType == ArcadeNoteType.Hopo)
-            return Color.white;
+            return owner != null ? owner.GetRhythmHopoAccentColor() : Color.white;
 
         return GetNoteBaseColor(note);
     }
 
     private Material CreateLaneSurfaceMaterial()
     {
-        Shader shader = Shader.Find("Custom/HighwayLaneFloorFade");
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayLaneFloorFade");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayLaneFloorFade");
         Material mat = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(new Color(0.025f, 0.03f, 0.045f, 0.14f), 0f);
@@ -2307,7 +2324,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
     private Material CreateLaneGuideMaterial()
     {
-        Shader shader = Shader.Find("Custom/HighwayLaneGuideFade");
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayLaneGuideFade");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayLaneGuideFade");
         Material mat = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(new Color(0.12f, 0.26f, 0.55f, 0.85f), 0.15f);

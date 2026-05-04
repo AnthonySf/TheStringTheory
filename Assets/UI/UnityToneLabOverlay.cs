@@ -17,7 +17,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private enum ToneLabPresetModalMode
     {
         Create,
-        SaveAs
+        SaveAs,
+        ResetAll
     }
 
     private sealed class ToneSliderBinding
@@ -60,6 +61,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private Button savePresetButton;
     private Button saveAsPresetButton;
     private Button deletePresetButton;
+    private Button resetAllButton;
     private Button startButton;
     private Button stopButton;
     private Button backButton;
@@ -77,6 +79,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private Button presetCancelButton;
     private Label presetModalTitleLabel;
     private Label presetModalSubtitleLabel;
+    private VisualElement presetNameSection;
     private VisualElement actionToast;
     private Label actionToastLabel;
     private string selectedPedalInstanceId = string.Empty;
@@ -443,8 +446,15 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         deletePresetButton.style.minWidth = 102f;
         deletePresetButton.style.height = 42f;
         deletePresetButton.style.fontSize = 15f;
-        deletePresetButton.style.marginRight = 0f;
+        deletePresetButton.style.marginRight = 10f;
         boardToolbarPresetGroup.Add(deletePresetButton);
+
+        resetAllButton = CreateButton("Reset All", "tone-lab-button tone-lab-button-danger", () => OpenPresetModal(ToneLabPresetModalMode.ResetAll));
+        resetAllButton.style.minWidth = 126f;
+        resetAllButton.style.height = 42f;
+        resetAllButton.style.fontSize = 15f;
+        resetAllButton.style.marginRight = 0f;
+        boardToolbarPresetGroup.Add(resetAllButton);
 
         pedalBoardView = new ToneLabPedalBoardView();
         pedalBoardView.PedalSelected += pedalInstanceId =>
@@ -597,8 +607,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         rigSettingsHost.Add(CreateCompactSliderField(
             "Input Gain",
-            -24f,
-            24f,
+            -36f,
+            36f,
             value => $"{value:F1} dB",
             settings => settings.input_gain_db,
             (settings, value) => settings.input_gain_db = value,
@@ -606,8 +616,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         rigSettingsHost.Add(CreateCompactSliderField(
             "Output Gain",
-            -24f,
-            24f,
+            -36f,
+            36f,
             value => $"{value:F1} dB",
             settings => settings.output_gain_db,
             (settings, value) => settings.output_gain_db = value,
@@ -690,12 +700,17 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         presetModalSubtitleLabel.style.marginBottom = 10f;
         presetModalCard.Add(presetModalSubtitleLabel);
 
+        presetNameSection = new VisualElement();
+        presetNameSection.style.flexDirection = FlexDirection.Column;
+        presetNameSection.style.display = DisplayStyle.Flex;
+        presetModalCard.Add(presetNameSection);
+
         Label presetNameCaption = new Label("Preset Name");
         presetNameCaption.style.color = new Color(0.84f, 0.86f, 0.90f, 0.96f);
         presetNameCaption.style.fontSize = 13f;
         presetNameCaption.style.unityFontStyleAndWeight = FontStyle.Bold;
         presetNameCaption.style.marginBottom = 6f;
-        presetModalCard.Add(presetNameCaption);
+        presetNameSection.Add(presetNameCaption);
 
         presetNameField = new TextField();
         presetNameField.style.marginBottom = 16f;
@@ -728,7 +743,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 evt.StopPropagation();
             }
         });
-        presetModalCard.Add(presetNameField);
+        presetNameSection.Add(presetNameField);
 
         VisualElement presetModalActions = new VisualElement();
         presetModalActions.style.flexDirection = FlexDirection.Row;
@@ -790,18 +805,30 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         presetModalMode = mode;
+        bool isSaveAs = mode == ToneLabPresetModalMode.SaveAs;
+        bool isResetAll = mode == ToneLabPresetModalMode.ResetAll;
         if (presetModalTitleLabel != null)
-            presetModalTitleLabel.text = mode == ToneLabPresetModalMode.SaveAs ? "Save Preset As" : "Create Preset";
+            presetModalTitleLabel.text = isResetAll
+                ? "Reset All"
+                : (isSaveAs ? "Save Preset As" : "Create Preset");
         if (presetModalSubtitleLabel != null)
-            presetModalSubtitleLabel.text = mode == ToneLabPresetModalMode.SaveAs
-                ? "Save the current pedalboard as a new custom preset without overwriting the active one."
-                : "Save the current pedalboard and gain staging as a reusable preset.";
+            presetModalSubtitleLabel.text = isResetAll
+                ? "Restore the factory preset library and the active rig. Audio device routing and latency stay as they are."
+                : (isSaveAs
+                    ? "Save the current pedalboard as a new custom preset without overwriting the active one."
+                    : "Save the current pedalboard and gain staging as a reusable preset.");
         if (presetCreateButton != null)
-            presetCreateButton.text = mode == ToneLabPresetModalMode.SaveAs ? "Save As" : "Create";
+        {
+            presetCreateButton.text = isResetAll ? "Reset All" : (isSaveAs ? "Save As" : "Create");
+            ApplyModalActionButtonStyle(presetCreateButton, isResetAll);
+        }
+        if (presetNameSection != null)
+            presetNameSection.style.display = isResetAll ? DisplayStyle.None : DisplayStyle.Flex;
         presetNameField?.SetValueWithoutNotify(string.Empty);
         presetModalScrim.style.display = DisplayStyle.Flex;
         ApplyPresetNameFieldStyle();
-        presetNameField?.Focus();
+        if (!isResetAll)
+            presetNameField?.Focus();
     }
 
     private void CloseCreatePresetModal()
@@ -816,6 +843,15 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     {
         if (runtime == null)
             return;
+
+        if (presetModalMode == ToneLabPresetModalMode.ResetAll)
+        {
+            runtime.ResetAllToFactoryDefaults();
+            ShowActionToast("Restored factory presets and rig.", true);
+            CloseCreatePresetModal();
+            RefreshUi(syncControls: true);
+            return;
+        }
 
         string requestedName = presetNameField?.value ?? string.Empty;
         if (presetModalMode == ToneLabPresetModalMode.SaveAs)
@@ -1483,6 +1519,29 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         });
 
         return button;
+    }
+
+    private static void ApplyModalActionButtonStyle(Button button, bool isDanger)
+    {
+        if (button == null)
+            return;
+
+        if (isDanger)
+        {
+            button.style.color = new Color(0.95f, 0.60f, 0.60f, 1f);
+            button.style.borderTopColor = new Color(0.62f, 0.30f, 0.30f, 1f);
+            button.style.borderRightColor = new Color(0.44f, 0.20f, 0.20f, 1f);
+            button.style.borderBottomColor = new Color(0.36f, 0.16f, 0.16f, 1f);
+            button.style.borderLeftColor = new Color(0.44f, 0.20f, 0.20f, 1f);
+        }
+        else
+        {
+            button.style.color = new Color(0.96f, 0.97f, 0.98f, 0.98f);
+            button.style.borderTopColor = new Color(0.62f, 0.64f, 0.68f, 0.98f);
+            button.style.borderRightColor = new Color(0.38f, 0.40f, 0.44f, 1f);
+            button.style.borderBottomColor = new Color(0.29f, 0.30f, 0.34f, 1f);
+            button.style.borderLeftColor = new Color(0.38f, 0.40f, 0.44f, 1f);
+        }
     }
 
     private static Label CreateLabel(string text, string className, FontDefinition fontDefinition)

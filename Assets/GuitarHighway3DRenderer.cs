@@ -4817,7 +4817,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (sharedTechniqueRibbonMaterial == null)
         {
-            Shader shader = Shader.Find("Custom/HighwaySlideRibbon");
+            Shader shader = Resources.Load<Shader>("Shaders/HighwaySlideRibbon");
+            if (shader == null)
+                shader = Shader.Find("Custom/HighwaySlideRibbon");
             if (shader == null)
                 return;
 
@@ -4831,7 +4833,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (sharedBendArrowMaterial != null)
             return;
 
-        Shader shader = Shader.Find("Custom/HighwayNoteArrow");
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayNoteArrow");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayNoteArrow");
         if (shader == null)
             return;
 
@@ -4844,7 +4848,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (sharedMuteSymbolMaterial != null)
             return;
 
-        Shader shader = Shader.Find("Custom/HighwayMuteSymbol");
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayMuteSymbol");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayMuteSymbol");
         if (shader == null)
             return;
 
@@ -4930,7 +4936,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private Material CreateLaneSurfaceMaterial()
     {
-        Shader shader = Shader.Find("Custom/HighwayLaneFloorFade");
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayLaneFloorFade");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayLaneFloorFade");
         Material mat = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(new Color(0.025f, 0.03f, 0.045f, 0.14f), 0f);
@@ -4952,7 +4960,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private Material CreateNoteTetherMaterial(Color color)
     {
-        Shader shader = Shader.Find("Custom/HighwayNoteTetherFade");
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayNoteTetherFade");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayNoteTetherFade");
         Material mat = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(new Color(color.r, color.g, color.b, 0.95f), 0f);
@@ -4969,7 +4979,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private Material CreateLaneGuideMaterial()
     {
-        Shader shader = Shader.Find("Custom/HighwayLaneGuideFade");
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayLaneGuideFade");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayLaneGuideFade");
         Material mat = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(new Color(0.12f, 0.26f, 0.55f, 0.85f), 0.15f);

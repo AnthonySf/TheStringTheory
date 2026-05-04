@@ -284,7 +284,17 @@ public sealed class ArcadeChartData
     public int LaneCount = 5;
     public List<ArcadeArrangementSummary> Arrangements = new List<ArcadeArrangementSummary>();
     public List<ArcadeNoteData> Notes = new List<ArcadeNoteData>();
+    public List<ArcadePracticeSectionData> PracticeSections = new List<ArcadePracticeSectionData>();
     public float DurationSeconds;
+}
+
+[Serializable]
+public sealed class ArcadePracticeSectionData
+{
+    public int index;
+    public string name;
+    public float startTime;
+    public float endTime;
 }
 
 [Serializable]
@@ -296,9 +306,47 @@ public sealed class TabSectionData
     public List<int> noteIds = new List<int>();
 }
 
+public enum MultiplayerRhythmInputDeviceKind
+{
+    Keyboard,
+    Controller
+}
+
+[Serializable]
+public sealed class MultiplayerRhythmPlayerSnapshot
+{
+    public int playerIndex;
+    public string playerLabel;
+    public string deviceLabel;
+    public List<ArcadeNoteState> arcadeNoteStates;
+    public bool[] heldLanes;
+    public int scoreValue;
+    public float scorePercent;
+    public int comboCount;
+    public int multiplier;
+    public int hitCount;
+    public int missCount;
+    public int maxCombo;
+    public bool winner;
+}
+
 public sealed class GuitarGameplaySnapshot
 {
     public GuitarGameplayMode gameplayMode;
+    public bool multiplayerRhythmMode;
+    public bool showMultiplayerRhythmSetup;
+    public List<string> multiplayerRhythmAvailableInputDevices;
+    public int selectedMultiplayerRhythmSetupIndex;
+    public int selectedMultiplayerRhythmPlayerOneDeviceIndex;
+    public int selectedMultiplayerRhythmPlayerTwoDeviceIndex;
+    public string multiplayerRhythmPlayerOneSetupLabel;
+    public string multiplayerRhythmPlayerTwoSetupLabel;
+    public int multiplayerRhythmSetupCapturePlayerIndex;
+    public bool multiplayerRhythmSetupCanContinue;
+    public string multiplayerRhythmSetupStatusText;
+    public List<MultiplayerRhythmPlayerSnapshot> multiplayerRhythmPlayers;
+    public int multiplayerRhythmWinningPlayerIndex;
+    public bool multiplayerRhythmDraw;
     public SongLibraryType songLibraryType;
     public int selectedSongLibraryTypeIndex;
     public float songTime;
@@ -313,6 +361,8 @@ public sealed class GuitarGameplaySnapshot
     public bool loopEnabled;
     public float loopStartTime;
     public float loopEndTime;
+    public bool loopStartConfigured;
+    public bool loopEndConfigured;
     public int selectedLoopMarker;
     public bool showLoopSettings;
     public bool loopPreviewPlaying;
@@ -320,6 +370,18 @@ public sealed class GuitarGameplaySnapshot
     public int selectedLoopPausePopupIndex;
     public float loopPauseDurationSeconds;
     public float loopRestartPauseRemainingSeconds;
+    public List<string> loopBookmarkNames;
+    public List<string> loopBookmarkDetails;
+    public int selectedLoopBookmarkIndex;
+    public bool selectedLoopBookmarkModified;
+    public bool loopBookmarkRenameActive;
+    public string loopBookmarkRenameDraft;
+    public string loopBookmarkTrackLabel;
+    public List<string> rhythmPracticeSectionNames;
+    public List<string> rhythmPracticeSectionDetails;
+    public int selectedRhythmPracticeSectionIndex;
+    public int rhythmPracticeLoopStartSectionIndex;
+    public int rhythmPracticeLoopEndSectionIndex;
     public float playbackSpeedPercent;
     public bool scoreSaveInvalidated;
     public float currentSectionProgress;
@@ -329,6 +391,9 @@ public sealed class GuitarGameplaySnapshot
     public int currentSessionScoreHits;
     public int currentSessionScoreMisses;
     public float currentSessionScorePercent;
+    public int currentSessionScoreValue;
+    public int currentSessionScoreCombo;
+    public int currentSessionScoreMultiplier;
     public int currentSessionArcadeScore;
     public int currentSessionArcadeCombo;
     public int currentSessionArcadeMultiplier;
@@ -355,6 +420,7 @@ public sealed class GuitarGameplaySnapshot
     public bool mainMenuFlowActive;
     public int selectedMainMenuIndex;
     public bool showStartMenu;
+    public bool showLibraryLoadingOverlay;
     public int selectedStartMenuStepIndex;
     public int selectedStartMenuModeIndex;
     public int selectedStartMenuArcadeSetupIndex;
@@ -379,6 +445,7 @@ public sealed class GuitarGameplaySnapshot
     public List<string> availableSongSubtitles;
     public List<string> availableSongAlbums;
     public List<string> availableSongArtworkPaths;
+    public List<string> availableSongDurationLabels;
     public List<string> availableSongDifficultyLabels;
     public List<bool> availableSongFavorited;
     public List<float> availableSongScores;
@@ -391,6 +458,7 @@ public sealed class GuitarGameplaySnapshot
     public string selectedLibrarySongAudioLabel;
     public string selectedLibrarySongTuningLabel;
     public int selectedLibrarySongTrackCount;
+    public string selectedLibraryHeroScoreText;
     public int selectedLibrarySongHeroBestHeartsRemaining;
     public int selectedLibrarySongHeroBestHeartsTotal;
     public bool selectedLibrarySongHasMp3;
@@ -433,9 +501,12 @@ public sealed class GuitarGameplaySnapshot
     public bool songEndedAsGameOver;
     public int selectedSongEndActionIndex;
     public float currentTrackBestScorePercent;
+    public int currentTrackBestScoreValue;
     public int currentTrackBestArcadeScore;
+    public int currentTrackBestArcadeHeroScore;
     public int currentSongBestArcadeScore;
     public float currentTrackHeroBestScorePercent;
+    public int currentTrackHeroBestScoreValue;
     public int currentTrackHeroBestHeartsRemaining;
     public int currentTrackHeroBestHeartsTotal;
     public string notesDetectorBackendLabel;
@@ -463,6 +534,8 @@ public sealed class GuitarGameplaySnapshot
     public int selectedGlobalSettingsTopIndex;
     public int selectedGlobalSettingsItemIndex;
     public string activeGlobalSettingsCategory;
+    public bool globalSettingsTransparentBackground;
+    public bool showGameplayHudPreviewInMenus;
     public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
 }
 
