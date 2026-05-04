@@ -54,8 +54,8 @@ public sealed class TabsStarfieldBackground : ITabsBackgroundEffect
         root = new GameObject("TabsStarfieldBackground");
         root.transform.SetParent(parent, false);
 
-        starMaterial = owner.CreateSharedGlowMaterial(owner.tabMidStarColor, owner.tabStarEmission);
-        shootingStarMaterial = owner.CreateSharedGlowMaterial(owner.tabShootingStarColor, owner.tabStarEmission * 1.35f);
+        starMaterial = owner.CreateSharedTabsGlowMaterial(owner.tabMidStarColor, owner.tabStarEmission);
+        shootingStarMaterial = owner.CreateSharedTabsGlowMaterial(owner.tabShootingStarColor, owner.tabStarEmission * 1.35f);
 
         CreateStars();
         CreateShootingStarPool();

@@ -18,6 +18,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private const int MinimumStartupLeadSamples = 512;
     private const int MaxDelayMilliseconds = 2500;
     private const int MaxChorusMilliseconds = 64;
+    private const float MinRigGainDb = -36f;
+    private const float MaxRigGainDb = 36f;
+    private const float DefaultRigInputGainDb = 14f;
+    private const float DefaultRigOutputGainDb = 10f;
 
     [Serializable]
     public sealed class ToneLabSettings
@@ -28,8 +32,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         public string selected_preset_id = string.Empty;
         public List<ToneLabPreset> presets = new List<ToneLabPreset>();
         public List<ToneLabPedalSlot> pedal_chain = new List<ToneLabPedalSlot>();
-        public float input_gain_db = 8f;
-        public float output_gain_db = 8f;
+        public float input_gain_db = DefaultRigInputGainDb;
+        public float output_gain_db = DefaultRigOutputGainDb;
         public bool dist_enabled;
         public bool chorus_enabled;
         public bool phaser_enabled;
@@ -65,8 +69,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         public string preset_id = string.Empty;
         public string preset_name = string.Empty;
-        public float input_gain_db = 8f;
-        public float output_gain_db = 8f;
+        public float input_gain_db = DefaultRigInputGainDb;
+        public float output_gain_db = DefaultRigOutputGainDb;
         public List<ToneLabPedalSlot> pedal_chain = new List<ToneLabPedalSlot>();
     }
 
@@ -1001,6 +1005,42 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return deleted;
     }
 
+    public void ResetAllToFactoryDefaults()
+    {
+        UpdateSettings(toneSettings =>
+        {
+            if (toneSettings == null)
+                return;
+
+            string inputDeviceName = toneSettings.input_device_name ?? string.Empty;
+            string outputDeviceName = toneSettings.output_device_name ?? string.Empty;
+            int monitoringBufferSize = ResolveMonitoringBufferSize(toneSettings.monitoring_buffer_size);
+
+            toneSettings.input_device_name = inputDeviceName;
+            toneSettings.output_device_name = outputDeviceName;
+            toneSettings.monitoring_buffer_size = monitoringBufferSize;
+            toneSettings.presets = CreateDefaultPresets();
+
+            ToneLabPreset defaultPreset = GetDefaultPreset(toneSettings);
+            if (defaultPreset != null)
+            {
+                ApplyPresetToSettings(toneSettings, defaultPreset);
+            }
+            else
+            {
+                toneSettings.selected_preset_id = string.Empty;
+                toneSettings.pedal_chain = new List<ToneLabPedalSlot>();
+                toneSettings.input_gain_db = DefaultRigInputGainDb;
+                toneSettings.output_gain_db = DefaultRigOutputGainDb;
+                EnsurePedalChain(toneSettings);
+            }
+
+            SyncLegacySettingsFromChain(toneSettings);
+        }, restartMonitoring: false);
+
+        SavePresetLibraryToDisk(settings?.presets);
+    }
+
     public bool TryStartMonitoring()
     {
         EnsureSettingsLoaded();
@@ -1514,8 +1554,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         toneSettings.monitoring_buffer_size = ResolveMonitoringBufferSize(toneSettings.monitoring_buffer_size);
         EnsurePresetLibrary(toneSettings);
         EnsurePedalChain(toneSettings);
-        toneSettings.input_gain_db = Mathf.Clamp(toneSettings.input_gain_db, -24f, 24f);
-        toneSettings.output_gain_db = Mathf.Clamp(toneSettings.output_gain_db, -24f, 24f);
+        toneSettings.input_gain_db = Mathf.Clamp(toneSettings.input_gain_db, MinRigGainDb, MaxRigGainDb);
+        toneSettings.output_gain_db = Mathf.Clamp(toneSettings.output_gain_db, MinRigGainDb, MaxRigGainDb);
         toneSettings.dist_drive_db = Mathf.Clamp(toneSettings.dist_drive_db, 0f, 36f);
         toneSettings.chorus_rate_hz = Mathf.Clamp(toneSettings.chorus_rate_hz, 0.1f, 4f);
         toneSettings.chorus_depth = Mathf.Clamp01(toneSettings.chorus_depth);
@@ -1721,8 +1761,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             ? CreatePresetId()
             : normalized.preset_id;
         normalized.preset_name = MakeUniquePresetName(normalized.preset_name, presetNames);
-        normalized.input_gain_db = Mathf.Clamp(normalized.input_gain_db, -24f, 24f);
-        normalized.output_gain_db = Mathf.Clamp(normalized.output_gain_db, -24f, 24f);
+        normalized.input_gain_db = Mathf.Clamp(normalized.input_gain_db, MinRigGainDb, MaxRigGainDb);
+        normalized.output_gain_db = Mathf.Clamp(normalized.output_gain_db, MinRigGainDb, MaxRigGainDb);
 
         List<ToneLabPedalSlot> sourceChain = normalized.pedal_chain ?? new List<ToneLabPedalSlot>();
         List<ToneLabPedalSlot> normalizedChain = new List<ToneLabPedalSlot>(sourceChain.Count);
@@ -2112,20 +2152,80 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (preset == null || string.IsNullOrWhiteSpace(preset.preset_name))
             return false;
 
-        if (string.Equals(preset.preset_name, "Metal", StringComparison.OrdinalIgnoreCase))
+        string presetName = preset.preset_name.Trim();
+        switch (presetName.ToUpperInvariant())
         {
-            DistortionPedalSettings distortion = TryGetPedalSettings<DistortionPedalSettings>(preset, ToneLabPedalType.Distortion);
-            AmpPedalSettings amp = TryGetPedalSettings<AmpPedalSettings>(preset, ToneLabPedalType.Amp);
-            StudioEqPedalSettings eq = TryGetPedalSettings<StudioEqPedalSettings>(preset, ToneLabPedalType.StudioEq);
-            return distortion != null &&
-                   amp != null &&
-                   eq != null &&
-                   Mathf.Abs(distortion.drive_db - 8.5f) < 0.25f &&
-                   Mathf.Abs(amp.gain_db - 32f) < 0.5f &&
-                   Mathf.Abs(eq.mid_db - (-2.5f)) < 0.25f;
+            case "CLEAN":
+            {
+                AmpPedalSettings amp = TryGetPedalSettings<AmpPedalSettings>(preset, ToneLabPedalType.Amp);
+                ChorusPedalSettings chorus = TryGetPedalSettings<ChorusPedalSettings>(preset, ToneLabPedalType.Chorus);
+                return MatchesApproximateFactoryValues(preset, 8f, 7.5f)
+                    && amp != null
+                    && chorus != null
+                    && Approximately(amp.gain_db, 10.5f, 0.35f)
+                    && Approximately(chorus.mix, 0.12f, 0.03f);
+            }
+            case "BLUES":
+            {
+                DistortionPedalSettings distortion = TryGetPedalSettings<DistortionPedalSettings>(preset, ToneLabPedalType.Distortion);
+                AmpPedalSettings amp = TryGetPedalSettings<AmpPedalSettings>(preset, ToneLabPedalType.Amp);
+                return MatchesApproximateFactoryValues(preset, 9f, 8f)
+                    && distortion != null
+                    && amp != null
+                    && Approximately(distortion.drive_db, 8.5f, 0.35f)
+                    && Approximately(amp.gain_db, 18f, 0.5f);
+            }
+            case "JAZZ":
+            {
+                AmpPedalSettings amp = TryGetPedalSettings<AmpPedalSettings>(preset, ToneLabPedalType.Amp);
+                StudioEqPedalSettings eq = TryGetPedalSettings<StudioEqPedalSettings>(preset, ToneLabPedalType.StudioEq);
+                return MatchesApproximateFactoryValues(preset, 8f, 7f)
+                    && amp != null
+                    && eq != null
+                    && Approximately(amp.gain_db, 8f, 0.35f)
+                    && Approximately(eq.high_shelf_db, -3.0f, 0.25f);
+            }
+            case "EDGY":
+            {
+                DistortionPedalSettings distortion = TryGetPedalSettings<DistortionPedalSettings>(preset, ToneLabPedalType.Distortion);
+                AmpPedalSettings amp = TryGetPedalSettings<AmpPedalSettings>(preset, ToneLabPedalType.Amp);
+                PhaserPedalSettings phaser = TryGetPedalSettings<PhaserPedalSettings>(preset, ToneLabPedalType.Phaser);
+                return MatchesApproximateFactoryValues(preset, 9f, 6.5f)
+                    && distortion != null
+                    && amp != null
+                    && phaser != null
+                    && Approximately(distortion.drive_db, 13f, 0.35f)
+                    && Approximately(amp.gain_db, 24f, 0.5f)
+                    && Approximately(phaser.mix, 0.10f, 0.03f);
+            }
+            case "METAL":
+            {
+                DistortionPedalSettings distortion = TryGetPedalSettings<DistortionPedalSettings>(preset, ToneLabPedalType.Distortion);
+                AmpPedalSettings amp = TryGetPedalSettings<AmpPedalSettings>(preset, ToneLabPedalType.Amp);
+                StudioEqPedalSettings eq = TryGetPedalSettings<StudioEqPedalSettings>(preset, ToneLabPedalType.StudioEq);
+                return MatchesApproximateFactoryValues(preset, 10f, 5f)
+                    && distortion != null
+                    && amp != null
+                    && eq != null
+                    && Approximately(distortion.drive_db, 16.5f, 0.35f)
+                    && Approximately(amp.gain_db, 37f, 0.5f)
+                    && Approximately(eq.mid_db, -4.2f, 0.3f);
+            }
         }
 
         return false;
+    }
+
+    private static bool MatchesApproximateFactoryValues(ToneLabPreset preset, float inputGainDb, float outputGainDb)
+    {
+        return preset != null
+            && Approximately(preset.input_gain_db, inputGainDb, 0.25f)
+            && Approximately(preset.output_gain_db, outputGainDb, 0.25f);
+    }
+
+    private static bool Approximately(float a, float b, float tolerance)
+    {
+        return Mathf.Abs(a - b) <= Mathf.Abs(tolerance);
     }
 
     private static TSettings TryGetPedalSettings<TSettings>(ToneLabPreset preset, ToneLabPedalType pedalType) where TSettings : class
@@ -2170,8 +2270,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             return;
 
         toneSettings.selected_preset_id = preset.preset_id ?? string.Empty;
-        toneSettings.input_gain_db = Mathf.Clamp(preset.input_gain_db, -24f, 24f);
-        toneSettings.output_gain_db = Mathf.Clamp(preset.output_gain_db, -24f, 24f);
+        toneSettings.input_gain_db = Mathf.Clamp(preset.input_gain_db, MinRigGainDb, MaxRigGainDb);
+        toneSettings.output_gain_db = Mathf.Clamp(preset.output_gain_db, MinRigGainDb, MaxRigGainDb);
         toneSettings.pedal_chain = ClonePedalChain(preset.pedal_chain);
         EnsurePedalChain(toneSettings);
     }
@@ -2183,8 +2283,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             preset_id = string.IsNullOrWhiteSpace(presetId) ? CreatePresetId() : presetId,
             preset_name = string.IsNullOrWhiteSpace(presetName) ? "New Preset" : presetName.Trim(),
-            input_gain_db = Mathf.Clamp(toneSettings.input_gain_db, -24f, 24f),
-            output_gain_db = Mathf.Clamp(toneSettings.output_gain_db, -24f, 24f),
+            input_gain_db = Mathf.Clamp(toneSettings.input_gain_db, MinRigGainDb, MaxRigGainDb),
+            output_gain_db = Mathf.Clamp(toneSettings.output_gain_db, MinRigGainDb, MaxRigGainDb),
             pedal_chain = ClonePedalChain(toneSettings.pedal_chain)
         };
     }
@@ -2205,8 +2305,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         return BuildPreset(
             "Clean",
-            inputGainDb: 8f,
-            outputGainDb: 7.5f,
+            inputGainDb: 12f,
+            outputGainDb: 11f,
             CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
             {
                 threshold_db = -66f,
@@ -2217,53 +2317,53 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             }),
             CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
             {
-                threshold_db = -26f,
-                ratio = 2.2f,
-                attack_ms = 18f,
-                release_ms = 160f
+                threshold_db = -28f,
+                ratio = 2.4f,
+                attack_ms = 16f,
+                release_ms = 150f
             }),
             CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
             {
-                gain_db = 10.5f,
-                tone = 0.58f,
-                presence = 0.40f,
-                master_db = -1.0f,
-                sag = 0.10f
+                gain_db = 9f,
+                tone = 0.64f,
+                presence = 0.48f,
+                master_db = 1.8f,
+                sag = 0.08f
             }),
             CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
             {
-                thump = 0.40f,
-                presence = 0.35f,
-                air = 0.60f,
+                thump = 0.38f,
+                presence = 0.40f,
+                air = 0.66f,
                 mix = 1.0f
             }),
             CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
             {
-                low_cut_hz = 72f,
-                low_shelf_db = -0.5f,
-                mid_db = -1.5f,
-                high_shelf_db = -0.8f,
-                high_cut_hz = 7600f
+                low_cut_hz = 68f,
+                low_shelf_db = -0.3f,
+                mid_db = -0.8f,
+                high_shelf_db = 0.9f,
+                high_cut_hz = 8400f
             }),
             CreatePresetSlot(ToneLabPedalType.Chorus, true, new ChorusPedalSettings
             {
-                rate_hz = 0.42f,
-                depth = 0.18f,
-                mix = 0.12f
+                rate_hz = 0.45f,
+                depth = 0.26f,
+                mix = 0.18f
             }),
             CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
             {
-                delay_seconds = 0.11f,
-                feedback = 0.10f,
-                mix = 0.08f
+                delay_seconds = 0.12f,
+                feedback = 0.14f,
+                mix = 0.12f
             }),
             CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
             {
-                room_size = 0.22f,
-                damping = 0.55f,
-                wet = 0.09f,
+                room_size = 0.28f,
+                damping = 0.52f,
+                wet = 0.13f,
                 dry = 1.00f,
-                width = 0.90f,
+                width = 0.96f,
                 freeze = 0f
             }));
     }
@@ -2272,63 +2372,63 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         return BuildPreset(
             "Blues",
-            inputGainDb: 9f,
-            outputGainDb: 8f,
+            inputGainDb: 13.5f,
+            outputGainDb: 12f,
             CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
             {
-                threshold_db = -62f,
+                threshold_db = -64f,
                 attack_ms = 1.2f,
                 hold_ms = 22f,
-                release_ms = 105f,
+                release_ms = 115f,
                 range_db = -72f
             }),
             CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
             {
-                threshold_db = -24f,
+                threshold_db = -25f,
                 ratio = 2.6f,
-                attack_ms = 14f,
-                release_ms = 140f
+                attack_ms = 16f,
+                release_ms = 155f
             }),
             CreatePresetSlot(ToneLabPedalType.Distortion, true, new DistortionPedalSettings
             {
-                drive_db = 8.5f
+                drive_db = 11.5f
             }),
             CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
             {
-                gain_db = 18f,
-                tone = 0.48f,
-                presence = 0.43f,
-                master_db = -1.6f,
-                sag = 0.18f
+                gain_db = 22f,
+                tone = 0.52f,
+                presence = 0.48f,
+                master_db = 1.1f,
+                sag = 0.16f
             }),
             CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
             {
-                thump = 0.58f,
-                presence = 0.40f,
-                air = 0.44f,
+                thump = 0.56f,
+                presence = 0.46f,
+                air = 0.40f,
                 mix = 1f
             }),
             CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
             {
                 low_cut_hz = 78f,
-                low_shelf_db = 1.5f,
-                mid_db = 0.8f,
-                high_shelf_db = -1.4f,
-                high_cut_hz = 6700f
+                low_shelf_db = 1.1f,
+                mid_db = 1.6f,
+                high_shelf_db = -0.6f,
+                high_cut_hz = 7100f
             }),
             CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
             {
-                delay_seconds = 0.14f,
-                feedback = 0.15f,
-                mix = 0.10f
+                delay_seconds = 0.15f,
+                feedback = 0.18f,
+                mix = 0.11f
             }),
             CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
             {
-                room_size = 0.18f,
-                damping = 0.48f,
-                wet = 0.08f,
+                room_size = 0.20f,
+                damping = 0.46f,
+                wet = 0.10f,
                 dry = 1.00f,
-                width = 0.88f,
+                width = 0.90f,
                 freeze = 0f
             }));
     }
@@ -2337,51 +2437,51 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         return BuildPreset(
             "Jazz",
-            inputGainDb: 8f,
-            outputGainDb: 7f,
+            inputGainDb: 11.5f,
+            outputGainDb: 10.5f,
             CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
             {
-                threshold_db = -20f,
-                ratio = 2.4f,
-                attack_ms = 22f,
-                release_ms = 180f
+                threshold_db = -21f,
+                ratio = 2.8f,
+                attack_ms = 24f,
+                release_ms = 210f
             }),
             CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
             {
-                gain_db = 8f,
-                tone = 0.38f,
+                gain_db = 6.5f,
+                tone = 0.34f,
                 presence = 0.22f,
-                master_db = -1.2f,
-                sag = 0.08f
+                master_db = 1.4f,
+                sag = 0.07f
             }),
             CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
             {
                 thump = 0.46f,
-                presence = 0.26f,
-                air = 0.38f,
+                presence = 0.24f,
+                air = 0.32f,
                 mix = 1f
             }),
             CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
             {
-                low_cut_hz = 74f,
-                low_shelf_db = 1.8f,
+                low_cut_hz = 70f,
+                low_shelf_db = 2.2f,
                 mid_db = -1.2f,
-                high_shelf_db = -3.0f,
-                high_cut_hz = 5400f
+                high_shelf_db = -3.6f,
+                high_cut_hz = 5000f
             }),
             CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
             {
-                delay_seconds = 0.08f,
+                delay_seconds = 0.09f,
                 feedback = 0.08f,
                 mix = 0.04f
             }),
             CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
             {
-                room_size = 0.18f,
-                damping = 0.58f,
-                wet = 0.08f,
+                room_size = 0.24f,
+                damping = 0.62f,
+                wet = 0.10f,
                 dry = 1.00f,
-                width = 0.86f,
+                width = 0.84f,
                 freeze = 0f
             }));
     }
@@ -2390,71 +2490,71 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         return BuildPreset(
             "Edgy",
-            inputGainDb: 9f,
-            outputGainDb: 6.5f,
+            inputGainDb: 14f,
+            outputGainDb: 11f,
             CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
             {
-                threshold_db = -58f,
+                threshold_db = -56f,
                 attack_ms = 1.0f,
                 hold_ms = 24f,
-                release_ms = 95f,
+                release_ms = 105f,
                 range_db = -78f
             }),
             CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
             {
-                threshold_db = -24f,
-                ratio = 2.8f,
-                attack_ms = 12f,
-                release_ms = 120f
+                threshold_db = -25f,
+                ratio = 2.5f,
+                attack_ms = 10f,
+                release_ms = 110f
             }),
             CreatePresetSlot(ToneLabPedalType.Distortion, true, new DistortionPedalSettings
             {
-                drive_db = 13f
+                drive_db = 16.5f
             }),
             CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
             {
-                gain_db = 24f,
-                tone = 0.57f,
-                presence = 0.58f,
-                master_db = -1.5f,
+                gain_db = 28.5f,
+                tone = 0.60f,
+                presence = 0.64f,
+                master_db = 0.7f,
                 sag = 0.22f
             }),
             CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
             {
-                thump = 0.60f,
-                presence = 0.50f,
-                air = 0.45f,
+                thump = 0.62f,
+                presence = 0.54f,
+                air = 0.42f,
                 mix = 1f
             }),
             CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
             {
-                low_cut_hz = 84f,
-                low_shelf_db = 0.5f,
-                mid_db = 1.8f,
-                high_shelf_db = 0.4f,
-                high_cut_hz = 6900f
+                low_cut_hz = 86f,
+                low_shelf_db = 0.2f,
+                mid_db = 1.1f,
+                high_shelf_db = 1.1f,
+                high_cut_hz = 7400f
             }),
             CreatePresetSlot(ToneLabPedalType.Phaser, true, new PhaserPedalSettings
             {
-                rate_hz = 0.30f,
-                depth = 0.20f,
-                mix = 0.10f,
-                center_hz = 900f,
-                feedback = 0.03f
+                rate_hz = 0.34f,
+                depth = 0.26f,
+                mix = 0.14f,
+                center_hz = 980f,
+                feedback = 0.06f
             }),
             CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
             {
-                delay_seconds = 0.22f,
-                feedback = 0.18f,
-                mix = 0.10f
+                delay_seconds = 0.24f,
+                feedback = 0.22f,
+                mix = 0.12f
             }),
             CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
             {
-                room_size = 0.14f,
-                damping = 0.50f,
-                wet = 0.07f,
+                room_size = 0.16f,
+                damping = 0.46f,
+                wet = 0.08f,
                 dry = 1.00f,
-                width = 0.84f,
+                width = 0.88f,
                 freeze = 0f
             }));
     }
@@ -2463,61 +2563,61 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         return BuildPreset(
             "Metal",
-            inputGainDb: 10f,
-            outputGainDb: 5.0f,
+            inputGainDb: 15.5f,
+            outputGainDb: 10f,
             CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
             {
-                threshold_db = -48f,
+                threshold_db = -42f,
                 attack_ms = 0.8f,
-                hold_ms = 34f,
-                release_ms = 90f,
+                hold_ms = 30f,
+                release_ms = 72f,
                 range_db = -80f
             }),
             CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
             {
-                threshold_db = -22f,
-                ratio = 2.8f,
-                attack_ms = 5f,
-                release_ms = 60f
+                threshold_db = -24f,
+                ratio = 2.4f,
+                attack_ms = 4f,
+                release_ms = 58f
             }),
             CreatePresetSlot(ToneLabPedalType.Distortion, true, new DistortionPedalSettings
             {
-                drive_db = 16.5f
+                drive_db = 21f
             }),
             CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
             {
-                gain_db = 37f,
-                tone = 0.42f,
-                presence = 0.72f,
-                master_db = -2.8f,
-                sag = 0.12f
+                gain_db = 39.5f,
+                tone = 0.38f,
+                presence = 0.78f,
+                master_db = 0.2f,
+                sag = 0.10f
             }),
             CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
             {
-                thump = 0.82f,
-                presence = 0.64f,
-                air = 0.22f,
+                thump = 0.86f,
+                presence = 0.68f,
+                air = 0.18f,
                 mix = 1f
             }),
             CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
             {
-                low_cut_hz = 82f,
-                low_shelf_db = -0.3f,
-                mid_db = -4.2f,
-                high_shelf_db = 1.3f,
-                high_cut_hz = 5600f
+                low_cut_hz = 86f,
+                low_shelf_db = -0.8f,
+                mid_db = -5.8f,
+                high_shelf_db = 2.1f,
+                high_cut_hz = 6100f
             }),
             CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
             {
-                delay_seconds = 0.28f,
-                feedback = 0.10f,
-                mix = 0.05f
+                delay_seconds = 0.30f,
+                feedback = 0.12f,
+                mix = 0.06f
             }),
             CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
             {
                 room_size = 0.08f,
-                damping = 0.66f,
-                wet = 0.03f,
+                damping = 0.68f,
+                wet = 0.04f,
                 dry = 1.00f,
                 width = 0.76f,
                 freeze = 0f
@@ -2530,8 +2630,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             preset_id = CreatePresetId(),
             preset_name = presetName,
-            input_gain_db = Mathf.Clamp(inputGainDb, -24f, 24f),
-            output_gain_db = Mathf.Clamp(outputGainDb, -24f, 24f),
+            input_gain_db = Mathf.Clamp(inputGainDb, MinRigGainDb, MaxRigGainDb),
+            output_gain_db = Mathf.Clamp(outputGainDb, MinRigGainDb, MaxRigGainDb),
             pedal_chain = ClonePedalChain(pedalSlots)
         };
     }

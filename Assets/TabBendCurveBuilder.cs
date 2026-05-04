@@ -288,7 +288,7 @@ public static class TabBendCurveBuilder
 
         Object.Destroy(segment.GetComponent<Collider>());
         Renderer renderer = segment.GetComponent<Renderer>();
-        renderer.material = owner.CreateSharedGlowMaterial(color, 1.15f);
+        renderer.material = owner.CreateSharedTabsGlowMaterial(color, 1.15f);
         renderer.shadowCastingMode = ShadowCastingMode.Off;
         renderer.receiveShadows = false;
         renderer.lightProbeUsage = LightProbeUsage.Off;
