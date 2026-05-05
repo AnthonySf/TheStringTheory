@@ -10,7 +10,7 @@ using Rocksmith2014.XML.Processing;
 
 internal static class Program
 {
-    private const int SchemaVersion = 9;
+    private const int SchemaVersion = 10;
     private const string ManifestFileName = "song.rs2song.json";
     private const string ContentDirectoryName = "rocksmith_content";
     private const float RocksmithVibratoCyclesPerSecond = 5f;
@@ -22,7 +22,8 @@ internal static class Program
         WriteIndented = true
     };
 
-    private static readonly int[] StandardTuning = { 40, 45, 50, 55, 59, 64 };
+    private static readonly int[] StandardGuitarTuning = { 40, 45, 50, 55, 59, 64 };
+    private static readonly int[] StandardBassTuning = { 28, 33, 38, 43 };
     private static readonly string[] NoteNames = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 
     public static async Task<int> Main(string[] args)
@@ -110,7 +111,7 @@ internal static class Program
                     difficultyLabel = variant.Context.DifficultyLabel,
                     difficultyUiIndex = variant.Context.DifficultyUiIndex,
                     hasDifficultyVariants = variant.Context.HasDifficultyVariants,
-                    partFilePath = partFilePath,
+                    partFilePath = BuildStoredPath(targetDirectory, partFilePath),
                     noteCount = variant.Part.notes.Count,
                     tabCount = variant.Part.notes.Count,
                     score = ScoreArrangement(context.Route, variant.Part.notes.Count),
@@ -143,9 +144,9 @@ internal static class Program
             artist = artist,
             album = album,
             subtitle = string.IsNullOrWhiteSpace(artist) ? string.Empty : artist,
-            artworkPath = artworkPath ?? string.Empty,
-            audioPath = mainAudioPath ?? string.Empty,
-            previewAudioPath = previewAudioPath ?? string.Empty,
+            artworkPath = BuildStoredPath(targetDirectory, artworkPath),
+            audioPath = BuildStoredPath(targetDirectory, mainAudioPath),
+            previewAudioPath = BuildStoredPath(targetDirectory, previewAudioPath),
             durationSeconds = maxDurationSeconds,
             difficultyRating = maxDifficultyRating,
             arrangements = arrangementSummaries
@@ -881,7 +882,7 @@ internal static class Program
     {
         int basePitch = tuningPitches != null && stringIndex >= 0 && stringIndex < tuningPitches.Length
             ? tuningPitches[stringIndex]
-            : StandardTuning[Math.Clamp(stringIndex, 0, StandardTuning.Length - 1)];
+            : StandardGuitarTuning[Math.Clamp(stringIndex, 0, StandardGuitarTuning.Length - 1)];
         return basePitch + fret;
     }
 
@@ -1061,7 +1062,7 @@ internal static class Program
                 : arrangement.MetaData.Arrangement!;
             short partNumber = arrangement.MetaData.Part <= 0 ? (short)1 : arrangement.MetaData.Part;
             string displayName = partNumber > 1 ? $"{route} {partNumber}" : route;
-            int[] tuningPitches = BuildTuningPitches(arrangement.MetaData.Tuning);
+            int[] tuningPitches = BuildTuningPitches(route, arrangement.MetaData.Tuning);
             return new ArrangementContext
             {
                 Arrangement = arrangement,
@@ -1339,11 +1340,17 @@ internal static class Program
         public float semitoneOffset;
     }
 
-    private static int[] BuildTuningPitches(Tuning tuning)
+    private static int[] BuildTuningPitches(string route, Tuning tuning)
     {
-        int[] pitches = new int[6];
+        bool isBassRoute = !string.IsNullOrWhiteSpace(route) && route.Contains("Bass", StringComparison.OrdinalIgnoreCase);
+        int[] baseTuning = isBassRoute ? StandardBassTuning : StandardGuitarTuning;
+        int stringCount = Math.Min(baseTuning.Length, tuning?.Strings?.Length ?? 0);
+        if (stringCount <= 0)
+            return (int[])baseTuning.Clone();
+
+        int[] pitches = new int[stringCount];
         for (int i = 0; i < pitches.Length; i++)
-            pitches[i] = StandardTuning[i] + tuning.Strings[i];
+            pitches[i] = baseTuning[i] + tuning.Strings[i];
         return pitches;
     }
 
@@ -1355,7 +1362,21 @@ internal static class Program
         if (Matches(tuningPitches, new[] { 38, 45, 50, 55, 59, 64 })) return "Drop D";
         if (Matches(tuningPitches, new[] { 37, 44, 49, 54, 58, 63 })) return "Drop Db";
         if (Matches(tuningPitches, new[] { 36, 43, 48, 53, 57, 62 })) return "Drop C";
+        if (Matches(tuningPitches, new[] { 28, 33, 38, 43 })) return "E Standard Bass";
+        if (Matches(tuningPitches, new[] { 27, 32, 37, 42 })) return "Eb Standard Bass";
+        if (Matches(tuningPitches, new[] { 26, 31, 36, 41 })) return "D Standard Bass";
+        if (Matches(tuningPitches, new[] { 26, 33, 38, 43 })) return "Drop D Bass";
+        if (Matches(tuningPitches, new[] { 25, 32, 37, 42 })) return "Drop Db Bass";
+        if (Matches(tuningPitches, new[] { 24, 31, 36, 41 })) return "Drop C Bass";
         return $"Custom ({string.Join(" ", tuningPitches.Select(GetNoteName))})";
+    }
+
+    private static string BuildStoredPath(string targetDirectory, string? absolutePath)
+    {
+        if (string.IsNullOrWhiteSpace(absolutePath))
+            return string.Empty;
+
+        return Path.GetRelativePath(targetDirectory, absolutePath);
     }
 
     private static bool Matches(int[] left, int[] right)
