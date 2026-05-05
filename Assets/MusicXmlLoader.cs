@@ -13,6 +13,11 @@ public static class MusicXmlLoader
         public int Index;
         public string PartId;
         public string Name;
+        public string GroupId;
+        public string GroupDisplayName;
+        public string DifficultyLabel;
+        public int DifficultyUiIndex = -1;
+        public bool HasDifficultyVariants;
         public int NoteCount;
         public int TabCount;
         public int Score;
@@ -26,6 +31,11 @@ public static class MusicXmlLoader
                 Index = Index,
                 PartId = PartId,
                 Name = Name,
+                GroupId = GroupId,
+                GroupDisplayName = GroupDisplayName,
+                DifficultyLabel = DifficultyLabel,
+                DifficultyUiIndex = DifficultyUiIndex,
+                HasDifficultyVariants = HasDifficultyVariants,
                 NoteCount = NoteCount,
                 TabCount = TabCount,
                 Score = Score,

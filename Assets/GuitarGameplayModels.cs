@@ -370,6 +370,10 @@ public sealed class GuitarGameplaySnapshot
     public int selectedLoopPausePopupIndex;
     public float loopPauseDurationSeconds;
     public float loopRestartPauseRemainingSeconds;
+    public bool showRocksmithDifficultyPopup;
+    public bool rocksmithDifficultyModeAvailable;
+    public List<string> rocksmithDifficultyOptionLabels;
+    public int selectedRocksmithDifficultyOptionIndex;
     public List<string> loopBookmarkNames;
     public List<string> loopBookmarkDetails;
     public int selectedLoopBookmarkIndex;
@@ -406,6 +410,10 @@ public sealed class GuitarGameplaySnapshot
     public List<string> arcadeDifficultyLabels;
     public List<bool> arcadeDifficultyAvailable;
     public int selectedArcadeDifficultyIndex;
+    public bool showLibraryDifficultySelector;
+    public List<string> libraryDifficultyLabels;
+    public List<bool> libraryDifficultyAvailable;
+    public int selectedLibraryDifficultyIndex;
     public List<TabSectionData> sections;
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
@@ -465,6 +473,7 @@ public sealed class GuitarGameplaySnapshot
     public bool selectedLibrarySongHasMidi;
     public bool selectedLibrarySongIsCurrent;
     public List<string> availableTrackNames;
+    public List<string> availableTrackMetaTexts;
     public List<float> availableTrackScores;
     public List<string> availableTrackScoreTexts;
     public int selectedTrackIndex;

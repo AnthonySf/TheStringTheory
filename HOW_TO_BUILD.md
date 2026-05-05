@@ -18,6 +18,8 @@ Missing pieces you need locally:
   packaged ToneLab runtime.
 - `External/aubio/`
   aubio source used by the native detector build.
+- `External/Rocksmith2014.NET/`
+  local dependency source tree used if you want to build the Rocksmith PSARC importer yourself.
 
 ## Unity
 
@@ -56,6 +58,40 @@ Source files stay in:
 If you want the packaged runtime in Unity, build it separately and place the output in:
 
 - `Assets/StreamingAssets/ToneLab/dist/`
+
+## Rocksmith PSARC importer
+
+The repo includes our wrapper source here:
+
+- `External/RocksmithImportTool/`
+
+The game looks for the importer executable here:
+
+- `Assets/StreamingAssets/RocksmithImport/RocksmithImportTool.exe`
+
+If that executable is present, the game will detect `.psarc` files in the songs directory and import them on library refresh.
+
+### End-user setup
+
+If you already have a compatible `RocksmithImportTool.exe`, place it here:
+
+- `Assets/StreamingAssets/RocksmithImport/RocksmithImportTool.exe`
+
+No other repo changes are needed for basic PSARC importing.
+
+### Build the importer locally
+
+If you want to build the importer from source, first clone the dependency here:
+
+- `External/Rocksmith2014.NET/`
+
+Then build or publish:
+
+- `External/RocksmithImportTool/RocksmithImportTool.csproj`
+
+Recommended publish target:
+
+- `dotnet publish External\\RocksmithImportTool\\RocksmithImportTool.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o Assets\\StreamingAssets\\RocksmithImport`
 
 ## Songs
 

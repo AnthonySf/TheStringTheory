@@ -187,7 +187,7 @@ public sealed class StartupSplashBootstrap : MonoBehaviour
 
     private static FontDefinition ResolveUiFontDefinition()
     {
-        Font font = Resources.Load<Font>("Fonts/ArcadeFont") ?? Resources.Load<Font>("ArcadeFont");
+        Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         return font != null ? FontDefinition.FromFont(font) : default;
     }
 }
