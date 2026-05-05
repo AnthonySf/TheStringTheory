@@ -1,0 +1,6 @@
+<linker>
+  <assembly fullname="AlphaTab" preserve="all" />
+  <assembly fullname="AlphaSkia" preserve="all" />
+  <assembly fullname="System.Drawing.Common" preserve="all" />
+  <assembly fullname="Microsoft.Win32.SystemEvents" preserve="all" />
+</linker>

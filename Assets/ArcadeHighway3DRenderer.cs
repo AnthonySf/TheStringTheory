@@ -1456,10 +1456,10 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
             if (endpointMaterials[lane] != null)
             {
-                float emission = held[lane] ? 2.5f : incoming[lane] ? 1.55f : 0.65f;
+                float emission = held[lane] ? 3.35f : incoming[lane] ? 1.55f : 0.65f;
                 if (pulseAmount > 0f)
                     emission = Mathf.Max(emission, missPulse ? 2.2f * pulseAmount : 2.85f * pulseAmount);
-                Color endpointColor = held[lane] ? Color.Lerp(laneColor, Color.white, 0.35f) : laneColor;
+                Color endpointColor = held[lane] ? new Color(0.985f, 0.99f, 1f, 1f) : laneColor;
                 if (pulseAmount > 0f)
                     endpointColor = missPulse
                         ? Color.Lerp(endpointColor, owner.highwayMissColor, pulseAmount)
@@ -1923,56 +1923,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
     private Material CreateTransparentGlowMaterial(Color color, float emission)
     {
-        Shader shader = null;
-        string[] shaderNames =
-        {
-            "Universal Render Pipeline/Lit",
-            "Universal Render Pipeline/Simple Lit",
-            "Standard",
-            "Universal Render Pipeline/Unlit",
-            "Sprites/Default",
-            "Unlit/Transparent"
-        };
-
-        for (int i = 0; i < shaderNames.Length; i++)
-        {
-            shader = Shader.Find(shaderNames[i]);
-            if (shader != null)
-                break;
-        }
-
-        Material material = shader != null
-            ? new Material(shader)
-            : owner.CreateSharedTransparentMaterial(color, 0f);
-
+        Material material = owner.CreateSharedRuntimeTransparentGlowMaterial(color, emission);
         material.renderQueue = (int)RenderQueue.Transparent;
         material.SetOverrideTag("RenderType", "Transparent");
-        material.color = color;
-        material.SetColor("_Color", color);
-        material.SetColor("_BaseColor", color);
-        if (material.HasProperty("_Surface"))
-            material.SetFloat("_Surface", 1f);
-        if (material.HasProperty("_Blend"))
-            material.SetFloat("_Blend", 0f);
-        if (material.HasProperty("_Mode"))
-            material.SetFloat("_Mode", 3f);
-        if (material.HasProperty("_AlphaClip"))
-            material.SetFloat("_AlphaClip", 0f);
-        if (material.HasProperty("_SrcBlend"))
-            material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
-        if (material.HasProperty("_DstBlend"))
-            material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
-        if (material.HasProperty("_ZWrite"))
-            material.SetInt("_ZWrite", 0);
-        if (material.HasProperty("_Cull"))
-            material.SetInt("_Cull", (int)CullMode.Off);
-        material.EnableKeyword("_ALPHABLEND_ON");
-        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-        material.DisableKeyword("_ALPHATEST_ON");
-        material.EnableKeyword("_EMISSION");
-        material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
-        material.SetColor("_EmissionColor", emission > 0f ? color * Mathf.Pow(2f, emission) : Color.black);
         return material;
     }
 

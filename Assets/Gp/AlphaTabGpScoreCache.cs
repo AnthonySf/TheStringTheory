@@ -60,6 +60,7 @@ internal static class AlphaTabGpScoreCache
     private static readonly Dictionary<string, AlphaTabGpScoreData> CachedScoresByPath = new Dictionary<string, AlphaTabGpScoreData>(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, long> CachedTicksByPath = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
     private static readonly int[] GuitarStringBasePitches = { 40, 45, 50, 55, 59, 64 };
+    private static bool loggedImporterSettings;
 
     private sealed class SourceCandidate
     {
@@ -182,9 +183,13 @@ internal static class AlphaTabGpScoreCache
 
     private static Settings CreateSettings()
     {
-        Settings settings = new Settings();
-        settings.Importer.Encoding = "windows-1252";
-        return settings;
+        if (!loggedImporterSettings)
+        {
+            loggedImporterSettings = true;
+            Debug.Log("[AlphaTabGp] Using default AlphaTab importer settings (no forced codepage override).");
+        }
+
+        return new Settings();
     }
 
     private static List<AlphaTabGpTrackContext> BuildTrackContexts(Score score)

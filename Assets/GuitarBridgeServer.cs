@@ -9175,6 +9175,38 @@ private void OpenOrFocusToneLab()
         return m;
     }
 
+    public Material CreateSharedRuntimeTransparentGlowMaterial(Color c, float emission = 0f)
+    {
+        Shader shader = Resources.Load<Shader>("Shaders/TabsTransparentUnlit");
+        if (shader == null)
+            return CreateSharedTransparentMaterial(c, emission);
+
+        Material m = new Material(shader);
+        m.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        m.SetOverrideTag("RenderType", "Transparent");
+        m.SetColor("_Color", c);
+        m.SetColor("_BaseColor", c);
+        m.color = c;
+
+        if (m.HasProperty("_ZWrite"))
+            m.SetInt("_ZWrite", 0);
+        if (m.HasProperty("_Cull"))
+            m.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+
+        if (emission > 0f)
+        {
+            m.EnableKeyword("_EMISSION");
+            m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            m.SetColor("_EmissionColor", c * Mathf.Pow(2f, emission));
+        }
+        else if (m.HasProperty("_EmissionColor"))
+        {
+            m.SetColor("_EmissionColor", Color.black);
+        }
+
+        return m;
+    }
+
     public Material CreateSharedTabsTransparentMaterial(Color c, float emission = 0f)
     {
         Shader shader = Resources.Load<Shader>("Shaders/TabsTransparentUnlit");
