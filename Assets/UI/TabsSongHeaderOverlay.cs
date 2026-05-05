@@ -5670,7 +5670,7 @@ public sealed class TabsSongHeaderOverlay
         multiplayerRhythmSetupTitleLabel.style.whiteSpace = WhiteSpace.Normal;
 
         multiplayerRhythmSetupSubtitleLabel = CreateLabel(
-            "Choose separate input devices for each player. Multiplayer uses Rhythm mode only, shares the same song and difficulty, and never saves scores.",
+            "Choose separate input devices for each player. Multiplayer uses Rhythm mode only, shares the same song and difficulty.",
             42f,
             new Color(0.82f, 0.90f, 0.98f, 0.96f),
             false,
@@ -7727,6 +7727,8 @@ public sealed class TabsSongHeaderOverlay
 
         trackSelectionOverlay = CreateFullscreenOverlay();
 
+        trackSelectionOverlay.style.display = DisplayStyle.None;
+
         trackSelectionOverlay.style.alignItems = Align.Stretch;
 
         Label trackSelectionTopTag = CreateLabel("CHOOSE YOUR ARRANGEMENT", 28f, new Color(0.58f, 0.86f, 1f, 0.98f), true, TextAnchor.MiddleCenter, useTitleFont: true);
@@ -9452,8 +9454,9 @@ public sealed class TabsSongHeaderOverlay
         bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showLibraryLoading && !showEnd && !showToneLab && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
 
         bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
+        bool isTabsGameplay = owner != null && owner.renderMode == GuitarRenderMode.Tabs && snapshot.gameplayMode == GuitarGameplayMode.Guitar;
 
-        bool showTechniqueLegend = !isHighway3D && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool showTechniqueLegend = isTabsGameplay && snapshot.songTime > 0.15f && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
 
 
