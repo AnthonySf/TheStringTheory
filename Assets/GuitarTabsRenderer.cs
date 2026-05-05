@@ -1062,6 +1062,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             backdropRenderer.material.SetColor("_Color", c);
             backdropRenderer.material.SetColor("_BaseColor", c);
 
+            int activeStringCount = GetRenderableStringCount();
             for (int i = 0; i < stringLineTransforms.Length; i++)
             {
                 if (stringLineTransforms[i] != null)
@@ -1069,6 +1070,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
                 if (stringLineRenderers[i] != null && stringLineRenderers[i].material != null)
                 {
+                    stringLineRenderers[i].enabled = i < activeStringCount;
                     Color stringColor = owner.GetStringColor(i);
                     stringColor.a = panelAlpha;
                     stringLineRenderers[i].material.color = stringColor;
@@ -1125,7 +1127,8 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         private void CreateStrings()
         {
-            for (int i = 0; i < 6; i++)
+            int activeStringCount = GetRenderableStringCount();
+            for (int i = 0; i < stringLineTransforms.Length; i++)
             {
                 GameObject line = GameObject.CreatePrimitive(PrimitiveType.Cube);
                 line.name = $"TabString_{i}";
@@ -1141,6 +1144,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
                 Renderer renderer = line.GetComponent<Renderer>();
                 renderer.material = owner.CreateSharedTabsGlowMaterial(owner.GetStringColor(i), 0.25f);
+                renderer.enabled = i < activeStringCount;
                 ConfigureRendererNoShadows(renderer);
                 stringLineTransforms[i] = line.transform;
                 stringLineRenderers[i] = renderer;
@@ -1156,9 +1160,16 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         private float GetLocalStringY(int stringIdx)
         {
-            int row = owner.invertStrings ? stringIdx : (5 - stringIdx);
-            float centered = ((5 * 0.5f) - row) * lineSpacing;
+            int stringCount = GetRenderableStringCount();
+            int clampedString = Mathf.Clamp(stringIdx, 0, stringCount - 1);
+            int row = owner.invertStrings ? clampedString : ((stringCount - 1) - clampedString);
+            float centered = (((stringCount - 1) * 0.5f) - row) * lineSpacing;
             return centered;
+        }
+
+        private int GetRenderableStringCount()
+        {
+            return Mathf.Clamp(owner != null ? owner.ActiveStringCount : stringLineTransforms.Length, 1, stringLineTransforms.Length);
         }
 
         private void ClearDynamic()

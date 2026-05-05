@@ -11,6 +11,7 @@ public static class RocksmithImportService
 {
     private const string ImportToolFolderName = "RocksmithImport";
     private const string ImportToolExecutableName = "RocksmithImportTool.exe";
+    private const string ImportLogPrefix = "[PsarcImport]";
     private static bool missingToolLogged;
     private static bool unsupportedPlatformLogged;
 
@@ -20,7 +21,7 @@ public static class RocksmithImportService
         {
             if (!unsupportedPlatformLogged)
             {
-                Debug.LogWarning("[RocksmithImport] Rocksmith PSARC import is only available on Windows because it depends on a local Windows importer executable.");
+                Debug.LogWarning($"{ImportLogPrefix} PSARC import is only available on Windows because it depends on a local Windows importer executable.");
                 unsupportedPlatformLogged = true;
             }
 
@@ -47,7 +48,7 @@ public static class RocksmithImportService
         {
             if (!missingToolLogged)
             {
-                Debug.LogWarning($"[RocksmithImport] Import tool not found at '{importToolPath}'. Drop 'RocksmithImportTool.exe' into that folder to enable Rocksmith PSARC import.");
+                Debug.LogWarning($"{ImportLogPrefix} Import tool not found at '{importToolPath}'. Drop 'RocksmithImportTool.exe' into that folder to enable PSARC song import.");
                 missingToolLogged = true;
             }
 
@@ -81,17 +82,17 @@ public static class RocksmithImportService
         Directory.CreateDirectory(targetDirectory);
         if (!RunImporter(importToolPath, psarcPath, targetDirectory, out string processOutput))
         {
-            Debug.LogWarning($"[RocksmithImport] Failed to import '{psarcPath}'.\n{processOutput}");
+            Debug.LogWarning($"{ImportLogPrefix} Failed to import '{psarcPath}'.\n{processOutput}");
             return;
         }
 
         if (!File.Exists(manifestPath))
         {
-            Debug.LogWarning($"[RocksmithImport] Importer completed for '{psarcPath}' but did not produce '{manifestPath}'.");
+            Debug.LogWarning($"{ImportLogPrefix} Importer completed for '{psarcPath}' but did not produce '{manifestPath}'.");
             return;
         }
 
-        Debug.Log($"[RocksmithImport] Imported '{Path.GetFileName(psarcPath)}' into '{targetDirectory}'.");
+        Debug.Log($"{ImportLogPrefix} Imported '{Path.GetFileName(psarcPath)}' into '{targetDirectory}'.");
     }
 
     private static bool IsImportUpToDate(string psarcPath, string manifestPath)
@@ -197,11 +198,11 @@ public static class RocksmithImportService
                 File.Delete(metadataPath);
 
             Directory.Delete(directory, true);
-            Debug.Log($"[RocksmithImport] Removed orphaned Rocksmith cache '{directory}'.");
+            Debug.Log($"{ImportLogPrefix} Removed orphaned imported cache '{directory}'.");
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[RocksmithImport] Failed to remove orphaned cache '{directory}': {ex.Message}");
+            Debug.LogWarning($"{ImportLogPrefix} Failed to remove orphaned cache '{directory}': {ex.Message}");
         }
     }
 

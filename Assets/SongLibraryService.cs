@@ -725,7 +725,7 @@ public static class SongLibraryService
         {
             if (string.IsNullOrWhiteSpace(arcadeChartPath) || !hasArcadeSongIni)
             {
-                Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: Rocksmith cache manifest, supported Guitar Pro/MusicXML notation, or Clone Hero notes.chart/notes.mid plus song.ini.");
+                Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: an extracted arrangement manifest, supported Guitar Pro/MusicXML notation, or Clone Hero notes.chart/notes.mid plus song.ini.");
                 return false;
             }
 

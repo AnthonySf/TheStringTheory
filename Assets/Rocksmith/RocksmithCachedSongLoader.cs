@@ -66,7 +66,7 @@ public static class RocksmithCachedSongLoader
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[RocksmithCachedSongLoader] Failed to parse manifest '{manifestPath}': {ex.Message}");
+            Debug.LogWarning($"[ImportedSongCache] Failed to parse manifest '{manifestPath}': {ex.Message}");
             return false;
         }
     }
@@ -735,7 +735,7 @@ public static class RocksmithCachedSongLoader
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[RocksmithCachedSongLoader] Failed to parse part '{partFilePath}': {ex.Message}");
+            Debug.LogWarning($"[ImportedSongCache] Failed to parse part '{partFilePath}': {ex.Message}");
             return false;
         }
     }

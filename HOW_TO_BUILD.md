@@ -1,102 +1,131 @@
 # How To Build
 
-This public repo does not include the bundled third-party runtimes and packaged binaries.
+This repo is the public source tree. It does **not** include the private runtime packages, bundled DLLs, detector binaries, or local song content needed for a full working build.
 
-Missing pieces you need locally:
+## 1. Install the prerequisites
 
-- `Assets/MidiPlayer/`
+Install these first:
+
+- Unity Hub  
+  https://unity.com/en/unity-hub
+- Unity Editor `6000.2.9f1` through Unity Hub
+- .NET 9 SDK  
+  https://dotnet.microsoft.com/download/dotnet/9.0
+- Visual Studio Community 2022  
+  https://visualstudio.microsoft.com/vs/community/
+
+In Visual Studio Installer, enable these workloads:
+
+- `Game development with Unity`
+- `.NET desktop development`
+- `Desktop development with C++`
+
+## 2. Clone the repo
+
+```powershell
+git clone <your-repo-url> GuitarProject
+cd GuitarProject
+```
+
+## 3. Restore the missing local-only content
+
+Copy these back into the project before opening Unity:
+
+- `Assets/MidiPlayer/`  
   Maestro / Midi Player Tool Kit package.
-- `Assets/Plugins/Managed/*.dll`
+- `Assets/Plugins/Managed/*.dll`  
   AlphaTab and other managed runtime DLLs.
-- `Assets/Plugins/x86_64/*.dll`
-  detector/runtime DLLs such as ONNX Runtime, PortAudio, and the native detector bridge.
+- `Assets/Plugins/x86_64/*.dll`  
+  Native runtime DLLs such as ONNX Runtime, PortAudio, and the detector bridge dependencies.
 - `Assets/StreamingAssets/NotesReader/Models/basic_pitch_nmp.onnx`
-  Basic Pitch model file.
 - `Assets/StreamingAssets/NotesReader/guitar_ai2_continuous.exe`
-  packaged detector worker.
 - `Assets/StreamingAssets/ToneLab/dist/`
-  packaged ToneLab runtime.
-- `External/aubio/`
-  aubio source used by the native detector build.
-- `External/Rocksmith2014.NET/`
-  local dependency source tree used if you want to build the Rocksmith PSARC importer yourself.
+- `External/aubio/`  
+  Required if you want to rebuild the native detector bridge.
 
-## Unity
+Optional:
 
-Restore the missing folders above, then open the project in Unity.
+- `Assets/StreamingAssets/RocksmithImport/RocksmithImportTool.exe`  
+  Needed only if you want the game to import `.psarc` files directly.
+- `External/Rocksmith2014.NET/`  
+  Needed only if you want to rebuild the PSARC importer from source.
 
-## Native detector DLL
+## 4. Open the project in Unity
 
-Build:
+1. Open Unity Hub.
+2. Add this folder as a project.
+3. Open it with Unity Editor `6000.2.9f1`.
+4. Let Unity finish the first import.
+
+If everything is in place, the project should open and compile normally.
+
+## 5. Quick verification from the command line
+
+This checks the C# project side before you make a player build:
+
+```powershell
+dotnet build Assembly-CSharp.csproj -nologo
+```
+
+## 6. Optional: rebuild the native detector bridge
+
+Do this only if you need the native detector DLL and do not already have it.
+
+Project:
 
 - `NativeNotesDetectorBridge/NativeNotesDetectorBridge.vcxproj`
 
-Output expected by Unity:
+Expected output:
 
 - `Assets/Plugins/x86_64/NativeNotesDetectorBridgeNative_v6.dll`
 
-The project expects `External/aubio/` to exist when building the detector.
+Build command:
 
-If you ship a build that includes an aubio-linked detector, handle aubio's license and source requirements in that release package. The public repo does not bundle aubio.
+```powershell
+msbuild NativeNotesDetectorBridge\NativeNotesDetectorBridge.vcxproj /p:Configuration=Release /p:Platform=x64
+```
 
-## Detector worker
+`External/aubio/` must exist for this build.
 
-If you use the external detector worker path, place the packaged worker here:
+If you ship a build that includes the aubio-linked detector, you are responsible for aubio license/source compliance in that distribution.
 
-- `Assets/StreamingAssets/NotesReader/guitar_ai2_continuous.exe`
+## 7. Optional: enable PSARC importing
 
-and the model here:
+You do **not** need this for the default shipped extracted demo songs.  
+You need it only if you want users or developers to drop `.psarc` files into the songs folder and import them.
 
-- `Assets/StreamingAssets/NotesReader/Models/basic_pitch_nmp.onnx`
+### Easiest path
 
-## ToneLab
-
-Source files stay in:
-
-- `Assets/StreamingAssets/ToneLab/`
-
-If you want the packaged runtime in Unity, build it separately and place the output in:
-
-- `Assets/StreamingAssets/ToneLab/dist/`
-
-## Rocksmith PSARC importer
-
-The repo includes our wrapper source here:
-
-- `External/RocksmithImportTool/`
-
-The game looks for the importer executable here:
+Drop a compatible importer executable here:
 
 - `Assets/StreamingAssets/RocksmithImport/RocksmithImportTool.exe`
 
-If that executable is present, the game will detect `.psarc` files in the songs directory and import them on library refresh.
+### Build the importer yourself
 
-### End-user setup
-
-If you already have a compatible `RocksmithImportTool.exe`, place it here:
-
-- `Assets/StreamingAssets/RocksmithImport/RocksmithImportTool.exe`
-
-No other repo changes are needed for basic PSARC importing.
-
-### Build the importer locally
-
-If you want to build the importer from source, first clone the dependency here:
+First clone the dependency source here:
 
 - `External/Rocksmith2014.NET/`
 
-Then build or publish:
+Then publish the wrapper:
 
-- `External/RocksmithImportTool/RocksmithImportTool.csproj`
+```powershell
+dotnet publish External\RocksmithImportTool\RocksmithImportTool.csproj -c Release -r win-x64 --self-contained false -o Assets\StreamingAssets\RocksmithImport
+```
 
-Recommended publish target:
+## 8. Build the game
 
-- `dotnet publish External\\RocksmithImportTool\\RocksmithImportTool.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o Assets\\StreamingAssets\\RocksmithImport`
+From Unity:
 
-## Songs
+1. Open `File -> Build Profiles`.
+2. Select the target platform.
+3. Make sure the scenes and output folder are correct.
+4. Press `Build` or `Build And Run`.
 
-Songs stay in:
+## 9. Where local content lives
 
-- `Assets/StreamingAssets/Songs/`
+- Shipped / startup-copied songs:
+  - `Assets/StreamingAssets/Songs/`
+- Runtime persistent songs:
+  - `%USERPROFILE%\\AppData\\LocalLow\\StringTheory\\StringTheory\\Songs`
 
-Use your own files. The public repo should only ship royalty-free content.
+The public repo should only ship royalty-free content and user-rebuildable code. Local song folders and private binaries are intentionally not tracked.

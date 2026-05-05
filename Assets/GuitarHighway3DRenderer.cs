@@ -814,8 +814,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (gameplayBuilt)
             return;
 
-        fretLightMats = new Material[6, GetFretLightColumnCount()];
-        fretLightRenderers = new Renderer[6, GetFretLightColumnCount()];
+        fretLightMats = new Material[stringVisuals.Length, GetFretLightColumnCount()];
+        fretLightRenderers = new Renderer[stringVisuals.Length, GetFretLightColumnCount()];
         fretBoundaryMats = new Material[GetFretLightColumnCount()];
         fretBoundaryRenderers = new Renderer[GetFretLightColumnCount()];
         laneSurfaceMats = new Material[GetFretLightColumnCount()];
@@ -1777,8 +1777,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float stringEndX = (owner.TotalFrets * owner.FretSpacing) + (owner.FretSpacing * 0.75f);
         float stringLength = Mathf.Max(0.01f, stringEndX - stringStartX);
         float stringCenterX = stringStartX + (stringLength * 0.5f);
+        int activeStringCount = GetRenderableStringCount();
 
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < stringVisuals.Length; i++)
         {
             GameObject s = GameObject.CreatePrimitive(PrimitiveType.Cube);
             s.name = "String_" + i;
@@ -1788,6 +1789,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             Material mat = owner.CreateSharedGlowMaterial(owner.GetStringColor(i), 0.9f);
             Renderer renderer = s.GetComponent<Renderer>();
             renderer.material = mat;
+            renderer.enabled = i < activeStringCount;
             stringVisuals[i] = s;
             stringVisualMats[i] = mat;
             stringVisualRenderers[i] = renderer;
@@ -1800,7 +1802,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return;
 
         float renderSongTime = GetRenderSongTime(snapshot);
-        bool[] stringHasIncomingNotes = new bool[6];
+        int activeStringCount = GetRenderableStringCount();
+        bool[] stringHasIncomingNotes = new bool[activeStringCount];
 
         if (snapshot.noteStates != null)
         {
@@ -1827,6 +1830,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             Material mat = stringVisualMats[i];
             if (mat == null)
                 continue;
+
+            if (i >= activeStringCount)
+            {
+                if (stringVisualRenderers[i] != null)
+                    stringVisualRenderers[i].enabled = false;
+                continue;
+            }
 
             if (stringVisuals[i] != null)
             {
@@ -1857,7 +1867,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         int fretLightColumns = GetFretLightColumnCount();
 
-        for (int s = 0; s < 6; s++)
+        for (int s = 0; s < stringVisuals.Length; s++)
         {
             for (int f = 0; f < fretLightColumns; f++)
             {
@@ -1994,7 +2004,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float GetFretNumberY()
     {
         float lowestStringY = float.MaxValue;
-        for (int stringIdx = 0; stringIdx < 6; stringIdx++)
+        for (int stringIdx = 0; stringIdx < GetRenderableStringCount(); stringIdx++)
             lowestStringY = Mathf.Min(lowestStringY, GetStringY(stringIdx));
 
         // Adjust this value to move fret numbers lower or higher relative to the lowest string.
@@ -2056,7 +2066,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         minY = float.MaxValue;
         maxY = float.MinValue;
 
-        for (int stringIdx = 0; stringIdx < 6; stringIdx++)
+        for (int stringIdx = 0; stringIdx < GetRenderableStringCount(); stringIdx++)
         {
             float y = GetStringY(stringIdx);
             minY = Mathf.Min(minY, y);
@@ -4381,8 +4391,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return;
 
         int fretLightColumns = GetFretLightColumnCount();
+        int activeStringCount = GetRenderableStringCount();
 
-        for (int s = 0; s < 6; s++)
+        for (int s = 0; s < fretLightMats.GetLength(0); s++)
         {
             for (int f = 0; f < fretLightColumns; f++)
             {
@@ -4407,7 +4418,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         foreach (int pitch in pitchesToLight)
         {
-            for (int s = 0; s < 6; s++)
+            for (int s = 0; s < activeStringCount; s++)
             {
                 for (int f = 0; f < fretLightColumns; f++)
                 {
@@ -5012,8 +5023,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetStringY(int stringIdx)
     {
-        int row = owner.invertStrings ? (5 - stringIdx) : stringIdx;
+        int stringCount = GetRenderableStringCount();
+        int clampedString = Mathf.Clamp(stringIdx, 0, stringCount - 1);
+        int row = owner.invertStrings ? ((stringCount - 1) - clampedString) : clampedString;
         return (row * GetStringLaneSpacing()) + GetStringLaneSpacing();
+    }
+
+    private int GetRenderableStringCount()
+    {
+        int requested = owner != null ? owner.ActiveStringCount : stringVisuals.Length;
+        return Mathf.Clamp(requested, 1, stringVisuals.Length);
     }
 
     private static float GetStringLaneSpacing()

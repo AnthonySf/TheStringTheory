@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 public static class RocksmithCachedSongFormat
 {
-    public const int SchemaVersion = 9;
+    public const int SchemaVersion = 10;
     public const string ManifestFileName = "song.rs2song.json";
     public const string ContentDirectoryName = "rocksmith_content";
     public const string ImportedFolderPrefix = "__rocksmith_";

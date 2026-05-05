@@ -3967,9 +3967,33 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void RefreshActiveTrackTuning()
     {
+        MusicXmlLoader.MusicXmlPartSummary activeTrack = GetResolvedActiveTrackSummary();
         activeStringBasePitch = forceStandardTuning
-            ? (int[])StringTuningUtils.StandardGuitarTuning.Clone()
-            : StringTuningUtils.CloneOrDefault(GetResolvedActiveTrackSummary()?.StringTuningPitches);
+            ? GetPreferredStandardTuningForTrack(activeTrack)
+            : StringTuningUtils.CloneOrDefault(activeTrack?.StringTuningPitches, IsBassLikeTrackSummary(activeTrack));
+    }
+
+    private static bool IsBassLikeTrackSummary(MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        if (summary == null)
+            return false;
+
+        if (summary.StringTuningPitches != null && summary.StringTuningPitches.Length > 0 && summary.StringTuningPitches.Length <= 4)
+            return true;
+
+        string label = !string.IsNullOrWhiteSpace(summary.GroupDisplayName)
+            ? summary.GroupDisplayName
+            : !string.IsNullOrWhiteSpace(summary.Name)
+                ? summary.Name
+                : summary.PartId ?? string.Empty;
+        return label.IndexOf("bass", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static int[] GetPreferredStandardTuningForTrack(MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        return IsBassLikeTrackSummary(summary)
+            ? (int[])StringTuningUtils.StandardBassTuning.Clone()
+            : (int[])StringTuningUtils.StandardGuitarTuning.Clone();
     }
 
     private string GetResolvedActiveTrackTuningLabel()
@@ -9987,12 +10011,30 @@ private void OpenOrFocusToneLab()
     public int GetStringBasePitch(int stringIdx)
     {
         if (activeStringBasePitch == null || activeStringBasePitch.Length == 0)
-            activeStringBasePitch = (int[])StringTuningUtils.StandardGuitarTuning.Clone();
+            activeStringBasePitch = GetPreferredStandardTuningForTrack(GetResolvedActiveTrackSummary());
 
         if (stringIdx < 0 || stringIdx >= activeStringBasePitch.Length)
             return 0;
 
         return activeStringBasePitch[stringIdx];
+    }
+
+    public int ActiveStringCount
+    {
+        get
+        {
+            int tuningCount = activeStringBasePitch != null ? activeStringBasePitch.Length : 0;
+            int chartCount = 0;
+            if (chartNotes != null && chartNotes.Count > 0)
+                chartCount = chartNotes.Max(note => note.stringIdx + 1);
+
+            int resolved = Mathf.Max(tuningCount, chartCount);
+            if (resolved <= 0)
+                resolved = 6;
+
+            int colorSlotCount = stringColors != null && stringColors.Length > 0 ? stringColors.Length : 6;
+            return Mathf.Clamp(resolved, 1, colorSlotCount);
+        }
     }
 
     public bool TryGetChartNoteById(int id, out NoteData data)
@@ -12807,7 +12849,7 @@ private void ParseDetectorPacket(string detectorPacket)
 
         if (IsNoteDetectorConnected())
         {
-            float derived = Mathf.Clamp01(latestDetectedPitches.Count / 6f);
+            float derived = Mathf.Clamp01(latestDetectedPitches.Count / Mathf.Max(1f, ActiveStringCount));
 
             if (latestPacketHadEvent)
                 derived = Mathf.Max(derived, 0.95f);

@@ -5,6 +5,7 @@ using System.Linq;
 public static class StringTuningUtils
 {
     public static readonly int[] StandardGuitarTuning = { 40, 45, 50, 55, 59, 64 };
+    public static readonly int[] StandardBassTuning = { 28, 33, 38, 43 };
 
     private static readonly string[] FlatPitchNames =
     {
@@ -33,17 +34,19 @@ public static class StringTuningUtils
         return PitchClassByStep.TryGetValue(step.Trim(), out pitchClass);
     }
 
-    public static int[] CloneOrDefault(int[] tuningPitches)
+    public static int[] CloneOrDefault(int[] tuningPitches, bool preferBass = false)
     {
         if (tuningPitches == null || tuningPitches.Length == 0)
-            return (int[])StandardGuitarTuning.Clone();
+            return preferBass
+                ? (int[])StandardBassTuning.Clone()
+                : (int[])StandardGuitarTuning.Clone();
 
         return (int[])tuningPitches.Clone();
     }
 
     public static string FormatTuningDisplayName(int[] tuningPitches)
     {
-        int[] resolved = CloneOrDefault(tuningPitches);
+        int[] resolved = CloneOrDefault(tuningPitches, preferBass: tuningPitches != null && tuningPitches.Length > 0 && tuningPitches.Length <= 4);
         if (resolved.Length == 6)
         {
             if (Matches(resolved, new[] { 40, 45, 50, 55, 59, 64 })) return "E Standard";
@@ -52,6 +55,15 @@ public static class StringTuningUtils
             if (Matches(resolved, new[] { 38, 45, 50, 55, 59, 64 })) return "Drop D";
             if (Matches(resolved, new[] { 37, 44, 49, 54, 58, 63 })) return "Drop Db";
             if (Matches(resolved, new[] { 36, 43, 48, 53, 57, 62 })) return "Drop C";
+        }
+        else if (resolved.Length == 4)
+        {
+            if (Matches(resolved, new[] { 28, 33, 38, 43 })) return "E Standard Bass";
+            if (Matches(resolved, new[] { 27, 32, 37, 42 })) return "Eb Standard Bass";
+            if (Matches(resolved, new[] { 26, 31, 36, 41 })) return "D Standard Bass";
+            if (Matches(resolved, new[] { 26, 33, 38, 43 })) return "Drop D Bass";
+            if (Matches(resolved, new[] { 25, 32, 37, 42 })) return "Drop Db Bass";
+            if (Matches(resolved, new[] { 24, 31, 36, 41 })) return "Drop C Bass";
         }
 
         string joined = string.Join(" ", resolved.Select(FormatMidiNoteNoOctave));
