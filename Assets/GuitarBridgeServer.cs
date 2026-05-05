@@ -522,6 +522,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private GuitarRenderMode loopSettingsReturnRenderMode = GuitarRenderMode.Tabs;
     private bool showOffsetHelper;
     private bool showGameModes;
+    private bool showRocksmithDifficultyPopup;
     private bool showHeroModeSettings;
     private bool showToneLab;
     private bool offsetHelperAdjusting;
@@ -770,6 +771,14 @@ public class GuitarBridgeServer : MonoBehaviour
         public int SongCount;
     }
 
+    private sealed class RocksmithTrackSelectionGroup
+    {
+        public string GroupId;
+        public string DisplayName;
+        public string TuningDisplayName;
+        public readonly List<MusicXmlLoader.MusicXmlPartSummary> Variants = new List<MusicXmlLoader.MusicXmlPartSummary>();
+    }
+
     private string currentSongFileName = "song.mp3";
     private bool hasBackingTrack;
     private bool showSongSettings;
@@ -812,6 +821,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private SongLibraryBrowseMode songLibraryBrowseMode = SongLibraryBrowseMode.All;
     private string songLibraryBrowseScopeKey = string.Empty;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> pendingTrackSelectionParts = new List<MusicXmlLoader.MusicXmlPartSummary>();
+    private readonly List<RocksmithTrackSelectionGroup> pendingRocksmithTrackSelectionGroups = new List<RocksmithTrackSelectionGroup>();
+    private int selectedRocksmithDifficultyIndex;
+    private int selectedGameplayRocksmithDifficultyIndex;
     private readonly Dictionary<string, SongMetadata> cachedSongMetadataByPath = new Dictionary<string, SongMetadata>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> cachedSongMetadataTicksByPath = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<MusicXmlLoader.MusicXmlPartSummary>> cachedTrackSummariesByNotationPath = new Dictionary<string, List<MusicXmlLoader.MusicXmlPartSummary>>(StringComparer.OrdinalIgnoreCase);
@@ -824,6 +836,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private float songVolumePercent = 100f;
     private SongPlaybackAudioMode songPlaybackAudioMode = SongPlaybackAudioMode.Generated;
     private SongMetadata songMetadata = new SongMetadata();
+    private bool persistedUseAutoTrackSelection = true;
+    private string persistedSelectedMusicXmlPartId = string.Empty;
     private GeneratedSongPlayer generatedSongPlayer;
     private GeneratedPlaybackArrangement generatedPlaybackSourceArrangement;
     private GeneratedPlaybackArrangement generatedPlaybackArrangement;
@@ -1308,6 +1322,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (showLoopPausePopup)
         {
             HandleLoopPausePopupControls();
+            return;
+        }
+
+        if (showRocksmithDifficultyPopup)
+        {
+            HandleRocksmithDifficultyPopupControls();
             return;
         }
 
@@ -1895,6 +1915,15 @@ public class GuitarBridgeServer : MonoBehaviour
         if (gameplayMode == GuitarGameplayMode.Arcade)
             return $"arcade::{selectedArcadeArrangementId?.Trim() ?? string.Empty}";
 
+        if (currentSongEntry != null &&
+            currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith &&
+            !string.IsNullOrWhiteSpace(selectedMusicXmlPartId))
+        {
+            string groupId = GetRocksmithGroupId(GetResolvedActiveTrackSummary());
+            if (!string.IsNullOrWhiteSpace(groupId))
+                return $"guitar::{groupId}";
+        }
+
         return $"guitar::{selectedMusicXmlPartId?.Trim() ?? string.Empty}";
     }
 
@@ -1902,6 +1931,13 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         if (gameplayMode == GuitarGameplayMode.Arcade)
             return GetSelectedArcadeArrangementDisplayName();
+
+        if (currentSongEntry != null && currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith)
+        {
+            MusicXmlLoader.MusicXmlPartSummary activeSummary = GetResolvedActiveTrackSummary();
+            if (activeSummary != null)
+                return string.IsNullOrWhiteSpace(activeSummary.GroupDisplayName) ? activeSummary.Name : activeSummary.GroupDisplayName;
+        }
 
         return GetTrackDisplayName(GetCurrentTrackOptionIndex());
     }
@@ -3867,11 +3903,66 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private MusicXmlLoader.MusicXmlPartSummary GetPendingSelectedTrackSummary()
     {
+        if (IsPendingRocksmithDifficultySelectionActive())
+            return GetHighestDifficultyRocksmithVariant(GetPendingSelectedRocksmithTrackGroup()?.Variants);
+
         if (pendingTrackSelectionParts == null || pendingTrackSelectionParts.Count == 0)
             return null;
 
         int selectedIndex = Mathf.Clamp(selectedTrackListIndex, 0, pendingTrackSelectionParts.Count - 1);
         return pendingTrackSelectionParts[selectedIndex];
+    }
+
+    private int GetPendingTrackSelectionDisplayCount()
+    {
+        if (pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
+            return pendingArcadeArrangementSummaries.Count;
+
+        if (IsPendingRocksmithDifficultySelectionActive())
+            return pendingRocksmithTrackSelectionGroups.Count;
+
+        return pendingTrackSelectionParts.Count;
+    }
+
+    private string GetPendingTrackSelectionDisplayName(int index)
+    {
+        if (IsPendingRocksmithDifficultySelectionActive())
+        {
+            if (index < 0 || index >= pendingRocksmithTrackSelectionGroups.Count)
+                return "--";
+
+            return pendingRocksmithTrackSelectionGroups[index].DisplayName ?? "--";
+        }
+
+        if (index < 0 || index >= pendingTrackSelectionParts.Count)
+            return "--";
+
+        return pendingTrackSelectionParts[index].Name ?? "--";
+    }
+
+    private string GetPendingTrackSelectionMetaText(int index)
+    {
+        if (IsPendingRocksmithDifficultySelectionActive())
+        {
+            if (index < 0 || index >= pendingRocksmithTrackSelectionGroups.Count)
+                return string.Empty;
+
+            RocksmithTrackSelectionGroup group = pendingRocksmithTrackSelectionGroups[index];
+            return string.IsNullOrWhiteSpace(group.TuningDisplayName)
+                ? "Select this arrangement"
+                : $"Tuning: {group.TuningDisplayName}";
+#if false
+            string difficulties = BuildRocksmithDifficultySummary(group.Variants);
+            if (string.IsNullOrWhiteSpace(difficulties))
+                return string.IsNullOrWhiteSpace(group.TuningDisplayName) ? "Select this arrangement" : $"Tuning: {group.TuningDisplayName}";
+
+            return string.IsNullOrWhiteSpace(group.TuningDisplayName)
+                ? $"Difficulties: {difficulties}"
+                : $"Difficulties: {difficulties}  •  Tuning: {group.TuningDisplayName}";
+#endif
+        }
+
+        return string.Empty;
     }
 
     private void RefreshActiveTrackTuning()
@@ -3935,6 +4026,7 @@ public class GuitarBridgeServer : MonoBehaviour
             selectedMusicXmlPartId = currentSongPartSummaries[summaryIndex].PartId;
         }
 
+        UpdatePersistedTrackSelectionStateFromActiveSelection();
         ApplyTrackSelectionPreference();
         RestoreGeneratedPlaybackSelectionForCurrentTrack();
         ApplyGeneratedPlaybackSelection();
@@ -3965,6 +4057,81 @@ public class GuitarBridgeServer : MonoBehaviour
         RefreshActiveTrackTuning();
     }
 
+    private bool ReloadCurrentGuitarChartForSelectedTrack()
+    {
+        if (currentSongEntry == null || gameplayMode != GuitarGameplayMode.Guitar)
+            return false;
+
+        ApplyTrackSelectionPreference();
+
+        List<NoteData> reloadedNotes = null;
+        try
+        {
+            reloadedNotes = SongNotationFacade.LoadSong(currentSongEntry.PrimaryNotationPath, currentSongEntry.PrimaryNotationKind, midiTrackIndex);
+        }
+        catch (Exception e)
+        {
+            Debug.LogWarning("Primary notation reload error: " + e.Message);
+        }
+
+        if ((reloadedNotes == null || reloadedNotes.Count == 0) &&
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.MusicXml &&
+            !string.IsNullOrEmpty(currentSongEntry.XmlPath))
+        {
+            try
+            {
+                reloadedNotes = MusicXmlLoader.LoadMusicXmlSong(currentSongEntry.XmlPath, midiTrackIndex);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("MusicXmlLoader reload fallback error: " + e.Message);
+            }
+        }
+
+        if (reloadedNotes == null || reloadedNotes.Count == 0)
+            return false;
+
+        chartNotes = reloadedNotes;
+        chartNoteById.Clear();
+        for (int i = 0; i < chartNotes.Count; i++)
+        {
+            NoteData note = chartNotes[i];
+            if (note.id < 0)
+                note.id = i;
+            chartNotes[i] = note;
+            chartNoteById[note.id] = note;
+        }
+
+        noteStates = chartNotes.Select(note => new GameplayNoteState(note)).ToList();
+        GenerateTabSections();
+        ResetActiveRendererContent();
+        currentLoadedTrackIndex = midiTrackIndex;
+        RestoreGeneratedPlaybackSelectionForCurrentTrack();
+        ApplyGeneratedPlaybackSelection();
+        MarkDetectorHintDirty();
+
+        if (songMetadata != null)
+        {
+            currentTrackBestScoreValue = GetStoredTrackScoreValue(songMetadata, selectedMusicXmlPartId);
+            currentTrackBestScorePercent = Mathf.Clamp(GetStoredTrackScore(songMetadata, selectedMusicXmlPartId), 0f, 100f);
+            HeroScoreSummary currentHeroTrackBest = GetStoredHeroTrackScoreSummary(songMetadata, selectedMusicXmlPartId);
+            currentTrackHeroBestScoreValue = currentHeroTrackBest.scoreValue;
+            currentTrackHeroBestScorePercent = currentHeroTrackBest.percent;
+            currentTrackHeroBestHeartsRemaining = currentHeroTrackBest.heartsRemaining;
+            currentTrackHeroBestHeartsTotal = currentHeroTrackBest.heartsTotal;
+        }
+
+        return true;
+    }
+
+    private void UpdatePersistedTrackSelectionStateFromActiveSelection()
+    {
+        persistedUseAutoTrackSelection = useAutoTrackSelection;
+        persistedSelectedMusicXmlPartId = persistedUseAutoTrackSelection
+            ? string.Empty
+            : GetPersistentRocksmithPartId(selectedMusicXmlPartId);
+    }
+
     private void OpenSongSelectionMenu()
     {
         showStartMenu = false;
@@ -3978,6 +4145,7 @@ public class GuitarBridgeServer : MonoBehaviour
         loopSettingsOpenedFromGameModes = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingRocksmithTrackSelectionGroups.Clear();
         pendingArcadeArrangementSummaries.Clear();
         showSongSettings = false;
         showGlobalSettings = false;
@@ -4230,6 +4398,8 @@ public class GuitarBridgeServer : MonoBehaviour
 
         switch (song.PrimaryNotationKind)
         {
+            case SongNotationSourceKind.Rocksmith:
+                return "RS";
             case SongNotationSourceKind.Gp5:
                 return "GP";
             case SongNotationSourceKind.MusicXml:
@@ -4340,7 +4510,7 @@ public class GuitarBridgeServer : MonoBehaviour
                     Subtitle = song.Subtitle ?? string.Empty,
                     ArtworkPath = song.ArtworkPath ?? string.Empty,
                     ScorePercent = GetStoredSongBestScorePercent(song),
-                    DifficultyLabel = SongLibraryService.GetDifficultyLabel(song.DifficultyRating)
+                    DifficultyLabel = GetSongLibraryDifficultyDisplayLabel(song)
                 });
             }
         }
@@ -4366,7 +4536,7 @@ public class GuitarBridgeServer : MonoBehaviour
                     Subtitle = song.Subtitle ?? string.Empty,
                     ArtworkPath = song.ArtworkPath ?? string.Empty,
                     ScorePercent = GetStoredSongBestScorePercent(song),
-                    DifficultyLabel = SongLibraryService.GetDifficultyLabel(song.DifficultyRating)
+                    DifficultyLabel = GetSongLibraryDifficultyDisplayLabel(song)
                 });
             }
         }
@@ -4481,14 +4651,19 @@ public class GuitarBridgeServer : MonoBehaviour
         SongLibraryEntry selected = availableSongs[songIndex];
         pendingTrackSelectionSong = selected;
         pendingTrackSelectionParts.Clear();
+        pendingRocksmithTrackSelectionGroups.Clear();
         pendingArcadeArrangementSummaries.Clear();
         if (selected.LibraryType == SongLibraryType.Arcade)
             pendingArcadeArrangementSummaries.AddRange(ArcadeCloneHeroLoader.GetArrangementSummaries(selected.ArcadeChartPath));
         else
+        {
             pendingTrackSelectionParts.AddRange(GetSortedTrackSummaries(selected));
+            RebuildPendingRocksmithTrackSelectionGroups();
+        }
 
         selectedTrackListIndex = 0;
         trackListScrollOffset = 0;
+        ClampSelectedRocksmithDifficultyToPendingGroup();
         EnsureTrackSelectionVisible();
 
         showSongSelection = false;
@@ -4501,6 +4676,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             pendingTrackSelectionSong = null;
             pendingTrackSelectionParts.Clear();
+            pendingRocksmithTrackSelectionGroups.Clear();
             pendingArcadeArrangementSummaries.Clear();
             selectedTrackListIndex = 0;
             trackListScrollOffset = 0;
@@ -4523,6 +4699,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
             pendingTrackSelectionSong = selected;
             pendingTrackSelectionParts.Clear();
+            pendingRocksmithTrackSelectionGroups.Clear();
             pendingArcadeArrangementSummaries.Clear();
             pendingArcadeArrangementSummaries.AddRange(ArcadeCloneHeroLoader.GetArrangementSummaries(selected.ArcadeChartPath));
             selectedTrackListIndex = 0;
@@ -4553,38 +4730,60 @@ public class GuitarBridgeServer : MonoBehaviour
         SongMetadata selectedMetadata = LoadSongMetadataForEntry(selected);
         bool samePendingSong = pendingTrackSelectionSong != null &&
             string.Equals(pendingTrackSelectionSong.SongDirectory, selected.SongDirectory, StringComparison.OrdinalIgnoreCase);
-        string previousPartId = preserveTrackIfPossible &&
-            samePendingSong &&
-            selectedTrackListIndex >= 0 &&
-            selectedTrackListIndex < pendingTrackSelectionParts.Count
-            ? pendingTrackSelectionParts[selectedTrackListIndex].PartId
-            : string.Empty;
+        string previousPartId = string.Empty;
+        if (preserveTrackIfPossible && samePendingSong)
+        {
+            if (IsPendingRocksmithDifficultySelectionActive())
+            {
+                previousPartId = GetHighestDifficultyRocksmithVariant(GetPendingSelectedRocksmithTrackGroup()?.Variants)?.PartId ?? string.Empty;
+            }
+            else if (selectedTrackListIndex >= 0 && selectedTrackListIndex < pendingTrackSelectionParts.Count)
+            {
+                previousPartId = pendingTrackSelectionParts[selectedTrackListIndex].PartId;
+            }
+        }
         string savedPartId = selectedMetadata != null && !selectedMetadata.useAutoTrackSelection
             ? selectedMetadata.selectedMusicXmlPartId ?? string.Empty
             : string.Empty;
 
         pendingTrackSelectionSong = selected;
         pendingTrackSelectionParts.Clear();
+        pendingRocksmithTrackSelectionGroups.Clear();
         pendingArcadeArrangementSummaries.Clear();
         pendingTrackSelectionParts.AddRange(GetSortedTrackSummaries(selected));
+        RebuildPendingRocksmithTrackSelectionGroups();
         selectedTrackListIndex = 0;
 
-        if (!string.IsNullOrEmpty(previousPartId))
+        string preferredPartId = !string.IsNullOrEmpty(previousPartId) ? previousPartId : savedPartId;
+        if (!string.IsNullOrEmpty(preferredPartId))
         {
-            int preservedIndex = pendingTrackSelectionParts.FindIndex(track =>
-                string.Equals(track.PartId, previousPartId, StringComparison.OrdinalIgnoreCase));
-            if (preservedIndex >= 0)
-                selectedTrackListIndex = preservedIndex;
-        }
-        else if (!string.IsNullOrEmpty(savedPartId))
-        {
-            int savedIndex = pendingTrackSelectionParts.FindIndex(track =>
-                string.Equals(track.PartId, savedPartId, StringComparison.OrdinalIgnoreCase));
-            if (savedIndex >= 0)
-                selectedTrackListIndex = savedIndex;
+            MusicXmlLoader.MusicXmlPartSummary preferredSummary = pendingTrackSelectionParts.FirstOrDefault(track =>
+                string.Equals(track.PartId, preferredPartId, StringComparison.OrdinalIgnoreCase));
+            if (preferredSummary != null)
+            {
+                if (IsPendingRocksmithDifficultySelectionActive())
+                {
+                    int groupIndex = pendingRocksmithTrackSelectionGroups.FindIndex(group =>
+                        string.Equals(group.GroupId, preferredSummary.GroupId, StringComparison.OrdinalIgnoreCase));
+                    if (groupIndex >= 0)
+                        selectedTrackListIndex = groupIndex;
+
+                    int difficultyIndex = ResolveRocksmithDifficultyUiIndex(preferredSummary);
+                    if (difficultyIndex >= 0)
+                        selectedRocksmithDifficultyIndex = difficultyIndex;
+                }
+                else
+                {
+                    int savedIndex = pendingTrackSelectionParts.FindIndex(track =>
+                        string.Equals(track.PartId, preferredPartId, StringComparison.OrdinalIgnoreCase));
+                    if (savedIndex >= 0)
+                        selectedTrackListIndex = savedIndex;
+                }
+            }
         }
 
         trackListScrollOffset = 0;
+        ClampSelectedRocksmithDifficultyToPendingGroup();
         EnsureTrackSelectionVisible();
     }
 
@@ -4596,6 +4795,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingRocksmithTrackSelectionGroups.Clear();
         pendingArcadeArrangementSummaries.Clear();
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
@@ -4616,12 +4816,15 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         int count = pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade
             ? pendingArcadeArrangementSummaries.Count
-            : pendingTrackSelectionParts.Count;
+            : IsPendingRocksmithDifficultySelectionActive()
+                ? pendingRocksmithTrackSelectionGroups.Count
+                : pendingTrackSelectionParts.Count;
         if (count == 0)
             return;
 
         selectedTrackListIndex = Mathf.Clamp(selectedTrackListIndex + delta, 0, count - 1);
         ClampSelectedArcadeDifficultyToPendingArrangement();
+        ClampSelectedRocksmithDifficultyToPendingGroup();
         EnsureTrackSelectionVisible();
     }
 
@@ -4642,7 +4845,9 @@ public class GuitarBridgeServer : MonoBehaviour
         const int visibleCount = 10;
         int count = pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade
             ? pendingArcadeArrangementSummaries.Count
-            : pendingTrackSelectionParts.Count;
+            : IsPendingRocksmithDifficultySelectionActive()
+                ? pendingRocksmithTrackSelectionGroups.Count
+                : pendingTrackSelectionParts.Count;
         if (selectedTrackListIndex < trackListScrollOffset)
             trackListScrollOffset = selectedTrackListIndex;
 
@@ -4663,7 +4868,9 @@ public class GuitarBridgeServer : MonoBehaviour
         if (pendingTrackSelectionSong == null || selectedTrackListIndex < 0 || selectedTrackListIndex >= pendingTrackSelectionParts.Count)
             return;
 
-        MusicXmlLoader.MusicXmlPartSummary selectedTrack = pendingTrackSelectionParts[selectedTrackListIndex];
+        MusicXmlLoader.MusicXmlPartSummary selectedTrack = GetPendingSelectedTrackSummary();
+        if (selectedTrack == null)
+            return;
         SelectSongAndTrack(pendingTrackSelectionSong, selectedTrack.PartId);
     }
 
@@ -4698,10 +4905,12 @@ public class GuitarBridgeServer : MonoBehaviour
             songSelectionSongConfirmed = false;
             pendingTrackSelectionSong = null;
             pendingTrackSelectionParts.Clear();
+            pendingRocksmithTrackSelectionGroups.Clear();
             pendingArcadeArrangementSummaries.Clear();
 
             useAutoTrackSelection = false;
             selectedMusicXmlPartId = selectedPartId ?? string.Empty;
+            UpdatePersistedTrackSelectionStateFromActiveSelection();
             ApplyTrackSelectionPreference();
             RefreshEffectiveAudioOffset();
             SaveSongMetadata();
@@ -4729,6 +4938,7 @@ public class GuitarBridgeServer : MonoBehaviour
         mainMenuFlowActive = false;
             pendingTrackSelectionSong = null;
             pendingTrackSelectionParts.Clear();
+            pendingRocksmithTrackSelectionGroups.Clear();
             pendingArcadeArrangementSummaries.Clear();
     }
 
@@ -4808,6 +5018,7 @@ public class GuitarBridgeServer : MonoBehaviour
         mainMenuFlowActive = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingRocksmithTrackSelectionGroups.Clear();
         pendingArcadeArrangementSummaries.Clear();
     }
 
@@ -4861,6 +5072,7 @@ public class GuitarBridgeServer : MonoBehaviour
         mainMenuFlowActive = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingRocksmithTrackSelectionGroups.Clear();
         pendingArcadeArrangementSummaries.Clear();
     }
 
@@ -5088,6 +5300,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         loopEnabled = true;
+        scoreSaveInvalidated = true;
         ResetSessionScoreState(ignoreCurrentlyResolvedNotes: true);
         loopSettingsOpenedFromGameModes = showGameModes;
         showGameModes = false;
@@ -5181,6 +5394,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showTrackSelection = false;
         showGlobalSettings = false;
         showGameModes = false;
+        showRocksmithDifficultyPopup = false;
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
         SetSongEndState(true, asGameOver);
@@ -5206,7 +5420,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         SetSongEndState(false);
         selectedSongEndActionIndex = 0;
-        scoreSaveInvalidated = playbackSpeedPercent < 100f;
+        scoreSaveInvalidated = IsScoreInvalidatingModeActive();
         ResetSessionScoreState();
         ClearNoteByNoteWaitingState();
         SeekSongTime(-songStartDelaySeconds, false);
@@ -5215,13 +5429,13 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private int GetFirstVisibleGameModesIndex()
     {
-        for (int index = 0; index <= 5; index++)
+        for (int index = 0; index <= 6; index++)
         {
             if (IsGameModesSelectionVisible(index))
                 return index;
         }
 
-        return 5;
+        return 6;
     }
 
     private bool IsPauseActionVisible(int index)
@@ -5277,8 +5491,9 @@ public class GuitarBridgeServer : MonoBehaviour
             1 => loopModeAvailable && (loopEnabled || UsesRhythmPracticeSectionLoop()),
             2 => gameplayMode == GuitarGameplayMode.Guitar,
             3 => true,
-            4 => heroModeEnabled,
-            5 => true,
+            4 => IsCurrentRocksmithDifficultyModeAvailable(),
+            5 => heroModeEnabled,
+            6 => true,
             _ => false
         };
     }
@@ -5290,6 +5505,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         gameplayHudPreviewInMenus = false;
         showGameModes = true;
+        showRocksmithDifficultyPopup = false;
         showHeroModeSettings = false;
         selectedHeroModeSettingsIndex = 0;
         selectedGameModesIndex = IsGameModesSelectionVisible(selectedGameModesIndex) ? selectedGameModesIndex : GetFirstVisibleGameModesIndex();
@@ -5301,13 +5517,14 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         gameplayHudPreviewInMenus = false;
         showGameModes = false;
+        showRocksmithDifficultyPopup = false;
         showHeroModeSettings = false;
         SyncAudioToSongTimer(playImmediately: false);
     }
 
     public void SetGameModesSelectionFromUi(int index)
     {
-        selectedGameModesIndex = Mathf.Clamp(index, 0, 5);
+        selectedGameModesIndex = Mathf.Clamp(index, 0, 6);
         if (!IsGameModesSelectionVisible(selectedGameModesIndex))
             selectedGameModesIndex = GetFirstVisibleGameModesIndex();
     }
@@ -5325,7 +5542,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (delta == 0)
             return;
 
-        const int optionCount = 6;
+        const int optionCount = 7;
         int nextIndex = selectedGameModesIndex;
         for (int attempt = 0; attempt < optionCount; attempt++)
         {
@@ -5355,9 +5572,12 @@ public class GuitarBridgeServer : MonoBehaviour
                 ToggleHeroModeFromUi();
                 break;
             case 4:
-                OpenHeroModeSettingsFromUi();
+                OpenRocksmithDifficultyPopupFromUi();
                 break;
             case 5:
+                OpenHeroModeSettingsFromUi();
+                break;
+            case 6:
                 CloseGameModesFromUi();
                 break;
         }
@@ -5553,7 +5773,10 @@ public class GuitarBridgeServer : MonoBehaviour
         loopStartConfigured = true;
         loopEndConfigured = true;
         if (enableLoop)
+        {
             loopEnabled = true;
+            scoreSaveInvalidated = true;
+        }
 
         selectedLoopMarker = 1;
         loopRestartPauseRemainingSeconds = 0f;
@@ -5570,7 +5793,7 @@ public class GuitarBridgeServer : MonoBehaviour
         heroModeEnabled = !heroModeEnabled;
         SaveHeroModePreferences();
         showHeroModeSettings = false;
-        selectedGameModesIndex = Mathf.Min(selectedGameModesIndex, heroModeEnabled ? 4 : 3);
+        selectedGameModesIndex = Mathf.Min(selectedGameModesIndex, heroModeEnabled ? 5 : 4);
         RestartCurrentSongForModeChange();
     }
 
@@ -5593,7 +5816,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showHeroModeSettings = false;
         selectedHeroModeSettingsIndex = 0;
         showGameModes = true;
-        selectedGameModesIndex = 4;
+        selectedGameModesIndex = 5;
         SyncAudioToSongTimer(playImmediately: false);
     }
 
@@ -6981,6 +7204,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void OpenSongSelectionFromUi()
     {
+        if (!firstStartCompleted)
+        {
+            OpenStartMenuFromUi();
+            return;
+        }
+
         multiplayerRhythmModeActive = false;
         multiplayerRhythmWinningPlayerIndex = -1;
         pendingMultiplayerRhythmSongSelection = false;
@@ -7038,6 +7267,7 @@ public class GuitarBridgeServer : MonoBehaviour
         trackListScrollOffset = 0;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingRocksmithTrackSelectionGroups.Clear();
         pendingArcadeArrangementSummaries.Clear();
         showStartupTuningReminder = false;
         resumeGameplayAfterStartupTuningReminder = false;
@@ -7097,6 +7327,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showGlobalSettings = false;
         showGameModes = false;
         showHeroModeSettings = false;
+        showRocksmithDifficultyPopup = false;
         loopSettingsOpenedFromGameModes = false;
         showStartupTuningReminder = false;
         resumeGameplayAfterStartupTuningReminder = false;
@@ -7137,7 +7368,7 @@ public class GuitarBridgeServer : MonoBehaviour
         loopSettingsPreviewPlaying = false;
         isPaused = false;
         ClearNoteByNoteWaitingState();
-        scoreSaveInvalidated = playbackSpeedPercent < 100f;
+        scoreSaveInvalidated = IsScoreInvalidatingModeActive();
         ResetSessionScoreState();
 
         if (loopEnabled && HasConfiguredLoopWindow())
@@ -7445,6 +7676,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         pendingTrackSelectionSong = null;
         pendingTrackSelectionParts.Clear();
+        pendingRocksmithTrackSelectionGroups.Clear();
         pendingArcadeArrangementSummaries.Clear();
         RefreshAvailableSongs();
     }
@@ -7511,9 +7743,12 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         int count = pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade
             ? pendingArcadeArrangementSummaries.Count
-            : pendingTrackSelectionParts.Count;
+            : IsPendingRocksmithDifficultySelectionActive()
+                ? pendingRocksmithTrackSelectionGroups.Count
+                : pendingTrackSelectionParts.Count;
         selectedTrackListIndex = Mathf.Clamp(trackIndex, 0, Mathf.Max(0, count - 1));
         ClampSelectedArcadeDifficultyToPendingArrangement();
+        ClampSelectedRocksmithDifficultyToPendingGroup();
         songSelectionSongConfirmed = true;
         EnsureTrackSelectionVisible();
     }
@@ -7540,6 +7775,37 @@ public class GuitarBridgeServer : MonoBehaviour
             metadata.selectedArcadeDifficulty = ArcadeCloneHeroLoader.SerializeDifficulty(selectedArcadeDifficulty);
             SaveSongMetadata(metadata, BuildSongMetadataPath(pendingTrackSelectionSong), ResolveSongMetadataFileName(pendingTrackSelectionSong));
         }
+    }
+
+    private void HandleRocksmithDifficultyPopupControls()
+    {
+        if (IsUiBackPressed())
+        {
+            CloseRocksmithDifficultyPopupFromUi();
+            return;
+        }
+
+        int horizontalDirection = GetHeldHorizontalArrowDirection();
+        if (ConsumeHeldHorizontalUiStep("rocksmith-difficulty-popup", horizontalDirection))
+        {
+            AdjustRocksmithGameplayDifficultyFromUi(horizontalDirection);
+            return;
+        }
+
+        if (horizontalDirection == 0)
+            ConsumeHeldHorizontalUiStep("rocksmith-difficulty-popup", 0);
+
+        if (IsUiSubmitPressed())
+        {
+            ConfirmRocksmithDifficultyPopupFromUi();
+            return;
+        }
+    }
+
+    public void SetLibraryDifficultyFromUi(int difficultyIndex)
+    {
+        if (pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
+            SetArcadeDifficultyFromUi(difficultyIndex);
     }
 
     private static ArcadeDifficulty DifficultyFromUiIndex(int difficultyIndex)
@@ -7628,6 +7894,453 @@ public class GuitarBridgeServer : MonoBehaviour
 
         int nextIndex = Mathf.Clamp(currentIndex + delta, 0, ordered.Count - 1);
         SetArcadeDifficultyFromUi(DifficultyToUiIndex(ordered[nextIndex]));
+    }
+
+    private bool IsPendingRocksmithDifficultySelectionActive()
+    {
+        return pendingTrackSelectionSong != null &&
+               pendingTrackSelectionSong.LibraryType == SongLibraryType.Guitar &&
+               pendingTrackSelectionSong.PrimaryNotationKind == SongNotationSourceKind.Rocksmith &&
+               pendingRocksmithTrackSelectionGroups.Count > 0;
+    }
+
+    private bool PendingRocksmithSelectionHasMultipleDifficulties()
+    {
+        return pendingRocksmithTrackSelectionGroups.Any(group => group != null && group.Variants.Count > 1);
+    }
+
+    private RocksmithTrackSelectionGroup GetPendingSelectedRocksmithTrackGroup()
+    {
+        if (!IsPendingRocksmithDifficultySelectionActive())
+            return null;
+
+        if (selectedTrackListIndex < 0 || selectedTrackListIndex >= pendingRocksmithTrackSelectionGroups.Count)
+            return null;
+
+        return pendingRocksmithTrackSelectionGroups[selectedTrackListIndex];
+    }
+
+    private static string GetRocksmithDifficultyLabelFromUiIndex(int difficultyIndex)
+    {
+        switch (Mathf.Clamp(difficultyIndex, 0, 3))
+        {
+            case 0: return "X";
+            case 1: return "H";
+            case 2: return "M";
+            default: return "E";
+        }
+    }
+
+    private static string BuildRocksmithDifficultySummary(IEnumerable<MusicXmlLoader.MusicXmlPartSummary> variants)
+    {
+        if (variants == null)
+            return string.Empty;
+
+        HashSet<string> labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (MusicXmlLoader.MusicXmlPartSummary variant in variants)
+        {
+            if (variant == null || string.IsNullOrWhiteSpace(variant.DifficultyLabel))
+                continue;
+
+            labels.Add(variant.DifficultyLabel.Trim().ToUpperInvariant());
+        }
+
+        string[] ordered = { "X", "H", "M", "E" };
+        return string.Concat(ordered.Where(labels.Contains));
+    }
+
+    private static string GetRocksmithDifficultyDisplayNameFromUiIndex(int difficultyIndex)
+    {
+        switch (Mathf.Clamp(difficultyIndex, 0, 3))
+        {
+            case 0: return "Expert";
+            case 1: return "Hard";
+            case 2: return "Medium";
+            default: return "Easy";
+        }
+    }
+
+    private static string GetRocksmithGroupId(MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        if (summary == null)
+            return string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(summary.GroupId))
+            return summary.GroupId.Trim();
+
+        return GetRocksmithGroupIdFromPartId(summary.PartId);
+    }
+
+    private static string GetRocksmithGroupIdFromPartId(string partId)
+    {
+        if (string.IsNullOrWhiteSpace(partId))
+            return string.Empty;
+
+        string trimmed = partId.Trim();
+        int levelSuffixIndex = trimmed.IndexOf("::level-", StringComparison.OrdinalIgnoreCase);
+        if (levelSuffixIndex > 0)
+            return trimmed.Substring(0, levelSuffixIndex);
+
+        return trimmed;
+    }
+
+    private static int ResolveRocksmithDifficultyUiIndex(MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        if (summary == null)
+            return -1;
+
+        if (summary.DifficultyUiIndex >= 0)
+            return summary.DifficultyUiIndex;
+
+        string label = summary.DifficultyLabel?.Trim();
+        if (string.Equals(label, "Full", StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        return int.TryParse(label, out int numericLevel) ? Mathf.Max(0, numericLevel) : -1;
+    }
+
+    private static List<MusicXmlLoader.MusicXmlPartSummary> OrderRocksmithVariants(IEnumerable<MusicXmlLoader.MusicXmlPartSummary> variants)
+    {
+        if (variants == null)
+            return new List<MusicXmlLoader.MusicXmlPartSummary>();
+
+        return variants
+            .Where(variant => variant != null)
+            .OrderBy(ResolveRocksmithDifficultyUiIndex)
+            .ThenByDescending(variant => variant.Score)
+            .ThenBy(variant => variant.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static MusicXmlLoader.MusicXmlPartSummary GetHighestDifficultyRocksmithVariant(IEnumerable<MusicXmlLoader.MusicXmlPartSummary> variants)
+    {
+        return OrderRocksmithVariants(variants).FirstOrDefault();
+    }
+
+    private void RebuildPendingRocksmithTrackSelectionGroups()
+    {
+        pendingRocksmithTrackSelectionGroups.Clear();
+        if (pendingTrackSelectionSong == null ||
+            pendingTrackSelectionSong.LibraryType != SongLibraryType.Guitar ||
+            pendingTrackSelectionSong.PrimaryNotationKind != SongNotationSourceKind.Rocksmith ||
+            pendingTrackSelectionParts.Count == 0)
+        {
+            return;
+        }
+
+        Dictionary<string, RocksmithTrackSelectionGroup> groupsById = new Dictionary<string, RocksmithTrackSelectionGroup>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < pendingTrackSelectionParts.Count; i++)
+        {
+            MusicXmlLoader.MusicXmlPartSummary summary = pendingTrackSelectionParts[i];
+            if (summary == null)
+                continue;
+
+            string groupId = string.IsNullOrWhiteSpace(summary.GroupId) ? summary.PartId ?? string.Empty : summary.GroupId;
+            if (!groupsById.TryGetValue(groupId, out RocksmithTrackSelectionGroup group))
+            {
+                group = new RocksmithTrackSelectionGroup
+                {
+                    GroupId = groupId,
+                    DisplayName = string.IsNullOrWhiteSpace(summary.GroupDisplayName) ? summary.Name : summary.GroupDisplayName,
+                    TuningDisplayName = summary.TuningDisplayName ?? string.Empty
+                };
+                groupsById[groupId] = group;
+                pendingRocksmithTrackSelectionGroups.Add(group);
+            }
+
+            if (!string.IsNullOrWhiteSpace(summary.TuningDisplayName) && string.IsNullOrWhiteSpace(group.TuningDisplayName))
+                group.TuningDisplayName = summary.TuningDisplayName;
+
+            group.Variants.Add(summary);
+        }
+
+        for (int i = 0; i < pendingRocksmithTrackSelectionGroups.Count; i++)
+        {
+            pendingRocksmithTrackSelectionGroups[i].Variants.Sort((left, right) =>
+            {
+                int leftIndex = ResolveRocksmithDifficultyUiIndex(left);
+                int rightIndex = ResolveRocksmithDifficultyUiIndex(right);
+                int compare = leftIndex.CompareTo(rightIndex);
+                if (compare != 0)
+                    return compare;
+                return string.Compare(left?.Name ?? string.Empty, right?.Name ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            });
+        }
+    }
+
+    private MusicXmlLoader.MusicXmlPartSummary GetPendingSelectedRocksmithVariant(bool allowFallbackToNearest)
+    {
+        RocksmithTrackSelectionGroup group = GetPendingSelectedRocksmithTrackGroup();
+        if (group == null || group.Variants.Count == 0)
+            return null;
+
+        for (int i = 0; i < group.Variants.Count; i++)
+        {
+            MusicXmlLoader.MusicXmlPartSummary variant = group.Variants[i];
+            if (ResolveRocksmithDifficultyUiIndex(variant) == selectedRocksmithDifficultyIndex)
+                return variant;
+        }
+
+        if (!allowFallbackToNearest)
+            return null;
+
+        return group.Variants
+            .OrderBy(variant => Mathf.Abs(ResolveRocksmithDifficultyUiIndex(variant) - selectedRocksmithDifficultyIndex))
+            .ThenByDescending(variant => variant.Score)
+            .FirstOrDefault();
+    }
+
+    private void ClampSelectedRocksmithDifficultyToPendingGroup()
+    {
+        RocksmithTrackSelectionGroup group = GetPendingSelectedRocksmithTrackGroup();
+        if (group == null || group.Variants.Count == 0)
+            return;
+
+        if (group.Variants.Any(variant => ResolveRocksmithDifficultyUiIndex(variant) == selectedRocksmithDifficultyIndex))
+            return;
+
+        MusicXmlLoader.MusicXmlPartSummary fallback = group.Variants
+            .OrderBy(variant => ResolveRocksmithDifficultyUiIndex(variant))
+            .FirstOrDefault();
+        selectedRocksmithDifficultyIndex = fallback != null ? Mathf.Max(0, ResolveRocksmithDifficultyUiIndex(fallback)) : 0;
+    }
+
+    private void SetRocksmithDifficultyFromUi(int difficultyIndex)
+    {
+        if (!IsPendingRocksmithDifficultySelectionActive())
+            return;
+
+        RocksmithTrackSelectionGroup group = GetPendingSelectedRocksmithTrackGroup();
+        if (group == null)
+            return;
+
+        int requested = Mathf.Max(0, difficultyIndex);
+        if (!group.Variants.Any(variant => ResolveRocksmithDifficultyUiIndex(variant) == requested))
+            return;
+
+        selectedRocksmithDifficultyIndex = requested;
+        songSelectionSongConfirmed = true;
+
+        MusicXmlLoader.MusicXmlPartSummary selectedVariant = GetPendingSelectedRocksmithVariant(allowFallbackToNearest: false);
+        if (selectedVariant != null && pendingTrackSelectionSong != null)
+        {
+            SongMetadata metadata = LoadSongMetadataForEntry(pendingTrackSelectionSong);
+            metadata.useAutoTrackSelection = false;
+            metadata.selectedMusicXmlPartId = GetPersistentRocksmithPartId(selectedVariant.PartId, pendingTrackSelectionParts);
+            SaveSongMetadata(metadata, BuildSongMetadataPath(pendingTrackSelectionSong), ResolveSongMetadataFileName(pendingTrackSelectionSong));
+        }
+    }
+
+    private void MoveRocksmithDifficultySelection(int delta)
+    {
+        RocksmithTrackSelectionGroup group = GetPendingSelectedRocksmithTrackGroup();
+        if (group == null || group.Variants.Count == 0)
+            return;
+
+        List<int> ordered = group.Variants
+            .Select(ResolveRocksmithDifficultyUiIndex)
+            .Where(index => index >= 0)
+            .Distinct()
+            .OrderBy(index => index)
+            .ToList();
+        if (ordered.Count == 0)
+            return;
+
+        int currentIndex = ordered.IndexOf(selectedRocksmithDifficultyIndex);
+        if (currentIndex < 0)
+            currentIndex = 0;
+
+        int nextIndex = Mathf.Clamp(currentIndex + delta, 0, ordered.Count - 1);
+        SetRocksmithDifficultyFromUi(ordered[nextIndex]);
+    }
+
+    private bool IsCurrentRocksmithDifficultyModeAvailable()
+    {
+        return gameplayMode == GuitarGameplayMode.Guitar &&
+               currentSongEntry != null &&
+               currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith &&
+               GetCurrentRocksmithDifficultyVariants().Count > 1;
+    }
+
+    private List<MusicXmlLoader.MusicXmlPartSummary> GetCurrentRocksmithDifficultyVariants()
+    {
+        if (currentSongPartSummaries == null || currentSongPartSummaries.Count == 0)
+            return new List<MusicXmlLoader.MusicXmlPartSummary>();
+
+        MusicXmlLoader.MusicXmlPartSummary activeSummary = GetResolvedActiveTrackSummary();
+        string groupId = GetRocksmithGroupId(activeSummary);
+        if (string.IsNullOrWhiteSpace(groupId))
+            return new List<MusicXmlLoader.MusicXmlPartSummary>();
+
+        return OrderRocksmithVariants(currentSongPartSummaries.Where(summary =>
+            string.Equals(GetRocksmithGroupId(summary), groupId, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private int GetCurrentRocksmithDifficultyVariantIndex()
+    {
+        List<MusicXmlLoader.MusicXmlPartSummary> variants = GetCurrentRocksmithDifficultyVariants();
+        if (variants.Count == 0)
+            return 0;
+
+        string activePartId = GetResolvedActiveTrackSummary()?.PartId ?? string.Empty;
+        int index = variants.FindIndex(variant =>
+            string.Equals(variant.PartId, activePartId, StringComparison.OrdinalIgnoreCase));
+        return index >= 0 ? index : 0;
+    }
+
+    private bool IsCurrentRocksmithDifficultyReduced()
+    {
+        return IsCurrentRocksmithDifficultyModeAvailable() && GetCurrentRocksmithDifficultyVariantIndex() > 0;
+    }
+
+    private int GetCurrentRocksmithDifficultyDisplayIndex()
+    {
+        List<MusicXmlLoader.MusicXmlPartSummary> variants = GetCurrentRocksmithDifficultyVariants();
+        if (variants.Count == 0)
+            return 0;
+
+        int backendIndex = Mathf.Clamp(selectedGameplayRocksmithDifficultyIndex, 0, variants.Count - 1);
+        return variants.Count - 1 - backendIndex;
+    }
+
+    private MusicXmlLoader.MusicXmlPartSummary GetCurrentRocksmithSelectedVariant()
+    {
+        List<MusicXmlLoader.MusicXmlPartSummary> variants = GetCurrentRocksmithDifficultyVariants();
+        if (variants.Count == 0)
+            return null;
+
+        int resolvedIndex = Mathf.Clamp(selectedGameplayRocksmithDifficultyIndex, 0, variants.Count - 1);
+        return variants[resolvedIndex];
+    }
+
+    private string GetPersistentRocksmithPartId(string partId, IEnumerable<MusicXmlLoader.MusicXmlPartSummary> sourceSummaries = null)
+    {
+        if (string.IsNullOrWhiteSpace(partId))
+            return string.Empty;
+
+        IEnumerable<MusicXmlLoader.MusicXmlPartSummary> summaries = sourceSummaries ?? currentSongPartSummaries;
+        if (summaries == null)
+            return GetRocksmithGroupIdFromPartId(partId);
+
+        string groupId = GetRocksmithGroupIdFromPartId(partId);
+        List<MusicXmlLoader.MusicXmlPartSummary> matchingSummaries = summaries.Where(summary =>
+            string.Equals(GetRocksmithGroupId(summary), groupId, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        // Recover from older bad saved values like "lead" / "rhythm" / "bass" that lost the
+        // Rocksmith arrangement instance suffix (for example "lead::1").
+        if (matchingSummaries.Count == 0 && !groupId.Contains("::", StringComparison.Ordinal))
+        {
+            string legacyPrefix = groupId + "::";
+            matchingSummaries = summaries.Where(summary =>
+            {
+                string summaryGroupId = GetRocksmithGroupId(summary);
+                return summaryGroupId.StartsWith(legacyPrefix, StringComparison.OrdinalIgnoreCase);
+            }).ToList();
+        }
+
+        MusicXmlLoader.MusicXmlPartSummary highestVariant = GetHighestDifficultyRocksmithVariant(matchingSummaries);
+        return highestVariant?.PartId ?? groupId;
+    }
+
+    private bool IsScoreInvalidatingModeActive()
+    {
+        return playbackSpeedPercent < 100f || loopEnabled || IsCurrentRocksmithDifficultyReduced();
+    }
+
+    public void OpenRocksmithDifficultyPopupFromUi()
+    {
+        if (!IsCurrentRocksmithDifficultyModeAvailable())
+            return;
+
+        gameplayHudPreviewInMenus = false;
+        showGameModes = false;
+        showHeroModeSettings = false;
+        showRocksmithDifficultyPopup = true;
+        selectedGameplayRocksmithDifficultyIndex = GetCurrentRocksmithDifficultyVariantIndex();
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseRocksmithDifficultyPopupFromUi()
+    {
+        showRocksmithDifficultyPopup = false;
+        showGameModes = true;
+        selectedGameplayRocksmithDifficultyIndex = GetCurrentRocksmithDifficultyVariantIndex();
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void SetRocksmithGameplayDifficultyFromUi(float variantIndex)
+    {
+        List<MusicXmlLoader.MusicXmlPartSummary> variants = GetCurrentRocksmithDifficultyVariants();
+        if (variants.Count == 0)
+            return;
+
+        int displayIndex = Mathf.Clamp(Mathf.RoundToInt(variantIndex), 0, variants.Count - 1);
+        selectedGameplayRocksmithDifficultyIndex = variants.Count - 1 - displayIndex;
+    }
+
+    public void AdjustRocksmithGameplayDifficultyFromUi(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        List<MusicXmlLoader.MusicXmlPartSummary> variants = GetCurrentRocksmithDifficultyVariants();
+        if (variants.Count == 0)
+            return;
+
+        int currentDisplayIndex = GetCurrentRocksmithDifficultyDisplayIndex();
+        int nextDisplayIndex = Mathf.Clamp(currentDisplayIndex + delta, 0, variants.Count - 1);
+        selectedGameplayRocksmithDifficultyIndex = variants.Count - 1 - nextDisplayIndex;
+    }
+
+    public void ConfirmRocksmithDifficultyPopupFromUi()
+    {
+        List<MusicXmlLoader.MusicXmlPartSummary> variants = GetCurrentRocksmithDifficultyVariants();
+        if (variants.Count == 0)
+        {
+            CloseRocksmithDifficultyPopupFromUi();
+            return;
+        }
+
+        MusicXmlLoader.MusicXmlPartSummary selectedVariant = GetCurrentRocksmithSelectedVariant();
+        if (selectedVariant == null)
+        {
+            CloseRocksmithDifficultyPopupFromUi();
+            return;
+        }
+
+        bool selectionChanged = !string.Equals(selectedVariant.PartId, selectedMusicXmlPartId, StringComparison.OrdinalIgnoreCase);
+        showRocksmithDifficultyPopup = false;
+        if (!selectionChanged)
+        {
+            ResumePlaybackFromUi();
+            return;
+        }
+
+        useAutoTrackSelection = false;
+        selectedMusicXmlPartId = selectedVariant.PartId;
+        if (!ReloadCurrentGuitarChartForSelectedTrack())
+        {
+            selectedMusicXmlPartId = GetPersistentRocksmithPartId(selectedMusicXmlPartId, currentSongPartSummaries);
+            ApplyTrackSelectionPreference();
+            CloseRocksmithDifficultyPopupFromUi();
+            return;
+        }
+
+        RefreshEffectiveAudioOffset();
+
+        if (selectedGameplayRocksmithDifficultyIndex > 0)
+            scoreSaveInvalidated = true;
+
+        bool shouldRestartLoopFromStart = loopEnabled && HasConfiguredLoopWindow();
+        bool shouldArmLoopCountdown = shouldRestartLoopFromStart && GetActiveLoopPauseDurationSeconds() > 0.001f;
+        pendingLoopRestartFromStartAfterResume = shouldRestartLoopFromStart;
+        pendingLoopStartCountdownAfterResume = shouldArmLoopCountdown;
+
+        RestartCurrentSongForModeChange();
+        ResumePlaybackFromUi();
     }
 
     public void BackToSongSelectionFromUi()
@@ -7882,6 +8595,7 @@ public class GuitarBridgeServer : MonoBehaviour
             renderMode = loopSettingsReturnRenderMode;
         showLoopSettings = false;
         showLoopPausePopup = false;
+        showRocksmithDifficultyPopup = false;
         selectedLoopPausePopupIndex = 0;
         loopRestartPauseRemainingSeconds = 0f;
         loopSettingsPreviewPlaying = false;
@@ -8187,7 +8901,7 @@ private void OpenOrFocusToneLab()
         SeekSongTimeInternal(
             targetTime,
             updateSelectedMarker,
-            preserveResolvedProgressOnRewind: true,
+            preserveResolvedProgressOnRewind: false,
             clearLoopRestartPause: true,
             syncAudioAfterSeek: true,
             playImmediatelyAfterSeek: !isPaused || (showLoopSettings && loopSettingsPreviewPlaying));
@@ -10814,8 +11528,7 @@ private void OpenOrFocusToneLab()
 
             bool overstrumCandidate =
                 inputEvent.isStrum ||
-                inputEvent.isOpenButton ||
-                (arcadeGamepadMode && inputEvent.isTap);
+                inputEvent.isOpenButton;
             if (!overstrumCandidate)
                 continue;
 
@@ -10879,8 +11592,7 @@ private void OpenOrFocusToneLab()
 
             bool overstrumCandidate =
                 inputEvent.isStrum ||
-                inputEvent.isOpenButton ||
-                (arcadeGamepadMode && inputEvent.isTap);
+                inputEvent.isOpenButton;
             if (!overstrumCandidate)
                 continue;
 
@@ -12224,9 +12936,7 @@ private void ParseDetectorPacket(string detectorPacket)
                     ? FormatArcadeMenuScoreText(arcadeBestScore)
                     : BuildCombinedScoreText(normalScore, heroScore));
                 availableSongDurationLabels.Add(FormatSongLibraryDurationLabel(song.DurationSeconds));
-                availableSongDifficultyLabels.Add(song.LibraryType == SongLibraryType.Arcade
-                    ? (!string.IsNullOrWhiteSpace(song.ArcadeDifficultySummary) ? song.ArcadeDifficultySummary : "Rhythm")
-                    : SongLibraryService.GetDifficultyLabel(song.DifficultyRating));
+                availableSongDifficultyLabels.Add(GetSongLibraryDifficultyDisplayLabel(song));
             }
             else
             {
@@ -12239,13 +12949,18 @@ private void ParseDetectorPacket(string detectorPacket)
         }
 
         bool pendingSongIsArcade = pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade;
-        List<float> availableTrackScores = new List<float>(pendingSongIsArcade ? pendingArcadeArrangementSummaries.Count : pendingTrackSelectionParts.Count);
-        List<string> availableTrackScoreTexts = new List<string>(pendingSongIsArcade ? pendingArcadeArrangementSummaries.Count : pendingTrackSelectionParts.Count);
+        int pendingTrackDisplayCount = GetPendingTrackSelectionDisplayCount();
+        List<string> availableTrackNames = new List<string>(pendingTrackDisplayCount);
+        List<string> availableTrackMetaTexts = new List<string>(pendingTrackDisplayCount);
+        List<float> availableTrackScores = new List<float>(pendingTrackDisplayCount);
+        List<string> availableTrackScoreTexts = new List<string>(pendingTrackDisplayCount);
         if (pendingSongIsArcade)
         {
             for (int i = 0; i < pendingArcadeArrangementSummaries.Count; i++)
             {
                 ArcadeArrangementSummary arrangement = pendingArcadeArrangementSummaries[i];
+                availableTrackNames.Add(arrangement?.DisplayName ?? $"Arrangement {i + 1}");
+                availableTrackMetaTexts.Add(string.Empty);
                 bool supportsSelectedDifficulty = arrangement?.Difficulties != null &&
                                                   arrangement.Difficulties.Contains(selectedArcadeDifficulty);
                 int score = supportsSelectedDifficulty
@@ -12258,15 +12973,21 @@ private void ParseDetectorPacket(string detectorPacket)
         }
         else
         {
-            for (int i = 0; i < pendingTrackSelectionParts.Count; i++)
+            for (int i = 0; i < pendingTrackDisplayCount; i++)
             {
-                MusicXmlLoader.MusicXmlPartSummary track = pendingTrackSelectionParts[i];
-                int normalScore = pendingTrackMetadata != null ? GetStoredTrackScoreValue(pendingTrackMetadata, track.PartId) : 0;
-                HeroScoreSummary heroScore = pendingTrackMetadata != null
+                availableTrackNames.Add(GetPendingTrackSelectionDisplayName(i));
+                availableTrackMetaTexts.Add(GetPendingTrackSelectionMetaText(i));
+                MusicXmlLoader.MusicXmlPartSummary track = IsPendingRocksmithDifficultySelectionActive()
+                    ? (i >= 0 && i < pendingRocksmithTrackSelectionGroups.Count
+                        ? GetHighestDifficultyRocksmithVariant(pendingRocksmithTrackSelectionGroups[i].Variants)
+                        : null)
+                    : (i >= 0 && i < pendingTrackSelectionParts.Count ? pendingTrackSelectionParts[i] : null);
+                int normalScore = track != null && pendingTrackMetadata != null ? GetStoredTrackScoreValue(pendingTrackMetadata, track.PartId) : 0;
+                HeroScoreSummary heroScore = track != null && pendingTrackMetadata != null
                     ? GetStoredHeroTrackScoreSummary(pendingTrackMetadata, track.PartId)
                     : default;
                 availableTrackScores.Add(normalScore);
-                availableTrackScoreTexts.Add(BuildCombinedScoreText(normalScore, heroScore));
+                availableTrackScoreTexts.Add(track != null ? BuildCombinedScoreText(normalScore, heroScore) : "--");
             }
         }
 
@@ -12284,12 +13005,10 @@ private void ParseDetectorPacket(string detectorPacket)
         HeroScoreSummary selectedLibraryHeroScore = default;
         if (selectedLibrarySongEntry != null && selectedLibrarySongEntry.LibraryType != SongLibraryType.Arcade)
         {
-            if (selectedTrackListIndex >= 0 &&
-                selectedTrackListIndex < pendingTrackSelectionParts.Count &&
-                selectedLibrarySongMetadata != null)
+            MusicXmlLoader.MusicXmlPartSummary selectedTrackSummary = GetPendingSelectedTrackSummary();
+            if (selectedTrackSummary != null && selectedLibrarySongMetadata != null)
             {
-                string selectedTrackPartId = pendingTrackSelectionParts[selectedTrackListIndex].PartId;
-                selectedLibraryHeroScore = GetStoredHeroTrackScoreSummary(selectedLibrarySongMetadata, selectedTrackPartId);
+                selectedLibraryHeroScore = GetStoredHeroTrackScoreSummary(selectedLibrarySongMetadata, selectedTrackSummary.PartId);
             }
             else
             {
@@ -12314,6 +13033,37 @@ private void ParseDetectorPacket(string detectorPacket)
                              pendingArcadeArrangement.Difficulties.Contains(difficulty);
             arcadeDifficultyAvailable.Add(available);
         }
+
+        List<string> libraryDifficultyLabels = new List<string> { "X", "H", "M", "E" };
+        List<bool> libraryDifficultyAvailable = new List<bool>(4);
+        bool showLibraryDifficultySelector = false;
+        int selectedLibraryDifficultyIndex = 0;
+        if (pendingSongIsArcade)
+        {
+            showLibraryDifficultySelector = pendingArcadeArrangement != null &&
+                                            pendingArcadeArrangement.Difficulties != null &&
+                                            pendingArcadeArrangement.Difficulties.Count > 0;
+            selectedLibraryDifficultyIndex = DifficultyToUiIndex(selectedArcadeDifficulty);
+            for (int i = 0; i < 4; i++)
+                libraryDifficultyAvailable.Add(arcadeDifficultyAvailable[i]);
+        }
+        else
+        {
+            for (int i = 0; i < 4; i++)
+                libraryDifficultyAvailable.Add(false);
+        }
+
+        List<MusicXmlLoader.MusicXmlPartSummary> currentRocksmithDifficultyVariants = GetCurrentRocksmithDifficultyVariants();
+        List<string> rocksmithDifficultyOptionLabels = currentRocksmithDifficultyVariants
+            .AsEnumerable()
+            .Reverse()
+            .Select(variant => string.IsNullOrWhiteSpace(variant?.DifficultyLabel) ? "Full" : variant.DifficultyLabel.Trim())
+            .ToList();
+        if (rocksmithDifficultyOptionLabels.Count == 0)
+            rocksmithDifficultyOptionLabels.Add("Full");
+        int selectedRocksmithDifficultyOptionIndex = currentRocksmithDifficultyVariants.Count > 0
+            ? GetCurrentRocksmithDifficultyDisplayIndex()
+            : 0;
 
         EnsureLoopBookmarkSelectionValid();
         List<LoopBookmarkEntry> currentLoopBookmarks = GetSortedLoopBookmarksForCurrentScope(songMetadata);
@@ -12414,6 +13164,10 @@ private void ParseDetectorPacket(string detectorPacket)
             selectedLoopPausePopupIndex = selectedLoopPausePopupIndex,
             loopPauseDurationSeconds = GetActiveLoopPauseDurationSeconds(),
             loopRestartPauseRemainingSeconds = loopRestartPauseRemainingSeconds,
+            showRocksmithDifficultyPopup = showRocksmithDifficultyPopup,
+            rocksmithDifficultyModeAvailable = IsCurrentRocksmithDifficultyModeAvailable(),
+            rocksmithDifficultyOptionLabels = rocksmithDifficultyOptionLabels,
+            selectedRocksmithDifficultyOptionIndex = selectedRocksmithDifficultyOptionIndex,
             loopBookmarkNames = currentLoopBookmarkNames,
             loopBookmarkDetails = currentLoopBookmarkDetails,
             selectedLoopBookmarkIndex = currentSelectedLoopBookmarkIndex,
@@ -12501,7 +13255,7 @@ private void ParseDetectorPacket(string detectorPacket)
             selectedLibrarySongDifficultyLabel = selectedBrowseEntry?.DifficultyLabel ?? string.Empty,
             selectedLibrarySongAudioLabel = BuildSongLibraryAudioSummary(selectedLibrarySongEntry),
             selectedLibrarySongTuningLabel = pendingSongIsArcade ? string.Empty : GetPendingTrackTuningLabel(),
-            selectedLibrarySongTrackCount = selectedLibrarySongEntry != null ? (pendingSongIsArcade ? pendingArcadeArrangementSummaries.Count : pendingTrackSelectionParts.Count) : 0,
+            selectedLibrarySongTrackCount = selectedLibrarySongEntry != null ? pendingTrackDisplayCount : 0,
             selectedLibraryHeroScoreText = selectedLibraryHeroScoreText,
             selectedLibrarySongHeroBestHeartsRemaining = selectedLibrarySongEntry != null && selectedLibrarySongEntry.LibraryType == SongLibraryType.Arcade
                 ? Mathf.Max(0, selectedLibraryArcadeHeroScore.heartsRemaining)
@@ -12514,9 +13268,12 @@ private void ParseDetectorPacket(string detectorPacket)
             selectedLibrarySongIsCurrent = selectedLibrarySongEntry != null &&
                                           currentSongEntry != null &&
                                           string.Equals(selectedLibrarySongEntry.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase),
-            availableTrackNames = pendingSongIsArcade
-                ? pendingArcadeArrangementSummaries.Select(track => track.DisplayName).ToList()
-                : pendingTrackSelectionParts.Select(track => track.Name).ToList(),
+            showLibraryDifficultySelector = showLibraryDifficultySelector,
+            libraryDifficultyLabels = libraryDifficultyLabels,
+            libraryDifficultyAvailable = libraryDifficultyAvailable,
+            selectedLibraryDifficultyIndex = selectedLibraryDifficultyIndex,
+            availableTrackNames = availableTrackNames,
+            availableTrackMetaTexts = availableTrackMetaTexts,
             availableTrackScores = availableTrackScores,
             availableTrackScoreTexts = availableTrackScoreTexts,
             selectedTrackIndex = selectedTrackListIndex,
@@ -12537,9 +13294,15 @@ private void ParseDetectorPacket(string detectorPacket)
             showSongSettingsTrackSelectionPopup = showSongSettingsTrackSelectionPopup,
             songSettingsTrackOptionNames = currentSongPartSummaries.Select(summary => summary.Name).ToList(),
             selectedSongSettingsTrackOptionIndex = Mathf.Clamp(showSongSettingsTrackSelectionPopup ? selectedSongSettingsTrackSelectionIndex : GetResolvedSongSettingsTrackPopupIndex(), 0, Mathf.Max(0, currentSongPartSummaries.Count - 1)),
-            selectedTrackDisplayName = gameplayMode == GuitarGameplayMode.Arcade ? $"{GetSelectedArcadeArrangementDisplayName()} {ArcadeCloneHeroLoader.GetDifficultyLabel(selectedArcadeDifficulty)}" : GetTrackDisplayName(GetCurrentTrackOptionIndex()),
+            selectedTrackDisplayName = gameplayMode == GuitarGameplayMode.Arcade
+                ? $"{GetSelectedArcadeArrangementDisplayName()} {ArcadeCloneHeroLoader.GetDifficultyLabel(selectedArcadeDifficulty)}"
+                : (showTrackSelection ? GetPendingSelectedTrackSummary()?.Name ?? GetTrackDisplayName(GetCurrentTrackOptionIndex()) : GetTrackDisplayName(GetCurrentTrackOptionIndex())),
             selectedTrackTuningLabel = gameplayMode == GuitarGameplayMode.Arcade ? string.Empty : GetResolvedActiveTrackTuningLabel(),
-            trackSelectionHint = gameplayMode == GuitarGameplayMode.Arcade ? "Rhythm arrangement and difficulty" : GetTrackOptionCount() > 1 ? "Track: click row or Q/E" : "Track: single detected part",
+            trackSelectionHint = pendingSongIsArcade
+                ? "Arrangement: click row or Q/E. Difficulty: left/right or the X/H/M/E buttons."
+                : IsPendingRocksmithDifficultySelectionActive() && PendingRocksmithSelectionHasMultipleDifficulties()
+                    ? "Arrangement: click row or Q/E. Difficulty: left/right or the X/H/M/E buttons."
+                    : GetTrackOptionCount() > 1 ? "Track: click row or Q/E" : "Track: single detected part",
             offsetScopeLabel = useTrackOffsetForCurrentTrack ? "Track" : "Song",
             offsetScopeHint = "Offset scope: O toggles Song/Track",
             hasBackingTrack = hasBackingTrack,
@@ -12672,6 +13435,7 @@ private void ParseDetectorPacket(string detectorPacket)
         SetSongEndState(false);
         showLoopSettings = false;
         showLoopPausePopup = false;
+        showRocksmithDifficultyPopup = false;
         selectedLoopPausePopupIndex = 0;
         loopSettingsPreviewPlaying = false;
         loopRestartPauseRemainingSeconds = 0f;
@@ -12742,10 +13506,19 @@ private void ParseDetectorPacket(string detectorPacket)
                 else
                 {
                     SongMetadata trackMetadata = LoadSongMetadata(currentSongFileName);
-                    useAutoTrackSelection = trackMetadata.useAutoTrackSelection;
-                    selectedMusicXmlPartId = string.IsNullOrEmpty(trackMetadata.selectedMusicXmlPartId) ? string.Empty : trackMetadata.selectedMusicXmlPartId;
+                    persistedUseAutoTrackSelection = trackMetadata.useAutoTrackSelection;
+                    persistedSelectedMusicXmlPartId = string.IsNullOrEmpty(trackMetadata.selectedMusicXmlPartId) ? string.Empty : trackMetadata.selectedMusicXmlPartId;
+                    useAutoTrackSelection = persistedUseAutoTrackSelection;
+                    selectedMusicXmlPartId = persistedSelectedMusicXmlPartId;
 
                     currentSongPartSummaries.AddRange(GetPartSummariesWithFallback(currentSongEntry));
+                    if (!useAutoTrackSelection &&
+                        currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith &&
+                        !string.IsNullOrWhiteSpace(selectedMusicXmlPartId))
+                    {
+                        selectedMusicXmlPartId = GetPersistentRocksmithPartId(selectedMusicXmlPartId, currentSongPartSummaries);
+                        persistedSelectedMusicXmlPartId = GetPersistentRocksmithPartId(persistedSelectedMusicXmlPartId, currentSongPartSummaries);
+                    }
                     ApplyTrackSelectionPreference();
 
                     try
@@ -13531,8 +14304,18 @@ private void ParseDetectorPacket(string detectorPacket)
 
         string songPath = currentSongEntry.Mp3Path;
         currentSongFileName = ResolveSongMetadataFileName(currentSongEntry);
+        bool isRocksmithGuitarSong = currentSongEntry.LibraryType == SongLibraryType.Guitar &&
+                                     currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith;
+        bool rocksmithHasBackingTrack = isRocksmithGuitarSong &&
+                                        !string.IsNullOrWhiteSpace(songPath) &&
+                                        File.Exists(songPath);
 
-        songMetadata = LoadSongMetadata(currentSongFileName);
+        string metadataPath = BuildSongMetadataPath(currentSongEntry);
+        bool metadataExists = !string.IsNullOrWhiteSpace(metadataPath) && File.Exists(metadataPath);
+        songMetadata = LoadSongMetadata(currentSongFileName, metadataPath);
+        SongPlaybackAudioMode loadedPlaybackAudioMode = songMetadata.playbackAudioMode;
+        if (rocksmithHasBackingTrack)
+            songMetadata.playbackAudioMode = SongPlaybackAudioMode.Mp3;
         selectedLoopBookmarkId = string.Empty;
         loopBookmarkRenameActive = false;
         loopBookmarkRenameDraft = string.Empty;
@@ -13587,8 +14370,23 @@ private void ParseDetectorPacket(string detectorPacket)
             return;
         }
 
-        useAutoTrackSelection = songMetadata.useAutoTrackSelection;
-        selectedMusicXmlPartId = string.IsNullOrEmpty(songMetadata.selectedMusicXmlPartId) ? string.Empty : songMetadata.selectedMusicXmlPartId;
+        persistedUseAutoTrackSelection = songMetadata.useAutoTrackSelection;
+        persistedSelectedMusicXmlPartId = string.IsNullOrEmpty(songMetadata.selectedMusicXmlPartId) ? string.Empty : songMetadata.selectedMusicXmlPartId;
+        useAutoTrackSelection = persistedUseAutoTrackSelection;
+        selectedMusicXmlPartId = persistedSelectedMusicXmlPartId;
+        bool rocksmithTrackSelectionNormalized = false;
+        if (!useAutoTrackSelection &&
+            isRocksmithGuitarSong &&
+            !string.IsNullOrWhiteSpace(selectedMusicXmlPartId))
+        {
+            string normalizedSelectedPartId = GetPersistentRocksmithPartId(selectedMusicXmlPartId, currentSongPartSummaries);
+            string normalizedPersistedPartId = GetPersistentRocksmithPartId(persistedSelectedMusicXmlPartId, currentSongPartSummaries);
+            rocksmithTrackSelectionNormalized =
+                !string.Equals(normalizedSelectedPartId, selectedMusicXmlPartId, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(normalizedPersistedPartId, persistedSelectedMusicXmlPartId, StringComparison.OrdinalIgnoreCase);
+            selectedMusicXmlPartId = normalizedSelectedPartId;
+            persistedSelectedMusicXmlPartId = normalizedPersistedPartId;
+        }
         useAllGeneratedPlaybackParts = songMetadata.useAllGeneratedPlaybackParts;
         generatedEnabledPartIds = songMetadata.generatedEnabledPartIds != null
             ? songMetadata.generatedEnabledPartIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
@@ -13608,6 +14406,16 @@ private void ParseDetectorPacket(string detectorPacket)
         currentTrackHeroBestScorePercent = currentHeroTrackBest.percent;
         currentTrackHeroBestHeartsRemaining = currentHeroTrackBest.heartsRemaining;
         currentTrackHeroBestHeartsTotal = currentHeroTrackBest.heartsTotal;
+        if ((isRocksmithGuitarSong &&
+             (rocksmithHasBackingTrack
+                 ? loadedPlaybackAudioMode != SongPlaybackAudioMode.Mp3 || !metadataExists
+                 : !metadataExists)) ||
+            rocksmithTrackSelectionNormalized)
+        {
+            songMetadata.selectedMusicXmlPartId = persistedSelectedMusicXmlPartId;
+            songMetadata.playbackAudioMode = songPlaybackAudioMode;
+            SaveSongMetadata(songMetadata, metadataPath, currentSongFileName);
+        }
         RefreshEffectiveAudioOffset();
         LoadGeneratedPlaybackArrangementForCurrentSong();
         generatedSongPlayer?.SetMasterVolumePercent(songVolumePercent);
@@ -14209,6 +15017,23 @@ private void ParseDetectorPacket(string detectorPacket)
             : Mathf.Clamp(entry.CachedBestScorePercent, 0f, 100f);
     }
 
+    private static string GetSongLibraryDifficultyDisplayLabel(SongLibraryEntry entry)
+    {
+        if (entry == null)
+            return string.Empty;
+
+        if (entry.LibraryType == SongLibraryType.Arcade)
+            return !string.IsNullOrWhiteSpace(entry.ArcadeDifficultySummary) ? entry.ArcadeDifficultySummary : "Rhythm";
+
+        if (entry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith)
+            return SongLibraryService.GetDifficultyLabel(entry.DifficultyRating);
+
+        if (!string.IsNullOrWhiteSpace(entry.DifficultyDisplayLabel))
+            return entry.DifficultyDisplayLabel;
+
+        return SongLibraryService.GetDifficultyLabel(entry.DifficultyRating);
+    }
+
     private List<MusicXmlLoader.MusicXmlPartSummary> GetPartSummariesWithFallback(SongLibraryEntry entry)
     {
         if (entry == null || string.IsNullOrEmpty(entry.PrimaryNotationPath))
@@ -14260,10 +15085,41 @@ private void ParseDetectorPacket(string detectorPacket)
 
         SongMetadata metadata = LoadSongMetadataForEntry(entry);
 
+        bool isRocksmithDifficultySong = entry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith &&
+                                         summaries.Any(summary => summary != null && summary.HasDifficultyVariants);
+        if (isRocksmithDifficultySong)
+        {
+            return summaries
+                .OrderByDescending(summary => GetDefaultRoutePriorityForTrack(summary))
+                .ThenBy(summary => summary.GroupDisplayName ?? summary.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(summary => summary.DifficultyUiIndex < 0 ? int.MaxValue : summary.DifficultyUiIndex)
+                .ToList();
+        }
+
         return summaries
             .OrderByDescending(summary => GetStoredTrackScore(metadata, summary.PartId))
             .ThenBy(summary => summary.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static int GetDefaultRoutePriorityForTrack(MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        if (summary == null)
+            return int.MinValue;
+
+        string name = !string.IsNullOrWhiteSpace(summary.GroupDisplayName) ? summary.GroupDisplayName : summary.Name;
+        if (string.IsNullOrWhiteSpace(name))
+            return summary.Score;
+
+        if (name.IndexOf("lead", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 4000 + summary.Score;
+        if (name.IndexOf("combo", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 3000 + summary.Score;
+        if (name.IndexOf("rhythm", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 2000 + summary.Score;
+        if (name.IndexOf("bass", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 1000 + summary.Score;
+        return summary.Score;
     }
 
     private void SaveSelectedSongPreference(SongLibraryEntry entry)
@@ -14845,8 +15701,8 @@ private void ParseDetectorPacket(string detectorPacket)
         songMetadata.loopStartTime = loopStartTime;
         songMetadata.loopEndTime = loopEndTime;
         songMetadata.loopPauseDurationSeconds = loopPauseDurationSeconds;
-        songMetadata.useAutoTrackSelection = useAutoTrackSelection;
-        songMetadata.selectedMusicXmlPartId = selectedMusicXmlPartId;
+        songMetadata.useAutoTrackSelection = persistedUseAutoTrackSelection;
+        songMetadata.selectedMusicXmlPartId = persistedSelectedMusicXmlPartId;
         songMetadata.selectedArcadeArrangementId = selectedArcadeArrangementId;
         songMetadata.selectedArcadeDifficulty = ArcadeCloneHeroLoader.SerializeDifficulty(selectedArcadeDifficulty);
         songMetadata.useAllGeneratedPlaybackParts = useAllGeneratedPlaybackParts;

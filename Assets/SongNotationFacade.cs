@@ -10,6 +10,12 @@ public static class SongNotationFacade
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
             return false;
 
+        if (RocksmithCachedSongLoader.IsRocksmithManifestPath(filePath))
+        {
+            kind = SongNotationSourceKind.Rocksmith;
+            return true;
+        }
+
         string extension = Path.GetExtension(filePath)?.ToLowerInvariant() ?? string.Empty;
         if (extension == ".musicxml" || extension == ".xml")
         {
@@ -34,6 +40,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.Rocksmith:
+                return RocksmithCachedSongLoader.GetPartSummaries(filePath);
             case SongNotationSourceKind.Gp5:
                 return AlphaTabGpLoader.GetPartSummaries(filePath);
             case SongNotationSourceKind.MusicXml:
@@ -47,6 +55,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.Rocksmith:
+                return RocksmithCachedSongLoader.LoadSong(filePath, targetPartIndex);
             case SongNotationSourceKind.Gp5:
                 return AlphaTabGpLoader.LoadSong(filePath, targetPartIndex);
             case SongNotationSourceKind.MusicXml:
@@ -60,6 +70,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.Rocksmith:
+                return RocksmithCachedSongLoader.LoadGeneratedArrangement(filePath);
             case SongNotationSourceKind.Gp5:
                 return AlphaTabGpBandPlaybackLoader.LoadArrangement(filePath);
             case SongNotationSourceKind.MusicXml:
@@ -73,6 +85,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.Rocksmith:
+                return RocksmithCachedSongLoader.TryReadDisplayName(filePath);
             case SongNotationSourceKind.Gp5:
                 return AlphaTabGpLoader.TryReadTitle(filePath);
             case SongNotationSourceKind.MusicXml:
@@ -86,6 +100,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.Rocksmith:
+                return RocksmithCachedSongLoader.TryReadArtist(filePath);
             case SongNotationSourceKind.Gp5:
                 return AlphaTabGpLoader.TryReadArtist(filePath);
             case SongNotationSourceKind.MusicXml:

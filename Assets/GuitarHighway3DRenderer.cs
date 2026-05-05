@@ -2426,8 +2426,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             GameplayNoteState state = snapshot.noteStates[i];
             float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
-            bool keepForResult = state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime();
-            bool keepForTechnique = state.IsResolved && ShouldKeepTechniqueAliveAfterResolution(state.data, renderSongTime);
+            bool resolvedAtOrBeforeRenderTime = state.IsResolved && state.resolvedAt >= 0f && renderSongTime >= state.resolvedAt;
+            bool keepForResult = resolvedAtOrBeforeRenderTime && renderSongTime - state.resolvedAt <= GetResolvedFadeTime();
+            bool keepForTechnique = resolvedAtOrBeforeRenderTime && ShouldKeepTechniqueAliveAfterResolution(state.data, renderSongTime);
             bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || keepForTechnique || travelZ >= owner.StrikeLineZ);
 
             if (!visible)
@@ -2771,6 +2772,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             isStuckOnString &&
             !hideTravelingNoteBox;
         bool hideResolvedCoreVisuals = state.IsResolved &&
+            state.resolvedAt >= 0f &&
+            songTime >= state.resolvedAt &&
             songTime - state.resolvedAt > GetResolvedFadeTime() &&
             ShouldKeepTechniqueAliveAfterResolution(state.data, songTime);
         if (view.noteRenderer != null)
@@ -4329,7 +4332,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             float anchorTime = group[0].time;
             float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * currentVisualNoteSpeed);
-            bool anyRecent = group.Any(n => TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) && state.IsResolved && renderSongTime - state.resolvedAt <= GetResolvedFadeTime());
+            bool anyRecent = group.Any(n =>
+                TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) &&
+                state.IsResolved &&
+                state.resolvedAt >= 0f &&
+                renderSongTime >= state.resolvedAt &&
+                renderSongTime - state.resolvedAt <= GetResolvedFadeTime());
             bool visible = z <= owner.SpawnZ && z > owner.StrikeLineZ + 0.001f;
 
             if (!visible && !anyRecent)

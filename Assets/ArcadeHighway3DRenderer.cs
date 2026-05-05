@@ -1804,6 +1804,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
         currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
         float renderSongTime = GetRenderSongTime(snapshot);
+        float sustainSongTime = snapshot.songTime;
 
         for (int i = 0; i < snapshot.arcadeNoteStates.Count; i++)
         {
@@ -1812,7 +1813,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
                 continue;
 
             float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
-            float sustainEndZ = owner.StrikeLineZ + (((state.data.time + Mathf.Max(0f, state.data.duration)) - renderSongTime) * currentVisualNoteSpeed);
+            // Keep sustain tails tied to the real song clock so they do not collapse
+            // when the next note head is intentionally parked at spawn during long gaps.
+            float sustainEndZ = owner.StrikeLineZ + (((state.data.time + Mathf.Max(0f, state.data.duration)) - sustainSongTime) * currentVisualNoteSpeed);
             bool keepResolvedBriefly = state.IsResolved && owner.ArcadeResolvedHoldTime > 0f && renderSongTime <= state.resolvedAt + owner.ArcadeResolvedHoldTime;
             bool showHead = travelZ <= owner.ArcadeSpawnZ && travelZ >= owner.StrikeLineZ && (!state.IsResolved || keepResolvedBriefly);
             bool showSustain = Mathf.Max(0f, state.data.duration) > 0.08f &&
