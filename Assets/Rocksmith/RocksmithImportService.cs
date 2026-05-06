@@ -33,6 +33,8 @@ public static class RocksmithImportService
         if (!Directory.Exists(songsDirectory))
             return;
 
+        MigrateLegacyImports(songsDirectory);
+
         string[] psarcFiles = Directory.GetFiles(songsDirectory, "*.psarc", SearchOption.AllDirectories)
             .Where(path => !IsInsideImportedCache(path, songsDirectory))
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
@@ -74,6 +76,8 @@ public static class RocksmithImportService
     private static void RefreshImportForFile(string psarcPath, string songsDirectory, string importToolPath)
     {
         string targetDirectory = Path.Combine(songsDirectory, BuildImportDirectoryName(psarcPath));
+        string legacyDirectory = Path.Combine(songsDirectory, BuildLegacyImportDirectoryName(psarcPath));
+        TryMigrateLegacyImportDirectory(legacyDirectory, targetDirectory);
         string manifestPath = Path.Combine(targetDirectory, RocksmithCachedSongFormat.ManifestFileName);
 
         if (IsImportUpToDate(psarcPath, manifestPath))
@@ -158,7 +162,7 @@ public static class RocksmithImportService
         string[] segments = relativeDirectory.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         for (int i = 0; i < segments.Length; i++)
         {
-            if (segments[i].StartsWith(RocksmithCachedSongFormat.ImportedFolderPrefix, StringComparison.OrdinalIgnoreCase))
+            if (IsImportedCacheDirectoryName(segments[i]))
                 return true;
         }
 
@@ -167,7 +171,9 @@ public static class RocksmithImportService
 
     private static void CleanupOrphanedImports(string songsDirectory, string[] psarcFiles)
     {
-        string[] importDirectories = Directory.GetDirectories(songsDirectory, $"{RocksmithCachedSongFormat.ImportedFolderPrefix}*", SearchOption.TopDirectoryOnly);
+        string[] importDirectories = Directory.GetDirectories(songsDirectory, "*", SearchOption.TopDirectoryOnly)
+            .Where(path => IsImportedCacheDirectoryName(Path.GetFileName(path)))
+            .ToArray();
         if (importDirectories == null || importDirectories.Length == 0)
             return;
 
@@ -208,16 +214,24 @@ public static class RocksmithImportService
 
     private static string BuildImportDirectoryName(string psarcPath)
     {
-        string baseName = Path.GetFileNameWithoutExtension(psarcPath) ?? "rocksmith";
+        string baseName = Path.GetFileNameWithoutExtension(psarcPath) ?? "psarc";
         string sanitized = SanitizeFileName(baseName);
         string hash = ComputePathHash(psarcPath);
         return $"{RocksmithCachedSongFormat.ImportedFolderPrefix}{sanitized}_{hash}";
     }
 
+    private static string BuildLegacyImportDirectoryName(string psarcPath)
+    {
+        string baseName = Path.GetFileNameWithoutExtension(psarcPath) ?? "psarc";
+        string sanitized = SanitizeFileName(baseName);
+        string hash = ComputePathHash(psarcPath);
+        return $"{RocksmithCachedSongFormat.LegacyImportedFolderPrefix}{sanitized}_{hash}";
+    }
+
     private static string SanitizeFileName(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
-            return "rocksmith";
+            return "psarc";
 
         StringBuilder builder = new StringBuilder(value.Length);
         for (int i = 0; i < value.Length; i++)
@@ -227,7 +241,7 @@ public static class RocksmithImportService
         }
 
         string sanitized = builder.ToString().Trim('_');
-        return string.IsNullOrWhiteSpace(sanitized) ? "rocksmith" : sanitized;
+        return string.IsNullOrWhiteSpace(sanitized) ? "psarc" : sanitized;
     }
 
     private static string ComputePathHash(string path)
@@ -242,5 +256,116 @@ public static class RocksmithImportService
     private static string Quote(string path)
     {
         return $"\"{path}\"";
+    }
+
+    private static bool IsImportedCacheDirectoryName(string directoryName)
+    {
+        if (string.IsNullOrWhiteSpace(directoryName))
+            return false;
+
+        return directoryName.StartsWith(RocksmithCachedSongFormat.ImportedFolderPrefix, StringComparison.OrdinalIgnoreCase) ||
+               directoryName.StartsWith(RocksmithCachedSongFormat.LegacyImportedFolderPrefix, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void MigrateLegacyImports(string songsDirectory)
+    {
+        string[] legacyDirectories = Directory.GetDirectories(
+            songsDirectory,
+            $"{RocksmithCachedSongFormat.LegacyImportedFolderPrefix}*",
+            SearchOption.TopDirectoryOnly);
+
+        for (int i = 0; i < legacyDirectories.Length; i++)
+        {
+            string legacyDirectory = legacyDirectories[i];
+            string legacyName = Path.GetFileName(legacyDirectory);
+            if (string.IsNullOrWhiteSpace(legacyName) ||
+                !legacyName.StartsWith(RocksmithCachedSongFormat.LegacyImportedFolderPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string targetDirectory = Path.Combine(
+                songsDirectory,
+                RocksmithCachedSongFormat.ImportedFolderPrefix + legacyName.Substring(RocksmithCachedSongFormat.LegacyImportedFolderPrefix.Length));
+            TryMigrateLegacyImportDirectory(legacyDirectory, targetDirectory);
+        }
+    }
+
+    private static void TryMigrateLegacyImportDirectory(string legacyDirectory, string targetDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(legacyDirectory) ||
+            !Directory.Exists(legacyDirectory) ||
+            string.Equals(legacyDirectory, targetDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        try
+        {
+            if (Directory.Exists(targetDirectory))
+            {
+                TryNormalizeImportedDirectory(targetDirectory);
+                TryDeleteOrphanedImportDirectory(legacyDirectory);
+                return;
+            }
+
+            Directory.Move(legacyDirectory, targetDirectory);
+            TryNormalizeImportedDirectory(targetDirectory);
+            Debug.Log($"{ImportLogPrefix} Migrated legacy imported cache '{legacyDirectory}' to '{targetDirectory}'.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"{ImportLogPrefix} Failed to migrate legacy cache '{legacyDirectory}': {ex.Message}");
+        }
+    }
+
+    private static void TryNormalizeImportedDirectory(string importDirectory)
+    {
+        try
+        {
+            string legacyContentDirectory = Path.Combine(importDirectory, RocksmithCachedSongFormat.LegacyContentDirectoryName);
+            string contentDirectory = Path.Combine(importDirectory, RocksmithCachedSongFormat.ContentDirectoryName);
+            if (Directory.Exists(legacyContentDirectory) && !Directory.Exists(contentDirectory))
+                Directory.Move(legacyContentDirectory, contentDirectory);
+
+            string manifestPath = Path.Combine(importDirectory, RocksmithCachedSongFormat.ManifestFileName);
+            if (!File.Exists(manifestPath))
+                return;
+
+            RocksmithCachedSongManifest manifest = JsonUtility.FromJson<RocksmithCachedSongManifest>(File.ReadAllText(manifestPath));
+            if (manifest == null)
+                return;
+
+            manifest.audioPath = RewriteStoredCachePath(manifest.audioPath);
+            manifest.previewAudioPath = RewriteStoredCachePath(manifest.previewAudioPath);
+            manifest.artworkPath = RewriteStoredCachePath(manifest.artworkPath);
+            manifest.arrangements ??= new System.Collections.Generic.List<RocksmithCachedArrangementSummary>();
+            for (int i = 0; i < manifest.arrangements.Count; i++)
+            {
+                if (manifest.arrangements[i] == null)
+                    continue;
+
+                manifest.arrangements[i].partFilePath = RewriteStoredCachePath(manifest.arrangements[i].partFilePath);
+            }
+
+            File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true));
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"{ImportLogPrefix} Failed to normalize imported cache '{importDirectory}': {ex.Message}");
+        }
+    }
+
+    private static string RewriteStoredCachePath(string storedPath)
+    {
+        if (string.IsNullOrWhiteSpace(storedPath) || Path.IsPathRooted(storedPath))
+            return storedPath;
+
+        string normalized = storedPath.Replace('/', Path.DirectorySeparatorChar).Replace('\\', Path.DirectorySeparatorChar);
+        string legacyPrefix = RocksmithCachedSongFormat.LegacyContentDirectoryName + Path.DirectorySeparatorChar;
+        if (normalized.StartsWith(legacyPrefix, StringComparison.OrdinalIgnoreCase))
+            return RocksmithCachedSongFormat.ContentDirectoryName + normalized.Substring(RocksmithCachedSongFormat.LegacyContentDirectoryName.Length);
+
+        return normalized;
     }
 }

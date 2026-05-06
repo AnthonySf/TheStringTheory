@@ -5,8 +5,10 @@ public static class RocksmithCachedSongFormat
 {
     public const int SchemaVersion = 10;
     public const string ManifestFileName = "song.rs2song.json";
-    public const string ContentDirectoryName = "rocksmith_content";
-    public const string ImportedFolderPrefix = "__rocksmith_";
+    public const string ContentDirectoryName = "psarc_content";
+    public const string ImportedFolderPrefix = "__psarc_";
+    public const string LegacyContentDirectoryName = "rocksmith_content";
+    public const string LegacyImportedFolderPrefix = "__rocksmith_";
 }
 
 [Serializable]
@@ -93,6 +95,7 @@ public sealed class RocksmithCachedNoteData
     public int fret;
     public string note;
     public int chordId;
+    public string chordName;
     public int technique;
     public int slideTargetFret = -1;
     public float bendStep;

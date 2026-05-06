@@ -1,9 +1,14 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 using UnityEngine.Rendering;
 
 public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 {
+    private static readonly ProfilerMarker RenderProfilerMarker = new ProfilerMarker("StringTheory.ArcadeHighway3D.Render");
+    private static readonly ProfilerMarker UpdateNotesProfilerMarker = new ProfilerMarker("StringTheory.ArcadeHighway3D.UpdateNotes");
+    private static readonly ProfilerMarker GetRenderSongTimeProfilerMarker = new ProfilerMarker("StringTheory.ArcadeHighway3D.GetRenderSongTime");
+
     private const int DefaultLaneCount = 5;
     private const int MaxLaneCount = 8;
     private const float LaneBackOverhang = 8f;
@@ -253,32 +258,35 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         if (snapshot == null || mainCamera == null)
             return;
 
-        bool suppressGameplay = snapshot.mainMenuFlowActive;
-        ConfigureCamera();
-        EnsureGameplayVisualsBuilt();
-        if (gameplayRoot != null && gameplayRoot.activeSelf == suppressGameplay)
-            gameplayRoot.SetActive(!suppressGameplay);
-
-        if (!suppressGameplay)
-            UpdateBackgroundPlacement();
-
-        if (!suppressGameplay)
+        using (RenderProfilerMarker.Auto())
         {
-            UpdateHighwayCharacter(snapshot, suppressGameplay);
-            UpdateResolvedFeedback(snapshot);
-            UpdateGameplayRootShake();
-            UpdateLaneVisuals(snapshot);
-            UpdateNotes(snapshot);
-            UpdateFeedbackEffects();
-        }
-        else
-        {
-            UpdateHighwayCharacter(snapshot, suppressGameplay);
-            ResetGameplayRootShake();
-        }
+            bool suppressGameplay = snapshot.mainMenuFlowActive;
+            ConfigureCamera();
+            EnsureGameplayVisualsBuilt();
+            if (gameplayRoot != null && gameplayRoot.activeSelf == suppressGameplay)
+                gameplayRoot.SetActive(!suppressGameplay);
 
-        backgroundEffect?.Tick(Time.deltaTime);
-        songHeaderOverlay?.UpdateFromSnapshot(snapshot);
+            if (!suppressGameplay)
+                UpdateBackgroundPlacement();
+
+            if (!suppressGameplay)
+            {
+                UpdateHighwayCharacter(snapshot, suppressGameplay);
+                UpdateResolvedFeedback(snapshot);
+                UpdateGameplayRootShake();
+                UpdateLaneVisuals(snapshot);
+                UpdateNotes(snapshot);
+                UpdateFeedbackEffects();
+            }
+            else
+            {
+                UpdateHighwayCharacter(snapshot, suppressGameplay);
+                ResetGameplayRootShake();
+            }
+
+            backgroundEffect?.Tick(Time.deltaTime);
+            songHeaderOverlay?.UpdateFromSnapshot(snapshot);
+        }
     }
 
     public void DisposeRenderer()
@@ -525,8 +533,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         if (highwayCharacterTransform == null)
             return;
 
-        if ((owner != null && !owner.highwayCharacterAnimationsEnabled) ||
-            snapshot == null ||
+        if (snapshot == null ||
             snapshot.isPaused ||
             characterRoot == null ||
             !characterRoot.activeSelf)
@@ -535,12 +542,27 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             return;
         }
 
-        EnsureHighwayCharacterBopEvents(snapshot);
+        bool movementEnabled = owner == null || owner.highwayCharacterMovementEnabled;
+        bool missColorEnabled = owner == null || owner.highwayCharacterMissColorEnabled;
+
+        if (movementEnabled)
+            EnsureHighwayCharacterBopEvents(snapshot);
         float songTime = snapshot.songTime;
         UpdateHighwayCharacterMissState(snapshot);
 
         float missAge = songTime - lastHighwayCharacterMissTriggerSongTime;
         float missStrength = GetHighwayCharacterMissStrength(missAge);
+        float missFlashWave = 0.62f + (((Mathf.Sin((missAge * HighwayCharacterMissFlashBandSpeed) + 0.85f) * 0.5f) + 0.5f) * 0.38f);
+        ApplyHighwayCharacterMissMaterialState(missColorEnabled ? missStrength * missFlashWave : 0f);
+
+        if (!movementEnabled)
+        {
+            highwayCharacterTransform.localPosition = new Vector3(highwayCharacterManualLocalXOffset, highwayCharacterManualLocalYOffset, 0f);
+            highwayCharacterTransform.localRotation = Quaternion.identity;
+            highwayCharacterTransform.localScale = Vector3.one;
+            return;
+        }
+
         float missMotionSuppression = 1f - Mathf.Clamp01(missStrength * 0.76f);
         int eventIndex = FindLastHighwayCharacterBopEventIndex(songTime);
         float lift = 0f;
@@ -599,7 +621,6 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         {
             float missShakeWave = Mathf.Sin((missAge * 26f) + 0.45f);
             float missReboundWave = Mathf.Sin((missAge * 11.5f) - 0.4f);
-            float missFlashWave = 0.62f + (((Mathf.Sin((missAge * HighwayCharacterMissFlashBandSpeed) + 0.85f) * 0.5f) + 0.5f) * 0.38f);
             float missLocalX = missShakeWave * HighwayCharacterMissSwayInCharacterWidths * missStrength;
             float missLocalLift = (-HighwayCharacterMissDropInCharacterHeights * missStrength) + (Mathf.Max(0f, missReboundWave) * HighwayCharacterMissDropInCharacterHeights * 0.18f * missStrength);
 
@@ -608,10 +629,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             scaleX += HighwayCharacterMissScaleXAmount * missStrength;
             scaleY -= HighwayCharacterMissScaleYAmount * missStrength;
             rotationZ += missShakeWave * HighwayCharacterMissTiltDegrees * missStrength;
-            ApplyHighwayCharacterMissMaterialState(missStrength * missFlashWave);
         }
-        else
-            ApplyHighwayCharacterMissMaterialState(0f);
 
         float uniformScale = Mathf.Max(0.82f, (scaleX + scaleY) * 0.5f);
         highwayCharacterTransform.localPosition = new Vector3(highwayCharacterManualLocalXOffset + idleLocalX, highwayCharacterManualLocalYOffset + localLift, 0f);
@@ -766,6 +784,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     private void TriggerHighwayCharacterMissFeedback(float songTime, int missDelta)
     {
         lastHighwayCharacterMissTriggerSongTime = songTime;
+        if (owner != null && !owner.highwayCharacterMissParticlesEnabled)
+            return;
+
         if (highwayCharacterMissParticles == null && highwayCharacterMissAuraParticles == null)
             return;
 
@@ -954,7 +975,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         sharedHighwayCharacterMissParticleMaterial = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(HighwayCharacterMissParticleColor, 0.9f);
-        sharedHighwayCharacterMissParticleMaterial.renderQueue = (int)RenderQueue.Transparent - 54;
+        sharedHighwayCharacterMissParticleMaterial.renderQueue = (int)RenderQueue.Transparent - 50;
         sharedHighwayCharacterMissParticleMaterial.SetInt("_ZWrite", 0);
         sharedHighwayCharacterMissParticleMaterial.SetInt("_Cull", (int)CullMode.Off);
         sharedHighwayCharacterMissParticleMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
@@ -1071,7 +1092,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         sharedHighwayCharacterMissAuraParticleMaterial = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(HighwayCharacterMissAuraParticleColor, 0.65f);
-        sharedHighwayCharacterMissAuraParticleMaterial.renderQueue = (int)RenderQueue.Transparent - 53;
+        sharedHighwayCharacterMissAuraParticleMaterial.renderQueue = (int)RenderQueue.Transparent - 50;
         sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_ZWrite", 0);
         sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_Cull", (int)CullMode.Off);
         sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
@@ -1798,54 +1819,57 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
     private void UpdateNotes(GuitarGameplaySnapshot snapshot)
     {
-        visibleNoteIds.Clear();
-        if (snapshot.arcadeNoteStates == null)
-            return;
-
-        currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
-        float renderSongTime = GetRenderSongTime(snapshot);
-        float sustainSongTime = snapshot.songTime;
-
-        for (int i = 0; i < snapshot.arcadeNoteStates.Count; i++)
+        using (UpdateNotesProfilerMarker.Auto())
         {
-            ArcadeNoteState state = snapshot.arcadeNoteStates[i];
-            if (state == null)
-                continue;
+            visibleNoteIds.Clear();
+            if (snapshot.arcadeNoteStates == null)
+                return;
 
-            float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
-            // Keep sustain tails tied to the real song clock so they do not collapse
-            // when the next note head is intentionally parked at spawn during long gaps.
-            float sustainEndZ = owner.StrikeLineZ + (((state.data.time + Mathf.Max(0f, state.data.duration)) - sustainSongTime) * currentVisualNoteSpeed);
-            bool keepResolvedBriefly = state.IsResolved && owner.ArcadeResolvedHoldTime > 0f && renderSongTime <= state.resolvedAt + owner.ArcadeResolvedHoldTime;
-            bool showHead = travelZ <= owner.ArcadeSpawnZ && travelZ >= owner.StrikeLineZ && (!state.IsResolved || keepResolvedBriefly);
-            bool showSustain = Mathf.Max(0f, state.data.duration) > 0.08f &&
-                               sustainEndZ > owner.StrikeLineZ &&
-                               travelZ <= owner.ArcadeSpawnZ;
-            bool visible = showHead || showSustain;
-            if (!visible)
-                continue;
+            currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
+            float renderSongTime = GetRenderSongTime(snapshot);
+            float sustainSongTime = snapshot.songTime;
 
-            visibleNoteIds.Add(state.data.id);
-            ArcadeNoteView view = GetOrCreateNoteView(state.data);
-            UpdateNoteView(view, state, snapshot, travelZ, sustainEndZ, showHead);
-        }
+            for (int i = 0; i < snapshot.arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState state = snapshot.arcadeNoteStates[i];
+                if (state == null)
+                    continue;
 
-        removalBuffer.Clear();
-        foreach (int id in noteViews.Keys)
-        {
-            if (!visibleNoteIds.Contains(id))
-                removalBuffer.Add(id);
-        }
+                float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
+                // Keep sustain tails tied to the real song clock so they do not collapse
+                // when the next note head is intentionally parked at spawn during long gaps.
+                float sustainEndZ = owner.StrikeLineZ + (((state.data.time + Mathf.Max(0f, state.data.duration)) - sustainSongTime) * currentVisualNoteSpeed);
+                bool keepResolvedBriefly = state.IsResolved && owner.ArcadeResolvedHoldTime > 0f && renderSongTime <= state.resolvedAt + owner.ArcadeResolvedHoldTime;
+                bool showHead = travelZ <= owner.ArcadeSpawnZ && travelZ >= owner.StrikeLineZ && (!state.IsResolved || keepResolvedBriefly);
+                bool showSustain = Mathf.Max(0f, state.data.duration) > 0.08f &&
+                                   sustainEndZ > owner.StrikeLineZ &&
+                                   travelZ <= owner.ArcadeSpawnZ;
+                bool visible = showHead || showSustain;
+                if (!visible)
+                    continue;
 
-        for (int i = 0; i < removalBuffer.Count; i++)
-        {
-            int id = removalBuffer[i];
-            if (!noteViews.TryGetValue(id, out ArcadeNoteView view))
-                continue;
+                visibleNoteIds.Add(state.data.id);
+                ArcadeNoteView view = GetOrCreateNoteView(state.data);
+                UpdateNoteView(view, state, snapshot, travelZ, sustainEndZ, showHead);
+            }
 
-            if (view.root != null)
-                Object.Destroy(view.root);
-            noteViews.Remove(id);
+            removalBuffer.Clear();
+            foreach (int id in noteViews.Keys)
+            {
+                if (!visibleNoteIds.Contains(id))
+                    removalBuffer.Add(id);
+            }
+
+            for (int i = 0; i < removalBuffer.Count; i++)
+            {
+                int id = removalBuffer[i];
+                if (!noteViews.TryGetValue(id, out ArcadeNoteView view))
+                    continue;
+
+                if (view.root != null)
+                    Object.Destroy(view.root);
+                noteViews.Remove(id);
+            }
         }
     }
 
@@ -2140,36 +2164,39 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetRenderSongTime(GuitarGameplaySnapshot snapshot)
     {
-        if (snapshot == null || snapshot.arcadeNoteStates == null)
-            return 0f;
-
-        float songTime = snapshot.songTime;
-        if (snapshot.isPaused || snapshot.noteByNoteModeEnabled || snapshot.noteByNoteWaitingForMatch)
-            return songTime;
-
-        float visibleWindow = Mathf.Max(0.01f, (owner.ArcadeSpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, currentVisualNoteSpeed));
-        for (int i = 0; i < snapshot.arcadeNoteStates.Count; i++)
+        using (GetRenderSongTimeProfilerMarker.Auto())
         {
-            ArcadeNoteState state = snapshot.arcadeNoteStates[i];
-            if (state != null && !state.IsResolved && state.data.time >= songTime && state.data.time <= songTime + visibleWindow)
+            if (snapshot == null || snapshot.arcadeNoteStates == null)
+                return 0f;
+
+            float songTime = snapshot.songTime;
+            if (snapshot.isPaused || snapshot.noteByNoteModeEnabled || snapshot.noteByNoteWaitingForMatch)
                 return songTime;
+
+            float visibleWindow = Mathf.Max(0.01f, (owner.ArcadeSpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, currentVisualNoteSpeed));
+            for (int i = 0; i < snapshot.arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState state = snapshot.arcadeNoteStates[i];
+                if (state != null && !state.IsResolved && state.data.time >= songTime && state.data.time <= songTime + visibleWindow)
+                    return songTime;
+            }
+
+            ArcadeNoteState nextPending = null;
+            for (int i = 0; i < snapshot.arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState state = snapshot.arcadeNoteStates[i];
+                if (state == null || state.IsResolved || state.data.time < songTime)
+                    continue;
+
+                if (nextPending == null || state.data.time < nextPending.data.time)
+                    nextPending = state;
+            }
+
+            if (nextPending == null)
+                return songTime;
+
+            return Mathf.Max(0f, nextPending.data.time - (visibleWindow * 0.85f));
         }
-
-        ArcadeNoteState nextPending = null;
-        for (int i = 0; i < snapshot.arcadeNoteStates.Count; i++)
-        {
-            ArcadeNoteState state = snapshot.arcadeNoteStates[i];
-            if (state == null || state.IsResolved || state.data.time < songTime)
-                continue;
-
-            if (nextPending == null || state.data.time < nextPending.data.time)
-                nextPending = state;
-        }
-
-        if (nextPending == null)
-            return songTime;
-
-        return Mathf.Max(0f, nextPending.data.time - (visibleWindow * 0.85f));
     }
 
     private int GetLaneCount()

@@ -12,7 +12,7 @@ internal static class Program
 {
     private const int SchemaVersion = 10;
     private const string ManifestFileName = "song.rs2song.json";
-    private const string ContentDirectoryName = "rocksmith_content";
+    private const string ContentDirectoryName = "psarc_content";
     private const float RocksmithVibratoCyclesPerSecond = 5f;
     private const float RocksmithBendDrivenVibratoMinimumHoldSeconds = 0.12f;
 
@@ -458,7 +458,7 @@ internal static class Program
                     TimeMs = note.Time,
                     Notes = new List<SourceNote>
                     {
-                        SourceNote.FromNote(note, false, false, false)
+                        SourceNote.FromNote(note, false, false, false, string.Empty)
                     }
                 });
             }
@@ -475,24 +475,26 @@ internal static class Program
                 List<SourceNote> sourceNotes = new List<SourceNote>();
                 if (chord.HasChordNotes)
                 {
+                    string chordDisplayName = ResolveChordDisplayName(chord, chordTemplates);
                     foreach (Note chordNote in chord.ChordNotes!)
                     {
                         if (chordNote == null || chordNote.IsIgnore || !IsValidStringIndex(chordNote.String))
                             continue;
 
-                        sourceNotes.Add(SourceNote.FromNote(chordNote, chord.IsPalmMute, chord.IsFretHandMute, chord.IsHopo));
+                        sourceNotes.Add(SourceNote.FromNote(chordNote, chord.IsPalmMute, chord.IsFretHandMute, chord.IsHopo, chordDisplayName));
                     }
                 }
                 else if (chord.ChordId >= 0 && chord.ChordId < chordTemplates.Count)
                 {
                     ChordTemplate template = chordTemplates[chord.ChordId];
+                    string chordDisplayName = ResolveChordDisplayName(template);
                     for (int stringIndex = 0; stringIndex < template.Frets.Length; stringIndex++)
                     {
                         sbyte fret = template.Frets[stringIndex];
                         if (fret < 0)
                             continue;
 
-                        sourceNotes.Add(SourceNote.FromTemplate(chord.Time, stringIndex, fret, chord.IsPalmMute, chord.IsFretHandMute, chord.IsHopo, chord.IsLinkNext));
+                        sourceNotes.Add(SourceNote.FromTemplate(chord.Time, stringIndex, fret, chord.IsPalmMute, chord.IsFretHandMute, chord.IsHopo, chord.IsLinkNext, chordDisplayName));
                     }
                 }
 
@@ -539,6 +541,7 @@ internal static class Program
             fret = source.Fret,
             note = GetNoteName(ComputeMidiNote(context.Arrangement.TuningPitches, source.String, source.Fret)),
             chordId = chordId,
+            chordName = source.ChordName,
             technique = DetermineGameplayTechnique(source),
             slideTargetFret = source.SlideTargetFret,
             bendStep = bendStep,
@@ -891,6 +894,37 @@ internal static class Program
         return NoteNames[Math.Abs(midiNote) % 12];
     }
 
+    private static string ResolveChordDisplayName(Chord chord, List<ChordTemplate> chordTemplates)
+    {
+        if (chord == null || chordTemplates == null)
+            return string.Empty;
+
+        if (chord.ChordId < 0 || chord.ChordId >= chordTemplates.Count)
+            return string.Empty;
+
+        return ResolveChordDisplayName(chordTemplates[chord.ChordId]);
+    }
+
+    private static string ResolveChordDisplayName(ChordTemplate template)
+    {
+        if (template == null)
+            return string.Empty;
+
+        string candidate = string.IsNullOrWhiteSpace(template.DisplayName)
+            ? template.Name
+            : template.DisplayName;
+
+        if (string.IsNullOrWhiteSpace(candidate))
+            return string.Empty;
+
+        return candidate
+            .Replace("min", "m", StringComparison.OrdinalIgnoreCase)
+            .Replace("CONV", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("-nop", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Replace("-arp", string.Empty, StringComparison.OrdinalIgnoreCase)
+            .Trim();
+    }
+
     private static bool IsValidStringIndex(int stringIndex)
     {
         return stringIndex >= 0 && stringIndex < 6;
@@ -1122,6 +1156,7 @@ internal static class Program
         public int SustainMs;
         public int String;
         public int Fret;
+        public string ChordName = string.Empty;
         public int SlideTargetFret = -1;
         public bool IsPalmMute;
         public bool IsFretHandMute;
@@ -1134,7 +1169,7 @@ internal static class Program
         public float MaxBend;
         public List<BendPoint> BendValues = new List<BendPoint>();
 
-        public static SourceNote FromNote(Note note, bool chordPalmMute, bool chordFretHandMute, bool chordHopo)
+        public static SourceNote FromNote(Note note, bool chordPalmMute, bool chordFretHandMute, bool chordHopo, string chordName)
         {
             return new SourceNote
             {
@@ -1142,6 +1177,7 @@ internal static class Program
                 SustainMs = note.Sustain,
                 String = note.String,
                 Fret = note.Fret,
+                ChordName = chordName ?? string.Empty,
                 SlideTargetFret = note.SlideTo >= 0 ? note.SlideTo : note.SlideUnpitchTo >= 0 ? note.SlideUnpitchTo : -1,
                 IsPalmMute = note.IsPalmMute || chordPalmMute,
                 IsFretHandMute = note.IsFretHandMute || chordFretHandMute,
@@ -1156,7 +1192,7 @@ internal static class Program
             };
         }
 
-        public static SourceNote FromTemplate(int timeMs, int stringIndex, int fret, bool palmMute, bool fretHandMute, bool hopo, bool linkNext)
+        public static SourceNote FromTemplate(int timeMs, int stringIndex, int fret, bool palmMute, bool fretHandMute, bool hopo, bool linkNext, string chordName)
         {
             return new SourceNote
             {
@@ -1164,6 +1200,7 @@ internal static class Program
                 SustainMs = 0,
                 String = stringIndex,
                 Fret = fret,
+                ChordName = chordName ?? string.Empty,
                 SlideTargetFret = -1,
                 IsPalmMute = palmMute,
                 IsFretHandMute = fretHandMute,
@@ -1288,6 +1325,7 @@ internal static class Program
         public int fret;
         public string note = string.Empty;
         public int chordId;
+        public string chordName = string.Empty;
         public int technique;
         public int slideTargetFret = -1;
         public float bendStep;

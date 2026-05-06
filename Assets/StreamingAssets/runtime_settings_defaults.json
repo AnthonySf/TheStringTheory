@@ -97,8 +97,16 @@
       "value": "0.1"
     },
     {
-      "id": "fx.characterAnimationsEnabled",
+      "id": "fx.characterMovementEnabled",
       "value": "true"
+    },
+    {
+      "id": "fx.characterMissColorEnabled",
+      "value": "true"
+    },
+    {
+      "id": "fx.characterMissParticlesEnabled",
+      "value": "false"
     },
     {
       "id": "fx.characterPortalEnabled",
