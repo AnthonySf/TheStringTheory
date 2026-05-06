@@ -186,7 +186,9 @@ public class GuitarBridgeServer : MonoBehaviour
     public float highwayCharacterOffsetX = 0.03f;
     public float highwayCharacterOffsetY = 0.045f;
     public float highwayCharacterFadeSoftness = 0.10f;
-    public bool highwayCharacterAnimationsEnabled = true;
+    public bool highwayCharacterMovementEnabled = true;
+    public bool highwayCharacterMissColorEnabled = true;
+    public bool highwayCharacterMissParticlesEnabled = false;
     public bool highwayCharacterPortalEnabled = true;
     public bool highwayCharacterPortalSwirlsEnabled = true;
     public float highwayCharacterPortalBodyOpacity = 0.80f;
@@ -3839,12 +3841,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private int GetTrackOptionCount()
     {
-        return 1 + currentSongPartSummaries.Count;
+        return 1 + GetCurrentTrackSelectionOptionCount();
     }
 
     private int GetSongSettingsTrackPopupOptionCount()
     {
-        return currentSongPartSummaries?.Count ?? 0;
+        return GetCurrentTrackSelectionOptionCount();
     }
 
     private int GetCurrentTrackOptionIndex()
@@ -3855,10 +3857,23 @@ public class GuitarBridgeServer : MonoBehaviour
         if (string.IsNullOrEmpty(selectedMusicXmlPartId))
             return 0;
 
-        for (int i = 0; i < currentSongPartSummaries.Count; i++)
+        if (IsCurrentRocksmithTrackGroupingActive())
         {
-            if (string.Equals(currentSongPartSummaries[i].PartId, selectedMusicXmlPartId, StringComparison.OrdinalIgnoreCase))
-                return i + 1;
+            string selectedGroupId = GetRocksmithGroupIdFromPartId(selectedMusicXmlPartId);
+            List<RocksmithTrackSelectionGroup> groups = GetCurrentRocksmithTrackSelectionGroups();
+            for (int i = 0; i < groups.Count; i++)
+            {
+                if (string.Equals(groups[i].GroupId, selectedGroupId, StringComparison.OrdinalIgnoreCase))
+                    return i + 1;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < currentSongPartSummaries.Count; i++)
+            {
+                if (string.Equals(currentSongPartSummaries[i].PartId, selectedMusicXmlPartId, StringComparison.OrdinalIgnoreCase))
+                    return i + 1;
+            }
         }
 
         return 0;
@@ -3868,11 +3883,28 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         if (optionIndex <= 0)
         {
-            if (currentSongPartSummaries.Count == 0)
+            if (GetCurrentTrackSelectionOptionCount() == 0)
                 return "Auto";
+
+            if (IsCurrentRocksmithTrackGroupingActive())
+            {
+                RocksmithTrackSelectionGroup bestGroup = GetCurrentTrackSelectionGroupsOrdered()
+                    .FirstOrDefault();
+                return bestGroup == null ? "Auto" : $"Auto ({bestGroup.DisplayName})";
+            }
 
             MusicXmlLoader.MusicXmlPartSummary best = currentSongPartSummaries.OrderByDescending(s => s.Score).First();
             return $"Auto ({best.Name})";
+        }
+
+        if (IsCurrentRocksmithTrackGroupingActive())
+        {
+            int groupIndex = optionIndex - 1;
+            List<RocksmithTrackSelectionGroup> groups = GetCurrentTrackSelectionGroupsOrdered();
+            if (groupIndex < 0 || groupIndex >= groups.Count)
+                return "Auto";
+
+            return groups[groupIndex].DisplayName ?? "--";
         }
 
         int summaryIndex = optionIndex - 1;
@@ -4042,12 +4074,29 @@ public class GuitarBridgeServer : MonoBehaviour
         }
         else
         {
-            int summaryIndex = clampedOption - 1;
-            if (summaryIndex < 0 || summaryIndex >= currentSongPartSummaries.Count)
-                return;
-
             useAutoTrackSelection = false;
-            selectedMusicXmlPartId = currentSongPartSummaries[summaryIndex].PartId;
+
+            if (IsCurrentRocksmithTrackGroupingActive())
+            {
+                int groupIndex = clampedOption - 1;
+                List<RocksmithTrackSelectionGroup> groups = GetCurrentTrackSelectionGroupsOrdered();
+                if (groupIndex < 0 || groupIndex >= groups.Count)
+                    return;
+
+                MusicXmlLoader.MusicXmlPartSummary preferredVariant = ResolvePreferredCurrentRocksmithTrackVariant(groups[groupIndex]);
+                if (preferredVariant == null)
+                    return;
+
+                selectedMusicXmlPartId = preferredVariant.PartId;
+            }
+            else
+            {
+                int summaryIndex = clampedOption - 1;
+                if (summaryIndex < 0 || summaryIndex >= currentSongPartSummaries.Count)
+                    return;
+
+                selectedMusicXmlPartId = currentSongPartSummaries[summaryIndex].PartId;
+            }
         }
 
         UpdatePersistedTrackSelectionStateFromActiveSelection();
@@ -4056,6 +4105,92 @@ public class GuitarBridgeServer : MonoBehaviour
         ApplyGeneratedPlaybackSelection();
         RefreshEffectiveAudioOffset();
         SaveSongMetadata();
+    }
+
+    private int GetCurrentTrackSelectionOptionCount()
+    {
+        if (!IsCurrentRocksmithTrackGroupingActive())
+            return currentSongPartSummaries?.Count ?? 0;
+
+        return GetCurrentTrackSelectionGroupsOrdered().Count;
+    }
+
+    private bool IsCurrentRocksmithTrackGroupingActive()
+    {
+        return gameplayMode == GuitarGameplayMode.Guitar &&
+               currentSongEntry != null &&
+               currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith &&
+               currentSongPartSummaries != null &&
+               currentSongPartSummaries.Any(summary => summary != null && summary.HasDifficultyVariants);
+    }
+
+    private List<RocksmithTrackSelectionGroup> GetCurrentRocksmithTrackSelectionGroups()
+    {
+        List<RocksmithTrackSelectionGroup> groups = new List<RocksmithTrackSelectionGroup>();
+        if (!IsCurrentRocksmithTrackGroupingActive())
+            return groups;
+
+        Dictionary<string, RocksmithTrackSelectionGroup> groupsById = new Dictionary<string, RocksmithTrackSelectionGroup>(StringComparer.OrdinalIgnoreCase);
+        foreach (MusicXmlLoader.MusicXmlPartSummary summary in currentSongPartSummaries)
+        {
+            if (summary == null)
+                continue;
+
+            string groupId = GetRocksmithGroupId(summary);
+            if (string.IsNullOrWhiteSpace(groupId))
+                continue;
+
+            if (!groupsById.TryGetValue(groupId, out RocksmithTrackSelectionGroup group))
+            {
+                group = new RocksmithTrackSelectionGroup
+                {
+                    GroupId = groupId,
+                    DisplayName = string.IsNullOrWhiteSpace(summary.GroupDisplayName) ? summary.Name : summary.GroupDisplayName,
+                    TuningDisplayName = summary.TuningDisplayName ?? string.Empty
+                };
+                groupsById[groupId] = group;
+                groups.Add(group);
+            }
+
+            if (!string.IsNullOrWhiteSpace(summary.TuningDisplayName) && string.IsNullOrWhiteSpace(group.TuningDisplayName))
+                group.TuningDisplayName = summary.TuningDisplayName;
+
+            group.Variants.Add(summary);
+        }
+
+        foreach (RocksmithTrackSelectionGroup group in groups)
+        {
+            List<MusicXmlLoader.MusicXmlPartSummary> orderedVariants = OrderRocksmithVariants(group.Variants);
+            group.Variants.Clear();
+            group.Variants.AddRange(orderedVariants);
+        }
+
+        return groups;
+    }
+
+    private List<RocksmithTrackSelectionGroup> GetCurrentTrackSelectionGroupsOrdered()
+    {
+        return GetCurrentRocksmithTrackSelectionGroups()
+            .OrderByDescending(group => GetDefaultRoutePriorityForTrack(GetHighestDifficultyRocksmithVariant(group.Variants)))
+            .ThenBy(group => group.DisplayName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private MusicXmlLoader.MusicXmlPartSummary ResolvePreferredCurrentRocksmithTrackVariant(RocksmithTrackSelectionGroup group)
+    {
+        if (group == null || group.Variants == null || group.Variants.Count == 0)
+            return null;
+
+        int requestedDifficulty = ResolveRocksmithDifficultyUiIndex(GetResolvedActiveTrackSummary());
+        if (requestedDifficulty >= 0)
+        {
+            MusicXmlLoader.MusicXmlPartSummary matchingVariant = group.Variants
+                .FirstOrDefault(variant => ResolveRocksmithDifficultyUiIndex(variant) == requestedDifficulty);
+            if (matchingVariant != null)
+                return matchingVariant;
+        }
+
+        return GetHighestDifficultyRocksmithVariant(group.Variants);
     }
 
     private void ApplyTrackSelectionPreference()
@@ -5483,8 +5618,26 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private int GetResolvedSongSettingsTrackPopupIndex()
     {
-        if (currentSongPartSummaries == null || currentSongPartSummaries.Count == 0)
+        int optionCount = GetSongSettingsTrackPopupOptionCount();
+        if (optionCount <= 0)
             return 0;
+
+        if (IsCurrentRocksmithTrackGroupingActive())
+        {
+            string selectedGroupId = !string.IsNullOrWhiteSpace(selectedMusicXmlPartId)
+                ? GetRocksmithGroupIdFromPartId(selectedMusicXmlPartId)
+                : GetRocksmithGroupId(GetResolvedActiveTrackSummary());
+            if (!string.IsNullOrWhiteSpace(selectedGroupId))
+            {
+                List<RocksmithTrackSelectionGroup> groups = GetCurrentTrackSelectionGroupsOrdered();
+                int matchedGroupIndex = groups.FindIndex(group =>
+                    string.Equals(group.GroupId, selectedGroupId, StringComparison.OrdinalIgnoreCase));
+                if (matchedGroupIndex >= 0)
+                    return matchedGroupIndex;
+            }
+
+            return 0;
+        }
 
         if (!useAutoTrackSelection && !string.IsNullOrEmpty(selectedMusicXmlPartId))
         {
@@ -13334,8 +13487,13 @@ private void ParseDetectorPacket(string detectorPacket)
             generatedAudioTrackEnabled = GetAvailableGeneratedPlaybackParts().Select(part => IsGeneratedPlaybackPartEnabled(part.partId)).ToList(),
             selectedGeneratedAudioTrackIndex = selectedGeneratedAudioTrackSelectionIndex,
             showSongSettingsTrackSelectionPopup = showSongSettingsTrackSelectionPopup,
-            songSettingsTrackOptionNames = currentSongPartSummaries.Select(summary => summary.Name).ToList(),
-            selectedSongSettingsTrackOptionIndex = Mathf.Clamp(showSongSettingsTrackSelectionPopup ? selectedSongSettingsTrackSelectionIndex : GetResolvedSongSettingsTrackPopupIndex(), 0, Mathf.Max(0, currentSongPartSummaries.Count - 1)),
+            songSettingsTrackOptionNames = IsCurrentRocksmithTrackGroupingActive()
+                ? GetCurrentTrackSelectionGroupsOrdered().Select(group => group.DisplayName ?? "--").ToList()
+                : currentSongPartSummaries.Select(summary => summary.Name).ToList(),
+            selectedSongSettingsTrackOptionIndex = Mathf.Clamp(
+                showSongSettingsTrackSelectionPopup ? selectedSongSettingsTrackSelectionIndex : GetResolvedSongSettingsTrackPopupIndex(),
+                0,
+                Mathf.Max(0, GetSongSettingsTrackPopupOptionCount() - 1)),
             selectedTrackDisplayName = gameplayMode == GuitarGameplayMode.Arcade
                 ? $"{GetSelectedArcadeArrangementDisplayName()} {ArcadeCloneHeroLoader.GetDifficultyLabel(selectedArcadeDifficulty)}"
                 : (showTrackSelection ? GetPendingSelectedTrackSummary()?.Name ?? GetTrackDisplayName(GetCurrentTrackOptionIndex()) : GetTrackDisplayName(GetCurrentTrackOptionIndex())),
@@ -16069,7 +16227,9 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("fx.characterOffsetX", "Visuals - Character", "Character Position X", "Moves the highway character left or right relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterOffsetX, v => highwayCharacterOffsetX = v);
         RegisterFloatSetting("fx.characterOffsetY", "Visuals - Character", "Character Position Y", "Moves the highway character up or down relative to the portal and automatically rebalances the fade/portal blend.", -0.20f, 0.20f, 0.005f, () => highwayCharacterOffsetY, v => highwayCharacterOffsetY = v);
         RegisterFloatSetting("fx.characterFadeSoftness", "Visuals - Character", "Character Fade Softness", "Controls how gradually the character fades into the portal.", 0.02f, 0.40f, 0.005f, () => highwayCharacterFadeSoftness, v => highwayCharacterFadeSoftness = v);
-        RegisterBoolSetting("fx.characterAnimationsEnabled", "Visuals - Character", "Character Animations", "Enables the character idle motion, note bop, miss flash, and miss particles.", () => highwayCharacterAnimationsEnabled, v => highwayCharacterAnimationsEnabled = v);
+        RegisterBoolSetting("fx.characterMovementEnabled", "Visuals - Character", "Character Animation", "Enables the character idle motion, note bop, and miss movement.", () => highwayCharacterMovementEnabled, v => highwayCharacterMovementEnabled = v);
+        RegisterBoolSetting("fx.characterMissColorEnabled", "Visuals - Character", "Character Color Change", "Enables the red miss flash/color change on the character.", () => highwayCharacterMissColorEnabled, v => highwayCharacterMissColorEnabled = v);
+        RegisterBoolSetting("fx.characterMissParticlesEnabled", "Visuals - Character", "Character Particles", "Enables miss particles around the character.", () => highwayCharacterMissParticlesEnabled, v => highwayCharacterMissParticlesEnabled = v);
         RegisterBoolSetting("fx.characterPortalEnabled", "Visuals - Character", "Character Portal", "Shows or hides the portal behind the highway character.", () => highwayCharacterPortalEnabled, v => highwayCharacterPortalEnabled = v);
         RegisterBoolSetting("fx.characterPortalSwirlsEnabled", "Visuals - Character", "Portal Swirls", "Toggles the animated swirl energy inside the character portal.", () => highwayCharacterPortalSwirlsEnabled, v => highwayCharacterPortalSwirlsEnabled = v);
         RegisterFloatSetting("fx.characterPortalBodyOpacity", "Visuals - Character", "Portal Body Opacity", "Controls how solid the portal body appears behind the character.", 0.15f, 1f, 0.01f, () => highwayCharacterPortalBodyOpacity, v => highwayCharacterPortalBodyOpacity = Mathf.Clamp01(v));
@@ -16867,6 +17027,8 @@ private void ParseDetectorPacket(string detectorPacket)
 
         bool changed = false;
 
+        changed |= TryMigrateLegacyCharacterSettings(values);
+
         changed |= ReplaceTransientRuntimeBindingPromptWithDefault(values, "arcade.controls.controller.green");
         changed |= ReplaceTransientRuntimeBindingPromptWithDefault(values, "arcade.controls.controller.red");
         changed |= ReplaceTransientRuntimeBindingPromptWithDefault(values, "arcade.controls.controller.yellow");
@@ -16880,6 +17042,36 @@ private void ParseDetectorPacket(string detectorPacket)
             changed = true;
 
         if (TryMigrateLegacyControllerDefaults(values))
+            changed = true;
+
+        return changed;
+    }
+
+    private static bool TryMigrateLegacyCharacterSettings(Dictionary<string, string> values)
+    {
+        if (values == null || !values.TryGetValue("fx.characterAnimationsEnabled", out string legacyValue))
+            return false;
+
+        bool changed = false;
+        if (!values.ContainsKey("fx.characterMovementEnabled"))
+        {
+            values["fx.characterMovementEnabled"] = legacyValue ?? "true";
+            changed = true;
+        }
+
+        if (!values.ContainsKey("fx.characterMissColorEnabled"))
+        {
+            values["fx.characterMissColorEnabled"] = legacyValue ?? "true";
+            changed = true;
+        }
+
+        if (!values.ContainsKey("fx.characterMissParticlesEnabled"))
+        {
+            values["fx.characterMissParticlesEnabled"] = "false";
+            changed = true;
+        }
+
+        if (values.Remove("fx.characterAnimationsEnabled"))
             changed = true;
 
         return changed;

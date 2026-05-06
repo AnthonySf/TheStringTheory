@@ -122,6 +122,7 @@ public struct NoteData
     public int fret;
     public string note;
     public int chordId;
+    public string chordName;
 
     public NoteTechnique technique;
     public int slideTargetFret;
@@ -146,6 +147,7 @@ public struct NoteData
         fret = f;
         note = n;
         chordId = -1;
+        chordName = null;
         technique = NoteTechnique.None;
         slideTargetFret = -1;
         bendStep = 0;
@@ -165,7 +167,7 @@ public struct NoteData
                     NoteTechnique tech = NoteTechnique.None, int slideTo = -1, float bend = 0, bool legato = false,
                     bool pluckRequired = true, int linkedFrom = -1, bool preBend = false, bool release = false,
                     float visualBendStartTime = -1f, float visualBendDuration = 0f, List<NoteTechniqueSegmentData> segments = null,
-                    bool muted = false)
+                    bool muted = false, string chordDisplayName = null)
     {
         id = noteId;
         time = t;
@@ -174,6 +176,7 @@ public struct NoteData
         fret = f;
         note = n;
         chordId = assignedChordId;
+        chordName = chordDisplayName;
         technique = tech;
         slideTargetFret = slideTo;
         bendStep = bend;

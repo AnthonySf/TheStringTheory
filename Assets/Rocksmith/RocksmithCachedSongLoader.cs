@@ -170,7 +170,8 @@ public static class RocksmithCachedSongLoader
                 source.bendVisualStartTime,
                 source.bendVisualDuration,
                 segments,
-                source.isMuted));
+                source.isMuted,
+                source.chordName));
         }
 
         NormalizeRocksmithLegatoTransitions(notes);
@@ -340,6 +341,10 @@ public static class RocksmithCachedSongLoader
             if (segment.type == NoteTechniqueSegmentType.Vibrato)
             {
                 isExpressive = true;
+            }
+            else if (segment.type == NoteTechniqueSegmentType.Slide)
+            {
+                isExpressive = segment.startFret != segment.endFret;
             }
             else if (segment.type == NoteTechniqueSegmentType.Bend)
             {
@@ -834,7 +839,39 @@ public static class RocksmithCachedSongLoader
         if (Path.IsPathRooted(storedPath))
             return storedPath;
 
-        return Path.GetFullPath(Path.Combine(baseDirectory ?? string.Empty, storedPath));
+        string resolved = Path.GetFullPath(Path.Combine(baseDirectory ?? string.Empty, storedPath));
+        if (File.Exists(resolved) || Directory.Exists(resolved))
+            return resolved;
+
+        string remapped = TryRemapLegacyStoredPath(baseDirectory, storedPath);
+        if (!string.IsNullOrWhiteSpace(remapped))
+            return remapped;
+
+        return resolved;
+    }
+
+    private static string TryRemapLegacyStoredPath(string baseDirectory, string storedPath)
+    {
+        string normalized = storedPath
+            .Replace('/', Path.DirectorySeparatorChar)
+            .Replace('\\', Path.DirectorySeparatorChar);
+
+        string legacyPrefix = RocksmithCachedSongFormat.LegacyContentDirectoryName + Path.DirectorySeparatorChar;
+        string currentPrefix = RocksmithCachedSongFormat.ContentDirectoryName + Path.DirectorySeparatorChar;
+
+        if (normalized.StartsWith(legacyPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            string remapped = RocksmithCachedSongFormat.ContentDirectoryName + normalized.Substring(RocksmithCachedSongFormat.LegacyContentDirectoryName.Length);
+            return Path.GetFullPath(Path.Combine(baseDirectory ?? string.Empty, remapped));
+        }
+
+        if (normalized.StartsWith(currentPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            string remapped = RocksmithCachedSongFormat.LegacyContentDirectoryName + normalized.Substring(RocksmithCachedSongFormat.ContentDirectoryName.Length);
+            return Path.GetFullPath(Path.Combine(baseDirectory ?? string.Empty, remapped));
+        }
+
+        return null;
     }
 
     private static int GetMaxPitchBendRange(List<RocksmithCachedGeneratedNoteEvent> notes)

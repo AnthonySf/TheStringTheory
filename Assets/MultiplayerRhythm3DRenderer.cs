@@ -1,9 +1,13 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 using UnityEngine.Rendering;
 
 public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
 {
+    private static readonly ProfilerMarker RenderProfilerMarker = new ProfilerMarker("StringTheory.MultiplayerRhythm3D.Render");
+    private static readonly ProfilerMarker UpdatePlayerNotesProfilerMarker = new ProfilerMarker("StringTheory.MultiplayerRhythm3D.UpdatePlayerNotes");
+
     private const int PlayerCount = 2;
     private const int DefaultLaneCount = 5;
     private const int MaxLaneCount = 8;
@@ -224,42 +228,45 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         if (snapshot == null || playerScenes == null)
             return;
 
-        ConfigureMainCamera();
-        currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
-        bool suppressGameplay = snapshot.mainMenuFlowActive;
-
-        UpdateBackgroundPlacement();
-        backgroundEffect?.Tick(Time.deltaTime);
-
-        for (int i = 0; i < playerScenes.Length; i++)
+        using (RenderProfilerMarker.Auto())
         {
-            MultiplayerPlayerScene scene = playerScenes[i];
-            if (scene == null)
-                continue;
+            ConfigureMainCamera();
+            currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
+            bool suppressGameplay = snapshot.mainMenuFlowActive;
 
-            MultiplayerRhythmPlayerSnapshot playerSnapshot = snapshot.multiplayerRhythmPlayers != null && i < snapshot.multiplayerRhythmPlayers.Count
-                ? snapshot.multiplayerRhythmPlayers[i]
-                : null;
+            UpdateBackgroundPlacement();
+            backgroundEffect?.Tick(Time.deltaTime);
 
-            bool sceneVisible = !suppressGameplay;
-            if (scene.root != null && scene.root.activeSelf != sceneVisible)
-                scene.root.SetActive(sceneVisible);
-
-            if (!sceneVisible)
+            for (int i = 0; i < playerScenes.Length; i++)
             {
-                CurrentCharacterHudRects[i] = GetFallbackCharacterHudScreenRect(i, Screen.width, Screen.height);
-                continue;
+                MultiplayerPlayerScene scene = playerScenes[i];
+                if (scene == null)
+                    continue;
+
+                MultiplayerRhythmPlayerSnapshot playerSnapshot = snapshot.multiplayerRhythmPlayers != null && i < snapshot.multiplayerRhythmPlayers.Count
+                    ? snapshot.multiplayerRhythmPlayers[i]
+                    : null;
+
+                bool sceneVisible = !suppressGameplay;
+                if (scene.root != null && scene.root.activeSelf != sceneVisible)
+                    scene.root.SetActive(sceneVisible);
+
+                if (!sceneVisible)
+                {
+                    CurrentCharacterHudRects[i] = GetFallbackCharacterHudScreenRect(i, Screen.width, Screen.height);
+                    continue;
+                }
+
+                UpdateTrackPlacement(scene);
+                UpdateCharacter(scene, i == 1, playerSnapshot, snapshot);
+                UpdateResolvedFeedback(scene, playerSnapshot, snapshot.songTime);
+                UpdateLaneVisuals(scene, playerSnapshot, snapshot.songTime);
+                UpdatePlayerNotes(scene, playerSnapshot, snapshot.songTime);
+                UpdateFeedbackEffects(scene);
             }
 
-            UpdateTrackPlacement(scene);
-            UpdateCharacter(scene, i == 1, playerSnapshot, snapshot);
-            UpdateResolvedFeedback(scene, playerSnapshot, snapshot.songTime);
-            UpdateLaneVisuals(scene, playerSnapshot, snapshot.songTime);
-            UpdatePlayerNotes(scene, playerSnapshot, snapshot.songTime);
-            UpdateFeedbackEffects(scene);
+            overlay?.UpdateFromSnapshot(snapshot);
         }
-
-        overlay?.UpdateFromSnapshot(snapshot);
     }
 
     public void DisposeRenderer()
@@ -781,7 +788,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         if (scene?.characterArtTransform == null)
             return;
 
-        if ((owner != null && !owner.highwayCharacterAnimationsEnabled) ||
+        if ((owner != null && !owner.highwayCharacterMovementEnabled) ||
             snapshot == null ||
             snapshot.isPaused)
         {
@@ -1140,36 +1147,39 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
 
     private void UpdatePlayerNotes(MultiplayerPlayerScene scene, MultiplayerRhythmPlayerSnapshot playerSnapshot, float songTime)
     {
-        scene.visibleNoteIds.Clear();
-        if (playerSnapshot == null || playerSnapshot.arcadeNoteStates == null)
+        using (UpdatePlayerNotesProfilerMarker.Auto())
         {
+            scene.visibleNoteIds.Clear();
+            if (playerSnapshot == null || playerSnapshot.arcadeNoteStates == null)
+            {
+                ClearRemovedNotes(scene);
+                return;
+            }
+
+            for (int i = 0; i < playerSnapshot.arcadeNoteStates.Count; i++)
+            {
+                ArcadeNoteState state = playerSnapshot.arcadeNoteStates[i];
+                if (state == null)
+                    continue;
+
+                float headZ = owner.StrikeLineZ + ((state.data.time - songTime) * currentVisualNoteSpeed);
+                float sustainEndZ = owner.StrikeLineZ + (((state.data.time + Mathf.Max(0f, state.data.duration)) - songTime) * currentVisualNoteSpeed);
+                bool keepResolvedBriefly = state.IsResolved && songTime - state.resolvedAt <= ResolvedHeadHoldSeconds;
+                bool showHead = headZ <= owner.ArcadeSpawnZ && headZ >= owner.StrikeLineZ && (!state.IsResolved || keepResolvedBriefly);
+                bool showSustain = Mathf.Max(0f, state.data.duration) > 0.08f &&
+                                   sustainEndZ > owner.StrikeLineZ &&
+                                   headZ <= owner.ArcadeSpawnZ;
+
+                if (!showHead && !showSustain)
+                    continue;
+
+                scene.visibleNoteIds.Add(state.data.id);
+                MultiplayerNoteView view = GetOrCreateNoteView(scene, state.data);
+                UpdateNoteView(view, state, scene.playerIndex, headZ, sustainEndZ, showHead);
+            }
+
             ClearRemovedNotes(scene);
-            return;
         }
-
-        for (int i = 0; i < playerSnapshot.arcadeNoteStates.Count; i++)
-        {
-            ArcadeNoteState state = playerSnapshot.arcadeNoteStates[i];
-            if (state == null)
-                continue;
-
-            float headZ = owner.StrikeLineZ + ((state.data.time - songTime) * currentVisualNoteSpeed);
-            float sustainEndZ = owner.StrikeLineZ + (((state.data.time + Mathf.Max(0f, state.data.duration)) - songTime) * currentVisualNoteSpeed);
-            bool keepResolvedBriefly = state.IsResolved && songTime - state.resolvedAt <= ResolvedHeadHoldSeconds;
-            bool showHead = headZ <= owner.ArcadeSpawnZ && headZ >= owner.StrikeLineZ && (!state.IsResolved || keepResolvedBriefly);
-            bool showSustain = Mathf.Max(0f, state.data.duration) > 0.08f &&
-                               sustainEndZ > owner.StrikeLineZ &&
-                               headZ <= owner.ArcadeSpawnZ;
-
-            if (!showHead && !showSustain)
-                continue;
-
-            scene.visibleNoteIds.Add(state.data.id);
-            MultiplayerNoteView view = GetOrCreateNoteView(scene, state.data);
-            UpdateNoteView(view, state, scene.playerIndex, headZ, sustainEndZ, showHead);
-        }
-
-        ClearRemovedNotes(scene);
     }
 
     private void UpdateLaneVisuals(MultiplayerPlayerScene scene, MultiplayerRhythmPlayerSnapshot playerSnapshot, float songTime)
