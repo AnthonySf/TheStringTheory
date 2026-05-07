@@ -1,0 +1,341 @@
+{
+  "sampleRate": 22050,
+  "cases": [
+    {
+      "id": "single_low_g_correct",
+      "label": "Single Low G Correct",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 0, "fret": 3 } ],
+      "playedNotes": [ { "stringIndex": 0, "fret": 3 } ]
+    },
+    {
+      "id": "single_low_g_wrong_open_g",
+      "label": "Single Low G Wrong Open G",
+      "expectedAccept": false,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 0, "fret": 3 } ],
+      "playedNotes": [ { "stringIndex": 3, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_low_e",
+      "label": "Single Open Low E",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 0, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 0, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_a",
+      "label": "Single Open A",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 1, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 1, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_d",
+      "label": "Single Open D",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 2, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 2, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_g",
+      "label": "Single Open G",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 3, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 3, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_b",
+      "label": "Single Open B",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 4, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 4, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_high_e",
+      "label": "Single Open High E",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 5, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 5, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_low_e_wrong_open_a",
+      "label": "Single Open Low E Wrong Open A",
+      "expectedAccept": false,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 0, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 1, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_a_wrong_open_d",
+      "label": "Single Open A Wrong Open D",
+      "expectedAccept": false,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 1, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 2, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_d_wrong_open_g",
+      "label": "Single Open D Wrong Open G",
+      "expectedAccept": false,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 2, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 3, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_g_wrong_open_b",
+      "label": "Single Open G Wrong Open B",
+      "expectedAccept": false,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 3, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 4, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_b_wrong_open_g",
+      "label": "Single Open B Wrong Open G",
+      "expectedAccept": false,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 4, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 3, "fret": 0 } ]
+    },
+    {
+      "id": "single_open_high_e_wrong_open_a",
+      "label": "Single Open High E Wrong Open A",
+      "expectedAccept": false,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 5, "fret": 0 } ],
+      "playedNotes": [ { "stringIndex": 1, "fret": 0 } ]
+    },
+    {
+      "id": "single_mid_register_d",
+      "label": "Single D On G String",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 3, "fret": 7 } ],
+      "playedNotes": [ { "stringIndex": 3, "fret": 7 } ]
+    },
+    {
+      "id": "single_high_register_e",
+      "label": "Single High E On B String",
+      "expectedAccept": true,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.00,
+      "tailSeconds": 0.30,
+      "expectedNotes": [ { "stringIndex": 4, "fret": 5 } ],
+      "playedNotes": [ { "stringIndex": 4, "fret": 5 } ]
+    },
+    {
+      "id": "chord_g_major_correct",
+      "label": "Chord G Major Correct",
+      "expectedAccept": true,
+      "chordLeniency": 1.0,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.35,
+      "tailSeconds": 0.35,
+      "strumSpacingSeconds": 0.018,
+      "expectedNotes": [
+        { "stringIndex": 0, "fret": 3 },
+        { "stringIndex": 1, "fret": 2 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 3 }
+      ],
+      "playedNotes": [
+        { "stringIndex": 0, "fret": 3, "amplitude": 1.00 },
+        { "stringIndex": 1, "fret": 2, "amplitude": 0.84 },
+        { "stringIndex": 2, "fret": 0, "amplitude": 0.76 },
+        { "stringIndex": 3, "fret": 0, "amplitude": 0.70 },
+        { "stringIndex": 4, "fret": 0, "amplitude": 0.62 },
+        { "stringIndex": 5, "fret": 3, "amplitude": 0.58 }
+      ]
+    },
+    {
+      "id": "chord_c_major_correct",
+      "label": "Chord C Major Correct",
+      "expectedAccept": true,
+      "chordLeniency": 1.0,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.35,
+      "tailSeconds": 0.35,
+      "strumSpacingSeconds": 0.020,
+      "expectedNotes": [
+        { "stringIndex": 1, "fret": 3 },
+        { "stringIndex": 2, "fret": 2 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 1 },
+        { "stringIndex": 5, "fret": 0 }
+      ],
+      "playedNotes": [
+        { "stringIndex": 1, "fret": 3, "amplitude": 1.00 },
+        { "stringIndex": 2, "fret": 2, "amplitude": 0.82 },
+        { "stringIndex": 3, "fret": 0, "amplitude": 0.74 },
+        { "stringIndex": 4, "fret": 1, "amplitude": 0.64 },
+        { "stringIndex": 5, "fret": 0, "amplitude": 0.58 }
+      ]
+    },
+    {
+      "id": "chord_c_major_missing_root",
+      "label": "Chord C Major Missing Low C",
+      "expectedAccept": false,
+      "chordLeniency": 1.0,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.35,
+      "tailSeconds": 0.35,
+      "strumSpacingSeconds": 0.020,
+      "expectedNotes": [
+        { "stringIndex": 1, "fret": 3 },
+        { "stringIndex": 2, "fret": 2 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 1 },
+        { "stringIndex": 5, "fret": 0 }
+      ],
+      "playedNotes": [
+        { "stringIndex": 2, "fret": 2, "amplitude": 0.82 },
+        { "stringIndex": 3, "fret": 0, "amplitude": 0.74 },
+        { "stringIndex": 4, "fret": 1, "amplitude": 0.64 },
+        { "stringIndex": 5, "fret": 0, "amplitude": 0.58 }
+      ]
+    },
+    {
+      "id": "chord_g_major_all_open",
+      "label": "Chord G Major Wrong Full Open Strum",
+      "expectedAccept": false,
+      "chordLeniency": 1.0,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.35,
+      "tailSeconds": 0.35,
+      "strumSpacingSeconds": 0.018,
+      "expectedNotes": [
+        { "stringIndex": 0, "fret": 3 },
+        { "stringIndex": 1, "fret": 2 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 3 }
+      ],
+      "playedNotes": [
+        { "stringIndex": 0, "fret": 0 },
+        { "stringIndex": 1, "fret": 0 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 0 }
+      ]
+    },
+    {
+      "id": "chord_g_major_missing_low_g",
+      "label": "Chord G Major Missing Low G",
+      "expectedAccept": false,
+      "chordLeniency": 1.0,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.35,
+      "tailSeconds": 0.35,
+      "strumSpacingSeconds": 0.018,
+      "expectedNotes": [
+        { "stringIndex": 0, "fret": 3 },
+        { "stringIndex": 1, "fret": 2 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 3 }
+      ],
+      "playedNotes": [
+        { "stringIndex": 1, "fret": 2 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 3 }
+      ]
+    },
+    {
+      "id": "chord_g_major_one_wrong_note",
+      "label": "Chord G Major One Wrong Note",
+      "expectedAccept": false,
+      "chordLeniency": 1.0,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.35,
+      "tailSeconds": 0.35,
+      "strumSpacingSeconds": 0.018,
+      "expectedNotes": [
+        { "stringIndex": 0, "fret": 3 },
+        { "stringIndex": 1, "fret": 2 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 3 }
+      ],
+      "playedNotes": [
+        { "stringIndex": 0, "fret": 3 },
+        { "stringIndex": 1, "fret": 0 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 3 }
+      ]
+    },
+    {
+      "id": "chord_g_major_two_wrong_notes",
+      "label": "Chord G Major Two Wrong Notes",
+      "expectedAccept": false,
+      "chordLeniency": 1.0,
+      "leadInSeconds": 0.10,
+      "durationSeconds": 1.35,
+      "tailSeconds": 0.35,
+      "strumSpacingSeconds": 0.018,
+      "expectedNotes": [
+        { "stringIndex": 0, "fret": 3 },
+        { "stringIndex": 1, "fret": 2 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 3 }
+      ],
+      "playedNotes": [
+        { "stringIndex": 0, "fret": 2 },
+        { "stringIndex": 1, "fret": 0 },
+        { "stringIndex": 2, "fret": 0 },
+        { "stringIndex": 3, "fret": 0 },
+        { "stringIndex": 4, "fret": 0 },
+        { "stringIndex": 5, "fret": 3 }
+      ]
+    }
+  ]
+}

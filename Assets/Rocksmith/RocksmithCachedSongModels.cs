@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 public static class RocksmithCachedSongFormat
 {
-    public const int SchemaVersion = 10;
+    public const int SchemaVersion = 11;
     public const string ManifestFileName = "song.rs2song.json";
     public const string ContentDirectoryName = "psarc_content";
     public const string ImportedFolderPrefix = "__psarc_";
@@ -68,6 +68,7 @@ public sealed class RocksmithCachedArrangementPart
     public string tuningDisplayName;
     public RocksmithCachedGeneratedPartInfo generatedPart = new RocksmithCachedGeneratedPartInfo();
     public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+    public List<RocksmithCachedArpeggioGuideData> arpeggioGuides = new List<RocksmithCachedArpeggioGuideData>();
     public List<RocksmithCachedGeneratedNoteEvent> generatedNotes = new List<RocksmithCachedGeneratedNoteEvent>();
 }
 
@@ -120,6 +121,16 @@ public sealed class RocksmithCachedTechniqueSegmentData
     public int endFret;
     public float startBend;
     public float endBend;
+}
+
+[Serializable]
+public sealed class RocksmithCachedArpeggioGuideData
+{
+    public int id;
+    public float startTime;
+    public float endTime;
+    public string chordName;
+    public int[] stringFrets;
 }
 
 [Serializable]

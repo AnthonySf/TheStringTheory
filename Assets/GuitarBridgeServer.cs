@@ -381,6 +381,7 @@ public class GuitarBridgeServer : MonoBehaviour
         public int id;
         public float time;
         public float observedAtUnscaled;
+        public string source = string.Empty;
         public HashSet<int> pitches = new HashSet<int>();
         public HashSet<int> consumedKeys = new HashSet<int>();
     }
@@ -449,17 +450,47 @@ public class GuitarBridgeServer : MonoBehaviour
     private const float ControllerTriggerAxisPressThreshold = 0.55f;
     private const float ControllerStrumAxisPressThreshold = 0.55f;
 
+    [Flags]
+    private enum DetectorHintNoteFlags
+    {
+        None = 0,
+        Legato = 1 << 0,
+        Bend = 1 << 1,
+        Slide = 1 << 2,
+        Harmonic = 1 << 3
+    }
+
+    private readonly struct DetectorHintExpectedNote
+    {
+        public readonly int midi;
+        public readonly int stringIndex;
+        public readonly int fret;
+        public readonly int openMidi;
+        public readonly int flags;
+
+        public DetectorHintExpectedNote(int expectedMidi, int expectedStringIndex, int expectedFret, int expectedOpenMidi, DetectorHintNoteFlags expectedFlags)
+        {
+            midi = expectedMidi;
+            stringIndex = expectedStringIndex;
+            fret = expectedFret;
+            openMidi = expectedOpenMidi;
+            flags = (int)expectedFlags;
+        }
+    }
+
     private struct DetectorHintWindow
     {
         public float startTime;
         public float endTime;
         public HashSet<int> pitches;
+        public DetectorHintExpectedNote[] expectedNotes;
 
-        public DetectorHintWindow(float start, float end, HashSet<int> notePitches)
+        public DetectorHintWindow(float start, float end, HashSet<int> notePitches, DetectorHintExpectedNote[] noteExpectations = null)
         {
             startTime = start;
             endTime = end;
             pitches = notePitches;
+            expectedNotes = noteExpectations ?? Array.Empty<DetectorHintExpectedNote>();
         }
     }
 
@@ -468,10 +499,13 @@ public class GuitarBridgeServer : MonoBehaviour
     private readonly Dictionary<int, NoteData> chartNoteById = new Dictionary<int, NoteData>();
     private readonly List<NoteEvent> recentNoteEvents = new List<NoteEvent>();
     private readonly HashSet<int> latestDetectedPitches = new HashSet<int>();
+    private readonly List<GameplayNoteState> chordMatchScratchStates = new List<GameplayNoteState>();
+    private readonly List<int> chordMatchScratchConsumeKeys = new List<int>();
 
     private List<NoteData> chartNotes = new List<NoteData>();
     private List<GameplayNoteState> noteStates = new List<GameplayNoteState>();
     private List<TabSectionData> tabSections = new List<TabSectionData>();
+    private List<ArpeggioGuideData> currentArpeggioGuides = new List<ArpeggioGuideData>();
 
     private IGuitarGameplayRenderer activeRenderer;
     private GuitarRenderMode activeRendererMode = (GuitarRenderMode)(-1);
@@ -549,6 +583,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private long lastUdpPacketUtcTicks;
     private const float DetectorConnectionTimeoutSeconds = 1.5f;
     private string latestEventNotesText = "--";
+    private string latestNotesDetectorAcceptanceSourceText = "--";
     private float latestParsedInputLevel = -1f;
     private float smoothedInputLevel;
 
@@ -952,6 +987,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private const float NotesDetectorTestHintTimelineStepSeconds = 10f;
     private const float NotesDetectorRoutineTargetConfirmSeconds = 0.15f;
     private const float NotesDetectorRoutineRecentEventHoldSeconds = 0.18f;
+    private const string NotesDetectorTestSongFolderName = "NotesDetector";
+    private const string NotesDetectorTestCatalogFileName = "notes_detector_tests.json";
     private const float MainMenuHoverLockSeconds = 0.20f;
     private ToneLabReturnContext toneLabReturnContext;
     private NotesDetectorBackendMode notesDetectorBackendMode = NotesDetectorBackendMode.NativeEmbeddedBridge;
@@ -960,11 +997,27 @@ public class GuitarBridgeServer : MonoBehaviour
     private NativeDetectorRuntimeInfo nativeNotesDetectorRuntimeInfo = new NativeDetectorRuntimeInfo();
     private int selectedNativeNotesDetectorInputDeviceIndex = -1;
     private bool showNotesDetectorTestMenu;
+    private bool notesDetectorGameplayTestActive;
     private int selectedNotesDetectorTestIndex;
+    private bool showNotesDetectorTestSelectionPopup;
+    private int selectedNotesDetectorCatalogIndex;
+    private LoadedNotesDetectorTestCatalog notesDetectorLoadedTestCatalog;
+    private readonly List<LoadedNotesDetectorTestCatalogEntry> notesDetectorSelectableTests = new List<LoadedNotesDetectorTestCatalogEntry>();
+    private string selectedNotesDetectorTestId = string.Empty;
     private bool showNotesDetectorRoutinePopup;
     private int notesDetectorRoutineStageIndex;
     private float notesDetectorRoutineMatchedSinceTime = -1f;
     private float notesDetectorRoutineOpenedTime;
+    private string notesDetectorEditorLogPath = string.Empty;
+    private string loopCountdownEditorLogPath = string.Empty;
+    private readonly StringBuilder loopCountdownEditorLogBuffer = new StringBuilder(16384);
+    private int loopCountdownEditorLogFrameIndex;
+    private SongLibraryEntry notesDetectorGameplayReturnSongEntry;
+    private string notesDetectorGameplayReturnSelectedMusicXmlPartId = string.Empty;
+    private bool notesDetectorGameplayReturnUseAutoTrackSelection = true;
+    private bool notesDetectorGameplayReturnNoteByNoteModeEnabled;
+    private bool notesDetectorGameplayReturnHeroModeEnabled;
+    private GuitarRenderMode notesDetectorGameplayReturnRenderMode = GuitarRenderMode.Highway3D;
 
     private sealed class NotesDetectorRoutineStep
     {
@@ -1201,8 +1254,53 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void Update()
     {
+        bool shouldLogLoopCountdownFrame = Application.isEditor && loopRestartPauseRemainingSeconds > 0.0001f;
+        long frameStartTicks = 0L;
+        long sectionStartTicks = 0L;
+        double handlePauseControlsMs = 0d;
+        double disableLoopModeMs = 0d;
+        double countdownAdvanceMs = 0d;
+        double transportAdvanceMs = 0d;
+        double noteByNoteGateMs = 0d;
+        double songEndMs = 0d;
+        double playbackSpeedMs = 0d;
+        double audioSyncMs = 0d;
+        double trackReloadMs = 0d;
+        double inputUpdateMs = 0d;
+        double sessionScoreMs = 0d;
+        double gameplayUpdateMs = 0d;
+        double inputLevelMs = 0d;
+        double hintSendMs = 0d;
+        double ensureRendererMs = 0d;
+        double snapshotBuildMs = 0d;
+        double renderMs = 0d;
+        double toneLabMs = 0d;
+        double uiMs = 0d;
+        GuitarGameplaySnapshot snapshot = null;
+        if (shouldLogLoopCountdownFrame)
+        {
+            if (string.IsNullOrWhiteSpace(loopCountdownEditorLogPath))
+                StartLoopCountdownEditorLogSession("countdown-frame");
+
+            frameStartTicks = GetLoopCountdownTimestamp();
+            sectionStartTicks = frameStartTicks;
+        }
+
         HandlePauseControls();
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterHandlePauseControlsTicks = GetLoopCountdownTimestamp();
+            handlePauseControlsMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterHandlePauseControlsTicks);
+            sectionStartTicks = afterHandlePauseControlsTicks;
+        }
+
         DisableUnsupportedLoopModeState();
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterDisableLoopModeTicks = GetLoopCountdownTimestamp();
+            disableLoopModeMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterDisableLoopModeTicks);
+            sectionStartTicks = afterDisableLoopModeTicks;
+        }
 
         bool loopPreviewActive = showLoopSettings && loopSettingsPreviewPlaying;
         bool offsetHelperPreviewActive = showOffsetHelper && offsetHelperAdjusting && offsetHelperPreviewPlaying;
@@ -1211,10 +1309,14 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (loopGapActive)
         {
-            songTimer = loopStartTime;
-            audioSongTimer = loopStartTime;
             loopRestartPauseRemainingSeconds = Mathf.Max(0f, loopRestartPauseRemainingSeconds - Time.deltaTime);
             loopGapActive = loopRestartPauseRemainingSeconds > 0.0001f;
+        }
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterCountdownAdvanceTicks = GetLoopCountdownTimestamp();
+            countdownAdvanceMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterCountdownAdvanceTicks);
+            sectionStartTicks = afterCountdownAdvanceTicks;
         }
 
         if ((!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive)
@@ -1227,37 +1329,92 @@ public class GuitarBridgeServer : MonoBehaviour
                 HandleLoopPlayback();
             loopGapActive = loopRestartPauseRemainingSeconds > 0.0001f;
         }
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterTransportAdvanceTicks = GetLoopCountdownTimestamp();
+            transportAdvanceMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterTransportAdvanceTicks);
+            sectionStartTicks = afterTransportAdvanceTicks;
+        }
 
         ApplyNoteByNoteTransportGate(songTimeBeforeAdvance, loopPreviewActive, offsetHelperPreviewActive, loopGapActive);
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterNoteByNoteGateTicks = GetLoopCountdownTimestamp();
+            noteByNoteGateMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterNoteByNoteGateTicks);
+            sectionStartTicks = afterNoteByNoteGateTicks;
+        }
 
         UpdateSongEndState();
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterSongEndTicks = GetLoopCountdownTimestamp();
+            songEndMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterSongEndTicks);
+            sectionStartTicks = afterSongEndTicks;
+        }
 
         ApplyPlaybackSpeedToAudio();
-        SyncAudioToSongTimer(playImmediately: ShouldPlaybackAudio(loopPreviewActive, offsetHelperPreviewActive, loopGapActive));
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterPlaybackSpeedTicks = GetLoopCountdownTimestamp();
+            playbackSpeedMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterPlaybackSpeedTicks);
+            sectionStartTicks = afterPlaybackSpeedTicks;
+        }
+
+        if (!loopGapActive)
+            SyncAudioToSongTimer(playImmediately: ShouldPlaybackAudio(loopPreviewActive, offsetHelperPreviewActive, loopGapActive));
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterAudioSyncTicks = GetLoopCountdownTimestamp();
+            audioSyncMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterAudioSyncTicks);
+            sectionStartTicks = afterAudioSyncTicks;
+        }
 
         if (gameplayMode == GuitarGameplayMode.Guitar && midiTrackIndex != currentLoadedTrackIndex)
             LoadTestSong(preservePauseUiState: isPaused || showMainMenu || showSongSettings || showSongSelection || showTrackSelection || showGlobalSettings || showLoopPausePopup);
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterTrackReloadTicks = GetLoopCountdownTimestamp();
+            trackReloadMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterTrackReloadTicks);
+            sectionStartTicks = afterTrackReloadTicks;
+        }
 
         if (gameplayMode == GuitarGameplayMode.Guitar)
         {
             StopArcadeMidiInput();
-            ParseDetectorState();
-            RefreshDetectorBackendStatus();
+            if (!loopGapActive)
+            {
+                ParseDetectorState();
+                RefreshDetectorBackendStatus();
+            }
         }
         else if (multiplayerRhythmModeActive)
         {
             StopArcadeMidiInput();
-            UpdateMultiplayerRhythmInputState();
+            if (!loopGapActive)
+                UpdateMultiplayerRhythmInputState();
         }
         else
         {
-            UpdateArcadeInputState();
+            if (!loopGapActive)
+                UpdateArcadeInputState();
+        }
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterInputUpdateTicks = GetLoopCountdownTimestamp();
+            inputUpdateMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterInputUpdateTicks);
+            sectionStartTicks = afterInputUpdateTicks;
         }
 
         if (isPaused)
             UpdateSessionScoreState();
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterSessionScoreTicks = GetLoopCountdownTimestamp();
+            sessionScoreMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterSessionScoreTicks);
+            sectionStartTicks = afterSessionScoreTicks;
+        }
 
-        if (!isPaused)
+        if (!isPaused && !loopGapActive)
         {
             if (gameplayMode == GuitarGameplayMode.Guitar)
             {
@@ -1286,15 +1443,56 @@ public class GuitarBridgeServer : MonoBehaviour
                 UpdateAndPersistSongBestScore();
             }
         }
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterGameplayUpdateTicks = GetLoopCountdownTimestamp();
+            gameplayUpdateMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterGameplayUpdateTicks);
+            sectionStartTicks = afterGameplayUpdateTicks;
+        }
 
         UpdateInputLevelEstimate();
-        if (gameplayMode == GuitarGameplayMode.Guitar)
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterInputLevelTicks = GetLoopCountdownTimestamp();
+            inputLevelMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterInputLevelTicks);
+            sectionStartTicks = afterInputLevelTicks;
+        }
+
+        if (gameplayMode == GuitarGameplayMode.Guitar && !loopGapActive)
             SendDetectorHintPacketIfNeeded();
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterHintSendTicks = GetLoopCountdownTimestamp();
+            hintSendMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterHintSendTicks);
+            sectionStartTicks = afterHintSendTicks;
+        }
 
         EnsureRenderer();
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterEnsureRendererTicks = GetLoopCountdownTimestamp();
+            ensureRendererMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterEnsureRendererTicks);
+            sectionStartTicks = afterEnsureRendererTicks;
+        }
 
         if (activeRenderer != null)
-            activeRenderer.Render(BuildSnapshot());
+        {
+            if (shouldLogLoopCountdownFrame)
+            {
+                long snapshotStartTicks = sectionStartTicks;
+                snapshot = BuildSnapshot();
+                long afterSnapshotTicks = GetLoopCountdownTimestamp();
+                snapshotBuildMs = GetLoopCountdownElapsedMilliseconds(snapshotStartTicks, afterSnapshotTicks);
+                activeRenderer.Render(snapshot);
+                long afterRenderTicks = GetLoopCountdownTimestamp();
+                renderMs = GetLoopCountdownElapsedMilliseconds(afterSnapshotTicks, afterRenderTicks);
+                sectionStartTicks = afterRenderTicks;
+            }
+            else
+            {
+                activeRenderer.Render(BuildSnapshot());
+            }
+        }
 
         if (unityToneLabOverlay != null)
         {
@@ -1302,8 +1500,46 @@ public class GuitarBridgeServer : MonoBehaviour
             if (showToneLab)
                 unityToneLabOverlay.RefreshUi(syncControls: false);
         }
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterToneLabTicks = GetLoopCountdownTimestamp();
+            toneLabMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterToneLabTicks);
+            sectionStartTicks = afterToneLabTicks;
+        }
 
         UpdateUiText();
+        if (shouldLogLoopCountdownFrame)
+        {
+            long afterUiTicks = GetLoopCountdownTimestamp();
+            uiMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterUiTicks);
+            double totalMs = GetLoopCountdownElapsedMilliseconds(frameStartTicks, afterUiTicks);
+            int noteStateCount = noteStates != null ? noteStates.Count : 0;
+            int arcadeNoteStateCount = arcadeNoteStates != null ? arcadeNoteStates.Count : 0;
+            string rendererName = activeRenderer != null ? activeRenderer.GetType().Name : "null";
+            LogLoopCountdownEditor(
+                $"FRAME {loopCountdownEditorLogFrameIndex++} remaining={loopRestartPauseRemainingSeconds.ToString("F3", CultureInfo.InvariantCulture)} " +
+                $"song={songTimer.ToString("F3", CultureInfo.InvariantCulture)} audio={audioSongTimer.ToString("F3", CultureInfo.InvariantCulture)} " +
+                $"loop=[{loopStartTime.ToString("F3", CultureInfo.InvariantCulture)},{loopEndTime.ToString("F3", CultureInfo.InvariantCulture)}] " +
+                $"paused={isPaused} nbmWait={noteByNoteWaitingForMatch} renderer={rendererName} renderMode={renderMode} gameplayMode={gameplayMode} " +
+                $"notes={noteStateCount} arcadeNotes={arcadeNoteStateCount} " +
+                $"timingsMs pause={handlePauseControlsMs:F3} disable={disableLoopModeMs:F3} countdown={countdownAdvanceMs:F3} advance={transportAdvanceMs:F3} " +
+                $"gate={noteByNoteGateMs:F3} songEnd={songEndMs:F3} speed={playbackSpeedMs:F3} audioSync={audioSyncMs:F3} trackReload={trackReloadMs:F3} " +
+                $"input={inputUpdateMs:F3} score={sessionScoreMs:F3} gameplay={gameplayUpdateMs:F3} inputLevel={inputLevelMs:F3} hint={hintSendMs:F3} " +
+                $"ensureRenderer={ensureRendererMs:F3} snapshot={snapshotBuildMs:F3} render={renderMs:F3} toneLab={toneLabMs:F3} ui={uiMs:F3} total={totalMs:F3}");
+        }
+
+        if (Application.isEditor)
+        {
+            if (loopGapActive)
+            {
+                if (string.IsNullOrWhiteSpace(loopCountdownEditorLogPath))
+                    StartLoopCountdownEditorLogSession("countdown-active");
+            }
+            else if (!string.IsNullOrWhiteSpace(loopCountdownEditorLogPath))
+            {
+                StopLoopCountdownEditorLogSession("countdown-finished");
+            }
+        }
     }
 
     private void HandlePauseControls()
@@ -1440,6 +1676,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (IsRestartPressed())
         {
+            if (notesDetectorGameplayTestActive)
+                return;
+
             RetrySongFromUi();
             return;
         }
@@ -1466,6 +1705,29 @@ public class GuitarBridgeServer : MonoBehaviour
         if (IsUiBackPressed())
         {
             ResumePlaybackFromUi();
+            return;
+        }
+
+        if (notesDetectorGameplayTestActive)
+        {
+            if (IsUiUpPressed())
+            {
+                MovePauseActionSelectionFromUi(-1);
+                return;
+            }
+
+            if (IsUiDownPressed())
+            {
+                MovePauseActionSelectionFromUi(1);
+                return;
+            }
+
+            if (IsUiSubmitPressed())
+            {
+                ActivateSelectedPauseActionFromUi();
+                return;
+            }
+
             return;
         }
 
@@ -3182,11 +3444,58 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleNotesDetectorTestControls()
     {
+        if (showNotesDetectorTestSelectionPopup)
+        {
+            if (IsUiBackPressed())
+            {
+                CloseNotesDetectorTestSelectionPopupFromUi();
+                return;
+            }
+
+            if (IsUiUpPressed())
+            {
+                MoveNotesDetectorTestPopupSelectionFromUi(-1);
+                return;
+            }
+
+            if (IsUiDownPressed())
+            {
+                MoveNotesDetectorTestPopupSelectionFromUi(1);
+                return;
+            }
+
+            if (IsUiSubmitPressed())
+            {
+                ActivateSelectedNotesDetectorTestPopupFromUi();
+                return;
+            }
+
+            return;
+        }
+
         if (showNotesDetectorRoutinePopup)
         {
             UpdateNotesDetectorRoutine();
             if (IsUiBackPressed())
                 CloseNotesDetectorRoutineFromUi();
+            return;
+        }
+
+        if (IsUiUpPressed())
+        {
+            MoveNotesDetectorTestSelectionFromUi(-1);
+            return;
+        }
+
+        if (IsUiDownPressed())
+        {
+            MoveNotesDetectorTestSelectionFromUi(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed())
+        {
+            ActivateSelectedNotesDetectorTestActionFromUi();
             return;
         }
 
@@ -3860,7 +4169,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (IsCurrentRocksmithTrackGroupingActive())
         {
             string selectedGroupId = GetRocksmithGroupIdFromPartId(selectedMusicXmlPartId);
-            List<RocksmithTrackSelectionGroup> groups = GetCurrentRocksmithTrackSelectionGroups();
+            List<RocksmithTrackSelectionGroup> groups = GetCurrentTrackSelectionGroupsOrdered();
             for (int i = 0; i < groups.Count; i++)
             {
                 if (string.Equals(groups[i].GroupId, selectedGroupId, StringComparison.OrdinalIgnoreCase))
@@ -4224,9 +4533,11 @@ public class GuitarBridgeServer : MonoBehaviour
         ApplyTrackSelectionPreference();
 
         List<NoteData> reloadedNotes = null;
+        List<ArpeggioGuideData> reloadedArpeggioGuides = new List<ArpeggioGuideData>();
         try
         {
             reloadedNotes = SongNotationFacade.LoadSong(currentSongEntry.PrimaryNotationPath, currentSongEntry.PrimaryNotationKind, midiTrackIndex);
+            reloadedArpeggioGuides = SongNotationFacade.LoadArpeggioGuides(currentSongEntry.PrimaryNotationPath, currentSongEntry.PrimaryNotationKind, midiTrackIndex);
         }
         catch (Exception e)
         {
@@ -4251,6 +4562,7 @@ public class GuitarBridgeServer : MonoBehaviour
             return false;
 
         chartNotes = reloadedNotes;
+        currentArpeggioGuides = reloadedArpeggioGuides ?? new List<ArpeggioGuideData>();
         chartNoteById.Clear();
         for (int i = 0; i < chartNotes.Count; i++)
         {
@@ -5261,13 +5573,35 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void StartLoopRestartPause()
     {
+        bool shouldLogLoopCountdown = Application.isEditor;
+        if (shouldLogLoopCountdown && string.IsNullOrWhiteSpace(loopCountdownEditorLogPath))
+            StartLoopCountdownEditorLogSession("loop-restart-pause");
+
+        long totalStartTicks = shouldLogLoopCountdown ? GetLoopCountdownTimestamp() : 0L;
+        long resetStartTicks = shouldLogLoopCountdown ? totalStartTicks : 0L;
         ResetSinglePlayerLoopRunState(loopStartTime);
+        long resetEndTicks = shouldLogLoopCountdown ? GetLoopCountdownTimestamp() : 0L;
         float pauseSeconds = Mathf.Max(0f, GetActiveLoopPauseDurationSeconds());
+        long seekStartTicks = shouldLogLoopCountdown ? resetEndTicks : 0L;
         SeekSongTimeForLoopRestartPause(loopStartTime);
+        long seekEndTicks = shouldLogLoopCountdown ? GetLoopCountdownTimestamp() : 0L;
         songTimer = loopStartTime;
         audioSongTimer = loopStartTime;
         loopRestartPauseRemainingSeconds = pauseSeconds;
+        long syncStartTicks = shouldLogLoopCountdown ? seekEndTicks : 0L;
         SyncAudioToSongTimer(playImmediately: false);
+        if (shouldLogLoopCountdown)
+        {
+            long totalEndTicks = GetLoopCountdownTimestamp();
+            LogLoopCountdownEditor(
+                $"PAUSE_ARM restartTime={loopStartTime.ToString("F3", CultureInfo.InvariantCulture)} " +
+                $"pauseSeconds={pauseSeconds.ToString("F3", CultureInfo.InvariantCulture)} " +
+                $"timingsMs reset={GetLoopCountdownElapsedMilliseconds(resetStartTicks, resetEndTicks):F3} " +
+                $"seek={GetLoopCountdownElapsedMilliseconds(seekStartTicks, seekEndTicks):F3} " +
+                $"sync={GetLoopCountdownElapsedMilliseconds(syncStartTicks, totalEndTicks):F3} " +
+                $"total={GetLoopCountdownElapsedMilliseconds(totalStartTicks, totalEndTicks):F3} " +
+                $"notes={(noteStates != null ? noteStates.Count : 0)} arcadeNotes={(arcadeNoteStates != null ? arcadeNoteStates.Count : 0)}");
+        }
     }
 
     private void ResetSinglePlayerLoopRunState(float restartTime)
@@ -5282,15 +5616,15 @@ public class GuitarBridgeServer : MonoBehaviour
             if (arcadeNoteStates == null)
                 return;
 
-            for (int i = 0; i < arcadeNoteStates.Count; i++)
+            int firstArcadeLoopIndex = FindFirstArcadeNoteStateIndexAtOrAfter(arcadeNoteStates, resolvedBeforeLoopThreshold);
+            for (int i = firstArcadeLoopIndex; i < arcadeNoteStates.Count; i++)
             {
                 ArcadeNoteState noteState = arcadeNoteStates[i];
                 if (noteState == null)
                     continue;
 
-                bool beforeLoopStart = noteState.data.time < resolvedBeforeLoopThreshold;
-                noteState.result = beforeLoopStart ? GameplayNoteResult.Hit : GameplayNoteResult.Pending;
-                noteState.resolvedAt = beforeLoopStart ? restartTime : -1f;
+                noteState.result = GameplayNoteResult.Pending;
+                noteState.resolvedAt = -1f;
                 noteState.isJudgeable = false;
             }
 
@@ -5300,17 +5634,59 @@ public class GuitarBridgeServer : MonoBehaviour
         if (noteStates == null)
             return;
 
-        for (int i = 0; i < noteStates.Count; i++)
+        int firstLoopIndex = FindFirstGameplayNoteStateIndexAtOrAfter(noteStates, resolvedBeforeLoopThreshold);
+        for (int i = firstLoopIndex; i < noteStates.Count; i++)
         {
             GameplayNoteState noteState = noteStates[i];
             if (noteState == null)
                 continue;
 
-            bool beforeLoopStart = noteState.data.time < resolvedBeforeLoopThreshold;
-            noteState.result = beforeLoopStart ? GameplayNoteResult.Hit : GameplayNoteResult.Pending;
-            noteState.resolvedAt = beforeLoopStart ? restartTime : -1f;
+            noteState.result = GameplayNoteResult.Pending;
+            noteState.resolvedAt = -1f;
             noteState.isJudgeable = false;
         }
+    }
+
+    private static int FindFirstGameplayNoteStateIndexAtOrAfter(List<GameplayNoteState> states, float thresholdTime)
+    {
+        if (states == null || states.Count == 0)
+            return 0;
+
+        int low = 0;
+        int high = states.Count;
+        while (low < high)
+        {
+            int mid = low + ((high - low) / 2);
+            GameplayNoteState state = states[mid];
+            float noteTime = state?.data.time ?? float.NegativeInfinity;
+            if (noteTime < thresholdTime)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+
+        return Mathf.Clamp(low, 0, states.Count);
+    }
+
+    private static int FindFirstArcadeNoteStateIndexAtOrAfter(List<ArcadeNoteState> states, float thresholdTime)
+    {
+        if (states == null || states.Count == 0)
+            return 0;
+
+        int low = 0;
+        int high = states.Count;
+        while (low < high)
+        {
+            int mid = low + ((high - low) / 2);
+            ArcadeNoteState state = states[mid];
+            float noteTime = state?.data.time ?? float.NegativeInfinity;
+            if (noteTime < thresholdTime)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+
+        return Mathf.Clamp(low, 0, states.Count);
     }
 
     private void SnapSongTimeIntoLoopWindowIfNeeded()
@@ -5599,6 +5975,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private bool IsPauseActionVisible(int index)
     {
+        if (notesDetectorGameplayTestActive)
+            return index == 8 || index == 9;
+
         if (multiplayerRhythmModeActive && index == 1)
             return false;
 
@@ -5607,6 +5986,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private int GetFirstVisiblePauseActionIndex()
     {
+        if (notesDetectorGameplayTestActive)
+            return 8;
+
         if (IsPauseActionVisible(1))
             return 1;
 
@@ -6641,6 +7023,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void EndSongFromUi()
     {
+        if (notesDetectorGameplayTestActive)
+        {
+            ExitNotesDetectorGameplayTest(reopenDetectorMenu: true);
+            return;
+        }
+
         isPaused = true;
         selectedSongEndActionIndex = 0;
         showSongSettings = false;
@@ -7263,6 +7651,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void OpenNotesDetectorTestFromUi()
     {
+        StopNotesDetectorEditorLogSession("reopen");
+        StartNotesDetectorEditorLogSession("open-detector-menu");
+        notesDetectorGameplayTestActive = false;
         CancelDeferredSongSelectionOpen();
         showToneLab = false;
         HideToneLabUi();
@@ -7276,8 +7667,10 @@ public class GuitarBridgeServer : MonoBehaviour
         showGameModes = false;
         showHeroModeSettings = false;
         showNotesDetectorTestMenu = true;
+        showNotesDetectorTestSelectionPopup = false;
         showNotesDetectorRoutinePopup = false;
         selectedNotesDetectorTestIndex = 0;
+        selectedNotesDetectorCatalogIndex = 0;
         isPaused = true;
         if (notesDetectorBackendMode != NotesDetectorBackendMode.NativeEmbeddedBridge)
             SwitchNotesDetectorBackend(NotesDetectorBackendMode.NativeEmbeddedBridge);
@@ -7288,10 +7681,18 @@ public class GuitarBridgeServer : MonoBehaviour
         RefreshDetectorBackendStatus();
         MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
+        LogNotesDetectorEditor($"DETECTOR_MENU_OPEN backend={notesDetectorBackendMode} selectedDevice={selectedNativeNotesDetectorInputDeviceIndex} status={GetNotesDetectorStatusText()}");
     }
 
     public void CloseNotesDetectorTestFromUi()
     {
+        if (notesDetectorGameplayTestActive)
+        {
+            ExitNotesDetectorGameplayTest(reopenDetectorMenu: false);
+            return;
+        }
+
+        showNotesDetectorTestSelectionPopup = false;
         showNotesDetectorRoutinePopup = false;
         nativeNotesDetectorBridge?.RestoreSelectedPresetWorkingSettings();
         RefreshNativeNotesDetectorUiState();
@@ -7301,6 +7702,7 @@ public class GuitarBridgeServer : MonoBehaviour
         isPaused = true;
         MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
+        StopNotesDetectorEditorLogSession("close-detector-menu");
     }
 
     public void SetNotesDetectorTestSelectionFromUi(int index)
@@ -7349,12 +7751,77 @@ public class GuitarBridgeServer : MonoBehaviour
                 MarkDetectorHintDirty();
                 break;
             case 1:
-                RunNotesDetectorRoutineFromUi();
+                OpenNotesDetectorTestSelectionPopupFromUi();
                 break;
             case 2:
                 CloseNotesDetectorTestFromUi();
                 break;
         }
+    }
+
+    public void OpenNotesDetectorTestSelectionPopupFromUi()
+    {
+        if (!showNotesDetectorTestMenu || notesDetectorGameplayTestActive)
+            return;
+
+        if (!TryRefreshNotesDetectorTestCatalog())
+            return;
+
+        showNotesDetectorTestSelectionPopup = notesDetectorSelectableTests.Count > 0;
+        selectedNotesDetectorCatalogIndex = Mathf.Clamp(selectedNotesDetectorCatalogIndex, 0, Mathf.Max(0, notesDetectorSelectableTests.Count - 1));
+        if (notesDetectorSelectableTests.Count > 0)
+            selectedNotesDetectorTestId = notesDetectorSelectableTests[selectedNotesDetectorCatalogIndex].Id ?? string.Empty;
+    }
+
+    public void CloseNotesDetectorTestSelectionPopupFromUi()
+    {
+        showNotesDetectorTestSelectionPopup = false;
+    }
+
+    public void SetNotesDetectorTestPopupSelectionFromUi(int index)
+    {
+        if (notesDetectorSelectableTests.Count == 0)
+        {
+            selectedNotesDetectorCatalogIndex = 0;
+            selectedNotesDetectorTestId = string.Empty;
+            return;
+        }
+
+        selectedNotesDetectorCatalogIndex = Mathf.Clamp(index, 0, notesDetectorSelectableTests.Count - 1);
+        selectedNotesDetectorTestId = notesDetectorSelectableTests[selectedNotesDetectorCatalogIndex].Id ?? string.Empty;
+    }
+
+    public void HoverNotesDetectorTestPopupSelectionFromUi(int index)
+    {
+        if (!showNotesDetectorTestSelectionPopup)
+            return;
+
+        SetNotesDetectorTestPopupSelectionFromUi(index);
+    }
+
+    public void MoveNotesDetectorTestPopupSelectionFromUi(int delta)
+    {
+        if (delta == 0 || notesDetectorSelectableTests.Count == 0)
+            return;
+
+        int optionCount = notesDetectorSelectableTests.Count;
+        int nextIndex = (selectedNotesDetectorCatalogIndex + delta + optionCount) % optionCount;
+        SetNotesDetectorTestPopupSelectionFromUi(nextIndex);
+    }
+
+    public void ActivateSelectedNotesDetectorTestPopupFromUi()
+    {
+        if (!showNotesDetectorTestSelectionPopup)
+            return;
+
+        if (notesDetectorSelectableTests.Count == 0)
+        {
+            showNotesDetectorTestSelectionPopup = false;
+            return;
+        }
+
+        selectedNotesDetectorTestId = notesDetectorSelectableTests[Mathf.Clamp(selectedNotesDetectorCatalogIndex, 0, notesDetectorSelectableTests.Count - 1)].Id ?? string.Empty;
+        StartNotesDetectorGameplayTest();
     }
 
     public void RunNotesDetectorRoutineFromUi()
@@ -7363,20 +7830,501 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         ResetLiveDetectorReadState();
-        showNotesDetectorRoutinePopup = true;
-        notesDetectorRoutineStageIndex = 0;
-        notesDetectorRoutineMatchedSinceTime = -1f;
-        notesDetectorRoutineOpenedTime = Time.unscaledTime;
-        MarkDetectorHintDirty();
+        StartNotesDetectorGameplayTest();
     }
 
     public void CloseNotesDetectorRoutineFromUi()
     {
+        if (notesDetectorGameplayTestActive)
+        {
+            ExitNotesDetectorGameplayTest(reopenDetectorMenu: true);
+            return;
+        }
+
         showNotesDetectorRoutinePopup = false;
         notesDetectorRoutineStageIndex = 0;
         notesDetectorRoutineMatchedSinceTime = -1f;
         notesDetectorRoutineOpenedTime = 0f;
         MarkDetectorHintDirty();
+    }
+
+    private static string GetNotesDetectorTestCatalogPath()
+    {
+        return Path.Combine(ExternalContentPaths.StreamingRoot, NotesDetectorTestSongFolderName, NotesDetectorTestCatalogFileName);
+    }
+
+    private static string GetNotesDetectorTestMetadataPath()
+    {
+        return Path.Combine(ExternalContentPaths.PersistentRoot, NotesDetectorTestSongFolderName, ExternalContentPaths.SongMetadataFileName);
+    }
+
+    private bool TryRefreshNotesDetectorTestCatalog()
+    {
+        string catalogPath = GetNotesDetectorTestCatalogPath();
+        if (!NotesDetectorTestSongLoader.TryLoadCatalog(catalogPath, out LoadedNotesDetectorTestCatalog loadedCatalog, out string loadError))
+        {
+            Debug.LogWarning($"[GuitarBridgeServer] Detector test catalog load failed: {loadError}");
+            LogNotesDetectorEditor($"TEST_CATALOG_LOAD_FAILED path={catalogPath} error={loadError}");
+            notesDetectorLoadedTestCatalog = null;
+            notesDetectorSelectableTests.Clear();
+            selectedNotesDetectorCatalogIndex = 0;
+            selectedNotesDetectorTestId = string.Empty;
+            showNotesDetectorTestSelectionPopup = false;
+            return false;
+        }
+
+        notesDetectorLoadedTestCatalog = loadedCatalog;
+        notesDetectorSelectableTests.Clear();
+        if (loadedCatalog.Tests != null)
+            notesDetectorSelectableTests.AddRange(loadedCatalog.Tests.Where(entry => entry != null && !string.IsNullOrWhiteSpace(entry.Id)));
+
+        if (notesDetectorSelectableTests.Count == 0)
+        {
+            selectedNotesDetectorCatalogIndex = 0;
+            selectedNotesDetectorTestId = string.Empty;
+            showNotesDetectorTestSelectionPopup = false;
+            return false;
+        }
+
+        int resolvedIndex = notesDetectorSelectableTests.FindIndex(entry => string.Equals(entry.Id, selectedNotesDetectorTestId, StringComparison.OrdinalIgnoreCase));
+        if (resolvedIndex < 0)
+            resolvedIndex = Mathf.Clamp(selectedNotesDetectorCatalogIndex, 0, notesDetectorSelectableTests.Count - 1);
+
+        SetNotesDetectorTestPopupSelectionFromUi(resolvedIndex);
+        return true;
+    }
+
+    private void StartNotesDetectorEditorLogSession(string reason)
+    {
+        if (!Application.isEditor)
+            return;
+
+        try
+        {
+            string directory = Path.Combine(Application.persistentDataPath, "NotesDetectorLogs");
+            Directory.CreateDirectory(directory);
+            string timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+            notesDetectorEditorLogPath = Path.Combine(directory, $"editor-session-{timestamp}.log");
+            File.WriteAllText(notesDetectorEditorLogPath, string.Empty, Encoding.UTF8);
+            LogNotesDetectorEditor($"SESSION START reason={reason} unityTime={Time.realtimeSinceStartup:F3}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[NotesDetectorLog] Failed to start editor log session: {ex.Message}");
+            notesDetectorEditorLogPath = string.Empty;
+        }
+
+        if (nativeNotesDetectorBridge != null && !string.IsNullOrWhiteSpace(notesDetectorEditorLogPath))
+            nativeNotesDetectorBridge.SetDebugLogPath(notesDetectorEditorLogPath);
+    }
+
+    private void StopNotesDetectorEditorLogSession(string reason)
+    {
+        if (!Application.isEditor)
+            return;
+
+        if (!string.IsNullOrWhiteSpace(notesDetectorEditorLogPath))
+            LogNotesDetectorEditor($"SESSION END reason={reason} unityTime={Time.realtimeSinceStartup:F3}");
+
+        if (nativeNotesDetectorBridge != null)
+            nativeNotesDetectorBridge.SetDebugLogPath(string.Empty);
+
+        notesDetectorEditorLogPath = string.Empty;
+    }
+
+    private void LogNotesDetectorEditor(string message)
+    {
+        if (!Application.isEditor || string.IsNullOrWhiteSpace(notesDetectorEditorLogPath) || string.IsNullOrWhiteSpace(message))
+            return;
+
+        try
+        {
+            string timestamp = DateTime.Now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
+            File.AppendAllText(notesDetectorEditorLogPath, $"[{timestamp}] {message}{Environment.NewLine}", Encoding.UTF8);
+        }
+        catch
+        {
+        }
+    }
+
+    private void StartLoopCountdownEditorLogSession(string reason)
+    {
+        if (!Application.isEditor)
+            return;
+
+        try
+        {
+            string directory = Path.Combine(Application.persistentDataPath, "LoopCountdownLogs");
+            Directory.CreateDirectory(directory);
+            string timestamp = DateTime.Now.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+            loopCountdownEditorLogPath = Path.Combine(directory, $"loop-countdown-{timestamp}.log");
+            loopCountdownEditorLogBuffer.Clear();
+            loopCountdownEditorLogFrameIndex = 0;
+            LogLoopCountdownEditor(
+                $"SESSION START reason={reason} unityTime={Time.realtimeSinceStartup:F3} " +
+                $"song={songTimer.ToString("F3", CultureInfo.InvariantCulture)} audio={audioSongTimer.ToString("F3", CultureInfo.InvariantCulture)} " +
+                $"loopStart={loopStartTime.ToString("F3", CultureInfo.InvariantCulture)} loopEnd={loopEndTime.ToString("F3", CultureInfo.InvariantCulture)} " +
+                $"pauseSeconds={loopRestartPauseRemainingSeconds.ToString("F3", CultureInfo.InvariantCulture)} " +
+                $"renderer={(activeRenderer != null ? activeRenderer.GetType().Name : "null")} renderMode={renderMode} gameplayMode={gameplayMode}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[LoopCountdownLog] Failed to start editor log session: {ex.Message}");
+            loopCountdownEditorLogPath = string.Empty;
+            loopCountdownEditorLogBuffer.Clear();
+        }
+    }
+
+    private void StopLoopCountdownEditorLogSession(string reason)
+    {
+        if (!Application.isEditor || string.IsNullOrWhiteSpace(loopCountdownEditorLogPath))
+            return;
+
+        try
+        {
+            LogLoopCountdownEditor($"SESSION END reason={reason} unityTime={Time.realtimeSinceStartup:F3}");
+            File.WriteAllText(loopCountdownEditorLogPath, loopCountdownEditorLogBuffer.ToString(), Encoding.UTF8);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[LoopCountdownLog] Failed to write editor log session: {ex.Message}");
+        }
+        finally
+        {
+            loopCountdownEditorLogPath = string.Empty;
+            loopCountdownEditorLogBuffer.Clear();
+            loopCountdownEditorLogFrameIndex = 0;
+        }
+    }
+
+    private void LogLoopCountdownEditor(string message)
+    {
+        if (!Application.isEditor || string.IsNullOrWhiteSpace(loopCountdownEditorLogPath) || string.IsNullOrWhiteSpace(message))
+            return;
+
+        string timestamp = DateTime.Now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
+        loopCountdownEditorLogBuffer.Append('[');
+        loopCountdownEditorLogBuffer.Append(timestamp);
+        loopCountdownEditorLogBuffer.Append("] ");
+        loopCountdownEditorLogBuffer.AppendLine(message);
+    }
+
+    internal bool ShouldLogLoopCountdownRendererDetail()
+    {
+        return Application.isEditor && !string.IsNullOrWhiteSpace(loopCountdownEditorLogPath);
+    }
+
+    internal void LogLoopCountdownRendererDetail(string message)
+    {
+        LogLoopCountdownEditor(message);
+    }
+
+    private static long GetLoopCountdownTimestamp()
+    {
+        return System.Diagnostics.Stopwatch.GetTimestamp();
+    }
+
+    private static double GetLoopCountdownElapsedMilliseconds(long startTimestamp, long endTimestamp)
+    {
+        return (endTimestamp - startTimestamp) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+    }
+
+    private string FormatDetectorHintExpectedNotesForLog(DetectorHintExpectedNote[] expectedNotes)
+    {
+        if (expectedNotes == null || expectedNotes.Length == 0)
+            return "--";
+
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < expectedNotes.Length; i++)
+        {
+            if (i > 0)
+                builder.Append(" | ");
+
+            DetectorHintExpectedNote expected = expectedNotes[i];
+            builder.Append(GetNoteNameFromMidi(expected.midi));
+            builder.Append(" s");
+            builder.Append(expected.stringIndex);
+            builder.Append(" f");
+            builder.Append(expected.fret);
+            builder.Append(" open=");
+            builder.Append(GetNoteNameFromMidi(expected.openMidi));
+            builder.Append(" flags=");
+            builder.Append(expected.flags);
+        }
+
+        return builder.ToString();
+    }
+
+    private string DescribeGameplayNoteStateForDetectorLog(GameplayNoteState note)
+    {
+        if (note == null)
+            return "<null>";
+
+        StringBuilder builder = new StringBuilder();
+        builder.Append("id=").Append(note.data.id);
+        builder.Append(" chord=").Append(note.data.chordId);
+        builder.Append(" string=").Append(note.data.stringIdx);
+        builder.Append(" fret=").Append(note.data.fret);
+        builder.Append(" note=").Append(note.data.note ?? "--");
+        builder.Append(" time=").Append(note.data.time.ToString("F3", CultureInfo.InvariantCulture));
+        builder.Append(" reqPluck=").Append(note.data.requiresPluck);
+        builder.Append(" resolved=").Append(note.IsResolved);
+        return builder.ToString();
+    }
+
+    private static string NormalizeDetectorEventSourceLabel(string source)
+    {
+        if (string.IsNullOrWhiteSpace(source))
+            return "Other";
+
+        string[] rawParts = source.Split(new[] { '+', ',', ';', '|' }, StringSplitOptions.RemoveEmptyEntries);
+        List<string> normalizedParts = new List<string>();
+        HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < rawParts.Length; i++)
+        {
+            string token = rawParts[i]?.Trim();
+            if (string.IsNullOrWhiteSpace(token))
+                continue;
+
+            string normalizedToken;
+            switch (token.ToLowerInvariant())
+            {
+                case "ai":
+                case "deep":
+                    normalizedToken = "AI";
+                    break;
+                case "fast-chord":
+                case "fast chord":
+                    normalizedToken = "Fast Chord";
+                    break;
+                case "fast-single":
+                case "fast single":
+                    normalizedToken = "Fast Single";
+                    break;
+                case "fast-continuous":
+                case "fast continuous":
+                case "continuous":
+                    normalizedToken = "Fast Continuous";
+                    break;
+                default:
+                    normalizedToken = token;
+                    break;
+            }
+
+            if (seen.Add(normalizedToken))
+                normalizedParts.Add(normalizedToken);
+        }
+
+        return normalizedParts.Count == 0 ? "Other" : string.Join(" + ", normalizedParts);
+    }
+
+    private static string BuildDetectorAcceptanceSourceLabel(string source, bool viaHighStringRescue = false)
+    {
+        string normalized = NormalizeDetectorEventSourceLabel(source);
+        return viaHighStringRescue ? $"High String Rescue ({normalized})" : normalized;
+    }
+
+    private void ResetNotesDetectorAcceptanceSource()
+    {
+        latestNotesDetectorAcceptanceSourceText = "--";
+    }
+
+    private void RecordNotesDetectorAcceptanceSource(string source)
+    {
+        if (!notesDetectorGameplayTestActive)
+            return;
+
+        latestNotesDetectorAcceptanceSourceText = string.IsNullOrWhiteSpace(source) ? "--" : source;
+    }
+
+    private void LogChordMatchAttempt(string stage, GameplayNoteState note, NoteEvent ev, List<GameplayNoteState> chordStates, List<int> consumeKeys, string detail)
+    {
+        if (!Application.isEditor || !notesDetectorGameplayTestActive)
+            return;
+
+        string eventNotes = ev != null && ev.pitches != null && ev.pitches.Count > 0 ? FormatMidiSetCsv(ev.pitches) : "--";
+        string eventSource = ev != null ? NormalizeDetectorEventSourceLabel(ev.source) : "--";
+        string chordNotes = chordStates != null && chordStates.Count > 0
+            ? string.Join(" || ", chordStates.Select(DescribeGameplayNoteStateForDetectorLog))
+            : "--";
+        string keys = consumeKeys != null && consumeKeys.Count > 0 ? string.Join(",", consumeKeys) : "--";
+        string eventTime = ev != null ? ev.time.ToString("F3", CultureInfo.InvariantCulture) : "--";
+        LogNotesDetectorEditor($"CHORD_{stage} target=[{DescribeGameplayNoteStateForDetectorLog(note)}] chordStates=[{chordNotes}] eventTime={eventTime} eventNotes={eventNotes} eventSource={eventSource} consumeKeys={keys} detail={detail}");
+    }
+
+    private void CaptureNotesDetectorGameplayReturnState()
+    {
+        notesDetectorGameplayReturnSongEntry = currentSongEntry;
+        notesDetectorGameplayReturnSelectedMusicXmlPartId = selectedMusicXmlPartId ?? string.Empty;
+        notesDetectorGameplayReturnUseAutoTrackSelection = useAutoTrackSelection;
+        notesDetectorGameplayReturnNoteByNoteModeEnabled = noteByNoteModeEnabled;
+        notesDetectorGameplayReturnHeroModeEnabled = heroModeEnabled;
+        notesDetectorGameplayReturnRenderMode = renderMode;
+    }
+
+    private void StartNotesDetectorGameplayTest()
+    {
+        string definitionPath = GetNotesDetectorTestCatalogPath();
+        if (!NotesDetectorTestSongLoader.TryLoadSong(definitionPath, selectedNotesDetectorTestId, out LoadedNotesDetectorTestSong loadedSong, out string loadError))
+        {
+            Debug.LogWarning($"[GuitarBridgeServer] Detector gameplay test load failed: {loadError}");
+            LogNotesDetectorEditor($"TEST_LOAD_FAILED path={definitionPath} error={loadError}");
+            return;
+        }
+
+        CaptureNotesDetectorGameplayReturnState();
+        LogNotesDetectorEditor($"TEST_START song={loadedSong.DisplayName} path={definitionPath} notes={loadedSong.Notes?.Count ?? 0}");
+
+        showToneLab = false;
+        HideToneLabUi();
+        notesDetectorGameplayTestActive = true;
+        showNotesDetectorTestMenu = false;
+        showNotesDetectorTestSelectionPopup = false;
+        showNotesDetectorRoutinePopup = false;
+        notesDetectorRoutineStageIndex = 0;
+        notesDetectorRoutineMatchedSinceTime = -1f;
+        notesDetectorRoutineOpenedTime = 0f;
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        showSongSettings = false;
+        showSongSelection = false;
+        songSelectionSongConfirmed = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        showGameModes = false;
+        showHeroModeSettings = false;
+        showLoopSettings = false;
+        showLoopPausePopup = false;
+        showRocksmithDifficultyPopup = false;
+        showStartupTuningReminder = false;
+        resumeGameplayAfterStartupTuningReminder = false;
+        loopSettingsOpenedFromGameModes = false;
+        selectedPauseActionIndex = 8;
+        selectedSongEndActionIndex = 0;
+        selectedLoopPausePopupIndex = 0;
+        loopSettingsPreviewPlaying = false;
+        loopRestartPauseRemainingSeconds = 0f;
+        gameplayMode = GuitarGameplayMode.Guitar;
+        renderMode = GuitarRenderMode.Highway3D;
+        noteByNoteModeEnabled = true;
+        heroModeEnabled = false;
+        songPlaybackAudioMode = SongPlaybackAudioMode.Generated;
+        scoreSaveInvalidated = true;
+        currentLoadedTrackIndex = -1;
+        midiTrackIndex = -1;
+        useAutoTrackSelection = true;
+        selectedMusicXmlPartId = string.Empty;
+        currentSongPartSummaries.Clear();
+        latestDetectedPitches.Clear();
+        recentNoteEvents.Clear();
+        latestNoteEventId = 0;
+        latestEventNotesText = "--";
+        ResetNotesDetectorAcceptanceSource();
+        latestPacketHadEvent = false;
+        currentSongEntry = new SongLibraryEntry
+        {
+            SongId = "__detector_test__",
+            LibraryType = SongLibraryType.Guitar,
+            DisplayName = string.IsNullOrWhiteSpace(loadedSong.DisplayName) ? "Detection Check" : loadedSong.DisplayName,
+            Subtitle = string.IsNullOrWhiteSpace(loadedSong.CategoryTitle) ? "Detector Test" : loadedSong.CategoryTitle,
+            SongDirectory = Path.Combine(ExternalContentPaths.PersistentRoot, NotesDetectorTestSongFolderName),
+            MetadataPath = GetNotesDetectorTestMetadataPath(),
+            PrimaryNotationPath = definitionPath,
+            PrimaryNotationKind = SongNotationSourceKind.None,
+            DifficultyDisplayLabel = "Detector"
+        };
+
+        string metadataDirectory = Path.GetDirectoryName(currentSongEntry.MetadataPath);
+        if (!string.IsNullOrWhiteSpace(metadataDirectory))
+            Directory.CreateDirectory(metadataDirectory);
+
+        ResetSessionScoreState();
+        ClearNoteByNoteWaitingState();
+        SetSongEndState(false);
+        InitializeSongMetadataAndAudio();
+
+        chartNotes = loadedSong.Notes ?? new List<NoteData>();
+        currentArpeggioGuides = new List<ArpeggioGuideData>();
+        chartNoteById.Clear();
+        for (int i = 0; i < chartNotes.Count; i++)
+        {
+            NoteData note = chartNotes[i];
+            if (note.id < 0)
+                note.id = i;
+            chartNotes[i] = note;
+            chartNoteById[note.id] = note;
+        }
+
+        if (Application.isEditor)
+        {
+            for (int i = 0; i < chartNotes.Count; i++)
+            {
+                NoteData note = chartNotes[i];
+                LogNotesDetectorEditor($"TEST_NOTE index={i} id={note.id} chord={note.chordId} string={note.stringIdx} fret={note.fret} note={note.note ?? "--"} time={note.time.ToString("F3", CultureInfo.InvariantCulture)} duration={note.duration.ToString("F3", CultureInfo.InvariantCulture)}");
+            }
+        }
+
+        noteStates = chartNotes.Select(note => new GameplayNoteState(note)).ToList();
+        activeStringBasePitch = (int[])StringTuningUtils.StandardGuitarTuning.Clone();
+        GenerateTabSections();
+        ResetActiveRendererContent();
+
+        songTimer = -songStartDelaySeconds;
+        audioSongTimer = -songStartDelaySeconds;
+        isPaused = false;
+        MarkDetectorHintDirty();
+        ApplyPlaybackSpeedToAudio();
+        SyncAudioToSongTimer(playImmediately: false, forceSeek: true);
+    }
+
+    private void ExitNotesDetectorGameplayTest(bool reopenDetectorMenu)
+    {
+        LogNotesDetectorEditor($"TEST_EXIT reopenMenu={reopenDetectorMenu} songTimer={songTimer.ToString("F3", CultureInfo.InvariantCulture)}");
+        notesDetectorGameplayTestActive = false;
+        showNotesDetectorRoutinePopup = false;
+        notesDetectorRoutineStageIndex = 0;
+        notesDetectorRoutineMatchedSinceTime = -1f;
+        notesDetectorRoutineOpenedTime = 0f;
+        ResetNotesDetectorAcceptanceSource();
+        ClearNoteByNoteWaitingState();
+
+        SongLibraryEntry restoreSongEntry = notesDetectorGameplayReturnSongEntry;
+        string restoreSelectedPartId = notesDetectorGameplayReturnUseAutoTrackSelection
+            ? null
+            : notesDetectorGameplayReturnSelectedMusicXmlPartId;
+        bool restoreNoteByNoteMode = notesDetectorGameplayReturnNoteByNoteModeEnabled;
+        bool restoreHeroMode = notesDetectorGameplayReturnHeroModeEnabled;
+        GuitarRenderMode restoreRenderMode = notesDetectorGameplayReturnRenderMode;
+
+        notesDetectorGameplayReturnSongEntry = null;
+        notesDetectorGameplayReturnSelectedMusicXmlPartId = string.Empty;
+        notesDetectorGameplayReturnUseAutoTrackSelection = true;
+        notesDetectorGameplayReturnNoteByNoteModeEnabled = false;
+        notesDetectorGameplayReturnHeroModeEnabled = false;
+
+        if (restoreSongEntry != null)
+        {
+            LoadSongFromEntry(restoreSongEntry, restoreSelectedPartId);
+        }
+        else
+        {
+            currentSongEntry = null;
+            LoadTestSong(preservePauseUiState: true);
+        }
+
+        noteByNoteModeEnabled = restoreNoteByNoteMode;
+        heroModeEnabled = restoreHeroMode;
+        renderMode = restoreRenderMode;
+        ClearNoteByNoteWaitingState();
+        SetSongEndState(false);
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false, forceSeek: true);
+
+        if (reopenDetectorMenu)
+            OpenNotesDetectorTestFromUi();
+        else
+            CloseNotesDetectorTestFromUi();
     }
 
     public void OpenSongSelectionFromUi()
@@ -9090,7 +10038,7 @@ private void OpenOrFocusToneLab()
         SeekSongTimeInternal(
             targetTime,
             updateSelectedMarker: false,
-            preserveResolvedProgressOnRewind: false,
+            preserveResolvedProgressOnRewind: true,
             clearLoopRestartPause: false,
             syncAudioAfterSeek: false,
             playImmediatelyAfterSeek: false);
@@ -9499,6 +10447,7 @@ private void OpenOrFocusToneLab()
 
     private void OnApplicationQuit()
     {
+        StopLoopCountdownEditorLogSession("application-quit");
         isRunning = false;
         if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
         if (udpClient != null) udpClient.Close();
@@ -9510,6 +10459,7 @@ private void OpenOrFocusToneLab()
 
     private void OnDestroy()
     {
+        StopLoopCountdownEditorLogSession("destroy");
         CloseDetectorHintClient();
         StopArcadeMidiInput();
         ShutdownNativeNotesDetectorIfRunning();
@@ -9519,6 +10469,7 @@ private void OpenOrFocusToneLab()
 
     private void OnDisable()
     {
+        StopLoopCountdownEditorLogSession("disable");
         CloseDetectorHintClient();
         StopArcadeMidiInput();
         ShutdownNativeNotesDetectorIfRunning();
@@ -9668,9 +10619,17 @@ private void OpenOrFocusToneLab()
     private void EnsureNativeNotesDetectorBridge()
     {
         if (nativeNotesDetectorBridge != null)
+        {
+            if (Application.isEditor && !string.IsNullOrWhiteSpace(notesDetectorEditorLogPath))
+                nativeNotesDetectorBridge.SetDebugLogPath(notesDetectorEditorLogPath);
             return;
+        }
 
         nativeNotesDetectorBridge = new NativeNotesDetectorBridge();
+        if (Application.isEditor && !string.IsNullOrWhiteSpace(notesDetectorEditorLogPath))
+            nativeNotesDetectorBridge.Initialize();
+        if (Application.isEditor && !string.IsNullOrWhiteSpace(notesDetectorEditorLogPath))
+            nativeNotesDetectorBridge.SetDebugLogPath(notesDetectorEditorLogPath);
     }
 
     private void RefreshNativeNotesDetectorDeviceList()
@@ -10251,6 +11210,8 @@ private void OpenOrFocusToneLab()
     // =========================================================
     private void UpdateGameplayStates()
     {
+        HashSet<int> processedChordIds = new HashSet<int>();
+
         for (int i = 0; i < noteStates.Count; i++)
         {
             GameplayNoteState noteState = noteStates[i];
@@ -10258,6 +11219,63 @@ private void OpenOrFocusToneLab()
             if (noteState.IsResolved)
             {
                 noteState.isJudgeable = false;
+                continue;
+            }
+
+            if (noteState.data.requiresPluck && noteState.data.chordId >= 0)
+            {
+                if (!processedChordIds.Add(noteState.data.chordId))
+                    continue;
+
+                PopulateUnresolvedChordScratchStates(noteState.data.chordId);
+                if (chordMatchScratchStates.Count == 0)
+                    continue;
+
+                float chordTime = noteState.data.time;
+                float chordHighStringExtraLate = 0f;
+                for (int chordIndex = 0; chordIndex < chordMatchScratchStates.Count; chordIndex++)
+                {
+                    GameplayNoteState chordState = chordMatchScratchStates[chordIndex];
+                    chordState.isJudgeable = IsNoteJudgeableNow(chordState);
+                    if (chordState.data.stringIdx >= 4)
+                        chordHighStringExtraLate = Mathf.Max(chordHighStringExtraLate, highStringExtraLate);
+                }
+
+                if (songTimer < chordTime - hitWindowEarly)
+                    continue;
+
+                if (TryFindMatchingChordEvent(noteState, out NoteEvent matchedChordEvent, out float matchedChordEventTime))
+                {
+                    for (int keyIndex = 0; keyIndex < chordMatchScratchConsumeKeys.Count; keyIndex++)
+                        matchedChordEvent.consumedKeys.Add(chordMatchScratchConsumeKeys[keyIndex]);
+
+                    RecordNotesDetectorAcceptanceSource(BuildDetectorAcceptanceSourceLabel(matchedChordEvent?.source));
+
+                    for (int chordIndex = 0; chordIndex < chordMatchScratchStates.Count; chordIndex++)
+                    {
+                        GameplayNoteState chordState = chordMatchScratchStates[chordIndex];
+                        chordState.result = GameplayNoteResult.Hit;
+                        chordState.resolvedAt = songTimer;
+                        chordState.isJudgeable = false;
+                    }
+
+                    continue;
+                }
+
+                float chordLatestJudgeTime = chordTime + hitWindowLate + judgmentGrace;
+                if (songTimer > chordLatestJudgeTime + chordHighStringExtraLate)
+                {
+                    for (int chordIndex = 0; chordIndex < chordMatchScratchStates.Count; chordIndex++)
+                    {
+                        GameplayNoteState chordState = chordMatchScratchStates[chordIndex];
+                        chordState.result = GameplayNoteResult.Missed;
+                        chordState.resolvedAt = songTimer;
+                        chordState.isJudgeable = false;
+                    }
+
+                    LogMissReason(noteState);
+                }
+
                 continue;
             }
 
@@ -10271,26 +11289,34 @@ private void OpenOrFocusToneLab()
             float matchedEventTime;
 
             bool matched = false;
+            bool matchedViaHighStringRescue = false;
+            string matchedSourceLabel = string.Empty;
 
             if (noteState.data.requiresPluck)
             {
-                matched = TryFindMatchingNoteEvent(noteState, out matchedEvent, out consumeKey, out matchedEventTime) ||
-                          TryFindHighStringSupportEvent(noteState, out matchedEvent, out consumeKey);
+                matched = TryFindMatchingNoteEvent(noteState, out matchedEvent, out consumeKey, out matchedEventTime);
+                if (!matched)
+                {
+                    matched = TryFindHighStringSupportEvent(noteState, out matchedEvent, out consumeKey);
+                    matchedViaHighStringRescue = matched;
+                }
 
                 if (matched)
                 {
                     matchedEvent.consumedKeys.Add(consumeKey);
+                    matchedSourceLabel = BuildDetectorAcceptanceSourceLabel(matchedEvent?.source, matchedViaHighStringRescue);
                 }
             }
             else
             {
-                matched = TryFindLegatoMatch(noteState, out matchedEventTime);
+                matched = TryFindLegatoMatch(noteState, out matchedEventTime, out matchedSourceLabel);
                 matchedEvent = null;
                 consumeKey = -1;
             }
 
             if (matched)
             {
+                RecordNotesDetectorAcceptanceSource(matchedSourceLabel);
                 noteState.result = GameplayNoteResult.Hit;
                 noteState.resolvedAt = songTimer;
                 noteState.isJudgeable = false;
@@ -12143,6 +13169,133 @@ private void OpenOrFocusToneLab()
                sustainBeats >= ArcadeMinimumSustainBeats;
     }
 
+    private void PopulateUnresolvedChordScratchStates(int chordId)
+    {
+        chordMatchScratchStates.Clear();
+
+        if (chordId < 0 || noteStates == null)
+            return;
+
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState chordState = noteStates[i];
+            if (chordState == null || chordState.IsResolved || chordState.data.chordId != chordId)
+                continue;
+
+            chordMatchScratchStates.Add(chordState);
+        }
+    }
+
+    private bool TryFindMatchingChordEvent(GameplayNoteState note, out NoteEvent matchedEvent, out float matchedEventTime)
+    {
+        matchedEvent = null;
+        matchedEventTime = -999f;
+        chordMatchScratchConsumeKeys.Clear();
+
+        if (note == null || note.data.chordId < 0)
+            return false;
+
+        PopulateUnresolvedChordScratchStates(note.data.chordId);
+        if (chordMatchScratchStates.Count == 0)
+            return false;
+
+        float extraEarly = 0f;
+        float extraLate = 0f;
+        for (int i = 0; i < chordMatchScratchStates.Count; i++)
+        {
+            GameplayNoteState chordState = chordMatchScratchStates[i];
+            if (chordState.data.stringIdx >= 4)
+            {
+                extraEarly = Mathf.Max(extraEarly, highStringExtraEarly);
+                extraLate = Mathf.Max(extraLate, highStringExtraLate);
+            }
+        }
+
+        float windowStart = note.data.time - eventMatchEarly - eventTimeSlack - extraEarly;
+        float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + extraLate;
+        float bestDistance = float.MaxValue;
+        if (Application.isEditor && notesDetectorGameplayTestActive)
+            LogChordMatchAttempt("SEARCH_START", note, null, chordMatchScratchStates, null, $"windowStart={windowStart.ToString("F3", CultureInfo.InvariantCulture)} windowEnd={windowEnd.ToString("F3", CultureInfo.InvariantCulture)} recentEvents={recentNoteEvents.Count}");
+
+        List<int> bestConsumeKeys = chordMatchScratchConsumeKeys;
+        List<int> candidateConsumeKeys = new List<int>();
+
+        for (int i = recentNoteEvents.Count - 1; i >= 0; i--)
+        {
+            NoteEvent ev = recentNoteEvents[i];
+            if (ev.time < windowStart)
+                break;
+            if (ev.time > windowEnd)
+                continue;
+            if (ev.pitches == null || ev.pitches.Count < chordMatchScratchStates.Count)
+            {
+                if (Application.isEditor && notesDetectorGameplayTestActive)
+                    LogChordMatchAttempt("CANDIDATE_REJECT", note, ev, chordMatchScratchStates, null, "reason=insufficient-pitch-count");
+                continue;
+            }
+
+            candidateConsumeKeys.Clear();
+            bool validEvent = true;
+            string invalidReason = string.Empty;
+
+            for (int chordIndex = 0; chordIndex < chordMatchScratchStates.Count; chordIndex++)
+            {
+                GameplayNoteState chordState = chordMatchScratchStates[chordIndex];
+                if (!TryGetAcceptedConsumeKeyExact(chordState, ev.pitches, out int acceptedConsumeKey))
+                {
+                    validEvent = false;
+                    invalidReason = $"no-exact-match-for-{DescribeGameplayNoteStateForDetectorLog(chordState)}";
+                    break;
+                }
+
+                if (ev.consumedKeys.Contains(acceptedConsumeKey) || candidateConsumeKeys.Contains(acceptedConsumeKey))
+                {
+                    validEvent = false;
+                    invalidReason = $"consume-key-collision-{acceptedConsumeKey}";
+                    break;
+                }
+
+                candidateConsumeKeys.Add(acceptedConsumeKey);
+            }
+
+            if (!validEvent)
+            {
+                if (Application.isEditor && notesDetectorGameplayTestActive)
+                    LogChordMatchAttempt("CANDIDATE_REJECT", note, ev, chordMatchScratchStates, candidateConsumeKeys, $"reason={invalidReason}");
+                continue;
+            }
+
+            float distance = Mathf.Abs(ev.time - note.data.time);
+            if (distance >= bestDistance)
+            {
+                if (Application.isEditor && notesDetectorGameplayTestActive)
+                    LogChordMatchAttempt("CANDIDATE_REJECT", note, ev, chordMatchScratchStates, candidateConsumeKeys, $"reason=farther distance={distance.ToString("F3", CultureInfo.InvariantCulture)} bestDistance={bestDistance.ToString("F3", CultureInfo.InvariantCulture)}");
+                continue;
+            }
+
+            matchedEvent = ev;
+            matchedEventTime = ev.time;
+            bestDistance = distance;
+            bestConsumeKeys.Clear();
+            bestConsumeKeys.AddRange(candidateConsumeKeys);
+            if (Application.isEditor && notesDetectorGameplayTestActive)
+                LogChordMatchAttempt("CANDIDATE_ACCEPT", note, ev, chordMatchScratchStates, candidateConsumeKeys, $"distance={distance.ToString("F3", CultureInfo.InvariantCulture)}");
+        }
+
+        if (matchedEvent == null)
+        {
+            chordMatchScratchConsumeKeys.Clear();
+            if (Application.isEditor && notesDetectorGameplayTestActive)
+                LogChordMatchAttempt("SEARCH_END", note, null, chordMatchScratchStates, null, "result=no-match");
+        }
+        else if (Application.isEditor && notesDetectorGameplayTestActive)
+        {
+            LogChordMatchAttempt("SEARCH_END", note, matchedEvent, chordMatchScratchStates, chordMatchScratchConsumeKeys, "result=matched");
+        }
+
+        return matchedEvent != null;
+    }
+
     private bool TryFindMatchingNoteEvent(GameplayNoteState note, out NoteEvent matchedEvent, out int consumeKey, out float matchedEventTime)
     {
         matchedEvent = null;
@@ -12179,9 +13332,10 @@ private void OpenOrFocusToneLab()
         return matchedEvent != null;
     }
 
-    private bool TryFindLegatoMatch(GameplayNoteState note, out float matchedTime)
+    private bool TryFindLegatoMatch(GameplayNoteState note, out float matchedTime, out string matchedSourceLabel)
     {
         matchedTime = -999f;
+        matchedSourceLabel = string.Empty;
 
         if (note.data.linkedFromNoteId >= 0)
         {
@@ -12198,6 +13352,7 @@ private void OpenOrFocusToneLab()
             if (ContainsAcceptedPitch(note, latestDetectedPitches))
             {
                 matchedTime = songTimer;
+                matchedSourceLabel = "Fast Continuous";
                 return true;
             }
         }
@@ -12213,6 +13368,7 @@ private void OpenOrFocusToneLab()
             if (ContainsAcceptedPitch(note, ev.pitches))
             {
                 matchedTime = ev.time;
+                matchedSourceLabel = BuildDetectorAcceptanceSourceLabel(ev.source);
                 return true;
             }
         }
@@ -12282,7 +13438,17 @@ private void OpenOrFocusToneLab()
         return TryGetAcceptedConsumeKey(note, pitches, out _);
     }
 
+    private bool TryGetAcceptedConsumeKeyExact(GameplayNoteState note, HashSet<int> pitches, out int consumeKey)
+    {
+        return TryGetAcceptedConsumeKey(note, pitches, allowPitchClassFallback: false, out consumeKey);
+    }
+
     private bool TryGetAcceptedConsumeKey(GameplayNoteState note, HashSet<int> pitches, out int consumeKey)
+    {
+        return TryGetAcceptedConsumeKey(note, pitches, allowPitchClassFallback: false, out consumeKey);
+    }
+
+    private bool TryGetAcceptedConsumeKey(GameplayNoteState note, HashSet<int> pitches, bool allowPitchClassFallback, out int consumeKey)
     {
         consumeKey = -1;
         if (pitches == null || pitches.Count == 0)
@@ -12300,6 +13466,9 @@ private void OpenOrFocusToneLab()
             consumeKey = bentTargetPitch;
             return true;
         }
+
+        if (!allowPitchClassFallback)
+            return false;
 
         int baseModulo = baseTargetPitch % 12;
         if (pitches.Any(p => p % 12 == baseModulo))
@@ -12406,6 +13575,9 @@ private void OpenOrFocusToneLab()
         if (string.IsNullOrEmpty(payload))
             return;
 
+        if (Application.isEditor && notesDetectorGameplayTestActive)
+            LogNotesDetectorEditor($"HINT_SEND songTimer={songTimer.ToString("F3", CultureInfo.InvariantCulture)} payload={payload}");
+
         if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
         {
             EnsureNativeNotesDetectorBridge();
@@ -12449,6 +13621,14 @@ private void OpenOrFocusToneLab()
         if (windows.Count == 0)
             return $"SYNC|{currentSongTime.ToString("F3", CultureInfo.InvariantCulture)}";
 
+        if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
+            return BuildNativeDetectorHintPayload(currentSongTime, windows);
+
+        return BuildLegacyDetectorHintPayload(currentSongTime, windows);
+    }
+
+    private string BuildLegacyDetectorHintPayload(float currentSongTime, List<DetectorHintWindow> windows)
+    {
         StringBuilder builder = new StringBuilder();
         builder.Append("HINT|");
         builder.Append(currentSongTime.ToString("F3", CultureInfo.InvariantCulture));
@@ -12471,6 +13651,37 @@ private void OpenOrFocusToneLab()
         return builder.ToString();
     }
 
+    private string BuildNativeDetectorHintPayload(float currentSongTime, List<DetectorHintWindow> windows)
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.Append("HINT|");
+        builder.Append(currentSongTime.ToString("F3", CultureInfo.InvariantCulture));
+
+        for (int i = 0; i < windows.Count; i++)
+        {
+            DetectorHintWindow window = windows[i];
+            string notesCsv = BuildDetectorHintMidiCsv(window.pitches);
+            if (string.IsNullOrEmpty(notesCsv))
+                continue;
+
+            builder.Append('|');
+            builder.Append(window.startTime.ToString("F3", CultureInfo.InvariantCulture));
+            builder.Append(':');
+            builder.Append(window.endTime.ToString("F3", CultureInfo.InvariantCulture));
+            builder.Append(':');
+            builder.Append(notesCsv);
+
+            string expectedNotesCsv = BuildDetectorHintExpectedNotesCsv(window.expectedNotes);
+            if (!string.IsNullOrEmpty(expectedNotesCsv))
+            {
+                builder.Append(':');
+                builder.Append(expectedNotesCsv);
+            }
+        }
+
+        return builder.ToString();
+    }
+
     private string BuildDetectorHintMidiCsv(IEnumerable<int> midis)
     {
         if (midis == null)
@@ -12485,6 +13696,36 @@ private void OpenOrFocusToneLab()
                 .Select(midi => useNumericMidi
                     ? midi.ToString(CultureInfo.InvariantCulture)
                     : GetNoteNameFromMidi(midi)));
+    }
+
+    private string BuildDetectorHintExpectedNotesCsv(IEnumerable<DetectorHintExpectedNote> expectedNotes)
+    {
+        if (expectedNotes == null)
+            return string.Empty;
+
+        StringBuilder builder = new StringBuilder();
+        bool first = true;
+        foreach (DetectorHintExpectedNote expectedNote in expectedNotes)
+        {
+            if (expectedNote.midi < 0 || expectedNote.stringIndex < 0 || expectedNote.openMidi < 0)
+                continue;
+
+            if (!first)
+                builder.Append(',');
+
+            builder.Append(expectedNote.midi.ToString(CultureInfo.InvariantCulture));
+            builder.Append('~');
+            builder.Append(expectedNote.stringIndex.ToString(CultureInfo.InvariantCulture));
+            builder.Append('~');
+            builder.Append(expectedNote.fret.ToString(CultureInfo.InvariantCulture));
+            builder.Append('~');
+            builder.Append(expectedNote.openMidi.ToString(CultureInfo.InvariantCulture));
+            builder.Append('~');
+            builder.Append(expectedNote.flags.ToString(CultureInfo.InvariantCulture));
+            first = false;
+        }
+
+        return builder.ToString();
     }
 
     private bool TryBuildNotesDetectorTestHintPayload(float currentSongTime, out string payload)
@@ -12587,7 +13828,9 @@ private void OpenOrFocusToneLab()
             DetectorHintWindow current = windows[writeIndex];
             DetectorHintWindow next = windows[readIndex];
 
-            if (AreHintPitchSetsEqual(current.pitches, next.pitches) && next.startTime <= current.endTime + 0.001f)
+            if (AreHintPitchSetsEqual(current.pitches, next.pitches) &&
+                AreHintExpectedNotesEqual(current.expectedNotes, next.expectedNotes) &&
+                next.startTime <= current.endTime + 0.001f)
             {
                 current.endTime = Mathf.Max(current.endTime, next.endTime);
                 windows[writeIndex] = current;
@@ -12609,6 +13852,28 @@ private void OpenOrFocusToneLab()
         if (a == null || b == null || a.Count != b.Count)
             return false;
         return a.SetEquals(b);
+    }
+
+    private bool AreHintExpectedNotesEqual(DetectorHintExpectedNote[] a, DetectorHintExpectedNote[] b)
+    {
+        if (ReferenceEquals(a, b))
+            return true;
+        if (a == null || b == null || a.Length != b.Length)
+            return false;
+
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (a[i].midi != b[i].midi ||
+                a[i].stringIndex != b[i].stringIndex ||
+                a[i].fret != b[i].fret ||
+                a[i].openMidi != b[i].openMidi ||
+                a[i].flags != b[i].flags)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void AppendDetectorHintWindowsForNote(GameplayNoteState noteState, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)
@@ -12655,14 +13920,18 @@ private void OpenOrFocusToneLab()
 
         if (!hasSegments)
         {
-            AddDetectorHintWindow(noteStart - detectorHintLookbackSeconds, noteEnd, GetPitchSetForMidi(GetNoteMidiFromStringFret(note.stringIdx, note.fret)), rangeStart, rangeEnd, output);
+            int noteMidi = GetNoteMidiFromStringFret(note.stringIdx, note.fret);
+            DetectorHintExpectedNote expectedNote = BuildDetectorHintExpectedNote(note, noteMidi, note.fret, null);
+            AddDetectorHintWindow(noteStart - detectorHintLookbackSeconds, noteEnd, GetPitchSetForMidi(noteMidi), expectedNote, rangeStart, rangeEnd, output);
             return;
         }
 
         if (noteEnd > finalSegmentEnd + 0.001f)
         {
             int tailMidi = GetTailMidiForNote(note);
-            AddDetectorHintWindow(finalSegmentEnd, noteEnd, GetPitchSetForMidi(tailMidi), rangeStart, rangeEnd, output);
+            float tailFret = tailMidi - GetStringBasePitch(note.stringIdx);
+            DetectorHintExpectedNote expectedNote = BuildDetectorHintExpectedNote(note, tailMidi, tailFret, null);
+            AddDetectorHintWindow(finalSegmentEnd, noteEnd, GetPitchSetForMidi(tailMidi), expectedNote, rangeStart, rangeEnd, output);
         }
     }
 
@@ -12678,10 +13947,13 @@ private void OpenOrFocusToneLab()
             case NoteTechniqueSegmentType.Vibrato:
             default:
                 int sustainMidi = Mathf.RoundToInt(EvaluateTechniqueSegmentMidi(note.stringIdx, segment, 1f));
+                float sustainFret = EvaluateTechniqueSegmentFret(segment, 1f);
+                DetectorHintExpectedNote expectedNote = BuildDetectorHintExpectedNote(note, sustainMidi, sustainFret, segment);
                 AddDetectorHintWindow(
                     includeOnsetLookback ? segmentStart - detectorHintLookbackSeconds : segmentStart,
                     segmentEnd,
                     GetPitchSetForMidi(sustainMidi),
+                    expectedNote,
                     rangeStart,
                     rangeEnd,
                     output);
@@ -12709,16 +13981,23 @@ private void OpenOrFocusToneLab()
             if (includeOnsetLookback && Mathf.Abs(bucketStart - segmentStart) <= 0.0001f)
                 sendStart -= detectorHintLookbackSeconds;
 
-            AddDetectorHintWindow(sendStart, sampleTime, GetPitchSetForMidi(bucketMidi), rangeStart, rangeEnd, output);
+            float bucketFret = EvaluateTechniqueSegmentFret(segment, Mathf.Clamp01((bucketStart - segmentStart) / duration));
+            DetectorHintExpectedNote expectedNote = BuildDetectorHintExpectedNote(note, bucketMidi, bucketFret, segment);
+            AddDetectorHintWindow(sendStart, sampleTime, GetPitchSetForMidi(bucketMidi), expectedNote, rangeStart, rangeEnd, output);
             bucketStart = sampleTime;
             bucketMidi = sampleMidi;
         }
     }
 
+    private float EvaluateTechniqueSegmentFret(NoteTechniqueSegmentData segment, float t)
+    {
+        return Mathf.Lerp(segment.startFret, segment.endFret, Mathf.Clamp01(t));
+    }
+
     private float EvaluateTechniqueSegmentMidi(int stringIdx, NoteTechniqueSegmentData segment, float t)
     {
         float clampedT = Mathf.Clamp01(t);
-        float fret = Mathf.Lerp(segment.startFret, segment.endFret, clampedT);
+        float fret = EvaluateTechniqueSegmentFret(segment, clampedT);
         float bend = Mathf.Lerp(segment.startBend, segment.endBend, clampedT);
         return GetStringBasePitch(stringIdx) + fret + bend;
     }
@@ -12743,7 +14022,29 @@ private void OpenOrFocusToneLab()
         return new HashSet<int> { midi };
     }
 
-    private void AddDetectorHintWindow(float startTime, float endTime, HashSet<int> pitches, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)
+    private DetectorHintExpectedNote BuildDetectorHintExpectedNote(NoteData note, int midi, float fretValue, NoteTechniqueSegmentData? segment)
+    {
+        DetectorHintNoteFlags flags = DetectorHintNoteFlags.None;
+
+        if (!note.requiresPluck || note.isLegato || note.technique == NoteTechnique.HammerOn || note.technique == NoteTechnique.PullOff)
+            flags |= DetectorHintNoteFlags.Legato;
+
+        bool bendLike = note.technique == NoteTechnique.Bend || note.bendStep > 0f || note.bendPreBend || note.bendRelease ||
+                        (segment.HasValue && segment.Value.type == NoteTechniqueSegmentType.Bend);
+        if (bendLike)
+            flags |= DetectorHintNoteFlags.Bend;
+
+        bool slideLike = note.technique == NoteTechnique.Slide || note.slideTargetFret >= 0 ||
+                         (segment.HasValue && segment.Value.type == NoteTechniqueSegmentType.Slide);
+        if (slideLike)
+            flags |= DetectorHintNoteFlags.Slide;
+
+        int openMidi = GetStringBasePitch(note.stringIdx);
+        int fret = Mathf.Max(0, Mathf.RoundToInt(fretValue));
+        return new DetectorHintExpectedNote(midi, note.stringIdx, fret, openMidi, flags);
+    }
+
+    private void AddDetectorHintWindow(float startTime, float endTime, HashSet<int> pitches, DetectorHintExpectedNote expectedNote, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)
     {
         if (pitches == null || pitches.Count == 0)
             return;
@@ -12753,7 +14054,7 @@ private void OpenOrFocusToneLab()
         if (clippedEnd <= clippedStart + 0.0001f)
             return;
 
-        output.Add(new DetectorHintWindow(clippedStart, clippedEnd, pitches));
+        output.Add(new DetectorHintWindow(clippedStart, clippedEnd, pitches, new[] { expectedNote }));
     }
 
     private int GetNoteMidiFromStringFret(int stringIdx, int fret)
@@ -12819,9 +14120,13 @@ private void ParseDetectorPacket(string detectorPacket)
         if (string.IsNullOrEmpty(detectorPacket) || detectorPacket == "--")
             return;
 
+        if (Application.isEditor && notesDetectorGameplayTestActive)
+            LogNotesDetectorEditor($"PACKET_RAW {detectorPacket}");
+
         int eventId = 0;
         float eventAge = 0f;
         string eventCsv = "--";
+        string eventSource = string.Empty;
 
         if (detectorPacket.StartsWith("A|"))
         {
@@ -12839,32 +14144,28 @@ private void ParseDetectorPacket(string detectorPacket)
                     parsedLevel /= 100f;
                 latestParsedInputLevel = Mathf.Clamp01(parsedLevel);
             }
+            if (parts.Length >= 7)
+                eventSource = parts[6];
             
             latestEventNotesText = string.IsNullOrWhiteSpace(eventCsv) ? "--" : eventCsv;
-
-            // --- BRUTE FORCE LOGGING ---
-            // If the event ID is anything greater than 0, force a yellow warning log
-            if (eventId > 0)
-            {
-                Debug.LogWarning($"<color=cyan>[RAW DETECTOR RECEIVED]</color> {detectorPacket}  ||  Parsed ID: {eventId}, Parsed Age: {eventAge:F3}");
-            }
 
             if (eventId <= 0 || string.IsNullOrWhiteSpace(eventCsv) || eventCsv == "--") return;
 
             float estimatedEventTime = GetEstimatedNoteEventSongTime(eventAge);
             
             // Log exactly what timestamp Unity is assigning this event on the timeline
-            if (TryStoreNoteEvent(eventId, estimatedEventTime, eventCsv, out NoteEvent ev))
+            if (TryStoreNoteEvent(eventId, estimatedEventTime, eventCsv, eventSource, out NoteEvent ev))
             {
                 latestPacketHadEvent = true;
                 latestEventNotesText = FormatMidiSetCsv(ev.pitches);
                 latestNoteEventId = Mathf.Max(latestNoteEventId, eventId);
-                
+                if (Application.isEditor && notesDetectorGameplayTestActive)
+                    LogNotesDetectorEditor($"EVENT_STORED id={eventId} eventAge={eventAge.ToString("F3", CultureInfo.InvariantCulture)} estimatedTime={estimatedEventTime.ToString("F3", CultureInfo.InvariantCulture)} source={NormalizeDetectorEventSourceLabel(ev.source)} pitches={latestEventNotesText}");
             }
         }
     }
 
-    private bool TryStoreNoteEvent(int id, float timeStamp, string csv, out NoteEvent storedEvent)
+    private bool TryStoreNoteEvent(int id, float timeStamp, string csv, string source, out NoteEvent storedEvent)
     {
         storedEvent = null;
         HashSet<int> pitches = new HashSet<int>();
@@ -12880,7 +14181,24 @@ private void ParseDetectorPacket(string detectorPacket)
                 existing.pitches.UnionWith(pitches);
                 existing.time = Mathf.Min(existing.time, timeStamp);
                 existing.observedAtUnscaled = Time.unscaledTime;
+                if (!string.IsNullOrWhiteSpace(source))
+                {
+                    string normalizedNew = NormalizeDetectorEventSourceLabel(source);
+                    if (string.IsNullOrWhiteSpace(existing.source))
+                    {
+                        existing.source = normalizedNew;
+                    }
+                    else
+                    {
+                        string normalizedExisting = NormalizeDetectorEventSourceLabel(existing.source);
+                        existing.source = string.Equals(normalizedExisting, normalizedNew, StringComparison.OrdinalIgnoreCase)
+                            ? normalizedExisting
+                            : $"{normalizedExisting} + {normalizedNew}";
+                    }
+                }
                 storedEvent = existing;
+                if (Application.isEditor && notesDetectorGameplayTestActive)
+                    LogNotesDetectorEditor($"EVENT_MERGED id={id} time={timeStamp.ToString("F3", CultureInfo.InvariantCulture)} source={NormalizeDetectorEventSourceLabel(existing.source)} pitches={FormatMidiSetCsv(existing.pitches)}");
                 return existing.pitches.Count > beforeCount;
             }
         }
@@ -12890,10 +14208,13 @@ private void ParseDetectorPacket(string detectorPacket)
             id = id,
             time = timeStamp,
             observedAtUnscaled = Time.unscaledTime,
+            source = NormalizeDetectorEventSourceLabel(source),
             pitches = pitches
         };
         recentNoteEvents.Add(newEv);
         storedEvent = newEv;
+        if (Application.isEditor && notesDetectorGameplayTestActive)
+            LogNotesDetectorEditor($"EVENT_NEW id={id} time={timeStamp.ToString("F3", CultureInfo.InvariantCulture)} source={NormalizeDetectorEventSourceLabel(newEv.source)} pitches={FormatMidiSetCsv(pitches)}");
         return true;
     }
 
@@ -13079,6 +14400,19 @@ private void ParseDetectorPacket(string detectorPacket)
         {
             if (!isPaused && songTimer < duration - 0.02f)
                 SetSongEndState(false);
+            return;
+        }
+
+        if (notesDetectorGameplayTestActive &&
+            !loopEnabled &&
+            !showMainMenu &&
+            !showSongSelection &&
+            !showTrackSelection &&
+            songTimer >= duration)
+        {
+            songTimer = duration;
+            audioSongTimer = duration;
+            ExitNotesDetectorGameplayTest(reopenDetectorMenu: true);
             return;
         }
 
@@ -13338,7 +14672,7 @@ private void ParseDetectorPacket(string detectorPacket)
             heroModeEnabled = multiplayerRhythmUiMode ? false : heroModeEnabled,
             heroModeHeartCount = heroModeHeartCount,
             currentHeroHeartsRemaining = GetCurrentHeroHeartsRemaining(),
-            showHighwayCharacter = multiplayerRhythmModeActive || ShouldDisplayHighwayCharacter(heroModeEnabled),
+            showHighwayCharacter = !notesDetectorGameplayTestActive && (multiplayerRhythmModeActive || ShouldDisplayHighwayCharacter(heroModeEnabled)),
             forceStandardTuning = forceStandardTuning,
             selectedPauseActionIndex = selectedPauseActionIndex,
             selectedGameModesIndex = selectedGameModesIndex,
@@ -13391,6 +14725,7 @@ private void ParseDetectorPacket(string detectorPacket)
             currentSessionArcadeCombo = arcadeComboCount,
             currentSessionArcadeMultiplier = GetArcadeScoreMultiplier(arcadeComboCount),
             noteStates = noteStates,
+            arpeggioGuides = currentArpeggioGuides,
             arcadeNoteStates = arcadeNoteStates,
             arcadeLaneCount = ArcadeLaneCount,
             selectedArcadeArrangementId = selectedArcadeArrangementId,
@@ -13424,6 +14759,8 @@ private void ParseDetectorPacket(string detectorPacket)
             showTrackSelection = showTrackSelection,
             showToneLab = showToneLab,
             showNotesDetectorTestMenu = showNotesDetectorTestMenu,
+            notesDetectorGameplayTestActive = notesDetectorGameplayTestActive,
+            showNotesDetectorTestSelectionPopup = showNotesDetectorTestSelectionPopup,
             showGlobalSettings = showGlobalSettings,
             selectedGlobalSettingsTopIndex = selectedGlobalSettingsTopIndex,
             selectedGlobalSettingsItemIndex = selectedGlobalSettingsItemIndex,
@@ -13431,6 +14768,7 @@ private void ParseDetectorPacket(string detectorPacket)
             globalSettingsTransparentBackground = globalSettingsTransparentBackground,
             showGameplayHudPreviewInMenus = gameplayHudPreviewInMenus,
             selectedNotesDetectorTestIndex = selectedNotesDetectorTestIndex,
+            selectedNotesDetectorCatalogIndex = selectedNotesDetectorCatalogIndex,
             songLibraryListTitle = GetSongLibraryListTitle(),
             songLibraryListStatusText = GetSongLibraryStatusText(),
             songLibraryBrowseModeIndex = (int)songLibraryBrowseMode,
@@ -13534,6 +14872,10 @@ private void ParseDetectorPacket(string detectorPacket)
             notesDetectorSettings = BuildNativeDetectorSettingsSnapshot(),
             notesDetectorFastNotesText = latestDetectedPitches != null && latestDetectedPitches.Count > 0 ? FormatMidiSetCsv(latestDetectedPitches) : "--",
             notesDetectorAiNotesText = string.IsNullOrWhiteSpace(latestEventNotesText) ? "--" : latestEventNotesText,
+            notesDetectorLatestAcceptanceSourceText = latestNotesDetectorAcceptanceSourceText,
+            notesDetectorAvailableTestCategories = notesDetectorSelectableTests.Select(entry => entry?.CategoryTitle ?? string.Empty).ToList(),
+            notesDetectorAvailableTestNames = notesDetectorSelectableTests.Select(entry => entry?.Label ?? string.Empty).ToList(),
+            notesDetectorAvailableTestDescriptions = notesDetectorSelectableTests.Select(entry => entry?.Description ?? string.Empty).ToList(),
             showNotesDetectorRoutinePopup = showNotesDetectorRoutinePopup,
             notesDetectorRoutineInstructionText = GetNotesDetectorRoutineInstructionText(),
             notesDetectorRoutineTargetText = GetNotesDetectorRoutineTargetText(),
@@ -13662,6 +15004,7 @@ private void ParseDetectorPacket(string detectorPacket)
         songVolumePercent = 100f;
 
         List<NoteData> loadedNotes = null;
+        List<ArpeggioGuideData> loadedArpeggioGuides = new List<ArpeggioGuideData>();
         currentArcadeChart = new ArcadeChartData();
         arcadeNoteStates = new List<ArcadeNoteState>();
         arcadeTotalChordCount = 0;
@@ -13701,6 +15044,7 @@ private void ParseDetectorPacket(string detectorPacket)
                 if (gameplayMode == GuitarGameplayMode.Arcade)
                 {
                     loadedNotes = new List<NoteData>();
+                    loadedArpeggioGuides = new List<ArpeggioGuideData>();
                     LoadArcadeSongContent(currentSongEntry);
                 }
                 else
@@ -13724,6 +15068,7 @@ private void ParseDetectorPacket(string detectorPacket)
                     try
                     {
                         loadedNotes = SongNotationFacade.LoadSong(currentSongEntry.PrimaryNotationPath, currentSongEntry.PrimaryNotationKind, midiTrackIndex);
+                        loadedArpeggioGuides = SongNotationFacade.LoadArpeggioGuides(currentSongEntry.PrimaryNotationPath, currentSongEntry.PrimaryNotationKind, midiTrackIndex);
                         Debug.Log($"Notation load attempt: {currentSongEntry.PrimaryNotationPath} ({currentSongEntry.PrimaryNotationKind})");
                     }
                     catch (Exception e)
@@ -13738,6 +15083,7 @@ private void ParseDetectorPacket(string detectorPacket)
                         try
                         {
                             loadedNotes = MusicXmlLoader.LoadMusicXmlSong(currentSongEntry.XmlPath, midiTrackIndex);
+                            loadedArpeggioGuides = new List<ArpeggioGuideData>();
                             Debug.Log($"MusicXML fallback load attempt: {currentSongEntry.XmlPath}");
                         }
                         catch (Exception e)
@@ -13751,6 +15097,7 @@ private void ParseDetectorPacket(string detectorPacket)
                         try
                         {
                             loadedNotes = MidiLoader.LoadMidiSong(currentSongEntry.MidiPath, midiTrackIndex);
+                            loadedArpeggioGuides = new List<ArpeggioGuideData>();
                         }
                         catch (Exception e)
                         {
@@ -13791,6 +15138,7 @@ private void ParseDetectorPacket(string detectorPacket)
         }
 
         chartNotes = loadedNotes ?? new List<NoteData>();
+        currentArpeggioGuides = loadedArpeggioGuides ?? new List<ArpeggioGuideData>();
         chartNoteById.Clear();
 
         for (int i = 0; i < chartNotes.Count; i++)

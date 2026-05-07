@@ -7,6 +7,7 @@ using UnityEngine;
 
 public static class RocksmithCachedSongLoader
 {
+    private const int MinimumSupportedSchemaVersion = 10;
     private static readonly Dictionary<string, CachedManifestEntry> manifestCache = new Dictionary<string, CachedManifestEntry>(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, CachedPartEntry> partCache = new Dictionary<string, CachedPartEntry>(StringComparer.OrdinalIgnoreCase);
 
@@ -52,7 +53,7 @@ public static class RocksmithCachedSongLoader
         {
             string json = File.ReadAllText(manifestPath);
             RocksmithCachedSongManifest loaded = JsonUtility.FromJson<RocksmithCachedSongManifest>(json);
-            if (loaded == null || loaded.schemaVersion != RocksmithCachedSongFormat.SchemaVersion)
+            if (loaded == null || !IsSupportedSchemaVersion(loaded.schemaVersion))
                 return false;
 
             NormalizeManifest(manifestPath, loaded);
@@ -176,6 +177,41 @@ public static class RocksmithCachedSongLoader
 
         NormalizeRocksmithLegatoTransitions(notes);
         return notes;
+    }
+
+    public static List<ArpeggioGuideData> LoadArpeggioGuides(string manifestPath, int targetPartIndex = -1)
+    {
+        if (!TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest))
+            return new List<ArpeggioGuideData>();
+
+        int chosenIndex = ResolveArrangementIndex(manifest, targetPartIndex);
+        if (chosenIndex < 0 || manifest.arrangements == null || chosenIndex >= manifest.arrangements.Count)
+            return new List<ArpeggioGuideData>();
+
+        RocksmithCachedArrangementSummary summary = manifest.arrangements[chosenIndex];
+        if (!TryLoadPart(summary?.partFilePath, out RocksmithCachedArrangementPart part) || part.arpeggioGuides == null)
+            return new List<ArpeggioGuideData>();
+
+        List<ArpeggioGuideData> guides = new List<ArpeggioGuideData>(part.arpeggioGuides.Count);
+        for (int i = 0; i < part.arpeggioGuides.Count; i++)
+        {
+            RocksmithCachedArpeggioGuideData source = part.arpeggioGuides[i];
+            if (source == null || source.stringFrets == null || source.stringFrets.Length == 0)
+                continue;
+
+            int[] clonedFrets = new int[source.stringFrets.Length];
+            Array.Copy(source.stringFrets, clonedFrets, source.stringFrets.Length);
+            guides.Add(new ArpeggioGuideData
+            {
+                id = source.id,
+                startTime = source.startTime,
+                endTime = source.endTime,
+                chordName = source.chordName,
+                stringFrets = clonedFrets
+            });
+        }
+
+        return guides;
     }
 
     private static List<NoteTechniqueSegmentData> NormalizeRocksmithTechniqueSegments(
@@ -723,10 +759,11 @@ public static class RocksmithCachedSongLoader
         {
             string json = File.ReadAllText(partFilePath);
             RocksmithCachedArrangementPart loaded = JsonUtility.FromJson<RocksmithCachedArrangementPart>(json);
-            if (loaded == null || loaded.schemaVersion != RocksmithCachedSongFormat.SchemaVersion)
+            if (loaded == null || !IsSupportedSchemaVersion(loaded.schemaVersion))
                 return false;
 
             loaded.notes ??= new List<RocksmithCachedNoteData>();
+            loaded.arpeggioGuides ??= new List<RocksmithCachedArpeggioGuideData>();
             loaded.generatedNotes ??= new List<RocksmithCachedGeneratedNoteEvent>();
             if (loaded.generatedPart == null)
                 loaded.generatedPart = new RocksmithCachedGeneratedPartInfo();
@@ -769,6 +806,12 @@ public static class RocksmithCachedSongLoader
         }
 
         return bestIndex;
+    }
+
+    private static bool IsSupportedSchemaVersion(int schemaVersion)
+    {
+        return schemaVersion >= MinimumSupportedSchemaVersion &&
+               schemaVersion <= RocksmithCachedSongFormat.SchemaVersion;
     }
 
     private static List<RocksmithCachedArrangementSummary> SelectGeneratedArrangementSummaries(List<RocksmithCachedArrangementSummary> arrangements)

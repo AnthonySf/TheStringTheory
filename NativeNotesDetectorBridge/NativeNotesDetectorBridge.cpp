@@ -18,6 +18,7 @@
 #include <cstring>
 #include <deque>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -47,6 +48,11 @@ constexpr int kModelOutputFrames = 172;
 constexpr int kModelOutputPitches = 88;
 constexpr int kModelTrimFrames = kModelOverlapFrames / 2;
 constexpr int kModelAnnotationsFps = 86;
+constexpr int kFastChordAnalysisWindowShortSamples = 4096;
+constexpr int kFastChordAnalysisWindowLongSamples = 8192;
+constexpr int kFastSingleAnalysisWindowShortSamples = 2048;
+constexpr int kFastSingleAnalysisWindowLongSamples = 3072;
+constexpr int kFastSingleAnalysisWindowFallbackSamples = 4096;
 constexpr float kDebounceSeconds = 0.05f;
 constexpr float kEventBroadcastSeconds = 0.14f;
 constexpr float kContinuousRmsGate = 0.007f;
@@ -78,6 +84,19 @@ constexpr float kOnsetThreshold = 0.50f;
 constexpr float kFrameThreshold = 0.30f;
 constexpr int kMinimumNoteLengthFrames = 11;
 constexpr int kMelodiaEnergyTolerance = 11;
+constexpr float kFastChordStringBandHeadroom = 0.10f;
+constexpr float kFastChordStringEnergyThreshold = 0.030f;
+constexpr float kFastChordLegatoStringEnergyThreshold = 0.022f;
+constexpr float kFastChordHarmonicStringEnergyThreshold = 0.020f;
+constexpr float kFastChordBaseToleranceCents = 45.0f;
+constexpr float kFastChordLowToleranceCents = 65.0f;
+constexpr float kFastChordMotionToleranceCents = 95.0f;
+constexpr float kFastChordPitchScoreThreshold = 0.0042f;
+constexpr float kFastChordLowPitchScoreThreshold = 0.0034f;
+constexpr float kFastChordSecondHarmonicWeight = 0.42f;
+constexpr float kFastChordThirdHarmonicWeight = 0.18f;
+constexpr float kFastChordNeighborRatioThreshold = 1.22f;
+constexpr float kFastChordLowNeighborRatioThreshold = 1.12f;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kYinThreshold = 0.18f;
 
@@ -90,6 +109,7 @@ const std::array<const char*, 12> kNoteNames = { "C", "C#", "D", "D#", "E", "F",
 
 struct DetectorSettings
 {
+    float chordLeniency = 0.66f;
     float continuousRmsGate = 0.007f;
     float continuousConfidenceGate = 0.73f;
     float continuousHoldSeconds = 0.10f;
@@ -108,6 +128,15 @@ struct DetectorSettings
     float expectStrictConfidence = 0.88f;
     float chordScoreKeepRatio = 0.80f;
     float chordExpectedScoreKeepRatio = 0.70f;
+};
+
+enum ExpectedHintNoteFlags : uint32_t
+{
+    ExpectedHintNoteFlagNone = 0,
+    ExpectedHintNoteFlagLegato = 1u << 0,
+    ExpectedHintNoteFlagBend = 1u << 1,
+    ExpectedHintNoteFlagSlide = 1u << 2,
+    ExpectedHintNoteFlagHarmonic = 1u << 3
 };
 
 DetectorSettings MakeTightDetectorSettings()
@@ -182,11 +211,32 @@ struct NativeDeviceDescriptor
     double defaultLowInputLatency = 0.0;
 };
 
+struct ExpectedHintNoteSpec
+{
+    int midi = -1;
+    int stringIndex = -1;
+    int fret = -1;
+    int openMidi = -1;
+    uint32_t flags = ExpectedHintNoteFlagNone;
+};
+
+struct ExpectedHintContext
+{
+    std::set<int> midiNotes;
+    std::vector<ExpectedHintNoteSpec> expectedNotes;
+    bool hasWindow = false;
+    double windowStartTime = 0.0;      // Unity song time
+    double windowEndTime = 0.0;        // Unity song time
+    double windowStartPythonTime = 0.0;
+    double windowEndPythonTime = 0.0;
+};
+
 struct HintWindow
 {
     double startTime = 0.0;
     double endTime = 0.0;
     std::set<int> midiNotes;
+    std::vector<ExpectedHintNoteSpec> expectedNotes;
     Clock::time_point createdAt = Clock::now();
 };
 
@@ -198,13 +248,97 @@ struct CaptureTask
     double onsetTime = 0.0;
 };
 
+struct FastChordTask
+{
+    int eventId = 0;
+    uint64_t onsetFrame = 0;
+    uint64_t readyFrame = 0;
+    double onsetTime = 0.0;
+    std::set<int> expectedMidiNotes;
+    std::vector<ExpectedHintNoteSpec> expectedNotes;
+};
+
+struct FastSingleTask
+{
+    int eventId = 0;
+    uint64_t onsetFrame = 0;
+    uint64_t readyFrame = 0;
+    double onsetTime = 0.0;
+    ExpectedHintNoteSpec expectedNote;
+    int analysisWindowSamples = 0;
+    int attemptIndex = 0;
+    bool proactive = false;
+    double windowStartPythonTime = 0.0;
+    double windowEndPythonTime = 0.0;
+};
+
 struct DeepResult
 {
     int eventId = 0;
     double onsetTime = 0.0;
     std::set<int> eventNotes;
     std::set<int> expectedMidiNotes;
+    std::string sourceTag;
 };
+
+struct ConstraintChordNoteDebugResult
+{
+    ExpectedHintNoteSpec spec;
+    float supportRatio = 0.0f;
+    float supportThreshold = 0.0f;
+    float fundamentalRatio = 0.0f;
+    float neighborFundamentalMax = 0.0f;
+    float noteScore = 0.0f;
+    float noteScoreThreshold = 0.0f;
+    float dominantPeakHz = 0.0f;
+    float centsError = 0.0f;
+    bool hit = false;
+};
+
+struct ConstraintChordEvaluationResult
+{
+    std::vector<ExpectedHintNoteSpec> expectedNotes;
+    std::vector<ConstraintChordNoteDebugResult> noteResults;
+    int hitCount = 0;
+    int totalExpected = 0;
+    int requiredHits = 0;
+    float chordLeniency = 0.0f;
+    bool accepted = false;
+};
+
+struct ConstraintSingleEvaluationResult
+{
+    ExpectedHintNoteSpec expectedNote;
+    ConstraintChordNoteDebugResult noteResult;
+    bool accepted = false;
+};
+
+struct OfflineSingleEvaluationResult
+{
+    bool accepted = false;
+    bool highStringContext = false;
+    bool onsetDetected = false;
+    int detectedMidi = -1;
+    int acceptedHopIndex = -1;
+    int onsetHopIndex = -1;
+    float lastMidiEstimate = -1.0f;
+    float lastConfidence = 0.0f;
+    float bestConfidence = 0.0f;
+    float bestRms = 0.0f;
+};
+
+struct FastSingleWindowEvaluationResult
+{
+    ConstraintSingleEvaluationResult spectral;
+    OfflineSingleEvaluationResult yin;
+    bool accepted = false;
+};
+
+OfflineSingleEvaluationResult EvaluateOfflineSingleExpectedNote(
+    const float* samples,
+    int sampleCount,
+    int expectedMidi,
+    const DetectorSettings& settings);
 
 struct NoteEventCandidate
 {
@@ -454,6 +588,114 @@ int ParseHintTokenToMidi(const std::string& rawToken)
     return -1;
 }
 
+bool ExpectedHintNoteSpecsEqual(const ExpectedHintNoteSpec& left, const ExpectedHintNoteSpec& right)
+{
+    return left.midi == right.midi &&
+        left.stringIndex == right.stringIndex &&
+        left.fret == right.fret &&
+        left.openMidi == right.openMidi &&
+        left.flags == right.flags;
+}
+
+void AppendUniqueExpectedNotes(std::vector<ExpectedHintNoteSpec>& destination, const std::vector<ExpectedHintNoteSpec>& source)
+{
+    if (source.empty())
+    {
+        std::vector<ExpectedHintNoteSpec> deduped;
+        deduped.reserve(destination.size());
+        for (const ExpectedHintNoteSpec& spec : destination)
+        {
+            bool exists = false;
+            for (const ExpectedHintNoteSpec& existing : deduped)
+            {
+                if (ExpectedHintNoteSpecsEqual(existing, spec))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists)
+                deduped.push_back(spec);
+        }
+
+        destination.swap(deduped);
+        return;
+    }
+
+    for (const ExpectedHintNoteSpec& spec : source)
+    {
+        bool exists = false;
+        for (const ExpectedHintNoteSpec& existing : destination)
+        {
+            if (ExpectedHintNoteSpecsEqual(existing, spec))
+            {
+                exists = true;
+                break;
+            }
+        }
+
+        if (!exists)
+            destination.push_back(spec);
+    }
+}
+
+std::vector<ExpectedHintNoteSpec> ParseExpectedHintNoteSpecsCsv(const std::string& csv)
+{
+    std::vector<ExpectedHintNoteSpec> result;
+    std::string current;
+    for (size_t i = 0; i <= csv.size(); ++i)
+    {
+        if (i == csv.size() || csv[i] == ',')
+        {
+            if (!current.empty())
+            {
+                std::vector<std::string> fields;
+                std::string field;
+                for (size_t fieldIndex = 0; fieldIndex <= current.size(); ++fieldIndex)
+                {
+                    if (fieldIndex == current.size() || current[fieldIndex] == '~')
+                    {
+                        fields.push_back(field);
+                        field.clear();
+                    }
+                    else if (current[fieldIndex] != ' ' && current[fieldIndex] != '\t')
+                    {
+                        field.push_back(current[fieldIndex]);
+                    }
+                }
+
+                if (fields.size() >= 5)
+                {
+                    try
+                    {
+                        ExpectedHintNoteSpec spec;
+                        spec.midi = ParseHintTokenToMidi(fields[0]);
+                        spec.stringIndex = std::stoi(fields[1]);
+                        spec.fret = std::stoi(fields[2]);
+                        spec.openMidi = ParseHintTokenToMidi(fields[3]);
+                        spec.flags = static_cast<uint32_t>(std::stoul(fields[4]));
+                        if (spec.midi >= 0 && spec.stringIndex >= 0 && spec.openMidi >= 0)
+                            result.push_back(spec);
+                    }
+                    catch (...)
+                    {
+                    }
+                }
+            }
+
+            current.clear();
+        }
+        else if (csv[i] != ' ' && csv[i] != '\t')
+        {
+            current.push_back(csv[i]);
+        }
+    }
+
+    AppendUniqueExpectedNotes(result, {});
+    return result;
+}
+
 std::string MidiToNoteName(int midi)
 {
     const int note = ((midi % 12) + 12) % 12;
@@ -608,6 +850,7 @@ bool IsHighStringContext(const std::set<int>& expectedMidi, const DetectorSettin
 DetectorSettings ClampDetectorSettings(const DetectorSettings& source)
 {
     DetectorSettings clamped = source;
+    clamped.chordLeniency = ClampValue(clamped.chordLeniency, 0.34f, 1.0f);
     clamped.continuousRmsGate = ClampValue(clamped.continuousRmsGate, 0.001f, 0.05f);
     clamped.continuousConfidenceGate = ClampValue(clamped.continuousConfidenceGate, 0.0f, 0.99f);
     clamped.continuousHoldSeconds = ClampValue(clamped.continuousHoldSeconds, 0.01f, 0.50f);
@@ -635,6 +878,7 @@ DetectorSettings ParseDetectorSettingsJson(const std::string& json, const Detect
     double numberValue = 0.0;
     int intValue = 0;
 
+    if (TryExtractJsonNumber(json, "chordLeniency", numberValue)) settings.chordLeniency = static_cast<float>(numberValue);
     if (TryExtractJsonNumber(json, "continuousRmsGate", numberValue)) settings.continuousRmsGate = static_cast<float>(numberValue);
     if (TryExtractJsonNumber(json, "continuousConfidenceGate", numberValue)) settings.continuousConfidenceGate = static_cast<float>(numberValue);
     if (TryExtractJsonNumber(json, "continuousHoldSeconds", numberValue)) settings.continuousHoldSeconds = static_cast<float>(numberValue);
@@ -679,6 +923,17 @@ std::string JoinMidiNotes(const TValue& notes)
     return first ? std::string("--") : builder.str();
 }
 
+std::string MergeEventSourceTags(const std::string& left, const std::string& right)
+{
+    if (left.empty())
+        return right;
+    if (right.empty())
+        return left;
+    if (_stricmp(left.c_str(), right.c_str()) == 0)
+        return left;
+    return left + "+" + right;
+}
+
 template <typename T>
 void EraseAt(std::deque<T>& items, size_t index)
 {
@@ -720,6 +975,856 @@ void FFT(std::vector<std::complex<float>>& data)
             }
         }
     }
+}
+
+std::mutex g_debugLogMutex;
+std::wstring g_debugLogPath;
+
+std::string BuildDebugLogTimestamp()
+{
+    using SystemClock = std::chrono::system_clock;
+    const auto now = SystemClock::now();
+    const std::time_t tt = SystemClock::to_time_t(now);
+    std::tm localTime{};
+    localtime_s(&localTime, &tt);
+    const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+    char buffer[64];
+    std::snprintf(
+        buffer,
+        sizeof(buffer),
+        "%02d:%02d:%02d.%03d",
+        localTime.tm_hour,
+        localTime.tm_min,
+        localTime.tm_sec,
+        static_cast<int>(millis.count()));
+    return std::string(buffer);
+}
+
+void AppendDebugLogLine(const std::string& line)
+{
+    std::lock_guard<std::mutex> lock(g_debugLogMutex);
+    if (g_debugLogPath.empty())
+        return;
+
+    try
+    {
+        std::ofstream stream(std::filesystem::path(g_debugLogPath), std::ios::out | std::ios::app | std::ios::binary);
+        if (!stream.is_open())
+            return;
+
+        stream << "[" << BuildDebugLogTimestamp() << "] [native] " << line << "\r\n";
+    }
+    catch (...)
+    {
+    }
+}
+
+void SetDebugLogPathInternal(const std::wstring& path)
+{
+    std::lock_guard<std::mutex> lock(g_debugLogMutex);
+    g_debugLogPath = path;
+}
+
+float CentsToFrequencyFactor(float cents)
+{
+    return std::pow(2.0f, cents / 1200.0f);
+}
+
+float FrequencyDeltaCents(float detectedHz, float expectedHz)
+{
+    if (!std::isfinite(detectedHz) || detectedHz <= 0.0f || !std::isfinite(expectedHz) || expectedHz <= 0.0f)
+        return std::numeric_limits<float>::infinity();
+
+    const float rawCents = 1200.0f * std::log2(detectedHz / expectedHz);
+    const float foldedCents = rawCents - (std::round(rawCents / 1200.0f) * 1200.0f);
+    return std::abs(foldedCents);
+}
+
+void BuildMagnitudeSpectrum(
+    const std::vector<float>& audio,
+    int sampleCount,
+    std::vector<float>& magnitudes,
+    float& binHz)
+{
+    if (sampleCount <= 0 || audio.empty())
+    {
+        magnitudes.clear();
+        binHz = 0.0f;
+        return;
+    }
+
+    int fftSize = 1;
+    while (fftSize < sampleCount)
+        fftSize <<= 1;
+
+    std::vector<std::complex<float>> fftData(static_cast<size_t>(fftSize), std::complex<float>(0.0f, 0.0f));
+    const int available = std::min(sampleCount, static_cast<int>(audio.size()));
+    for (int i = 0; i < available; ++i)
+    {
+        const float phase = available > 1 ? (2.0f * kPi * static_cast<float>(i) / static_cast<float>(available - 1)) : 0.0f;
+        const float window = 0.5f - (0.5f * std::cos(phase));
+        fftData[static_cast<size_t>(i)] = std::complex<float>(audio[static_cast<size_t>(i)] * window, 0.0f);
+    }
+
+    FFT(fftData);
+
+    const size_t halfBins = static_cast<size_t>((fftSize >> 1) + 1);
+    magnitudes.resize(halfBins);
+    for (size_t i = 0; i < halfBins; ++i)
+        magnitudes[i] = std::abs(fftData[i]);
+
+    binHz = static_cast<float>(kSampleRate) / static_cast<float>(fftSize);
+}
+
+float ComputeMagnitudeTotalEnergy(const std::vector<float>& magnitudes)
+{
+    double totalEnergy = 0.0;
+    for (float magnitude : magnitudes)
+        totalEnergy += static_cast<double>(magnitude) * static_cast<double>(magnitude);
+
+    return static_cast<float>(totalEnergy);
+}
+
+float ComputeBandEnergyRatio(
+    const std::vector<float>& magnitudes,
+    float binHz,
+    float lowHz,
+    float highHz,
+    float totalEnergy)
+{
+    if (magnitudes.empty() || !std::isfinite(binHz) || binHz <= 0.0f || !std::isfinite(lowHz) || !std::isfinite(highHz) || totalEnergy <= 1e-9f)
+        return 0.0f;
+
+    const int maxBin = static_cast<int>(magnitudes.size()) - 1;
+    const int lowBin = std::max(0, static_cast<int>(std::floor(lowHz / binHz)));
+    const int highBin = std::min(maxBin, static_cast<int>(std::ceil(highHz / binHz)));
+    if (highBin < lowBin)
+        return 0.0f;
+
+    double bandEnergy = 0.0;
+    for (int bin = lowBin; bin <= highBin; ++bin)
+        bandEnergy += static_cast<double>(magnitudes[static_cast<size_t>(bin)]) * static_cast<double>(magnitudes[static_cast<size_t>(bin)]);
+
+    return static_cast<float>(bandEnergy / static_cast<double>(totalEnergy));
+}
+
+float FindPeakFrequencyInBand(
+    const std::vector<float>& magnitudes,
+    float binHz,
+    float lowHz,
+    float highHz)
+{
+    if (magnitudes.empty() || !std::isfinite(binHz) || binHz <= 0.0f || !std::isfinite(lowHz) || !std::isfinite(highHz))
+        return -1.0f;
+
+    const int maxBin = static_cast<int>(magnitudes.size()) - 1;
+    const int lowBin = std::max(0, static_cast<int>(std::floor(lowHz / binHz)));
+    const int highBin = std::min(maxBin, static_cast<int>(std::ceil(highHz / binHz)));
+    if (highBin < lowBin)
+        return -1.0f;
+
+    int bestBin = -1;
+    float bestMagnitude = -1.0f;
+    for (int bin = lowBin; bin <= highBin; ++bin)
+    {
+        const float magnitude = magnitudes[static_cast<size_t>(bin)];
+        if (magnitude > bestMagnitude)
+        {
+            bestMagnitude = magnitude;
+            bestBin = bin;
+        }
+    }
+
+    if (bestBin < 0)
+        return -1.0f;
+
+    float delta = 0.0f;
+    if (bestBin > lowBin && bestBin < highBin)
+    {
+        const float left = magnitudes[static_cast<size_t>(bestBin - 1)];
+        const float center = magnitudes[static_cast<size_t>(bestBin)];
+        const float right = magnitudes[static_cast<size_t>(bestBin + 1)];
+        const float denominator = (left - (2.0f * center) + right);
+        if (std::isfinite(denominator) && std::abs(denominator) > 1e-12f)
+        {
+            delta = 0.5f * (left - right) / denominator;
+            delta = ClampValue(delta, -1.0f, 1.0f);
+        }
+    }
+
+    return (static_cast<float>(bestBin) + delta) * binHz;
+}
+
+float ComputeExpectedNoteBandScore(
+    const std::vector<float>& magnitudes,
+    float binHz,
+    float totalEnergy,
+    int midi,
+    float toleranceCents)
+{
+    const float expectedHz = MidiToFrequencyHz(midi);
+    if (!std::isfinite(expectedHz) || expectedHz <= 0.0f)
+        return 0.0f;
+
+    const float frequencyFactor = CentsToFrequencyFactor(std::max(1.0f, toleranceCents));
+    const float lowHz = expectedHz / frequencyFactor;
+    const float highHz = expectedHz * frequencyFactor;
+
+    float score = ComputeBandEnergyRatio(magnitudes, binHz, lowHz, highHz, totalEnergy);
+
+    const float secondHarmonic = expectedHz * 2.0f;
+    if (secondHarmonic < (static_cast<float>(kSampleRate) * 0.5f) - 5.0f)
+    {
+        score += kFastChordSecondHarmonicWeight * ComputeBandEnergyRatio(
+            magnitudes,
+            binHz,
+            secondHarmonic / frequencyFactor,
+            secondHarmonic * frequencyFactor,
+            totalEnergy);
+    }
+
+    const float thirdHarmonic = expectedHz * 3.0f;
+    if (thirdHarmonic < (static_cast<float>(kSampleRate) * 0.5f) - 5.0f)
+    {
+        score += kFastChordThirdHarmonicWeight * ComputeBandEnergyRatio(
+            magnitudes,
+            binHz,
+            thirdHarmonic / frequencyFactor,
+            thirdHarmonic * frequencyFactor,
+            totalEnergy);
+    }
+
+    return score;
+}
+
+float FindExpectedNotePeakFrequency(
+    const std::vector<float>& magnitudes,
+    float binHz,
+    float totalEnergy,
+    int midi,
+    float toleranceCents)
+{
+    const float expectedHz = MidiToFrequencyHz(midi);
+    if (!std::isfinite(expectedHz) || expectedHz <= 0.0f)
+        return -1.0f;
+
+    const float frequencyFactor = CentsToFrequencyFactor(std::max(1.0f, toleranceCents));
+    float bestPeakHz = -1.0f;
+    float bestScore = -1.0f;
+    constexpr float harmonicWeights[] = { 1.0f, kFastChordSecondHarmonicWeight, kFastChordThirdHarmonicWeight };
+
+    for (int harmonicIndex = 0; harmonicIndex < 3; ++harmonicIndex)
+    {
+        const float harmonicHz = expectedHz * static_cast<float>(harmonicIndex + 1);
+        if (harmonicHz <= 0.0f || harmonicHz >= (static_cast<float>(kSampleRate) * 0.5f) - 5.0f)
+            continue;
+
+        const float lowHz = harmonicHz / frequencyFactor;
+        const float highHz = harmonicHz * frequencyFactor;
+        const float bandRatio = ComputeBandEnergyRatio(magnitudes, binHz, lowHz, highHz, totalEnergy);
+        const float peakHz = FindPeakFrequencyInBand(magnitudes, binHz, lowHz, highHz);
+        if (peakHz <= 0.0f)
+            continue;
+
+        const float score = bandRatio * harmonicWeights[harmonicIndex];
+        if (score > bestScore)
+        {
+            bestScore = score;
+            bestPeakHz = peakHz;
+        }
+    }
+
+    return bestPeakHz;
+}
+
+float ComputeConstraintSupportBandRatio(
+    const std::vector<float>& magnitudes,
+    float binHz,
+    float totalEnergy,
+    const ExpectedHintNoteSpec& spec,
+    float* lowHzOut = nullptr,
+    float* highHzOut = nullptr)
+{
+    if (spec.openMidi < 0 || spec.midi < 0)
+        return 0.0f;
+
+    const int lowerMidi = spec.openMidi;
+    const int upperMidi = spec.openMidi + 24;
+    const float lowHz = MidiToFrequencyHz(lowerMidi) * (1.0f - kFastChordStringBandHeadroom);
+    const float highHz = MidiToFrequencyHz(upperMidi) * (1.0f + kFastChordStringBandHeadroom);
+    if (lowHzOut != nullptr)
+        *lowHzOut = lowHz;
+    if (highHzOut != nullptr)
+        *highHzOut = highHz;
+    return ComputeBandEnergyRatio(magnitudes, binHz, lowHz, highHz, totalEnergy);
+}
+
+float ComputeConstraintSupportThreshold(const ExpectedHintNoteSpec& spec)
+{
+    const bool isLegato = (spec.flags & ExpectedHintNoteFlagLegato) != 0;
+    const bool isHarmonic = (spec.flags & ExpectedHintNoteFlagHarmonic) != 0;
+    const bool isMotion = (spec.flags & (ExpectedHintNoteFlagBend | ExpectedHintNoteFlagSlide)) != 0;
+
+    float threshold = isHarmonic
+        ? kFastChordHarmonicStringEnergyThreshold
+        : (isLegato ? kFastChordLegatoStringEnergyThreshold : kFastChordStringEnergyThreshold);
+
+    // Full strums regularly bury the upper strings under low-string energy.
+    // Relax the minimum band-energy requirement there, but keep lower strings stricter.
+    if (spec.midi >= 59)
+        threshold = std::min(threshold, 0.014f);
+    else if (spec.midi >= 55)
+        threshold = std::min(threshold, 0.016f);
+    else if (spec.midi >= 50)
+        threshold = std::min(threshold, 0.018f);
+
+    if (isMotion)
+        threshold *= 0.92f;
+
+    return threshold;
+}
+
+float ComputeConstraintPitchScoreThreshold(const ExpectedHintNoteSpec& spec)
+{
+    const bool isMotion = (spec.flags & (ExpectedHintNoteFlagBend | ExpectedHintNoteFlagSlide)) != 0;
+
+    float threshold = spec.midi <= 52
+        ? kFastChordLowPitchScoreThreshold
+        : kFastChordPitchScoreThreshold;
+
+    if (spec.midi >= 59)
+        threshold *= 0.72f;
+    else if (spec.midi >= 55)
+        threshold *= 0.82f;
+
+    if (isMotion)
+        threshold *= 0.75f;
+
+    return threshold;
+}
+
+bool ScoreExpectedConstraintNote(
+    const std::vector<float>& magnitudes,
+    float binHz,
+    float totalEnergy,
+    const ExpectedHintNoteSpec& spec)
+{
+    const bool isMotion = (spec.flags & (ExpectedHintNoteFlagBend | ExpectedHintNoteFlagSlide)) != 0;
+    const bool isHarmonic = (spec.flags & ExpectedHintNoteFlagHarmonic) != 0;
+
+    float supportLowHz = 0.0f;
+    float supportHighHz = 0.0f;
+    const float supportBandRatio = ComputeConstraintSupportBandRatio(
+        magnitudes,
+        binHz,
+        totalEnergy,
+        spec,
+        &supportLowHz,
+        &supportHighHz);
+    const float supportThreshold = ComputeConstraintSupportThreshold(spec);
+    if (supportBandRatio < supportThreshold)
+        return false;
+
+    if (isHarmonic)
+        return true;
+
+    const float toleranceCents = isMotion
+        ? kFastChordMotionToleranceCents
+        : (spec.midi <= 52 ? kFastChordLowToleranceCents : kFastChordBaseToleranceCents);
+    const float expectedHz = MidiToFrequencyHz(spec.midi);
+    const float dominantBandPeakHz = FindExpectedNotePeakFrequency(magnitudes, binHz, totalEnergy, spec.midi, toleranceCents);
+    if (dominantBandPeakHz <= 0.0f)
+        return false;
+
+    if (FrequencyDeltaCents(dominantBandPeakHz, expectedHz) > toleranceCents)
+        return false;
+
+    const float noteScore = ComputeExpectedNoteBandScore(magnitudes, binHz, totalEnergy, spec.midi, toleranceCents);
+    if (noteScore < ComputeConstraintPitchScoreThreshold(spec))
+        return false;
+
+    if (spec.midi <= 52)
+    {
+        const float frequencyFactor = CentsToFrequencyFactor(std::max(1.0f, toleranceCents));
+        const float fundamentalRatio = ComputeBandEnergyRatio(
+            magnitudes,
+            binHz,
+            expectedHz / frequencyFactor,
+            expectedHz * frequencyFactor,
+            totalEnergy);
+        const float minimumFundamentalRatio = spec.midi <= 45 ? 0.020f : 0.015f;
+        if (fundamentalRatio < minimumFundamentalRatio)
+            return false;
+    }
+
+    return true;
+}
+
+ConstraintChordEvaluationResult EvaluateExpectedChordConstraintWindow(
+    const std::vector<float>& audioWindow,
+    const std::vector<ExpectedHintNoteSpec>& expectedNotes,
+    const DetectorSettings& settings)
+{
+    ConstraintChordEvaluationResult result;
+    result.chordLeniency = settings.chordLeniency;
+
+    result.expectedNotes.reserve(expectedNotes.size());
+    for (const ExpectedHintNoteSpec& spec : expectedNotes)
+    {
+        if (spec.midi < 0 || spec.stringIndex < 0 || spec.openMidi < 0)
+            continue;
+
+        bool alreadyAdded = false;
+        for (const ExpectedHintNoteSpec& existing : result.expectedNotes)
+        {
+            if (ExpectedHintNoteSpecsEqual(existing, spec))
+            {
+                alreadyAdded = true;
+                break;
+            }
+        }
+
+        if (!alreadyAdded)
+            result.expectedNotes.push_back(spec);
+    }
+
+    result.totalExpected = static_cast<int>(result.expectedNotes.size());
+    if (result.totalExpected < 2)
+        return result;
+
+    std::vector<float> magnitudes;
+    float binHz = 0.0f;
+    BuildMagnitudeSpectrum(audioWindow, static_cast<int>(audioWindow.size()), magnitudes, binHz);
+    const float totalEnergy = ComputeMagnitudeTotalEnergy(magnitudes);
+    if (magnitudes.empty() || totalEnergy <= 1e-9f)
+        return result;
+
+    result.noteResults.reserve(result.expectedNotes.size());
+    for (const ExpectedHintNoteSpec& expectedNote : result.expectedNotes)
+    {
+        ConstraintChordNoteDebugResult noteResult;
+        noteResult.spec = expectedNote;
+
+        float supportLowHz = 0.0f;
+        float supportHighHz = 0.0f;
+        noteResult.supportRatio = ComputeConstraintSupportBandRatio(magnitudes, binHz, totalEnergy, expectedNote, &supportLowHz, &supportHighHz);
+        noteResult.supportThreshold = ComputeConstraintSupportThreshold(expectedNote);
+        const bool isMotion = (expectedNote.flags & (ExpectedHintNoteFlagBend | ExpectedHintNoteFlagSlide)) != 0;
+        const bool isHarmonic = (expectedNote.flags & ExpectedHintNoteFlagHarmonic) != 0;
+        const float toleranceCents = isMotion
+            ? kFastChordMotionToleranceCents
+            : (expectedNote.midi <= 52 ? kFastChordLowToleranceCents : kFastChordBaseToleranceCents);
+        const float expectedHz = MidiToFrequencyHz(expectedNote.midi);
+        const float frequencyFactor = CentsToFrequencyFactor(std::max(1.0f, toleranceCents));
+        noteResult.fundamentalRatio = ComputeBandEnergyRatio(
+            magnitudes,
+            binHz,
+            expectedHz / frequencyFactor,
+            expectedHz * frequencyFactor,
+            totalEnergy);
+        for (int offset : { -2, -1, 1, 2 })
+        {
+            const int neighborMidi = expectedNote.midi + offset;
+            if (neighborMidi < kContinuousMinMidi || neighborMidi > kContinuousMaxMidi)
+                continue;
+
+            const float neighborHz = MidiToFrequencyHz(neighborMidi);
+            noteResult.neighborFundamentalMax = std::max(
+                noteResult.neighborFundamentalMax,
+                ComputeBandEnergyRatio(
+                    magnitudes,
+                    binHz,
+                    neighborHz / frequencyFactor,
+                    neighborHz * frequencyFactor,
+                    totalEnergy));
+        }
+        noteResult.noteScore = isHarmonic
+            ? 0.0f
+            : ComputeExpectedNoteBandScore(magnitudes, binHz, totalEnergy, expectedNote.midi, toleranceCents);
+        noteResult.noteScoreThreshold = isHarmonic
+            ? 0.0f
+            : ComputeConstraintPitchScoreThreshold(expectedNote);
+        noteResult.dominantPeakHz = FindExpectedNotePeakFrequency(
+            magnitudes,
+            binHz,
+            totalEnergy,
+            expectedNote.midi,
+            toleranceCents);
+        noteResult.centsError = FrequencyDeltaCents(noteResult.dominantPeakHz, expectedHz);
+
+        if (noteResult.supportRatio < noteResult.supportThreshold)
+        {
+            noteResult.hit = false;
+        }
+        else if (isHarmonic)
+        {
+            noteResult.hit = true;
+        }
+        else
+        {
+            const bool hasExpectedPeak = noteResult.dominantPeakHz > 0.0f && noteResult.centsError <= toleranceCents;
+            const bool hasPitchSupport = noteResult.noteScore >= noteResult.noteScoreThreshold;
+            const bool lowStringFundamentalOk = expectedNote.midi > 52 ||
+                (expectedNote.midi <= 45 ? noteResult.fundamentalRatio >= 0.020f : noteResult.fundamentalRatio >= 0.015f);
+
+            noteResult.hit = hasExpectedPeak && hasPitchSupport && lowStringFundamentalOk;
+        }
+
+        if (noteResult.hit)
+            result.hitCount++;
+
+        result.noteResults.push_back(noteResult);
+    }
+
+    result.requiredHits = result.totalExpected <= 2
+        ? result.totalExpected
+        : std::max(2, static_cast<int>(std::ceil(static_cast<double>(result.totalExpected) * ClampValue(settings.chordLeniency, 0.34f, 1.0f))));
+    result.accepted = result.hitCount >= result.requiredHits;
+    return result;
+}
+
+ConstraintSingleEvaluationResult EvaluateExpectedSingleConstraintWindow(
+    const std::vector<float>& audioWindow,
+    const ExpectedHintNoteSpec& expectedNote,
+    const DetectorSettings&)
+{
+    ConstraintSingleEvaluationResult result;
+    result.expectedNote = expectedNote;
+    result.noteResult.spec = expectedNote;
+
+    if (expectedNote.midi < 0 || expectedNote.stringIndex < 0 || expectedNote.openMidi < 0)
+        return result;
+
+    std::vector<float> magnitudes;
+    float binHz = 0.0f;
+    BuildMagnitudeSpectrum(audioWindow, static_cast<int>(audioWindow.size()), magnitudes, binHz);
+    const float totalEnergy = ComputeMagnitudeTotalEnergy(magnitudes);
+    if (magnitudes.empty() || totalEnergy <= 1e-9f)
+        return result;
+
+    float supportLowHz = 0.0f;
+    float supportHighHz = 0.0f;
+    result.noteResult.supportRatio = ComputeConstraintSupportBandRatio(magnitudes, binHz, totalEnergy, expectedNote, &supportLowHz, &supportHighHz);
+    result.noteResult.supportThreshold = ComputeConstraintSupportThreshold(expectedNote);
+    const bool isMotion = (expectedNote.flags & (ExpectedHintNoteFlagBend | ExpectedHintNoteFlagSlide)) != 0;
+    const bool isHarmonic = (expectedNote.flags & ExpectedHintNoteFlagHarmonic) != 0;
+    const float toleranceCents = isMotion
+        ? kFastChordMotionToleranceCents
+        : (expectedNote.midi <= 52 ? kFastChordLowToleranceCents : kFastChordBaseToleranceCents);
+    const float expectedHz = MidiToFrequencyHz(expectedNote.midi);
+    const float frequencyFactor = CentsToFrequencyFactor(std::max(1.0f, toleranceCents));
+    result.noteResult.fundamentalRatio = ComputeBandEnergyRatio(
+        magnitudes,
+        binHz,
+        expectedHz / frequencyFactor,
+        expectedHz * frequencyFactor,
+        totalEnergy);
+
+    for (int offset : { -2, -1, 1, 2 })
+    {
+        const int neighborMidi = expectedNote.midi + offset;
+        if (neighborMidi < kContinuousMinMidi || neighborMidi > kContinuousMaxMidi)
+            continue;
+
+        const float neighborHz = MidiToFrequencyHz(neighborMidi);
+        result.noteResult.neighborFundamentalMax = std::max(
+            result.noteResult.neighborFundamentalMax,
+            ComputeBandEnergyRatio(
+                magnitudes,
+                binHz,
+                neighborHz / frequencyFactor,
+                neighborHz * frequencyFactor,
+                totalEnergy));
+    }
+
+    result.noteResult.noteScore = isHarmonic
+        ? 0.0f
+        : ComputeExpectedNoteBandScore(magnitudes, binHz, totalEnergy, expectedNote.midi, toleranceCents);
+    result.noteResult.noteScoreThreshold = isHarmonic
+        ? 0.0f
+        : ComputeConstraintPitchScoreThreshold(expectedNote);
+    result.noteResult.dominantPeakHz = FindExpectedNotePeakFrequency(
+        magnitudes,
+        binHz,
+        totalEnergy,
+        expectedNote.midi,
+        toleranceCents);
+    result.noteResult.centsError = FrequencyDeltaCents(result.noteResult.dominantPeakHz, expectedHz);
+
+    if (result.noteResult.supportRatio < result.noteResult.supportThreshold)
+    {
+        result.noteResult.hit = false;
+    }
+    else if (isHarmonic)
+    {
+        result.noteResult.hit = true;
+    }
+    else
+    {
+        const bool hasExpectedPeak = result.noteResult.dominantPeakHz > 0.0f && result.noteResult.centsError <= toleranceCents;
+        const bool hasPitchSupport = result.noteResult.noteScore >= result.noteResult.noteScoreThreshold;
+        const bool lowStringFundamentalOk = expectedNote.midi > 52 ||
+            (expectedNote.midi <= 45 ? result.noteResult.fundamentalRatio >= 0.020f : result.noteResult.fundamentalRatio >= 0.015f);
+        result.noteResult.hit = hasExpectedPeak && hasPitchSupport && lowStringFundamentalOk;
+    }
+
+    result.accepted = result.noteResult.hit;
+    return result;
+}
+
+int GetFastSinglePrimaryAnalysisWindowSamples(const ExpectedHintNoteSpec& expectedNote)
+{
+    if (expectedNote.midi <= 45)
+        return kFastSingleAnalysisWindowLongSamples;
+
+    if (expectedNote.midi >= 59 || expectedNote.openMidi >= 59)
+        return kFastSingleAnalysisWindowLongSamples;
+
+    return kFastSingleAnalysisWindowShortSamples;
+}
+
+int GetFastSingleFallbackAnalysisWindowSamples(const ExpectedHintNoteSpec& expectedNote)
+{
+    if (expectedNote.midi <= 45)
+        return std::max(kFastSingleAnalysisWindowLongSamples, kFastSingleAnalysisWindowFallbackSamples);
+
+    if (expectedNote.midi >= 59 || expectedNote.openMidi >= 59)
+        return kFastSingleAnalysisWindowFallbackSamples;
+
+    return std::max(kFastSingleAnalysisWindowLongSamples, kFastSingleAnalysisWindowFallbackSamples);
+}
+
+FastSingleWindowEvaluationResult EvaluateFastSingleWindow(
+    const std::vector<float>& audioWindow,
+    const ExpectedHintNoteSpec& expectedNote,
+    const DetectorSettings& settings)
+{
+    FastSingleWindowEvaluationResult result;
+    result.spectral = EvaluateExpectedSingleConstraintWindow(audioWindow, expectedNote, settings);
+    result.yin = EvaluateOfflineSingleExpectedNote(
+        audioWindow.empty() ? nullptr : audioWindow.data(),
+        static_cast<int>(audioWindow.size()),
+        expectedNote.midi,
+        settings);
+    // Keep the spectral single-note constraint only as a diagnostic/helper signal.
+    // Let the monophonic detector own actual fast single-note acceptance.
+    // Chord-style band checks are too easy to fool with upper harmonics from
+    // the wrong string on a mono guitar input.
+    result.accepted = result.yin.accepted;
+    return result;
+}
+
+void BuildRecentWindowFromSamples(
+    const float* samples,
+    int sampleCount,
+    int endSampleExclusive,
+    int windowSampleCount,
+    std::vector<float>& destination)
+{
+    destination.assign(static_cast<size_t>(std::max(0, windowSampleCount)), 0.0f);
+    if (samples == nullptr || sampleCount <= 0 || windowSampleCount <= 0)
+        return;
+
+    const int clampedEnd = ClampValue(endSampleExclusive, 0, sampleCount);
+    const int available = std::min(windowSampleCount, clampedEnd);
+    if (available <= 0)
+        return;
+
+    const int sourceStart = clampedEnd - available;
+    const int destinationStart = windowSampleCount - available;
+    memcpy(
+        destination.data() + static_cast<size_t>(destinationStart),
+        samples + static_cast<size_t>(sourceStart),
+        static_cast<size_t>(available) * sizeof(float));
+}
+
+struct OfflineAubioContext
+{
+    fvec_t* hopInput = nullptr;
+    fvec_t* onsetOutput = nullptr;
+    fvec_t* pitchOutput = nullptr;
+    aubio_onset_t* onset = nullptr;
+    aubio_pitch_t* pitch = nullptr;
+
+    ~OfflineAubioContext()
+    {
+        if (pitch != nullptr)
+            del_aubio_pitch(pitch);
+        if (onset != nullptr)
+            del_aubio_onset(onset);
+        if (pitchOutput != nullptr)
+            del_fvec(pitchOutput);
+        if (onsetOutput != nullptr)
+            del_fvec(onsetOutput);
+        if (hopInput != nullptr)
+            del_fvec(hopInput);
+    }
+
+    bool Initialize()
+    {
+        hopInput = new_fvec(static_cast<uint_t>(kHopSize));
+        onsetOutput = new_fvec(1);
+        pitchOutput = new_fvec(1);
+        onset = new_aubio_onset(const_cast<char_t*>("hfc"), static_cast<uint_t>(kOnsetWindowSize), static_cast<uint_t>(kHopSize), static_cast<uint_t>(kSampleRate));
+        pitch = new_aubio_pitch(const_cast<char_t*>("yinfast"), static_cast<uint_t>(kPitchWindowSize), static_cast<uint_t>(kHopSize), static_cast<uint_t>(kSampleRate));
+        if (hopInput == nullptr || onsetOutput == nullptr || pitchOutput == nullptr || onset == nullptr || pitch == nullptr)
+            return false;
+
+        aubio_pitch_set_unit(pitch, const_cast<char_t*>("midi"));
+        aubio_pitch_set_tolerance(pitch, 0.82f);
+        return true;
+    }
+};
+
+OfflineSingleEvaluationResult EvaluateOfflineSingleExpectedNote(
+    const float* samples,
+    int sampleCount,
+    int expectedMidi,
+    const DetectorSettings& settings)
+{
+    OfflineSingleEvaluationResult result;
+    if (samples == nullptr || sampleCount <= 0 || expectedMidi < 0)
+        return result;
+
+    OfflineAubioContext aubio;
+    if (!aubio.Initialize())
+        return result;
+
+    const std::set<int> expectedMidiSet = { expectedMidi };
+    const ExpectedContextKind expectedContext = GetExpectedContextKind(expectedMidiSet, settings);
+    result.highStringContext = expectedContext == ExpectedContextKind::HighStringFocused;
+    const float rmsGate = result.highStringContext ? (settings.continuousRmsGate * settings.highStringRmsMultiplier) : settings.continuousRmsGate;
+    const float relaxedConfidenceGate = std::min(
+        settings.continuousConfidenceGate,
+        result.highStringContext ? (settings.continuousConfidenceGate * settings.highStringConfidenceMultiplier) : settings.continuousConfidenceGate);
+
+    std::deque<int> recentPitchMidi;
+    int stableMidi = -1;
+    int stableCount = 0;
+    double lastContinuousTime = -999.0;
+    std::set<int> currentActiveNotes;
+    std::vector<float> hop(static_cast<size_t>(kHopSize), 0.0f);
+    const int totalHops = static_cast<int>(std::ceil(static_cast<double>(sampleCount) / static_cast<double>(kHopSize)));
+
+    for (int hopIndex = 0; hopIndex < totalHops; ++hopIndex)
+    {
+        const int startSample = hopIndex * kHopSize;
+        std::fill(hop.begin(), hop.end(), 0.0f);
+        const int available = std::max(0, std::min(kHopSize, sampleCount - startSample));
+        if (available > 0)
+        {
+            memcpy(hop.data(), samples + static_cast<size_t>(startSample), static_cast<size_t>(available) * sizeof(float));
+        }
+
+        const double currentTime = static_cast<double>(startSample + kHopSize) / static_cast<double>(kSampleRate);
+        aubio_onset_set_threshold(aubio.onset, result.highStringContext ? settings.highStringOnsetThreshold : settings.standardOnsetThreshold);
+        memcpy(aubio.hopInput->data, hop.data(), static_cast<size_t>(kHopSize) * sizeof(float));
+        aubio_onset_do(aubio.onset, aubio.hopInput, aubio.onsetOutput);
+        if (aubio.onsetOutput->data[0] > 0.0f)
+        {
+            result.onsetDetected = true;
+            if (result.onsetHopIndex < 0)
+                result.onsetHopIndex = hopIndex;
+        }
+
+        const float rms = ComputeRms(hop.data(), static_cast<int>(hop.size()));
+        result.bestRms = std::max(result.bestRms, rms);
+        if (!std::isfinite(rms) || rms < rmsGate)
+        {
+            recentPitchMidi.clear();
+            stableMidi = -1;
+            stableCount = 0;
+            if ((currentTime - lastContinuousTime) > settings.continuousHoldSeconds)
+                currentActiveNotes.clear();
+            continue;
+        }
+
+        memcpy(aubio.hopInput->data, hop.data(), static_cast<size_t>(kHopSize) * sizeof(float));
+        aubio_pitch_do(aubio.pitch, aubio.hopInput, aubio.pitchOutput);
+        const float midiEstimate = aubio.pitchOutput->data[0];
+        const float confidence = aubio_pitch_get_confidence(aubio.pitch);
+        result.lastMidiEstimate = midiEstimate;
+        result.lastConfidence = confidence;
+        result.bestConfidence = std::max(result.bestConfidence, confidence);
+        if (!std::isfinite(midiEstimate) ||
+            !std::isfinite(confidence) ||
+            midiEstimate < static_cast<float>(kContinuousMinMidi) ||
+            midiEstimate > static_cast<float>(kContinuousMaxMidi))
+        {
+            if ((currentTime - lastContinuousTime) > settings.continuousHoldSeconds)
+                currentActiveNotes.clear();
+            continue;
+        }
+
+        const int candidateMidi = static_cast<int>(std::round(midiEstimate));
+        bool accepted = confidence >= settings.continuousConfidenceGate;
+        if (!accepted && result.highStringContext && confidence >= relaxedConfidenceGate)
+        {
+            const int bestDistance = SemitoneDistance(candidateMidi, expectedMidi);
+            if (bestDistance <= settings.highStringBenefitMatchMaxDistance)
+                accepted = true;
+        }
+
+        if (!accepted)
+        {
+            if ((currentTime - lastContinuousTime) > settings.continuousHoldSeconds)
+                currentActiveNotes.clear();
+            continue;
+        }
+
+        if (SemitoneDistance(candidateMidi, expectedMidi) > settings.expectMaxDistanceContinuous &&
+            confidence < settings.expectStrictConfidence)
+        {
+            continue;
+        }
+
+        recentPitchMidi.push_back(candidateMidi);
+        while (recentPitchMidi.size() > static_cast<size_t>(kContinuousMedianWindow))
+            recentPitchMidi.pop_front();
+
+        int mostCommonMidi = candidateMidi;
+        int bestCount = 0;
+        for (int value : recentPitchMidi)
+        {
+            const int count = static_cast<int>(std::count(recentPitchMidi.begin(), recentPitchMidi.end(), value));
+            if (count > bestCount)
+            {
+                bestCount = count;
+                mostCommonMidi = value;
+            }
+        }
+
+        if (mostCommonMidi == stableMidi)
+            ++stableCount;
+        else
+        {
+            stableMidi = mostCommonMidi;
+            stableCount = 1;
+        }
+
+        if (stableCount >= 1)
+        {
+            currentActiveNotes.clear();
+            currentActiveNotes.insert(stableMidi);
+            lastContinuousTime = currentTime;
+        }
+
+        if (result.detectedMidi < 0 && !currentActiveNotes.empty())
+            result.detectedMidi = *currentActiveNotes.begin();
+
+        if (!result.accepted && currentActiveNotes.find(expectedMidi) != currentActiveNotes.end())
+        {
+            result.accepted = true;
+            result.acceptedHopIndex = hopIndex;
+            result.detectedMidi = expectedMidi;
+        }
+    }
+
+    if (!result.accepted && result.detectedMidi < 0 && stableMidi >= 0)
+        result.detectedMidi = stableMidi;
+
+    return result;
 }
 
 class PortAudioRuntime
@@ -1195,15 +2300,20 @@ class HintState
 public:
     void SetSync(double unitySongTime, double pythonAudioTime);
     void ClearWindows();
-    void AddHintWindow(double startTime, double endTime, const std::set<int>& midiNotes);
+    void AddHintWindow(double startTime, double endTime, const std::set<int>& midiNotes, const std::vector<ExpectedHintNoteSpec>& expectedNotes = {});
     std::set<int> GetExpectedNotesForPythonTime(double pythonAudioTime, double* unitySongTime);
     std::set<int> GetExpectedNotesNearPythonTime(double pythonAudioTime, double lookaheadSeconds, double* unitySongTime);
+    ExpectedHintContext GetExpectedContextForPythonTime(double pythonAudioTime, double* unitySongTime);
+    ExpectedHintContext GetExpectedContextNearPythonTime(double pythonAudioTime, double lookaheadSeconds, double* unitySongTime);
     void ParsePayload(const std::string& payload, double pythonAudioTime);
     void Prune();
 
 private:
     static std::vector<std::string> split_(const std::string& text, char delimiter);
     static std::set<int> parseMidiSet_(const std::string& csv);
+    static std::vector<ExpectedHintNoteSpec> parseExpectedNoteSpecs_(const std::string& csv);
+    static bool noteSpecsEqual_(const ExpectedHintNoteSpec& left, const ExpectedHintNoteSpec& right);
+    static void appendUniqueExpectedNotes_(std::vector<ExpectedHintNoteSpec>& destination, const std::vector<ExpectedHintNoteSpec>& source);
     void pruneLocked_();
 
     mutable std::mutex mutex_;
@@ -1231,15 +2341,21 @@ void HintState::SetSync(double unitySongTime, double pythonAudioTime)
     lastPythonTimeAtSync_ = pythonAudioTime;
 }
 
-void HintState::AddHintWindow(double startTime, double endTime, const std::set<int>& midiNotes)
+void HintState::AddHintWindow(double startTime, double endTime, const std::set<int>& midiNotes, const std::vector<ExpectedHintNoteSpec>& expectedNotes)
 {
-    if (midiNotes.empty())
+    if (midiNotes.empty() && expectedNotes.empty())
         return;
 
     HintWindow window;
     window.startTime = std::min(startTime, endTime);
     window.endTime = std::max(startTime, endTime);
     window.midiNotes = midiNotes;
+    window.expectedNotes = expectedNotes;
+    for (const ExpectedHintNoteSpec& expectedNote : expectedNotes)
+    {
+        if (expectedNote.midi >= 0)
+            window.midiNotes.insert(expectedNote.midi);
+    }
     window.createdAt = Clock::now();
 
     std::lock_guard<std::mutex> lock(mutex_);
@@ -1255,29 +2371,10 @@ void HintState::ClearWindows()
 
 std::set<int> HintState::GetExpectedNotesForPythonTime(double pythonAudioTime, double* unitySongTime)
 {
-    std::lock_guard<std::mutex> lock(mutex_);
-    pruneLocked_();
-    if (!hasOffset_)
-    {
-        if (unitySongTime != nullptr)
-            *unitySongTime = -1.0;
-        return {};
-    }
-
-    const double unityTime = pythonAudioTime - offset_;
-    if (unitySongTime != nullptr)
-        *unitySongTime = unityTime;
-
-    std::set<int> result;
-    for (const HintWindow& window : windows_)
-    {
-        if (window.startTime <= unityTime && unityTime <= window.endTime)
-            result.insert(window.midiNotes.begin(), window.midiNotes.end());
-    }
-    return result;
+    return GetExpectedContextForPythonTime(pythonAudioTime, unitySongTime).midiNotes;
 }
 
-std::set<int> HintState::GetExpectedNotesNearPythonTime(double pythonAudioTime, double lookaheadSeconds, double* unitySongTime)
+ExpectedHintContext HintState::GetExpectedContextForPythonTime(double pythonAudioTime, double* unitySongTime)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     pruneLocked_();
@@ -1292,16 +2389,104 @@ std::set<int> HintState::GetExpectedNotesNearPythonTime(double pythonAudioTime, 
     if (unitySongTime != nullptr)
         *unitySongTime = unityTime;
 
-    std::set<int> result;
+    ExpectedHintContext result;
+    for (const HintWindow& window : windows_)
+    {
+        if (window.startTime <= unityTime && unityTime <= window.endTime)
+        {
+            result.midiNotes.insert(window.midiNotes.begin(), window.midiNotes.end());
+            appendUniqueExpectedNotes_(result.expectedNotes, window.expectedNotes);
+            if (!result.hasWindow)
+            {
+                result.hasWindow = true;
+                result.windowStartTime = window.startTime;
+                result.windowEndTime = window.endTime;
+                result.windowStartPythonTime = window.startTime + offset_;
+                result.windowEndPythonTime = window.endTime + offset_;
+            }
+            else
+            {
+                result.windowStartTime = std::min(result.windowStartTime, window.startTime);
+                result.windowEndTime = std::max(result.windowEndTime, window.endTime);
+                result.windowStartPythonTime = std::min(result.windowStartPythonTime, window.startTime + offset_);
+                result.windowEndPythonTime = std::max(result.windowEndPythonTime, window.endTime + offset_);
+            }
+        }
+    }
+    return result;
+}
+
+std::set<int> HintState::GetExpectedNotesNearPythonTime(double pythonAudioTime, double lookaheadSeconds, double* unitySongTime)
+{
+    return GetExpectedContextNearPythonTime(pythonAudioTime, lookaheadSeconds, unitySongTime).midiNotes;
+}
+
+ExpectedHintContext HintState::GetExpectedContextNearPythonTime(double pythonAudioTime, double lookaheadSeconds, double* unitySongTime)
+{
+    std::lock_guard<std::mutex> lock(mutex_);
+    pruneLocked_();
+    if (!hasOffset_)
+    {
+        if (unitySongTime != nullptr)
+            *unitySongTime = -1.0;
+        return {};
+    }
+
+    const double unityTime = pythonAudioTime - offset_;
+    if (unitySongTime != nullptr)
+        *unitySongTime = unityTime;
+
+    ExpectedHintContext currentResult;
+    ExpectedHintContext futureResult;
     const double futureUnityTime = unityTime + lookaheadSeconds;
     for (const HintWindow& window : windows_)
     {
         if (window.startTime <= unityTime && unityTime <= window.endTime)
-            result.insert(window.midiNotes.begin(), window.midiNotes.end());
+        {
+            currentResult.midiNotes.insert(window.midiNotes.begin(), window.midiNotes.end());
+            appendUniqueExpectedNotes_(currentResult.expectedNotes, window.expectedNotes);
+            if (!currentResult.hasWindow)
+            {
+                currentResult.hasWindow = true;
+                currentResult.windowStartTime = window.startTime;
+                currentResult.windowEndTime = window.endTime;
+                currentResult.windowStartPythonTime = window.startTime + offset_;
+                currentResult.windowEndPythonTime = window.endTime + offset_;
+            }
+            else
+            {
+                currentResult.windowStartTime = std::min(currentResult.windowStartTime, window.startTime);
+                currentResult.windowEndTime = std::max(currentResult.windowEndTime, window.endTime);
+                currentResult.windowStartPythonTime = std::min(currentResult.windowStartPythonTime, window.startTime + offset_);
+                currentResult.windowEndPythonTime = std::max(currentResult.windowEndPythonTime, window.endTime + offset_);
+            }
+        }
         else if (window.startTime <= futureUnityTime && futureUnityTime <= window.endTime)
-            result.insert(window.midiNotes.begin(), window.midiNotes.end());
+        {
+            futureResult.midiNotes.insert(window.midiNotes.begin(), window.midiNotes.end());
+            appendUniqueExpectedNotes_(futureResult.expectedNotes, window.expectedNotes);
+            if (!futureResult.hasWindow)
+            {
+                futureResult.hasWindow = true;
+                futureResult.windowStartTime = window.startTime;
+                futureResult.windowEndTime = window.endTime;
+                futureResult.windowStartPythonTime = window.startTime + offset_;
+                futureResult.windowEndPythonTime = window.endTime + offset_;
+            }
+            else
+            {
+                futureResult.windowStartTime = std::min(futureResult.windowStartTime, window.startTime);
+                futureResult.windowEndTime = std::max(futureResult.windowEndTime, window.endTime);
+                futureResult.windowStartPythonTime = std::min(futureResult.windowStartPythonTime, window.startTime + offset_);
+                futureResult.windowEndPythonTime = std::max(futureResult.windowEndPythonTime, window.endTime + offset_);
+            }
+        }
     }
-    return result;
+
+    if (!currentResult.midiNotes.empty() || !currentResult.expectedNotes.empty())
+        return currentResult;
+
+    return futureResult;
 }
 
 void HintState::ParsePayload(const std::string& payload, double pythonAudioTime)
@@ -1371,7 +2556,11 @@ void HintState::ParsePayload(const std::string& payload, double pythonAudioTime)
             {
                 try
                 {
-                    AddHintWindow(std::stod(fields[0]), std::stod(fields[1]), parseMidiSet_(fields[2]));
+                    AddHintWindow(
+                        std::stod(fields[0]),
+                        std::stod(fields[1]),
+                        parseMidiSet_(fields[2]),
+                        fields.size() >= 4 ? parseExpectedNoteSpecs_(fields[3]) : std::vector<ExpectedHintNoteSpec>{});
                 }
                 catch (...)
                 {
@@ -1409,7 +2598,11 @@ void HintState::ParsePayload(const std::string& payload, double pythonAudioTime)
             {
                 try
                 {
-                    AddHintWindow(std::stod(fields[0]), std::stod(fields[1]), parseMidiSet_(fields[2]));
+                    AddHintWindow(
+                        std::stod(fields[0]),
+                        std::stod(fields[1]),
+                        parseMidiSet_(fields[2]),
+                        fields.size() >= 4 ? parseExpectedNoteSpecs_(fields[3]) : std::vector<ExpectedHintNoteSpec>{});
                 }
                 catch (...)
                 {
@@ -1473,6 +2666,21 @@ std::set<int> HintState::parseMidiSet_(const std::string& csv)
     return result;
 }
 
+std::vector<ExpectedHintNoteSpec> HintState::parseExpectedNoteSpecs_(const std::string& csv)
+{
+    return ParseExpectedHintNoteSpecsCsv(csv);
+}
+
+bool HintState::noteSpecsEqual_(const ExpectedHintNoteSpec& left, const ExpectedHintNoteSpec& right)
+{
+    return ExpectedHintNoteSpecsEqual(left, right);
+}
+
+void HintState::appendUniqueExpectedNotes_(std::vector<ExpectedHintNoteSpec>& destination, const std::vector<ExpectedHintNoteSpec>& source)
+{
+    AppendUniqueExpectedNotes(destination, source);
+}
+
 void HintState::pruneLocked_()
 {
     const auto now = Clock::now();
@@ -1510,7 +2718,15 @@ private:
     void FastLoop_();
     void DeepLoop_();
     void pumpDeepResults_(double currentTime);
+    void maybeDispatchFastChordTasks_(uint64_t availableFrames, double currentTime);
+    void maybeDispatchFastSingleTasks_(uint64_t availableFrames, double currentTime, const std::set<int>& currentActiveNotes);
     void maybeDispatchCaptureTasks_(uint64_t availableFrames);
+    bool scoreExpectedChordConstraint_(const std::vector<float>& audioWindow, const std::vector<ExpectedHintNoteSpec>& expectedNotes, const DetectorSettings& settings, const char* sourceTag) const;
+    bool tryScoreFastExpectedChord_(uint64_t endFrameExclusive, const std::vector<ExpectedHintNoteSpec>& expectedNotes, const DetectorSettings& settings) const;
+    bool scoreExpectedSingleConstraint_(const std::vector<float>& audioWindow, const ExpectedHintNoteSpec& expectedNote, const DetectorSettings& settings, const char* sourceTag) const;
+    bool tryScoreFastExpectedSingle_(uint64_t endFrameExclusive, const ExpectedHintNoteSpec& expectedNote, const DetectorSettings& settings) const;
+    void publishFastChordEvent_(int eventId, double onsetTime, double currentTime, const std::set<int>& expectedMidi);
+    void publishFastSingleEvent_(int eventId, double onsetTime, double currentTime, int expectedMidi);
     bool initializeAubio_(std::wstring& error);
     void shutdownAubio_();
     void updateContinuousNotes_(const std::vector<float>& hop, double currentTime, std::deque<int>& recentPitchMidi, int& stableMidi, int& stableCount, double& lastContinuousTime, std::set<int>& currentActiveNotes);
@@ -1571,6 +2787,8 @@ private:
     std::atomic<float> smoothedInputLevel_{ 0.0f };
 
     std::deque<CaptureTask> captures_;
+    std::deque<FastChordTask> fastChordTasks_;
+    std::deque<FastSingleTask> fastSingleTasks_;
     std::queue<std::pair<CaptureTask, std::vector<float>>> deepTasks_;
     std::queue<DeepResult> deepResults_;
 
@@ -1583,7 +2801,10 @@ private:
     double broadcastEventOnsetTime_ = 0.0;
     double broadcastEventUntil_ = 0.0;
     std::set<int> broadcastEventNotes_;
+    std::string broadcastEventSource_;
     std::set<int> broadcastExpectedNotes_;
+    std::set<int> fastChordActiveNotes_;
+    double fastChordActiveUntil_ = 0.0;
 };
 
 NativeDetectorEngine::NativeDetectorEngine()
@@ -1957,6 +3178,8 @@ void NativeDetectorEngine::stopLocked_()
     {
         std::lock_guard<std::mutex> lock(captureMutex_);
         captures_.clear();
+        fastChordTasks_.clear();
+        fastSingleTasks_.clear();
     }
 
     updateStatusLocked_();
@@ -1968,14 +3191,54 @@ void NativeDetectorEngine::resetStateLocked_()
     totalFramesWritten_.store(0, std::memory_order_release);
     smoothedInputLevel_.store(0.0f, std::memory_order_relaxed);
     {
+        std::lock_guard<std::mutex> lock(captureMutex_);
+        captures_.clear();
+        fastChordTasks_.clear();
+        fastSingleTasks_.clear();
+    }
+    {
         std::lock_guard<std::mutex> lock(stateMutex_);
         latestPacket_ = "--";
         broadcastEventNotes_.clear();
+        broadcastEventSource_.clear();
         broadcastEventId_ = 0;
         broadcastEventOnsetTime_ = 0.0;
         broadcastEventUntil_ = 0.0;
         broadcastExpectedNotes_.clear();
+        fastChordActiveNotes_.clear();
+        fastChordActiveUntil_ = 0.0;
     }
+}
+
+std::string EscapeJsonString(const std::string& value)
+{
+    std::ostringstream builder;
+    for (char ch : value)
+    {
+        switch (ch)
+        {
+        case '\\':
+            builder << "\\\\";
+            break;
+        case '"':
+            builder << "\\\"";
+            break;
+        case '\r':
+            builder << "\\r";
+            break;
+        case '\n':
+            builder << "\\n";
+            break;
+        case '\t':
+            builder << "\\t";
+            break;
+        default:
+            builder << ch;
+            break;
+        }
+    }
+
+    return builder.str();
 }
 
 void NativeDetectorEngine::updateStatusLocked_()
@@ -2037,6 +3300,54 @@ void NativeDetectorEngine::FastLoop_()
     double lastOnsetTime = -999.0;
     int pluckCounter = 0;
     uint64_t processedFrames = 0;
+    ExpectedHintNoteSpec lastProactiveScheduledNote;
+    bool hasLastProactiveScheduledNote = false;
+    double lastProactiveScheduledUntil = -999.0;
+    int lastFastSingleScheduledMidi = -1;
+    double lastFastSingleScheduledWindowStartPython = -999.0;
+    double lastFastSingleScheduledWindowEndPython = -999.0;
+
+    auto scheduleFastSingleTask = [&](int eventId, uint64_t onsetFrame, double onsetTime, const ExpectedHintNoteSpec& expectedNote, bool proactive, double windowStartPythonTime, double windowEndPythonTime)
+    {
+        if (eventId <= 0 || expectedNote.midi < 0)
+            return;
+
+        FastSingleTask fastTask;
+        fastTask.eventId = eventId;
+        fastTask.onsetFrame = onsetFrame;
+        fastTask.analysisWindowSamples = GetFastSinglePrimaryAnalysisWindowSamples(expectedNote);
+        fastTask.readyFrame = onsetFrame + static_cast<uint64_t>(fastTask.analysisWindowSamples);
+        fastTask.onsetTime = onsetTime;
+        fastTask.expectedNote = expectedNote;
+        fastTask.attemptIndex = 0;
+        fastTask.proactive = proactive;
+        fastTask.windowStartPythonTime = windowStartPythonTime;
+        fastTask.windowEndPythonTime = windowEndPythonTime;
+
+        {
+            std::lock_guard<std::mutex> captureLock(captureMutex_);
+            fastSingleTasks_.push_back(std::move(fastTask));
+        }
+
+        lastFastSingleScheduledMidi = expectedNote.midi;
+        lastFastSingleScheduledWindowStartPython = windowStartPythonTime;
+        lastFastSingleScheduledWindowEndPython = windowEndPythonTime;
+
+        std::ostringstream fastLog;
+        fastLog << "FAST_SINGLE_SCHEDULE"
+            << " eventId=" << eventId
+            << " onsetTime=" << onsetTime
+            << " midi=" << expectedNote.midi
+            << " string=" << expectedNote.stringIndex
+            << " fret=" << expectedNote.fret
+            << " proactive=" << (proactive ? 1 : 0)
+            << " onsetFrame=" << onsetFrame
+            << " readyFrame=" << (onsetFrame + static_cast<uint64_t>(GetFastSinglePrimaryAnalysisWindowSamples(expectedNote)))
+            << " windowSamples=" << GetFastSinglePrimaryAnalysisWindowSamples(expectedNote)
+            << " hintStart=" << windowStartPythonTime
+            << " hintEnd=" << windowEndPythonTime;
+        AppendDebugLogLine(fastLog.str());
+    };
 
     while (running_.load(std::memory_order_acquire))
     {
@@ -2056,17 +3367,73 @@ void NativeDetectorEngine::FastLoop_()
 
             pumpDeepResults_(currentTime);
             maybeDispatchCaptureTasks_(availableFrames);
-
+            maybeDispatchFastChordTasks_(availableFrames, currentTime);
             updateContinuousNotes_(hop, currentTime, recentPitchMidi, stableMidi, stableCount, lastContinuousTime, currentActiveNotes);
+            maybeDispatchFastSingleTasks_(availableFrames, currentTime, currentActiveNotes);
 
             const DetectorSettings settings = getSettingsSnapshot_();
             double onsetUnityTime = -1.0;
-            const std::set<int> expectedForOnsetWindow = hintState_.GetExpectedNotesNearPythonTime(currentTime, settings.onsetExpectLookaheadSeconds, &onsetUnityTime);
-            const bool onsetDetected = detectOnset_(hop, expectedForOnsetWindow);
+            const ExpectedHintContext expectedOnsetContext = hintState_.GetExpectedContextNearPythonTime(currentTime, settings.onsetExpectLookaheadSeconds, &onsetUnityTime);
+            const bool onsetDetected = detectOnset_(hop, expectedOnsetContext.midiNotes);
             if (onsetDetected && (currentTime - lastOnsetTime) > kDebounceSeconds)
             {
                 lastOnsetTime = currentTime;
                 ++pluckCounter;
+
+                if (expectedOnsetContext.expectedNotes.size() >= 2)
+                {
+                    int lowestExpectedMidi = std::numeric_limits<int>::max();
+                    for (const ExpectedHintNoteSpec& spec : expectedOnsetContext.expectedNotes)
+                    {
+                        if (spec.midi >= 0)
+                            lowestExpectedMidi = std::min(lowestExpectedMidi, spec.midi);
+                    }
+
+                    if (lowestExpectedMidi != std::numeric_limits<int>::max())
+                    {
+                        const int analysisWindowSamples = lowestExpectedMidi <= 40
+                            ? kFastChordAnalysisWindowLongSamples
+                            : kFastChordAnalysisWindowShortSamples;
+
+                        FastChordTask fastTask;
+                        fastTask.eventId = pluckCounter;
+                        fastTask.onsetFrame = processedFrames - static_cast<uint64_t>(kHopSize);
+                        fastTask.readyFrame = fastTask.onsetFrame + static_cast<uint64_t>(analysisWindowSamples);
+                        fastTask.onsetTime = currentTime;
+                        fastTask.expectedMidiNotes = expectedOnsetContext.midiNotes;
+                        fastTask.expectedNotes = expectedOnsetContext.expectedNotes;
+
+                        {
+                            std::lock_guard<std::mutex> captureLock(captureMutex_);
+                            fastChordTasks_.push_back(std::move(fastTask));
+                        }
+
+                        std::ostringstream fastLog;
+                        fastLog << "FAST_CHORD_SCHEDULE"
+                            << " eventId=" << pluckCounter
+                            << " onsetTime=" << currentTime
+                            << " expectedCount=" << expectedOnsetContext.expectedNotes.size()
+                            << " onsetFrame=" << (processedFrames - static_cast<uint64_t>(kHopSize))
+                            << " readyFrame=" << (processedFrames - static_cast<uint64_t>(kHopSize) + static_cast<uint64_t>(analysisWindowSamples))
+                            << " windowSamples=" << analysisWindowSamples;
+                        AppendDebugLogLine(fastLog.str());
+                    }
+                }
+                else if (expectedOnsetContext.expectedNotes.size() == 1)
+                {
+                    const ExpectedHintNoteSpec& expectedNote = expectedOnsetContext.expectedNotes.front();
+                    if (expectedNote.midi >= 0)
+                    {
+                        scheduleFastSingleTask(
+                            pluckCounter,
+                            processedFrames - static_cast<uint64_t>(kHopSize),
+                            currentTime,
+                            expectedNote,
+                            false,
+                            expectedOnsetContext.windowStartPythonTime,
+                            expectedOnsetContext.windowEndPythonTime);
+                    }
+                }
 
                 CaptureTask task;
                 task.eventId = pluckCounter;
@@ -2078,6 +3445,50 @@ void NativeDetectorEngine::FastLoop_()
                     std::lock_guard<std::mutex> captureLock(captureMutex_);
                     captures_.push_back(task);
                 }
+            }
+
+            double activeUnityTime = -1.0;
+            const ExpectedHintContext activeSingleContext = hintState_.GetExpectedContextForPythonTime(currentTime, &activeUnityTime);
+            if (activeSingleContext.expectedNotes.size() == 1 &&
+                activeSingleContext.hasWindow &&
+                activeSingleContext.windowStartPythonTime > 0.0 &&
+                activeSingleContext.windowEndPythonTime >= currentTime)
+            {
+                const ExpectedHintNoteSpec& expectedNote = activeSingleContext.expectedNotes.front();
+                const bool sameProactiveNote =
+                    hasLastProactiveScheduledNote &&
+                    ExpectedHintNoteSpecsEqual(lastProactiveScheduledNote, expectedNote) &&
+                    currentTime <= lastProactiveScheduledUntil;
+
+                int bestActiveDistance = std::numeric_limits<int>::max();
+                for (int activeMidi : currentActiveNotes)
+                    bestActiveDistance = std::min(bestActiveDistance, SemitoneDistance(activeMidi, expectedNote.midi));
+
+                const bool conflictingActivePitch =
+                    !currentActiveNotes.empty() &&
+                    bestActiveDistance > std::max(1, settings.expectMaxDistanceContinuous);
+
+                if (!sameProactiveNote && !conflictingActivePitch)
+                {
+                    ++pluckCounter;
+                    const uint64_t startFrame = static_cast<uint64_t>(std::max(0.0, std::floor(activeSingleContext.windowStartPythonTime * static_cast<double>(kSampleRate))));
+                    scheduleFastSingleTask(
+                        pluckCounter,
+                        startFrame,
+                        activeSingleContext.windowStartPythonTime,
+                        expectedNote,
+                        true,
+                        activeSingleContext.windowStartPythonTime,
+                        activeSingleContext.windowEndPythonTime);
+                    lastProactiveScheduledNote = expectedNote;
+                    hasLastProactiveScheduledNote = true;
+                    lastProactiveScheduledUntil = activeSingleContext.windowEndPythonTime;
+                }
+            }
+            else if (activeSingleContext.expectedNotes.empty() || !activeSingleContext.hasWindow)
+            {
+                hasLastProactiveScheduledNote = false;
+                lastProactiveScheduledUntil = -999.0;
             }
 
             buildLatestPacket_(currentTime, currentActiveNotes);
@@ -2116,15 +3527,28 @@ void NativeDetectorEngine::DeepLoop_()
         std::vector<NoteEventCandidate> decodedCandidates = decodeBasicPitch_(noteOutput, onsetOutput);
 
         double unityTime = -1.0;
-        const std::set<int> expectedMidi = hintState_.GetExpectedNotesForPythonTime(task.onsetTime, &unityTime);
-        std::set<int> selectedMidi = scoreAiCandidates_(decodedCandidates, expectedMidi);
-        selectedMidi = applyLowestExpectedBassRescue_(audio, expectedMidi, selectedMidi);
+        const ExpectedHintContext expectedContext = hintState_.GetExpectedContextForPythonTime(task.onsetTime, &unityTime);
+        const DetectorSettings settings = getSettingsSnapshot_();
+        std::set<int> selectedMidi = scoreAiCandidates_(decodedCandidates, expectedContext.midiNotes);
+        selectedMidi = applyLowestExpectedBassRescue_(audio, expectedContext.midiNotes, selectedMidi);
+
+        if (expectedContext.expectedNotes.size() >= 2)
+        {
+            if (scoreExpectedChordConstraint_(audio, expectedContext.expectedNotes, settings, "deep"))
+                selectedMidi = expectedContext.midiNotes;
+            else
+                selectedMidi.clear();
+        }
+
+        if (selectedMidi.empty())
+            continue;
 
         DeepResult result;
         result.eventId = task.eventId;
         result.onsetTime = task.onsetTime;
         result.eventNotes = selectedMidi;
-        result.expectedMidiNotes = expectedMidi;
+        result.expectedMidiNotes = expectedContext.midiNotes;
+        result.sourceTag = "ai";
 
         {
             std::lock_guard<std::mutex> resultLock(resultMutex_);
@@ -2144,6 +3568,12 @@ void NativeDetectorEngine::pumpDeepResults_(double currentTime)
     while (!localResults.empty())
     {
         const DeepResult& result = localResults.front();
+        if (result.eventNotes.empty())
+        {
+            localResults.pop();
+            continue;
+        }
+
         {
             std::lock_guard<std::mutex> lock(stateMutex_);
             const bool closeEnoughToMerge = broadcastEventId_ > 0 &&
@@ -2162,6 +3592,7 @@ void NativeDetectorEngine::pumpDeepResults_(double currentTime)
                 broadcastEventUntil_ = currentTime + kEventBroadcastSeconds;
                 broadcastEventNotes_.insert(result.eventNotes.begin(), result.eventNotes.end());
                 broadcastExpectedNotes_.insert(result.expectedMidiNotes.begin(), result.expectedMidiNotes.end());
+                broadcastEventSource_ = MergeEventSourceTags(broadcastEventSource_, result.sourceTag);
             }
             else
             {
@@ -2170,6 +3601,7 @@ void NativeDetectorEngine::pumpDeepResults_(double currentTime)
                 broadcastEventUntil_ = currentTime + kEventBroadcastSeconds;
                 broadcastEventNotes_ = result.eventNotes;
                 broadcastExpectedNotes_ = result.expectedMidiNotes;
+                broadcastEventSource_ = result.sourceTag;
             }
         }
         localResults.pop();
@@ -2208,6 +3640,345 @@ void NativeDetectorEngine::maybeDispatchCaptureTasks_(uint64_t availableFrames)
             deepTasks_.push(std::make_pair(task, std::move(audio)));
         }
         deepCondition_.notify_one();
+    }
+}
+
+void NativeDetectorEngine::maybeDispatchFastChordTasks_(uint64_t availableFrames, double currentTime)
+{
+    std::deque<FastChordTask> readyTasks;
+    {
+        std::lock_guard<std::mutex> lock(captureMutex_);
+        while (!fastChordTasks_.empty() && fastChordTasks_.front().readyFrame <= availableFrames)
+        {
+            readyTasks.push_back(std::move(fastChordTasks_.front()));
+            fastChordTasks_.pop_front();
+        }
+    }
+
+    while (!readyTasks.empty())
+    {
+        const FastChordTask task = readyTasks.front();
+        readyTasks.pop_front();
+
+        if (task.expectedNotes.size() < 2 || task.expectedMidiNotes.empty())
+            continue;
+
+        int lowestExpectedMidi = std::numeric_limits<int>::max();
+        for (const ExpectedHintNoteSpec& spec : task.expectedNotes)
+        {
+            if (spec.midi >= 0)
+                lowestExpectedMidi = std::min(lowestExpectedMidi, spec.midi);
+        }
+
+        if (lowestExpectedMidi == std::numeric_limits<int>::max())
+            continue;
+
+        const DetectorSettings settings = getSettingsSnapshot_();
+        const int analysisWindowSamples = lowestExpectedMidi <= 40
+            ? kFastChordAnalysisWindowLongSamples
+            : kFastChordAnalysisWindowShortSamples;
+
+        std::vector<float> audioWindow(static_cast<size_t>(analysisWindowSamples), 0.0f);
+        readAbsoluteRange_(task.onsetFrame, audioWindow.data(), analysisWindowSamples);
+
+        const bool fastChordAccepted = scoreExpectedChordConstraint_(audioWindow, task.expectedNotes, settings, "fast");
+        std::ostringstream fastLog;
+        fastLog << "FAST_CHORD_ATTEMPT"
+            << " eventId=" << task.eventId
+            << " onsetTime=" << task.onsetTime
+            << " dispatchTime=" << currentTime
+            << " expectedCount=" << task.expectedNotes.size()
+            << " accepted=" << (fastChordAccepted ? 1 : 0);
+        AppendDebugLogLine(fastLog.str());
+
+        if (fastChordAccepted)
+            publishFastChordEvent_(task.eventId, task.onsetTime, currentTime, task.expectedMidiNotes);
+    }
+}
+
+void NativeDetectorEngine::maybeDispatchFastSingleTasks_(uint64_t availableFrames, double currentTime, const std::set<int>& currentActiveNotes)
+{
+    std::deque<FastSingleTask> readyTasks;
+    {
+        std::lock_guard<std::mutex> lock(captureMutex_);
+        while (!fastSingleTasks_.empty() && fastSingleTasks_.front().readyFrame <= availableFrames)
+        {
+            readyTasks.push_back(std::move(fastSingleTasks_.front()));
+            fastSingleTasks_.pop_front();
+        }
+    }
+
+    while (!readyTasks.empty())
+    {
+        const FastSingleTask task = readyTasks.front();
+        readyTasks.pop_front();
+
+        if (task.expectedNote.midi < 0)
+            continue;
+
+        const DetectorSettings settings = getSettingsSnapshot_();
+        const int analysisWindowSamples = task.analysisWindowSamples > 0
+            ? task.analysisWindowSamples
+            : GetFastSinglePrimaryAnalysisWindowSamples(task.expectedNote);
+
+        std::vector<float> audioWindow(static_cast<size_t>(analysisWindowSamples), 0.0f);
+        readAbsoluteRange_(task.onsetFrame, audioWindow.data(), analysisWindowSamples);
+
+        const FastSingleWindowEvaluationResult evaluation = EvaluateFastSingleWindow(audioWindow, task.expectedNote, settings);
+        bool fastSingleAccepted = evaluation.accepted;
+        int conflictingActiveDistance = std::numeric_limits<int>::max();
+        for (int activeMidi : currentActiveNotes)
+            conflictingActiveDistance = std::min(conflictingActiveDistance, SemitoneDistance(activeMidi, task.expectedNote.midi));
+
+        const bool hasConflictingContinuousPitch =
+            !currentActiveNotes.empty() &&
+            conflictingActiveDistance > std::max(1, settings.expectMaxDistanceContinuous) &&
+            !evaluation.yin.accepted;
+        if (fastSingleAccepted && hasConflictingContinuousPitch)
+            fastSingleAccepted = false;
+
+        std::ostringstream fastLog;
+        fastLog << "FAST_SINGLE_ATTEMPT"
+            << " eventId=" << task.eventId
+            << " onsetTime=" << task.onsetTime
+            << " dispatchTime=" << currentTime
+            << " midi=" << task.expectedNote.midi
+            << " string=" << task.expectedNote.stringIndex
+            << " fret=" << task.expectedNote.fret
+            << " proactive=" << (task.proactive ? 1 : 0)
+            << " attemptIndex=" << task.attemptIndex
+            << " windowSamples=" << analysisWindowSamples
+            << " spectralAccepted=" << (evaluation.spectral.accepted ? 1 : 0)
+            << " yinAccepted=" << (evaluation.yin.accepted ? 1 : 0)
+            << " yinDetectedMidi=" << evaluation.yin.detectedMidi
+            << " yinAcceptedHopIndex=" << evaluation.yin.acceptedHopIndex
+            << " yinOnsetHopIndex=" << evaluation.yin.onsetHopIndex
+            << " yinBestConfidence=" << evaluation.yin.bestConfidence
+            << " conflictingActiveDistance=" << (currentActiveNotes.empty() ? -1 : conflictingActiveDistance)
+            << " conflictingContinuous=" << (hasConflictingContinuousPitch ? 1 : 0)
+            << " accepted=" << (fastSingleAccepted ? 1 : 0);
+        AppendDebugLogLine(fastLog.str());
+
+        scoreExpectedSingleConstraint_(audioWindow, task.expectedNote, settings, "fast-single");
+
+        if (fastSingleAccepted)
+        {
+            publishFastSingleEvent_(task.eventId, task.onsetTime, currentTime, task.expectedNote.midi);
+            continue;
+        }
+
+        if (task.attemptIndex <= 0)
+        {
+            const int fallbackWindowSamples = GetFastSingleFallbackAnalysisWindowSamples(task.expectedNote);
+            if (fallbackWindowSamples > analysisWindowSamples)
+            {
+                FastSingleTask retryTask = task;
+                retryTask.analysisWindowSamples = fallbackWindowSamples;
+                retryTask.readyFrame = task.onsetFrame + static_cast<uint64_t>(fallbackWindowSamples);
+                retryTask.attemptIndex = task.attemptIndex + 1;
+
+                std::lock_guard<std::mutex> captureLock(captureMutex_);
+                fastSingleTasks_.push_back(std::move(retryTask));
+            }
+        }
+    }
+}
+
+bool NativeDetectorEngine::tryScoreFastExpectedChord_(
+    uint64_t endFrameExclusive,
+    const std::vector<ExpectedHintNoteSpec>& expectedNotes,
+    const DetectorSettings& settings) const
+{
+    int lowestExpectedMidi = std::numeric_limits<int>::max();
+    for (const ExpectedHintNoteSpec& spec : expectedNotes)
+    {
+        if (spec.midi >= 0)
+            lowestExpectedMidi = std::min(lowestExpectedMidi, spec.midi);
+    }
+
+    if (lowestExpectedMidi == std::numeric_limits<int>::max())
+        return false;
+
+    const int analysisWindowSamples = lowestExpectedMidi <= 40
+        ? kFastChordAnalysisWindowLongSamples
+        : kFastChordAnalysisWindowShortSamples;
+
+    std::vector<float> audioWindow(static_cast<size_t>(analysisWindowSamples), 0.0f);
+    readRecentWindow_(endFrameExclusive, audioWindow, analysisWindowSamples);
+    return scoreExpectedChordConstraint_(audioWindow, expectedNotes, settings, "fast");
+}
+
+bool NativeDetectorEngine::tryScoreFastExpectedSingle_(
+    uint64_t endFrameExclusive,
+    const ExpectedHintNoteSpec& expectedNote,
+    const DetectorSettings& settings) const
+{
+    if (expectedNote.midi < 0)
+        return false;
+
+    const int analysisWindowSamples = expectedNote.midi <= 45
+        ? kFastSingleAnalysisWindowLongSamples
+        : kFastSingleAnalysisWindowShortSamples;
+
+    std::vector<float> audioWindow(static_cast<size_t>(analysisWindowSamples), 0.0f);
+    readRecentWindow_(endFrameExclusive, audioWindow, analysisWindowSamples);
+    return scoreExpectedSingleConstraint_(audioWindow, expectedNote, settings, "fast-single");
+}
+
+bool NativeDetectorEngine::scoreExpectedChordConstraint_(
+    const std::vector<float>& audioWindow,
+    const std::vector<ExpectedHintNoteSpec>& expectedNotes,
+    const DetectorSettings& settings,
+    const char* sourceTag) const
+{
+    const ConstraintChordEvaluationResult evaluation = EvaluateExpectedChordConstraintWindow(audioWindow, expectedNotes, settings);
+    for (const ConstraintChordNoteDebugResult& noteResult : evaluation.noteResults)
+    {
+        std::ostringstream noteLog;
+        noteLog << "CHORD_NOTE"
+            << " source=" << (sourceTag != nullptr ? sourceTag : "unknown")
+            << " midi=" << noteResult.spec.midi
+            << " string=" << noteResult.spec.stringIndex
+            << " fret=" << noteResult.spec.fret
+            << " openMidi=" << noteResult.spec.openMidi
+            << " flags=" << noteResult.spec.flags
+            << " supportRatio=" << noteResult.supportRatio
+            << " supportThreshold=" << noteResult.supportThreshold
+            << " fundamentalRatio=" << noteResult.fundamentalRatio
+            << " neighborFundamentalMax=" << noteResult.neighborFundamentalMax
+            << " noteScore=" << noteResult.noteScore
+            << " noteScoreThreshold=" << noteResult.noteScoreThreshold
+            << " peakHz=" << noteResult.dominantPeakHz
+            << " centsError=" << noteResult.centsError
+            << " hit=" << (noteResult.hit ? 1 : 0);
+        AppendDebugLogLine(noteLog.str());
+    }
+
+    std::ostringstream summaryLog;
+    summaryLog << "CHORD_SCORE"
+        << " source=" << (sourceTag != nullptr ? sourceTag : "unknown")
+        << " hitCount=" << evaluation.hitCount
+        << " totalExpected=" << evaluation.totalExpected
+        << " requiredHits=" << evaluation.requiredHits
+        << " chordLeniency=" << evaluation.chordLeniency
+        << " accepted=" << (evaluation.accepted ? 1 : 0);
+    AppendDebugLogLine(summaryLog.str());
+
+    return evaluation.accepted;
+}
+
+bool NativeDetectorEngine::scoreExpectedSingleConstraint_(
+    const std::vector<float>& audioWindow,
+    const ExpectedHintNoteSpec& expectedNote,
+    const DetectorSettings& settings,
+    const char* sourceTag) const
+{
+    const ConstraintSingleEvaluationResult evaluation = EvaluateExpectedSingleConstraintWindow(audioWindow, expectedNote, settings);
+    const ConstraintChordNoteDebugResult& noteResult = evaluation.noteResult;
+
+    std::ostringstream noteLog;
+    noteLog << "SINGLE_NOTE"
+        << " source=" << (sourceTag != nullptr ? sourceTag : "unknown")
+        << " midi=" << noteResult.spec.midi
+        << " string=" << noteResult.spec.stringIndex
+        << " fret=" << noteResult.spec.fret
+        << " openMidi=" << noteResult.spec.openMidi
+        << " flags=" << noteResult.spec.flags
+        << " supportRatio=" << noteResult.supportRatio
+        << " supportThreshold=" << noteResult.supportThreshold
+        << " fundamentalRatio=" << noteResult.fundamentalRatio
+        << " neighborFundamentalMax=" << noteResult.neighborFundamentalMax
+        << " noteScore=" << noteResult.noteScore
+        << " noteScoreThreshold=" << noteResult.noteScoreThreshold
+        << " peakHz=" << noteResult.dominantPeakHz
+        << " centsError=" << noteResult.centsError
+        << " hit=" << (noteResult.hit ? 1 : 0);
+    AppendDebugLogLine(noteLog.str());
+
+    std::ostringstream summaryLog;
+    summaryLog << "SINGLE_SCORE"
+        << " source=" << (sourceTag != nullptr ? sourceTag : "unknown")
+        << " midi=" << expectedNote.midi
+        << " accepted=" << (evaluation.accepted ? 1 : 0);
+    AppendDebugLogLine(summaryLog.str());
+
+    return evaluation.accepted;
+}
+
+void NativeDetectorEngine::publishFastChordEvent_(
+    int eventId,
+    double onsetTime,
+    double currentTime,
+    const std::set<int>& expectedMidi)
+{
+    if (eventId <= 0 || expectedMidi.empty())
+        return;
+
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    const bool mergeableExisting =
+        broadcastEventId_ > 0 &&
+        !broadcastExpectedNotes_.empty() &&
+        !broadcastEventNotes_.empty() &&
+        std::abs(onsetTime - broadcastEventOnsetTime_) <= kChordResultMergeSeconds &&
+        CountSetOverlap(broadcastExpectedNotes_, expectedMidi) > 0;
+
+    if (mergeableExisting)
+    {
+        broadcastEventOnsetTime_ = std::min(broadcastEventOnsetTime_, onsetTime);
+        broadcastEventUntil_ = std::max(broadcastEventUntil_, currentTime + kEventBroadcastSeconds);
+        broadcastEventNotes_.insert(expectedMidi.begin(), expectedMidi.end());
+        broadcastExpectedNotes_.insert(expectedMidi.begin(), expectedMidi.end());
+        broadcastEventSource_ = MergeEventSourceTags(broadcastEventSource_, "fast-chord");
+    }
+    else
+    {
+        broadcastEventId_ = eventId;
+        broadcastEventOnsetTime_ = onsetTime;
+        broadcastEventUntil_ = currentTime + kEventBroadcastSeconds;
+        broadcastEventNotes_ = expectedMidi;
+        broadcastExpectedNotes_ = expectedMidi;
+        broadcastEventSource_ = "fast-chord";
+    }
+
+    fastChordActiveNotes_ = expectedMidi;
+    fastChordActiveUntil_ = currentTime + kEventBroadcastSeconds;
+}
+
+void NativeDetectorEngine::publishFastSingleEvent_(
+    int eventId,
+    double onsetTime,
+    double currentTime,
+    int expectedMidi)
+{
+    if (eventId <= 0 || expectedMidi < 0)
+        return;
+
+    const std::set<int> expectedMidiSet = { expectedMidi };
+
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    const bool mergeableExisting =
+        broadcastEventId_ > 0 &&
+        !broadcastExpectedNotes_.empty() &&
+        !broadcastEventNotes_.empty() &&
+        std::abs(onsetTime - broadcastEventOnsetTime_) <= kChordResultMergeSeconds &&
+        CountSetOverlap(broadcastExpectedNotes_, expectedMidiSet) > 0;
+
+    if (mergeableExisting)
+    {
+        broadcastEventOnsetTime_ = std::min(broadcastEventOnsetTime_, onsetTime);
+        broadcastEventUntil_ = std::max(broadcastEventUntil_, currentTime + kEventBroadcastSeconds);
+        broadcastEventNotes_.insert(expectedMidi);
+        broadcastExpectedNotes_.insert(expectedMidi);
+        broadcastEventSource_ = MergeEventSourceTags(broadcastEventSource_, "fast-single");
+    }
+    else
+    {
+        broadcastEventId_ = eventId;
+        broadcastEventOnsetTime_ = onsetTime;
+        broadcastEventUntil_ = currentTime + kEventBroadcastSeconds;
+        broadcastEventNotes_ = expectedMidiSet;
+        broadcastExpectedNotes_ = expectedMidiSet;
+        broadcastEventSource_ = "fast-single";
     }
 }
 
@@ -2818,15 +4589,21 @@ std::set<int> NativeDetectorEngine::applyLowestExpectedBassRescue_(const std::ve
 void NativeDetectorEngine::buildLatestPacket_(double currentTime, const std::set<int>& currentActiveNotes)
 {
     std::set<int> broadcastNotes;
+    std::set<int> fastChordNotes;
     int broadcastId = 0;
     double broadcastOnsetTime = 0.0;
     double broadcastUntil = 0.0;
+    std::string broadcastSource;
+    double fastChordUntil = 0.0;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
         broadcastNotes = broadcastEventNotes_;
         broadcastId = broadcastEventId_;
         broadcastOnsetTime = broadcastEventOnsetTime_;
         broadcastUntil = broadcastEventUntil_;
+        broadcastSource = broadcastEventSource_;
+        fastChordNotes = fastChordActiveNotes_;
+        fastChordUntil = fastChordActiveUntil_;
     }
 
     int eventIdToSend = 0;
@@ -2839,12 +4616,17 @@ void NativeDetectorEngine::buildLatestPacket_(double currentTime, const std::set
         eventNotesToSend = broadcastNotes;
     }
 
+    std::set<int> activeNotesToSend = currentActiveNotes;
+    if (!fastChordNotes.empty() && currentTime <= fastChordUntil)
+        activeNotesToSend.insert(fastChordNotes.begin(), fastChordNotes.end());
+
     std::ostringstream packet;
-    packet << "A|" << JoinMidiNotes(currentActiveNotes)
+    packet << "A|" << JoinMidiNotes(activeNotesToSend)
         << "|" << eventIdToSend
         << "|" << eventAgeToSend
         << "|" << JoinMidiNotes(eventNotesToSend)
-        << "|" << smoothedInputLevel_.load(std::memory_order_relaxed);
+        << "|" << smoothedInputLevel_.load(std::memory_order_relaxed)
+        << "|" << (broadcastSource.empty() ? std::string("--") : broadcastSource);
 
     std::lock_guard<std::mutex> lock(stateMutex_);
     latestPacket_ = packet.str();
@@ -2903,6 +4685,13 @@ __declspec(dllexport) int NativeDetector_SetSettingsJson(const char* settingsJso
     return 1;
 }
 
+__declspec(dllexport) int NativeDetector_SetDebugLogPath(const char* debugLogPathUtf8)
+{
+    SetDebugLogPathInternal(Utf8ToWide(debugLogPathUtf8 != nullptr ? debugLogPathUtf8 : ""));
+    AppendDebugLogLine("DEBUG_LOG_PATH_SET");
+    return 1;
+}
+
 __declspec(dllexport) int NativeDetector_PollLatestPacket(char* destination, int capacity)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
@@ -2947,6 +4736,230 @@ __declspec(dllexport) int NativeDetector_GetRuntimeInfoJson(char* destination, i
     if (!g_detector)
         return CopyUtf8String("{\"running\":false,\"backendLabel\":\"Native C++ Detector\",\"selectedInputDeviceIndex\":-1,\"selectedInputDeviceDisplayName\":\"\",\"selectedHostApiName\":\"\",\"sampleRate\":22050,\"hopSize\":512,\"captureSeconds\":0.3,\"inputLevelNormalized\":0,\"latestPacket\":\"--\",\"statusText\":\"Native detector idle.\",\"errorText\":\"\"}", destination, capacity) ? 1 : 0;
     return CopyUtf8String(g_detector->GetRuntimeInfoJson(), destination, capacity) ? 1 : 0;
+}
+
+__declspec(dllexport) int NativeDetector_DebugEvaluatePcmFloat(
+    const float* samples,
+    int sampleCount,
+    const char* expectedNoteSpecsUtf8,
+    const char* settingsJsonUtf8,
+    char* destination,
+    int capacity)
+{
+    if (destination == nullptr || capacity <= 0)
+        return 0;
+
+    const std::vector<ExpectedHintNoteSpec> expectedNotes = ParseExpectedHintNoteSpecsCsv(expectedNoteSpecsUtf8 != nullptr ? expectedNoteSpecsUtf8 : "");
+    DetectorSettings settings = MakeTightDetectorSettings();
+    if (settingsJsonUtf8 != nullptr && *settingsJsonUtf8 != '\0')
+        settings = ParseDetectorSettingsJson(settingsJsonUtf8, settings);
+
+    std::ostringstream json;
+    json << "{\"sampleRate\":" << kSampleRate
+        << ",\"hopSize\":" << kHopSize
+        << ",\"revision\":2"
+        << ",\"sampleCount\":" << std::max(0, sampleCount)
+        << ",\"expectedCount\":" << expectedNotes.size();
+
+    if (expectedNotes.empty() || samples == nullptr || sampleCount <= 0)
+    {
+        json << ",\"mode\":\"invalid\""
+            << ",\"accepted\":false"
+            << ",\"error\":\"Missing samples or expected notes.\"}";
+        return CopyUtf8String(json.str(), destination, capacity) ? 1 : 0;
+    }
+
+    if (expectedNotes.size() >= 2)
+    {
+        int lowestExpectedMidi = std::numeric_limits<int>::max();
+        for (const ExpectedHintNoteSpec& spec : expectedNotes)
+        {
+            if (spec.midi >= 0)
+                lowestExpectedMidi = std::min(lowestExpectedMidi, spec.midi);
+        }
+
+        const int analysisWindowSamples = lowestExpectedMidi <= 40
+            ? kFastChordAnalysisWindowLongSamples
+            : kFastChordAnalysisWindowShortSamples;
+
+        ConstraintChordEvaluationResult bestResult;
+        int bestEndSampleExclusive = 0;
+        int firstAcceptedEndSampleExclusive = -1;
+        bool hasBest = false;
+        std::vector<float> audioWindow;
+
+        for (int endSampleExclusive = kHopSize; endSampleExclusive <= sampleCount; endSampleExclusive += kHopSize)
+        {
+            BuildRecentWindowFromSamples(samples, sampleCount, endSampleExclusive, analysisWindowSamples, audioWindow);
+            const ConstraintChordEvaluationResult currentResult = EvaluateExpectedChordConstraintWindow(audioWindow, expectedNotes, settings);
+
+            if (!hasBest ||
+                (currentResult.accepted && !bestResult.accepted) ||
+                (currentResult.accepted == bestResult.accepted && currentResult.hitCount > bestResult.hitCount))
+            {
+                bestResult = currentResult;
+                bestEndSampleExclusive = endSampleExclusive;
+                hasBest = true;
+            }
+
+            if (currentResult.accepted && firstAcceptedEndSampleExclusive < 0)
+                firstAcceptedEndSampleExclusive = endSampleExclusive;
+        }
+
+        json << ",\"mode\":\"chord\""
+            << ",\"accepted\":" << (bestResult.accepted ? "true" : "false")
+            << ",\"analysisWindowSamples\":" << analysisWindowSamples
+            << ",\"bestEndSampleExclusive\":" << bestEndSampleExclusive
+            << ",\"bestEndTimeSeconds\":" << (static_cast<double>(bestEndSampleExclusive) / static_cast<double>(kSampleRate))
+            << ",\"firstAcceptedEndSampleExclusive\":" << firstAcceptedEndSampleExclusive
+            << ",\"firstAcceptedTimeSeconds\":";
+        if (firstAcceptedEndSampleExclusive >= 0)
+            json << (static_cast<double>(firstAcceptedEndSampleExclusive) / static_cast<double>(kSampleRate));
+        else
+            json << -1;
+
+        json << ",\"hitCount\":" << bestResult.hitCount
+            << ",\"totalExpected\":" << bestResult.totalExpected
+            << ",\"requiredHits\":" << bestResult.requiredHits
+            << ",\"chordLeniency\":" << bestResult.chordLeniency
+            << ",\"notes\":[";
+
+        for (size_t i = 0; i < bestResult.noteResults.size(); ++i)
+        {
+            const ConstraintChordNoteDebugResult& note = bestResult.noteResults[i];
+            if (i > 0)
+                json << ',';
+            json << "{\"midi\":" << note.spec.midi
+                << ",\"stringIndex\":" << note.spec.stringIndex
+                << ",\"fret\":" << note.spec.fret
+                << ",\"openMidi\":" << note.spec.openMidi
+                << ",\"flags\":" << note.spec.flags
+                << ",\"supportRatio\":" << note.supportRatio
+                << ",\"supportThreshold\":" << note.supportThreshold
+                << ",\"fundamentalRatio\":" << note.fundamentalRatio
+                << ",\"neighborFundamentalMax\":" << note.neighborFundamentalMax
+                << ",\"noteScore\":" << note.noteScore
+                << ",\"noteScoreThreshold\":" << note.noteScoreThreshold
+                << ",\"dominantPeakHz\":" << note.dominantPeakHz
+                << ",\"centsError\":" << note.centsError
+                << ",\"hit\":" << (note.hit ? "true" : "false")
+                << "}";
+        }
+
+        json << "]}";
+        return CopyUtf8String(json.str(), destination, capacity) ? 1 : 0;
+    }
+
+    const ExpectedHintNoteSpec& expectedNote = expectedNotes[0];
+    const int primaryWindowSamples = GetFastSinglePrimaryAnalysisWindowSamples(expectedNote);
+    const int fallbackWindowSamples = GetFastSingleFallbackAnalysisWindowSamples(expectedNote);
+    const OfflineSingleEvaluationResult continuousResult = EvaluateOfflineSingleExpectedNote(samples, sampleCount, expectedNote.midi, settings);
+    FastSingleWindowEvaluationResult bestPrimaryFastResult;
+    FastSingleWindowEvaluationResult bestFallbackFastResult;
+    bool hasPrimaryFastResult = false;
+    bool hasFallbackFastResult = false;
+    bool fastAccepted = false;
+    int fastAcceptedEndSampleExclusive = -1;
+    std::string fastAcceptedSource = "none";
+    std::vector<float> audioWindow;
+
+    for (int endSampleExclusive = kHopSize; endSampleExclusive <= sampleCount; endSampleExclusive += kHopSize)
+    {
+        BuildRecentWindowFromSamples(samples, sampleCount, endSampleExclusive, primaryWindowSamples, audioWindow);
+        const FastSingleWindowEvaluationResult primaryResult = EvaluateFastSingleWindow(audioWindow, expectedNote, settings);
+        if (!hasPrimaryFastResult || (primaryResult.accepted && !bestPrimaryFastResult.accepted))
+        {
+            bestPrimaryFastResult = primaryResult;
+            hasPrimaryFastResult = true;
+        }
+
+        if (!fastAccepted && primaryResult.accepted)
+        {
+            fastAccepted = true;
+            fastAcceptedEndSampleExclusive = endSampleExclusive;
+            fastAcceptedSource = primaryResult.spectral.accepted ? "yin+spectral-support" : "yin";
+        }
+
+        if (fallbackWindowSamples > primaryWindowSamples)
+        {
+            BuildRecentWindowFromSamples(samples, sampleCount, endSampleExclusive, fallbackWindowSamples, audioWindow);
+            const FastSingleWindowEvaluationResult fallbackResult = EvaluateFastSingleWindow(audioWindow, expectedNote, settings);
+            if (!hasFallbackFastResult || (fallbackResult.accepted && !bestFallbackFastResult.accepted))
+            {
+                bestFallbackFastResult = fallbackResult;
+                hasFallbackFastResult = true;
+            }
+
+            if (!fastAccepted && fallbackResult.accepted)
+            {
+                fastAccepted = true;
+                fastAcceptedEndSampleExclusive = endSampleExclusive;
+                fastAcceptedSource = fallbackResult.spectral.accepted ? "yin+spectral-support" : "yin";
+            }
+        }
+    }
+
+    const bool fastRejectedByContinuousConflict =
+        continuousResult.detectedMidi >= 0 &&
+        SemitoneDistance(continuousResult.detectedMidi, expectedNote.midi) > std::max(1, settings.expectMaxDistanceContinuous) &&
+        fastAcceptedSource == "spectral";
+    if (fastRejectedByContinuousConflict)
+    {
+        fastAccepted = false;
+        fastAcceptedEndSampleExclusive = -1;
+        fastAcceptedSource = "conflict";
+    }
+
+    json << ",\"mode\":\"single\""
+        << ",\"accepted\":" << (fastAccepted ? "true" : "false")
+        << ",\"expectedMidi\":" << expectedNote.midi
+        << ",\"primaryWindowSamples\":" << primaryWindowSamples
+        << ",\"fallbackWindowSamples\":" << fallbackWindowSamples
+        << ",\"fastAcceptedEndSampleExclusive\":" << fastAcceptedEndSampleExclusive
+        << ",\"fastAcceptedTimeSeconds\":";
+    if (fastAcceptedEndSampleExclusive >= 0)
+        json << (static_cast<double>(fastAcceptedEndSampleExclusive) / static_cast<double>(kSampleRate));
+    else
+        json << -1;
+    json << ",\"fastAcceptedSource\":\"" << fastAcceptedSource << "\""
+        << ",\"fastRejectedByContinuousConflict\":" << (fastRejectedByContinuousConflict ? "true" : "false")
+        << ",\"continuousAccepted\":" << (continuousResult.accepted ? "true" : "false")
+        << ",\"continuousDetectedMidi\":" << continuousResult.detectedMidi
+        << ",\"acceptedHopIndex\":" << continuousResult.acceptedHopIndex
+        << ",\"onsetHopIndex\":" << continuousResult.onsetHopIndex
+        << ",\"highStringContext\":" << (continuousResult.highStringContext ? "true" : "false")
+        << ",\"onsetDetected\":" << (continuousResult.onsetDetected ? "true" : "false")
+        << ",\"lastMidiEstimate\":" << continuousResult.lastMidiEstimate
+        << ",\"lastConfidence\":" << continuousResult.lastConfidence
+        << ",\"bestConfidence\":" << continuousResult.bestConfidence
+        << ",\"bestRms\":" << continuousResult.bestRms;
+    if (hasPrimaryFastResult)
+    {
+        json << ",\"primaryFast\":{"
+            << "\"accepted\":" << (bestPrimaryFastResult.accepted ? "true" : "false")
+            << ",\"spectralAccepted\":" << (bestPrimaryFastResult.spectral.accepted ? "true" : "false")
+            << ",\"yinAccepted\":" << (bestPrimaryFastResult.yin.accepted ? "true" : "false")
+            << ",\"yinDetectedMidi\":" << bestPrimaryFastResult.yin.detectedMidi
+            << ",\"yinAcceptedHopIndex\":" << bestPrimaryFastResult.yin.acceptedHopIndex
+            << ",\"centsError\":" << bestPrimaryFastResult.spectral.noteResult.centsError
+            << ",\"dominantPeakHz\":" << bestPrimaryFastResult.spectral.noteResult.dominantPeakHz
+            << "}";
+    }
+    if (hasFallbackFastResult)
+    {
+        json << ",\"fallbackFast\":{"
+            << "\"accepted\":" << (bestFallbackFastResult.accepted ? "true" : "false")
+            << ",\"spectralAccepted\":" << (bestFallbackFastResult.spectral.accepted ? "true" : "false")
+            << ",\"yinAccepted\":" << (bestFallbackFastResult.yin.accepted ? "true" : "false")
+            << ",\"yinDetectedMidi\":" << bestFallbackFastResult.yin.detectedMidi
+            << ",\"yinAcceptedHopIndex\":" << bestFallbackFastResult.yin.acceptedHopIndex
+            << ",\"centsError\":" << bestFallbackFastResult.spectral.noteResult.centsError
+            << ",\"dominantPeakHz\":" << bestFallbackFastResult.spectral.noteResult.dominantPeakHz
+            << "}";
+    }
+    json
+        << "}";
+    return CopyUtf8String(json.str(), destination, capacity) ? 1 : 0;
 }
 
 __declspec(dllexport) void NativeDetector_Shutdown()

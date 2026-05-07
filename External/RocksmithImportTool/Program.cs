@@ -10,7 +10,7 @@ using Rocksmith2014.XML.Processing;
 
 internal static class Program
 {
-    private const int SchemaVersion = 10;
+    private const int SchemaVersion = 11;
     private const string ManifestFileName = "song.rs2song.json";
     private const string ContentDirectoryName = "psarc_content";
     private const float RocksmithVibratoCyclesPerSecond = 5f;
@@ -208,6 +208,7 @@ internal static class Program
         };
 
         List<SourceEvent> events = BuildSourceEvents(context.SourceLevel, context.Arrangement.Arrangement.ChordTemplates, context.Arrangement.Arrangement.MetaData.Tuning);
+        part.arpeggioGuides = BuildArpeggioGuides(context.SourceLevel, context.Arrangement.Arrangement.ChordTemplates);
         int noteId = 0;
         int chordId = 0;
         Dictionary<string, CachedNoteData> previousByStringRoute = new Dictionary<string, CachedNoteData>(StringComparer.OrdinalIgnoreCase);
@@ -232,6 +233,56 @@ internal static class Program
             : 0f);
 
         return part;
+    }
+
+    private static List<CachedArpeggioGuideData> BuildArpeggioGuides(Level level, List<ChordTemplate> chordTemplates)
+    {
+        List<CachedArpeggioGuideData> guides = new List<CachedArpeggioGuideData>();
+        if (level?.HandShapes == null || chordTemplates == null)
+            return guides;
+
+        for (int i = 0; i < level.HandShapes.Count; i++)
+        {
+            HandShape handShape = level.HandShapes[i];
+            if (handShape == null)
+                continue;
+
+            if (handShape.ChordId < 0 || handShape.ChordId >= chordTemplates.Count)
+                continue;
+
+            ChordTemplate template = chordTemplates[handShape.ChordId];
+            if (template == null || !template.IsArpeggio)
+                continue;
+
+            int[] stringFrets = new int[template.Frets.Length];
+            int activeStrings = 0;
+            for (int stringIndex = 0; stringIndex < template.Frets.Length; stringIndex++)
+            {
+                int fret = template.Frets[stringIndex];
+                stringFrets[stringIndex] = fret;
+                if (fret >= 0)
+                    activeStrings++;
+            }
+
+            if (activeStrings < 2)
+                continue;
+
+            float startTime = handShape.StartTime / 1000f;
+            float endTime = Math.Max(handShape.EndTime, handShape.StartTime) / 1000f;
+            if (endTime <= startTime + 0.01f)
+                endTime = startTime + 0.01f;
+
+            guides.Add(new CachedArpeggioGuideData
+            {
+                id = guides.Count,
+                startTime = startTime,
+                endTime = endTime,
+                chordName = ResolveChordDisplayName(template),
+                stringFrets = stringFrets
+            });
+        }
+
+        return guides;
     }
 
     private static List<ArrangementVariantBuildResult> BuildVariants(ArrangementContext context)
@@ -1300,6 +1351,7 @@ internal static class Program
         public string tuningDisplayName = string.Empty;
         public CachedGeneratedPartInfo generatedPart = new CachedGeneratedPartInfo();
         public List<CachedNoteData> notes = new List<CachedNoteData>();
+        public List<CachedArpeggioGuideData> arpeggioGuides = new List<CachedArpeggioGuideData>();
         public List<CachedGeneratedNoteEvent> generatedNotes = new List<CachedGeneratedNoteEvent>();
     }
 
@@ -1349,6 +1401,15 @@ internal static class Program
         public int endFret;
         public float startBend;
         public float endBend;
+    }
+
+    private sealed class CachedArpeggioGuideData
+    {
+        public int id;
+        public float startTime;
+        public float endTime;
+        public string chordName = string.Empty;
+        public int[] stringFrets = new int[0];
     }
 
     private sealed class CachedGeneratedNoteEvent

@@ -9,7 +9,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 {
     private enum ToneLabSidePanelMode
     {
-        Rig,
         Pedal,
         Library
     }
@@ -65,8 +64,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private Button startButton;
     private Button stopButton;
     private Button backButton;
-    private Button rigViewButton;
-    private Button addPedalButton;
+    private VisualElement rigPanelCard;
+    private VisualElement pedalSidePanelCard;
     private VisualElement sidePanelHost;
     private Label sidePanelTitleLabel;
     private Label sidePanelSubtitleLabel;
@@ -83,7 +82,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private VisualElement actionToast;
     private Label actionToastLabel;
     private string selectedPedalInstanceId = string.Empty;
-    private ToneLabSidePanelMode sidePanelMode = ToneLabSidePanelMode.Rig;
+    private ToneLabSidePanelMode sidePanelMode = ToneLabSidePanelMode.Pedal;
     private ToneLabPresetModalMode presetModalMode = ToneLabPresetModalMode.Create;
     private readonly Dictionary<string, string> presetChoiceToId = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -142,7 +141,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         overlayRoot.style.display = targetDisplay;
         if (visible)
         {
-            sidePanelMode = ToneLabSidePanelMode.Rig;
+            sidePanelMode = ToneLabSidePanelMode.Pedal;
             RefreshUi(syncControls: true, refreshDevices: true);
         }
         else
@@ -285,13 +284,26 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         ApplyWindowStyle(window);
         overlayRoot.Add(window);
 
+        VisualElement mainContent = new VisualElement();
+        mainContent.style.flexGrow = 1f;
+        mainContent.style.minHeight = 0f;
+        mainContent.style.flexDirection = FlexDirection.Row;
+        mainContent.style.overflow = Overflow.Hidden;
+        window.Add(mainContent);
+
+        VisualElement boardColumn = new VisualElement();
+        boardColumn.style.flexGrow = 1f;
+        boardColumn.style.minHeight = 0f;
+        boardColumn.style.marginRight = 14f;
+        mainContent.Add(boardColumn);
+
         VisualElement header = new VisualElement();
         header.AddToClassList("tone-lab-header");
         header.style.flexDirection = FlexDirection.Column;
         header.style.alignItems = Align.FlexStart;
         header.style.marginBottom = 18f;
         header.style.flexShrink = 0f;
-        window.Add(header);
+        boardColumn.Add(header);
 
         Label titleLabel = CreateLabel("Tone Lab", "tone-lab-title", toneLabTitleFontDefinition);
         titleLabel.style.color = Color.white;
@@ -317,67 +329,32 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         backendLabel.style.fontSize = 12f;
         header.Add(backendLabel);
 
-        VisualElement mainContent = new VisualElement();
-        mainContent.style.flexGrow = 1f;
-        mainContent.style.minHeight = 0f;
-        mainContent.style.flexDirection = FlexDirection.Row;
-        mainContent.style.overflow = Overflow.Hidden;
-        window.Add(mainContent);
-
-        VisualElement boardColumn = new VisualElement();
-        boardColumn.style.flexGrow = 1f;
-        boardColumn.style.minHeight = 0f;
-        boardColumn.style.marginRight = 22f;
-        mainContent.Add(boardColumn);
-
         VisualElement boardToolbar = new VisualElement();
         boardToolbar.style.flexDirection = FlexDirection.Row;
-        boardToolbar.style.justifyContent = Justify.SpaceBetween;
+        boardToolbar.style.justifyContent = Justify.FlexEnd;
         boardToolbar.style.alignItems = Align.Center;
         boardToolbar.style.marginBottom = 10f;
         boardToolbar.style.flexShrink = 0f;
         boardColumn.Add(boardToolbar);
 
-        VisualElement boardToolbarButtons = new VisualElement();
-        boardToolbarButtons.style.flexDirection = FlexDirection.Row;
-        boardToolbarButtons.style.alignItems = Align.Center;
-        boardToolbar.Add(boardToolbarButtons);
-
         VisualElement boardToolbarPresetGroup = new VisualElement();
         boardToolbarPresetGroup.style.flexDirection = FlexDirection.Row;
         boardToolbarPresetGroup.style.alignItems = Align.FlexEnd;
+        boardToolbarPresetGroup.style.justifyContent = Justify.FlexEnd;
+        boardToolbarPresetGroup.style.flexGrow = 1f;
         boardToolbar.Add(boardToolbarPresetGroup);
-
-        rigViewButton = CreateButton("Rig Setup", "tone-lab-button tone-lab-button-secondary", () =>
-        {
-            sidePanelMode = ToneLabSidePanelMode.Rig;
-            RefreshUi(syncControls: true);
-        });
-        rigViewButton.style.minWidth = 148f;
-        rigViewButton.style.height = 42f;
-        rigViewButton.style.fontSize = 16f;
-        boardToolbarButtons.Add(rigViewButton);
-
-        addPedalButton = CreateButton("Library", "tone-lab-button tone-lab-button-secondary", () =>
-        {
-            sidePanelMode = ToneLabSidePanelMode.Library;
-            RefreshUi(syncControls: true);
-        });
-        addPedalButton.style.minWidth = 132f;
-        addPedalButton.style.height = 42f;
-        addPedalButton.style.fontSize = 16f;
-        addPedalButton.style.marginRight = 0f;
-        boardToolbarButtons.Add(addPedalButton);
 
         VisualElement presetField = new VisualElement();
         presetField.style.width = 248f;
         presetField.style.marginRight = 10f;
+        presetField.style.alignItems = Align.FlexEnd;
         boardToolbarPresetGroup.Add(presetField);
 
         Label presetLabel = new Label("Preset");
         presetLabel.style.color = new Color(0.66f, 0.69f, 0.73f, 0.95f);
         presetLabel.style.fontSize = 12f;
         presetLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        presetLabel.style.unityTextAlign = TextAnchor.MiddleRight;
         presetLabel.style.marginBottom = 4f;
         presetField.Add(presetLabel);
 
@@ -457,6 +434,11 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         boardToolbarPresetGroup.Add(resetAllButton);
 
         pedalBoardView = new ToneLabPedalBoardView();
+        pedalBoardView.AddPedalRequested += () =>
+        {
+            sidePanelMode = ToneLabSidePanelMode.Library;
+            RefreshUi(syncControls: true);
+        };
         pedalBoardView.PedalSelected += pedalInstanceId =>
         {
             selectedPedalInstanceId = pedalInstanceId;
@@ -479,46 +461,46 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         boardColumn.Add(pedalBoardView.Root);
 
         VisualElement sidePanel = new VisualElement();
-        sidePanel.style.width = 390f;
-        sidePanel.style.minWidth = 390f;
-        sidePanel.style.maxWidth = 390f;
+        sidePanel.style.width = 560f;
+        sidePanel.style.minWidth = 560f;
+        sidePanel.style.maxWidth = 560f;
         sidePanel.style.flexShrink = 0f;
+        sidePanel.style.flexGrow = 0f;
+        sidePanel.style.height = Length.Percent(100f);
         sidePanel.style.minHeight = 0f;
         sidePanel.style.flexDirection = FlexDirection.Column;
         sidePanel.style.paddingLeft = 18f;
         sidePanel.style.paddingRight = 4f;
         sidePanel.style.paddingTop = 2f;
-        sidePanel.style.paddingBottom = 2f;
+        sidePanel.style.paddingBottom = 0f;
         sidePanel.style.borderLeftWidth = 1f;
-        sidePanel.style.borderLeftColor = new Color(0.18f, 0.19f, 0.22f, 0.95f);
+        sidePanel.style.borderLeftColor = new Color(1f, 1f, 1f, 0.18f);
         mainContent.Add(sidePanel);
 
-        sidePanelTitleLabel = new Label("Rig Setup");
+        VisualElement rigPanelHost;
+        rigPanelCard = CreateSideSectionCard(sidePanel, "Rig Setup", "Input, output, latency, and gain for the full rig.", out _, out _, out rigPanelHost);
+        rigPanelCard.style.flexGrow = 0f;
+        rigPanelCard.style.minHeight = 300f;
+        rigPanelCard.style.maxHeight = 360f;
+        rigPanelCard.style.flexShrink = 0f;
+        rigPanelCard.style.marginBottom = 16f;
+
+        sidePanelTitleLabel = new Label("Selected Pedal");
         sidePanelTitleLabel.style.color = Color.white;
         sidePanelTitleLabel.style.fontSize = 24f;
         sidePanelTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-        sidePanelTitleLabel.style.marginBottom = 4f;
-        sidePanelTitleLabel.style.flexShrink = 0f;
-        sidePanel.Add(sidePanelTitleLabel);
-
-        sidePanelSubtitleLabel = new Label("Input, output, latency, and gain for the full rig.");
+        sidePanelSubtitleLabel = new Label("Pedal settings and library.");
         sidePanelSubtitleLabel.style.color = new Color(0.60f, 0.63f, 0.68f, 0.95f);
         sidePanelSubtitleLabel.style.fontSize = 13f;
         sidePanelSubtitleLabel.style.whiteSpace = WhiteSpace.Normal;
-        sidePanelSubtitleLabel.style.marginBottom = 12f;
-        sidePanelSubtitleLabel.style.flexShrink = 0f;
-        sidePanel.Add(sidePanelSubtitleLabel);
-
-        sidePanelHost = new VisualElement();
-        sidePanelHost.style.flexGrow = 1f;
-        sidePanelHost.style.minHeight = 0f;
-        sidePanelHost.style.overflow = Overflow.Hidden;
-        sidePanel.Add(sidePanelHost);
+        pedalSidePanelCard = CreateSideSectionCard(sidePanel, sidePanelTitleLabel, sidePanelSubtitleLabel, out sidePanelHost);
+        pedalSidePanelCard.style.flexGrow = 1f;
+        pedalSidePanelCard.style.minHeight = 0f;
 
         inputDropdown = new DropdownField();
         ApplyDropdownStyle(inputDropdown);
-        inputDropdown.style.minWidth = 320f;
-        inputDropdown.style.width = 320f;
+        inputDropdown.style.minWidth = 410f;
+        inputDropdown.style.width = 410f;
         inputDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -530,8 +512,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         outputDropdown = new DropdownField();
         ApplyDropdownStyle(outputDropdown);
-        outputDropdown.style.minWidth = 320f;
-        outputDropdown.style.width = 320f;
+        outputDropdown.style.minWidth = 410f;
+        outputDropdown.style.width = 410f;
         outputDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -543,8 +525,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         latencyDropdown = new DropdownField();
         ApplyDropdownStyle(latencyDropdown);
-        latencyDropdown.style.minWidth = 190f;
-        latencyDropdown.style.width = 190f;
+        latencyDropdown.style.minWidth = 220f;
+        latencyDropdown.style.width = 220f;
         latencyDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -586,13 +568,15 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         rigSettingsScroll.style.minHeight = 0f;
         rigSettingsScroll.verticalScrollerVisibility = ScrollerVisibility.Hidden;
         rigSettingsScroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        rigSettingsScroll.style.marginRight = 0f;
+        rigSettingsScroll.style.paddingRight = 0f;
         VisualElement rigSettingsHost = rigSettingsScroll.contentContainer;
         rigSettingsHost.style.flexDirection = FlexDirection.Column;
-        rigSettingsHost.style.paddingRight = 12f;
+        rigSettingsHost.style.paddingRight = 4f;
 
-        rigSettingsHost.Add(CreateToolbarField("Input Device", inputDropdown, 330f));
-        rigSettingsHost.Add(CreateToolbarField("Output Device", outputDropdown, 330f));
-        rigSettingsHost.Add(CreateToolbarField("Monitoring Latency", latencyDropdown, 330f));
+        rigSettingsHost.Add(CreateToolbarField("Input Device", inputDropdown, 420f));
+        rigSettingsHost.Add(CreateToolbarField("Output Device", outputDropdown, 420f));
+        rigSettingsHost.Add(CreateToolbarField("Monitoring Latency", latencyDropdown, 420f));
 
         VisualElement transportRow = new VisualElement();
         transportRow.style.flexDirection = FlexDirection.Row;
@@ -612,7 +596,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             value => $"{value:F1} dB",
             settings => settings.input_gain_db,
             (settings, value) => settings.input_gain_db = value,
-            320f));
+            410f));
 
         rigSettingsHost.Add(CreateCompactSliderField(
             "Output Gain",
@@ -621,7 +605,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             value => $"{value:F1} dB",
             settings => settings.output_gain_db,
             (settings, value) => settings.output_gain_db = value,
-            320f));
+            410f));
+        rigPanelHost.Add(rigSettingsScroll);
 
         pedalInspectorScroll = new ScrollView(ScrollViewMode.Vertical);
         pedalInspectorScroll.style.flexGrow = 1f;
@@ -892,8 +877,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         pedalLibraryHost.Clear();
-        if (addPedalButton != null)
-            addPedalButton.SetEnabled(true);
 
         IReadOnlyList<IToneLabPedalDescriptor> availablePedals = ToneLabPedalRegistry.AllDescriptors;
         for (int i = 0; i < availablePedals.Count; i++)
@@ -904,7 +887,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 () =>
                 {
                     selectedPedalInstanceId = runtime?.AddPedalToChain(descriptor.PedalType) ?? string.Empty;
-                    sidePanelMode = ToneLabSidePanelMode.Library;
+                    sidePanelMode = ToneLabSidePanelMode.Pedal;
                     RefreshUi(syncControls: true);
                 });
             pedalLibraryHost.Add(libraryItem);
@@ -916,7 +899,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         if (sidePanelHost == null)
             return;
 
-        bool hasSelectedPedal = false;
         UnityToneLabRuntime.ToneLabPedalSlot selectedSlot = null;
         if (pedalChain != null)
         {
@@ -925,15 +907,11 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 UnityToneLabRuntime.ToneLabPedalSlot slot = pedalChain[i];
                 if (slot != null && string.Equals(slot.pedal_instance_id, selectedPedalInstanceId, StringComparison.Ordinal))
                 {
-                    hasSelectedPedal = true;
                     selectedSlot = slot;
                     break;
                 }
             }
         }
-
-        if (sidePanelMode == ToneLabSidePanelMode.Pedal && !hasSelectedPedal)
-            sidePanelMode = ToneLabSidePanelMode.Rig;
 
         sidePanelHost.Clear();
         switch (sidePanelMode)
@@ -950,20 +928,11 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 RebuildPedalInspector();
                 sidePanelHost.Add(pedalInspectorScroll);
                 break;
-            default:
-                sidePanelTitleLabel.text = "Rig Setup";
-                sidePanelSubtitleLabel.text = "Input, output, latency, and gain for the full rig.";
-                sidePanelHost.Add(rigSettingsScroll);
-                break;
         }
     }
 
     private void RefreshSidePanelButtonStates()
     {
-        if (rigViewButton != null)
-            ApplyModeButtonState(rigViewButton, sidePanelMode == ToneLabSidePanelMode.Rig);
-        if (addPedalButton != null)
-            ApplyModeButtonState(addPedalButton, sidePanelMode == ToneLabSidePanelMode.Library);
     }
 
     private void RebuildPedalInspector()
@@ -1039,7 +1008,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         Button removePedalButton = CreateButton("Remove", "tone-lab-button tone-lab-button-danger", () =>
         {
             runtime?.RemovePedalFromChain(selectedSlot.pedal_instance_id);
-            sidePanelMode = ToneLabSidePanelMode.Rig;
+            sidePanelMode = ToneLabSidePanelMode.Pedal;
             RefreshUi(syncControls: true);
         });
         removePedalButton.style.minWidth = 96f;
@@ -1308,6 +1277,71 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         }
 
         return card;
+    }
+
+    private static VisualElement CreateSideSectionCard(
+        VisualElement parent,
+        string title,
+        string subtitle,
+        out Label titleLabel,
+        out Label subtitleLabel,
+        out VisualElement contentHost)
+    {
+        titleLabel = new Label(title);
+        subtitleLabel = new Label(subtitle);
+        return CreateSideSectionCard(parent, titleLabel, subtitleLabel, out contentHost);
+    }
+
+    private static VisualElement CreateSideSectionCard(
+        VisualElement parent,
+        Label titleLabel,
+        Label subtitleLabel,
+        out VisualElement contentHost)
+    {
+        VisualElement section = new VisualElement();
+        section.style.flexDirection = FlexDirection.Column;
+        section.style.flexGrow = 1f;
+        section.style.minHeight = 0f;
+        section.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        section.style.borderTopWidth = 1f;
+        section.style.borderRightWidth = 1f;
+        section.style.borderBottomWidth = 1f;
+        section.style.borderLeftWidth = 1f;
+        section.style.borderTopColor = new Color(1f, 1f, 1f, 0.92f);
+        section.style.borderRightColor = new Color(1f, 1f, 1f, 0.78f);
+        section.style.borderBottomColor = new Color(1f, 1f, 1f, 0.66f);
+        section.style.borderLeftColor = new Color(1f, 1f, 1f, 0.78f);
+        section.style.borderTopLeftRadius = 18f;
+        section.style.borderTopRightRadius = 18f;
+        section.style.borderBottomLeftRadius = 18f;
+        section.style.borderBottomRightRadius = 18f;
+        section.style.paddingLeft = 16f;
+        section.style.paddingRight = 12f;
+        section.style.paddingTop = 16f;
+        section.style.paddingBottom = 14f;
+        parent.Add(section);
+
+        titleLabel.style.color = Color.white;
+        titleLabel.style.fontSize = 24f;
+        titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        titleLabel.style.marginBottom = 4f;
+        titleLabel.style.flexShrink = 0f;
+        section.Add(titleLabel);
+
+        subtitleLabel.style.color = new Color(0.60f, 0.63f, 0.68f, 0.95f);
+        subtitleLabel.style.fontSize = 13f;
+        subtitleLabel.style.whiteSpace = WhiteSpace.Normal;
+        subtitleLabel.style.marginBottom = 12f;
+        subtitleLabel.style.flexShrink = 0f;
+        section.Add(subtitleLabel);
+
+        contentHost = new VisualElement();
+        contentHost.style.flexGrow = 1f;
+        contentHost.style.minHeight = 0f;
+        contentHost.style.overflow = Overflow.Hidden;
+        section.Add(contentHost);
+
+        return section;
     }
 
     private static VisualElement CreateToolbarField(string labelText, VisualElement control, float width)

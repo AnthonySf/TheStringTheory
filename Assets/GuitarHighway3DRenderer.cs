@@ -16,16 +16,28 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly ProfilerMarker UpdateLaneGuidesProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateLaneGuides");
     private static readonly ProfilerMarker UpdateLaneSurfacesProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateLaneSurfaces");
     private static readonly ProfilerMarker UpdateNotesProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateNotes");
+    private static readonly ProfilerMarker UpdateNotesIterateProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateNotes.Iterate");
+    private static readonly ProfilerMarker UpdateNotesCleanupProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateNotes.Cleanup");
     private static readonly ProfilerMarker CreateNoteViewProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.CreateNoteView");
+    private static readonly ProfilerMarker UpdateNoteViewProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateNoteView");
+    private static readonly ProfilerMarker UpdateTechniqueViewProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateTechniqueView");
+    private static readonly ProfilerMarker UpdateSlideTechniqueProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateSlideTechnique");
+    private static readonly ProfilerMarker UpdateBendTechniqueProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateBendTechnique");
+    private static readonly ProfilerMarker UpdateNoteSustainTechniqueProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateNoteSustainTechnique");
+    private static readonly ProfilerMarker UpdateTechniqueSegmentRibbonsProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateTechniqueSegmentRibbons");
     private static readonly ProfilerMarker RebuildVisibleNoteStateCacheProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.RebuildVisibleNoteStateCache");
+    private static readonly ProfilerMarker UpdateArpeggioGuidesProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateArpeggioGuides");
     private static readonly ProfilerMarker UpdateChordFramesProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateChordFrames");
     private static readonly ProfilerMarker UpdateFretboardLightsProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateFretboardLights");
     private static readonly ProfilerMarker UpdateSectionCameraProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateSectionCamera");
     private static readonly ProfilerMarker GetRenderSongTimeProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.GetRenderSongTime");
+    private static readonly ProfilerMarker EnsureGameplayVisualsBuiltProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.EnsureGameplayVisualsBuilt");
+    private static readonly ProfilerMarker OverlayUpdateProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.OverlayUpdate");
 
     private readonly Dictionary<int, NoteData> chartById = new Dictionary<int, NoteData>();
     private readonly Dictionary<int, List<NoteData>> chordGroups = new Dictionary<int, List<NoteData>>();
     private readonly Dictionary<int, HighwayNoteView> noteViews = new Dictionary<int, HighwayNoteView>();
+    private readonly Dictionary<int, GameObject> arpeggioGuideFrames = new Dictionary<int, GameObject>();
     private readonly Dictionary<int, GameObject> chordFrames = new Dictionary<int, GameObject>();
     private readonly Dictionary<int, int> slideDestinationBySourceId = new Dictionary<int, int>();
     private readonly Dictionary<int, int> bendDestinationBySourceId = new Dictionary<int, int>();
@@ -37,9 +49,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly HashSet<int> debugLoggedBendNearStrikeIds = new HashSet<int>();
     private readonly HashSet<int> visibleNoteIdsThisFrame = new HashSet<int>();
     private readonly List<int> noteViewRemovalBuffer = new List<int>();
+    private readonly HashSet<int> activeArpeggioGuideIdsThisFrame = new HashSet<int>();
+    private readonly List<int> arpeggioGuideRemovalBuffer = new List<int>();
     private readonly HashSet<int> activeChordIdsThisFrame = new HashSet<int>();
     private readonly List<int> chordFrameRemovalBuffer = new List<int>();
     private readonly List<HighwayCharacterBopEvent> highwayCharacterBopEvents = new List<HighwayCharacterBopEvent>();
+    private readonly List<int> activeFretLightIndices = new List<int>();
+    private bool[] stringHasIncomingNotesBuffer = Array.Empty<bool>();
     private Mesh techniqueRibbonMesh;
     private Material sharedTechniqueRibbonMaterial;
     private Material sharedBendArrowMaterial;
@@ -98,8 +114,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float cameraTargetFOV = 60f;
     private float cameraXVelocity;
     private float cameraFovVelocity;
+    private int lastFretLightLayoutStringCount = -1;
+    private int lastFretLightLayoutColumnCount = -1;
+    private float lastFretLightLayoutOpenAnchorFret = float.NaN;
+    private float lastFretLightLayoutStrikeLineZ = float.NaN;
+    private float lastFretLightLayoutFretSpacing = float.NaN;
+    private GuitarGameplaySnapshot renderSongTimeCacheSnapshot;
+    private float renderSongTimeCacheValue;
+    private bool renderSongTimeCacheValid;
     private bool gameplayVisualsVisible = true;
     private bool gameplayBuilt;
+    private bool loopCountdownStaticVisualsPrimed;
+    private float loopCountdownStaticVisualsSongTime = float.NaN;
     private const int BackgroundLayer = 2;
     private const float HighwayCharacterViewportMarginX = 0.035f;
     private const float HighwayCharacterViewportMarginY = 0.035f;
@@ -320,6 +346,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             Object.Destroy(root);
 
         noteViews.Clear();
+        arpeggioGuideFrames.Clear();
         chordFrames.Clear();
         fretNumberLabels.Clear();
         Initialize(owner, chartNotes, sections);
@@ -335,13 +362,48 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         using (RenderProfilerMarker.Auto())
         {
+            renderSongTimeCacheSnapshot = snapshot;
+            renderSongTimeCacheValid = false;
             currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
             currentNoteByNoteModeEnabled = snapshot.noteByNoteModeEnabled;
             currentNoteByNoteWaitingForMatch = snapshot.noteByNoteWaitingForMatch;
+            bool loopCountdownActive = snapshot.loopRestartPauseRemainingSeconds > 0.0001f;
+            bool loopCountdownNeedsHeavyRefresh = !loopCountdownActive ||
+                                                  !loopCountdownStaticVisualsPrimed ||
+                                                  !Mathf.Approximately(loopCountdownStaticVisualsSongTime, snapshot.songTime);
+            bool logLoopCountdownDetail = loopCountdownActive && owner != null && owner.ShouldLogLoopCountdownRendererDetail();
+            long renderStartTicks = 0L;
+            long phaseStartTicks = 0L;
+            double setupMs = 0d;
+            double characterMs = 0d;
+            double backgroundPlacementMs = 0d;
+            double ensureGameplayMs = 0d;
+            double stringVisualsMs = 0d;
+            double fretBoundariesMs = 0d;
+            double laneSurfacesMs = 0d;
+            double laneGuidesMs = 0d;
+            double fretboardLightsMs = 0d;
+            double notesMs = 0d;
+            double arpeggioGuidesMs = 0d;
+            double chordFramesMs = 0d;
+            double sectionCameraMs = 0d;
+            double backgroundTickMs = 0d;
+            double overlayMs = 0d;
+            if (logLoopCountdownDetail)
+            {
+                renderStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                phaseStartTicks = renderStartTicks;
+            }
 
             bool suppressGameplay = snapshot.mainMenuFlowActive;
             EnsureBackgroundMode(suppressGameplay);
             ConfigureCamera();
+            if (logLoopCountdownDetail)
+            {
+                long afterSetupTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                setupMs = (afterSetupTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                phaseStartTicks = afterSetupTicks;
+            }
 
             bool showHighwayCharacter = snapshot.showHighwayCharacter;
             if (characterRoot != null && characterRoot.activeSelf != showHighwayCharacter)
@@ -352,27 +414,155 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 UpdateHighwayCharacterPlacement();
                 UpdateHighwayCharacterAnimation(snapshot);
             }
+            if (logLoopCountdownDetail)
+            {
+                long afterCharacterTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                characterMs = (afterCharacterTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                phaseStartTicks = afterCharacterTicks;
+            }
 
             if (!suppressGameplay)
                 UpdateBackgroundPlacement();
+            if (logLoopCountdownDetail)
+            {
+                long afterBackgroundPlacementTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                backgroundPlacementMs = (afterBackgroundPlacementTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                phaseStartTicks = afterBackgroundPlacementTicks;
+            }
 
             SetGameplayVisualsVisible(!suppressGameplay);
 
             if (!suppressGameplay)
             {
-                EnsureGameplayVisualsBuilt();
-                UpdateStringVisuals(snapshot);
-                UpdateFretBoundaries(snapshot);
-                UpdateLaneSurfaces(snapshot);
-                UpdateLaneGuides(snapshot);
-                UpdateFretboardLights(snapshot.latestDetectedPitches);
-                UpdateNotes(snapshot);
-                UpdateChordFrames(snapshot);
+                using (EnsureGameplayVisualsBuiltProfilerMarker.Auto())
+                {
+                    EnsureGameplayVisualsBuilt();
+                }
+                if (logLoopCountdownDetail)
+                {
+                    long afterEnsureGameplayTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    ensureGameplayMs = (afterEnsureGameplayTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                    phaseStartTicks = afterEnsureGameplayTicks;
+                }
+
+                if (loopCountdownNeedsHeavyRefresh)
+                {
+                    UpdateStringVisuals(snapshot);
+                    if (logLoopCountdownDetail)
+                    {
+                        long afterStringVisualsTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        stringVisualsMs = (afterStringVisualsTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                        phaseStartTicks = afterStringVisualsTicks;
+                    }
+
+                    UpdateFretBoundaries(snapshot);
+                    if (logLoopCountdownDetail)
+                    {
+                        long afterFretBoundariesTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        fretBoundariesMs = (afterFretBoundariesTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                        phaseStartTicks = afterFretBoundariesTicks;
+                    }
+
+                    UpdateLaneSurfaces(snapshot);
+                    if (logLoopCountdownDetail)
+                    {
+                        long afterLaneSurfacesTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        laneSurfacesMs = (afterLaneSurfacesTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                        phaseStartTicks = afterLaneSurfacesTicks;
+                    }
+
+                    UpdateLaneGuides(snapshot);
+                    if (logLoopCountdownDetail)
+                    {
+                        long afterLaneGuidesTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        laneGuidesMs = (afterLaneGuidesTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                        phaseStartTicks = afterLaneGuidesTicks;
+                    }
+
+                    UpdateFretboardLights(snapshot.latestDetectedPitches);
+                    if (logLoopCountdownDetail)
+                    {
+                        long afterFretboardLightsTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        fretboardLightsMs = (afterFretboardLightsTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                        phaseStartTicks = afterFretboardLightsTicks;
+                    }
+
+                    UpdateNotes(snapshot);
+                    if (logLoopCountdownDetail)
+                    {
+                        long afterNotesTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        notesMs = (afterNotesTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                        phaseStartTicks = afterNotesTicks;
+                    }
+
+                    UpdateArpeggioGuides(snapshot);
+                    if (logLoopCountdownDetail)
+                    {
+                        long afterArpeggioGuidesTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        arpeggioGuidesMs = (afterArpeggioGuidesTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                        phaseStartTicks = afterArpeggioGuidesTicks;
+                    }
+
+                    UpdateChordFrames(snapshot);
+                    if (logLoopCountdownDetail)
+                    {
+                        long afterChordFramesTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                        chordFramesMs = (afterChordFramesTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                        phaseStartTicks = afterChordFramesTicks;
+                    }
+                }
+
                 UpdateSectionCamera(snapshot);
+                if (logLoopCountdownDetail)
+                {
+                    long afterSectionCameraTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                    sectionCameraMs = (afterSectionCameraTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                    phaseStartTicks = afterSectionCameraTicks;
+                }
             }
 
             backgroundEffect?.Tick(Time.deltaTime);
-            songHeaderOverlay?.UpdateFromSnapshot(snapshot);
+            if (logLoopCountdownDetail)
+            {
+                long afterBackgroundTickTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                backgroundTickMs = (afterBackgroundTickTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                phaseStartTicks = afterBackgroundTickTicks;
+            }
+
+            if (songHeaderOverlay != null)
+            {
+                using (OverlayUpdateProfilerMarker.Auto())
+                {
+                    songHeaderOverlay.UpdateFromSnapshot(snapshot);
+                }
+            }
+            if (logLoopCountdownDetail)
+            {
+                long afterOverlayTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                overlayMs = (afterOverlayTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                double totalMs = (afterOverlayTicks - renderStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                owner.LogLoopCountdownRendererDetail(
+                    $"RENDER_DETAIL song={snapshot.songTime:F3} remaining={snapshot.loopRestartPauseRemainingSeconds:F3} " +
+                    $"setup={setupMs:F3} character={characterMs:F3} bgPlace={backgroundPlacementMs:F3} ensure={ensureGameplayMs:F3} " +
+                    $"strings={stringVisualsMs:F3} frets={fretBoundariesMs:F3} laneSurf={laneSurfacesMs:F3} laneGuides={laneGuidesMs:F3} " +
+                    $"lights={fretboardLightsMs:F3} notes={notesMs:F3} arp={arpeggioGuidesMs:F3} chords={chordFramesMs:F3} camera={sectionCameraMs:F3} " +
+                    $"bgTick={backgroundTickMs:F3} overlay={overlayMs:F3} total={totalMs:F3}");
+            }
+            if (loopCountdownActive)
+            {
+                if (loopCountdownNeedsHeavyRefresh)
+                {
+                    loopCountdownStaticVisualsPrimed = true;
+                    loopCountdownStaticVisualsSongTime = snapshot.songTime;
+                }
+            }
+            else
+            {
+                loopCountdownStaticVisualsPrimed = false;
+                loopCountdownStaticVisualsSongTime = float.NaN;
+            }
+            renderSongTimeCacheValid = false;
+            renderSongTimeCacheSnapshot = null;
         }
     }
 
@@ -1847,7 +2037,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             float renderSongTime = GetRenderSongTime(snapshot);
             int activeStringCount = GetRenderableStringCount();
-            bool[] stringHasIncomingNotes = new bool[activeStringCount];
+            EnsureStringHasIncomingNotesBuffer(activeStringCount);
+            Array.Clear(stringHasIncomingNotesBuffer, 0, activeStringCount);
+            float spawnLeadSeconds = Mathf.Max(0f, (owner.SpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, currentVisualNoteSpeed));
+            float maxVisibleTime = renderSongTime + spawnLeadSeconds;
 
             if (snapshot.noteStates != null)
             {
@@ -1857,15 +2050,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     if (state == null || state.IsResolved)
                         continue;
 
+                    if (state.data.time > maxVisibleTime)
+                        break;
+
                     int stringIdx = state.data.stringIdx;
-                    if (stringIdx < 0 || stringIdx >= stringHasIncomingNotes.Length)
+                    if (stringIdx < 0 || stringIdx >= activeStringCount)
                         continue;
 
-                    float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
-                    if (travelZ > owner.SpawnZ)
-                        continue;
-
-                    stringHasIncomingNotes[stringIdx] = true;
+                    stringHasIncomingNotesBuffer[stringIdx] = true;
                 }
             }
 
@@ -1890,7 +2082,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 }
 
                 Color baseColor = owner.GetStringColor(i);
-                bool isActive = stringHasIncomingNotes[i];
+                bool isActive = stringHasIncomingNotesBuffer[i];
                 Color appliedColor = isActive
                     ? new Color(baseColor.r, baseColor.g, baseColor.b, 0.95f)
                     : new Color(baseColor.r * 0.28f, baseColor.g * 0.28f, baseColor.b * 0.28f, 0.42f);
@@ -2485,47 +2677,64 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         using (UpdateNotesProfilerMarker.Auto())
         {
             float renderSongTime = GetRenderSongTime(snapshot);
+            float spawnLeadSeconds = Mathf.Max(0f, (owner.SpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, currentVisualNoteSpeed));
+            float maxVisibleTime = renderSongTime + spawnLeadSeconds;
+            float resolvedFadeTime = GetResolvedFadeTime();
+            float floorY = GetLaneSurfaceTopY();
+            float laneTagY = GetLaneGuideStringY() + 0.15f;
             visibleNoteIdsThisFrame.Clear();
             RebuildVisibleNoteStateCache(snapshot);
 
-            for (int i = 0; i < snapshot.noteStates.Count; i++)
+            using (UpdateNotesIterateProfilerMarker.Auto())
             {
-                GameplayNoteState state = snapshot.noteStates[i];
-                float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
-                bool resolvedAtOrBeforeRenderTime = state.IsResolved && state.resolvedAt >= 0f && renderSongTime >= state.resolvedAt;
-                bool keepForResult = resolvedAtOrBeforeRenderTime && renderSongTime - state.resolvedAt <= GetResolvedFadeTime();
-                bool keepForTechnique = resolvedAtOrBeforeRenderTime && ShouldKeepTechniqueAliveAfterResolution(state.data, renderSongTime);
-                bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || keepForTechnique || travelZ >= owner.StrikeLineZ);
-
-                if (!visible)
-                    continue;
-
-                visibleNoteIdsThisFrame.Add(state.data.id);
-
-                if (!noteViews.TryGetValue(state.data.id, out HighwayNoteView view) || view == null)
+                for (int i = 0; i < snapshot.noteStates.Count; i++)
                 {
-                    view = CreateNoteView(state.data);
-                    noteViews[state.data.id] = view;
+                    GameplayNoteState state = snapshot.noteStates[i];
+                    if (state == null)
+                        continue;
+
+                    if (!state.IsResolved && state.data.time > maxVisibleTime)
+                        break;
+
+                    float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
+                    bool resolvedAtOrBeforeRenderTime = state.IsResolved && state.resolvedAt >= 0f && renderSongTime >= state.resolvedAt;
+                    bool keepForResult = resolvedAtOrBeforeRenderTime && renderSongTime - state.resolvedAt <= resolvedFadeTime;
+                    bool keepForTechnique = resolvedAtOrBeforeRenderTime && ShouldKeepTechniqueAliveAfterResolution(state.data, renderSongTime);
+                    bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || keepForTechnique || travelZ >= owner.StrikeLineZ);
+
+                    if (!visible)
+                        continue;
+
+                    visibleNoteIdsThisFrame.Add(state.data.id);
+
+                    if (!noteViews.TryGetValue(state.data.id, out HighwayNoteView view) || view == null)
+                    {
+                        view = CreateNoteView(state.data);
+                        noteViews[state.data.id] = view;
+                    }
+
+                    float displayZ = Mathf.Max(owner.StrikeLineZ, travelZ);
+                    UpdateNoteView(view, state, displayZ, travelZ, renderSongTime, floorY, laneTagY);
+                }
+            }
+
+            using (UpdateNotesCleanupProfilerMarker.Auto())
+            {
+                noteViewRemovalBuffer.Clear();
+                foreach (KeyValuePair<int, HighwayNoteView> pair in noteViews)
+                {
+                    if (visibleNoteIdsThisFrame.Contains(pair.Key))
+                        continue;
+
+                    noteViewRemovalBuffer.Add(pair.Key);
                 }
 
-                float displayZ = Mathf.Max(owner.StrikeLineZ, travelZ);
-                UpdateNoteView(view, state, displayZ, travelZ, renderSongTime);
-            }
-
-            noteViewRemovalBuffer.Clear();
-            foreach (KeyValuePair<int, HighwayNoteView> pair in noteViews)
-            {
-                if (visibleNoteIdsThisFrame.Contains(pair.Key))
-                    continue;
-
-                noteViewRemovalBuffer.Add(pair.Key);
-            }
-
-            for (int i = 0; i < noteViewRemovalBuffer.Count; i++)
-            {
-                int key = noteViewRemovalBuffer[i];
-                noteViews[key].Destroy();
-                noteViews.Remove(key);
+                for (int i = 0; i < noteViewRemovalBuffer.Count; i++)
+                {
+                    int key = noteViewRemovalBuffer[i];
+                    noteViews[key].Destroy();
+                    noteViews.Remove(key);
+                }
             }
         }
     }
@@ -2765,27 +2974,37 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return new HighwayNoteView
             {
                 noteRoot = cube,
+                noteTransform = cube.transform,
                 noteRenderer = cube.GetComponent<Renderer>(),
                 noteMaterial = noteMat,
                 label = textObj != null ? textObj.GetComponent<TextMeshPro>() : null,
                 laneTagLabel = laneTagLabel,
+                laneTagTransform = laneTagLabel != null ? laneTagLabel.transform : null,
                 tail = tail,
+                tailTransform = tail != null ? tail.transform : null,
                 tether = tether,
+                tetherTransform = tether != null ? tether.transform : null,
                 tetherRenderer = tetherRenderer,
                 tetherMaterial = tetherMat,
                 marker = marker,
+                markerTransform = marker != null ? marker.transform : null,
                 markerRenderer = markerRenderer,
                 markerMaterial = markerMaterial,
                 bendArrow = bendArrow,
+                bendArrowTransform = bendArrow != null ? bendArrow.transform : null,
                 bendArrowRenderer = bendArrowRenderer,
                 bendArrowPropertyBlock = bendArrowPropertyBlock,
                 bendArrowSecondary = bendArrowSecondary,
+                bendArrowSecondaryTransform = bendArrowSecondary != null ? bendArrowSecondary.transform : null,
                 bendArrowSecondaryRenderer = bendArrowSecondaryRenderer,
                 bendArrowSecondaryPropertyBlock = bendArrowSecondaryPropertyBlock,
                 muteSymbol = muteSymbol,
+                muteSymbolTransform = muteSymbol != null ? muteSymbol.transform : null,
                 muteSymbolRenderer = muteSymbolRenderer,
                 outlineRoot = outlineRoot,
+                outlineTransform = outlineRoot != null ? outlineRoot.transform : null,
                 techniqueRoot = techniqueRoot,
+                techniqueRootTransform = techniqueRoot.transform,
                 techniqueSegmentRibbons = techniqueSegmentRibbons,
                 techniqueSegmentRibbonRenderers = techniqueSegmentRibbonRenderers,
                 techniqueSegmentRibbonPropertyBlocks = techniqueSegmentRibbonPropertyBlocks,
@@ -2804,32 +3023,34 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 sustainRibbonRenderer = sustainRibbonRenderer,
                 sustainRibbonPropertyBlock = sustainRibbonRenderer != null ? new MaterialPropertyBlock() : null,
                 baseColor = owner.GetStringColor(data.stringIdx),
-                baseScale = cube.transform.localScale
+                baseScale = cube.transform.localScale,
+                noteX = xPos,
+                noteY = yPos,
+                noteStrikeOffset = GetVisualNoteStrikeOffset(cube.transform.localScale),
+                hasAnyTechniqueVisual = techniqueSegmentRibbons != null ||
+                                       slideRibbon != null ||
+                                       legatoCurve != null ||
+                                       bendRibbon != null ||
+                                       bendSustainRibbon != null ||
+                                       sustainRibbon != null
             };
         }
     }
 
-    private void UpdateNoteView(HighwayNoteView view, GameplayNoteState state, float z, float rawTravelZ, float songTime)
+    private void UpdateNoteView(HighwayNoteView view, GameplayNoteState state, float z, float rawTravelZ, float songTime, float floorY, float laneTagY)
     {
-        if (view.noteRoot == null)
-            return;
-
-        float x = GetVisualNoteX(state.data);
-        float y = GetStringY(state.data.stringIdx);
-        float floorY = GetLaneSurfaceTopY();
-        float visualNoteZ = z - GetVisualNoteStrikeOffset(view);
-        float rawVisualNoteZ = rawTravelZ - GetVisualNoteStrikeOffset(view);
-        float laneTagY = GetLaneGuideStringY() + 0.15f;
-        float laneTagZ = visualNoteZ - 0.55f;
-
-        view.noteRoot.transform.position = new Vector3(x, y, visualNoteZ);
-        if (view.marker != null)
-            view.marker.transform.position = new Vector3(x, y, owner.StrikeLineZ);
-        if (view.outlineRoot != null)
+        using (UpdateNoteViewProfilerMarker.Auto())
         {
-            view.outlineRoot.transform.position = new Vector3(x, y, GetStuckOutlineCenterZ());
-            view.outlineRoot.transform.localScale = Vector3.one;
-        }
+            if (view.noteRoot == null || view.noteTransform == null)
+                return;
+
+            float x = view.noteX;
+            float y = view.noteY;
+            float visualNoteZ = z - view.noteStrikeOffset;
+            float rawVisualNoteZ = rawTravelZ - view.noteStrikeOffset;
+            float laneTagZ = visualNoteZ - 0.55f;
+
+        view.noteTransform.position = new Vector3(x, y, visualNoteZ);
 
         bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
         bool hideBendTargetBox = bendSourceByDestinationId.ContainsKey(state.data.id);
@@ -2846,19 +3067,39 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             songTime >= state.resolvedAt &&
             songTime - state.resolvedAt > GetResolvedFadeTime() &&
             ShouldKeepTechniqueAliveAfterResolution(state.data, songTime);
+        bool noteRendererEnabled = !hideResolvedCoreVisuals && (!isStuckOnString || keepNoteBoxVisibleOnString) && !hideTravelingNoteBox;
         if (view.noteRenderer != null)
-            view.noteRenderer.enabled = !hideResolvedCoreVisuals && (!isStuckOnString || keepNoteBoxVisibleOnString) && !hideTravelingNoteBox;
+        {
+            if (!view.hasCachedNoteRendererEnabled || view.cachedNoteRendererEnabled != noteRendererEnabled)
+            {
+                view.noteRenderer.enabled = noteRendererEnabled;
+                view.cachedNoteRendererEnabled = noteRendererEnabled;
+                view.hasCachedNoteRendererEnabled = true;
+            }
+        }
+        bool showOutline = !hideResolvedCoreVisuals && isStuckOnString && !keepNoteBoxVisibleOnString;
         if (view.outlineRoot != null)
-            SetGameObjectActive(view.outlineRoot, !hideResolvedCoreVisuals && isStuckOnString && !keepNoteBoxVisibleOnString);
+        {
+            if (showOutline && view.outlineTransform != null)
+            {
+                view.outlineTransform.position = new Vector3(x, y, GetStuckOutlineCenterZ());
+                view.outlineTransform.localScale = Vector3.one;
+            }
+            SetGameObjectActive(view.outlineRoot, showOutline);
+        }
         if (view.label != null)
             SetGameObjectActive(view.label.gameObject, !hideResolvedCoreVisuals);
 
         float tailLength = Mathf.Max(0f, z - owner.StrikeLineZ);
         if (view.tail != null)
         {
-            view.tail.transform.position = new Vector3(x, y, owner.StrikeLineZ + (tailLength * 0.5f));
-            view.tail.transform.localScale = new Vector3(owner.FretSpacing * 0.06f, 0.06f, tailLength);
-            SetGameObjectActive(view.tail, owner.highwayShowApproachLine && tailLength > 0.01f && !state.IsResolved);
+            bool showTail = owner.highwayShowApproachLine && tailLength > 0.01f && !state.IsResolved;
+            if (showTail && view.tailTransform != null)
+            {
+                view.tailTransform.position = new Vector3(x, y, owner.StrikeLineZ + (tailLength * 0.5f));
+                view.tailTransform.localScale = new Vector3(owner.FretSpacing * 0.06f, 0.06f, tailLength);
+            }
+            SetGameObjectActive(view.tail, showTail);
         }
 
         if (view.tether != null && view.tetherRenderer != null && view.tetherMaterial != null)
@@ -2868,19 +3109,23 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float tetherTopY = noteBottomY - tetherTopGap;
             float tetherLength = Mathf.Max(0f, tetherTopY - floorY);
             bool showTether = tetherLength > 0.02f && z > owner.StrikeLineZ + 0.001f && !state.IsResolved;
-            view.tether.transform.position = new Vector3(x, floorY + (tetherLength * 0.5f), visualNoteZ);
-            view.tether.transform.localScale = new Vector3(Mathf.Max(0.04f, owner.FretSpacing * 0.05f), tetherLength, Mathf.Max(0.03f, owner.FretSpacing * 0.04f));
+            if (showTether && view.tetherTransform != null)
+            {
+                view.tetherTransform.position = new Vector3(x, floorY + (tetherLength * 0.5f), visualNoteZ);
+                view.tetherTransform.localScale = new Vector3(Mathf.Max(0.04f, owner.FretSpacing * 0.05f), tetherLength, Mathf.Max(0.03f, owner.FretSpacing * 0.04f));
+            }
             SetGameObjectActive(view.tether, showTether);
         }
 
         if (view.laneTagLabel != null)
         {
-            view.laneTagLabel.transform.position = new Vector3(x, laneTagY, laneTagZ);
-            ApplyFretNumberLabelStyle(view.laneTagLabel, true);
-            SetGameObjectActive(view.laneTagLabel.gameObject, z > owner.StrikeLineZ + 0.001f && !state.IsResolved);
+            bool showLaneTag = z > owner.StrikeLineZ + 0.001f && !state.IsResolved;
+            if (showLaneTag && view.laneTagTransform != null)
+                view.laneTagTransform.position = new Vector3(x, laneTagY, laneTagZ);
+            SetGameObjectActive(view.laneTagLabel.gameObject, showLaneTag);
         }
 
-        view.noteRoot.transform.localScale = view.baseScale;
+        Vector3 targetScale = view.baseScale;
 
         Color finalColor = view.baseColor;
         float emission = 0.8f;
@@ -2892,7 +3137,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             finalColor = Color.Lerp(resolvedColor, owner.highwayBackgroundColor, fade);
             emission = Mathf.Lerp(state.IsHit ? 1.8f : 0.45f, 0f, fade);
             if (state.IsHit)
-                view.noteRoot.transform.localScale = view.baseScale * Mathf.Lerp(1.18f, 1f, fade);
+                targetScale = view.baseScale * Mathf.Lerp(1.18f, 1f, fade);
         }
         else if (state.isJudgeable)
         {
@@ -2900,27 +3145,55 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             finalColor = view.baseColor;
         }
 
-        view.noteMaterial.color = finalColor;
-        view.noteMaterial.EnableKeyword("_EMISSION");
-        view.noteMaterial.SetColor("_EmissionColor", finalColor * Mathf.Pow(2f, emission));
+        if (!view.hasCachedAppliedNoteScale || !ApproximatelyVector3(view.cachedAppliedNoteScale, targetScale))
+        {
+            view.noteTransform.localScale = targetScale;
+            view.cachedAppliedNoteScale = targetScale;
+            view.hasCachedAppliedNoteScale = true;
+        }
+
+        if (!view.hasCachedNoteAppearance ||
+            view.cachedNoteColor != finalColor ||
+            !Mathf.Approximately(view.cachedNoteEmission, emission))
+        {
+            view.noteMaterial.color = finalColor;
+            view.noteMaterial.EnableKeyword("_EMISSION");
+            view.noteMaterial.SetColor("_EmissionColor", finalColor * Mathf.Pow(2f, emission));
+            view.cachedNoteColor = finalColor;
+            view.cachedNoteEmission = emission;
+            view.hasCachedNoteAppearance = true;
+        }
 
         if (view.tetherMaterial != null)
         {
             Color tetherColor = new Color(finalColor.r, finalColor.g, finalColor.b, state.IsResolved ? Mathf.Clamp01(finalColor.a * 0.55f) : 0.95f);
-            view.tetherMaterial.color = tetherColor;
-            view.tetherMaterial.SetColor("_Color", tetherColor);
-            view.tetherMaterial.SetColor("_BaseColor", tetherColor);
-            view.tetherMaterial.SetColor("_TintColor", tetherColor);
+            if (!view.hasCachedTetherColor || view.cachedTetherColor != tetherColor)
+            {
+                view.tetherMaterial.color = tetherColor;
+                view.tetherMaterial.SetColor("_Color", tetherColor);
+                view.tetherMaterial.SetColor("_BaseColor", tetherColor);
+                view.tetherMaterial.SetColor("_TintColor", tetherColor);
+                view.cachedTetherColor = tetherColor;
+                view.hasCachedTetherColor = true;
+            }
         }
 
         if (view.marker != null)
         {
-            SetGameObjectActive(view.marker, owner.highwayShowLandingDot && !hideResolvedCoreVisuals);
-            Color markerColor = state.IsHit ? owner.highwayHitColor : (state.IsMissed ? owner.highwayMissColor : view.baseColor);
-            if (view.markerMaterial != null)
+            bool showMarker = owner.highwayShowLandingDot && !hideResolvedCoreVisuals;
+            SetGameObjectActive(view.marker, showMarker);
+            if (showMarker && view.markerMaterial != null)
             {
-                view.markerMaterial.color = markerColor;
-                view.markerMaterial.SetColor("_EmissionColor", markerColor * (state.IsHit ? 2f : 0.8f));
+                Color markerColor = state.IsHit ? owner.highwayHitColor : (state.IsMissed ? owner.highwayMissColor : view.baseColor);
+                if (!view.hasCachedMarkerColor || view.cachedMarkerColor != markerColor || !Mathf.Approximately(view.cachedMarkerEmissionMultiplier, state.IsHit ? 2f : 0.8f))
+                {
+                    float markerEmissionMultiplier = state.IsHit ? 2f : 0.8f;
+                    view.markerMaterial.color = markerColor;
+                    view.markerMaterial.SetColor("_EmissionColor", markerColor * markerEmissionMultiplier);
+                    view.cachedMarkerColor = markerColor;
+                    view.cachedMarkerEmissionMultiplier = markerEmissionMultiplier;
+                    view.hasCachedMarkerColor = true;
+                }
             }
         }
 
@@ -2928,7 +3201,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (view.bendArrow != null && view.bendArrowRenderer != null && view.bendArrowPropertyBlock != null)
         {
-            Vector3 currentScale = view.noteRoot.transform.localScale;
+            Vector3 currentScale = targetScale;
             float arrowWidth = Mathf.Max(0.05f, currentScale.x * BendArrowWidthFraction);
             float arrowHeight = Mathf.Max(0.05f, currentScale.y);
             float arrowFrontZ = visualNoteZ - (currentScale.z * 0.5f) - BendArrowFrontOffset;
@@ -2937,41 +3210,58 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             int bendArrowCount = GetDisplayedBendArrowCount(state.data);
             bool showSecondaryArrow = showPrimaryArrow && bendArrowCount > 1;
 
-            view.bendArrow.transform.position = new Vector3(x, arrowBaseY, arrowFrontZ);
-            view.bendArrow.transform.rotation = Quaternion.identity;
-            view.bendArrow.transform.localScale = new Vector3(arrowWidth, arrowHeight, 1f);
+            if (showPrimaryArrow && view.bendArrowTransform != null)
+            {
+                view.bendArrowTransform.position = new Vector3(x, arrowBaseY, arrowFrontZ);
+                view.bendArrowTransform.rotation = Quaternion.identity;
+                view.bendArrowTransform.localScale = new Vector3(arrowWidth, arrowHeight, 1f);
+            }
             SetGameObjectActive(view.bendArrow, showPrimaryArrow);
-            view.bendArrowRenderer.GetPropertyBlock(view.bendArrowPropertyBlock);
-            view.bendArrowPropertyBlock.SetColor(BendArrowBaseColorShaderId, finalColor);
-            view.bendArrowRenderer.SetPropertyBlock(view.bendArrowPropertyBlock);
+            if (showPrimaryArrow)
+            {
+                view.bendArrowRenderer.GetPropertyBlock(view.bendArrowPropertyBlock);
+                view.bendArrowPropertyBlock.SetColor(BendArrowBaseColorShaderId, finalColor);
+                view.bendArrowRenderer.SetPropertyBlock(view.bendArrowPropertyBlock);
+            }
 
             if (view.bendArrowSecondary != null && view.bendArrowSecondaryRenderer != null && view.bendArrowSecondaryPropertyBlock != null)
             {
-                view.bendArrowSecondary.transform.position = new Vector3(x, arrowBaseY + (arrowHeight * BendArrowStackOffsetFraction), arrowFrontZ);
-                view.bendArrowSecondary.transform.rotation = Quaternion.identity;
-                view.bendArrowSecondary.transform.localScale = new Vector3(arrowWidth, arrowHeight, 1f);
+                if (showSecondaryArrow && view.bendArrowSecondaryTransform != null)
+                {
+                    view.bendArrowSecondaryTransform.position = new Vector3(x, arrowBaseY + (arrowHeight * BendArrowStackOffsetFraction), arrowFrontZ);
+                    view.bendArrowSecondaryTransform.rotation = Quaternion.identity;
+                    view.bendArrowSecondaryTransform.localScale = new Vector3(arrowWidth, arrowHeight, 1f);
+                }
                 SetGameObjectActive(view.bendArrowSecondary, showSecondaryArrow);
-                view.bendArrowSecondaryRenderer.GetPropertyBlock(view.bendArrowSecondaryPropertyBlock);
-                view.bendArrowSecondaryPropertyBlock.SetColor(BendArrowBaseColorShaderId, finalColor);
-                view.bendArrowSecondaryRenderer.SetPropertyBlock(view.bendArrowSecondaryPropertyBlock);
+                if (showSecondaryArrow)
+                {
+                    view.bendArrowSecondaryRenderer.GetPropertyBlock(view.bendArrowSecondaryPropertyBlock);
+                    view.bendArrowSecondaryPropertyBlock.SetColor(BendArrowBaseColorShaderId, finalColor);
+                    view.bendArrowSecondaryRenderer.SetPropertyBlock(view.bendArrowSecondaryPropertyBlock);
+                }
             }
         }
 
         if (view.muteSymbol != null)
         {
-            Vector3 currentScale = view.noteRoot.transform.localScale;
+            Vector3 currentScale = targetScale;
             float referenceNoteSize = Mathf.Max(GetSingleFrettedNoteScale().y, currentScale.y);
             float symbolSize = Mathf.Max(0.05f, referenceNoteSize * MuteSymbolScaleFraction);
             float symbolFrontZ = visualNoteZ - (currentScale.z * 0.5f) - MuteSymbolFrontOffset;
             bool showMuteSymbol = ShouldShowMuteSymbolForNote(state.data) && !hideResolvedCoreVisuals && !hideTravelingNoteBox && !hideOverlaySymbol;
 
-            view.muteSymbol.transform.position = new Vector3(x, y, symbolFrontZ);
-            view.muteSymbol.transform.rotation = Quaternion.identity;
-            view.muteSymbol.transform.localScale = new Vector3(symbolSize, symbolSize, 1f);
+            if (showMuteSymbol && view.muteSymbolTransform != null)
+            {
+                view.muteSymbolTransform.position = new Vector3(x, y, symbolFrontZ);
+                view.muteSymbolTransform.rotation = Quaternion.identity;
+                view.muteSymbolTransform.localScale = new Vector3(symbolSize, symbolSize, 1f);
+            }
             SetGameObjectActive(view.muteSymbol, showMuteSymbol);
         }
 
-        UpdateTechniqueView(view, state, visualNoteZ, rawVisualNoteZ, songTime);
+            if (view.hasAnyTechniqueVisual)
+                UpdateTechniqueView(view, state, visualNoteZ, rawVisualNoteZ, songTime);
+        }
     }
 
 
@@ -2996,26 +3286,29 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void UpdateTechniqueView(HighwayNoteView view, GameplayNoteState state, float displayVisualZ, float rawVisualNoteZ, float songTime)
     {
-        if (view.techniqueRoot == null)
-            return;
-
-        if (IsSlideDestinationNote(state.data))
+        using (UpdateTechniqueViewProfilerMarker.Auto())
         {
-            HideTechniqueView(view);
-            return;
-        }
+            if (view.techniqueRoot == null)
+                return;
 
-        if (HasTechniqueSegments(state.data))
-        {
-            bool showSegments = UpdateTechniqueSegmentRibbons(view, state, rawVisualNoteZ, songTime);
-            SetGameObjectActive(view.techniqueRoot, showSegments);
-            return;
-        }
+            if (IsSlideDestinationNote(state.data))
+            {
+                HideTechniqueView(view);
+                return;
+            }
 
-        bool showSlide = UpdateSlideTechnique(view, state, displayVisualZ, songTime);
-        bool showBend = UpdateBendTechnique(view, state, rawVisualNoteZ, songTime);
-        bool showSustain = UpdateNoteSustainTechnique(view, state, rawVisualNoteZ, songTime);
-        SetGameObjectActive(view.techniqueRoot, showSlide || showBend || showSustain);
+            if (HasTechniqueSegments(state.data))
+            {
+                bool showSegments = UpdateTechniqueSegmentRibbons(view, state, rawVisualNoteZ, songTime);
+                SetGameObjectActive(view.techniqueRoot, showSegments);
+                return;
+            }
+
+            bool showSlide = UpdateSlideTechnique(view, state, displayVisualZ, songTime);
+            bool showBend = UpdateBendTechnique(view, state, rawVisualNoteZ, songTime);
+            bool showSustain = UpdateNoteSustainTechnique(view, state, rawVisualNoteZ, songTime);
+            SetGameObjectActive(view.techniqueRoot, showSlide || showBend || showSustain);
+        }
     }
 
     private void HideTechniqueView(HighwayNoteView view)
@@ -3042,18 +3335,20 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private bool UpdateSlideTechnique(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
     {
-        bool useLegatoCurve = view.legatoCurve != null && view.legatoCurveRenderer != null;
-        if (!useLegatoCurve && (view.slideRibbon == null || view.slideRibbonRenderer == null))
-            return false;
-
-        if (state.data.linkedFromNoteId >= 0 && state.data.slideTargetFret < 0)
+        using (UpdateSlideTechniqueProfilerMarker.Auto())
         {
-            if (view.slideRibbon != null)
-                view.slideRibbon.SetActive(false);
-            if (view.legatoCurve != null)
-                view.legatoCurve.SetActive(false);
-            return false;
-        }
+            bool useLegatoCurve = view.legatoCurve != null && view.legatoCurveRenderer != null;
+            if (!useLegatoCurve && (view.slideRibbon == null || view.slideRibbonRenderer == null))
+                return false;
+
+            if (state.data.linkedFromNoteId >= 0 && state.data.slideTargetFret < 0)
+            {
+                if (view.slideRibbon != null)
+                    view.slideRibbon.SetActive(false);
+                if (view.legatoCurve != null)
+                    view.legatoCurve.SetActive(false);
+                return false;
+            }
 
         NoteData anchorData = state.data;
         int targetFret = anchorData.slideTargetFret;
@@ -3114,6 +3409,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         else
             ApplySlideTechniqueRibbon(view, liveProfile, state.IsResolved, visibleStart01);
         return true;
+        }
     }
 
     private float GetSlideRibbonFadeEndTime(NoteData anchorData, float songTime, TechniqueRibbonProfile profile)
@@ -3564,17 +3860,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private bool UpdateBendTechnique(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
     {
-        if (view.bendRibbon == null || view.bendRibbonRenderer == null)
-            return false;
-
-        float bendAmount = Mathf.Max(0f, state.data.bendStep);
-        if (bendAmount <= 0f && !state.data.bendPreBend && !state.data.bendRelease)
+        using (UpdateBendTechniqueProfilerMarker.Auto())
         {
-            view.bendRibbon.SetActive(false);
-            if (view.bendSustainRibbon != null)
-                view.bendSustainRibbon.SetActive(false);
-            return false;
-        }
+            if (view.bendRibbon == null || view.bendRibbonRenderer == null)
+                return false;
+
+            float bendAmount = Mathf.Max(0f, state.data.bendStep);
+            if (bendAmount <= 0f && !state.data.bendPreBend && !state.data.bendRelease)
+            {
+                view.bendRibbon.SetActive(false);
+                if (view.bendSustainRibbon != null)
+                    view.bendSustainRibbon.SetActive(false);
+                return false;
+            }
 
         if (!TryBuildBendRibbonProfiles(
                 view,
@@ -3661,7 +3959,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             view.bendSustainRibbon.SetActive(false);
         }
 
-        return anyVisible;
+            return anyVisible;
+        }
     }
 
     private bool TryBuildNoteSustainRibbonProfile(HighwayNoteView view, GameplayNoteState state, float noteCenterZ, float songTime, out TechniqueRibbonProfile profile)
@@ -3698,14 +3997,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private bool UpdateNoteSustainTechnique(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
     {
-        if (view.sustainRibbon == null || view.sustainRibbonRenderer == null)
-            return false;
-
-        if (!TryBuildNoteSustainRibbonProfile(view, state, z, songTime, out TechniqueRibbonProfile profile))
+        using (UpdateNoteSustainTechniqueProfilerMarker.Auto())
         {
-            view.sustainRibbon.SetActive(false);
-            return false;
-        }
+            if (view.sustainRibbon == null || view.sustainRibbonRenderer == null)
+                return false;
+
+            if (!TryBuildNoteSustainRibbonProfile(view, state, z, songTime, out TechniqueRibbonProfile profile))
+            {
+                view.sustainRibbon.SetActive(false);
+                return false;
+            }
 
         float fadeStartSongTime = state.data.time;
         float fadeEndSongTime = state.data.time + Mathf.Max(GuitarTechniqueVisualThresholds.SustainSeconds, state.data.duration);
@@ -3720,21 +4021,24 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             }
         }
 
-        ApplyNoteSustainTechniqueRibbon(view, profile, state.IsResolved, visibleStart01);
-        return true;
+            ApplyNoteSustainTechniqueRibbon(view, profile, state.IsResolved, visibleStart01);
+            return true;
+        }
     }
 
     private bool UpdateTechniqueSegmentRibbons(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
     {
-        if (view.techniqueSegmentRibbons == null ||
-            view.techniqueSegmentRibbonRenderers == null ||
-            view.techniqueSegmentRibbonPropertyBlocks == null ||
-            state.data.techniqueSegments == null)
-            return false;
+        using (UpdateTechniqueSegmentRibbonsProfilerMarker.Auto())
+        {
+            if (view.techniqueSegmentRibbons == null ||
+                view.techniqueSegmentRibbonRenderers == null ||
+                view.techniqueSegmentRibbonPropertyBlocks == null ||
+                state.data.techniqueSegments == null)
+                return false;
 
-        List<NoteTechniqueSegmentData> orderedSegments = state.data.techniqueSegments
-            .OrderBy(segment => segment.startOffset)
-            .ToList();
+            List<NoteTechniqueSegmentData> orderedSegments = state.data.techniqueSegments
+                .OrderBy(segment => segment.startOffset)
+                .ToList();
 
         int slotIndex = 0;
         bool anyVisible = false;
@@ -3941,7 +4245,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         for (int i = slotIndex; i < view.techniqueSegmentRibbons.Length; i++)
             SetGameObjectActive(view.techniqueSegmentRibbons[i], false);
 
-        return anyVisible;
+            return anyVisible;
+        }
     }
 
     private bool TryBuildTechniqueSegmentRibbonProfile(
@@ -4392,6 +4697,389 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             flatLightStrength);
     }
 
+    private void UpdateArpeggioGuides(GuitarGameplaySnapshot snapshot)
+    {
+        using (UpdateArpeggioGuidesProfilerMarker.Auto())
+        {
+            activeArpeggioGuideIdsThisFrame.Clear();
+            List<ArpeggioGuideData> guides = snapshot?.arpeggioGuides;
+            if (guides == null || guides.Count == 0)
+            {
+                ClearArpeggioGuideFrames();
+                return;
+            }
+
+            float renderSongTime = GetRenderSongTime(snapshot);
+            for (int i = 0; i < guides.Count; i++)
+            {
+                ArpeggioGuideData guide = guides[i];
+                if (!IsRenderableArpeggioGuide(guide))
+                    continue;
+
+                float z = owner.StrikeLineZ + ((guide.startTime - renderSongTime) * currentVisualNoteSpeed);
+                bool visible = z <= owner.SpawnZ && z > owner.StrikeLineZ + 0.001f;
+                if (!visible)
+                    continue;
+
+                activeArpeggioGuideIdsThisFrame.Add(guide.id);
+                if (!arpeggioGuideFrames.TryGetValue(guide.id, out GameObject frame) || frame == null)
+                {
+                    frame = CreateArpeggioGuideFrame(guide);
+                    arpeggioGuideFrames[guide.id] = frame;
+                }
+
+                if (frame != null)
+                {
+                    frame.transform.position = new Vector3(frame.transform.position.x, frame.transform.position.y, z + 0.012f);
+                    UpdateArpeggioGuideIndicatorStates(frame, guide, snapshot, renderSongTime);
+                }
+            }
+
+            arpeggioGuideRemovalBuffer.Clear();
+            foreach (KeyValuePair<int, GameObject> pair in arpeggioGuideFrames)
+            {
+                if (!activeArpeggioGuideIdsThisFrame.Contains(pair.Key))
+                    arpeggioGuideRemovalBuffer.Add(pair.Key);
+            }
+
+            for (int i = 0; i < arpeggioGuideRemovalBuffer.Count; i++)
+            {
+                int key = arpeggioGuideRemovalBuffer[i];
+                if (arpeggioGuideFrames[key] != null)
+                    Object.Destroy(arpeggioGuideFrames[key]);
+                arpeggioGuideFrames.Remove(key);
+            }
+        }
+    }
+
+    private void ClearArpeggioGuideFrames()
+    {
+        if (arpeggioGuideFrames.Count == 0)
+            return;
+
+        arpeggioGuideRemovalBuffer.Clear();
+        foreach (int key in arpeggioGuideFrames.Keys)
+            arpeggioGuideRemovalBuffer.Add(key);
+
+        for (int i = 0; i < arpeggioGuideRemovalBuffer.Count; i++)
+        {
+            int key = arpeggioGuideRemovalBuffer[i];
+            if (arpeggioGuideFrames[key] != null)
+                Object.Destroy(arpeggioGuideFrames[key]);
+            arpeggioGuideFrames.Remove(key);
+        }
+    }
+
+    private bool IsRenderableArpeggioGuide(ArpeggioGuideData guide)
+    {
+        if (guide == null || guide.stringFrets == null || guide.stringFrets.Length == 0)
+            return false;
+
+        for (int i = 0; i < guide.stringFrets.Length; i++)
+        {
+            if (guide.stringFrets[i] >= 0)
+                return true;
+        }
+
+        return false;
+    }
+
+    private int GetArpeggioHandFret(ArpeggioGuideData guide)
+    {
+        if (guide?.stringFrets == null || guide.stringFrets.Length == 0)
+            return Mathf.Clamp(Mathf.RoundToInt(owner.defaultOpenAnchorFret), 1, owner.TotalFrets - 3);
+
+        int minFret = int.MaxValue;
+        for (int i = 0; i < guide.stringFrets.Length; i++)
+        {
+            int fret = guide.stringFrets[i];
+            if (fret > 0)
+                minFret = Mathf.Min(minFret, fret);
+        }
+
+        if (minFret != int.MaxValue)
+            return Mathf.Clamp(minFret, 1, owner.TotalFrets - 3);
+
+        return Mathf.Clamp(Mathf.RoundToInt(owner.defaultOpenAnchorFret), 1, owner.TotalFrets - 3);
+    }
+
+    private float GetArpeggioHandWindowEndX(int handFret, ArpeggioGuideData guide)
+    {
+        int furthestFret = handFret + 3;
+        if (guide?.stringFrets != null)
+        {
+            for (int i = 0; i < guide.stringFrets.Length; i++)
+            {
+                int fret = guide.stringFrets[i];
+                if (fret > 0)
+                    furthestFret = Mathf.Max(furthestFret, fret);
+            }
+        }
+
+        return GetNoteX(furthestFret) + (owner.FretSpacing * 0.2f);
+    }
+
+    private float GetArpeggioBoxHeight(ArpeggioGuideData guide)
+    {
+        int renderableStringCount = GetRenderableStringCount();
+        if (renderableStringCount <= 0)
+            return GetStringLaneSpacing();
+
+        if (renderableStringCount == 1)
+            return GetStringLaneSpacing();
+
+        float minY = GetStringY(0);
+        float maxY = GetStringY(renderableStringCount - 1);
+        return Mathf.Max(1f, Mathf.Abs(maxY - minY) + owner.chordFrameVerticalPadding);
+    }
+
+    private float GetArpeggioBoxCenterY(ArpeggioGuideData guide)
+    {
+        int renderableStringCount = GetRenderableStringCount();
+        if (renderableStringCount <= 0)
+            return 0f;
+
+        return (GetStringY(0) + GetStringY(renderableStringCount - 1)) * 0.5f;
+    }
+
+    private GameObject CreateArpeggioGuideFrame(ArpeggioGuideData guide)
+    {
+        int handFret = GetArpeggioHandFret(guide);
+        float leftX = GetHandWindowStartX(handFret);
+        float rightX = GetArpeggioHandWindowEndX(handFret, guide);
+        float height = GetArpeggioBoxHeight(guide);
+        float width = Mathf.Max(0.5f, rightX - leftX);
+        float centerY = GetArpeggioBoxCenterY(guide);
+
+        GameObject frame = CreateChordFrame(leftX, rightX, centerY, height, new Color(0.62f, 0.12f, 1f), 2.2f);
+        UpdateChordFrameLabel(frame, GetArpeggioDisplayName(guide), width, height);
+        CreateArpeggioGuideShape(frame.transform, guide, (leftX + rightX) * 0.5f, centerY, width);
+        return frame;
+    }
+
+    private void CreateChordFrameBackground(Transform parent, float width, float height)
+    {
+        if (parent == null)
+            return;
+
+        float inset = owner.chordFrameThickness * 1.35f;
+        float backgroundWidth = Mathf.Max(0.16f, width - inset);
+        float backgroundHeight = Mathf.Max(0.16f, height - inset);
+        float backgroundDepth = 0.025f;
+        Material backgroundMat = owner.CreateSharedTransparentMaterial(new Color(0.18f, 0.20f, 0.24f, 0.42f), 0.08f);
+        ConfigureOverlayMaterial(backgroundMat, 100, true);
+        CreateFramePiece(parent, new Vector3(0f, 0f, 0.012f), new Vector3(backgroundWidth, backgroundHeight, backgroundDepth), backgroundMat);
+    }
+
+    private void CreateArpeggioGuideShape(Transform parent, ArpeggioGuideData guide, float centerX, float centerY, float width)
+    {
+        if (guide?.stringFrets == null)
+            return;
+
+        int maxStrings = Mathf.Min(guide.stringFrets.Length, GetRenderableStringCount());
+        for (int stringIndex = 0; stringIndex < maxStrings; stringIndex++)
+        {
+            int fret = guide.stringFrets[stringIndex];
+            if (fret < 0)
+                continue;
+
+            float localY = GetStringY(stringIndex) - centerY;
+            Color stringColor = owner.GetStringColor(stringIndex);
+            if (fret == 0)
+            {
+                CreateArpeggioOpenStringDottedLine(parent, stringIndex, localY, width, stringColor);
+                continue;
+            }
+
+            GameObject outline = CreateArpeggioNoteOutline(GetSingleFrettedNoteScale(), stringColor);
+            outline.name = $"ArpeggioSlot_{stringIndex}";
+            outline.transform.SetParent(parent, false);
+            outline.transform.localPosition = new Vector3(GetNoteX(fret) - centerX, localY, -0.01f);
+            outline.transform.localRotation = Quaternion.identity;
+            outline.transform.localScale = Vector3.one;
+            SetGameObjectActive(outline, true);
+        }
+    }
+
+    private void CreateArpeggioOpenStringDottedLine(Transform parent, int stringIndex, float localY, float width, Color color)
+    {
+        GameObject dottedRoot = new GameObject($"ArpeggioOpen_{stringIndex}");
+        dottedRoot.transform.SetParent(parent, false);
+        dottedRoot.transform.localPosition = Vector3.zero;
+        dottedRoot.transform.localRotation = Quaternion.identity;
+        dottedRoot.transform.localScale = Vector3.one;
+
+        Material dashMat = owner.CreateSharedGlowMaterial(color, 0.8f);
+        ConfigureOverlayMaterial(dashMat, 120, true);
+        float usableWidth = Mathf.Max(owner.FretSpacing * 1.2f, width - (owner.FretSpacing * 0.35f));
+        float openHeight = GetScaledOpenHeight();
+        float openDepth = GetScaledOpenDepth();
+        float targetDashWidth = Mathf.Max(owner.FretSpacing * 0.34f, usableWidth * 0.1f);
+        float gapWidth = Mathf.Max(owner.FretSpacing * 0.16f, targetDashWidth * 0.45f);
+        int dashCount = Mathf.Max(3, Mathf.FloorToInt((usableWidth + gapWidth) / (targetDashWidth + gapWidth)));
+        float totalGapWidth = gapWidth * Mathf.Max(0, dashCount - 1);
+        float dashWidth = dashCount > 0 ? Mathf.Max(owner.FretSpacing * 0.22f, (usableWidth - totalGapWidth) / dashCount) : usableWidth;
+        float occupiedWidth = (dashWidth * dashCount) + totalGapWidth;
+        float startX = -occupiedWidth * 0.5f + (dashWidth * 0.5f);
+
+        for (int i = 0; i < dashCount; i++)
+        {
+            float dashX = startX + ((dashWidth + gapWidth) * i);
+            CreateFramePiece(
+                dottedRoot.transform,
+                new Vector3(dashX, localY, -0.01f),
+                new Vector3(dashWidth, openHeight, openDepth),
+                dashMat);
+        }
+    }
+
+    private GameObject CreateArpeggioNoteOutline(Vector3 noteScale, Color color)
+    {
+        GameObject outlineRoot = new GameObject("ArpeggioNoteOutline");
+        outlineRoot.transform.SetParent(gameplayRoot.transform, false);
+
+        float width = Mathf.Max(0.12f, noteScale.x);
+        float height = Mathf.Max(0.12f, noteScale.y);
+        float depth = 0.012f;
+        float thickness = Mathf.Clamp(Mathf.Min(width, height) * 0.16f, 0.045f, 0.085f);
+        float insetHalfWidth = Mathf.Max(0f, (width - thickness) * 0.5f);
+        float insetHalfHeight = Mathf.Max(0f, (height - thickness) * 0.5f);
+        Material outlineMat = owner.CreateSharedTransparentMaterial(new Color(color.r, color.g, color.b, 0.92f), 0.12f);
+        ConfigureOverlayMaterial(outlineMat, 125, true);
+
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, 0f), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(0f, -insetHalfHeight, 0f), new Vector3(width, thickness, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(-insetHalfWidth, 0f, 0f), new Vector3(thickness, height, depth), outlineMat);
+        CreateFramePiece(outlineRoot.transform, new Vector3(insetHalfWidth, 0f, 0f), new Vector3(thickness, height, depth), outlineMat);
+        return outlineRoot;
+    }
+
+    private string GetArpeggioDisplayName(ArpeggioGuideData guide)
+    {
+        if (guide == null)
+            return string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(guide.chordName))
+            return guide.chordName.Trim();
+
+        return DeriveArpeggioDisplayName(guide);
+    }
+
+    private string DeriveArpeggioDisplayName(ArpeggioGuideData guide)
+    {
+        if (guide?.stringFrets == null)
+            return string.Empty;
+
+        HashSet<int> pitchClassSet = new HashSet<int>();
+        int? bassPitchClass = null;
+        int bassStringIndex = int.MaxValue;
+        int maxStrings = Mathf.Min(guide.stringFrets.Length, GetRenderableStringCount());
+        for (int stringIndex = 0; stringIndex < maxStrings; stringIndex++)
+        {
+            int fret = guide.stringFrets[stringIndex];
+            if (fret < 0)
+                continue;
+
+            int pitchClass = Mod12(owner.GetStringBasePitch(stringIndex) + fret);
+            pitchClassSet.Add(pitchClass);
+            if (!bassPitchClass.HasValue || stringIndex < bassStringIndex)
+            {
+                bassPitchClass = pitchClass;
+                bassStringIndex = stringIndex;
+            }
+        }
+
+        if (pitchClassSet.Count < 2)
+            return string.Empty;
+
+        int resolvedBassPitchClass = bassPitchClass ?? pitchClassSet.First();
+        ChordMatch bestMatch = default;
+        bool foundMatch = false;
+        foreach (int candidateRoot in pitchClassSet)
+        {
+            if (!TryMatchChordQuality(pitchClassSet, candidateRoot, out string suffix, out int score))
+                continue;
+
+            if (!foundMatch || score > bestMatch.score || (score == bestMatch.score && candidateRoot == resolvedBassPitchClass))
+            {
+                bestMatch = new ChordMatch
+                {
+                    rootPitchClass = candidateRoot,
+                    bassPitchClass = resolvedBassPitchClass,
+                    suffix = suffix,
+                    score = score
+                };
+                foundMatch = true;
+            }
+        }
+
+        if (!foundMatch)
+            return string.Empty;
+
+        string label = PitchClassToChordName(bestMatch.rootPitchClass) + bestMatch.suffix;
+        if (bestMatch.bassPitchClass != bestMatch.rootPitchClass && pitchClassSet.Contains(bestMatch.bassPitchClass))
+            label += "/" + PitchClassToChordName(bestMatch.bassPitchClass);
+        return label;
+    }
+
+    private void UpdateArpeggioGuideIndicatorStates(GameObject frame, ArpeggioGuideData guide, GuitarGameplaySnapshot snapshot, float renderSongTime)
+    {
+        if (frame == null || guide?.stringFrets == null)
+            return;
+
+        int maxStrings = Mathf.Min(guide.stringFrets.Length, GetRenderableStringCount());
+        for (int stringIndex = 0; stringIndex < maxStrings; stringIndex++)
+        {
+            int fret = guide.stringFrets[stringIndex];
+            if (fret < 0)
+                continue;
+
+            bool coveredByVisibleNote = IsArpeggioIndicatorCoveredByVisibleNote(guide, stringIndex, fret, snapshot, renderSongTime);
+            Transform slot = frame.transform.Find($"ArpeggioSlot_{stringIndex}");
+            if (slot != null)
+                SetGameObjectActive(slot.gameObject, !coveredByVisibleNote);
+
+            Transform open = frame.transform.Find($"ArpeggioOpen_{stringIndex}");
+            if (open != null)
+                SetGameObjectActive(open.gameObject, !coveredByVisibleNote);
+        }
+    }
+
+    private bool IsArpeggioIndicatorCoveredByVisibleNote(ArpeggioGuideData guide, int stringIndex, int fret, GuitarGameplaySnapshot snapshot, float renderSongTime)
+    {
+        if (guide == null || snapshot?.noteStates == null)
+            return false;
+
+        float spawnLeadSeconds = GetVisibleLeadTime();
+        float maxRelevantTime = guide.endTime + spawnLeadSeconds;
+        float resolvedFadeTime = GetResolvedFadeTime();
+        for (int i = 0; i < snapshot.noteStates.Count; i++)
+        {
+            GameplayNoteState state = snapshot.noteStates[i];
+            if (state == null)
+                continue;
+
+            if (state.data.time > maxRelevantTime)
+                break;
+
+            if (state.data.stringIdx != stringIndex || state.data.fret != fret)
+                continue;
+
+            if (state.data.time < guide.startTime - 0.001f || state.data.time > guide.endTime + 0.001f)
+                continue;
+
+            float travelZ = owner.StrikeLineZ + ((state.data.time - renderSongTime) * currentVisualNoteSpeed);
+            bool resolvedAtOrBeforeRenderTime = state.IsResolved && state.resolvedAt >= 0f && renderSongTime >= state.resolvedAt;
+            bool keepForResult = resolvedAtOrBeforeRenderTime && renderSongTime - state.resolvedAt <= resolvedFadeTime;
+            bool keepForTechnique = resolvedAtOrBeforeRenderTime && ShouldKeepTechniqueAliveAfterResolution(state.data, renderSongTime);
+            bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || keepForTechnique || travelZ >= owner.StrikeLineZ);
+            if (visible)
+                return true;
+        }
+
+        return false;
+    }
+
     private void UpdateChordFrames(GuitarGameplaySnapshot snapshot)
     {
         using (UpdateChordFramesProfilerMarker.Auto())
@@ -4405,24 +5093,36 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 if (group == null || group.Count < 2)
                     continue;
 
-            float anchorTime = group[0].time;
-            float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * currentVisualNoteSpeed);
-            bool anyRecent = group.Any(n =>
-                TryGetState(snapshot.noteStates, n.id, out GameplayNoteState state) &&
-                state.IsResolved &&
-                state.resolvedAt >= 0f &&
-                renderSongTime >= state.resolvedAt &&
-                renderSongTime - state.resolvedAt <= GetResolvedFadeTime());
-            bool visible = z <= owner.SpawnZ && z > owner.StrikeLineZ + 0.001f;
+                float anchorTime = group[0].time;
+                float z = owner.StrikeLineZ + ((anchorTime - renderSongTime) * currentVisualNoteSpeed);
+                bool anyRecent = false;
+                float resolvedFadeTime = GetResolvedFadeTime();
+                for (int noteIndex = 0; noteIndex < group.Count; noteIndex++)
+                {
+                    NoteData note = group[noteIndex];
+                    if (!noteStatesById.TryGetValue(note.id, out GameplayNoteState state))
+                        continue;
 
-            if (!visible && !anyRecent)
-                continue;
+                    if (state.IsResolved &&
+                        state.resolvedAt >= 0f &&
+                        renderSongTime >= state.resolvedAt &&
+                        renderSongTime - state.resolvedAt <= resolvedFadeTime)
+                    {
+                        anyRecent = true;
+                        break;
+                    }
+                }
+
+                bool visible = z <= owner.SpawnZ && z > owner.StrikeLineZ + 0.001f;
+
+                if (!visible && !anyRecent)
+                    continue;
 
                 activeChordIdsThisFrame.Add(pair.Key);
 
-            int handFret = GetGroupHandFret(group);
-            float leftX = GetHandWindowStartX(handFret);
-            float rightX = GetHandWindowEndX(handFret, group);
+                int handFret = GetGroupHandFret(group);
+                float leftX = GetHandWindowStartX(handFret);
+                float rightX = GetHandWindowEndX(handFret, group);
 
                 if (!chordFrames.TryGetValue(pair.Key, out GameObject frame) || frame == null)
                 {
@@ -4462,48 +5162,85 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             int fretLightColumns = GetFretLightColumnCount();
             int activeStringCount = GetRenderableStringCount();
+            UpdateFretLightLayoutIfNeeded(fretLightColumns, activeStringCount);
 
-            for (int s = 0; s < fretLightMats.GetLength(0); s++)
+            for (int i = 0; i < activeFretLightIndices.Count; i++)
             {
-                for (int f = 0; f < fretLightColumns; f++)
-                {
-                    if (fretLightRenderers[s, f] != null)
-                    {
-                        float xPos = f == 0 ? GetNoteX(Mathf.RoundToInt(owner.defaultOpenAnchorFret)) : GetNoteX(f);
-                        Vector3 position = fretLightRenderers[s, f].transform.position;
-                        position.x = xPos;
-                        position.y = GetStringY(s);
-                        position.z = owner.StrikeLineZ;
-                        fretLightRenderers[s, f].transform.position = position;
-                    }
+                int encodedIndex = activeFretLightIndices[i];
+                int stringIndex = encodedIndex / fretLightColumns;
+                int fretIndex = encodedIndex % fretLightColumns;
+                if (stringIndex < 0 || stringIndex >= fretLightMats.GetLength(0) || fretIndex < 0 || fretIndex >= fretLightColumns)
+                    continue;
 
-                    fretLightMats[s, f].SetColor("_EmissionColor", Color.black);
-                    if (fretLightRenderers[s, f] != null)
-                        fretLightRenderers[s, f].enabled = false;
-                }
+                fretLightMats[stringIndex, fretIndex].SetColor("_EmissionColor", Color.black);
+                if (fretLightRenderers[stringIndex, fretIndex] != null)
+                    fretLightRenderers[stringIndex, fretIndex].enabled = false;
             }
 
-            if (pitchesToLight == null)
+            activeFretLightIndices.Clear();
+
+            if (pitchesToLight == null || pitchesToLight.Count == 0)
                 return;
 
-            foreach (int pitch in pitchesToLight)
+            for (int s = 0; s < activeStringCount; s++)
             {
-                for (int s = 0; s < activeStringCount; s++)
+                Color stringColor = owner.GetStringColor(s) * 8f;
+                int stringBasePitch = owner.GetStringBasePitch(s);
+                for (int f = 0; f < fretLightColumns; f++)
                 {
-                    for (int f = 0; f < fretLightColumns; f++)
-                    {
-                        int exactFretPitch = owner.GetStringBasePitch(s) + f;
-                        int genericFretPitch = exactFretPitch % 12;
-                        if (exactFretPitch == pitch || (pitch < 12 && genericFretPitch == pitch))
-                        {
-                            fretLightMats[s, f].SetColor("_EmissionColor", owner.GetStringColor(s) * 8f);
-                            if (fretLightRenderers[s, f] != null)
-                                fretLightRenderers[s, f].enabled = true;
-                        }
-                    }
+                    int exactFretPitch = stringBasePitch + f;
+                    int genericFretPitch = exactFretPitch % 12;
+                    if (!pitchesToLight.Contains(exactFretPitch) && !pitchesToLight.Contains(genericFretPitch))
+                        continue;
+
+                    fretLightMats[s, f].SetColor("_EmissionColor", stringColor);
+                    if (fretLightRenderers[s, f] != null)
+                        fretLightRenderers[s, f].enabled = true;
+                    activeFretLightIndices.Add((s * fretLightColumns) + f);
                 }
             }
         }
+    }
+
+    private void UpdateFretLightLayoutIfNeeded(int fretLightColumns, int activeStringCount)
+    {
+        if (fretLightRenderers == null)
+            return;
+
+        float openAnchorFret = owner.defaultOpenAnchorFret;
+        float strikeLineZ = owner.StrikeLineZ;
+        float fretSpacing = owner.FretSpacing;
+        bool layoutDirty =
+            lastFretLightLayoutStringCount != activeStringCount ||
+            lastFretLightLayoutColumnCount != fretLightColumns ||
+            !Mathf.Approximately(lastFretLightLayoutOpenAnchorFret, openAnchorFret) ||
+            !Mathf.Approximately(lastFretLightLayoutStrikeLineZ, strikeLineZ) ||
+            !Mathf.Approximately(lastFretLightLayoutFretSpacing, fretSpacing);
+
+        if (!layoutDirty)
+            return;
+
+        for (int s = 0; s < fretLightRenderers.GetLength(0); s++)
+        {
+            for (int f = 0; f < fretLightColumns; f++)
+            {
+                if (fretLightRenderers[s, f] == null)
+                    continue;
+
+                float xPos = f == 0 ? GetNoteX(Mathf.RoundToInt(openAnchorFret)) : GetNoteX(f);
+                Vector3 position = fretLightRenderers[s, f].transform.position;
+                position.x = xPos;
+                position.y = GetStringY(s);
+                position.z = strikeLineZ;
+                fretLightRenderers[s, f].transform.position = position;
+            }
+        }
+
+        lastFretLightLayoutStringCount = activeStringCount;
+        lastFretLightLayoutColumnCount = fretLightColumns;
+        lastFretLightLayoutOpenAnchorFret = openAnchorFret;
+        lastFretLightLayoutStrikeLineZ = strikeLineZ;
+        lastFretLightLayoutFretSpacing = fretSpacing;
     }
 
     private void UpdateSectionCamera(GuitarGameplaySnapshot snapshot)
@@ -4521,10 +5258,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             for (int i = 0; i < snapshot.noteStates.Count; i++)
             {
                 GameplayNoteState state = snapshot.noteStates[i];
-                if (state == null || state.IsResolved)
+                if (state == null)
                     continue;
 
                 float timeUntilNote = state.data.time - renderSongTime;
+                if (timeUntilNote > previewWindow)
+                    break;
+
+                if (state.IsResolved)
+                    continue;
+
                 if (timeUntilNote < -0.1f || timeUntilNote > previewWindow)
                     continue;
 
@@ -4576,36 +5319,72 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             if (snapshot == null)
                 return 0f;
 
+            if (renderSongTimeCacheValid && ReferenceEquals(renderSongTimeCacheSnapshot, snapshot))
+                return renderSongTimeCacheValue;
+
             float renderSongTime = snapshot.songTime;
             float visibleWindow = GetVisibleLeadTime();
 
             if (snapshot.noteStates == null || snapshot.noteStates.Count == 0)
+            {
+                CacheRenderSongTime(snapshot, renderSongTime);
                 return renderSongTime;
+            }
 
             bool shouldPreviewUpcoming = snapshot.showMainMenu || snapshot.showSongSelection || snapshot.showTrackSelection;
             if (!shouldPreviewUpcoming)
+            {
+                CacheRenderSongTime(snapshot, renderSongTime);
                 return renderSongTime;
+            }
 
-            bool hasVisiblePendingNote = snapshot.noteStates.Any(state =>
-                state != null &&
-                !state.IsResolved &&
-                state.data.time >= renderSongTime &&
-                state.data.time <= renderSongTime + visibleWindow);
+            float maxVisibleTime = renderSongTime + visibleWindow;
+            GameplayNoteState nextPending = null;
+            for (int i = 0; i < snapshot.noteStates.Count; i++)
+            {
+                GameplayNoteState state = snapshot.noteStates[i];
+                if (state == null || state.IsResolved)
+                    continue;
 
-            if (hasVisiblePendingNote)
-                return renderSongTime;
+                float noteTime = state.data.time;
+                if (noteTime < renderSongTime)
+                    continue;
 
-            GameplayNoteState nextPending = snapshot.noteStates
-                .Where(state => state != null && !state.IsResolved && state.data.time >= renderSongTime)
-                .OrderBy(state => state.data.time)
-                .FirstOrDefault();
+                if (noteTime <= maxVisibleTime)
+                {
+                    CacheRenderSongTime(snapshot, renderSongTime);
+                    return renderSongTime;
+                }
+
+                nextPending = state;
+                break;
+            }
 
             if (nextPending == null)
+            {
+                CacheRenderSongTime(snapshot, renderSongTime);
                 return renderSongTime;
+            }
 
             float previewRenderTime = Mathf.Max(0f, nextPending.data.time - (visibleWindow * 0.85f));
+            CacheRenderSongTime(snapshot, previewRenderTime);
             return previewRenderTime;
         }
+    }
+
+    private void CacheRenderSongTime(GuitarGameplaySnapshot snapshot, float value)
+    {
+        if (!ReferenceEquals(renderSongTimeCacheSnapshot, snapshot))
+            return;
+
+        renderSongTimeCacheValue = value;
+        renderSongTimeCacheValid = true;
+    }
+
+    private void EnsureStringHasIncomingNotesBuffer(int activeStringCount)
+    {
+        if (stringHasIncomingNotesBuffer.Length < activeStringCount)
+            stringHasIncomingNotesBuffer = new bool[activeStringCount];
     }
 
     private float GetVisibleLeadTime()
@@ -4620,21 +5399,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             spacingScale = Mathf.Clamp(snapshot.tabSpeedOffsetPercent / 100f, 0.5f, 1.5f);
 
         return Mathf.Max(0.01f, owner.noteSpeed * spacingScale);
-    }
-
-    private bool TryGetState(List<GameplayNoteState> states, int noteId, out GameplayNoteState state)
-    {
-        for (int i = 0; i < states.Count; i++)
-        {
-            if (states[i].data.id == noteId)
-            {
-                state = states[i];
-                return true;
-            }
-        }
-
-        state = null;
-        return false;
     }
 
     private List<NoteData> GetChordGroup(NoteData data)
@@ -4722,36 +5486,25 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetChordBoxHeight(List<NoteData> group)
     {
-        if (group == null || group.Count == 0)
+        int renderableStringCount = GetRenderableStringCount();
+        if (renderableStringCount <= 0)
             return GetStringLaneSpacing();
 
-        float minY = float.MaxValue;
-        float maxY = float.MinValue;
-        for (int i = 0; i < group.Count; i++)
-        {
-            float y = GetStringY(group[i].stringIdx);
-            minY = Mathf.Min(minY, y);
-            maxY = Mathf.Max(maxY, y);
-        }
+        if (renderableStringCount == 1)
+            return GetStringLaneSpacing();
 
-        return Mathf.Max(1f, (maxY - minY) + owner.chordFrameVerticalPadding);
+        float minY = GetStringY(0);
+        float maxY = GetStringY(renderableStringCount - 1);
+        return Mathf.Max(1f, Mathf.Abs(maxY - minY) + owner.chordFrameVerticalPadding);
     }
 
     private float GetChordBoxCenterY(List<NoteData> group)
     {
-        if (group == null || group.Count == 0)
+        int renderableStringCount = GetRenderableStringCount();
+        if (renderableStringCount <= 0)
             return 0f;
 
-        float minY = float.MaxValue;
-        float maxY = float.MinValue;
-        for (int i = 0; i < group.Count; i++)
-        {
-            float y = GetStringY(group[i].stringIdx);
-            minY = Mathf.Min(minY, y);
-            maxY = Mathf.Max(maxY, y);
-        }
-
-        return (minY + maxY) * 0.5f;
+        return (GetStringY(0) + GetStringY(renderableStringCount - 1)) * 0.5f;
     }
 
     private Vector3 GetSingleFrettedNoteScale()
@@ -4804,6 +5557,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return Mathf.Max(0f, view.baseScale.z * 0.5f);
     }
 
+    private static float GetVisualNoteStrikeOffset(Vector3 scale)
+    {
+        return Mathf.Max(0f, scale.z * 0.5f);
+    }
+
+    private static bool ApproximatelyVector3(Vector3 a, Vector3 b)
+    {
+        return Mathf.Approximately(a.x, b.x) &&
+               Mathf.Approximately(a.y, b.y) &&
+               Mathf.Approximately(a.z, b.z);
+    }
+
     private float GetResolvedFadeTime()
     {
         return Mathf.Max(0.45f, owner.highwayResolvedHoldTime);
@@ -4848,7 +5613,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return endTime;
     }
 
-    private GameObject CreateChordFrame(float leftX, float rightX, float centerY, float height)
+    private GameObject CreateChordFrame(float leftX, float rightX, float centerY, float height, Color? frameColorOverride = null, float frameGlowIntensity = 1.6f)
     {
         GameObject parent = new GameObject("ChordFrame");
         parent.transform.SetParent(gameplayRoot.transform, false);
@@ -4856,10 +5621,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float width = Mathf.Max(0.5f, rightX - leftX);
         parent.transform.position = new Vector3(centerX, centerY, owner.SpawnZ);
 
-        Material frameMat = owner.CreateSharedGlowMaterial(new Color(0.55f, 0.95f, 1f), 1.6f);
+        Material frameMat = owner.CreateSharedGlowMaterial(frameColorOverride ?? new Color(0.55f, 0.95f, 1f), frameGlowIntensity);
         float halfW = width * 0.5f;
         float halfH = height * 0.5f;
 
+        CreateChordFrameBackground(parent.transform, width, height);
         CreateFramePiece(parent.transform, new Vector3(0f, halfH, 0f), new Vector3(width, owner.chordFrameThickness, 0.08f), frameMat);
         CreateFramePiece(parent.transform, new Vector3(0f, -halfH, 0f), new Vector3(width, owner.chordFrameThickness, 0.08f), frameMat);
         CreateFramePiece(parent.transform, new Vector3(-halfW, 0f, 0f), new Vector3(owner.chordFrameThickness, height, 0.08f), frameMat);
@@ -4872,7 +5638,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (frame == null)
             return;
 
-        string chordLabel = GetChordDisplayName(group);
+        UpdateChordFrameLabel(frame, GetChordDisplayName(group), width, height);
+    }
+
+    private void UpdateChordFrameLabel(GameObject frame, string chordLabel, float width, float height)
+    {
+        if (frame == null)
+            return;
+
         Transform labelTransform = frame.transform.Find("ChordNameLabel");
         TextMeshPro label = labelTransform != null ? labelTransform.GetComponent<TextMeshPro>() : null;
 
@@ -4886,7 +5659,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (label == null)
             label = CreateChordFrameLabel(frame.transform);
 
-        label.text = chordLabel;
+        label.text = chordLabel.Trim();
         label.alignment = TextAlignmentOptions.TopLeft;
         label.rectTransform.pivot = new Vector2(0f, 1f);
         label.transform.localPosition = new Vector3(
@@ -5088,6 +5861,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (MatchesExact(intervals, 0, 4, 7)) { suffix = string.Empty; score = 118; return true; }
         if (MatchesExact(intervals, 0, 3, 7)) { suffix = "m"; score = 116; return true; }
         if (MatchesExact(intervals, 0, 7)) { suffix = "5"; score = 104; return true; }
+        if (MatchesExact(intervals, 0, 3)) { suffix = "m"; score = 86; return true; }
+        if (MatchesExact(intervals, 0, 4)) { suffix = string.Empty; score = 84; return true; }
+        if (MatchesExact(intervals, 0, 5)) { suffix = "sus4"; score = 82; return true; }
+        if (MatchesExact(intervals, 0, 2)) { suffix = "sus2"; score = 80; return true; }
 
         if (intervals.Contains(4) && intervals.Contains(7))
         {
@@ -5422,27 +6199,37 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private sealed class HighwayNoteView
     {
         public GameObject noteRoot;
+        public Transform noteTransform;
         public Renderer noteRenderer;
         public Material noteMaterial;
         public TextMeshPro label;
         public TextMeshPro laneTagLabel;
+        public Transform laneTagTransform;
         public GameObject tail;
+        public Transform tailTransform;
         public GameObject tether;
+        public Transform tetherTransform;
         public Renderer tetherRenderer;
         public Material tetherMaterial;
         public GameObject marker;
+        public Transform markerTransform;
         public Renderer markerRenderer;
         public Material markerMaterial;
         public GameObject bendArrow;
+        public Transform bendArrowTransform;
         public Renderer bendArrowRenderer;
         public MaterialPropertyBlock bendArrowPropertyBlock;
         public GameObject bendArrowSecondary;
+        public Transform bendArrowSecondaryTransform;
         public Renderer bendArrowSecondaryRenderer;
         public MaterialPropertyBlock bendArrowSecondaryPropertyBlock;
         public GameObject muteSymbol;
+        public Transform muteSymbolTransform;
         public Renderer muteSymbolRenderer;
         public GameObject outlineRoot;
+        public Transform outlineTransform;
         public GameObject techniqueRoot;
+        public Transform techniqueRootTransform;
         public GameObject[] techniqueSegmentRibbons;
         public Renderer[] techniqueSegmentRibbonRenderers;
         public MaterialPropertyBlock[] techniqueSegmentRibbonPropertyBlocks;
@@ -5463,6 +6250,22 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public MaterialPropertyBlock sustainRibbonPropertyBlock;
         public Color baseColor;
         public Vector3 baseScale;
+        public float noteX;
+        public float noteY;
+        public float noteStrikeOffset;
+        public bool hasAnyTechniqueVisual;
+        public bool hasCachedNoteAppearance;
+        public Color cachedNoteColor;
+        public float cachedNoteEmission;
+        public bool hasCachedAppliedNoteScale;
+        public Vector3 cachedAppliedNoteScale;
+        public bool hasCachedNoteRendererEnabled;
+        public bool cachedNoteRendererEnabled;
+        public bool hasCachedTetherColor;
+        public Color cachedTetherColor;
+        public bool hasCachedMarkerColor;
+        public Color cachedMarkerColor;
+        public float cachedMarkerEmissionMultiplier;
 
         public void Destroy()
         {

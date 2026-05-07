@@ -1,0 +1,705 @@
+{
+  "catalogTitle": "Detector Tests",
+  "leadInSeconds": 1.8,
+  "gapBetweenTargetsSeconds": 0.6,
+  "singleNoteDurationSeconds": 0.9,
+  "chordDurationSeconds": 1.35,
+  "categories": [
+    {
+      "id": "open-strings",
+      "title": "Open Strings",
+      "description": "Single open-string checks from low E to high E.",
+      "tests": [
+        {
+          "id": "open-strings-full-set",
+          "label": "Full Open String Set",
+          "displayName": "Open Strings",
+          "description": "Low E through high E, one string at a time.",
+          "targets": [
+            { "label": "Open Low E", "notes": [ { "stringIndex": 0, "fret": 0 } ] },
+            { "label": "Open A", "notes": [ { "stringIndex": 1, "fret": 0 } ] },
+            { "label": "Open D", "notes": [ { "stringIndex": 2, "fret": 0 } ] },
+            { "label": "Open G", "notes": [ { "stringIndex": 3, "fret": 0 } ] },
+            { "label": "Open B", "notes": [ { "stringIndex": 4, "fret": 0 } ] },
+            { "label": "Open High E", "notes": [ { "stringIndex": 5, "fret": 0 } ] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "single-notes",
+      "title": "Single Notes",
+      "description": "Fretted single notes across different strings and registers.",
+      "tests": [
+        {
+          "id": "single-notes-low-register",
+          "label": "Low Register",
+          "displayName": "Single Notes - Low Register",
+          "description": "Low-string roots and nearby fretted notes.",
+          "targets": [
+            { "label": "Low G", "notes": [ { "stringIndex": 0, "fret": 3 } ] },
+            { "label": "Low A", "notes": [ { "stringIndex": 0, "fret": 5 } ] },
+            { "label": "A String B", "notes": [ { "stringIndex": 1, "fret": 2 } ] },
+            { "label": "A String C", "notes": [ { "stringIndex": 1, "fret": 3 } ] },
+            { "label": "D String E", "notes": [ { "stringIndex": 2, "fret": 2 } ] }
+          ]
+        },
+        {
+          "id": "single-notes-upper-register",
+          "label": "Upper Register",
+          "displayName": "Single Notes - Upper Register",
+          "description": "Middle and high-string note checks.",
+          "targets": [
+            { "label": "G String A", "notes": [ { "stringIndex": 3, "fret": 2 } ] },
+            { "label": "G String D", "notes": [ { "stringIndex": 3, "fret": 7 } ] },
+            { "label": "B String D", "notes": [ { "stringIndex": 4, "fret": 3 } ] },
+            { "label": "High G", "notes": [ { "stringIndex": 5, "fret": 3 } ] },
+            { "label": "High A", "notes": [ { "stringIndex": 5, "fret": 5 } ] }
+          ]
+        },
+        {
+          "id": "single-notes-string-skips",
+          "label": "String Skips",
+          "displayName": "Single Notes - String Skips",
+          "description": "Jump across non-adjacent strings without changing mode.",
+          "targets": [
+            { "label": "Low E 7", "notes": [ { "stringIndex": 0, "fret": 7 } ] },
+            { "label": "D String 5", "notes": [ { "stringIndex": 2, "fret": 5 } ] },
+            { "label": "B String 1", "notes": [ { "stringIndex": 4, "fret": 1 } ] },
+            { "label": "G String 9", "notes": [ { "stringIndex": 3, "fret": 9 } ] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "chords",
+      "title": "Chords",
+      "description": "Common open chords and upper-string chord fragments.",
+      "tests": [
+        {
+          "id": "chords-open-set-a",
+          "label": "Open Chords I",
+          "displayName": "Chords - Open Set I",
+          "description": "G, C, and D minor.",
+          "targets": [
+            {
+              "label": "G Major",
+              "chordName": "G",
+              "durationSeconds": 1.45,
+              "notes": [
+                { "stringIndex": 0, "fret": 3 },
+                { "stringIndex": 1, "fret": 2 },
+                { "stringIndex": 2, "fret": 0 },
+                { "stringIndex": 3, "fret": 0 },
+                { "stringIndex": 4, "fret": 0 },
+                { "stringIndex": 5, "fret": 3 }
+              ]
+            },
+            {
+              "label": "C Major",
+              "chordName": "C",
+              "durationSeconds": 1.45,
+              "notes": [
+                { "stringIndex": 1, "fret": 3 },
+                { "stringIndex": 2, "fret": 2 },
+                { "stringIndex": 3, "fret": 0 },
+                { "stringIndex": 4, "fret": 1 },
+                { "stringIndex": 5, "fret": 0 }
+              ]
+            },
+            {
+              "label": "D Minor",
+              "chordName": "Dm",
+              "durationSeconds": 1.45,
+              "notes": [
+                { "stringIndex": 2, "fret": 0 },
+                { "stringIndex": 3, "fret": 2 },
+                { "stringIndex": 4, "fret": 3 },
+                { "stringIndex": 5, "fret": 1 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "chords-open-set-b",
+          "label": "Open Chords II",
+          "displayName": "Chords - Open Set II",
+          "description": "A minor, E minor, E major, and D major.",
+          "targets": [
+            {
+              "label": "A Minor",
+              "chordName": "Am",
+              "durationSeconds": 1.45,
+              "notes": [
+                { "stringIndex": 1, "fret": 0 },
+                { "stringIndex": 2, "fret": 2 },
+                { "stringIndex": 3, "fret": 2 },
+                { "stringIndex": 4, "fret": 1 },
+                { "stringIndex": 5, "fret": 0 }
+              ]
+            },
+            {
+              "label": "E Minor",
+              "chordName": "Em",
+              "durationSeconds": 1.45,
+              "notes": [
+                { "stringIndex": 0, "fret": 0 },
+                { "stringIndex": 1, "fret": 2 },
+                { "stringIndex": 2, "fret": 2 },
+                { "stringIndex": 3, "fret": 0 },
+                { "stringIndex": 4, "fret": 0 },
+                { "stringIndex": 5, "fret": 0 }
+              ]
+            },
+            {
+              "label": "E Major",
+              "chordName": "E",
+              "durationSeconds": 1.45,
+              "notes": [
+                { "stringIndex": 0, "fret": 0 },
+                { "stringIndex": 1, "fret": 2 },
+                { "stringIndex": 2, "fret": 2 },
+                { "stringIndex": 3, "fret": 1 },
+                { "stringIndex": 4, "fret": 0 },
+                { "stringIndex": 5, "fret": 0 }
+              ]
+            },
+            {
+              "label": "D Major",
+              "chordName": "D",
+              "durationSeconds": 1.45,
+              "notes": [
+                { "stringIndex": 2, "fret": 0 },
+                { "stringIndex": 3, "fret": 2 },
+                { "stringIndex": 4, "fret": 3 },
+                { "stringIndex": 5, "fret": 2 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "chords-upper-fragments",
+          "label": "Upper String Fragments",
+          "displayName": "Chords - Upper Fragments",
+          "description": "Three-note chord shapes on the top strings.",
+          "targets": [
+            {
+              "label": "A Major Fragment",
+              "chordName": "A",
+              "notes": [
+                { "stringIndex": 3, "fret": 2 },
+                { "stringIndex": 4, "fret": 2 },
+                { "stringIndex": 5, "fret": 0 }
+              ]
+            },
+            {
+              "label": "C Major Fragment",
+              "chordName": "C",
+              "notes": [
+                { "stringIndex": 3, "fret": 5 },
+                { "stringIndex": 4, "fret": 5 },
+                { "stringIndex": 5, "fret": 3 }
+              ]
+            },
+            {
+              "label": "D Minor Fragment",
+              "chordName": "Dm",
+              "notes": [
+                { "stringIndex": 3, "fret": 7 },
+                { "stringIndex": 4, "fret": 6 },
+                { "stringIndex": 5, "fret": 5 }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "power-chords",
+      "title": "Power Chords",
+      "description": "Two- and three-string fifth shapes with low roots.",
+      "tests": [
+        {
+          "id": "power-chords-low-e-roots",
+          "label": "Low E Root Shapes",
+          "displayName": "Power Chords - Low E Roots",
+          "description": "E5, G5, and A5 on the low E string.",
+          "targets": [
+            {
+              "label": "E5",
+              "chordName": "E5",
+              "notes": [
+                { "stringIndex": 0, "fret": 0 },
+                { "stringIndex": 1, "fret": 2 },
+                { "stringIndex": 2, "fret": 2 }
+              ]
+            },
+            {
+              "label": "G5",
+              "chordName": "G5",
+              "notes": [
+                { "stringIndex": 0, "fret": 3 },
+                { "stringIndex": 1, "fret": 5 },
+                { "stringIndex": 2, "fret": 5 }
+              ]
+            },
+            {
+              "label": "A5",
+              "chordName": "A5",
+              "notes": [
+                { "stringIndex": 0, "fret": 5 },
+                { "stringIndex": 1, "fret": 7 },
+                { "stringIndex": 2, "fret": 7 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "power-chords-a-string-roots",
+          "label": "A String Root Shapes",
+          "displayName": "Power Chords - A String Roots",
+          "description": "C5, D5, and F5 on the A string.",
+          "targets": [
+            {
+              "label": "C5",
+              "chordName": "C5",
+              "notes": [
+                { "stringIndex": 1, "fret": 3 },
+                { "stringIndex": 2, "fret": 5 },
+                { "stringIndex": 3, "fret": 5 }
+              ]
+            },
+            {
+              "label": "D5",
+              "chordName": "D5",
+              "notes": [
+                { "stringIndex": 1, "fret": 5 },
+                { "stringIndex": 2, "fret": 7 },
+                { "stringIndex": 3, "fret": 7 }
+              ]
+            },
+            {
+              "label": "F5",
+              "chordName": "F5",
+              "notes": [
+                { "stringIndex": 1, "fret": 8 },
+                { "stringIndex": 2, "fret": 10 },
+                { "stringIndex": 3, "fret": 10 }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "barre-chords",
+      "title": "Barre Chords",
+      "description": "Full and partial barre-chord shapes on E-string and A-string roots.",
+      "tests": [
+        {
+          "id": "barre-chords-e-string-roots",
+          "label": "E String Root Barre Shapes",
+          "displayName": "Barre Chords - E String Roots",
+          "description": "Common E-shape major and minor barre chords.",
+          "targets": [
+            {
+              "label": "F Major",
+              "chordName": "F",
+              "durationSeconds": 1.5,
+              "notes": [
+                { "stringIndex": 0, "fret": 1 },
+                { "stringIndex": 1, "fret": 3 },
+                { "stringIndex": 2, "fret": 3 },
+                { "stringIndex": 3, "fret": 2 },
+                { "stringIndex": 4, "fret": 1 },
+                { "stringIndex": 5, "fret": 1 }
+              ]
+            },
+            {
+              "label": "G Minor",
+              "chordName": "Gm",
+              "durationSeconds": 1.5,
+              "notes": [
+                { "stringIndex": 0, "fret": 3 },
+                { "stringIndex": 1, "fret": 5 },
+                { "stringIndex": 2, "fret": 5 },
+                { "stringIndex": 3, "fret": 3 },
+                { "stringIndex": 4, "fret": 3 },
+                { "stringIndex": 5, "fret": 3 }
+              ]
+            },
+            {
+              "label": "A Major",
+              "chordName": "A",
+              "durationSeconds": 1.5,
+              "notes": [
+                { "stringIndex": 0, "fret": 5 },
+                { "stringIndex": 1, "fret": 7 },
+                { "stringIndex": 2, "fret": 7 },
+                { "stringIndex": 3, "fret": 6 },
+                { "stringIndex": 4, "fret": 5 },
+                { "stringIndex": 5, "fret": 5 }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "barre-chords-a-string-roots",
+          "label": "A String Root Barre Shapes",
+          "displayName": "Barre Chords - A String Roots",
+          "description": "Common A-shape major and minor barre chords.",
+          "targets": [
+            {
+              "label": "B Major",
+              "chordName": "B",
+              "durationSeconds": 1.5,
+              "notes": [
+                { "stringIndex": 1, "fret": 2 },
+                { "stringIndex": 2, "fret": 4 },
+                { "stringIndex": 3, "fret": 4 },
+                { "stringIndex": 4, "fret": 4 },
+                { "stringIndex": 5, "fret": 2 }
+              ]
+            },
+            {
+              "label": "C Minor",
+              "chordName": "Cm",
+              "durationSeconds": 1.5,
+              "notes": [
+                { "stringIndex": 1, "fret": 3 },
+                { "stringIndex": 2, "fret": 5 },
+                { "stringIndex": 3, "fret": 5 },
+                { "stringIndex": 4, "fret": 4 },
+                { "stringIndex": 5, "fret": 3 }
+              ]
+            },
+            {
+              "label": "D Major",
+              "chordName": "D",
+              "durationSeconds": 1.5,
+              "notes": [
+                { "stringIndex": 1, "fret": 5 },
+                { "stringIndex": 2, "fret": 7 },
+                { "stringIndex": 3, "fret": 7 },
+                { "stringIndex": 4, "fret": 7 },
+                { "stringIndex": 5, "fret": 5 }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "hopo",
+      "title": "HO/PO",
+      "description": "Legato single-string transitions without a second pick.",
+      "tests": [
+        {
+          "id": "hopo-hammer-ons",
+          "label": "Hammer-Ons",
+          "displayName": "HO/PO - Hammer-Ons",
+          "description": "Pick the first note, then hammer the second note on the same string.",
+          "gapBetweenTargetsSeconds": 0.45,
+          "singleNoteDurationSeconds": 0.8,
+          "targets": [
+            { "label": "Low G", "notes": [ { "stringIndex": 0, "fret": 3 } ] },
+            { "label": "Low A Hammer", "notes": [ { "stringIndex": 0, "fret": 5, "technique": "hammer-on", "legato": true, "requiresPluck": false } ] },
+            { "label": "A Open", "notes": [ { "stringIndex": 1, "fret": 0 } ] },
+            { "label": "A String B Hammer", "notes": [ { "stringIndex": 1, "fret": 2, "technique": "hammer-on", "legato": true, "requiresPluck": false } ] },
+            { "label": "B Open", "notes": [ { "stringIndex": 4, "fret": 0 } ] },
+            { "label": "B String C Hammer", "notes": [ { "stringIndex": 4, "fret": 1, "technique": "hammer-on", "legato": true, "requiresPluck": false } ] }
+          ]
+        },
+        {
+          "id": "hopo-pull-offs",
+          "label": "Pull-Offs",
+          "displayName": "HO/PO - Pull-Offs",
+          "description": "Pick the higher note, then release to the lower note without replucking.",
+          "gapBetweenTargetsSeconds": 0.45,
+          "singleNoteDurationSeconds": 0.8,
+          "targets": [
+            { "label": "G String C", "notes": [ { "stringIndex": 3, "fret": 5 } ] },
+            { "label": "G String Bb Pull", "notes": [ { "stringIndex": 3, "fret": 3, "technique": "pull-off", "legato": true, "requiresPluck": false } ] },
+            { "label": "B String D", "notes": [ { "stringIndex": 4, "fret": 3 } ] },
+            { "label": "B String C Pull", "notes": [ { "stringIndex": 4, "fret": 1, "technique": "pull-off", "legato": true, "requiresPluck": false } ] },
+            { "label": "High E A", "notes": [ { "stringIndex": 5, "fret": 5 } ] },
+            { "label": "High E G Pull", "notes": [ { "stringIndex": 5, "fret": 3, "technique": "pull-off", "legato": true, "requiresPluck": false } ] }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "slides",
+      "title": "Slides",
+      "description": "Single-string shifts with visible slide ribbons.",
+      "tests": [
+        {
+          "id": "slides-up-and-down",
+          "label": "Up and Down Slides",
+          "displayName": "Slides - Up and Down",
+          "description": "Play the note, then move to the target fret while the note sustains.",
+          "singleNoteDurationSeconds": 1.1,
+          "gapBetweenTargetsSeconds": 0.6,
+          "targets": [
+            {
+              "label": "D 5 to 7",
+              "durationSeconds": 1.1,
+              "notes": [
+                {
+                  "stringIndex": 2,
+                  "fret": 5,
+                  "technique": "slide",
+                  "slideTargetFret": 7,
+                  "segments": [
+                    { "type": "slide", "startOffset": 0.18, "endOffset": 0.88, "startFret": 5, "endFret": 7 }
+                  ]
+                }
+              ]
+            },
+            {
+              "label": "G 7 to 5",
+              "durationSeconds": 1.1,
+              "notes": [
+                {
+                  "stringIndex": 3,
+                  "fret": 7,
+                  "technique": "slide",
+                  "slideTargetFret": 5,
+                  "segments": [
+                    { "type": "slide", "startOffset": 0.18, "endOffset": 0.88, "startFret": 7, "endFret": 5 }
+                  ]
+                }
+              ]
+            },
+            {
+              "label": "B 8 to 10",
+              "durationSeconds": 1.1,
+              "notes": [
+                {
+                  "stringIndex": 4,
+                  "fret": 8,
+                  "technique": "slide",
+                  "slideTargetFret": 10,
+                  "segments": [
+                    { "type": "slide", "startOffset": 0.18, "endOffset": 0.90, "startFret": 8, "endFret": 10 }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "bends",
+      "title": "Bends / Prebends",
+      "description": "Lead-note bend shapes with explicit ribbon segments.",
+      "tests": [
+        {
+          "id": "bends-and-prebends",
+          "label": "Lead Bends",
+          "displayName": "Bends / Prebends",
+          "description": "Whole-step bends, pre-bends, and bend releases.",
+          "singleNoteDurationSeconds": 1.15,
+          "gapBetweenTargetsSeconds": 0.65,
+          "targets": [
+            {
+              "label": "B String 8 Bend",
+              "durationSeconds": 1.1,
+              "notes": [
+                {
+                  "stringIndex": 4,
+                  "fret": 8,
+                  "technique": "bend",
+                  "bendStep": 2.0,
+                  "segments": [
+                    { "type": "bend", "startOffset": 0.10, "endOffset": 0.72, "startFret": 8, "endFret": 8, "startBend": 0.0, "endBend": 2.0 }
+                  ]
+                }
+              ]
+            },
+            {
+              "label": "B String 10 Prebend Release",
+              "durationSeconds": 1.15,
+              "notes": [
+                {
+                  "stringIndex": 4,
+                  "fret": 10,
+                  "technique": "bend",
+                  "bendStep": 2.0,
+                  "preBend": true,
+                  "release": true,
+                  "segments": [
+                    { "type": "bend", "startOffset": 0.00, "endOffset": 0.86, "startFret": 10, "endFret": 10, "startBend": 2.0, "endBend": 0.0 }
+                  ]
+                }
+              ]
+            },
+            {
+              "label": "G String 7 Bend Release",
+              "durationSeconds": 1.15,
+              "notes": [
+                {
+                  "stringIndex": 3,
+                  "fret": 7,
+                  "technique": "bend",
+                  "bendStep": 1.0,
+                  "release": true,
+                  "segments": [
+                    { "type": "bend", "startOffset": 0.00, "endOffset": 0.38, "startFret": 7, "endFret": 7, "startBend": 0.0, "endBend": 1.0 },
+                    { "type": "bend", "startOffset": 0.38, "endOffset": 0.92, "startFret": 7, "endFret": 7, "startBend": 1.0, "endBend": 0.0 }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "muted-notes",
+      "title": "Muted Notes",
+      "description": "Palm-muted notes and chord shapes with pitched detection.",
+      "tests": [
+        {
+          "id": "muted-single-notes",
+          "label": "Palm-Muted Single Notes",
+          "displayName": "Muted Notes - Single Notes",
+          "description": "Short palm-muted low-string notes.",
+          "singleNoteDurationSeconds": 0.65,
+          "gapBetweenTargetsSeconds": 0.45,
+          "targets": [
+            { "label": "Palm Mute Low E", "notes": [ { "stringIndex": 0, "fret": 0, "muted": true } ] },
+            { "label": "Palm Mute Low G", "notes": [ { "stringIndex": 0, "fret": 3, "muted": true } ] },
+            { "label": "Palm Mute A String B", "notes": [ { "stringIndex": 1, "fret": 2, "muted": true } ] },
+            { "label": "Palm Mute D String E", "notes": [ { "stringIndex": 2, "fret": 2, "muted": true } ] }
+          ]
+        },
+        {
+          "id": "muted-power-chords",
+          "label": "Palm-Muted Power Chords",
+          "displayName": "Muted Notes - Power Chords",
+          "description": "Muted low-string fifth shapes.",
+          "durationSeconds": 1.0,
+          "targets": [
+            {
+              "label": "Muted E5",
+              "chordName": "E5",
+              "notes": [
+                { "stringIndex": 0, "fret": 0, "muted": true },
+                { "stringIndex": 1, "fret": 2, "muted": true },
+                { "stringIndex": 2, "fret": 2, "muted": true }
+              ]
+            },
+            {
+              "label": "Muted G5",
+              "chordName": "G5",
+              "notes": [
+                { "stringIndex": 0, "fret": 3, "muted": true },
+                { "stringIndex": 1, "fret": 5, "muted": true },
+                { "stringIndex": 2, "fret": 5, "muted": true }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "double-stops",
+      "title": "Double Stops",
+      "description": "Two-note intervals that are useful for checking partial multi-note handling.",
+      "tests": [
+        {
+          "id": "double-stops-thirds-and-octaves",
+          "label": "Thirds and Octaves",
+          "displayName": "Double Stops",
+          "description": "Common two-note interval shapes on adjacent and skipped strings.",
+          "targets": [
+            {
+              "label": "G Third",
+              "notes": [
+                { "stringIndex": 4, "fret": 3 },
+                { "stringIndex": 5, "fret": 2 }
+              ]
+            },
+            {
+              "label": "A Octave",
+              "notes": [
+                { "stringIndex": 1, "fret": 0 },
+                { "stringIndex": 3, "fret": 2 }
+              ]
+            },
+            {
+              "label": "D Fifth",
+              "notes": [
+                { "stringIndex": 2, "fret": 0 },
+                { "stringIndex": 3, "fret": 2 }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "mixed-phrases",
+      "title": "Other Important Tests",
+      "description": "Mixed phrases that combine several detection cases in one pass.",
+      "tests": [
+        {
+          "id": "mixed-technique-phrase",
+          "label": "Mixed Technique Phrase",
+          "displayName": "Mixed Phrase",
+          "description": "Single notes, a chord, a hammer-on, a slide, and a bend in one short run.",
+          "gapBetweenTargetsSeconds": 0.5,
+          "targets": [
+            { "label": "Low G", "notes": [ { "stringIndex": 0, "fret": 3 } ] },
+            {
+              "label": "G Major",
+              "chordName": "G",
+              "notes": [
+                { "stringIndex": 0, "fret": 3 },
+                { "stringIndex": 1, "fret": 2 },
+                { "stringIndex": 2, "fret": 0 },
+                { "stringIndex": 3, "fret": 0 },
+                { "stringIndex": 4, "fret": 0 },
+                { "stringIndex": 5, "fret": 3 }
+              ]
+            },
+            { "label": "A String B", "notes": [ { "stringIndex": 1, "fret": 2 } ] },
+            { "label": "A String C Hammer", "notes": [ { "stringIndex": 1, "fret": 3, "technique": "hammer-on", "legato": true, "requiresPluck": false } ] },
+            {
+              "label": "G 7 to 9 Slide",
+              "durationSeconds": 1.05,
+              "notes": [
+                {
+                  "stringIndex": 3,
+                  "fret": 7,
+                  "technique": "slide",
+                  "slideTargetFret": 9,
+                  "segments": [
+                    { "type": "slide", "startOffset": 0.16, "endOffset": 0.88, "startFret": 7, "endFret": 9 }
+                  ]
+                }
+              ]
+            },
+            {
+              "label": "B String 8 Bend",
+              "durationSeconds": 1.05,
+              "notes": [
+                {
+                  "stringIndex": 4,
+                  "fret": 8,
+                  "technique": "bend",
+                  "bendStep": 2.0,
+                  "segments": [
+                    { "type": "bend", "startOffset": 0.10, "endOffset": 0.70, "startFret": 8, "endFret": 8, "startBend": 0.0, "endBend": 2.0 }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
