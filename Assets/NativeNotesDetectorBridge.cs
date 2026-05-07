@@ -92,6 +92,9 @@ public sealed class NativeNotesDetectorBridge
     private static extern int NativeDetector_SetSettingsJson([MarshalAs(UnmanagedType.LPUTF8Str)] string settingsJsonUtf8);
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_SetDebugLogPath([MarshalAs(UnmanagedType.LPUTF8Str)] string debugLogPathUtf8);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern void NativeDetector_Shutdown();
 
     public string LastStatus => lastStatus;
@@ -287,6 +290,23 @@ public sealed class NativeNotesDetectorBridge
         catch (Exception ex)
         {
             lastError = $"Native detector hint send failed: {ex.Message}";
+            return false;
+        }
+    }
+
+    public bool SetDebugLogPath(string debugLogPath)
+    {
+        if (!initialized)
+            return false;
+
+        try
+        {
+            return NativeDetector_SetDebugLogPath(debugLogPath ?? string.Empty) != 0;
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector debug log path set failed: {ex.Message}";
+            lastStatus = lastError;
             return false;
         }
     }

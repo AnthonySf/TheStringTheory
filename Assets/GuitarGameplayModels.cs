@@ -113,6 +113,16 @@ public struct NoteTechniqueSegmentData
 }
 
 [Serializable]
+public sealed class ArpeggioGuideData
+{
+    public int id;
+    public float startTime;
+    public float endTime;
+    public string chordName;
+    public int[] stringFrets;
+}
+
+[Serializable]
 public struct NoteData
 {
     public int id;
@@ -405,6 +415,7 @@ public sealed class GuitarGameplaySnapshot
     public int currentSessionArcadeCombo;
     public int currentSessionArcadeMultiplier;
     public List<GameplayNoteState> noteStates;
+    public List<ArpeggioGuideData> arpeggioGuides;
     public List<ArcadeNoteState> arcadeNoteStates;
     public int arcadeLaneCount;
     public string selectedArcadeArrangementId;
@@ -442,11 +453,14 @@ public sealed class GuitarGameplaySnapshot
     public bool showTrackSelection;
     public bool showToneLab;
     public bool showNotesDetectorTestMenu;
+    public bool notesDetectorGameplayTestActive;
+    public bool showNotesDetectorTestSelectionPopup;
     public bool showGameModes;
     public bool showHeroModeSettings;
     public int selectedGameModesIndex;
     public int selectedHeroModeSettingsIndex;
     public int selectedNotesDetectorTestIndex;
+    public int selectedNotesDetectorCatalogIndex;
     public int selectedPauseActionIndex;
     public int selectedSongSettingsIndex;
     public string songLibraryListTitle;
@@ -532,6 +546,10 @@ public sealed class GuitarGameplaySnapshot
     public List<NativeDetectorSettingSnapshot> notesDetectorSettings;
     public string notesDetectorFastNotesText;
     public string notesDetectorAiNotesText;
+    public string notesDetectorLatestAcceptanceSourceText;
+    public List<string> notesDetectorAvailableTestCategories;
+    public List<string> notesDetectorAvailableTestNames;
+    public List<string> notesDetectorAvailableTestDescriptions;
     public bool showNotesDetectorRoutinePopup;
     public string notesDetectorRoutineInstructionText;
     public string notesDetectorRoutineTargetText;

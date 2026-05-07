@@ -111,3 +111,11 @@ Assets/Resources/filler2.png.meta
 
 # General
 *.log
+.codex_tmp/
+
+# Notes detector regression tool
+!Tools/NotesDetectorRegression/
+!Tools/NotesDetectorRegression/**
+Tools/NotesDetectorRegression/Generated/
+Tools/NotesDetectorRegression/bin/
+Tools/NotesDetectorRegression/obj/

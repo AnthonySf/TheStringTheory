@@ -27,6 +27,7 @@ public sealed class ToneLabPedalBoardView
     public event Action<string> PedalSelected;
     public event Action<string, bool> PedalEnabledChanged;
     public event Action<IReadOnlyList<string>> PedalOrderCommitted;
+    public event Action AddPedalRequested;
 
     public ToneLabPedalBoardView()
     {
@@ -70,13 +71,22 @@ public sealed class ToneLabPedalBoardView
         signalLine.style.borderBottomRightRadius = 2f;
         lane.Add(signalLine);
 
+        VisualElement boardHeader = new VisualElement();
+        boardHeader.style.position = Position.Absolute;
+        boardHeader.style.left = 4f;
+        boardHeader.style.right = 4f;
+        boardHeader.style.top = 0f;
+        boardHeader.style.flexDirection = FlexDirection.Row;
+        boardHeader.style.justifyContent = Justify.SpaceBetween;
+        boardHeader.style.alignItems = Align.FlexStart;
+        lane.Add(boardHeader);
+
         VisualElement boardCopy = new VisualElement();
-        boardCopy.style.position = Position.Absolute;
-        boardCopy.style.left = 4f;
-        boardCopy.style.top = 0f;
+        boardCopy.style.flexGrow = 1f;
         boardCopy.style.maxWidth = 420f;
+        boardCopy.style.marginRight = 18f;
         boardCopy.pickingMode = PickingMode.Ignore;
-        lane.Add(boardCopy);
+        boardHeader.Add(boardCopy);
 
         Label boardTitle = new Label("Pedalboard");
         boardTitle.style.color = Color.white;
@@ -91,10 +101,40 @@ public sealed class ToneLabPedalBoardView
         boardSubtitle.style.whiteSpace = WhiteSpace.Normal;
         boardCopy.Add(boardSubtitle);
 
+        Button addPedalButton = new Button(() => AddPedalRequested?.Invoke())
+        {
+            text = "+"
+        };
+        addPedalButton.style.width = 54f;
+        addPedalButton.style.minWidth = 54f;
+        addPedalButton.style.height = 54f;
+        addPedalButton.style.flexShrink = 0f;
+        addPedalButton.style.paddingLeft = 0f;
+        addPedalButton.style.paddingRight = 0f;
+        addPedalButton.style.paddingTop = 0f;
+        addPedalButton.style.paddingBottom = 2f;
+        addPedalButton.style.fontSize = 30f;
+        addPedalButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+        addPedalButton.style.color = new Color(0.97f, 0.98f, 1f, 0.98f);
+        addPedalButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        addPedalButton.style.borderTopWidth = 1f;
+        addPedalButton.style.borderRightWidth = 1f;
+        addPedalButton.style.borderBottomWidth = 1f;
+        addPedalButton.style.borderLeftWidth = 1f;
+        addPedalButton.style.borderTopColor = new Color(1f, 1f, 1f, 0.92f);
+        addPedalButton.style.borderRightColor = new Color(1f, 1f, 1f, 0.82f);
+        addPedalButton.style.borderBottomColor = new Color(1f, 1f, 1f, 0.72f);
+        addPedalButton.style.borderLeftColor = new Color(1f, 1f, 1f, 0.82f);
+        addPedalButton.style.borderTopLeftRadius = 14f;
+        addPedalButton.style.borderTopRightRadius = 14f;
+        addPedalButton.style.borderBottomLeftRadius = 14f;
+        addPedalButton.style.borderBottomRightRadius = 14f;
+        boardHeader.Add(addPedalButton);
+
         boardViewport = new VisualElement();
         boardViewport.style.flexGrow = 1f;
         boardViewport.style.minHeight = 0f;
-        boardViewport.style.marginTop = 62f;
+        boardViewport.style.marginTop = 72f;
         boardViewport.style.justifyContent = Justify.Center;
         boardViewport.style.alignItems = Align.Stretch;
         lane.Add(boardViewport);

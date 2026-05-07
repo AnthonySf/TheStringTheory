@@ -77,6 +77,8 @@ public sealed class TabsSongHeaderOverlay
     private static readonly Color MenuDarkButtonBorderColor = new Color(0.13f, 0.14f, 0.16f, 1f);
 
     private static readonly Color MenuOutlineNeutralColor = new Color(0.42f, 0.44f, 0.47f, 1f);
+    private static readonly Color MenuOutlineWhiteColor = new Color(1f, 1f, 1f, 0.94f);
+    private static readonly Color SidebarOutlineWhiteColor = new Color(1f, 1f, 1f, 0.9f);
 
     private static readonly Color PrimaryAccentGradientLightColor = new Color(1.00f, 0.74f, 0.47f, 0.98f);
 
@@ -205,6 +207,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly VisualElement characterHealthRow;
 
     private readonly VisualElement gameplayScoreDock;
+    private readonly Label notesDetectorGameplayAcceptanceLabel;
 
     private readonly VisualElement songCardScoreBlock;
     private readonly VisualElement scoreCardGlow;
@@ -530,9 +533,15 @@ public sealed class TabsSongHeaderOverlay
 
         private RenderTexture blurTextureB;
 
+        private RenderTexture targetTexture;
+
         private int textureWidth = -1;
 
         private int textureHeight = -1;
+
+        private int targetTextureWidth = -1;
+
+        private int targetTextureHeight = -1;
 
         private bool hasRenderedVisibleFrame;
 
@@ -582,7 +591,11 @@ public sealed class TabsSongHeaderOverlay
 
             int height = Mathf.Max(144, Mathf.CeilToInt(Screen.height / (float)Downsample));
 
-            if (!UpdateContinuously && hasRenderedVisibleFrame && width == textureWidth && height == textureHeight)
+            int targetWidth = Mathf.Max(16, Mathf.CeilToInt(TargetElement.worldBound.width / (float)Downsample));
+
+            int targetHeight = Mathf.Max(16, Mathf.CeilToInt(TargetElement.worldBound.height / (float)Downsample));
+
+            if (!UpdateContinuously && hasRenderedVisibleFrame && width == textureWidth && height == textureHeight && targetWidth == targetTextureWidth && targetHeight == targetTextureHeight)
 
                 return;
 
@@ -643,10 +656,18 @@ public sealed class TabsSongHeaderOverlay
             if (TargetElement != null)
 
             {
+                EnsureTargetTexture(targetWidth, targetHeight);
+
+                int sourceX = Mathf.Clamp(Mathf.FloorToInt(TargetElement.worldBound.xMin / Downsample), 0, Mathf.Max(0, textureWidth - targetWidth));
+                int sourceY = Mathf.Clamp(textureHeight - Mathf.CeilToInt(TargetElement.worldBound.yMax / Downsample), 0, Mathf.Max(0, textureHeight - targetHeight));
+                Vector2 scale = new Vector2(targetWidth / (float)textureWidth, targetHeight / (float)textureHeight);
+                Vector2 offset = new Vector2(sourceX / (float)textureWidth, sourceY / (float)textureHeight);
+
+                Graphics.Blit(blurTextureB, targetTexture, scale, offset);
 
                 TargetElement.style.backgroundImage = StyleKeyword.None;
 
-                TargetElement.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(blurTextureB));
+                TargetElement.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(targetTexture));
 
                 TargetElement.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
 
@@ -784,6 +805,26 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
+        private void EnsureTargetTexture(int width, int height)
+
+        {
+
+            if (width == targetTextureWidth && height == targetTextureHeight && targetTexture != null)
+
+                return;
+
+
+
+            ReleaseTexture(ref targetTexture);
+
+            targetTextureWidth = width;
+
+            targetTextureHeight = height;
+
+            targetTexture = CreateBlurTexture("LibraryBackdropTarget", width, height);
+
+        }
+
 
 
         private static RenderTexture CreateBlurTexture(string textureName, int width, int height)
@@ -822,9 +863,15 @@ public sealed class TabsSongHeaderOverlay
 
             ReleaseTexture(ref blurTextureB);
 
+            ReleaseTexture(ref targetTexture);
+
             textureWidth = -1;
 
             textureHeight = -1;
+
+            targetTextureWidth = -1;
+
+            targetTextureHeight = -1;
 
         }
 
@@ -1487,6 +1534,13 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button notesDetectorSavePresetButton;
     private readonly Button notesDetectorAdvancedSettingsToggleButton;
     private readonly ScrollView notesDetectorSettingsScrollView;
+    private readonly VisualElement notesDetectorTestSelectionPopupOverlay;
+    private readonly Label notesDetectorTestSelectionPopupEyebrowLabel;
+    private readonly Label notesDetectorTestSelectionPopupTitleLabel;
+    private readonly Label notesDetectorTestSelectionPopupSummaryLabel;
+    private readonly Label notesDetectorTestSelectionPopupHintLabel;
+    private readonly Button notesDetectorTestSelectionPopupCloseButton;
+    private readonly ScrollView notesDetectorTestSelectionPopupScrollView;
     private readonly VisualElement notesDetectorRoutineOverlay;
     private readonly VisualElement notesDetectorRoutineTopBar;
     private readonly Button notesDetectorRoutineRestartButton;
@@ -1508,6 +1562,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly List<Button> pauseActionButtons = new List<Button>();
     private readonly List<Button> gameModesActionButtons = new List<Button>();
     private readonly List<Button> notesDetectorTestActionButtons = new List<Button>();
+    private readonly List<NotesDetectorTestPopupRow> notesDetectorTestPopupRows = new List<NotesDetectorTestPopupRow>();
 
 
 
@@ -2025,6 +2080,10 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly LibraryBackdropBlurController libraryBackdropBlur;
 
+    private readonly LibraryBackdropBlurController pauseBackdropBlur;
+
+    private readonly LibraryBackdropBlurController gameModesBackdropBlur;
+
     private readonly LibraryBackdropBlurController settingsBackdropBlur;
 
     private readonly LibraryBackdropBlurController songEndBackdropBlur;
@@ -2383,6 +2442,35 @@ public sealed class TabsSongHeaderOverlay
         gameplayScoreDock.style.display = DisplayStyle.None;
 
         gameplayScoreDock.pickingMode = PickingMode.Ignore;
+
+        notesDetectorGameplayAcceptanceLabel = CreateLabel("Accepted Via: --", 30f, new Color(0.97f, 0.99f, 1f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        notesDetectorGameplayAcceptanceLabel.style.unityFontDefinition = modernUiFontDefinition;
+        notesDetectorGameplayAcceptanceLabel.style.position = Position.Absolute;
+        notesDetectorGameplayAcceptanceLabel.style.left = 0f;
+        notesDetectorGameplayAcceptanceLabel.style.right = 0f;
+        notesDetectorGameplayAcceptanceLabel.style.top = 12f;
+        notesDetectorGameplayAcceptanceLabel.style.marginLeft = StyleKeyword.Auto;
+        notesDetectorGameplayAcceptanceLabel.style.marginRight = StyleKeyword.Auto;
+        notesDetectorGameplayAcceptanceLabel.style.paddingLeft = 22f;
+        notesDetectorGameplayAcceptanceLabel.style.paddingRight = 22f;
+        notesDetectorGameplayAcceptanceLabel.style.paddingTop = 10f;
+        notesDetectorGameplayAcceptanceLabel.style.paddingBottom = 10f;
+        notesDetectorGameplayAcceptanceLabel.style.minWidth = 280f;
+        notesDetectorGameplayAcceptanceLabel.style.backgroundColor = new Color(0.04f, 0.07f, 0.12f, 0.92f);
+        notesDetectorGameplayAcceptanceLabel.style.borderTopLeftRadius = 10f;
+        notesDetectorGameplayAcceptanceLabel.style.borderTopRightRadius = 10f;
+        notesDetectorGameplayAcceptanceLabel.style.borderBottomLeftRadius = 10f;
+        notesDetectorGameplayAcceptanceLabel.style.borderBottomRightRadius = 10f;
+        notesDetectorGameplayAcceptanceLabel.style.borderTopWidth = 1f;
+        notesDetectorGameplayAcceptanceLabel.style.borderRightWidth = 1f;
+        notesDetectorGameplayAcceptanceLabel.style.borderBottomWidth = 1f;
+        notesDetectorGameplayAcceptanceLabel.style.borderLeftWidth = 1f;
+        notesDetectorGameplayAcceptanceLabel.style.borderTopColor = new Color(0.28f, 0.39f, 0.56f, 0.94f);
+        notesDetectorGameplayAcceptanceLabel.style.borderRightColor = new Color(0.10f, 0.15f, 0.24f, 0.96f);
+        notesDetectorGameplayAcceptanceLabel.style.borderBottomColor = new Color(0.10f, 0.15f, 0.24f, 0.96f);
+        notesDetectorGameplayAcceptanceLabel.style.borderLeftColor = new Color(0.10f, 0.15f, 0.24f, 0.96f);
+        notesDetectorGameplayAcceptanceLabel.style.display = DisplayStyle.None;
+        notesDetectorGameplayAcceptanceLabel.pickingMode = PickingMode.Ignore;
 
 
 
@@ -3362,7 +3450,7 @@ public sealed class TabsSongHeaderOverlay
 
         pauseOverlay = CreateFullscreenOverlay();
 
-        pauseOverlay.style.backgroundColor = new Color(0.02f, 0.03f, 0.06f, 0.52f);
+        pauseOverlay.style.backgroundColor = new Color(0.02f, 0.03f, 0.06f, 0.12f);
 
         pauseOverlay.style.alignItems = Align.Center;
 
@@ -3380,7 +3468,8 @@ public sealed class TabsSongHeaderOverlay
 
         pauseBlurBackdrop.style.bottom = 0f;
 
-        pauseBlurBackdrop.style.backgroundColor = new Color(0.03f, 0.04f, 0.06f, 0.12f);
+        pauseBlurBackdrop.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        pauseBlurBackdrop.style.display = DisplayStyle.None;
 
         pauseBlurBackdrop.pickingMode = PickingMode.Ignore;
 
@@ -3404,6 +3493,8 @@ public sealed class TabsSongHeaderOverlay
 
         pauseBackplateGradient.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
 
+        pauseBackplateGradient.style.opacity = 0f;
+
         pauseBackplateGradient.pickingMode = PickingMode.Ignore;
 
         pauseBackplate.Add(pauseBackplateGradient); 
@@ -3419,6 +3510,10 @@ public sealed class TabsSongHeaderOverlay
 
         pauseShell = new VisualElement();
         ConfigureStraightSidebarChrome(pauseBackplate, pauseFrontPlate, pauseRegion, pauseShell, centerContent: true);
+        pauseBackplate.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        pauseBackplate.style.opacity = 0f;
+        pauseFrontPlate.style.backgroundColor = new Color(0.02f, 0.03f, 0.05f, 0.32f);
+        pauseFrontPlate.style.borderLeftColor = SidebarOutlineWhiteColor;
 
         Label pauseStarsLabel = CreateLabel("\u2605 \u2605 \u2605", 34f, new Color(1f, 0.74f, 0.32f, 0.95f), true, TextAnchor.MiddleCenter, useTitleFont: false);
 
@@ -3711,13 +3806,13 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuButton.style.borderLeftWidth = 2f;
 
-        mainMenuButton.style.borderTopColor = MenuOutlineNeutralColor;
+        mainMenuButton.style.borderTopColor = MenuOutlineWhiteColor;
 
-        mainMenuButton.style.borderRightColor = MenuOutlineNeutralColor;
+        mainMenuButton.style.borderRightColor = MenuOutlineWhiteColor;
 
-        mainMenuButton.style.borderBottomColor = MenuOutlineNeutralColor;
+        mainMenuButton.style.borderBottomColor = MenuOutlineWhiteColor;
 
-        mainMenuButton.style.borderLeftColor = MenuOutlineNeutralColor;
+        mainMenuButton.style.borderLeftColor = MenuOutlineWhiteColor;
 
         mainMenuButton.style.height = 128f;
 
@@ -3883,7 +3978,7 @@ public sealed class TabsSongHeaderOverlay
 
         gameModesPopup = null;
         gameModesOverlay = CreateFullscreenOverlay();
-        gameModesOverlay.style.backgroundColor = new Color(0.02f, 0.03f, 0.06f, 0.52f);
+        gameModesOverlay.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         gameModesOverlay.style.alignItems = Align.Center;
         gameModesOverlay.style.justifyContent = Justify.Center;
         gameModesOverlay.style.display = DisplayStyle.None;
@@ -3900,6 +3995,7 @@ public sealed class TabsSongHeaderOverlay
         gameModesBackplateGradient.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
         gameModesBackplateGradient.pickingMode = PickingMode.Ignore;
         gameModesBackplate.Add(gameModesBackplateGradient);
+        gameModesBackplateGradient.style.opacity = 0f;
 
         gameModesFrontPlate = new VisualElement();
 
@@ -3907,6 +4003,12 @@ public sealed class TabsSongHeaderOverlay
 
         gameModesShell = new VisualElement();
         ConfigureStraightSidebarChrome(gameModesBackplate, gameModesFrontPlate, gameModesRegion, gameModesShell, centerContent: true);
+        gameModesBackplate.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        gameModesBackplate.style.opacity = 0f;
+        gameModesFrontPlate.style.backgroundColor = new Color(0.02f, 0.03f, 0.05f, 0.32f);
+        gameModesFrontPlate.style.borderLeftColor = SidebarOutlineWhiteColor;
+        gameModesBackplate.style.display = DisplayStyle.None;
+        gameModesFrontPlate.style.display = DisplayStyle.None;
 
         Label gameModesEyebrowLabel = CreateLabel("PRESS ESC TO RETURN", 24f, LibraryPrimaryColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
         gameModesEyebrowLabel.style.unityFontDefinition = modernUiFontDefinition;
@@ -3990,10 +4092,10 @@ public sealed class TabsSongHeaderOverlay
         gameModesBackButton.style.borderRightWidth = 2f;
         gameModesBackButton.style.borderBottomWidth = 2f;
         gameModesBackButton.style.borderLeftWidth = 2f;
-        gameModesBackButton.style.borderTopColor = MenuOutlineNeutralColor;
-        gameModesBackButton.style.borderRightColor = MenuOutlineNeutralColor;
-        gameModesBackButton.style.borderBottomColor = MenuOutlineNeutralColor;
-        gameModesBackButton.style.borderLeftColor = MenuOutlineNeutralColor;
+        gameModesBackButton.style.borderTopColor = MenuOutlineWhiteColor;
+        gameModesBackButton.style.borderRightColor = MenuOutlineWhiteColor;
+        gameModesBackButton.style.borderBottomColor = MenuOutlineWhiteColor;
+        gameModesBackButton.style.borderLeftColor = MenuOutlineWhiteColor;
         gameModesBackButton.style.height = 108f;
         gameModesBackButton.style.minWidth = 320f;
         gameModesBackButton.style.width = 360f;
@@ -4462,6 +4564,95 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorTestOverlay.Add(notesDetectorTestBackplate);
         notesDetectorTestOverlay.Add(notesDetectorTestFrontPlate);
         notesDetectorTestOverlay.Add(notesDetectorTestRegion);
+
+        notesDetectorTestSelectionPopupOverlay = CreateFullscreenOverlay();
+        notesDetectorTestSelectionPopupOverlay.style.position = Position.Absolute;
+        notesDetectorTestSelectionPopupOverlay.style.left = 0f;
+        notesDetectorTestSelectionPopupOverlay.style.right = 0f;
+        notesDetectorTestSelectionPopupOverlay.style.top = 0f;
+        notesDetectorTestSelectionPopupOverlay.style.bottom = 0f;
+        notesDetectorTestSelectionPopupOverlay.style.display = DisplayStyle.None;
+        notesDetectorTestSelectionPopupOverlay.style.alignItems = Align.Center;
+        notesDetectorTestSelectionPopupOverlay.style.justifyContent = Justify.Center;
+        notesDetectorTestSelectionPopupOverlay.style.paddingTop = 42f;
+        notesDetectorTestSelectionPopupOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.03f, 0.78f);
+
+        VisualElement notesDetectorTestSelectionPopupCard = new VisualElement();
+        notesDetectorTestSelectionPopupCard.style.width = Length.Percent(76f);
+        notesDetectorTestSelectionPopupCard.style.maxWidth = 1180f;
+        notesDetectorTestSelectionPopupCard.style.minWidth = 740f;
+        notesDetectorTestSelectionPopupCard.style.maxHeight = Length.Percent(80f);
+        notesDetectorTestSelectionPopupCard.style.paddingLeft = 36f;
+        notesDetectorTestSelectionPopupCard.style.paddingRight = 36f;
+        notesDetectorTestSelectionPopupCard.style.paddingTop = 28f;
+        notesDetectorTestSelectionPopupCard.style.paddingBottom = 24f;
+        notesDetectorTestSelectionPopupCard.style.backgroundColor = new Color(0.07f, 0.08f, 0.09f, 0.985f);
+        notesDetectorTestSelectionPopupCard.style.borderTopLeftRadius = 22f;
+        notesDetectorTestSelectionPopupCard.style.borderTopRightRadius = 22f;
+        notesDetectorTestSelectionPopupCard.style.borderBottomLeftRadius = 22f;
+        notesDetectorTestSelectionPopupCard.style.borderBottomRightRadius = 22f;
+        notesDetectorTestSelectionPopupCard.style.borderTopWidth = 1f;
+        notesDetectorTestSelectionPopupCard.style.borderRightWidth = 1f;
+        notesDetectorTestSelectionPopupCard.style.borderBottomWidth = 1f;
+        notesDetectorTestSelectionPopupCard.style.borderLeftWidth = 1f;
+        notesDetectorTestSelectionPopupCard.style.borderTopColor = new Color(1f, 1f, 1f, 0.10f);
+        notesDetectorTestSelectionPopupCard.style.borderRightColor = new Color(1f, 1f, 1f, 0.10f);
+        notesDetectorTestSelectionPopupCard.style.borderBottomColor = new Color(1f, 1f, 1f, 0.10f);
+        notesDetectorTestSelectionPopupCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.10f);
+        notesDetectorTestSelectionPopupCard.style.flexDirection = FlexDirection.Column;
+
+        notesDetectorTestSelectionPopupEyebrowLabel = CreateLabel("DETECTOR TEST", 20f, new Color(0.74f, 0.88f, 0.98f, 0.92f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        notesDetectorTestSelectionPopupEyebrowLabel.style.unityFontDefinition = modernUiFontDefinition;
+        notesDetectorTestSelectionPopupEyebrowLabel.style.marginBottom = 8f;
+        notesDetectorTestSelectionPopupEyebrowLabel.style.letterSpacing = 1.8f;
+
+        notesDetectorTestSelectionPopupTitleLabel = CreateLabel("TEST LIST", 68f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        notesDetectorTestSelectionPopupTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        notesDetectorTestSelectionPopupTitleLabel.style.marginBottom = 8f;
+
+        notesDetectorTestSelectionPopupSummaryLabel = CreateLabel("Pick a focused test case. Each one launches a hidden Highway3D chart in note-by-note mode.", 24f, new Color(0.88f, 0.92f, 0.96f, 0.94f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        notesDetectorTestSelectionPopupSummaryLabel.style.unityFontDefinition = modernUiFontDefinition;
+        notesDetectorTestSelectionPopupSummaryLabel.style.whiteSpace = WhiteSpace.Normal;
+        notesDetectorTestSelectionPopupSummaryLabel.style.marginBottom = 18f;
+
+        VisualElement notesDetectorTestSelectionPopupButtonsRow = new VisualElement();
+        notesDetectorTestSelectionPopupButtonsRow.style.flexDirection = FlexDirection.Row;
+        notesDetectorTestSelectionPopupButtonsRow.style.justifyContent = Justify.Center;
+        notesDetectorTestSelectionPopupButtonsRow.style.alignItems = Align.Center;
+        notesDetectorTestSelectionPopupButtonsRow.style.marginBottom = 18f;
+
+        notesDetectorTestSelectionPopupCloseButton = CreateActionButton("Close", () => owner?.CloseNotesDetectorTestSelectionPopupFromUi());
+        StyleNotesDetectorActionButton(notesDetectorTestSelectionPopupCloseButton, 220f, 70f);
+        notesDetectorTestSelectionPopupButtonsRow.Add(notesDetectorTestSelectionPopupCloseButton);
+
+        notesDetectorTestSelectionPopupScrollView = new ScrollView(ScrollViewMode.Vertical);
+        notesDetectorTestSelectionPopupScrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+        notesDetectorTestSelectionPopupScrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        notesDetectorTestSelectionPopupScrollView.style.flexGrow = 1f;
+        notesDetectorTestSelectionPopupScrollView.style.marginTop = 4f;
+        notesDetectorTestSelectionPopupScrollView.style.marginBottom = 14f;
+        notesDetectorTestSelectionPopupScrollView.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        notesDetectorTestSelectionPopupScrollView.style.borderTopWidth = 0f;
+        notesDetectorTestSelectionPopupScrollView.style.borderRightWidth = 0f;
+        notesDetectorTestSelectionPopupScrollView.style.borderBottomWidth = 0f;
+        notesDetectorTestSelectionPopupScrollView.style.borderLeftWidth = 0f;
+        notesDetectorTestSelectionPopupScrollView.contentContainer.style.paddingLeft = 0f;
+        notesDetectorTestSelectionPopupScrollView.contentContainer.style.paddingRight = 0f;
+        notesDetectorTestSelectionPopupScrollView.contentContainer.style.paddingTop = 0f;
+        notesDetectorTestSelectionPopupScrollView.contentContainer.style.paddingBottom = 0f;
+
+        notesDetectorTestSelectionPopupHintLabel = CreateLabel("Press Enter to launch the selected test. Press Escape to return to the detector menu.", 22f, new Color(0.72f, 0.80f, 0.88f, 0.92f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        notesDetectorTestSelectionPopupHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        notesDetectorTestSelectionPopupHintLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        notesDetectorTestSelectionPopupCard.Add(notesDetectorTestSelectionPopupEyebrowLabel);
+        notesDetectorTestSelectionPopupCard.Add(notesDetectorTestSelectionPopupTitleLabel);
+        notesDetectorTestSelectionPopupCard.Add(notesDetectorTestSelectionPopupSummaryLabel);
+        notesDetectorTestSelectionPopupCard.Add(notesDetectorTestSelectionPopupButtonsRow);
+        notesDetectorTestSelectionPopupCard.Add(notesDetectorTestSelectionPopupScrollView);
+        notesDetectorTestSelectionPopupCard.Add(notesDetectorTestSelectionPopupHintLabel);
+        notesDetectorTestSelectionPopupOverlay.Add(notesDetectorTestSelectionPopupCard);
+        notesDetectorTestOverlay.Add(notesDetectorTestSelectionPopupOverlay);
 
         notesDetectorRoutineOverlay = new VisualElement();
         notesDetectorRoutineOverlay.style.position = Position.Absolute;
@@ -5788,7 +5979,7 @@ public sealed class TabsSongHeaderOverlay
 
         settingsOverlay = CreateFullscreenOverlay();
 
-        settingsOverlay.style.backgroundColor = new Color(0.02f, 0.03f, 0.06f, 0.52f);
+        settingsOverlay.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
 
         settingsOverlay.style.alignItems = Align.Center;
 
@@ -5808,7 +5999,8 @@ public sealed class TabsSongHeaderOverlay
 
         settingsBlurBackdrop.style.bottom = 0f;
 
-        settingsBlurBackdrop.style.backgroundColor = new Color(0.03f, 0.04f, 0.06f, 0.12f);
+        settingsBlurBackdrop.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        settingsBlurBackdrop.style.display = DisplayStyle.None;
 
         settingsBlurBackdrop.pickingMode = PickingMode.Ignore;
 
@@ -5834,6 +6026,8 @@ public sealed class TabsSongHeaderOverlay
 
         settingsBackplateGradient.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
 
+        settingsBackplateGradient.style.opacity = 0f;
+
         settingsBackplateGradient.pickingMode = PickingMode.Ignore;
 
         settingsBackplate.Add(settingsBackplateGradient);
@@ -5846,6 +6040,13 @@ public sealed class TabsSongHeaderOverlay
 
         settingsShell = new VisualElement();
         ConfigureStraightSidebarChrome(settingsBackplate, settingsFrontPlate, settingsRegion, settingsShell, centerContent: false);
+        settingsBackplate.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        settingsBackplate.style.opacity = 0f;
+        settingsFrontPlate.style.backgroundColor = new Color(0.02f, 0.03f, 0.05f, 0.32f);
+        settingsFrontPlate.style.borderLeftColor = SidebarOutlineWhiteColor;
+        settingsBlurBackdrop.style.display = DisplayStyle.None;
+        settingsBackplate.style.display = DisplayStyle.None;
+        settingsFrontPlate.style.display = DisplayStyle.None;
 
         Label settingsTopTag = CreateLabel("PRESS ESC TO RETURN", 24f, LibraryPrimaryColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
 
@@ -6230,13 +6431,13 @@ public sealed class TabsSongHeaderOverlay
 
         backPauseButton.style.color = new Color(0.93f, 0.95f, 0.98f, 1f);
 
-        backPauseButton.style.borderTopColor = MenuOutlineNeutralColor;
+        backPauseButton.style.borderTopColor = MenuOutlineWhiteColor;
 
-        backPauseButton.style.borderRightColor = MenuOutlineNeutralColor;
+        backPauseButton.style.borderRightColor = MenuOutlineWhiteColor;
 
-        backPauseButton.style.borderBottomColor = MenuOutlineNeutralColor;
+        backPauseButton.style.borderBottomColor = MenuOutlineWhiteColor;
 
-        backPauseButton.style.borderLeftColor = MenuOutlineNeutralColor;
+        backPauseButton.style.borderLeftColor = MenuOutlineWhiteColor;
 
 
 
@@ -7716,9 +7917,25 @@ public sealed class TabsSongHeaderOverlay
 
         libraryBackdropBlur.SourceCamera = Camera.main;
 
+        pauseBackdropBlur = rootObject.AddComponent<LibraryBackdropBlurController>();
+
+        pauseBackdropBlur.TargetElement = pauseFrontPlate;
+
+        pauseBackdropBlur.SourceCamera = Camera.main;
+
+        pauseBackdropBlur.Brightness = 0.44f;
+
+        gameModesBackdropBlur = rootObject.AddComponent<LibraryBackdropBlurController>();
+
+        gameModesBackdropBlur.TargetElement = gameModesFrontPlate;
+
+        gameModesBackdropBlur.SourceCamera = Camera.main;
+
+        gameModesBackdropBlur.Brightness = 0.44f;
+
         settingsBackdropBlur = rootObject.AddComponent<LibraryBackdropBlurController>();
 
-        settingsBackdropBlur.TargetElement = settingsBlurBackdrop;
+        settingsBackdropBlur.TargetElement = settingsFrontPlate;
 
         settingsBackdropBlur.SourceCamera = Camera.main;
 
@@ -9030,6 +9247,7 @@ public sealed class TabsSongHeaderOverlay
         root.Add(characterHealthRow);
 
         root.Add(gameplayScoreDock);
+        root.Add(notesDetectorGameplayAcceptanceLabel);
         root.Add(loopConfigurationTitleLabel);
         root.Add(loopBookmarksCard);
 
@@ -9338,7 +9556,7 @@ public sealed class TabsSongHeaderOverlay
 
         string scoreTitle = snapshot.scoreSaveInvalidated ? "RUN SCORE (x)" : "RUN SCORE";
         scoreTitleLabel.text = loopEnabled && loopDurationSeconds > 0.01f
-            ? $"LOOP COMPLETE  •  {loopDurationSeconds:F2}s"
+            ? $"LOOP  \u2022  {Mathf.RoundToInt(loopDurationSeconds)}s"
             : scoreTitle;
         if (loopEnabled)
         {
@@ -9590,6 +9808,7 @@ public sealed class TabsSongHeaderOverlay
         bool showPause = snapshot.isPaused && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
 
         bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab;
+        bool showSharedPauseSidebarBase = showPause || showGameModes || showSettings;
 
         bool showSelection = snapshot.showSongSelection && !showLibraryLoading && !showEnd && !showToneLab;
 
@@ -9637,9 +9856,11 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        pauseOverlay.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
+        pauseOverlay.style.display = showSharedPauseSidebarBase ? DisplayStyle.Flex : DisplayStyle.None;
+        pauseShell.style.display = showPause ? DisplayStyle.Flex : DisplayStyle.None;
 
         gameModesOverlay.style.display = showGameModes ? DisplayStyle.Flex : DisplayStyle.None;
+        gameModesShell.style.display = showGameModes ? DisplayStyle.Flex : DisplayStyle.None;
 
         notesDetectorTestOverlay.style.display = showNotesDetectorTest ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -9660,6 +9881,7 @@ public sealed class TabsSongHeaderOverlay
         multiplayerRhythmSetupOverlay.style.display = showMultiplayerRhythmSetup ? DisplayStyle.Flex : DisplayStyle.None;
 
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
+        settingsShell.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
         generatedAudioTracksPopupOverlay.style.display = showSettings && (snapshot.showGeneratedAudioTrackSelectionPopup || snapshot.showSongSettingsTrackSelectionPopup) ? DisplayStyle.Flex : DisplayStyle.None;
 
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
@@ -9787,6 +10009,7 @@ public sealed class TabsSongHeaderOverlay
         bool pauseLikeHudMenu = showPause || showSettings || showGlobalSettings || showGameModes || showHeroModeSettings;
         bool showGameplayHudPreviewInMenus = snapshot.showGameplayHudPreviewInMenus;
         bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
+        bool detectorGameplayMinimalHud = snapshot.notesDetectorGameplayTestActive;
         highwayCharacterVisible = snapshot.showHighwayCharacter;
 
         songCard.style.display = hideGameplayHudCards ? DisplayStyle.None : DisplayStyle.Flex;
@@ -9794,15 +10017,35 @@ public sealed class TabsSongHeaderOverlay
 
         characterHealthRow.style.display = hideGameplayHudCards || !snapshot.heroModeEnabled ? DisplayStyle.None : DisplayStyle.Flex;
 
-        gameplayScoreDock.style.display = hideGameplayHudCards || snapshot.multiplayerRhythmMode ? DisplayStyle.None : DisplayStyle.Flex;
+        gameplayScoreDock.style.display = hideGameplayHudCards || snapshot.multiplayerRhythmMode || detectorGameplayMinimalHud ? DisplayStyle.None : DisplayStyle.Flex;
 
         scorePlate.style.display = DisplayStyle.None;
 
         arcadeComboLayer.style.display = hideGameplayHudCards ||
+                                         detectorGameplayMinimalHud ||
                                          snapshot.multiplayerRhythmMode ||
                                          (snapshot.gameplayMode != GuitarGameplayMode.Arcade && snapshot.gameplayMode != GuitarGameplayMode.Guitar)
             ? DisplayStyle.None
             : DisplayStyle.Flex;
+
+        bool showDetectorAcceptanceLabel = detectorGameplayMinimalHud &&
+                                           !showPause &&
+                                           !showSettings &&
+                                           !showGlobalSettings &&
+                                           !showSelection &&
+                                           !showTrackSelection &&
+                                           !showEnd &&
+                                           !showToneLab &&
+                                           !showNotesDetectorTest &&
+                                           !showOffsetHelper &&
+                                           !showLoopSetup &&
+                                           !showLoopPausePopup &&
+                                           !showMultiplayerRhythmSetup &&
+                                           !showMainMenu &&
+                                           !showStartMenu;
+        notesDetectorGameplayAcceptanceLabel.style.display = showDetectorAcceptanceLabel ? DisplayStyle.Flex : DisplayStyle.None;
+        if (showDetectorAcceptanceLabel)
+            notesDetectorGameplayAcceptanceLabel.text = $"Accepted Via: {(!string.IsNullOrWhiteSpace(snapshot.notesDetectorLatestAcceptanceSourceText) ? snapshot.notesDetectorLatestAcceptanceSourceText : "--")}";
 
         bool showMultiplayerRhythmHud = snapshot.multiplayerRhythmMode &&
                                         !snapshot.showMultiplayerRhythmSetup &&
@@ -9885,6 +10128,12 @@ public sealed class TabsSongHeaderOverlay
                 notesDetectorSavePresetButton.text = string.Equals(snapshot.notesDetectorSelectedPresetLabel, "Custom", StringComparison.OrdinalIgnoreCase) ? "Save Custom" : "Save To Custom";
             RefreshNotesDetectorSettingsControls(snapshot.notesDetectorSettings);
             UpdateNotesDetectorTestSelection(snapshot.selectedNotesDetectorTestIndex);
+            if (notesDetectorTestSelectionPopupOverlay != null)
+            {
+                notesDetectorTestSelectionPopupOverlay.style.display = snapshot.showNotesDetectorTestSelectionPopup ? DisplayStyle.Flex : DisplayStyle.None;
+                if (snapshot.showNotesDetectorTestSelectionPopup)
+                    UpdateNotesDetectorTestPopup(snapshot);
+            }
             if (notesDetectorRoutineOverlay != null)
             {
                 notesDetectorRoutineOverlay.style.display = snapshot.showNotesDetectorRoutinePopup ? DisplayStyle.Flex : DisplayStyle.None;
@@ -10260,16 +10509,28 @@ public sealed class TabsSongHeaderOverlay
         if (showPause)
 
         {
-            string pauseLoopStartText = snapshot.loopStartConfigured ? $"{snapshot.loopStartTime:F2}s" : "--";
-            string pauseLoopEndText = snapshot.loopEndConfigured ? $"{snapshot.loopEndTime:F2}s" : "--";
+            bool detectorGameplayPause = snapshot.notesDetectorGameplayTestActive;
+            string pauseLoopStatusText;
+            if (snapshot.loopEnabled)
+            {
+                string pauseLoopStartText = snapshot.loopStartConfigured ? $"{snapshot.loopStartTime:F2}s" : "--";
+                string pauseLoopEndText = snapshot.loopEndConfigured ? $"{snapshot.loopEndTime:F2}s" : "--";
+                pauseLoopStatusText = $"Loop: {pauseLoopStartText} - {pauseLoopEndText}";
+            }
+            else
+            {
+                pauseLoopStatusText = "Loop: OFF";
+            }
 
-            pauseInfoLabel.text =
+            pauseInfoLabel.text = detectorGameplayPause
+                ? $"Detector Test   Time: {snapshot.songTime:F2}s"
+                : $"{pauseLoopStatusText}   Time: {snapshot.songTime:F2}s";
 
-                $"Loop: {pauseLoopStartText} - {pauseLoopEndText}   " +
-
-                $"Time: {snapshot.songTime:F2}s";
-
-            if (snapshot.selectedPauseActionIndex == 0)
+            if (detectorGameplayPause)
+            {
+                pauseHintLabel.text = "Up/Down selects  \u2022  Enter confirms";
+            }
+            else if (snapshot.selectedPauseActionIndex == 0)
             {
                 pauseHintLabel.text = "Up/Down selects  \u2022  Left/Right changes speed";
             }
@@ -10282,10 +10543,28 @@ public sealed class TabsSongHeaderOverlay
                 pauseHintLabel.text = "Up/Down selects  \u2022  Left/Right moves song time";
             }
 
+            speedValueLabel.style.display = detectorGameplayPause ? DisplayStyle.None : DisplayStyle.Flex;
+            speedSlider.style.display = detectorGameplayPause ? DisplayStyle.None : DisplayStyle.Flex;
+
             gameModesButton.text = "Game Modes";
-            gameModesButton.style.display = snapshot.multiplayerRhythmMode ? DisplayStyle.None : DisplayStyle.Flex;
             if (audioModeButton != null)
                 audioModeButton.text = $"Audio: {snapshot.songPlaybackAudioModeLabel}";
+
+            for (int i = 0; i < pauseActionButtons.Count; i++)
+            {
+                Button button = pauseActionButtons[i];
+                if (button == null)
+                    continue;
+
+                int actionIndex = i + 1;
+                bool visible = detectorGameplayPause
+                    ? actionIndex == 8 || actionIndex == 9
+                    : !(snapshot.multiplayerRhythmMode && actionIndex == 1);
+                button.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+
+            if (pauseActionButtons.Count >= 9)
+                pauseActionButtons[8].text = detectorGameplayPause ? "Exit" : "End";
 
             UpdatePauseActionSelection(snapshot.selectedPauseActionIndex);
 
@@ -11329,6 +11608,15 @@ public sealed class TabsSongHeaderOverlay
 
         public Label actionLabel;
 
+    }
+
+    private sealed class NotesDetectorTestPopupRow
+    {
+        public VisualElement host;
+        public Label categoryLabel;
+        public Button button;
+        public Label nameLabel;
+        public Label descriptionLabel;
     }
 
     private static void SplitLibraryDifficultyAndScore(string combinedText, out string difficultyText, out string scoreText)
@@ -18003,7 +18291,13 @@ public sealed class TabsSongHeaderOverlay
 
         frontPlate.style.borderLeftWidth = 1f;
 
-        frontPlate.style.borderLeftColor = new Color(0.26f, 0.32f, 0.40f, 0.62f);
+        frontPlate.style.borderTopColor = new Color(0f, 0f, 0f, 0f);
+
+        frontPlate.style.borderRightColor = new Color(0f, 0f, 0f, 0f);
+
+        frontPlate.style.borderBottomColor = new Color(0f, 0f, 0f, 0f);
+
+        frontPlate.style.borderLeftColor = SidebarOutlineWhiteColor;
 
         frontPlate.pickingMode = PickingMode.Ignore;
 
@@ -20025,7 +20319,7 @@ public sealed class TabsSongHeaderOverlay
 
                     : isSecondaryAction
 
-                        ? MenuOutlineNeutralColor
+                        ? MenuOutlineWhiteColor
 
                         : new Color(0f, 0f, 0f, 0f);
 
@@ -20131,10 +20425,10 @@ public sealed class TabsSongHeaderOverlay
             gameModesBackButton.style.translate = backSelected ? new Translate(-6f, 0f) : new Translate(0f, 0f);
             gameModesBackButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
             gameModesBackButton.style.color = backSelected ? LibraryConfirmedSongColor : new Color(0.93f, 0.95f, 0.98f, 1f);
-            gameModesBackButton.style.borderTopColor = backSelected ? LibraryConfirmedSongColor : MenuOutlineNeutralColor;
-            gameModesBackButton.style.borderRightColor = backSelected ? LibraryConfirmedSongColor : MenuOutlineNeutralColor;
-            gameModesBackButton.style.borderBottomColor = backSelected ? LibraryConfirmedSongColor : MenuOutlineNeutralColor;
-            gameModesBackButton.style.borderLeftColor = backSelected ? LibraryConfirmedSongColor : MenuOutlineNeutralColor;
+            gameModesBackButton.style.borderTopColor = backSelected ? LibraryConfirmedSongColor : MenuOutlineWhiteColor;
+            gameModesBackButton.style.borderRightColor = backSelected ? LibraryConfirmedSongColor : MenuOutlineWhiteColor;
+            gameModesBackButton.style.borderBottomColor = backSelected ? LibraryConfirmedSongColor : MenuOutlineWhiteColor;
+            gameModesBackButton.style.borderLeftColor = backSelected ? LibraryConfirmedSongColor : MenuOutlineWhiteColor;
         }
 
     }
@@ -20455,6 +20749,294 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private void EnsureNotesDetectorTestPopupRows(int count)
+
+    {
+
+        if (notesDetectorTestSelectionPopupScrollView == null)
+
+            return;
+
+
+
+        while (notesDetectorTestPopupRows.Count < count)
+
+        {
+
+            int testIndex = notesDetectorTestPopupRows.Count;
+
+
+
+            VisualElement host = new VisualElement();
+
+            host.style.flexDirection = FlexDirection.Column;
+
+            host.style.alignSelf = Align.Stretch;
+
+            host.style.width = Length.Percent(100f);
+
+            host.style.marginBottom = 8f;
+
+
+
+            Label categoryLabel = CreateLabel(string.Empty, 22f, new Color(0.72f, 0.84f, 0.95f, 0.92f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+
+            categoryLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+            categoryLabel.style.marginTop = 10f;
+
+            categoryLabel.style.marginBottom = 8f;
+
+            categoryLabel.style.letterSpacing = 1.2f;
+
+            categoryLabel.style.paddingLeft = 4f;
+
+            host.Add(categoryLabel);
+
+
+
+            Button rowButton = new Button(() =>
+
+            {
+
+                owner?.SetNotesDetectorTestPopupSelectionFromUi(testIndex);
+
+                owner?.ActivateSelectedNotesDetectorTestPopupFromUi();
+
+            });
+
+            rowButton.focusable = false;
+
+            rowButton.text = string.Empty;
+
+            rowButton.style.width = Length.Percent(100f);
+
+            rowButton.style.minWidth = 0f;
+
+            rowButton.style.height = 104f;
+
+            rowButton.style.paddingLeft = 20f;
+
+            rowButton.style.paddingRight = 20f;
+
+            rowButton.style.paddingTop = 12f;
+
+            rowButton.style.paddingBottom = 12f;
+
+            rowButton.style.flexDirection = FlexDirection.Column;
+
+            rowButton.style.alignItems = Align.FlexStart;
+
+            rowButton.style.justifyContent = Justify.Center;
+
+            StyleNotesDetectorActionButton(rowButton, 0f, 104f);
+
+            rowButton.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverNotesDetectorTestPopupSelectionFromUi(testIndex));
+
+
+
+            Label nameLabel = CreateLabel(string.Empty, 30f, new Color(0.96f, 0.98f, 1f, 1f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+
+            nameLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+            nameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            nameLabel.style.alignSelf = Align.Stretch;
+
+            nameLabel.style.marginBottom = 4f;
+
+            nameLabel.style.whiteSpace = WhiteSpace.Normal;
+
+
+
+            Label descriptionLabel = CreateLabel(string.Empty, 21f, new Color(0.70f, 0.77f, 0.85f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+
+            descriptionLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+            descriptionLabel.style.alignSelf = Align.Stretch;
+
+            descriptionLabel.style.whiteSpace = WhiteSpace.Normal;
+
+
+
+            rowButton.Add(nameLabel);
+
+            rowButton.Add(descriptionLabel);
+
+            host.Add(rowButton);
+
+
+
+            notesDetectorTestPopupRows.Add(new NotesDetectorTestPopupRow
+
+            {
+
+                host = host,
+
+                categoryLabel = categoryLabel,
+
+                button = rowButton,
+
+                nameLabel = nameLabel,
+
+                descriptionLabel = descriptionLabel
+
+            });
+
+            notesDetectorTestSelectionPopupScrollView.Add(host);
+
+        }
+
+
+
+        for (int i = 0; i < notesDetectorTestPopupRows.Count; i++)
+
+        {
+
+            NotesDetectorTestPopupRow row = notesDetectorTestPopupRows[i];
+
+            if (row?.host == null)
+
+                continue;
+
+
+
+            row.host.style.display = i < count ? DisplayStyle.Flex : DisplayStyle.None;
+
+        }
+
+    }
+
+
+
+    private void UpdateNotesDetectorTestPopup(GuitarGameplaySnapshot snapshot)
+
+    {
+
+        if (snapshot == null || notesDetectorTestSelectionPopupOverlay == null)
+
+            return;
+
+
+
+        List<string> categories = snapshot.notesDetectorAvailableTestCategories ?? new List<string>();
+
+        List<string> names = snapshot.notesDetectorAvailableTestNames ?? new List<string>();
+
+        List<string> descriptions = snapshot.notesDetectorAvailableTestDescriptions ?? new List<string>();
+
+        int count = Mathf.Min(categories.Count, Mathf.Min(names.Count, descriptions.Count));
+
+
+
+        EnsureNotesDetectorTestPopupRows(count);
+
+        notesDetectorTestSelectionPopupSummaryLabel.text = count > 0
+
+            ? "Pick a focused detector case. Each selection opens a hidden Highway3D chart in note-by-note mode."
+
+            : "No detector tests were found in the catalog.";
+
+
+
+        string previousCategory = null;
+
+        for (int i = 0; i < count; i++)
+
+        {
+
+            NotesDetectorTestPopupRow row = notesDetectorTestPopupRows[i];
+
+            if (row == null || row.button == null)
+
+                continue;
+
+
+
+            string category = string.IsNullOrWhiteSpace(categories[i]) ? "Other" : categories[i].Trim();
+
+            bool showCategory = !string.Equals(previousCategory, category, StringComparison.OrdinalIgnoreCase);
+
+            row.categoryLabel.text = category.ToUpperInvariant();
+
+            row.categoryLabel.style.display = showCategory ? DisplayStyle.Flex : DisplayStyle.None;
+
+            row.nameLabel.text = string.IsNullOrWhiteSpace(names[i]) ? $"Test {i + 1}" : names[i];
+
+            row.descriptionLabel.text = string.IsNullOrWhiteSpace(descriptions[i]) ? "Launches this case in Highway3D note-by-note mode." : descriptions[i];
+
+            previousCategory = category;
+
+        }
+
+
+
+        UpdateNotesDetectorTestPopupSelection(snapshot.selectedNotesDetectorCatalogIndex);
+
+    }
+
+
+
+    private void UpdateNotesDetectorTestPopupSelection(int selectedIndex)
+
+    {
+
+        if (notesDetectorTestPopupRows.Count == 0)
+
+            return;
+
+
+
+        int resolvedIndex = Mathf.Clamp(selectedIndex, 0, notesDetectorTestPopupRows.Count - 1);
+
+        for (int i = 0; i < notesDetectorTestPopupRows.Count; i++)
+
+        {
+
+            NotesDetectorTestPopupRow row = notesDetectorTestPopupRows[i];
+
+            if (row == null || row.button == null || row.host == null || row.host.style.display.value == DisplayStyle.None)
+
+                continue;
+
+
+
+            bool isSelected = i == resolvedIndex;
+
+            row.button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+            row.button.style.borderTopColor = isSelected ? LibraryConfirmedSongColor : new Color(1f, 1f, 1f, 0.10f);
+
+            row.button.style.borderRightColor = row.button.style.borderTopColor;
+
+            row.button.style.borderBottomColor = row.button.style.borderTopColor;
+
+            row.button.style.borderLeftColor = row.button.style.borderTopColor;
+
+            row.button.style.scale = isSelected ? new Scale(new Vector3(1.012f, 1.012f, 1f)) : new Scale(Vector3.one);
+
+            row.button.style.translate = isSelected ? new Translate(-4f, 0f) : new Translate(0f, 0f);
+
+            row.nameLabel.style.color = isSelected ? Color.white : new Color(0.92f, 0.95f, 0.98f, 1f);
+
+            row.descriptionLabel.style.color = isSelected ? new Color(0.82f, 0.89f, 0.95f, 0.98f) : new Color(0.70f, 0.77f, 0.85f, 0.96f);
+
+        }
+
+
+
+        if (notesDetectorTestSelectionPopupCloseButton != null)
+
+        {
+
+            notesDetectorTestSelectionPopupCloseButton.style.scale = new Scale(Vector3.one);
+
+            notesDetectorTestSelectionPopupCloseButton.style.translate = new Translate(0f, 0f);
+
+        }
+
+    }
+
 
     private void UpdateHeroModeSettingsSelection(int selectedIndex)
 
@@ -20590,7 +21172,7 @@ public sealed class TabsSongHeaderOverlay
 
                     : isBackAction
 
-                        ? MenuOutlineNeutralColor
+                        ? MenuOutlineWhiteColor
 
                         : new Color(0f, 0f, 0f, 0f);
 
@@ -24175,6 +24757,7 @@ public sealed class TabsSongHeaderOverlay
     }
 
 }
+
 
 
 

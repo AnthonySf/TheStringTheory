@@ -66,6 +66,17 @@ public static class SongNotationFacade
         }
     }
 
+    public static List<ArpeggioGuideData> LoadArpeggioGuides(string filePath, SongNotationSourceKind kind, int targetPartIndex = -1)
+    {
+        switch (kind)
+        {
+            case SongNotationSourceKind.Rocksmith:
+                return RocksmithCachedSongLoader.LoadArpeggioGuides(filePath, targetPartIndex);
+            default:
+                return new List<ArpeggioGuideData>();
+        }
+    }
+
     public static GeneratedPlaybackArrangement LoadGeneratedArrangement(string filePath, SongNotationSourceKind kind)
     {
         switch (kind)

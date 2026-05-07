@@ -6,6 +6,7 @@ using UnityEngine;
 [Serializable]
 public sealed class NativeDetectorSettingsData
 {
+    public float chordLeniency = 0.66f;
     public float continuousRmsGate = 0.007f;
     public float continuousConfidenceGate = 0.65f;
     public float continuousHoldSeconds = 0.10f;
@@ -107,6 +108,7 @@ public static class NativeDetectorSettingCatalog
 
     private static readonly List<NativeDetectorSettingDefinition> definitions = new List<NativeDetectorSettingDefinition>
     {
+        new NativeDetectorSettingDefinition("chordLeniency", "Chord Leniency", "Fraction of expected chord tones that must ring before a multi-note chord is accepted. Dyads still require both notes.", 0.34f, 1.00f, false, 2),
         new NativeDetectorSettingDefinition("continuousRmsGate", "Continuous RMS Gate", "Minimum signal energy needed for continuous fast-path note tracking.", 0.001f, 0.05f, false, 3),
         new NativeDetectorSettingDefinition("continuousConfidenceGate", "Continuous Confidence Gate", "Minimum aubio pitch confidence required before a continuous note is accepted.", 0.00f, 0.99f, false, 2),
         new NativeDetectorSettingDefinition("continuousHoldSeconds", "Continuous Hold", "How long a detected fast-path note stays alive before clearing.", 0.01f, 0.50f, false, 2),
@@ -138,6 +140,7 @@ public static class NativeDetectorSettingCatalog
     public static NativeDetectorSettingsData CreateLevel2()
     {
         NativeDetectorSettingsData settings = CreateLevel1();
+        settings.chordLeniency = Clamp(settings.chordLeniency + 0.06f, 0f, 1f);
         settings.continuousConfidenceGate = Clamp(settings.continuousConfidenceGate + 0.08f, 0f, 0.99f);
         settings.highStringConfidenceMultiplier = Clamp(settings.highStringConfidenceMultiplier + 0.12f, 0f, 1f);
         settings.standardOnsetThreshold += 0.03f;
@@ -156,6 +159,7 @@ public static class NativeDetectorSettingCatalog
     public static NativeDetectorSettingsData CreateLevel3()
     {
         NativeDetectorSettingsData settings = CreateLevel1();
+        settings.chordLeniency = Clamp(settings.chordLeniency + 0.14f, 0f, 1f);
         settings.continuousConfidenceGate = Clamp(settings.continuousConfidenceGate + 0.15f, 0f, 0.995f);
         settings.highStringConfidenceMultiplier = Clamp(settings.highStringConfidenceMultiplier + 0.20f, 0f, 1f);
         settings.standardOnsetThreshold += 0.06f;
@@ -192,6 +196,7 @@ public static class NativeDetectorSettingCatalog
 
         return new NativeDetectorSettingsData
         {
+            chordLeniency = source.chordLeniency,
             continuousRmsGate = source.continuousRmsGate,
             continuousConfidenceGate = source.continuousConfidenceGate,
             continuousHoldSeconds = source.continuousHoldSeconds,
@@ -254,6 +259,7 @@ public static class NativeDetectorSettingCatalog
     public static NativeDetectorSettingsData Sanitize(NativeDetectorSettingsData source)
     {
         NativeDetectorSettingsData settings = Clone(source);
+        settings.chordLeniency = Clamp(settings.chordLeniency, 0.34f, 1.00f);
         settings.continuousRmsGate = Clamp(settings.continuousRmsGate, 0.001f, 0.05f);
         settings.continuousConfidenceGate = Clamp(settings.continuousConfidenceGate, 0f, 0.99f);
         settings.continuousHoldSeconds = Clamp(settings.continuousHoldSeconds, 0.01f, 0.50f);
@@ -282,6 +288,7 @@ public static class NativeDetectorSettingCatalog
 
         switch (key)
         {
+            case "chordLeniency": return settings.chordLeniency;
             case "continuousRmsGate": return settings.continuousRmsGate;
             case "continuousConfidenceGate": return settings.continuousConfidenceGate;
             case "continuousHoldSeconds": return settings.continuousHoldSeconds;
@@ -311,6 +318,9 @@ public static class NativeDetectorSettingCatalog
 
         switch (key)
         {
+            case "chordLeniency":
+                settings.chordLeniency = Clamp(value, 0.34f, 1.00f);
+                break;
             case "continuousRmsGate":
                 settings.continuousRmsGate = Clamp(value, 0.001f, 0.05f);
                 break;
