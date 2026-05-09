@@ -1642,6 +1642,26 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Label startMenuFooterHintLabel;
 
+    private readonly VisualElement characterSelectionOverlay;
+
+    private readonly VisualElement characterSelectionShell;
+
+    private readonly Label characterSelectionTitleLabel;
+
+    private readonly Label characterSelectionSubtitleLabel;
+
+    private readonly VisualElement characterSelectionOptionsRow;
+
+    private readonly Label characterSelectionFooterHintLabel;
+
+    private readonly List<Button> characterSelectionButtons = new List<Button>();
+
+    private readonly List<VisualElement> characterSelectionPreviewFrames = new List<VisualElement>();
+
+    private readonly List<Label> characterSelectionNameLabels = new List<Label>();
+
+    private readonly List<Label> characterSelectionStatusLabels = new List<Label>();
+
     private readonly VisualElement multiplayerRhythmSetupOverlay;
     private readonly VisualElement multiplayerRhythmSetupShell;
     private readonly Label multiplayerRhythmSetupTitleLabel;
@@ -1861,6 +1881,8 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button selectionSongsFolderButton;
 
     private readonly Button selectionRefreshButton;
+
+    private readonly Button selectionCharacterButton;
 
     private readonly Button selectionStartButton;
 
@@ -2136,6 +2158,7 @@ public sealed class TabsSongHeaderOverlay
     {
 
         this.owner = owner;
+        EnsureOverlayShaderResourcesReferenced();
 
 
 
@@ -2421,7 +2444,7 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
-        UpdateCharacterHealthHearts(0, displayedCharacterHealthHeartCount);
+        UpdateCharacterHealthHearts(displayedCharacterHealthHeartCount, displayedCharacterHealthHeartCount);
 
 
 
@@ -5856,6 +5879,72 @@ public sealed class TabsSongHeaderOverlay
         startMenuShell.Add(startMenuFooterHintLabel);
         startMenuOverlay.Add(startMenuShell);
 
+        characterSelectionOverlay = CreateFullscreenOverlay();
+        characterSelectionOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.44f);
+        characterSelectionOverlay.style.alignItems = Align.Center;
+        characterSelectionOverlay.style.justifyContent = Justify.Center;
+        characterSelectionOverlay.style.paddingLeft = 72f;
+        characterSelectionOverlay.style.paddingRight = 72f;
+        characterSelectionOverlay.style.paddingTop = 108f;
+        characterSelectionOverlay.style.paddingBottom = 78f;
+        characterSelectionOverlay.style.display = DisplayStyle.None;
+
+        characterSelectionShell = new VisualElement();
+        characterSelectionShell.style.width = Length.Percent(100f);
+        characterSelectionShell.style.maxWidth = 1680f;
+        characterSelectionShell.style.alignItems = Align.Center;
+        characterSelectionShell.style.justifyContent = Justify.Center;
+
+        characterSelectionTitleLabel = CreateLabel("SELECT CHARACTER", 144f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        characterSelectionTitleLabel.style.unityFontDefinition = logoFontDefinition;
+        characterSelectionTitleLabel.style.marginBottom = 38f;
+        characterSelectionTitleLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        characterSelectionSubtitleLabel = CreateLabel(
+            "",
+            42f,
+            new Color(0.82f, 0.90f, 0.98f, 0.96f),
+            false,
+            TextAnchor.MiddleCenter,
+            useTitleFont: false);
+        characterSelectionSubtitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        characterSelectionSubtitleLabel.style.maxWidth = 1320f;
+        characterSelectionSubtitleLabel.style.whiteSpace = WhiteSpace.Normal;
+        characterSelectionSubtitleLabel.style.marginTop = 12f;
+        characterSelectionSubtitleLabel.style.marginBottom = 54f;
+
+        characterSelectionOptionsRow = new VisualElement();
+        characterSelectionOptionsRow.style.flexDirection = FlexDirection.Row;
+        characterSelectionOptionsRow.style.alignItems = Align.Stretch;
+        characterSelectionOptionsRow.style.justifyContent = Justify.Center;
+        characterSelectionOptionsRow.style.width = Length.Percent(100f);
+        characterSelectionOptionsRow.style.flexWrap = Wrap.NoWrap;
+
+        Button noneOption = CreateCharacterSelectionOption("None", string.Empty, 0);
+        characterSelectionButtons.Add(noneOption);
+        characterSelectionOptionsRow.Add(noneOption);
+
+        for (int i = 0; i < HighwayCharacterVisualUtility.CharacterCount; i++)
+        {
+            HighwayCharacterChoice choice = (HighwayCharacterChoice)i;
+            Button option = CreateCharacterSelectionOption(
+                HighwayCharacterVisualUtility.GetDisplayName(choice),
+                HighwayCharacterVisualUtility.GetResourceName(choice),
+                i + 1);
+            characterSelectionButtons.Add(option);
+            characterSelectionOptionsRow.Add(option);
+        }
+
+        characterSelectionFooterHintLabel = CreateLabel("Use mouse, arrows or D-pad, and Enter. Esc goes back.", 34.5f, new Color(0.62f, 0.78f, 0.94f, 0.92f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        characterSelectionFooterHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        characterSelectionFooterHintLabel.style.marginTop = 51f;
+
+        characterSelectionShell.Add(characterSelectionTitleLabel);
+        characterSelectionShell.Add(characterSelectionSubtitleLabel);
+        characterSelectionShell.Add(characterSelectionOptionsRow);
+        characterSelectionShell.Add(characterSelectionFooterHintLabel);
+        characterSelectionOverlay.Add(characterSelectionShell);
+
         multiplayerRhythmSetupOverlay = CreateFullscreenOverlay();
         multiplayerRhythmSetupOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.44f);
         multiplayerRhythmSetupOverlay.style.alignItems = Align.Center;
@@ -7859,11 +7948,16 @@ public sealed class TabsSongHeaderOverlay
 
         selectionRefreshButton = CreateLibraryFooterButton("Refresh", new Color(0.149f, 0.169f, 0.20f, 1f), () => owner?.RefreshSongsFromUi());
 
+        selectionCharacterButton = CreateLibraryFooterButton("Character Selection", new Color(0.149f, 0.169f, 0.20f, 1f), () => owner?.OpenCharacterSelectionFromUi());
+
         selectionSongsFolderButton.style.marginRight = 14f;
+        selectionRefreshButton.style.marginRight = 14f;
 
         selectionUtilityButtons.Add(selectionSongsFolderButton);
 
         selectionUtilityButtons.Add(selectionRefreshButton);
+
+        selectionUtilityButtons.Add(selectionCharacterButton);
 
 
 
@@ -9279,6 +9373,8 @@ public sealed class TabsSongHeaderOverlay
 
         root.Add(startMenuOverlay);
 
+        root.Add(characterSelectionOverlay);
+
         root.Add(multiplayerRhythmSetupOverlay);
 
         root.Add(settingsOverlay);
@@ -9572,7 +9668,7 @@ public sealed class TabsSongHeaderOverlay
         }
         UpdateGameplayScoreCard(snapshot, scorePercent, displayHits, displayMisses);
         UpdateArcadeComboBadge(snapshot);
-        UpdateCharacterHealthHearts(displayMisses, snapshot.heroModeHeartCount);
+        UpdateCharacterHealthHearts(snapshot.currentHeroHeartsRemaining, snapshot.heroModeHeartCount);
 
         wasLoopEnabled = loopEnabled;
 
@@ -9783,15 +9879,16 @@ public sealed class TabsSongHeaderOverlay
         bool showEnd = snapshot.songEnded;
         bool showToneLab = snapshot.showToneLab && !showEnd;
         bool showNotesDetectorTest = snapshot.showNotesDetectorTestMenu && !showEnd && !showToneLab;
+        bool showCharacterSelection = snapshot.showCharacterSelection && !showEnd && !showToneLab && !showNotesDetectorTest;
 
-        bool showStartMenu = snapshot.showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest;
+        bool showStartMenu = snapshot.showStartMenu && !showCharacterSelection && !showEnd && !showToneLab && !showNotesDetectorTest;
         bool showMultiplayerRhythmSetup = snapshot.showMultiplayerRhythmSetup && !showStartMenu && !showEnd && !showToneLab && !showNotesDetectorTest;
 
         bool showLibraryLoading = snapshot.showLibraryLoadingOverlay && !showEnd && !showToneLab && !showNotesDetectorTest;
 
         SetWordmarkParentForLibraryLoading(showLibraryLoading);
 
-        bool showMainMenu = snapshot.showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest;
+        bool showMainMenu = snapshot.showMainMenu && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest;
 
         bool showLoopPausePopup = snapshot.showLoopPausePopup && !showEnd;
 
@@ -9805,23 +9902,23 @@ public sealed class TabsSongHeaderOverlay
 
         bool showOffsetHelper = snapshot.showOffsetHelper && !showEnd && !showToneLab;
 
-        bool showPause = snapshot.isPaused && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
 
         bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab;
         bool showSharedPauseSidebarBase = showPause || showGameModes || showSettings;
 
-        bool showSelection = snapshot.showSongSelection && !showLibraryLoading && !showEnd && !showToneLab;
+        bool showSelection = snapshot.showSongSelection && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab;
 
         bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showEnd && !showToneLab;
 
         bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab;
 
-        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showLibraryLoading && !showEnd && !showToneLab && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
+        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
 
         bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
         bool isTabsGameplay = owner != null && owner.renderMode == GuitarRenderMode.Tabs && snapshot.gameplayMode == GuitarGameplayMode.Guitar;
 
-        bool showTechniqueLegend = isTabsGameplay && snapshot.songTime > 0.15f && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool showTechniqueLegend = isTabsGameplay && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
 
 
@@ -9851,6 +9948,9 @@ public sealed class TabsSongHeaderOverlay
         if (showStartMenu)
             UpdateStartMenu(snapshot);
 
+        if (showCharacterSelection)
+            UpdateCharacterSelection(snapshot);
+
         if (showMultiplayerRhythmSetup)
             UpdateMultiplayerRhythmSetup(snapshot);
 
@@ -9877,6 +9977,8 @@ public sealed class TabsSongHeaderOverlay
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
 
         startMenuOverlay.style.display = showStartMenu ? DisplayStyle.Flex : DisplayStyle.None;
+
+        characterSelectionOverlay.style.display = showCharacterSelection ? DisplayStyle.Flex : DisplayStyle.None;
 
         multiplayerRhythmSetupOverlay.style.display = showMultiplayerRhythmSetup ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -18876,6 +18978,112 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private Button CreateCharacterSelectionOption(string displayName, string resourceName, int optionIndex)
+    {
+        bool isNoneOption = string.IsNullOrWhiteSpace(resourceName);
+        Button button = new Button(() => owner?.SelectCharacterSelectionOptionFromUi(optionIndex));
+        button.focusable = false;
+        button.text = string.Empty;
+        button.style.width = 560f;
+        button.style.minHeight = 720f;
+        button.style.marginLeft = 24f;
+        button.style.marginRight = 24f;
+        button.style.marginBottom = 30f;
+        button.style.paddingLeft = 28f;
+        button.style.paddingRight = 28f;
+        button.style.paddingTop = 28f;
+        button.style.paddingBottom = 28f;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        button.style.borderTopLeftRadius = 0f;
+        button.style.borderTopRightRadius = 0f;
+        button.style.borderBottomLeftRadius = 0f;
+        button.style.borderBottomRightRadius = 0f;
+        button.style.borderTopWidth = 2f;
+        button.style.borderRightWidth = 2f;
+        button.style.borderBottomWidth = 2f;
+        button.style.borderLeftWidth = 2f;
+        button.style.borderTopColor = Color.white;
+        button.style.borderRightColor = Color.white;
+        button.style.borderBottomColor = Color.white;
+        button.style.borderLeftColor = Color.white;
+        button.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverCharacterSelectionOptionFromUi(optionIndex));
+
+        VisualElement previewFrame = new VisualElement();
+        previewFrame.style.width = Length.Percent(100f);
+        previewFrame.style.height = 520f;
+        previewFrame.style.marginBottom = 24f;
+        previewFrame.style.backgroundColor = new Color(0.03f, 0.05f, 0.09f, 0.42f);
+        previewFrame.style.borderTopWidth = 2f;
+        previewFrame.style.borderRightWidth = 2f;
+        previewFrame.style.borderBottomWidth = 2f;
+        previewFrame.style.borderLeftWidth = 2f;
+        previewFrame.style.borderTopColor = new Color(1f, 1f, 1f, 0.62f);
+        previewFrame.style.borderRightColor = new Color(1f, 1f, 1f, 0.62f);
+        previewFrame.style.borderBottomColor = new Color(1f, 1f, 1f, 0.62f);
+        previewFrame.style.borderLeftColor = new Color(1f, 1f, 1f, 0.62f);
+        previewFrame.style.alignItems = Align.Center;
+        previewFrame.style.justifyContent = Justify.Center;
+        previewFrame.style.overflow = Overflow.Hidden;
+
+        VisualElement previewImage = new VisualElement();
+        previewImage.style.width = Length.Percent(160f);
+        previewImage.style.height = Length.Percent(210f);
+        previewImage.style.translate = new Translate(GetCharacterSelectionPreviewOffsetX(resourceName), 0f, 0f);
+        previewImage.style.unityBackgroundScaleMode = ScaleMode.ScaleAndCrop;
+        previewImage.style.backgroundPositionX = new BackgroundPosition(BackgroundPositionKeyword.Center);
+        previewImage.style.backgroundPositionY = new BackgroundPosition(BackgroundPositionKeyword.Top);
+        previewImage.style.backgroundRepeat = new BackgroundRepeat(Repeat.NoRepeat, Repeat.NoRepeat);
+        if (isNoneOption)
+        {
+            previewFrame.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            previewFrame.style.borderTopWidth = 0f;
+            previewFrame.style.borderRightWidth = 0f;
+            previewFrame.style.borderBottomWidth = 0f;
+            previewFrame.style.borderLeftWidth = 0f;
+
+            Label noneLabel = CreateLabel("NONE", 78f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+            noneLabel.style.unityFontDefinition = logoFontDefinition;
+            noneLabel.style.whiteSpace = WhiteSpace.Normal;
+            previewFrame.Add(noneLabel);
+        }
+        else
+        {
+            previewFrame.style.justifyContent = Justify.FlexStart;
+            Texture2D previewTexture = Resources.Load<Texture2D>(resourceName);
+            if (previewTexture != null)
+                previewImage.style.backgroundImage = new StyleBackground(previewTexture);
+            previewFrame.Add(previewImage);
+        }
+
+        Label nameLabel = CreateLabel(displayName, 64f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
+        nameLabel.style.unityFontDefinition = logoFontDefinition;
+        nameLabel.style.marginBottom = 10f;
+        nameLabel.style.whiteSpace = WhiteSpace.Normal;
+        if (isNoneOption)
+            nameLabel.style.display = DisplayStyle.None;
+
+        Label statusLabel = CreateLabel("SELECT", 26f, new Color(0.76f, 0.84f, 0.92f, 0.92f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        statusLabel.style.unityFontDefinition = modernUiFontDefinition;
+        statusLabel.style.letterSpacing = 1.8f;
+
+        button.Add(previewFrame);
+        button.Add(nameLabel);
+        button.Add(statusLabel);
+
+        characterSelectionPreviewFrames.Add(previewFrame);
+        characterSelectionNameLabels.Add(nameLabel);
+        characterSelectionStatusLabels.Add(statusLabel);
+        return button;
+    }
+
+    private static float GetCharacterSelectionPreviewOffsetX(string resourceName)
+    {
+        if (string.Equals(resourceName, "Elize_Color_2", StringComparison.OrdinalIgnoreCase))
+            return 84;
+
+        return 0f;
+    }
+
     private StartMenuOption CreateStartMenuModeOption(string title, string body, int modeIndex)
 
     {
@@ -19552,6 +19760,70 @@ public sealed class TabsSongHeaderOverlay
 
         StyleStartMenuSetupButton(startMenuArcadeContinueButton, snapshot.selectedStartMenuArcadeSetupIndex == 2, false, forceAccent: true);
 
+    }
+
+    private void UpdateCharacterSelection(GuitarGameplaySnapshot snapshot)
+    {
+        characterSelectionTitleLabel.text = "SELECT CHARACTER";
+        characterSelectionSubtitleLabel.text = "You can change this later from the library.";
+        bool startupFlow = snapshot.characterSelectionOpenedFromStartup;
+        characterSelectionFooterHintLabel.text = startupFlow
+            ? "Use mouse, arrows or D-pad, and Enter. Esc goes back to setup."
+            : "Use mouse, arrows or D-pad, and Enter. Esc goes back to the library.";
+
+        int focusedIndex = Mathf.Clamp(snapshot.selectedCharacterSelectionIndex, 0, Mathf.Max(0, characterSelectionButtons.Count - 1));
+        int currentIndex = Mathf.Clamp(snapshot.selectedHighwayCharacterIndex, 0, Mathf.Max(0, characterSelectionButtons.Count - 1));
+
+        for (int i = 0; i < characterSelectionButtons.Count; i++)
+        {
+            Button button = characterSelectionButtons[i];
+            if (button == null)
+                continue;
+
+            bool focused = i == focusedIndex;
+            bool current = i == currentIndex;
+            Color borderColor = focused
+                ? LibraryConfirmedSongColor
+                : current
+                    ? new Color(1f, 1f, 1f, 0.94f)
+                    : new Color(1f, 1f, 1f, 0.62f);
+            float borderWidth = focused ? 3f : 2f;
+
+            button.style.scale = focused ? new Scale(new Vector3(1.035f, 1.035f, 1f)) : new Scale(Vector3.one);
+            button.style.borderTopWidth = borderWidth;
+            button.style.borderRightWidth = borderWidth;
+            button.style.borderBottomWidth = borderWidth;
+            button.style.borderLeftWidth = borderWidth;
+            button.style.borderTopColor = borderColor;
+            button.style.borderRightColor = borderColor;
+            button.style.borderBottomColor = borderColor;
+            button.style.borderLeftColor = borderColor;
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+            if (i < characterSelectionPreviewFrames.Count && characterSelectionPreviewFrames[i] != null)
+            {
+                characterSelectionPreviewFrames[i].style.borderTopColor = borderColor;
+                characterSelectionPreviewFrames[i].style.borderRightColor = borderColor;
+                characterSelectionPreviewFrames[i].style.borderBottomColor = borderColor;
+                characterSelectionPreviewFrames[i].style.borderLeftColor = borderColor;
+                characterSelectionPreviewFrames[i].style.opacity = focused ? 1f : 0.94f;
+            }
+
+            if (i < characterSelectionNameLabels.Count && characterSelectionNameLabels[i] != null)
+                characterSelectionNameLabels[i].style.color = focused ? Color.white : new Color(0.94f, 0.97f, 1f, 0.96f);
+
+            if (i < characterSelectionStatusLabels.Count && characterSelectionStatusLabels[i] != null)
+            {
+                characterSelectionStatusLabels[i].text = current
+                    ? "CURRENT DEFAULT"
+                    : startupFlow
+                        ? "SELECT TO CONTINUE"
+                        : "SELECT";
+                characterSelectionStatusLabels[i].style.color = current
+                    ? LibraryConfirmedSongColor
+                    : new Color(0.76f, 0.84f, 0.92f, focused ? 1f : 0.88f);
+            }
+        }
     }
 
     private static void StyleStartMenuModeOption(StartMenuOption option, bool selected)
@@ -22597,6 +22869,18 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+    private static void EnsureOverlayShaderResourcesReferenced()
+
+    {
+
+        Resources.Load<Shader>("Shaders/UIBackdropBlur");
+
+        Resources.Load<Shader>("Shaders/SongEndEdgeShine");
+
+    }
+
+
+
     private static VisualElement CreateFullscreenOverlay()
 
     {
@@ -23169,12 +23453,12 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-    private void UpdateCharacterHealthHearts(int misses, int totalHearts)
+    private void UpdateCharacterHealthHearts(int heartsRemaining, int totalHearts)
 
     {
 
         displayedCharacterHealthHeartCount = Mathf.Clamp(totalHearts, 1, CharacterHealthHeartCount);
-        int activeHearts = Mathf.Clamp(displayedCharacterHealthHeartCount - Mathf.Max(0, misses), 0, displayedCharacterHealthHeartCount);
+        int activeHearts = Mathf.Clamp(heartsRemaining, 0, displayedCharacterHealthHeartCount);
 
         for (int i = 0; i < characterHealthHeartLabels.Count; i++)
 
@@ -24017,7 +24301,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        foreach (Button button in new[] { selectionSongsFolderButton, selectionRefreshButton, selectionBackButton, selectionStartButton })
+        foreach (Button button in new[] { selectionSongsFolderButton, selectionRefreshButton, selectionCharacterButton, selectionBackButton, selectionStartButton })
 
         {
 
@@ -24197,6 +24481,15 @@ public sealed class TabsSongHeaderOverlay
         }
         if (startMenuFooterHintLabel != null)
             startMenuFooterHintLabel.style.fontSize = Mathf.Clamp(startMenuSubtitleSize * 0.90f, 28f, 52f);
+        if (characterSelectionTitleLabel != null)
+            characterSelectionTitleLabel.style.fontSize = startMenuTitleSize;
+        if (characterSelectionSubtitleLabel != null)
+        {
+            characterSelectionSubtitleLabel.style.fontSize = startMenuSubtitleSize;
+            characterSelectionSubtitleLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.86f, 980f, 1500f);
+        }
+        if (characterSelectionFooterHintLabel != null)
+            characterSelectionFooterHintLabel.style.fontSize = Mathf.Clamp(startMenuSubtitleSize * 0.90f, 28f, 52f);
 
         foreach (StartMenuOption option in startMenuModeOptions)
         {
@@ -24213,6 +24506,41 @@ public sealed class TabsSongHeaderOverlay
                 option.titleLabel.style.fontSize = startMenuCardTitleSize;
             if (option.bodyLabel != null)
                 option.bodyLabel.style.fontSize = startMenuCardBodySize;
+        }
+
+        float characterRowHorizontalPadding = Mathf.Clamp(menuLayoutWidth * 0.030f, 18f, 34f);
+        float characterCardWidth = Mathf.Clamp((menuLayoutWidth - (characterRowHorizontalPadding * 6f)) / 3f, 300f, 500f);
+        float characterCardHeight = Mathf.Clamp(menuLayoutHeight * 0.60f, 520f, 720f);
+        float characterPreviewHeight = Mathf.Clamp(characterCardHeight * 0.72f, 380f, 560f);
+        float characterNameSize = Mathf.Clamp(startMenuCardTitleSize * 0.84f, 54f, 86f);
+        float characterStatusSize = Mathf.Clamp(startMenuCardBodySize * 0.82f, 24f, 38f);
+
+        if (characterSelectionOptionsRow != null)
+        {
+            characterSelectionOptionsRow.style.flexWrap = Wrap.NoWrap;
+            characterSelectionOptionsRow.style.paddingLeft = characterRowHorizontalPadding;
+            characterSelectionOptionsRow.style.paddingRight = characterRowHorizontalPadding;
+        }
+
+        for (int i = 0; i < characterSelectionButtons.Count; i++)
+        {
+            Button button = characterSelectionButtons[i];
+            if (button != null)
+            {
+                button.style.width = characterCardWidth;
+                button.style.minHeight = characterCardHeight;
+                button.style.marginLeft = characterRowHorizontalPadding * 0.5f;
+                button.style.marginRight = characterRowHorizontalPadding * 0.5f;
+            }
+
+            if (i < characterSelectionPreviewFrames.Count && characterSelectionPreviewFrames[i] != null)
+                characterSelectionPreviewFrames[i].style.height = characterPreviewHeight;
+
+            if (i < characterSelectionNameLabels.Count && characterSelectionNameLabels[i] != null)
+                characterSelectionNameLabels[i].style.fontSize = characterNameSize;
+
+            if (i < characterSelectionStatusLabels.Count && characterSelectionStatusLabels[i] != null)
+                characterSelectionStatusLabels[i].style.fontSize = characterStatusSize;
         }
 
         foreach (Button button in startMenuArcadeInputButtons)
@@ -24744,6 +25072,8 @@ public sealed class TabsSongHeaderOverlay
 
         selectionRefreshButton.style.minWidth = compactSelection ? 188f * menuLayoutScale : 230f * menuLayoutScale;
 
+        selectionCharacterButton.style.minWidth = compactSelection ? 254f * menuLayoutScale : 308f * menuLayoutScale;
+
         selectionStartButton.style.minWidth = compactSelection ? 244f * menuLayoutScale : 284f * menuLayoutScale;
 
         selectionBackButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
@@ -24751,6 +25081,8 @@ public sealed class TabsSongHeaderOverlay
         selectionSongsFolderButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
 
         selectionRefreshButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
+
+        selectionCharacterButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
 
         selectionStartButton.style.height = compactSelection ? 82f * menuLayoutScale : 94f * menuLayoutScale;
 

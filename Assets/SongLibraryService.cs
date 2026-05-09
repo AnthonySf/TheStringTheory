@@ -450,6 +450,31 @@ public static class SongLibraryService
         clone.XmlPath = !string.IsNullOrWhiteSpace(clone.XmlPath) && File.Exists(clone.XmlPath) ? clone.XmlPath : null;
         clone.Mp3Path = !string.IsNullOrWhiteSpace(clone.Mp3Path) && File.Exists(clone.Mp3Path) ? clone.Mp3Path : null;
         clone.MidiPath = !string.IsNullOrWhiteSpace(clone.MidiPath) && File.Exists(clone.MidiPath) ? clone.MidiPath : null;
+
+        if (resolvedNotationKind == SongNotationSourceKind.Rocksmith &&
+            RocksmithCachedSongLoader.TryLoadManifest(clone.PrimaryNotationPath, out RocksmithCachedSongManifest rocksmithManifest))
+        {
+            if ((string.IsNullOrWhiteSpace(clone.Mp3Path) || !File.Exists(clone.Mp3Path)) &&
+                !string.IsNullOrWhiteSpace(rocksmithManifest.audioPath) &&
+                File.Exists(rocksmithManifest.audioPath))
+            {
+                clone.Mp3Path = rocksmithManifest.audioPath;
+            }
+
+            if ((string.IsNullOrWhiteSpace(clone.ArtworkPath) || !File.Exists(clone.ArtworkPath)) &&
+                !string.IsNullOrWhiteSpace(rocksmithManifest.artworkPath) &&
+                File.Exists(rocksmithManifest.artworkPath))
+            {
+                clone.ArtworkPath = rocksmithManifest.artworkPath;
+            }
+
+            if (string.IsNullOrWhiteSpace(clone.DifficultyDisplayLabel))
+                clone.DifficultyDisplayLabel = BuildRocksmithDifficultySummary(rocksmithManifest);
+
+            if (clone.DurationSeconds <= 0f)
+                clone.DurationSeconds = Mathf.Max(0f, rocksmithManifest.durationSeconds);
+        }
+
         normalized = clone;
         return true;
     }

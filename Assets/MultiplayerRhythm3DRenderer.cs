@@ -103,6 +103,12 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         public int layer;
         public GameObject root;
         public GameObject gameplayRoot;
+        public Texture2D characterTexture;
+        public Vector2 characterTextureScale = Vector2.one;
+        public Vector2 characterTextureOffset = Vector2.zero;
+        public float characterAspect = 0.79f;
+        public int characterSourcePixelWidth = 1;
+        public int characterSourcePixelHeight = 1;
         public Transform characterTransform;
         public Transform characterArtTransform;
         public Renderer characterRenderer;
@@ -186,12 +192,6 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
     private MultiplayerPlayerScene[] playerScenes;
     private float currentVisualNoteSpeed = 12f;
     private TabsSongHeaderOverlay overlay;
-    private Texture2D characterTexture;
-    private Vector2 characterTextureScale = Vector2.one;
-    private Vector2 characterTextureOffset = Vector2.zero;
-    private float characterAspect = 0.79f;
-    private int characterSourcePixelWidth = 1;
-    private int characterSourcePixelHeight = 1;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -213,7 +213,6 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         }
 
         InitializeBackgroundEffect();
-        LoadCharacterTexture();
         BuildPlayerScenes();
     }
 
@@ -291,7 +290,6 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
 
         backgroundRoot = null;
         playerScenes = null;
-        characterTexture = null;
         for (int i = 0; i < CurrentCharacterHudRects.Length; i++)
             CurrentCharacterHudRects[i] = Rect.zero;
     }
@@ -311,7 +309,8 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
     {
         float panelWidth = Mathf.Max(1f, screenWidth * 0.5f);
         float panelStartX = playerIndex == 0 ? 0f : panelWidth;
-        if (!HighwayCharacterVisualUtility.TryLoadTextureData(out HighwayCharacterTextureData data))
+        HighwayCharacterChoice choice = HighwayCharacterVisualUtility.GetFixedMultiplayerChoice(playerIndex);
+        if (!HighwayCharacterVisualUtility.TryLoadTextureData(choice, out HighwayCharacterTextureData data))
             return new Rect(panelStartX + panelWidth * 0.62f, screenHeight * 0.28f, panelWidth * 0.18f, screenHeight * 0.34f);
 
         Rect local = ComputeSymmetricCharacterViewportRect(
@@ -410,35 +409,32 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         backgroundRoot.transform.localScale = Vector3.one * owner.highwayBackgroundScale;
     }
 
-    private void LoadCharacterTexture()
-    {
-        if (!HighwayCharacterVisualUtility.TryLoadTextureData(out HighwayCharacterTextureData data) || data.texture == null)
-            return;
-
-        characterTexture = data.texture;
-        characterTextureScale = data.textureScale;
-        characterTextureOffset = data.textureOffset;
-        characterAspect = data.aspect;
-        characterSourcePixelWidth = data.sourcePixelWidth;
-        characterSourcePixelHeight = data.sourcePixelHeight;
-    }
-
     private void BuildPlayerScenes()
     {
         playerScenes = new[]
         {
-            CreatePlayerScene(0),
-            CreatePlayerScene(1)
+            CreatePlayerScene(0, HighwayCharacterVisualUtility.GetFixedMultiplayerChoice(0)),
+            CreatePlayerScene(1, HighwayCharacterVisualUtility.GetFixedMultiplayerChoice(1))
         };
     }
 
-    private MultiplayerPlayerScene CreatePlayerScene(int playerIndex)
+    private MultiplayerPlayerScene CreatePlayerScene(int playerIndex, HighwayCharacterChoice characterChoice)
     {
         MultiplayerPlayerScene scene = new MultiplayerPlayerScene
         {
             playerIndex = playerIndex,
             layer = 0
         };
+
+        if (HighwayCharacterVisualUtility.TryLoadTextureData(characterChoice, out HighwayCharacterTextureData characterData) && characterData.texture != null)
+        {
+            scene.characterTexture = characterData.texture;
+            scene.characterTextureScale = characterData.textureScale;
+            scene.characterTextureOffset = characterData.textureOffset;
+            scene.characterAspect = characterData.aspect;
+            scene.characterSourcePixelWidth = characterData.sourcePixelWidth;
+            scene.characterSourcePixelHeight = characterData.sourcePixelHeight;
+        }
 
         scene.root = new GameObject(playerIndex == 0 ? "MultiplayerRhythmLeftRoot" : "MultiplayerRhythmRightRoot");
         scene.root.transform.SetParent(root.transform, false);
@@ -562,7 +558,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
 
     private void BuildCharacter(MultiplayerPlayerScene scene, bool mirrored)
     {
-        if (characterTexture == null)
+        if (scene?.characterTexture == null)
             return;
 
         GameObject characterRootObject = new GameObject($"Player{scene.playerIndex + 1}CharacterRoot");
@@ -577,7 +573,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
 
         scene.characterArtTransform = characterObject.transform;
         scene.characterRenderer = characterObject.GetComponent<Renderer>();
-        scene.characterMaterial = GetHighwayCharacterMaterial();
+        scene.characterMaterial = GetHighwayCharacterMaterial(scene);
         scene.characterRenderer.sharedMaterial = scene.characterMaterial;
         scene.characterRenderer.shadowCastingMode = ShadowCastingMode.Off;
         scene.characterRenderer.receiveShadows = false;
@@ -611,9 +607,9 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         Rect localViewportRect = ComputeSymmetricCharacterViewportRect(
             panelWidth,
             panelHeight,
-            characterAspect,
-            characterSourcePixelWidth,
-            characterSourcePixelHeight,
+            scene.characterAspect,
+            scene.characterSourcePixelWidth,
+            scene.characterSourcePixelHeight,
             owner != null ? owner.highwayCharacterScale : 1f,
             mirroredCharacterHorizontal,
             rigOffsetY,
@@ -662,9 +658,9 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         Rect hudLocalViewportRect = ComputeSymmetricCharacterViewportRect(
             panelWidth,
             panelHeight,
-            characterAspect,
-            characterSourcePixelWidth,
-            characterSourcePixelHeight,
+            scene.characterAspect,
+            scene.characterSourcePixelWidth,
+            scene.characterSourcePixelHeight,
             owner != null ? owner.highwayCharacterScale : 1f,
             mirroredCharacterHorizontal + artOutwardShift,
             rigOffsetY + artLocalOffsetY,
@@ -727,7 +723,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
             verticalShift);
     }
 
-    private Material GetHighwayCharacterMaterial()
+    private Material GetHighwayCharacterMaterial(MultiplayerPlayerScene scene)
     {
         Shader shader = Resources.Load<Shader>("Shaders/HighwayCharacterFade");
         if (shader == null)
@@ -743,12 +739,12 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(Color.white, 0f);
         material.color = Color.white;
-        material.mainTexture = characterTexture;
-        material.SetTexture("_MainTex", characterTexture);
-        material.mainTextureScale = characterTextureScale;
-        material.mainTextureOffset = characterTextureOffset;
-        material.SetTextureScale("_MainTex", characterTextureScale);
-        material.SetTextureOffset("_MainTex", characterTextureOffset);
+        material.mainTexture = scene.characterTexture;
+        material.SetTexture("_MainTex", scene.characterTexture);
+        material.mainTextureScale = scene.characterTextureScale;
+        material.mainTextureOffset = scene.characterTextureOffset;
+        material.SetTextureScale("_MainTex", scene.characterTextureScale);
+        material.SetTextureOffset("_MainTex", scene.characterTextureOffset);
         if (material.HasProperty(CharacterFadeStartShaderId))
             material.SetFloat(CharacterFadeStartShaderId, HighwayCharacterBottomFadeStart01);
         if (material.HasProperty(CharacterFadeEndShaderId))

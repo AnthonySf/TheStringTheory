@@ -25,12 +25,43 @@ public static class HighwayCharacterVisualUtility
         "Hero"
     };
 
+    private static readonly string[] CharacterResourceNames =
+    {
+        "Hero",
+        "Elize_Color_2"
+    };
+
+    private static readonly string[] CharacterDisplayNames =
+    {
+        "Skullhead",
+        "Volt"
+    };
+
     private static float currentHudAspect = DefaultHudAspect;
     private static int currentHudSourcePixelWidth = 1;
     private static int currentHudSourcePixelHeight = 1;
     private static float currentHudScale = 1f;
     private static float currentHudOffsetX = 0f;
     private static float currentHudOffsetY = 0f;
+
+    public static int CharacterCount => CharacterResourceNames.Length;
+
+    public static string GetResourceName(HighwayCharacterChoice choice)
+    {
+        int index = Mathf.Clamp((int)choice, 0, CharacterResourceNames.Length - 1);
+        return CharacterResourceNames[index];
+    }
+
+    public static string GetDisplayName(HighwayCharacterChoice choice)
+    {
+        int index = Mathf.Clamp((int)choice, 0, CharacterDisplayNames.Length - 1);
+        return CharacterDisplayNames[index];
+    }
+
+    public static HighwayCharacterChoice GetFixedMultiplayerChoice(int playerIndex)
+    {
+        return playerIndex == 1 ? HighwayCharacterChoice.ElizeColor2 : HighwayCharacterChoice.Hero;
+    }
 
     public static bool TryLoadTextureData(out HighwayCharacterTextureData data)
     {
@@ -52,6 +83,27 @@ public static class HighwayCharacterVisualUtility
                 data = BuildFromTexture(texture);
                 return true;
             }
+        }
+
+        data = default;
+        return false;
+    }
+
+    public static bool TryLoadTextureData(HighwayCharacterChoice choice, out HighwayCharacterTextureData data)
+    {
+        string resourceName = GetResourceName(choice);
+        Sprite sprite = Resources.Load<Sprite>(resourceName);
+        if (sprite != null)
+        {
+            data = BuildFromSprite(sprite);
+            return true;
+        }
+
+        Texture2D texture = Resources.Load<Texture2D>(resourceName);
+        if (texture != null)
+        {
+            data = BuildFromTexture(texture);
+            return true;
         }
 
         data = default;

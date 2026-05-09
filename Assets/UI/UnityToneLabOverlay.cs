@@ -253,9 +253,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             suppressCallbacks = false;
         }
 
-        statusLabel.text = runtime.StatusMessage;
-        routeLabel.text = $"Route  {runtime.OutputRouteLabel}";
-        backendLabel.text = $"Backend  {runtime.ActiveAudioBackendLabel}  \u2022  Host  {runtime.ActiveHostApiLabel}  \u2022  Latency  {runtime.ActiveMonitoringLatencyOption}";
         startButton.SetEnabled(!runtime.IsMonitoring && !runtime.IsAwaitingStartup);
         stopButton.SetEnabled(runtime.IsMonitoring || runtime.IsAwaitingStartup);
         RefreshSidePanelButtonStates();
@@ -311,23 +308,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         titleLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
         titleLabel.style.marginBottom = 8f;
         header.Add(titleLabel);
-
-        statusLabel = CreateLabel("Stopped", "tone-lab-status", uiFontDefinition);
-        statusLabel.style.color = new Color(0.83f, 0.75f, 0.60f, 0.98f);
-        statusLabel.style.fontSize = 13f;
-        statusLabel.style.marginBottom = 4f;
-        header.Add(statusLabel);
-
-        routeLabel = CreateLabel("Route  System Default Output", "tone-lab-route", uiFontDefinition);
-        routeLabel.style.color = new Color(0.81f, 0.82f, 0.84f, 0.98f);
-        routeLabel.style.fontSize = 13f;
-        routeLabel.style.marginBottom = 2f;
-        header.Add(routeLabel);
-
-        backendLabel = CreateLabel("Backend  Idle  \u2022  Host  -  \u2022  Latency  Low (128)", "tone-lab-backend", uiFontDefinition);
-        backendLabel.style.color = new Color(0.66f, 0.69f, 0.73f, 0.98f);
-        backendLabel.style.fontSize = 12f;
-        header.Add(backendLabel);
 
         VisualElement boardToolbar = new VisualElement();
         boardToolbar.style.flexDirection = FlexDirection.Row;
@@ -478,7 +458,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         mainContent.Add(sidePanel);
 
         VisualElement rigPanelHost;
-        rigPanelCard = CreateSideSectionCard(sidePanel, "Rig Setup", "Input, output, latency, and gain for the full rig.", out _, out _, out rigPanelHost);
+        rigPanelCard = CreateSideSectionCard(sidePanel, "Rig Setup", "Gain staging and audio control for the full rig.", out _, out _, out rigPanelHost);
         rigPanelCard.style.flexGrow = 0f;
         rigPanelCard.style.minHeight = 300f;
         rigPanelCard.style.maxHeight = 360f;
@@ -499,8 +479,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         inputDropdown = new DropdownField();
         ApplyDropdownStyle(inputDropdown);
-        inputDropdown.style.minWidth = 410f;
-        inputDropdown.style.width = 410f;
+        inputDropdown.style.minWidth = 286f;
+        inputDropdown.style.width = 286f;
         inputDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -512,8 +492,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         outputDropdown = new DropdownField();
         ApplyDropdownStyle(outputDropdown);
-        outputDropdown.style.minWidth = 410f;
-        outputDropdown.style.width = 410f;
+        outputDropdown.style.minWidth = 286f;
+        outputDropdown.style.width = 286f;
         outputDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -525,8 +505,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         latencyDropdown = new DropdownField();
         ApplyDropdownStyle(latencyDropdown);
-        latencyDropdown.style.minWidth = 220f;
-        latencyDropdown.style.width = 220f;
+        latencyDropdown.style.minWidth = 192f;
+        latencyDropdown.style.width = 192f;
         latencyDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -562,6 +542,18 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         stopButton.style.minWidth = 128f;
         stopButton.style.height = 38f;
         stopButton.style.fontSize = 14f;
+
+        VisualElement routingRow = new VisualElement();
+        routingRow.style.flexDirection = FlexDirection.Row;
+        routingRow.style.alignItems = Align.FlexEnd;
+        routingRow.style.justifyContent = Justify.FlexStart;
+        routingRow.style.flexWrap = Wrap.NoWrap;
+        routingRow.style.marginBottom = 6f;
+        routingRow.style.width = Length.Auto();
+        routingRow.Add(CreateToolbarField("Input", inputDropdown, 286f));
+        routingRow.Add(CreateToolbarField("Output", outputDropdown, 286f));
+        routingRow.Add(CreateToolbarField("Latency", latencyDropdown, 192f));
+        header.Add(routingRow);
         
         rigSettingsScroll = new ScrollView(ScrollViewMode.Vertical);
         rigSettingsScroll.style.flexGrow = 1f;
@@ -573,10 +565,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         VisualElement rigSettingsHost = rigSettingsScroll.contentContainer;
         rigSettingsHost.style.flexDirection = FlexDirection.Column;
         rigSettingsHost.style.paddingRight = 4f;
-
-        rigSettingsHost.Add(CreateToolbarField("Input Device", inputDropdown, 420f));
-        rigSettingsHost.Add(CreateToolbarField("Output Device", outputDropdown, 420f));
-        rigSettingsHost.Add(CreateToolbarField("Monitoring Latency", latencyDropdown, 420f));
 
         VisualElement transportRow = new VisualElement();
         transportRow.style.flexDirection = FlexDirection.Row;

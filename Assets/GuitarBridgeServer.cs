@@ -764,6 +764,7 @@ public class GuitarBridgeServer : MonoBehaviour
     [Serializable]
     private class GlobalRuntimeSettingsMetadata
     {
+        public string selectedHighwayCharacterId;
         public List<RuntimeSettingValueEntry> values = new List<RuntimeSettingValueEntry>();
     }
 
@@ -823,6 +824,12 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool mainMenuFlowActive;
     private int selectedMainMenuIndex;
     private bool showStartMenu;
+    private bool showCharacterSelection;
+    private bool characterSelectionOpenedFromStartup;
+    private SongLibraryType characterSelectionStartupTargetLibraryType = SongLibraryType.Guitar;
+    private StartMenuStep characterSelectionStartupReturnStep = StartMenuStep.SelectMode;
+    private HighwayCharacterChoice selectedHighwayCharacter = HighwayCharacterChoice.Hero;
+    private int selectedCharacterSelectionIndex;
     private bool showMultiplayerRhythmSetup;
     private int selectedMultiplayerRhythmSetupIndex;
     private int selectedMultiplayerRhythmPlayerOneDeviceIndex;
@@ -858,6 +865,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private SongLibraryBrowseMode songLibraryBrowseMode = SongLibraryBrowseMode.All;
     private string songLibraryBrowseScopeKey = string.Empty;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> pendingTrackSelectionParts = new List<MusicXmlLoader.MusicXmlPartSummary>();
+
+    public HighwayCharacterChoice SelectedHighwayCharacterChoice => selectedHighwayCharacter;
     private readonly List<RocksmithTrackSelectionGroup> pendingRocksmithTrackSelectionGroups = new List<RocksmithTrackSelectionGroup>();
     private int selectedRocksmithDifficultyIndex;
     private int selectedGameplayRocksmithDifficultyIndex;
@@ -1578,6 +1587,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (showToneLab)
         {
             HandleToneLabControls();
+            return;
+        }
+
+        if (showCharacterSelection)
+        {
+            HandleCharacterSelectionControls();
             return;
         }
 
@@ -5866,21 +5881,19 @@ public class GuitarBridgeServer : MonoBehaviour
         if (noteStates == null || noteStates.Count == 0)
             return 0;
 
-        HashSet<int> missedChordIds = new HashSet<int>();
-        int missedSingles = 0;
+        HashSet<int> missedEventKeys = new HashSet<int>();
         for (int i = 0; i < noteStates.Count; i++)
         {
             GameplayNoteState noteState = noteStates[i];
             if (noteState == null || !noteState.IsMissed)
                 continue;
+            if (ShouldIgnoreGuitarNoteForActiveLoop(noteState.data))
+                continue;
 
-            if (noteState.data.chordId >= 0)
-                missedChordIds.Add(noteState.data.chordId);
-            else
-                missedSingles++;
+            missedEventKeys.Add(GetGuitarScoreEventKey(noteState.data, i));
         }
 
-        return missedSingles + missedChordIds.Count;
+        return missedEventKeys.Count;
     }
 
     private int GetArcadeHeroModeLostHeartCount()
@@ -5949,6 +5962,13 @@ public class GuitarBridgeServer : MonoBehaviour
 
         EnterSongEndState(asGameOver: true);
         return true;
+    }
+
+    private bool ShouldIgnoreGuitarNoteForActiveLoop(NoteData note)
+    {
+        return loopEnabled &&
+               HasConfiguredLoopWindow() &&
+               note.time < loopStartTime - 0.0001f;
     }
 
     private void RestartCurrentSongForModeChange()
@@ -6749,6 +6769,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         return showMainMenu ||
                showStartMenu ||
+               showCharacterSelection ||
                showSongSelection ||
                showTrackSelection ||
                showSongSettings ||
@@ -7207,6 +7228,7 @@ public class GuitarBridgeServer : MonoBehaviour
             SaveGlobalRuntimeSettingsMetadata();
         }
         showStartMenu = true;
+        showCharacterSelection = false;
         showMainMenu = false;
         mainMenuFlowActive = true;
         showSongSettings = false;
@@ -7232,12 +7254,58 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         CancelDeferredSongSelectionOpen();
         showStartMenu = false;
+        showCharacterSelection = false;
         showMainMenu = true;
         mainMenuFlowActive = true;
         startMenuStep = StartMenuStep.SelectMode;
         selectedStartMenuArcadeSetupIndex = 0;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void OpenCharacterSelectionFromUi()
+    {
+        if (!showSongSelection)
+            return;
+
+        showCharacterSelection = true;
+        characterSelectionOpenedFromStartup = false;
+        selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseCharacterSelectionFromUi()
+    {
+        if (!showCharacterSelection)
+            return;
+
+        showCharacterSelection = false;
+        selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
+        if (characterSelectionOpenedFromStartup)
+        {
+            characterSelectionOpenedFromStartup = false;
+            showStartMenu = true;
+            startMenuStep = characterSelectionStartupReturnStep;
+            selectedStartMenuArcadeSetupIndex = 0;
+        }
+    }
+
+    public void HoverCharacterSelectionOptionFromUi(int optionIndex)
+    {
+        if (!showCharacterSelection)
+            return;
+
+        selectedCharacterSelectionIndex = Mathf.Clamp(optionIndex, 0, GetCharacterSelectionOptionCount() - 1);
+    }
+
+    public void SelectCharacterSelectionOptionFromUi(int optionIndex)
+    {
+        if (!showCharacterSelection)
+            return;
+
+        selectedCharacterSelectionIndex = Mathf.Clamp(optionIndex, 0, GetCharacterSelectionOptionCount() - 1);
+        ApplyCharacterSelectionOption(selectedCharacterSelectionIndex);
     }
 
     public void HoverStartMenuModeFromUi(int modeIndex)
@@ -7263,7 +7331,7 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         selectedStartMenuArcadeSetupIndex = 1;
-        CompleteFirstStartAndOpenLibrary(SongLibraryType.Guitar);
+        OpenCharacterSelectionForStartup(SongLibraryType.Guitar, StartMenuStep.GuitarSetup);
     }
 
     public void HoverStartMenuGuitarSetupRowFromUi(int rowIndex)
@@ -7327,7 +7395,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         selectedStartMenuArcadeSetupIndex = 2;
         ApplyStartMenuArcadeSetup();
-        CompleteFirstStartAndOpenLibrary(SongLibraryType.Arcade);
+        OpenCharacterSelectionForStartup(SongLibraryType.Arcade, StartMenuStep.ArcadeSetup);
     }
 
     public void OpenMultiplayerRhythmSetupFromUi()
@@ -7534,7 +7602,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 break;
             default:
                 ApplyStartMenuArcadeSetup();
-                CompleteFirstStartAndOpenLibrary(SongLibraryType.Arcade);
+                OpenCharacterSelectionForStartup(SongLibraryType.Arcade, StartMenuStep.ArcadeSetup);
                 break;
         }
     }
@@ -7584,6 +7652,114 @@ public class GuitarBridgeServer : MonoBehaviour
         SaveGlobalRuntimeSettingsMetadata();
     }
 
+    private void OpenCharacterSelectionForStartup(SongLibraryType type, StartMenuStep returnStep)
+    {
+        showStartMenu = false;
+        showCharacterSelection = true;
+        characterSelectionOpenedFromStartup = true;
+        characterSelectionStartupTargetLibraryType = type;
+        characterSelectionStartupReturnStep = returnStep;
+        selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    private void ApplySelectedHighwayCharacter(HighwayCharacterChoice choice)
+    {
+        selectedHighwayCharacter = choice;
+        selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
+        SaveGlobalRuntimeSettingsMetadata();
+
+        bool startedFromStartup = characterSelectionOpenedFromStartup;
+        SongLibraryType startupType = characterSelectionStartupTargetLibraryType;
+        showCharacterSelection = false;
+        characterSelectionOpenedFromStartup = false;
+
+        if (startedFromStartup)
+        {
+            CompleteFirstStartAndOpenLibrary(startupType);
+            return;
+        }
+
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    private void ApplyCharacterSelectionOption(int optionIndex)
+    {
+        if (optionIndex <= 0)
+        {
+            highwayCharacterDisplayMode = HighwayCharacterDisplayMode.Never;
+            selectedCharacterSelectionIndex = 0;
+            SaveGlobalRuntimeSettingsMetadata();
+
+            bool startedFromStartup = characterSelectionOpenedFromStartup;
+            SongLibraryType startupType = characterSelectionStartupTargetLibraryType;
+            showCharacterSelection = false;
+            characterSelectionOpenedFromStartup = false;
+
+            if (startedFromStartup)
+            {
+                CompleteFirstStartAndOpenLibrary(startupType);
+                return;
+            }
+
+            SyncAudioToSongTimer(playImmediately: false);
+            return;
+        }
+
+        if (highwayCharacterDisplayMode == HighwayCharacterDisplayMode.Never)
+            highwayCharacterDisplayMode = HighwayCharacterDisplayMode.Always;
+
+        ApplySelectedHighwayCharacter((HighwayCharacterChoice)Mathf.Clamp(optionIndex - 1, 0, HighwayCharacterVisualUtility.CharacterCount - 1));
+    }
+
+    private int GetCharacterSelectionOptionCount()
+    {
+        return HighwayCharacterVisualUtility.CharacterCount + 1;
+    }
+
+    private int GetCurrentCharacterSelectionIndex()
+    {
+        if (highwayCharacterDisplayMode == HighwayCharacterDisplayMode.Never)
+            return 0;
+
+        return 1 + Mathf.Clamp((int)selectedHighwayCharacter, 0, HighwayCharacterVisualUtility.CharacterCount - 1);
+    }
+
+    private void MoveCharacterSelection(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        selectedCharacterSelectionIndex = WrapIndex(selectedCharacterSelectionIndex + delta, GetCharacterSelectionOptionCount());
+    }
+
+    private void HandleCharacterSelectionControls()
+    {
+        if (IsUiBackPressed())
+        {
+            CloseCharacterSelectionFromUi();
+            return;
+        }
+
+        if (IsUiLeftPressed() || IsUiUpPressed())
+        {
+            MoveCharacterSelection(-1);
+            return;
+        }
+
+        if (IsUiRightPressed() || IsUiDownPressed())
+        {
+            MoveCharacterSelection(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed())
+        {
+            ApplyCharacterSelectionOption(Mathf.Clamp(selectedCharacterSelectionIndex, 0, GetCharacterSelectionOptionCount() - 1));
+        }
+    }
+
     private void CompleteFirstStartAndOpenLibrary(SongLibraryType type)
     {
         firstStartCompleted = true;
@@ -7592,6 +7768,7 @@ public class GuitarBridgeServer : MonoBehaviour
         startMenuStep = StartMenuStep.SelectMode;
         selectedStartMenuArcadeSetupIndex = 0;
         showStartMenu = false;
+        showCharacterSelection = false;
         showMainMenu = false;
         mainMenuFlowActive = true;
         pendingMultiplayerRhythmSongSelection = false;
@@ -8379,6 +8556,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showHeroModeSettings = false;
         showMultiplayerRhythmSetup = false;
         showStartMenu = false;
+        showCharacterSelection = false;
         showNotesDetectorTestMenu = false;
         showNotesDetectorRoutinePopup = false;
         loopSettingsOpenedFromGameModes = false;
@@ -8396,6 +8574,7 @@ public class GuitarBridgeServer : MonoBehaviour
         pendingArcadeArrangementSummaries.Clear();
         showStartupTuningReminder = false;
         resumeGameplayAfterStartupTuningReminder = false;
+        characterSelectionOpenedFromStartup = false;
     }
 
     private void ShowStartupTuningReminder(bool resumePlaybackAfterDismiss)
@@ -10175,6 +10354,7 @@ private void OpenOrFocusToneLab()
         Dictionary<int, float> eventTimes = new Dictionary<int, float>();
         Dictionary<int, bool> eventHasPending = new Dictionary<int, bool>();
         Dictionary<int, bool> eventHasMiss = new Dictionary<int, bool>();
+        Dictionary<int, bool> eventHasHit = new Dictionary<int, bool>();
 
         for (int i = 0; i < noteStates.Count; i++)
         {
@@ -10194,12 +10374,9 @@ private void OpenOrFocusToneLab()
             }
 
             if (noteState.IsHit)
-                sessionScoreHits++;
+                eventHasHit[eventKey] = true;
             else if (noteState.IsMissed)
-            {
-                sessionScoreMisses++;
                 eventHasMiss[eventKey] = true;
-            }
         }
 
         int comboCount = 0;
@@ -10218,16 +10395,20 @@ private void OpenOrFocusToneLab()
             sessionScoredNoteIds.Add(eventKey);
             if (eventHasMiss.ContainsKey(eventKey))
             {
+                sessionScoreMisses++;
                 comboCount = 0;
                 continue;
             }
+
+            if (eventHasHit.ContainsKey(eventKey))
+                sessionScoreHits++;
 
             int noteCount = eventNoteCounts.TryGetValue(eventKey, out int countedNotes) ? Mathf.Max(1, countedNotes) : 1;
             currentSessionScoreValue += noteCount * 50 * GetGuitarScoreMultiplier(comboCount);
             comboCount++;
         }
 
-        int total = noteStates.Count;
+        int total = eventTimes.Count;
         currentSessionScorePercent = total > 0
             ? Mathf.Clamp(100f * sessionScoreHits / total, 0f, 100f)
             : 0f;
@@ -11215,6 +11396,15 @@ private void OpenOrFocusToneLab()
         for (int i = 0; i < noteStates.Count; i++)
         {
             GameplayNoteState noteState = noteStates[i];
+
+            if (noteState == null)
+                continue;
+
+            if (ShouldIgnoreGuitarNoteForActiveLoop(noteState.data))
+            {
+                noteState.isJudgeable = false;
+                continue;
+            }
 
             if (noteState.IsResolved)
             {
@@ -14748,6 +14938,10 @@ private void ParseDetectorPacket(string detectorPacket)
             mainMenuFlowActive = mainMenuFlowActive,
             selectedMainMenuIndex = selectedMainMenuIndex,
             showStartMenu = showStartMenu,
+            showCharacterSelection = showCharacterSelection,
+            characterSelectionOpenedFromStartup = characterSelectionOpenedFromStartup,
+            selectedCharacterSelectionIndex = selectedCharacterSelectionIndex,
+            selectedHighwayCharacterIndex = GetCurrentCharacterSelectionIndex(),
             showLibraryLoadingOverlay = showLibraryLoadingOverlay,
             selectedStartMenuStepIndex = (int)startMenuStep,
             selectedStartMenuModeIndex = selectedStartMenuModeIndex,
@@ -15854,6 +16048,18 @@ private void ParseDetectorPacket(string detectorPacket)
         currentSongFileName = ResolveSongMetadataFileName(currentSongEntry);
         bool isRocksmithGuitarSong = currentSongEntry.LibraryType == SongLibraryType.Guitar &&
                                      currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Rocksmith;
+
+        if (isRocksmithGuitarSong &&
+            (string.IsNullOrWhiteSpace(songPath) || !File.Exists(songPath)) &&
+            !string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) &&
+            RocksmithCachedSongLoader.TryLoadManifest(currentSongEntry.PrimaryNotationPath, out RocksmithCachedSongManifest repairedManifest) &&
+            !string.IsNullOrWhiteSpace(repairedManifest.audioPath) &&
+            File.Exists(repairedManifest.audioPath))
+        {
+            songPath = repairedManifest.audioPath;
+            currentSongEntry.Mp3Path = songPath;
+        }
+
         bool rocksmithHasBackingTrack = isRocksmithGuitarSong &&
                                         !string.IsNullOrWhiteSpace(songPath) &&
                                         File.Exists(songPath);
@@ -18050,6 +18256,28 @@ private void ParseDetectorPacket(string detectorPacket)
         }
     }
 
+    private static string SerializeHighwayCharacterChoice(HighwayCharacterChoice choice)
+    {
+        return HighwayCharacterVisualUtility.GetResourceName(choice);
+    }
+
+    private static HighwayCharacterChoice ParseHighwayCharacterChoice(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return HighwayCharacterChoice.Hero;
+
+        if (string.Equals(value, "Elize_Color_2", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "Elize", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "Volt", StringComparison.OrdinalIgnoreCase))
+            return HighwayCharacterChoice.ElizeColor2;
+
+        if (string.Equals(value, "Hero", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "Skullhead", StringComparison.OrdinalIgnoreCase))
+            return HighwayCharacterChoice.Hero;
+
+        return HighwayCharacterChoice.Hero;
+    }
+
     private static HighwayCharacterPortalColorPreset ParseHighwayCharacterPortalColorPreset(string value)
     {
         if (string.Equals(value, "Black", StringComparison.OrdinalIgnoreCase))
@@ -18501,6 +18729,8 @@ private void ParseDetectorPacket(string detectorPacket)
     private void LoadGlobalRuntimeSettingsMetadata()
     {
         pendingGlobalRuntimeSettingValues.Clear();
+        selectedHighwayCharacter = HighwayCharacterChoice.Hero;
+        selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
         string path = Path.Combine(ExternalContentPaths.PersistentRoot, GlobalRuntimeSettingsFileName);
 
         try
@@ -18515,6 +18745,8 @@ private void ParseDetectorPacket(string detectorPacket)
 
             string json = File.ReadAllText(path);
             GlobalRuntimeSettingsMetadata metadata = JsonUtility.FromJson<GlobalRuntimeSettingsMetadata>(json);
+            selectedHighwayCharacter = ParseHighwayCharacterChoice(metadata?.selectedHighwayCharacterId);
+            selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
             if (metadata?.values == null)
                 return;
 
@@ -18551,6 +18783,8 @@ private void ParseDetectorPacket(string detectorPacket)
                 appliedMissingDefaults = true;
             }
 
+            selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
+
             if (appliedMissingDefaults || normalizedLegacyBindings)
                 SaveGlobalRuntimeSettingsMetadata();
         }
@@ -18569,6 +18803,7 @@ private void ParseDetectorPacket(string detectorPacket)
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             GlobalRuntimeSettingsMetadata metadata = new GlobalRuntimeSettingsMetadata
             {
+                selectedHighwayCharacterId = SerializeHighwayCharacterChoice(selectedHighwayCharacter),
                 values = runtimeSettingDefinitions.Select(def => new RuntimeSettingValueEntry
                 {
                     id = def.Id,
