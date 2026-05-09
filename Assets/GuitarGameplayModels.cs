@@ -27,6 +27,12 @@ public enum HighwayCharacterDisplayMode
     HeroModeOnly
 }
 
+public enum HighwayCharacterChoice
+{
+    Hero = 0,
+    ElizeColor2 = 1
+}
+
 public enum GameplayNoteResult
 {
     Pending,
@@ -442,6 +448,10 @@ public sealed class GuitarGameplaySnapshot
     public bool mainMenuFlowActive;
     public int selectedMainMenuIndex;
     public bool showStartMenu;
+    public bool showCharacterSelection;
+    public bool characterSelectionOpenedFromStartup;
+    public int selectedCharacterSelectionIndex;
+    public int selectedHighwayCharacterIndex;
     public bool showLibraryLoadingOverlay;
     public int selectedStartMenuStepIndex;
     public int selectedStartMenuModeIndex;

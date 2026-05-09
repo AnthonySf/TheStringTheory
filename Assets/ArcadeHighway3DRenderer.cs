@@ -145,6 +145,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     private float highwayCharacterManualLocalYOffset;
     private Vector2 highwayCharacterTextureScale = Vector2.one;
     private Vector2 highwayCharacterTextureOffset = Vector2.zero;
+    private HighwayCharacterChoice loadedHighwayCharacterChoice = HighwayCharacterChoice.Hero;
     private ITabsBackgroundEffect backgroundEffect;
     private TabsSongHeaderOverlay songHeaderOverlay;
     private CameraClearFlags originalMainCameraClearFlags;
@@ -382,17 +383,8 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         if (characterRoot == null)
             return;
 
-        if (!HighwayCharacterVisualUtility.TryLoadTextureData(out HighwayCharacterTextureData characterData) ||
-            characterData.texture == null)
+        if (!TryLoadCurrentHighwayCharacterTexture())
             return;
-
-        highwayCharacterTexture = characterData.texture;
-        highwayCharacterAspect = characterData.aspect;
-        highwayCharacterSourcePixelWidth = characterData.sourcePixelWidth;
-        highwayCharacterSourcePixelHeight = characterData.sourcePixelHeight;
-        highwayCharacterTextureScale = characterData.textureScale;
-        highwayCharacterTextureOffset = characterData.textureOffset;
-        SyncHighwayCharacterHudLayoutState();
 
         GameObject characterObject = GameObject.CreatePrimitive(PrimitiveType.Quad);
         characterObject.name = "ArcadeHighwayCharacter";
@@ -422,6 +414,8 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     {
         if (characterRoot == null)
             return;
+
+        EnsureHighwayCharacterTextureCurrent();
 
         bool shouldShow = !suppressGameplay &&
                           snapshot != null &&
@@ -491,6 +485,49 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             owner != null ? owner.highwayCharacterScale : 1f,
             owner != null ? owner.highwayCharacterOffsetX : 0f,
             (owner != null ? owner.highwayCharacterRigOffsetY : 0f) + (owner != null ? owner.highwayCharacterOffsetY : 0f));
+    }
+
+    private void EnsureHighwayCharacterTextureCurrent()
+    {
+        HighwayCharacterChoice targetChoice = owner != null ? owner.SelectedHighwayCharacterChoice : HighwayCharacterChoice.Hero;
+        if (targetChoice == loadedHighwayCharacterChoice && highwayCharacterTexture != null)
+            return;
+
+        TryLoadCurrentHighwayCharacterTexture();
+    }
+
+    private bool TryLoadCurrentHighwayCharacterTexture()
+    {
+        HighwayCharacterChoice targetChoice = owner != null ? owner.SelectedHighwayCharacterChoice : HighwayCharacterChoice.Hero;
+        if (!HighwayCharacterVisualUtility.TryLoadTextureData(targetChoice, out HighwayCharacterTextureData characterData) ||
+            characterData.texture == null)
+            return false;
+
+        loadedHighwayCharacterChoice = targetChoice;
+        highwayCharacterTexture = characterData.texture;
+        highwayCharacterAspect = characterData.aspect;
+        highwayCharacterSourcePixelWidth = characterData.sourcePixelWidth;
+        highwayCharacterSourcePixelHeight = characterData.sourcePixelHeight;
+        highwayCharacterTextureScale = characterData.textureScale;
+        highwayCharacterTextureOffset = characterData.textureOffset;
+        SyncHighwayCharacterHudLayoutState();
+        ApplyHighwayCharacterTextureToMaterial(sharedHighwayCharacterMaterial);
+        if (highwayCharacterRenderer != null && sharedHighwayCharacterMaterial != null)
+            highwayCharacterRenderer.sharedMaterial = sharedHighwayCharacterMaterial;
+        return true;
+    }
+
+    private void ApplyHighwayCharacterTextureToMaterial(Material material)
+    {
+        if (material == null || highwayCharacterTexture == null)
+            return;
+
+        material.mainTexture = highwayCharacterTexture;
+        material.SetTexture("_MainTex", highwayCharacterTexture);
+        material.mainTextureScale = highwayCharacterTextureScale;
+        material.mainTextureOffset = highwayCharacterTextureOffset;
+        material.SetTextureScale("_MainTex", highwayCharacterTextureScale);
+        material.SetTextureOffset("_MainTex", highwayCharacterTextureOffset);
     }
 
     private void ApplyHighwayCharacterVerticalCompensation()
@@ -839,12 +876,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(Color.white, 0f);
         sharedHighwayCharacterMaterial.color = Color.white;
-        sharedHighwayCharacterMaterial.mainTexture = highwayCharacterTexture;
-        sharedHighwayCharacterMaterial.SetTexture("_MainTex", highwayCharacterTexture);
-        sharedHighwayCharacterMaterial.mainTextureScale = highwayCharacterTextureScale;
-        sharedHighwayCharacterMaterial.mainTextureOffset = highwayCharacterTextureOffset;
-        sharedHighwayCharacterMaterial.SetTextureScale("_MainTex", highwayCharacterTextureScale);
-        sharedHighwayCharacterMaterial.SetTextureOffset("_MainTex", highwayCharacterTextureOffset);
+        ApplyHighwayCharacterTextureToMaterial(sharedHighwayCharacterMaterial);
         if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeStartShaderId))
             sharedHighwayCharacterMaterial.SetFloat(CharacterFadeStartShaderId, HighwayCharacterBottomFadeStart01);
         if (sharedHighwayCharacterMaterial.HasProperty(CharacterFadeEndShaderId))
