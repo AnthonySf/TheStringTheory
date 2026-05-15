@@ -2,6 +2,8 @@
 
 This repo is the public source tree. A fresh clone is missing a few local-only pieces. The steps below are the shortest path to get the project opening, compiling, and building on Windows.
 
+This project currently targets **Unity 6 / 6000.2.9f1**. Opening it in a different Unity version may trigger upgrade prompts or version mismatch issues, so use that exact editor version unless you are intentionally updating the project.
+
 ## 1. Install the base tools
 
 Install these first:
