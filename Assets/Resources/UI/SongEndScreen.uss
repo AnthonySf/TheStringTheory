@@ -1,0 +1,365 @@
+.song-end-card {
+    position: relative;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    background-color: rgba(4, 6, 10, 0);
+}
+
+.song-end-main-frame {
+    position: absolute;
+    left: 17%;
+    top: 50%;
+    width: 66%;
+    height: 64%;
+    translate: 0 -50%;
+    overflow: visible;
+}
+
+.song-end-shadow-plate {
+    position: absolute;
+    left: -18px;
+    right: -18px;
+    top: 16px;
+    bottom: -18px;
+    background-color: rgba(0, 0, 0, 0.24);
+    border-top-left-radius: 34px;
+    border-top-right-radius: 34px;
+    border-bottom-left-radius: 34px;
+    border-bottom-right-radius: 34px;
+}
+
+.song-end-back-plate {
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: 8px;
+    bottom: -8px;
+    background-color: rgba(8, 12, 19, 0.62);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(68, 86, 112, 0.32);
+    border-right-color: rgba(24, 31, 44, 0.58);
+    border-bottom-color: rgba(10, 14, 20, 0.72);
+    border-left-color: rgba(24, 31, 44, 0.58);
+    border-top-left-radius: 30px;
+    border-top-right-radius: 30px;
+    border-bottom-left-radius: 30px;
+    border-bottom-right-radius: 30px;
+}
+
+.song-end-main-plate {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(7, 11, 18, 0.94);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(88, 108, 136, 0.84);
+    border-right-color: rgba(42, 54, 74, 0.88);
+    border-bottom-color: rgba(24, 31, 44, 0.96);
+    border-left-color: rgba(42, 54, 74, 0.88);
+    border-top-left-radius: 28px;
+    border-top-right-radius: 28px;
+    border-bottom-left-radius: 28px;
+    border-bottom-right-radius: 28px;
+    overflow: hidden;
+}
+
+.song-end-inner-frame {
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    top: 18px;
+    bottom: 18px;
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-color: rgba(96, 117, 146, 0.24);
+    border-right-color: rgba(54, 66, 88, 0.30);
+    border-bottom-color: rgba(23, 31, 44, 0.42);
+    border-left-color: rgba(54, 66, 88, 0.30);
+    border-top-left-radius: 20px;
+    border-top-right-radius: 20px;
+    border-bottom-left-radius: 20px;
+    border-bottom-right-radius: 20px;
+}
+
+.song-end-panel-grid {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+}
+
+.song-end-accent-plate {
+    position: absolute;
+    left: 26px;
+    right: 26px;
+    top: 18px;
+    height: 18px;
+    background-color: rgba(249, 177, 121, 0.12);
+    border-top-left-radius: 14px;
+    border-top-right-radius: 14px;
+    border-bottom-left-radius: 14px;
+    border-bottom-right-radius: 14px;
+    opacity: 0.22;
+}
+
+.song-end-content {
+    position: absolute;
+    left: 7.5%;
+    right: 7.5%;
+    top: 9%;
+    bottom: 9%;
+    flex-direction: column;
+}
+
+.song-end-header-row {
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.song-end-title-column {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    background-color: rgba(0, 0, 0, 0);
+    border-top-width: 0;
+    border-right-width: 0;
+    border-bottom-width: 0;
+    border-left-width: 0;
+}
+
+.song-end-score-column {
+    width: 33%;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-start;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    background-color: rgba(0, 0, 0, 0);
+    border-top-width: 0;
+    border-right-width: 0;
+    border-bottom-width: 0;
+    border-left-width: 0;
+}
+
+.song-end-eyebrow {
+    margin-bottom: 12px;
+    color: rgba(122, 197, 215, 0.96);
+    font-size: 24px;
+    -unity-font-style: bold;
+}
+
+.song-end-title {
+    white-space: normal;
+    unity-text-align: middle-center;
+    margin-bottom: 10px;
+    color: rgba(246, 249, 255, 1);
+    font-size: 74px;
+    -unity-font-style: bold;
+}
+
+.song-end-song {
+    white-space: normal;
+    unity-text-align: middle-center;
+    margin-bottom: 10px;
+    color: rgba(232, 238, 247, 0.98);
+    font-size: 50px;
+    -unity-font-style: bold;
+}
+
+.song-end-meta {
+    unity-text-align: middle-center;
+    color: rgba(162, 177, 197, 0.94);
+    font-size: 28px;
+    -unity-font-style: bold;
+}
+
+.song-end-score-eyebrow {
+    margin-bottom: 8px;
+    unity-text-align: middle-right;
+    color: rgba(133, 149, 170, 0.94);
+    font-size: 22px;
+    -unity-font-style: bold;
+}
+
+.song-end-best {
+    unity-text-align: middle-right;
+    margin-bottom: 4px;
+    color: rgba(247, 250, 255, 1);
+    font-size: 58px;
+    -unity-font-style: bold;
+}
+
+.song-end-speed {
+    unity-text-align: middle-center;
+    color: rgba(249, 177, 121, 1);
+    font-size: 30px;
+    -unity-font-style: bold;
+}
+
+.song-end-delta {
+    unity-text-align: middle-right;
+    color: rgba(249, 177, 121, 1);
+    font-size: 26px;
+    -unity-font-style: bold;
+}
+
+.song-end-stats-strip {
+    width: 78%;
+    align-self: center;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 34px;
+}
+
+.song-end-middle-band {
+    position: relative;
+    width: 100%;
+    flex-grow: 1;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 26px;
+}
+
+.song-end-grade-glow {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 66%;
+    height: 96%;
+    translate: -50% -50%;
+    opacity: 0;
+}
+
+.song-end-grade-block {
+    width: 100%;
+    min-height: 0;
+    padding-left: 0;
+    padding-right: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0);
+    border-top-width: 0;
+    border-right-width: 0;
+    border-bottom-width: 0;
+    border-left-width: 0;
+}
+
+.song-end-grade-caption {
+    margin-bottom: 12px;
+    unity-text-align: middle-center;
+    color: rgba(148, 163, 181, 0.94);
+    font-size: 22px;
+    -unity-font-style: bold;
+}
+
+.song-end-rating {
+    unity-text-align: middle-center;
+    margin-bottom: -6px;
+    color: rgba(249, 177, 121, 1);
+    font-size: 60px;
+    -unity-font-style: bold;
+}
+
+.song-end-score {
+    unity-text-align: middle-center;
+    margin-bottom: 12px;
+    color: rgba(249, 177, 121, 1);
+    font-size: 148px;
+    -unity-font-style: bold;
+}
+
+.song-end-rule {
+    width: 240px;
+    height: 2px;
+    margin-bottom: 16px;
+    background-color: rgba(249, 177, 121, 0.28);
+}
+
+.song-end-note {
+    width: 700px;
+    unity-text-align: middle-center;
+    color: rgba(145, 160, 180, 0.94);
+    font-size: 26px;
+}
+
+.song-end-footer-row {
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    border-top-width: 0;
+    padding-top: 4px;
+}
+
+.song-end-buttons {
+    width: auto;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+}
+
+.song-end-action-primary,
+.song-end-action-secondary {
+    min-width: 300px;
+    height: 88px;
+    padding-left: 30px;
+    padding-right: 30px;
+    color: rgba(234, 239, 246, 0.96);
+    background-color: rgba(14, 20, 31, 0.78);
+    border-top-width: 1px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-left-width: 1px;
+    border-top-left-radius: 18px;
+    border-top-right-radius: 18px;
+    border-bottom-left-radius: 18px;
+    border-bottom-right-radius: 18px;
+    font-size: 30px;
+    -unity-font-style: bold;
+}
+
+.song-end-action-primary {
+    margin-right: 12px;
+    color: rgba(255, 248, 240, 1);
+    background-color: rgba(243, 160, 103, 0.94);
+    border-top-color: rgba(255, 211, 177, 0.96);
+    border-right-color: rgba(255, 211, 177, 0.96);
+    border-bottom-color: rgba(196, 113, 66, 0.96);
+    border-left-color: rgba(255, 211, 177, 0.96);
+}
+
+.song-end-action-secondary {
+    margin-left: 12px;
+    color: rgba(194, 208, 225, 0.96);
+    background-color: rgba(0, 0, 0, 0);
+    border-top-color: rgba(0, 0, 0, 0);
+    border-right-color: rgba(0, 0, 0, 0);
+    border-bottom-color: rgba(0, 0, 0, 0);
+    border-left-color: rgba(0, 0, 0, 0);
+}

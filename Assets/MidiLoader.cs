@@ -139,7 +139,7 @@ public class MidiLoader : MonoBehaviour
         for (int i = 0; i < Mathf.Min(20, chosenNotes.Count); i++)
         {
             float delta = (i == 0) ? chosenNotes[i].time : (chosenNotes[i].time - chosenNotes[i - 1].time);
-            Debug.Log($"Note {i}: t={chosenNotes[i].time:F3}s Δ={delta:F3}s string={chosenNotes[i].stringIdx} fret={chosenNotes[i].fret} note={chosenNotes[i].note}");
+            Debug.Log($"Note {i}: t={chosenNotes[i].time:F3}s \u0394={delta:F3}s string={chosenNotes[i].stringIdx} fret={chosenNotes[i].fret} note={chosenNotes[i].note}");
         }
 
         return chosenNotes;
