@@ -2,11 +2,19 @@
   "values": [
     {
       "id": "core.noteSpeed",
-      "value": "22"
+      "value": "29.1"
     },
     {
       "id": "core.invertStrings",
-      "value": "false"
+      "value": "true"
+    },
+    {
+      "id": "core.forceStandardTuning",
+      "value": "true"
+    },
+    {
+      "id": "render.mode",
+      "value": "Highway3D"
     },
     {
       "id": "timing.hitWindowEarly",
@@ -22,7 +30,7 @@
     },
     {
       "id": "tabs.tabSectionDuration",
-      "value": "4.5"
+      "value": "4.3"
     },
     {
       "id": "tabs.tabSectionLengthMultiplier",
@@ -65,6 +73,62 @@
       "value": "0.06"
     },
     {
+      "id": "fx.characterDisplay",
+      "value": "Always"
+    },
+    {
+      "id": "fx.characterScale",
+      "value": "1"
+    },
+    {
+      "id": "fx.characterRigOffsetY",
+      "value": "-0.05"
+    },
+    {
+      "id": "fx.characterOffsetX",
+      "value": "0.03"
+    },
+    {
+      "id": "fx.characterOffsetY",
+      "value": "0.045"
+    },
+    {
+      "id": "fx.characterFadeSoftness",
+      "value": "0.1"
+    },
+    {
+      "id": "fx.characterMovementEnabled",
+      "value": "true"
+    },
+    {
+      "id": "fx.characterMissColorEnabled",
+      "value": "true"
+    },
+    {
+      "id": "fx.characterMissParticlesEnabled",
+      "value": "false"
+    },
+    {
+      "id": "fx.characterPortalEnabled",
+      "value": "true"
+    },
+    {
+      "id": "fx.characterPortalSwirlsEnabled",
+      "value": "true"
+    },
+    {
+      "id": "fx.characterPortalBodyOpacity",
+      "value": "0.8"
+    },
+    {
+      "id": "fx.characterPortalEdgeColor",
+      "value": "Black"
+    },
+    {
+      "id": "fx.characterPortalSwirlColor",
+      "value": "Black"
+    },
+    {
       "id": "fx.judgeableDarkenMultiplier",
       "value": "1"
     },
@@ -78,7 +142,11 @@
     },
     {
       "id": "bg.skyMood",
-      "value": "Sunset"
+      "value": "Midnight"
+    },
+    {
+      "id": "bg.skyUseStage",
+      "value": "false"
     },
     {
       "id": "bg.skyStars",
@@ -102,7 +170,7 @@
     },
     {
       "id": "bg.skyStarTwinkleSpeedMax",
-      "value": "1.8"
+      "value": "1"
     },
     {
       "id": "bg.starStyle",
@@ -135,6 +203,146 @@
     {
       "id": "bg.skyCloudGlobalScale",
       "value": "3"
+    },
+    {
+      "id": "highway.totalFrets",
+      "value": "24"
+    },
+    {
+      "id": "highway.fretSpacing",
+      "value": "3.3"
+    },
+    {
+      "id": "highway.strikeLineZ",
+      "value": "-5"
+    },
+    {
+      "id": "highway.spawnZ",
+      "value": "100"
+    },
+    {
+      "id": "highway.defaultOpenAnchorFret",
+      "value": "2"
+    },
+    {
+      "id": "highway.hideOpenFretNumber",
+      "value": "true"
+    },
+    {
+      "id": "highway.cameraY",
+      "value": "16.85"
+    },
+    {
+      "id": "highway.cameraZ",
+      "value": "-18.2"
+    },
+    {
+      "id": "highway.cameraPitch",
+      "value": "26"
+    },
+    {
+      "id": "highway.lookaheadWindow",
+      "value": "5"
+    },
+    {
+      "id": "highway.cameraFarClip",
+      "value": "5000"
+    },
+    {
+      "id": "highway.cameraMoveSpeed",
+      "value": "3"
+    },
+    {
+      "id": "highway.noteHeightScale",
+      "value": "1.35"
+    },
+    {
+      "id": "highway.resolvedHoldTime",
+      "value": "0.18"
+    },
+    {
+      "id": "highway.outlineThickness",
+      "value": "0.06"
+    },
+    {
+      "id": "highway.outlineDepth",
+      "value": "0.04"
+    },
+    {
+      "id": "highway.showApproachLine",
+      "value": "false"
+    },
+    {
+      "id": "highway.showLandingDot",
+      "value": "false"
+    },
+    {
+      "id": "highway.backgroundDistance",
+      "value": "100"
+    },
+    {
+      "id": "highway.backgroundCenterY",
+      "value": "-200"
+    },
+    {
+      "id": "highway.backgroundScale",
+      "value": "100"
+    },
+    {
+      "id": "highway.cloudYOffset",
+      "value": "6"
+    },
+    {
+      "id": "highway.starScale",
+      "value": "0.6"
+    },
+    {
+      "id": "highway.cloudScale",
+      "value": "0.75"
+    },
+    {
+      "id": "highway.starSpread",
+      "value": "0.6"
+    },
+    {
+      "id": "highway.cloudSpread",
+      "value": "0.42"
+    },
+    {
+      "id": "highway.backgroundColorR",
+      "value": "0.01"
+    },
+    {
+      "id": "highway.backgroundColorG",
+      "value": "0.015"
+    },
+    {
+      "id": "highway.backgroundColorB",
+      "value": "0.045"
+    },
+    {
+      "id": "highway.backgroundColorA",
+      "value": "1"
+    },
+    {
+      "id": "highway.laneGuideThickness",
+      "value": "0.14"
+    },
+    {
+      "id": "highway.laneGuideYOffset",
+      "value": "-1.84"
+    },
+    {
+      "id": "highway.highlightFretBoundaries",
+      "value": "false"
+    },
+    {
+      "id": "highway.fretNumberYOffset",
+      "value": "0.45"
+    },
+    {
+      "id": "highway.fretNumberZOffset",
+      "value": "0.12"
     }
   ]
 }

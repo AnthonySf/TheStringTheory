@@ -51,5 +51,71 @@ Assets/StreamingAssets/ToneLab/build/
 Assets/StreamingAssets/ToneLab/*.log
 Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
 
+# Native detector generated artifacts
+Assets/Plugins/x86_64/*.pdb
+Assets/Plugins/x86_64/*.lib
+Assets/Plugins/x86_64/*.exp
+
+# Public source release: bundled libraries / binaries / packaged runtimes
+Assets/MidiPlayer/
+Assets/Plugins/**/*.dll
+Assets/Plugins/**/*.so
+Assets/Plugins/**/*.dylib
+Assets/Plugins/**/*.a
+Assets/Plugins/**/*.lib
+Assets/Plugins/**/*.exp
+Assets/Plugins/**/*.pdb
+Assets/StreamingAssets/NotesReader/*.exe
+Assets/StreamingAssets/NotesReader/Models/*.onnx
+Assets/StreamingAssets/RocksmithImport/*
+!Assets/StreamingAssets/RocksmithImport/
+!Assets/StreamingAssets/RocksmithImport/README.md
+!Assets/StreamingAssets/RocksmithImport.meta
+Assets/StreamingAssets/NotesReader/__pycache__/
+Assets/StreamingAssets/ToneLab/build/
+Assets/StreamingAssets/ToneLab/dist/
+Assets/StreamingAssets/ToneLab/*.log
+Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
+NativeNotesDetectorBridge/build/
+External/*
+!External/RocksmithImportTool/
+!External/RocksmithImportTool/RocksmithImportTool.csproj
+External/RocksmithImportTool/bin/
+External/RocksmithImportTool/obj/
+External/RocksmithImportTool/.vs/
+External/RocksmithImportTool/**/*.user
+External/RocksmithImportTool/**/*.suo
+External/RocksmithImportTool/**/*.tmp
+
+# Local song content should not be published in the source repo
+Assets/StreamingAssets/Songs/**
+Assets/song.gp
+Assets/song.mid
+Assets/song1.mid
+
+# Local character art should not be published in the source repo
+Assets/Resources/Hero.png
+Assets/Resources/Hero.png.meta
+Assets/Resources/HeroOld.png
+Assets/Resources/HeroOld.png.meta
+Assets/Resources/Skullhead_Monochrome.png
+Assets/Resources/Skullhead_Monochrome.png.meta
+Assets/Resources/char2.png
+Assets/Resources/char2.png.meta
+Assets/Resources/char3.png
+Assets/Resources/char3.png.meta
+Assets/Resources/charOld.png
+Assets/Resources/charOld.png.meta
+Assets/Resources/filler2.png
+Assets/Resources/filler2.png.meta
+
 # General
 *.log
+.codex_tmp/
+
+# Notes detector regression tool
+!Tools/NotesDetectorRegression/
+!Tools/NotesDetectorRegression/**
+Tools/NotesDetectorRegression/Generated/
+Tools/NotesDetectorRegression/bin/
+Tools/NotesDetectorRegression/obj/
