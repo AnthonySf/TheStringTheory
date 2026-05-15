@@ -14,6 +14,10 @@ Some bundled runtimes, third-party libraries, and packaged binaries are intentio
 
 See [HOW_TO_BUILD.md](HOW_TO_BUILD.md) for the missing pieces and where they go.
 
+## Unity version
+
+This project currently targets **Unity 6 / 6000.2.9f1**.
+
 ## Real instrument gameplay
 
 StringTheory's main mode is built for playing with a real guitar or bass through a microphone, instrument cable, or low-latency audio interface.
