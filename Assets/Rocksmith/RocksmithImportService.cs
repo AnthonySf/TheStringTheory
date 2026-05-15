@@ -12,6 +12,7 @@ public static class RocksmithImportService
     private const string ImportToolFolderName = "RocksmithImport";
     private const string ImportToolExecutableName = "RocksmithImportTool.exe";
     private const string ImportLogPrefix = "[PsarcImport]";
+    private const string ImportFailureLogFolderName = "RocksmithImportLogs";
     private static bool missingToolLogged;
     private static bool unsupportedPlatformLogged;
 
@@ -50,7 +51,14 @@ public static class RocksmithImportService
         {
             if (!missingToolLogged)
             {
-                Debug.LogWarning($"{ImportLogPrefix} Import tool not found at '{importToolPath}'. Drop 'RocksmithImportTool.exe' into that folder to enable PSARC song import.");
+                string logPath = WriteImportFailureLog(
+                    psarcPath: null,
+                    importToolPath: importToolPath,
+                    targetDirectory: null,
+                    stagingDirectory: null,
+                    reason: "Import tool not found",
+                    details: $"Expected importer executable at '{importToolPath}'.");
+                Debug.LogWarning($"{ImportLogPrefix} Import tool not found at '{importToolPath}'. Drop 'RocksmithImportTool.exe' into that folder to enable PSARC song import. Failure log: {logPath}");
                 missingToolLogged = true;
             }
 
@@ -77,22 +85,69 @@ public static class RocksmithImportService
     {
         string targetDirectory = Path.Combine(songsDirectory, BuildImportDirectoryName(psarcPath));
         string legacyDirectory = Path.Combine(songsDirectory, BuildLegacyImportDirectoryName(psarcPath));
+        string stagingDirectory = targetDirectory + ".importing";
         TryMigrateLegacyImportDirectory(legacyDirectory, targetDirectory);
         string manifestPath = Path.Combine(targetDirectory, RocksmithCachedSongFormat.ManifestFileName);
 
         if (IsImportUpToDate(psarcPath, manifestPath))
             return;
 
-        Directory.CreateDirectory(targetDirectory);
-        if (!RunImporter(importToolPath, psarcPath, targetDirectory, out string processOutput))
+        if (!TryDeleteDirectory(stagingDirectory, out string stagingDeleteError))
         {
-            Debug.LogWarning($"{ImportLogPrefix} Failed to import '{psarcPath}'.\n{processOutput}");
+            string logPath = WriteImportFailureLog(
+                psarcPath,
+                importToolPath,
+                targetDirectory,
+                stagingDirectory,
+                "Failed to prepare staging directory",
+                stagingDeleteError);
+            Debug.LogWarning($"{ImportLogPrefix} Failed to prepare staging import directory '{stagingDirectory}': {stagingDeleteError}\nFailure log: {logPath}");
             return;
         }
 
-        if (!File.Exists(manifestPath))
+        Directory.CreateDirectory(stagingDirectory);
+        if (!RunImporter(importToolPath, psarcPath, stagingDirectory, out string processOutput))
         {
-            Debug.LogWarning($"{ImportLogPrefix} Importer completed for '{psarcPath}' but did not produce '{manifestPath}'.");
+            TryDeleteDirectory(stagingDirectory, out _);
+            string logPath = WriteImportFailureLog(
+                psarcPath,
+                importToolPath,
+                targetDirectory,
+                stagingDirectory,
+                "Importer process failed",
+                processOutput);
+            Debug.LogWarning($"{ImportLogPrefix} Failed to import '{psarcPath}'.\n{processOutput}\nFailure log: {logPath}");
+            return;
+        }
+
+        string stagedManifestPath = Path.Combine(stagingDirectory, RocksmithCachedSongFormat.ManifestFileName);
+        if (!File.Exists(stagedManifestPath))
+        {
+            TryDeleteDirectory(stagingDirectory, out _);
+            string logPath = WriteImportFailureLog(
+                psarcPath,
+                importToolPath,
+                targetDirectory,
+                stagingDirectory,
+                "Importer produced no manifest",
+                $"Expected manifest at '{stagedManifestPath}', but it was not created.");
+            Debug.LogWarning($"{ImportLogPrefix} Importer completed for '{psarcPath}' but did not produce '{stagedManifestPath}'.\nFailure log: {logPath}");
+            return;
+        }
+
+        string metadataPath = Path.Combine(targetDirectory, ExternalContentPaths.SongMetadataFileName);
+        string preservedMetadataJson = TryReadTextFile(metadataPath);
+        if (!TryReplaceImportedDirectory(stagingDirectory, targetDirectory, preservedMetadataJson, out string replacementError))
+        {
+            TryDeleteDirectory(stagingDirectory, out _);
+            string logPath = WriteImportFailureLog(
+                psarcPath,
+                importToolPath,
+                targetDirectory,
+                stagingDirectory,
+                "Failed to finalize import",
+                replacementError);
+            Debug.LogWarning($"{ImportLogPrefix} Failed to finalize import for '{psarcPath}': {replacementError}\nFailure log: {logPath}");
             return;
         }
 
@@ -132,25 +187,131 @@ public static class RocksmithImportService
 
     private static bool RunImporter(string importToolPath, string psarcPath, string targetDirectory, out string processOutput)
     {
-        ProcessStartInfo startInfo = new ProcessStartInfo
+        try
         {
-            FileName = importToolPath,
-            Arguments = $"import {Quote(psarcPath)} {Quote(targetDirectory)}",
-            WorkingDirectory = Path.GetDirectoryName(importToolPath),
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
+            ProcessStartInfo startInfo = new ProcessStartInfo
+            {
+                FileName = importToolPath,
+                Arguments = $"import {Quote(psarcPath)} {Quote(targetDirectory)}",
+                WorkingDirectory = Path.GetDirectoryName(importToolPath),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            };
 
-        using Process process = new Process { StartInfo = startInfo };
-        process.Start();
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+            using Process process = new Process { StartInfo = startInfo };
+            process.Start();
+            string stdout = process.StandardOutput.ReadToEnd();
+            string stderr = process.StandardError.ReadToEnd();
+            process.WaitForExit();
 
-        processOutput = string.Join(Environment.NewLine, new[] { stdout, stderr }.Where(text => !string.IsNullOrWhiteSpace(text)));
-        return process.ExitCode == 0;
+            processOutput = string.Join(Environment.NewLine, new[] { stdout, stderr }.Where(text => !string.IsNullOrWhiteSpace(text)));
+            return process.ExitCode == 0;
+        }
+        catch (Exception ex)
+        {
+            processOutput = ex.ToString();
+            return false;
+        }
+    }
+
+    private static bool TryReplaceImportedDirectory(string stagingDirectory, string targetDirectory, string preservedMetadataJson, out string error)
+    {
+        error = string.Empty;
+
+        if (!TryDeleteDirectory(targetDirectory, out error))
+            return false;
+
+        try
+        {
+            Directory.Move(stagingDirectory, targetDirectory);
+            if (!string.IsNullOrWhiteSpace(preservedMetadataJson))
+                File.WriteAllText(Path.Combine(targetDirectory, ExternalContentPaths.SongMetadataFileName), preservedMetadataJson);
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static bool TryDeleteDirectory(string directory, out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            return true;
+
+        try
+        {
+            Directory.Delete(directory, true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
+    private static string TryReadTextFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return null;
+
+        try
+        {
+            return File.ReadAllText(path);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string WriteImportFailureLog(
+        string psarcPath,
+        string importToolPath,
+        string targetDirectory,
+        string stagingDirectory,
+        string reason,
+        string details)
+    {
+        try
+        {
+            string logsRoot = Path.Combine(ExternalContentPaths.PersistentRoot, ImportFailureLogFolderName);
+            Directory.CreateDirectory(logsRoot);
+
+            string baseName = string.IsNullOrWhiteSpace(psarcPath)
+                ? "psarc_import"
+                : SanitizeFileName(Path.GetFileNameWithoutExtension(psarcPath));
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff");
+            string logPath = Path.Combine(logsRoot, $"{baseName}-{timestamp}.log");
+
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine("StringTheory PSARC Import Failure");
+            builder.AppendLine($"TimestampUtc: {DateTime.UtcNow:O}");
+            builder.AppendLine($"Platform: {Application.platform}");
+            builder.AppendLine($"Reason: {reason ?? "Unknown"}");
+            builder.AppendLine($"PsarcPath: {psarcPath ?? "(none)"}");
+            builder.AppendLine($"ImportToolPath: {importToolPath ?? "(none)"}");
+            builder.AppendLine($"TargetDirectory: {targetDirectory ?? "(none)"}");
+            builder.AppendLine($"StagingDirectory: {stagingDirectory ?? "(none)"}");
+            builder.AppendLine($"PersistentRoot: {ExternalContentPaths.PersistentRoot}");
+            builder.AppendLine();
+            builder.AppendLine("Details:");
+            builder.AppendLine(string.IsNullOrWhiteSpace(details) ? "(none)" : details);
+
+            File.WriteAllText(logPath, builder.ToString());
+            return logPath;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"{ImportLogPrefix} Failed to write import failure log: {ex.Message}");
+            return "(failed to write log)";
+        }
     }
 
     private static bool IsInsideImportedCache(string filePath, string songsDirectory)

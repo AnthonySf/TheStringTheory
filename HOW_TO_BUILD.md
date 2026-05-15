@@ -183,7 +183,7 @@ To build it locally:
 
 ```powershell
 git clone https://github.com/iminashi/Rocksmith2014.NET External/Rocksmith2014.NET
-dotnet publish External\RocksmithImportTool\RocksmithImportTool.csproj -c Release -r win-x64 --self-contained false -o Assets\StreamingAssets\RocksmithImport
+dotnet publish External\RocksmithImportTool\RocksmithImportTool.csproj -c Release -r win-x64 --self-contained true -o Assets\StreamingAssets\RocksmithImport
 ```
 
 ### C. Song content
