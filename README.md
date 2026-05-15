@@ -39,7 +39,7 @@ StringTheory includes a set of focused practice modes for learning hard sections
   The main real-instrument mode. Play with a real guitar or bass while the game scores your notes and chords.
 
 - **Loop Mode**  
-  Repeat a selected section of the song until it is clean.
+  Select any section of a song, repeat it until it is clean, and save loop bookmarks so you can return to the same practice spots quickly.
 
 - **Note By Note Mode**  
   Stops at each note or chord until you play it correctly.
