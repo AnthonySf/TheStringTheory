@@ -115,6 +115,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float cameraTargetFOV = 60f;
     private float cameraXVelocity;
     private float cameraFovVelocity;
+    private float urgentCameraHoldUntil = float.NegativeInfinity;
+    private float urgentCameraHeldTargetX;
+    private float urgentCameraHeldTargetFOV = 60f;
     private int lastFretLightLayoutStringCount = -1;
     private int lastFretLightLayoutColumnCount = -1;
     private float lastFretLightLayoutOpenAnchorFret = float.NaN;
@@ -666,6 +669,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         highwayCharacterBopEvents.Clear();
         debugLoggedBendProfileIds.Clear();
         debugLoggedBendNearStrikeIds.Clear();
+        urgentCameraHoldUntil = float.NegativeInfinity;
+        urgentCameraHeldTargetX = 0f;
+        urgentCameraHeldTargetFOV = 60f;
 
         if (chartNotes == null)
             return;
@@ -5280,12 +5286,29 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         using (UpdateSectionCameraProfilerMarker.Auto())
         {
             float renderSongTime = GetRenderSongTime(snapshot);
+            if (renderSongTime >= urgentCameraHoldUntil)
+            {
+                urgentCameraHoldUntil = float.NegativeInfinity;
+                urgentCameraHeldTargetX = cameraTargetX;
+                urgentCameraHeldTargetFOV = cameraTargetFOV;
+            }
+
             float previewWindow = Mathf.Max(1.6f, owner.lookaheadWindow * 1.75f);
+            float urgentWindow = Mathf.Clamp(previewWindow * 0.18f, 0.55f, 0.95f);
+            float urgentClusterWindow = Mathf.Clamp(previewWindow * 0.34f, 0.95f, 1.55f);
             float weightedCenterSum = 0f;
             float weightSum = 0f;
             float requiredMin = 0f;
             float requiredMax = 0f;
+            float urgentRequiredMin = 0f;
+            float urgentRequiredMax = 0f;
+            float urgentClusterMin = 0f;
+            float urgentClusterMax = 0f;
             bool foundFraming = false;
+            bool foundUrgentFraming = false;
+            bool foundUrgentCluster = false;
+            float mostUrgentTimeUntil = float.PositiveInfinity;
+            float urgentClusterLastTimeUntil = float.NegativeInfinity;
 
             for (int i = 0; i < snapshot.noteStates.Count; i++)
             {
@@ -5310,6 +5333,40 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 weightedCenterSum += noteCenter * noteWeight;
                 weightSum += noteWeight;
 
+                if (timeUntilNote <= urgentWindow)
+                {
+                    if (!foundUrgentFraming)
+                    {
+                        urgentRequiredMin = minX;
+                        urgentRequiredMax = maxX;
+                        foundUrgentFraming = true;
+                    }
+                    else
+                    {
+                        urgentRequiredMin = Mathf.Min(urgentRequiredMin, minX);
+                        urgentRequiredMax = Mathf.Max(urgentRequiredMax, maxX);
+                    }
+
+                    mostUrgentTimeUntil = Mathf.Min(mostUrgentTimeUntil, timeUntilNote);
+                }
+
+                if (timeUntilNote <= urgentClusterWindow)
+                {
+                    if (!foundUrgentCluster)
+                    {
+                        urgentClusterMin = minX;
+                        urgentClusterMax = maxX;
+                        foundUrgentCluster = true;
+                    }
+                    else
+                    {
+                        urgentClusterMin = Mathf.Min(urgentClusterMin, minX);
+                        urgentClusterMax = Mathf.Max(urgentClusterMax, maxX);
+                    }
+
+                    urgentClusterLastTimeUntil = Mathf.Max(urgentClusterLastTimeUntil, timeUntilNote);
+                }
+
                 if (!foundFraming)
                 {
                     requiredMin = minX;
@@ -5331,7 +5388,69 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     desiredTargetX - requiredMin,
                     requiredMax - desiredTargetX) + horizontalPadding;
                 float desiredSpread = (halfSpan * 2f) / Mathf.Max(0.01f, owner.FretSpacing);
-                float desiredFov = Mathf.Clamp(50f + (desiredSpread * 3.0f), 50f, 90f);
+                const float NormalMaxFov = 90f;
+                const float EmergencyMaxFov = 96f;
+                float desiredFov = Mathf.Clamp(50f + (desiredSpread * 3.0f), 50f, NormalMaxFov);
+
+                if (foundUrgentFraming && desiredFov >= NormalMaxFov - 0.5f)
+                {
+                    float guardedMin = foundUrgentCluster ? urgentClusterMin : urgentRequiredMin;
+                    float guardedMax = foundUrgentCluster ? urgentClusterMax : urgentRequiredMax;
+                    float urgentBreathingRoom = Mathf.Max(owner.FretSpacing * 0.3f, 0.45f);
+                    guardedMin -= urgentBreathingRoom;
+                    guardedMax += urgentBreathingRoom;
+                    float emergencyHalfSpan = Mathf.Max(
+                        desiredTargetX - guardedMin,
+                        guardedMax - desiredTargetX) + horizontalPadding;
+                    float emergencySpread = (emergencyHalfSpan * 2f) / Mathf.Max(0.01f, owner.FretSpacing);
+                    float emergencyDesiredFov = Mathf.Clamp(50f + (emergencySpread * 3.0f), 50f, EmergencyMaxFov);
+                    desiredFov = Mathf.Max(desiredFov, emergencyDesiredFov);
+
+                    float maxVisibleHalfSpan = (((desiredFov - 50f) / 3f) * owner.FretSpacing) * 0.5f;
+                    float visibilityMargin = Mathf.Max(owner.FretSpacing * 0.9f, 1.1f);
+                    float safeHalfSpan = Mathf.Max(0.01f, maxVisibleHalfSpan - visibilityMargin);
+                    float safeLeft = desiredTargetX - safeHalfSpan;
+                    float safeRight = desiredTargetX + safeHalfSpan;
+
+                    if (guardedMin < safeLeft || guardedMax > safeRight)
+                    {
+                        float feasibleMinCenter = guardedMax - safeHalfSpan;
+                        float feasibleMaxCenter = guardedMin + safeHalfSpan;
+                        float guardedCenter =
+                            feasibleMinCenter <= feasibleMaxCenter
+                                ? Mathf.Clamp(desiredTargetX, feasibleMinCenter, feasibleMaxCenter)
+                                : (guardedMin + guardedMax) * 0.5f;
+
+                        float urgency = 1f - Mathf.Clamp01(mostUrgentTimeUntil / urgentWindow);
+                        urgency = urgency * urgency * (3f - (2f * urgency));
+                        float guardBlend = Mathf.Lerp(0.22f, 1f, urgency);
+                        desiredTargetX = Mathf.Lerp(desiredTargetX, guardedCenter, guardBlend);
+
+                        halfSpan = Mathf.Max(
+                            desiredTargetX - requiredMin,
+                            requiredMax - desiredTargetX) + horizontalPadding;
+                        desiredSpread = (halfSpan * 2f) / Mathf.Max(0.01f, owner.FretSpacing);
+                        desiredFov = Mathf.Clamp(
+                            Mathf.Max(50f + (desiredSpread * 3.0f), emergencyDesiredFov),
+                            50f,
+                            EmergencyMaxFov);
+
+                        urgentCameraHeldTargetX = guardedCenter;
+                        urgentCameraHeldTargetFOV = Mathf.Max(urgentCameraHeldTargetFOV, desiredFov);
+                        urgentCameraHoldUntil = Mathf.Max(
+                            urgentCameraHoldUntil,
+                            renderSongTime + Mathf.Max(0.18f, urgentClusterLastTimeUntil + 0.14f));
+                    }
+                }
+
+                if (renderSongTime < urgentCameraHoldUntil)
+                {
+                    float holdRemaining = urgentCameraHoldUntil - renderSongTime;
+                    float holdBlend = Mathf.Clamp01(holdRemaining / Mathf.Max(0.001f, urgentClusterWindow * 0.9f));
+                    holdBlend = holdBlend * holdBlend * (3f - (2f * holdBlend));
+                    desiredFov = Mathf.Max(desiredFov, Mathf.Lerp(desiredFov, urgentCameraHeldTargetFOV, holdBlend));
+                    desiredTargetX = Mathf.Lerp(desiredTargetX, urgentCameraHeldTargetX, holdBlend * 0.45f);
+                }
 
                 float targetBlend = 1f - Mathf.Exp(-Time.deltaTime * 1.35f);
                 cameraTargetX = Mathf.Lerp(cameraTargetX, desiredTargetX, targetBlend);
