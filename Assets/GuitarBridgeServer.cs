@@ -850,8 +850,10 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool songSelectionSongConfirmed;
     private bool showTrackSelection;
     private bool showGlobalSettings;
+    private bool showGlobalSettingsSelectionPopup;
     private int selectedGlobalSettingsTopIndex;
     private int selectedGlobalSettingsItemIndex;
+    private int selectedGlobalSettingsSelectionPopupIndex;
     private string activeGlobalSettingsCategory = string.Empty;
     private bool globalSettingsTransparentBackground;
     private bool gameplayHudPreviewInMenus;
@@ -999,12 +1001,21 @@ public class GuitarBridgeServer : MonoBehaviour
     private const string NotesDetectorTestSongFolderName = "NotesDetector";
     private const string NotesDetectorTestCatalogFileName = "notes_detector_tests.json";
     private const float MainMenuHoverLockSeconds = 0.20f;
+    private const KeyCode GameplayAudioPopupKey = KeyCode.V;
     private ToneLabReturnContext toneLabReturnContext;
     private NotesDetectorBackendMode notesDetectorBackendMode = NotesDetectorBackendMode.NativeEmbeddedBridge;
     private NativeNotesDetectorBridge nativeNotesDetectorBridge;
     private readonly List<NativeDetectorInputDevice> nativeNotesDetectorInputDevices = new List<NativeDetectorInputDevice>();
     private NativeDetectorRuntimeInfo nativeNotesDetectorRuntimeInfo = new NativeDetectorRuntimeInfo();
     private int selectedNativeNotesDetectorInputDeviceIndex = -1;
+    private SharedAudioSettings sharedAudioSettings = new SharedAudioSettings();
+    private string sharedAudioRefreshActionLabel = "REFRESH";
+    private float sharedAudioRefreshActionResetAt = -1f;
+    private readonly List<string> sharedAudioInputDeviceChoices = new List<string> { SharedAudioAutomaticLabel };
+    private readonly List<string> sharedAudioOutputDeviceChoices = new List<string> { SharedAudioAutomaticLabel };
+    private bool showGameplayAudioPopup;
+    private int selectedGameplayAudioPopupIndex;
+    private bool gameplayAudioPopupOpenedWhilePaused;
     private bool showNotesDetectorTestMenu;
     private bool notesDetectorGameplayTestActive;
     private int selectedNotesDetectorTestIndex;
@@ -1159,10 +1170,22 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool runtimeSettingsSnapshotDirty = true;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
     private const int ArcadeControllerSlotCount = 8;
-    private const int GlobalSettingsTopLevelCount = 10;
-    private const int GlobalSettingsFirstCategoryTopIndex = 2;
-    private const int GlobalSettingsLastCategoryTopIndex = 8;
-    private const int GlobalSettingsResetTopIndex = 9;
+    private const int GlobalSettingsTopLevelCount = 12;
+    private const int GlobalSettingsSongsFolderTopIndex = 2;
+    private const int GlobalSettingsFirstCategoryTopIndex = 3;
+    private const int GlobalSettingsLastCategoryTopIndex = 10;
+    private const int GlobalSettingsResetTopIndex = 11;
+    private const string SharedAudioAutomaticLabel = "Automatic";
+
+    private enum GlobalSettingsSelectionPopupMode
+    {
+        None,
+        AudioInputDevice,
+        AudioOutputDevice,
+        SongsFolder
+    }
+
+    private GlobalSettingsSelectionPopupMode globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
 
 
     private sealed class RuntimeSettingDefinition
@@ -1244,7 +1267,10 @@ public class GuitarBridgeServer : MonoBehaviour
         LoadGlobalRuntimeSettingsMetadata();
         LoadGameSaveState();
         LoadHeroModePreferences();
-        LoadNativeDetectorPreferences();
+        EnsureToneLabRuntimeComponent();
+        LoadSharedAudioSettingsFromDisk();
+        RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true);
+        ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: false, refreshCatalogs: false);
         LoadSongLibraryTypePreference();
         InitializeMultiplayerRhythmPlayers();
         RefreshMultiplayerRhythmAvailableDevices();
@@ -1255,7 +1281,6 @@ public class GuitarBridgeServer : MonoBehaviour
         isPaused = startInMainMenu;
         LoadTestSong();
         isPaused = startInMainMenu;
-        EnsureToneLabRuntimeComponent();
         unityToneLabRuntime?.StartBackgroundMonitoring();
         EnsureRenderer();
         SyncAudioToSongTimer(playImmediately: false);
@@ -1263,6 +1288,15 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void Update()
     {
+        if (!string.Equals(sharedAudioRefreshActionLabel, "REFRESH", StringComparison.Ordinal) &&
+            sharedAudioRefreshActionResetAt > 0f &&
+            Time.unscaledTime >= sharedAudioRefreshActionResetAt)
+        {
+            sharedAudioRefreshActionLabel = "REFRESH";
+            sharedAudioRefreshActionResetAt = -1f;
+            runtimeSettingsSnapshotDirty = true;
+        }
+
         bool shouldLogLoopCountdownFrame = Application.isEditor && loopRestartPauseRemainingSeconds > 0.0001f;
         long frameStartTicks = 0L;
         long sectionStartTicks = 0L;
@@ -1584,6 +1618,12 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (showGameplayAudioPopup)
+        {
+            HandleGameplayAudioPopupControls();
+            return;
+        }
+
         if (showToneLab)
         {
             HandleToneLabControls();
@@ -1620,12 +1660,28 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (Input.GetKeyDown(GameplayAudioPopupKey) &&
+            !showSongSelection &&
+            !showTrackSelection &&
+            !showMainMenu &&
+            !showStartMenu &&
+            !showMultiplayerRhythmSetup &&
+            !showCharacterSelection)
+        {
+            OpenGameplayAudioPopupFromUi();
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.S) && renderMode == GuitarRenderMode.Tabs && (isPaused || showSongSettings))
         {
             showSongSettings = !showSongSettings;
             if (showSongSettings)
                 selectedSongSettingsIndex = 0;
             showGlobalSettings = false;
+            showGameplayAudioPopup = false;
+            gameplayAudioPopupOpenedWhilePaused = false;
+            showGlobalSettingsSelectionPopup = false;
+            globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
         }
 
         if (Input.GetKeyDown(KeyCode.G) && renderMode == GuitarRenderMode.Tabs && (isPaused || showGlobalSettings))
@@ -1633,8 +1689,11 @@ public class GuitarBridgeServer : MonoBehaviour
             showGlobalSettings = !showGlobalSettings;
             if (showGlobalSettings)
                 globalSettingsTransparentBackground = false;
+            else
+                CloseGlobalSettingsSelectionPopupFromUi();
             gameplayHudPreviewInMenus = false;
             showSongSettings = false;
+            showGameplayAudioPopup = false;
         }
 
         if (!showGlobalSettings)
@@ -1710,6 +1769,9 @@ public class GuitarBridgeServer : MonoBehaviour
             showSongSelection = false;
             showTrackSelection = false;
             showGlobalSettings = false;
+            showGameplayAudioPopup = false;
+            gameplayAudioPopupOpenedWhilePaused = false;
+            CloseGlobalSettingsSelectionPopupFromUi();
             SyncAudioToSongTimer(playImmediately: !isPaused);
             return;
         }
@@ -3967,7 +4029,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         int horizontalDirection = GetHeldHorizontalArrowDirection();
-        if (selectedSongSettingsIndex >= 1 && selectedSongSettingsIndex <= 4 && IsSongSettingsOptionSelectable(selectedSongSettingsIndex))
+        if (selectedSongSettingsIndex >= 1 && selectedSongSettingsIndex <= 3 && IsSongSettingsOptionSelectable(selectedSongSettingsIndex))
         {
             if (ConsumeHeldHorizontalUiStep("song-settings-slider", horizontalDirection))
             {
@@ -3990,6 +4052,37 @@ public class GuitarBridgeServer : MonoBehaviour
                 return;
             }
         }
+    }
+
+    private void HandleGameplayAudioPopupControls()
+    {
+        if (IsUiPausePressed() || IsUiBackPressed() || IsUiSubmitPressed() || Input.GetKeyDown(GameplayAudioPopupKey))
+        {
+            CloseGameplayAudioPopupFromUi();
+            return;
+        }
+
+        if (IsUiUpPressed())
+        {
+            MoveGameplayAudioPopupSelectionFromUi(-1);
+            return;
+        }
+
+        if (IsUiDownPressed())
+        {
+            MoveGameplayAudioPopupSelectionFromUi(1);
+            return;
+        }
+
+        int horizontalDirection = GetHeldHorizontalArrowDirection();
+        if (ConsumeHeldHorizontalUiStep("gameplay-audio-popup-slider", horizontalDirection))
+        {
+            AdjustGameplayAudioPopupValueFromUi(horizontalDirection);
+            return;
+        }
+
+        if (horizontalDirection == 0)
+            ConsumeHeldHorizontalUiStep("gameplay-audio-popup-slider", 0);
     }
 
     private void HandleOffsetHelperControls()
@@ -4102,6 +4195,35 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         if (HandleArcadeBindingCaptureInput())
             return;
+
+        if (showGlobalSettingsSelectionPopup)
+        {
+            if (IsUiBackPressed())
+            {
+                CloseGlobalSettingsSelectionPopupFromUi();
+                return;
+            }
+
+            if (IsUiUpPressed())
+            {
+                MoveGlobalSettingsSelectionPopupFromUi(-1);
+                return;
+            }
+
+            if (IsUiDownPressed())
+            {
+                MoveGlobalSettingsSelectionPopupFromUi(1);
+                return;
+            }
+
+            if (IsUiSubmitPressed())
+            {
+                ActivateSelectedGlobalSettingsSelectionPopupOptionFromUi();
+                return;
+            }
+
+            return;
+        }
 
         if (Input.GetKeyDown(KeyCode.O))
         {
@@ -5941,6 +6063,8 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
+        showGameplayAudioPopup = false;
+        gameplayAudioPopupOpenedWhilePaused = false;
         showGameModes = false;
         showRocksmithDifficultyPopup = false;
         showHeroModeSettings = false;
@@ -6949,6 +7073,9 @@ public class GuitarBridgeServer : MonoBehaviour
         if (index < 0 || index > 8)
             return false;
 
+        if (index == 4)
+            return false;
+
         if (!IsGeneratedSongSettingsMode())
             return true;
 
@@ -6957,7 +7084,6 @@ public class GuitarBridgeServer : MonoBehaviour
             case 0:
             case 2:
             case 3:
-            case 4:
             case 5:
             case 7:
             case 8:
@@ -7002,9 +7128,6 @@ public class GuitarBridgeServer : MonoBehaviour
                 break;
             case 3:
                 SetSongStartDelaySecondsFromUi(songStartDelaySeconds + (delta * 0.05f));
-                break;
-            case 4:
-                SetSongVolumePercentFromUi(songVolumePercent + (delta * 5f));
                 break;
             case 5:
                 break;
@@ -7059,6 +7182,8 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
+        showGameplayAudioPopup = false;
+        gameplayAudioPopupOpenedWhilePaused = false;
         showGameModes = false;
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
@@ -7854,7 +7979,7 @@ public class GuitarBridgeServer : MonoBehaviour
         else
             StartConfiguredNotesDetectorBackend();
         ResetLiveDetectorReadState();
-        RefreshNativeNotesDetectorUiState();
+        RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true);
         RefreshDetectorBackendStatus();
         MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
@@ -8661,6 +8786,8 @@ public class GuitarBridgeServer : MonoBehaviour
         showTrackSelection = false;
         showSongSettings = false;
         showGlobalSettings = false;
+        showGameplayAudioPopup = false;
+        gameplayAudioPopupOpenedWhilePaused = false;
         showGameModes = false;
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
@@ -8708,6 +8835,9 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
+        showGameplayAudioPopup = false;
+        gameplayAudioPopupOpenedWhilePaused = false;
+        CloseGlobalSettingsSelectionPopupFromUi();
         showGameModes = false;
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
@@ -8724,11 +8854,16 @@ public class GuitarBridgeServer : MonoBehaviour
             mainMenuFlowActive = false;
 
         showGlobalSettings = true;
+        showGlobalSettingsSelectionPopup = false;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
+        selectedGlobalSettingsSelectionPopupIndex = 0;
         globalSettingsTransparentBackground = false;
         selectedGlobalSettingsTopIndex = 0;
         selectedGlobalSettingsItemIndex = 0;
         activeGlobalSettingsCategory = string.Empty;
         showSongSettings = false;
+        showGameplayAudioPopup = false;
+        gameplayAudioPopupOpenedWhilePaused = false;
         showStartMenu = false;
         showMainMenu = false;
         showSongSelection = false;
@@ -9676,6 +9811,9 @@ public class GuitarBridgeServer : MonoBehaviour
         CancelArcadeBindingCapture();
         gameplayHudPreviewInMenus = false;
         showGlobalSettings = false;
+        showGlobalSettingsSelectionPopup = false;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
+        selectedGlobalSettingsSelectionPopupIndex = 0;
         globalSettingsTransparentBackground = false;
         activeGlobalSettingsCategory = string.Empty;
         selectedGlobalSettingsItemIndex = 0;
@@ -9737,8 +9875,68 @@ public class GuitarBridgeServer : MonoBehaviour
     public void SetSongVolumePercentFromUi(float percent)
     {
         songVolumePercent = Mathf.Clamp(percent, 0f, 100f);
+        if (sharedAudioSettings == null)
+            sharedAudioSettings = new SharedAudioSettings();
+        sharedAudioSettings.songVolumePercent = songVolumePercent;
+        SaveSharedAudioSettingsToDisk();
         SaveSongMetadata();
         ApplyPlaybackSpeedToAudio();
+    }
+
+    public void OpenGameplayAudioPopupFromUi()
+    {
+        gameplayAudioPopupOpenedWhilePaused = isPaused;
+        showGameplayAudioPopup = true;
+        selectedGameplayAudioPopupIndex = Mathf.Clamp(selectedGameplayAudioPopupIndex, 0, 1);
+        showSongSettings = false;
+        showGlobalSettings = false;
+        showTrackSelection = false;
+        CloseGlobalSettingsSelectionPopupFromUi();
+        isPaused = true;
+        gameplayHudPreviewInMenus = false;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseGameplayAudioPopupFromUi()
+    {
+        if (!showGameplayAudioPopup)
+            return;
+
+        showGameplayAudioPopup = false;
+        bool resumePlayback = !gameplayAudioPopupOpenedWhilePaused && !songHasEnded;
+        gameplayAudioPopupOpenedWhilePaused = false;
+        isPaused = !resumePlayback;
+        SyncAudioToSongTimer(playImmediately: resumePlayback);
+    }
+
+    public void SetSelectedGameplayAudioPopupIndexFromUi(int index)
+    {
+        selectedGameplayAudioPopupIndex = Mathf.Clamp(index, 0, 1);
+    }
+
+    public void MoveGameplayAudioPopupSelectionFromUi(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        const int optionCount = 2;
+        selectedGameplayAudioPopupIndex = (selectedGameplayAudioPopupIndex + delta + optionCount) % optionCount;
+    }
+
+    public void AdjustGameplayAudioPopupValueFromUi(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        switch (selectedGameplayAudioPopupIndex)
+        {
+            case 0:
+                SetSongVolumePercentFromUi(songVolumePercent + delta);
+                break;
+            case 1:
+                SetSharedAudioGuitarVolumeFromUi(GetSharedAudioGuitarVolumePercent() + delta);
+                break;
+        }
     }
 
     public void CycleSongPlaybackAudioModeFromUi(int delta)
@@ -10844,6 +11042,725 @@ private void OpenOrFocusToneLab()
         nativeNotesDetectorRuntimeInfo = nativeNotesDetectorBridge.RuntimeInfo ?? new NativeDetectorRuntimeInfo();
     }
 
+    private void LoadSharedAudioSettingsFromDisk()
+    {
+        EnsureToneLabRuntimeComponent();
+        sharedAudioSettings = SharedAudioSettingsUtility.Load(ExternalContentPaths.PersistentAudioSettingsPath) ?? new SharedAudioSettings();
+
+        bool needsSave = false;
+        if (!File.Exists(ExternalContentPaths.PersistentAudioSettingsPath))
+            needsSave = true;
+
+        if (string.IsNullOrWhiteSpace(sharedAudioSettings.inputDeviceName))
+        {
+            string legacyToneInput = unityToneLabRuntime?.CurrentSettings?.input_device_name;
+            if (!string.IsNullOrWhiteSpace(legacyToneInput))
+            {
+                sharedAudioSettings.inputDeviceName = NormalizeSharedAudioStoredSelection(legacyToneInput);
+                needsSave = true;
+            }
+            else
+            {
+                int legacyDetectorIndex = PlayerPrefs.GetInt(NativeDetectorInputDevicePrefsKey, -1);
+                if (legacyDetectorIndex >= 0)
+                {
+                    RefreshNativeNotesDetectorDeviceList();
+                    sharedAudioSettings.inputDeviceName = NormalizeSharedAudioStoredSelection(ResolveNativeDetectorInputDeviceName(legacyDetectorIndex));
+                    needsSave = true;
+                }
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(sharedAudioSettings.outputDeviceName))
+        {
+            string legacyToneOutput = unityToneLabRuntime?.CurrentSettings?.output_device_name;
+            if (!string.IsNullOrWhiteSpace(legacyToneOutput))
+            {
+                sharedAudioSettings.outputDeviceName = NormalizeSharedAudioStoredSelection(legacyToneOutput);
+                needsSave = true;
+            }
+        }
+
+        int normalizedBuffer = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize);
+        if (normalizedBuffer != sharedAudioSettings.monitoringBufferSize)
+        {
+            sharedAudioSettings.monitoringBufferSize = normalizedBuffer;
+            needsSave = true;
+        }
+
+        float normalizedSongVolume = Mathf.Clamp(sharedAudioSettings.songVolumePercent, 0f, 100f);
+        if (!Mathf.Approximately(sharedAudioSettings.songVolumePercent, normalizedSongVolume))
+        {
+            sharedAudioSettings.songVolumePercent = normalizedSongVolume;
+            needsSave = true;
+        }
+
+        float normalizedGuitarVolume = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, 100f);
+        if (!Mathf.Approximately(sharedAudioSettings.guitarVolumePercent, normalizedGuitarVolume))
+        {
+            sharedAudioSettings.guitarVolumePercent = normalizedGuitarVolume;
+            needsSave = true;
+        }
+
+        string normalizedResamplerMode = SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings.detectorResamplerMode);
+        if (!string.Equals(sharedAudioSettings.detectorResamplerMode, normalizedResamplerMode, StringComparison.Ordinal))
+        {
+            sharedAudioSettings.detectorResamplerMode = normalizedResamplerMode;
+            needsSave = true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(sharedAudioSettings.inputDeviceName))
+            sharedAudioSettings.inputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.inputDeviceName);
+        if (!string.IsNullOrWhiteSpace(sharedAudioSettings.outputDeviceName))
+            sharedAudioSettings.outputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.outputDeviceName);
+
+        if (needsSave)
+            SaveSharedAudioSettingsToDisk();
+    }
+
+    private void SaveSharedAudioSettingsToDisk()
+    {
+        if (sharedAudioSettings == null)
+            sharedAudioSettings = new SharedAudioSettings();
+
+        sharedAudioSettings.version = 4;
+        sharedAudioSettings.inputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.inputDeviceName);
+        sharedAudioSettings.outputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.outputDeviceName);
+        sharedAudioSettings.monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize);
+        sharedAudioSettings.songVolumePercent = Mathf.Clamp(sharedAudioSettings.songVolumePercent, 0f, 100f);
+        sharedAudioSettings.guitarVolumePercent = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, 100f);
+        sharedAudioSettings.detectorResamplerMode = SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings.detectorResamplerMode);
+        SharedAudioSettingsUtility.Save(ExternalContentPaths.PersistentAudioSettingsPath, sharedAudioSettings);
+    }
+
+    private void RefreshSharedAudioRoutingCatalogs(bool refreshToneLabDevices, bool refreshDetectorDevices)
+    {
+        EnsureToneLabRuntimeComponent();
+        if (refreshToneLabDevices)
+            unityToneLabRuntime?.RefreshInputDevices();
+        if (refreshDetectorDevices)
+            RefreshNativeNotesDetectorUiState();
+
+        sharedAudioInputDeviceChoices.Clear();
+        sharedAudioInputDeviceChoices.Add(SharedAudioAutomaticLabel);
+
+        string[] toneInputs = unityToneLabRuntime?.InputDevices;
+        if (toneInputs != null)
+        {
+            for (int i = 0; i < toneInputs.Length; i++)
+                AddSharedAudioChoice(sharedAudioInputDeviceChoices, toneInputs[i]);
+        }
+
+        for (int i = 0; i < nativeNotesDetectorInputDevices.Count; i++)
+            AddSharedAudioChoice(sharedAudioInputDeviceChoices, ResolveNativeDetectorInputDeviceDisplayLabel(nativeNotesDetectorInputDevices[i]));
+
+        sharedAudioOutputDeviceChoices.Clear();
+        sharedAudioOutputDeviceChoices.Add(SharedAudioAutomaticLabel);
+        string[] toneOutputs = unityToneLabRuntime?.OutputDevices;
+        if (toneOutputs != null)
+        {
+            for (int i = 0; i < toneOutputs.Length; i++)
+                AddSharedAudioChoice(sharedAudioOutputDeviceChoices, toneOutputs[i]);
+        }
+
+        UpdateSharedAudioRuntimeSettingOptions();
+    }
+
+    private static void AddSharedAudioChoice(List<string> choices, string candidate)
+    {
+        if (choices == null || string.IsNullOrWhiteSpace(candidate))
+            return;
+
+        string normalizedCandidate = SharedAudioSettingsUtility.NormalizeDeviceKey(candidate);
+        if (string.IsNullOrWhiteSpace(normalizedCandidate))
+            return;
+
+        for (int i = 0; i < choices.Count; i++)
+        {
+            if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(choices[i]), normalizedCandidate, StringComparison.Ordinal))
+                return;
+        }
+
+        choices.Add(candidate.Trim());
+    }
+
+    private void UpdateSharedAudioRuntimeSettingOptions()
+    {
+        UpdateRuntimeEnumOptions("audio.inputDevice", sharedAudioInputDeviceChoices);
+        UpdateRuntimeEnumOptions("audio.outputDevice", sharedAudioOutputDeviceChoices);
+        UpdateRuntimeEnumOptions("audio.monitoringLatency", UnityToneLabRuntime.SharedMonitoringLatencyOptions);
+    }
+
+    private void UpdateRuntimeEnumOptions(string settingId, IReadOnlyList<string> options)
+    {
+        if (string.IsNullOrWhiteSpace(settingId) || !runtimeSettingById.TryGetValue(settingId, out RuntimeSettingDefinition definition))
+            return;
+
+        definition.EnumOptions = options != null ? new List<string>(options) : new List<string>();
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    private static int NormalizeSharedMonitoringBufferSize(int bufferSize)
+    {
+        return UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(bufferSize));
+    }
+
+    private static string NormalizeSharedAudioStoredSelection(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        string normalized = SharedAudioSettingsUtility.NormalizeStoredDeviceName(value);
+        if (normalized.StartsWith("Automatic", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("System Default", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("No input", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("No output", StringComparison.OrdinalIgnoreCase))
+            return string.Empty;
+
+        return normalized;
+    }
+
+    private static bool IsSharedAudioAutomaticValue(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) || string.Equals(value, SharedAudioAutomaticLabel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ResolveChoiceLabel(IReadOnlyList<string> choices, string storedValue)
+    {
+        if (IsSharedAudioAutomaticValue(storedValue))
+            return SharedAudioAutomaticLabel;
+
+        string normalizedStored = SharedAudioSettingsUtility.NormalizeDeviceKey(storedValue);
+        if (choices != null)
+        {
+            for (int i = 0; i < choices.Count; i++)
+            {
+                string choice = choices[i];
+                if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(choice), normalizedStored, StringComparison.Ordinal))
+                    return choice;
+            }
+        }
+
+        return SharedAudioSettingsUtility.NormalizeStoredDeviceName(storedValue);
+    }
+
+    private string ResolveNativeDetectorInputDeviceName(int deviceIndex)
+    {
+        for (int i = 0; i < nativeNotesDetectorInputDevices.Count; i++)
+        {
+            NativeDetectorInputDevice device = nativeNotesDetectorInputDevices[i];
+            if (device != null && device.index == deviceIndex)
+                return ResolveNativeDetectorInputDeviceDisplayLabel(device);
+        }
+
+        return string.Empty;
+    }
+
+    private static string ResolveNativeDetectorInputDeviceDisplayLabel(NativeDetectorInputDevice device)
+    {
+        if (device == null)
+            return string.Empty;
+
+        return string.IsNullOrWhiteSpace(device.displayName) ? device.name?.Trim() ?? string.Empty : device.displayName.Trim();
+    }
+
+    private string ResolveToneLabSharedDeviceName(string storedValue, IReadOnlyList<string> availableDevices)
+    {
+        if (IsSharedAudioAutomaticValue(storedValue))
+            return string.Empty;
+
+        string normalizedStored = SharedAudioSettingsUtility.NormalizeDeviceKey(storedValue);
+        if (availableDevices != null)
+        {
+            for (int i = 0; i < availableDevices.Count; i++)
+            {
+                string deviceName = availableDevices[i];
+                if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(deviceName), normalizedStored, StringComparison.Ordinal))
+                    return deviceName;
+            }
+        }
+
+        return SharedAudioSettingsUtility.NormalizeStoredDeviceName(storedValue);
+    }
+
+    private int ResolveNativeDetectorSharedDeviceIndex(string storedValue)
+    {
+        if (IsSharedAudioAutomaticValue(storedValue))
+            return -1;
+
+        string normalizedStored = SharedAudioSettingsUtility.NormalizeDeviceKey(storedValue);
+        for (int i = 0; i < nativeNotesDetectorInputDevices.Count; i++)
+        {
+            NativeDetectorInputDevice device = nativeNotesDetectorInputDevices[i];
+            string displayName = ResolveNativeDetectorInputDeviceDisplayLabel(device);
+            if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(displayName), normalizedStored, StringComparison.Ordinal))
+                return device?.index ?? -1;
+        }
+
+        return -1;
+    }
+
+    private void ApplySharedAudioSettingsToSubsystems(bool restartDetector, bool restartToneLab, bool refreshCatalogs)
+    {
+        EnsureToneLabRuntimeComponent();
+        if (refreshCatalogs)
+            RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true);
+
+        if (sharedAudioSettings == null)
+            sharedAudioSettings = new SharedAudioSettings();
+
+        int monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize);
+        sharedAudioSettings.monitoringBufferSize = monitoringBufferSize;
+        sharedAudioSettings.songVolumePercent = Mathf.Clamp(sharedAudioSettings.songVolumePercent, 0f, 100f);
+        sharedAudioSettings.guitarVolumePercent = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, 100f);
+        sharedAudioSettings.detectorResamplerMode = SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings.detectorResamplerMode);
+
+        if (unityToneLabRuntime != null)
+        {
+            string resolvedToneLabInput = ResolveToneLabSharedDeviceName(sharedAudioSettings.inputDeviceName, unityToneLabRuntime.InputDevices);
+            string resolvedToneLabOutput = ResolveToneLabSharedDeviceName(sharedAudioSettings.outputDeviceName, unityToneLabRuntime.OutputDevices);
+            bool toneLabWasMonitoring = unityToneLabRuntime.IsMonitoring || unityToneLabRuntime.IsAwaitingStartup;
+            unityToneLabRuntime.UpdateSettings(settings =>
+            {
+                settings.input_device_name = resolvedToneLabInput;
+                settings.output_device_name = resolvedToneLabOutput;
+                settings.monitoring_buffer_size = monitoringBufferSize;
+            }, restartMonitoring: restartToneLab);
+            unityToneLabRuntime.SetMonitorVolumePercent(sharedAudioSettings.guitarVolumePercent);
+            if (!toneLabWasMonitoring)
+                unityToneLabRuntime.RefreshInputDevices();
+        }
+
+        if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
+        {
+            EnsureNativeNotesDetectorBridge();
+            nativeNotesDetectorBridge?.SetResamplerMode(ParseSharedDetectorResamplerMode(sharedAudioSettings.detectorResamplerMode));
+        }
+
+        selectedNativeNotesDetectorInputDeviceIndex = ResolveNativeDetectorSharedDeviceIndex(sharedAudioSettings.inputDeviceName);
+        SaveNativeDetectorPreferences();
+
+        if (restartDetector && notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
+        {
+            EnsureNativeNotesDetectorBridge();
+            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex);
+        }
+
+        RefreshNativeNotesDetectorUiState();
+        runtimeSettingsSnapshotDirty = true;
+        MarkDetectorHintDirty();
+    }
+
+    public IReadOnlyList<string> GetSharedAudioInputDeviceChoices()
+    {
+        return sharedAudioInputDeviceChoices;
+    }
+
+    public IReadOnlyList<string> GetSharedAudioOutputDeviceChoices()
+    {
+        return sharedAudioOutputDeviceChoices;
+    }
+
+    public string GetSharedAudioSelectedInputLabel()
+    {
+        return ResolveChoiceLabel(sharedAudioInputDeviceChoices, sharedAudioSettings?.inputDeviceName);
+    }
+
+    public string GetSharedAudioSelectedOutputLabel()
+    {
+        return ResolveChoiceLabel(sharedAudioOutputDeviceChoices, sharedAudioSettings?.outputDeviceName);
+    }
+
+    public string GetSharedAudioSelectedLatencyLabel()
+    {
+        return UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(sharedAudioSettings?.monitoringBufferSize ?? 128);
+    }
+
+    public float GetSharedAudioGuitarVolumePercent()
+    {
+        return Mathf.Clamp(sharedAudioSettings?.guitarVolumePercent ?? 100f, 0f, 100f);
+    }
+
+    public float GetSharedAudioSongVolumePercent()
+    {
+        return Mathf.Clamp(sharedAudioSettings?.songVolumePercent ?? songVolumePercent, 0f, 100f);
+    }
+
+    public string GetSharedAudioSettingsPathForUi()
+    {
+        return ExternalContentPaths.PersistentAudioSettingsPath;
+    }
+
+    public string GetSongsFolderMenuValueLabel()
+    {
+        return ExternalContentPaths.IsUsingDefaultSongsDirectory() ? "DEFAULT" : "CUSTOM";
+    }
+
+    public string GetConfiguredSongsFolderPathForUi()
+    {
+        return ExternalContentPaths.PersistentSongsDirectory;
+    }
+
+    public string GetSharedDetectorResamplerModeLabel()
+    {
+        return SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings?.detectorResamplerMode);
+    }
+
+    public void SetSharedAudioGuitarVolumeFromUi(float percent)
+    {
+        if (sharedAudioSettings == null)
+            sharedAudioSettings = new SharedAudioSettings();
+
+        float clampedPercent = Mathf.Clamp(percent, 0f, 100f);
+        if (Mathf.Approximately(sharedAudioSettings.guitarVolumePercent, clampedPercent))
+            return;
+
+        sharedAudioSettings.guitarVolumePercent = clampedPercent;
+        SaveSharedAudioSettingsToDisk();
+        EnsureToneLabRuntimeComponent();
+        unityToneLabRuntime?.SetMonitorVolumePercent(clampedPercent);
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void OpenAudioInputSelectionPopupFromUi()
+    {
+        showGlobalSettingsSelectionPopup = true;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.AudioInputDevice;
+        selectedGlobalSettingsSelectionPopupIndex = Mathf.Clamp(GetSelectedNativeDetectorInputDeviceUiIndex(), 0, Mathf.Max(0, sharedAudioInputDeviceChoices.Count - 1));
+    }
+
+    public void OpenAudioOutputSelectionPopupFromUi()
+    {
+        showGlobalSettingsSelectionPopup = true;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.AudioOutputDevice;
+        selectedGlobalSettingsSelectionPopupIndex = Mathf.Clamp(GetSelectedSharedAudioOutputUiIndex(), 0, Mathf.Max(0, sharedAudioOutputDeviceChoices.Count - 1));
+    }
+
+    public void OpenSongsFolderSelectionPopupFromUi()
+    {
+        showGlobalSettingsSelectionPopup = true;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.SongsFolder;
+        selectedGlobalSettingsSelectionPopupIndex = ExternalContentPaths.IsUsingDefaultSongsDirectory() ? 0 : 1;
+    }
+
+    public void CloseGlobalSettingsSelectionPopupFromUi()
+    {
+        showGlobalSettingsSelectionPopup = false;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
+        selectedGlobalSettingsSelectionPopupIndex = 0;
+    }
+
+    public void MoveGlobalSettingsSelectionPopupFromUi(int delta)
+    {
+        int optionCount = GetGlobalSettingsSelectionPopupOptionCount();
+        if (!showGlobalSettingsSelectionPopup || optionCount <= 0)
+            return;
+
+        selectedGlobalSettingsSelectionPopupIndex = (selectedGlobalSettingsSelectionPopupIndex + delta + optionCount) % optionCount;
+    }
+
+    public void SetSelectedGlobalSettingsSelectionPopupIndexFromUi(int index)
+    {
+        int optionCount = GetGlobalSettingsSelectionPopupOptionCount();
+        if (optionCount <= 0)
+        {
+            selectedGlobalSettingsSelectionPopupIndex = 0;
+            return;
+        }
+
+        selectedGlobalSettingsSelectionPopupIndex = Mathf.Clamp(index, 0, optionCount - 1);
+    }
+
+    public void ActivateSelectedGlobalSettingsSelectionPopupOptionFromUi()
+    {
+        if (!showGlobalSettingsSelectionPopup)
+            return;
+
+        switch (globalSettingsSelectionPopupMode)
+        {
+            case GlobalSettingsSelectionPopupMode.AudioInputDevice:
+            {
+                if (selectedGlobalSettingsSelectionPopupIndex < 0 || selectedGlobalSettingsSelectionPopupIndex >= sharedAudioInputDeviceChoices.Count)
+                    return;
+
+                SetSharedAudioInputDeviceFromUi(sharedAudioInputDeviceChoices[selectedGlobalSettingsSelectionPopupIndex]);
+                CloseGlobalSettingsSelectionPopupFromUi();
+                return;
+            }
+            case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
+            {
+                if (selectedGlobalSettingsSelectionPopupIndex < 0 || selectedGlobalSettingsSelectionPopupIndex >= sharedAudioOutputDeviceChoices.Count)
+                    return;
+
+                SetSharedAudioOutputDeviceFromUi(sharedAudioOutputDeviceChoices[selectedGlobalSettingsSelectionPopupIndex]);
+                CloseGlobalSettingsSelectionPopupFromUi();
+                return;
+            }
+            case GlobalSettingsSelectionPopupMode.SongsFolder:
+            {
+                int optionIndex = Mathf.Clamp(selectedGlobalSettingsSelectionPopupIndex, 0, Mathf.Max(0, GetGlobalSettingsSelectionPopupOptionCount() - 1));
+                if (optionIndex == 0)
+                {
+                    SetSongsFolderOverrideFromUi(string.Empty);
+                    CloseGlobalSettingsSelectionPopupFromUi();
+                    return;
+                }
+
+                if (WindowsFolderPicker.TryPickFolder("Select Songs Folder", ExternalContentPaths.PersistentSongsDirectory, out string selectedPath) &&
+                    !string.IsNullOrWhiteSpace(selectedPath))
+                {
+                    SetSongsFolderOverrideFromUi(selectedPath);
+                    CloseGlobalSettingsSelectionPopupFromUi();
+                }
+
+                return;
+            }
+            default:
+                CloseGlobalSettingsSelectionPopupFromUi();
+                return;
+        }
+    }
+
+    public List<string> BuildGlobalSettingsSelectionPopupOptionNames()
+    {
+        switch (globalSettingsSelectionPopupMode)
+        {
+            case GlobalSettingsSelectionPopupMode.AudioInputDevice:
+                return new List<string>(sharedAudioInputDeviceChoices);
+            case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
+                return new List<string>(sharedAudioOutputDeviceChoices);
+            case GlobalSettingsSelectionPopupMode.SongsFolder:
+                return new List<string>
+                {
+                    "Use Default Songs Folder",
+                    "Browse For Folder..."
+                };
+            default:
+                return new List<string>();
+        }
+    }
+
+    public List<string> BuildGlobalSettingsSelectionPopupOptionStates()
+    {
+        switch (globalSettingsSelectionPopupMode)
+        {
+            case GlobalSettingsSelectionPopupMode.AudioInputDevice:
+            {
+                List<string> states = new List<string>(sharedAudioInputDeviceChoices.Count);
+                string selectedLabel = GetSharedAudioSelectedInputLabel();
+                for (int i = 0; i < sharedAudioInputDeviceChoices.Count; i++)
+                    states.Add(string.Equals(sharedAudioInputDeviceChoices[i], selectedLabel, StringComparison.Ordinal) ? "ACTIVE" : "INPUT");
+                return states;
+            }
+            case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
+            {
+                List<string> states = new List<string>(sharedAudioOutputDeviceChoices.Count);
+                string selectedLabel = GetSharedAudioSelectedOutputLabel();
+                for (int i = 0; i < sharedAudioOutputDeviceChoices.Count; i++)
+                    states.Add(string.Equals(sharedAudioOutputDeviceChoices[i], selectedLabel, StringComparison.Ordinal) ? "ACTIVE" : "OUTPUT");
+                return states;
+            }
+            case GlobalSettingsSelectionPopupMode.SongsFolder:
+                return new List<string>
+                {
+                    string.Empty,
+                    string.Empty
+                };
+            default:
+                return new List<string>();
+        }
+    }
+
+    public List<string> BuildGlobalSettingsSelectionPopupOptionActions()
+    {
+        switch (globalSettingsSelectionPopupMode)
+        {
+            case GlobalSettingsSelectionPopupMode.AudioInputDevice:
+            {
+                List<string> actions = new List<string>(sharedAudioInputDeviceChoices.Count);
+                for (int i = 0; i < sharedAudioInputDeviceChoices.Count; i++)
+                    actions.Add(string.Empty);
+                return actions;
+            }
+            case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
+            {
+                List<string> actions = new List<string>(sharedAudioOutputDeviceChoices.Count);
+                for (int i = 0; i < sharedAudioOutputDeviceChoices.Count; i++)
+                    actions.Add(string.Empty);
+                return actions;
+            }
+            case GlobalSettingsSelectionPopupMode.SongsFolder:
+                return new List<string>
+                {
+                    string.Empty,
+                    string.Empty
+                };
+            default:
+                return new List<string>();
+        }
+    }
+
+    public string GetGlobalSettingsSelectionPopupEyebrow()
+    {
+        switch (globalSettingsSelectionPopupMode)
+        {
+            case GlobalSettingsSelectionPopupMode.AudioInputDevice:
+            case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
+                return "GENERAL SETTINGS";
+            case GlobalSettingsSelectionPopupMode.SongsFolder:
+                return "CONTENT LOCATION";
+            default:
+                return string.Empty;
+        }
+    }
+
+    public string GetGlobalSettingsSelectionPopupTitle()
+    {
+        switch (globalSettingsSelectionPopupMode)
+        {
+            case GlobalSettingsSelectionPopupMode.AudioInputDevice:
+                return "INPUT DEVICE";
+            case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
+                return "OUTPUT DEVICE";
+            case GlobalSettingsSelectionPopupMode.SongsFolder:
+                return "SONGS FOLDER";
+            default:
+                return string.Empty;
+        }
+    }
+
+    public string GetGlobalSettingsSelectionPopupSummary()
+    {
+        switch (globalSettingsSelectionPopupMode)
+        {
+            case GlobalSettingsSelectionPopupMode.AudioInputDevice:
+                return $"Current input: {GetSharedAudioSelectedInputLabel()}";
+            case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
+                return $"Current output: {GetSharedAudioSelectedOutputLabel()}";
+            case GlobalSettingsSelectionPopupMode.SongsFolder:
+                return $"Current folder: {ExternalContentPaths.PersistentSongsDirectory}";
+            default:
+                return string.Empty;
+        }
+    }
+
+    private int GetGlobalSettingsSelectionPopupOptionCount()
+    {
+        switch (globalSettingsSelectionPopupMode)
+        {
+            case GlobalSettingsSelectionPopupMode.AudioInputDevice:
+                return sharedAudioInputDeviceChoices.Count;
+            case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
+                return sharedAudioOutputDeviceChoices.Count;
+            case GlobalSettingsSelectionPopupMode.SongsFolder:
+                return 2;
+            default:
+                return 0;
+        }
+    }
+
+    private void SetSongsFolderOverrideFromUi(string selectedDirectory)
+    {
+        string currentDirectory = ExternalContentPaths.PersistentSongsDirectory;
+        string nextDirectory = string.IsNullOrWhiteSpace(selectedDirectory)
+            ? ExternalContentPaths.DefaultPersistentSongsDirectory
+            : selectedDirectory.Trim();
+
+        string normalizedCurrent = currentDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string normalizedNext = nextDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (string.Equals(normalizedCurrent, normalizedNext, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        try
+        {
+            Directory.CreateDirectory(nextDirectory);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"Failed to create songs directory '{nextDirectory}': {ex.Message}");
+            return;
+        }
+
+        ExternalContentPaths.SetSongsDirectoryOverride(selectedDirectory);
+        ExternalContentBootstrap.EnsureSongsDirectoryReady();
+        ClearSongSelectionCaches();
+        SongLibraryService.ClearCache();
+        RefreshAvailableSongs(forceRefresh: true);
+        songSelectionSongConfirmed = false;
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void RefreshSharedAudioDevicesFromUi()
+    {
+        RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true);
+        ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: false, refreshCatalogs: false);
+        SaveSharedAudioSettingsToDisk();
+        sharedAudioRefreshActionLabel = "DONE";
+        sharedAudioRefreshActionResetAt = Time.unscaledTime + 1f;
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void SetSharedAudioInputDeviceFromUi(string selectedLabel)
+    {
+        string normalized = IsSharedAudioAutomaticValue(selectedLabel)
+            ? string.Empty
+            : NormalizeSharedAudioStoredSelection(selectedLabel);
+        if (string.Equals(sharedAudioSettings.inputDeviceName ?? string.Empty, normalized ?? string.Empty, StringComparison.Ordinal))
+            return;
+
+        sharedAudioSettings.inputDeviceName = normalized;
+        sharedAudioRefreshActionLabel = "REFRESH";
+        sharedAudioRefreshActionResetAt = -1f;
+        SaveSharedAudioSettingsToDisk();
+        ApplySharedAudioSettingsToSubsystems(restartDetector: true, restartToneLab: true, refreshCatalogs: true);
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void SetSharedAudioOutputDeviceFromUi(string selectedLabel)
+    {
+        string normalized = IsSharedAudioAutomaticValue(selectedLabel)
+            ? string.Empty
+            : NormalizeSharedAudioStoredSelection(selectedLabel);
+        if (string.Equals(sharedAudioSettings.outputDeviceName ?? string.Empty, normalized ?? string.Empty, StringComparison.Ordinal))
+            return;
+
+        sharedAudioSettings.outputDeviceName = normalized;
+        sharedAudioRefreshActionLabel = "REFRESH";
+        sharedAudioRefreshActionResetAt = -1f;
+        SaveSharedAudioSettingsToDisk();
+        ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: true, refreshCatalogs: true);
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void SetSharedAudioMonitoringLatencyFromUi(string selectedLabel)
+    {
+        int nextBufferSize = UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(selectedLabel);
+        if (sharedAudioSettings.monitoringBufferSize == nextBufferSize)
+            return;
+
+        sharedAudioSettings.monitoringBufferSize = nextBufferSize;
+        sharedAudioRefreshActionLabel = "REFRESH";
+        sharedAudioRefreshActionResetAt = -1f;
+        SaveSharedAudioSettingsToDisk();
+        ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: true, refreshCatalogs: false);
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void ToggleSharedDetectorResamplerModeFromUi()
+    {
+        if (sharedAudioSettings == null)
+            sharedAudioSettings = new SharedAudioSettings();
+
+        string nextMode = SharedAudioDetectorResamplerModes.Toggle(sharedAudioSettings.detectorResamplerMode);
+        if (string.Equals(SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings.detectorResamplerMode), nextMode, StringComparison.Ordinal))
+            return;
+
+        sharedAudioSettings.detectorResamplerMode = nextMode;
+        SaveSharedAudioSettingsToDisk();
+        ApplySharedAudioSettingsToSubsystems(restartDetector: true, restartToneLab: false, refreshCatalogs: false);
+        runtimeSettingsSnapshotDirty = true;
+    }
+
     private string GetSelectedNativeNotesDetectorInputDeviceLabel()
     {
         if (selectedNativeNotesDetectorInputDeviceIndex < 0)
@@ -10861,14 +11778,23 @@ private void OpenOrFocusToneLab()
 
     private int GetSelectedNativeDetectorInputDeviceUiIndex()
     {
-        if (selectedNativeNotesDetectorInputDeviceIndex < 0)
-            return 0;
-
-        for (int i = 0; i < nativeNotesDetectorInputDevices.Count; i++)
+        string selectedLabel = GetSharedAudioSelectedInputLabel();
+        for (int i = 0; i < sharedAudioInputDeviceChoices.Count; i++)
         {
-            NativeDetectorInputDevice device = nativeNotesDetectorInputDevices[i];
-            if (device != null && device.index == selectedNativeNotesDetectorInputDeviceIndex)
-                return i + 1;
+            if (string.Equals(sharedAudioInputDeviceChoices[i], selectedLabel, StringComparison.Ordinal))
+                return i;
+        }
+
+        return 0;
+    }
+
+    private int GetSelectedSharedAudioOutputUiIndex()
+    {
+        string selectedLabel = GetSharedAudioSelectedOutputLabel();
+        for (int i = 0; i < sharedAudioOutputDeviceChoices.Count; i++)
+        {
+            if (string.Equals(sharedAudioOutputDeviceChoices[i], selectedLabel, StringComparison.Ordinal))
+                return i;
         }
 
         return 0;
@@ -10876,22 +11802,7 @@ private void OpenOrFocusToneLab()
 
     private List<string> BuildNotesDetectorInputDeviceSnapshot()
     {
-        List<string> result = new List<string>
-        {
-            "Automatic"
-        };
-
-        for (int i = 0; i < nativeNotesDetectorInputDevices.Count; i++)
-        {
-            NativeDetectorInputDevice device = nativeNotesDetectorInputDevices[i];
-            if (device == null)
-                continue;
-
-            string displayName = string.IsNullOrWhiteSpace(device.displayName) ? device.name : device.displayName;
-            result.Add(string.IsNullOrWhiteSpace(displayName) ? $"Device {device.index}" : displayName);
-        }
-
-        return result;
+        return new List<string>(sharedAudioInputDeviceChoices);
     }
 
     private List<string> BuildNotesDetectorPresetLabelsSnapshot()
@@ -10928,37 +11839,15 @@ private void OpenOrFocusToneLab()
 
     public void RefreshNativeNotesDetectorDevicesFromUi()
     {
-        RefreshNativeNotesDetectorUiState();
+        RefreshSharedAudioDevicesFromUi();
     }
 
     public void SetNativeNotesDetectorInputDeviceFromUi(int uiIndex)
     {
-        int resolvedDeviceIndex = -1;
-        if (uiIndex > 0)
-        {
-            int deviceListIndex = uiIndex - 1;
-            if (deviceListIndex >= 0 && deviceListIndex < nativeNotesDetectorInputDevices.Count)
-            {
-                NativeDetectorInputDevice device = nativeNotesDetectorInputDevices[deviceListIndex];
-                if (device != null)
-                    resolvedDeviceIndex = device.index;
-            }
-        }
-
-        if (selectedNativeNotesDetectorInputDeviceIndex == resolvedDeviceIndex)
+        if (uiIndex < 0 || uiIndex >= sharedAudioInputDeviceChoices.Count)
             return;
 
-        selectedNativeNotesDetectorInputDeviceIndex = resolvedDeviceIndex;
-        SaveNativeDetectorPreferences();
-
-        if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
-        {
-            EnsureNativeNotesDetectorBridge();
-            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex);
-        }
-
-        RefreshNativeNotesDetectorUiState();
-        MarkDetectorHintDirty();
+        SetSharedAudioInputDeviceFromUi(sharedAudioInputDeviceChoices[uiIndex]);
     }
 
     public void SetNativeNotesDetectorPresetFromUi(int presetUiIndex)
@@ -11024,7 +11913,13 @@ private void OpenOrFocusToneLab()
     private string GetNotesDetectorStatusText()
     {
         if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
-            return nativeNotesDetectorBridge != null ? nativeNotesDetectorBridge.LastStatus : "Native detector not initialized.";
+        {
+            NativeDetectorRuntimeInfo info = nativeNotesDetectorRuntimeInfo ?? new NativeDetectorRuntimeInfo();
+            if (info.running)
+                return string.IsNullOrWhiteSpace(info.selectedInputDeviceDisplayName) ? "Running." : $"Running on {info.selectedInputDeviceDisplayName}";
+
+            return "Native detector idle.";
+        }
 
         if (IsNoteDetectorConnected())
             return "External detector connected.";
@@ -11040,21 +11935,18 @@ private void OpenOrFocusToneLab()
         if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
         {
             string error = nativeNotesDetectorBridge != null ? nativeNotesDetectorBridge.LastError : string.Empty;
-            string selectedDevice = !string.IsNullOrWhiteSpace(nativeNotesDetectorRuntimeInfo.selectedInputDeviceDisplayName)
-                ? nativeNotesDetectorRuntimeInfo.selectedInputDeviceDisplayName
-                : GetSelectedNativeNotesDetectorInputDeviceLabel();
-            string hostApi = !string.IsNullOrWhiteSpace(nativeNotesDetectorRuntimeInfo.selectedHostApiName)
-                ? nativeNotesDetectorRuntimeInfo.selectedHostApiName
-                : "--";
-            string presetLabel = GetSelectedNativeDetectorPresetLabel();
-            string detail = $"Preset  {presetLabel}  \u2022  Input  {selectedDevice}  \u2022  Host  {hostApi}  \u2022  {nativeNotesDetectorRuntimeInfo.sampleRate} Hz  \u2022  Hop {nativeNotesDetectorRuntimeInfo.hopSize}  \u2022  Level {(nativeNotesDetectorRuntimeInfo.inputLevelNormalized * 100f):F0}%";
-            if (!string.IsNullOrWhiteSpace(error))
-                detail = $"{detail}\n{error}";
-            return detail;
+            return string.IsNullOrWhiteSpace(error) ? string.Empty : error;
         }
 
         string detectorPath = Path.Combine(Application.streamingAssetsPath, notesDetectorRelativePath);
         return $"UDP {detectorHintIp}:{detectorHintPort} hints  •  Rx {udpPort}  •  {Path.GetFileName(detectorPath)}";
+    }
+
+    private static NativeDetectorResamplerMode ParseSharedDetectorResamplerMode(string mode)
+    {
+        return string.Equals(SharedAudioDetectorResamplerModes.Normalize(mode), SharedAudioDetectorResamplerModes.Linear, StringComparison.Ordinal)
+            ? NativeDetectorResamplerMode.Linear
+            : NativeDetectorResamplerMode.Filtered;
     }
 
     private void SwitchNotesDetectorBackend(NotesDetectorBackendMode backend)
@@ -14927,6 +15819,7 @@ private void ParseDetectorPacket(string detectorPacket)
             sections = tabSections,
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
+            showGameplayAudioPopup = showGameplayAudioPopup,
             showOffsetHelper = showOffsetHelper,
             offsetHelperAdjusting = offsetHelperAdjusting,
             offsetHelperPreviewPlaying = offsetHelperPreviewPlaying,
@@ -14956,10 +15849,19 @@ private void ParseDetectorPacket(string detectorPacket)
             notesDetectorGameplayTestActive = notesDetectorGameplayTestActive,
             showNotesDetectorTestSelectionPopup = showNotesDetectorTestSelectionPopup,
             showGlobalSettings = showGlobalSettings,
+            songsFolderMenuValueLabel = GetSongsFolderMenuValueLabel(),
             selectedGlobalSettingsTopIndex = selectedGlobalSettingsTopIndex,
             selectedGlobalSettingsItemIndex = selectedGlobalSettingsItemIndex,
             activeGlobalSettingsCategory = activeGlobalSettingsCategory,
             globalSettingsTransparentBackground = globalSettingsTransparentBackground,
+            showGlobalSettingsSelectionPopup = showGlobalSettingsSelectionPopup,
+            globalSettingsSelectionPopupEyebrow = GetGlobalSettingsSelectionPopupEyebrow(),
+            globalSettingsSelectionPopupTitle = GetGlobalSettingsSelectionPopupTitle(),
+            globalSettingsSelectionPopupSummary = GetGlobalSettingsSelectionPopupSummary(),
+            globalSettingsSelectionPopupOptionNames = BuildGlobalSettingsSelectionPopupOptionNames(),
+            globalSettingsSelectionPopupOptionStates = BuildGlobalSettingsSelectionPopupOptionStates(),
+            globalSettingsSelectionPopupOptionActions = BuildGlobalSettingsSelectionPopupOptionActions(),
+            selectedGlobalSettingsSelectionPopupIndex = selectedGlobalSettingsSelectionPopupIndex,
             showGameplayHudPreviewInMenus = gameplayHudPreviewInMenus,
             selectedNotesDetectorTestIndex = selectedNotesDetectorTestIndex,
             selectedNotesDetectorCatalogIndex = selectedNotesDetectorCatalogIndex,
@@ -15010,6 +15912,8 @@ private void ParseDetectorPacket(string detectorPacket)
             tabSpeedOffsetPercent = tabSpeedOffsetPercent,
             songStartDelaySeconds = songStartDelaySeconds,
             songVolumePercent = songVolumePercent,
+            guitarVolumePercent = GetSharedAudioGuitarVolumePercent(),
+            selectedGameplayAudioPopupIndex = selectedGameplayAudioPopupIndex,
             songPlaybackAudioModeLabel = GetCurrentSongPlaybackAudioModeLabel(),
             songPlaybackUsesGeneratedMode = GetEffectiveSongPlaybackAudioMode() == SongPlaybackAudioMode.Generated,
             generatedAudioTrackSelectionAvailable = GetAvailableGeneratedPlaybackParts().Count > 0,
@@ -15058,6 +15962,10 @@ private void ParseDetectorPacket(string detectorPacket)
             notesDetectorBackendLabel = GetNotesDetectorBackendLabel(),
             notesDetectorStatusText = GetNotesDetectorStatusText(),
             notesDetectorDetailText = GetNotesDetectorDetailText(),
+            notesDetectorCaptureSampleRate = nativeNotesDetectorRuntimeInfo != null && nativeNotesDetectorRuntimeInfo.running ? nativeNotesDetectorRuntimeInfo.captureSampleRate : 0,
+            notesDetectorInternalSampleRate = nativeNotesDetectorRuntimeInfo != null && nativeNotesDetectorRuntimeInfo.internalSampleRate > 0 ? nativeNotesDetectorRuntimeInfo.internalSampleRate : 22050,
+            notesDetectorResamplerToggleVisible = nativeNotesDetectorRuntimeInfo != null && nativeNotesDetectorRuntimeInfo.resamplerToggleAvailable,
+            notesDetectorResamplerModeLabel = GetSharedDetectorResamplerModeLabel(),
             notesDetectorAvailableInputDevices = BuildNotesDetectorInputDeviceSnapshot(),
             selectedNotesDetectorInputDeviceIndex = GetSelectedNativeDetectorInputDeviceUiIndex(),
             notesDetectorPresetLabels = BuildNotesDetectorPresetLabelsSnapshot(),
@@ -15195,7 +16103,7 @@ private void ParseDetectorPacket(string detectorPacket)
         showTrackSelection = preservePauseUiState ? wasShowingTrackSelection : false;
         showGlobalSettings = preservePauseUiState ? wasShowingGlobalSettings : false;
         tabSpeedOffsetPercent = 100f;
-        songVolumePercent = 100f;
+        songVolumePercent = Mathf.Clamp(sharedAudioSettings?.songVolumePercent ?? 100f, 0f, 100f);
 
         List<NoteData> loadedNotes = null;
         List<ArpeggioGuideData> loadedArpeggioGuides = new List<ArpeggioGuideData>();
@@ -15866,6 +16774,12 @@ private void ParseDetectorPacket(string detectorPacket)
 
     public void SetSelectedSongSettingsPopupTrackRowIndexFromUi(int index)
     {
+        if (showGlobalSettingsSelectionPopup)
+        {
+            SetSelectedGlobalSettingsSelectionPopupIndexFromUi(index);
+            return;
+        }
+
         if (showSongSettingsTrackSelectionPopup)
         {
             SetSelectedSongSettingsTrackSelectionPopupIndexFromUi(index);
@@ -15878,6 +16792,13 @@ private void ParseDetectorPacket(string detectorPacket)
 
     public void ActivateSongSettingsPopupTrackRowFromUi(int index)
     {
+        if (showGlobalSettingsSelectionPopup)
+        {
+            SetSelectedGlobalSettingsSelectionPopupIndexFromUi(index);
+            ActivateSelectedGlobalSettingsSelectionPopupOptionFromUi();
+            return;
+        }
+
         if (showSongSettingsTrackSelectionPopup)
         {
             SetSelectedSongSettingsTrackSelectionPopupIndexFromUi(index);
@@ -16077,7 +16998,7 @@ private void ParseDetectorPacket(string detectorPacket)
         audioOffsetMs = globalAudioOffsetMs;
         tabSpeedOffsetPercent = Mathf.Clamp(songMetadata.tabSpeedOffsetPercent <= 0f ? 100f : songMetadata.tabSpeedOffsetPercent, 50f, 150f);
         songStartDelaySeconds = Mathf.Clamp(songMetadata.songStartDelaySeconds <= 0f ? defaultSongStartDelaySeconds : songMetadata.songStartDelaySeconds, 0f, 8f);
-        songVolumePercent = Mathf.Clamp(songMetadata.songVolumePercent, 0f, 100f);
+        songVolumePercent = Mathf.Clamp(sharedAudioSettings?.songVolumePercent ?? songMetadata.songVolumePercent, 0f, 100f);
         songPlaybackAudioMode = NormalizeSongPlaybackAudioModeForCurrentGameMode(songMetadata.playbackAudioMode);
         loopPauseDurationSeconds = Mathf.Clamp(songMetadata.loopPauseDurationSeconds, 0f, 8f);
         loopStartConfigured = false;
@@ -17721,6 +18642,22 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line. This also controls the visible distance between notes.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
         RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "When ON, pitch validation uses E Standard so you can play songs that are not in E Standard without retuning your guitar. When OFF, tune your guitar to the song's required tuning.", () => forceStandardTuning, v => { forceStandardTuning = v; RefreshActiveTrackTuning(); });
+        RegisterEnumSetting("audio.inputDevice", "Audio", "Input Device", string.Empty, new List<string>(sharedAudioInputDeviceChoices), () => GetSharedAudioSelectedInputLabel(), SetSharedAudioInputDeviceFromUi);
+        RegisterEnumSetting("audio.outputDevice", "Audio", "Output Device", string.Empty, new List<string>(sharedAudioOutputDeviceChoices), () => GetSharedAudioSelectedOutputLabel(), SetSharedAudioOutputDeviceFromUi);
+        RegisterFloatSetting("audio.songVolume", "Audio", "Song Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioSongVolumePercent(), SetSongVolumePercentFromUi);
+        RegisterFloatSetting("audio.guitarVolume", "Audio", "Guitar Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioGuitarVolumePercent(), SetSharedAudioGuitarVolumeFromUi);
+        RegisterEnumSetting("audio.monitoringLatency", "Audio", "Monitoring Latency", string.Empty, UnityToneLabRuntime.SharedMonitoringLatencyOptions, () => GetSharedAudioSelectedLatencyLabel(), SetSharedAudioMonitoringLatencyFromUi);
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = "audio.refreshDevices",
+            Section = "Audio",
+            Label = "Refresh Audio Devices",
+            Tooltip = string.Empty,
+            ValueType = "action",
+            Getter = () => sharedAudioRefreshActionLabel,
+            Setter = null,
+            Activator = RefreshSharedAudioDevicesFromUi
+        });
         RegisterIntSetting("arcade.highwayLaneCount", "Rhythm Mode", "Rhythm Lanes", "Minimum number of lane columns used by the Rhythm highway.", 1, 8, 1, () => arcadeHighwayLaneCount, v => arcadeHighwayLaneCount = Mathf.Clamp(v, 1, 8));
         RegisterFloatSetting("arcade.hitWindowEarly", "Rhythm Mode", "Early Hit Window", "How far before the strike line a Rhythm input can hit.", 0.02f, 0.30f, 0.005f, () => arcadeHitWindowEarly, v => arcadeHitWindowEarly = Mathf.Max(0f, v));
         RegisterFloatSetting("arcade.hitWindowLate", "Rhythm Mode", "Late Hit Window", "How far after the strike line a Rhythm input can hit after the gem has visually passed.", 0.02f, 0.30f, 0.005f, () => arcadeHitWindowLate, v => arcadeHitWindowLate = Mathf.Max(0f, v));
@@ -18351,6 +19288,12 @@ private void ParseDetectorPacket(string detectorPacket)
                 return;
             }
 
+            if (selectedGlobalSettingsTopIndex == GlobalSettingsSongsFolderTopIndex)
+            {
+                OpenSongsFolderSelectionPopupFromUi();
+                return;
+            }
+
             if (selectedGlobalSettingsTopIndex == GlobalSettingsResetTopIndex)
                 ResetGlobalSettingsToDefaultsFromUi();
 
@@ -18369,6 +19312,14 @@ private void ParseDetectorPacket(string detectorPacket)
             (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) || string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase)))
         {
             definition.Activator();
+        }
+        else if (string.Equals(setting.id, "audio.inputDevice", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenAudioInputSelectionPopupFromUi();
+        }
+        else if (string.Equals(setting.id, "audio.outputDevice", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenAudioOutputSelectionPopupFromUi();
         }
         else if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
         {
@@ -18410,6 +19361,8 @@ private void ParseDetectorPacket(string detectorPacket)
                         int nextIndex = (currentIndex + delta + renderDefinition.EnumOptions.Count) % renderDefinition.EnumOptions.Count;
                         ApplyRuntimeSettingValue("render.mode", renderDefinition.EnumOptions[nextIndex], saveMetadata: true);
                     }
+                    break;
+                case GlobalSettingsSongsFolderTopIndex:
                     break;
                 case GlobalSettingsResetTopIndex:
                     if (delta != 0)
@@ -18479,13 +19432,14 @@ private void ParseDetectorPacket(string detectorPacket)
     {
         switch (index)
         {
-            case 2: return "Gameplay";
-            case 3: return "2D Tabs";
-            case 4: return "Highway3D";
-            case 5: return "Rhythm";
-            case 6: return "Controls";
-            case 7: return "Visuals";
-            case 8: return "Multiplayer Visuals";
+            case 3: return "Audio";
+            case 4: return "Gameplay";
+            case 5: return "2D Tabs";
+            case 6: return "Highway3D";
+            case 7: return "Rhythm";
+            case 8: return "Controls";
+            case 9: return "Visuals";
+            case 10: return "Multiplayer Visuals";
             default: return string.Empty;
         }
     }
@@ -18497,6 +19451,9 @@ private void ParseDetectorPacket(string detectorPacket)
 
         if (normalizedTitle.Contains("multiplayer") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "mp."))
             return "Multiplayer Visuals";
+
+        if (normalizedTitle.Contains("audio") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "audio."))
+            return "Audio";
 
         if (normalizedTitle.Contains("control") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "arcade.controls."))
             return "Controls";
@@ -18726,6 +19683,12 @@ private void ParseDetectorPacket(string detectorPacket)
                string.Equals(currentValue ?? string.Empty, expectedValue ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsSharedAudioRuntimeSettingId(string settingId)
+    {
+        return !string.IsNullOrWhiteSpace(settingId) &&
+               settingId.StartsWith("audio.", StringComparison.OrdinalIgnoreCase);
+    }
+
     private void LoadGlobalRuntimeSettingsMetadata()
     {
         pendingGlobalRuntimeSettingValues.Clear();
@@ -18755,6 +19718,9 @@ private void ParseDetectorPacket(string detectorPacket)
                 if (entry == null || string.IsNullOrEmpty(entry.id))
                     continue;
 
+                if (IsSharedAudioRuntimeSettingId(entry.id))
+                    continue;
+
                 pendingGlobalRuntimeSettingValues[entry.id] = entry.value ?? string.Empty;
             }
 
@@ -18769,6 +19735,9 @@ private void ParseDetectorPacket(string detectorPacket)
             foreach (RuntimeSettingDefinition definition in runtimeSettingDefinitions)
             {
                 if (definition == null || string.IsNullOrEmpty(definition.Id))
+                    continue;
+
+                if (IsSharedAudioRuntimeSettingId(definition.Id))
                     continue;
 
                 if (pendingGlobalRuntimeSettingValues.ContainsKey(definition.Id))
@@ -18804,11 +19773,14 @@ private void ParseDetectorPacket(string detectorPacket)
             GlobalRuntimeSettingsMetadata metadata = new GlobalRuntimeSettingsMetadata
             {
                 selectedHighwayCharacterId = SerializeHighwayCharacterChoice(selectedHighwayCharacter),
-                values = runtimeSettingDefinitions.Select(def => new RuntimeSettingValueEntry
-                {
-                    id = def.Id,
-                    value = def.Getter != null ? def.Getter() : string.Empty
-                }).ToList()
+                values = runtimeSettingDefinitions
+                    .Where(def => def != null && !IsSharedAudioRuntimeSettingId(def.Id))
+                    .Select(def => new RuntimeSettingValueEntry
+                    {
+                        id = def.Id,
+                        value = def.Getter != null ? def.Getter() : string.Empty
+                    })
+                    .ToList()
             };
 
             File.WriteAllText(path, JsonUtility.ToJson(metadata, true));

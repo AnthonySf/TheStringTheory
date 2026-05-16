@@ -591,9 +591,11 @@ public sealed class TabsSongHeaderOverlay
 
             int height = Mathf.Max(144, Mathf.CeilToInt(Screen.height / (float)Downsample));
 
-            int targetWidth = Mathf.Max(16, Mathf.CeilToInt(TargetElement.worldBound.width / (float)Downsample));
+            Rect targetScreenBounds = GetTargetScreenBounds();
 
-            int targetHeight = Mathf.Max(16, Mathf.CeilToInt(TargetElement.worldBound.height / (float)Downsample));
+            int targetWidth = Mathf.Max(16, Mathf.CeilToInt(targetScreenBounds.width / (float)Downsample));
+
+            int targetHeight = Mathf.Max(16, Mathf.CeilToInt(targetScreenBounds.height / (float)Downsample));
 
             if (!UpdateContinuously && hasRenderedVisibleFrame && width == textureWidth && height == textureHeight && targetWidth == targetTextureWidth && targetHeight == targetTextureHeight)
 
@@ -658,8 +660,8 @@ public sealed class TabsSongHeaderOverlay
             {
                 EnsureTargetTexture(targetWidth, targetHeight);
 
-                int sourceX = Mathf.Clamp(Mathf.FloorToInt(TargetElement.worldBound.xMin / Downsample), 0, Mathf.Max(0, textureWidth - targetWidth));
-                int sourceY = Mathf.Clamp(textureHeight - Mathf.CeilToInt(TargetElement.worldBound.yMax / Downsample), 0, Mathf.Max(0, textureHeight - targetHeight));
+                int sourceX = Mathf.Clamp(Mathf.FloorToInt(targetScreenBounds.xMin / Downsample), 0, Mathf.Max(0, textureWidth - targetWidth));
+                int sourceY = Mathf.Clamp(textureHeight - Mathf.CeilToInt(targetScreenBounds.yMax / Downsample), 0, Mathf.Max(0, textureHeight - targetHeight));
                 Vector2 scale = new Vector2(targetWidth / (float)textureWidth, targetHeight / (float)textureHeight);
                 Vector2 offset = new Vector2(sourceX / (float)textureWidth, sourceY / (float)textureHeight);
 
@@ -694,6 +696,56 @@ public sealed class TabsSongHeaderOverlay
                 && TargetElement.worldBound.width > 16f
 
                 && TargetElement.worldBound.height > 16f;
+
+        }
+
+        private Rect GetTargetScreenBounds()
+
+        {
+
+            if (TargetElement == null)
+
+                return default;
+
+
+
+            Rect targetBounds = TargetElement.worldBound;
+
+            VisualElement panelRoot = TargetElement.panel?.visualTree;
+
+            if (panelRoot == null)
+
+                return targetBounds;
+
+
+
+            Rect panelBounds = panelRoot.worldBound;
+
+            if (panelBounds.width <= 1f || panelBounds.height <= 1f)
+
+                return targetBounds;
+
+
+
+            float scaleX = Screen.width / panelBounds.width;
+
+            float scaleY = Screen.height / panelBounds.height;
+
+            if (!float.IsFinite(scaleX) || !float.IsFinite(scaleY) || scaleX <= 0f || scaleY <= 0f)
+
+                return targetBounds;
+
+
+
+            return new Rect(
+
+                (targetBounds.xMin - panelBounds.xMin) * scaleX,
+
+                (targetBounds.yMin - panelBounds.yMin) * scaleY,
+
+                targetBounds.width * scaleX,
+
+                targetBounds.height * scaleY);
 
         }
 
@@ -1523,6 +1575,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label notesDetectorTestStatusLabel;
     private readonly Label notesDetectorTestDetailLabel;
     private readonly Label notesDetectorTestRuntimeLabel;
+    private readonly Label notesDetectorTestRatesLabel;
     private readonly Label notesDetectorTestFastNotesLabel;
     private readonly Label notesDetectorTestAiNotesLabel;
     private readonly DropdownField notesDetectorTestInputDeviceDropdown;
@@ -1531,6 +1584,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button notesDetectorRunTestButton;
     private readonly Button notesDetectorBackButton;
     private readonly Button notesDetectorRefreshDevicesButton;
+    private readonly Button notesDetectorResamplerModeButton;
     private readonly Button notesDetectorSavePresetButton;
     private readonly Button notesDetectorAdvancedSettingsToggleButton;
     private readonly ScrollView notesDetectorSettingsScrollView;
@@ -1765,6 +1819,16 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button generatedAudioTracksCloseButton;
     private readonly ScrollView generatedAudioTracksPopupScrollView;
     private readonly List<GeneratedAudioTrackPopupRow> generatedAudioTracksPopupTrackButtons = new List<GeneratedAudioTrackPopupRow>();
+    private readonly VisualElement gameplayAudioPopupOverlay;
+    private readonly VisualElement gameplayAudioPopupSongRow;
+    private readonly VisualElement gameplayAudioPopupGuitarRow;
+    private readonly Label gameplayAudioPopupSongLabel;
+    private readonly Label gameplayAudioPopupSongValueLabel;
+    private readonly Label gameplayAudioPopupGuitarLabel;
+    private readonly Label gameplayAudioPopupGuitarValueLabel;
+    private readonly Label gameplayAudioPopupHintLabel;
+    private readonly Slider gameplayAudioPopupSongSlider;
+    private readonly Slider gameplayAudioPopupGuitarSlider;
 
     private readonly List<Button> songSettingsActionButtons = new List<Button>();
     private readonly List<int> songSettingsActionSelectionIndices = new List<int>();
@@ -4227,7 +4291,7 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorDeviceColumn.style.marginRight = 18f;
         notesDetectorDeviceColumn.style.marginBottom = 10f;
 
-        Label notesDetectorDeviceLabel = CreateLabel("Native Input Device", 34f, new Color(0.73f, 0.78f, 0.84f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label notesDetectorDeviceLabel = CreateLabel("Input Device", 34f, new Color(0.73f, 0.78f, 0.84f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
         notesDetectorDeviceLabel.style.unityFontDefinition = modernUiFontDefinition;
         notesDetectorDeviceLabel.style.marginBottom = 10f;
         notesDetectorDeviceColumn.Add(notesDetectorDeviceLabel);
@@ -4315,6 +4379,34 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorRefreshDevicesButton.style.fontSize = 24f;
         notesDetectorDeviceRow.Add(notesDetectorRefreshDevicesButton);
 
+        notesDetectorResamplerModeButton = new Button(() => owner?.ToggleSharedDetectorResamplerModeFromUi())
+        {
+            text = "Resampler: Filtered"
+        };
+        notesDetectorResamplerModeButton.style.height = 72f;
+        notesDetectorResamplerModeButton.style.minWidth = 240f;
+        notesDetectorResamplerModeButton.style.paddingLeft = 16f;
+        notesDetectorResamplerModeButton.style.paddingRight = 16f;
+        notesDetectorResamplerModeButton.style.marginLeft = 10f;
+        notesDetectorResamplerModeButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        notesDetectorResamplerModeButton.style.color = new Color(0.93f, 0.95f, 0.98f, 1f);
+        notesDetectorResamplerModeButton.style.borderTopWidth = 1f;
+        notesDetectorResamplerModeButton.style.borderRightWidth = 1f;
+        notesDetectorResamplerModeButton.style.borderBottomWidth = 1f;
+        notesDetectorResamplerModeButton.style.borderLeftWidth = 1f;
+        notesDetectorResamplerModeButton.style.borderTopColor = MenuOutlineNeutralColor;
+        notesDetectorResamplerModeButton.style.borderRightColor = MenuOutlineNeutralColor;
+        notesDetectorResamplerModeButton.style.borderBottomColor = MenuOutlineNeutralColor;
+        notesDetectorResamplerModeButton.style.borderLeftColor = MenuOutlineNeutralColor;
+        notesDetectorResamplerModeButton.style.borderTopLeftRadius = 10f;
+        notesDetectorResamplerModeButton.style.borderTopRightRadius = 10f;
+        notesDetectorResamplerModeButton.style.borderBottomLeftRadius = 10f;
+        notesDetectorResamplerModeButton.style.borderBottomRightRadius = 10f;
+        notesDetectorResamplerModeButton.style.unityFontDefinition = modernUiFontDefinition;
+        notesDetectorResamplerModeButton.style.fontSize = 24f;
+        notesDetectorResamplerModeButton.style.display = DisplayStyle.None;
+        notesDetectorDeviceRow.Add(notesDetectorResamplerModeButton);
+
         notesDetectorDeviceColumn.Add(notesDetectorDeviceRow);
         notesDetectorToolbarRow.Add(notesDetectorDeviceColumn);
 
@@ -4325,6 +4417,14 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorTestRuntimeLabel.style.marginTop = 14f;
         notesDetectorTestRuntimeLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
         notesDetectorToolbarRow.Add(notesDetectorTestRuntimeLabel);
+
+        notesDetectorTestRatesLabel = CreateLabel(string.Empty, 28f, new Color(0.78f, 0.82f, 0.87f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        notesDetectorTestRatesLabel.style.unityFontDefinition = modernUiFontDefinition;
+        notesDetectorTestRatesLabel.style.whiteSpace = WhiteSpace.Normal;
+        notesDetectorTestRatesLabel.style.maxWidth = Length.Percent(100f);
+        notesDetectorTestRatesLabel.style.marginTop = 8f;
+        notesDetectorTestRatesLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        notesDetectorToolbarRow.Add(notesDetectorTestRatesLabel);
 
         notesDetectorTestStatusLabel = CreateLabel("Status unavailable.", 38f, LibraryConfirmedSongColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
         notesDetectorTestStatusLabel.style.unityFontDefinition = modernUiFontDefinition;
@@ -6596,10 +6696,6 @@ public sealed class TabsSongHeaderOverlay
 
         settingsCard.Add(settingsStartDelayHelpLabel);
 
-        settingsCard.Add(settingsVolumeRow);
-
-        settingsCard.Add(settingsVolumeHelpLabel);
-
         settingsCard.Add(settingsTrackRow);
 
         settingsCard.Add(settingsTrackHelpLabel);
@@ -6649,7 +6745,7 @@ public sealed class TabsSongHeaderOverlay
         generatedAudioTracksPopupCard.style.paddingRight = 38f;
         generatedAudioTracksPopupCard.style.paddingTop = 30f;
         generatedAudioTracksPopupCard.style.paddingBottom = 26f;
-        generatedAudioTracksPopupCard.style.backgroundColor = new Color(0.07f, 0.08f, 0.09f, 0.98f);
+        generatedAudioTracksPopupCard.style.backgroundColor = new Color(0.07f, 0.08f, 0.09f, 1f);
         generatedAudioTracksPopupCard.style.borderTopLeftRadius = 22f;
         generatedAudioTracksPopupCard.style.borderTopRightRadius = 22f;
         generatedAudioTracksPopupCard.style.borderBottomLeftRadius = 22f;
@@ -6746,6 +6842,88 @@ public sealed class TabsSongHeaderOverlay
         generatedAudioTracksPopupCard.Add(generatedAudioTracksPopupHintLabel);
         generatedAudioTracksPopupOverlay.Add(generatedAudioTracksPopupCard);
 
+        gameplayAudioPopupOverlay = CreateFullscreenOverlay();
+        gameplayAudioPopupOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.03f, 0.78f);
+        gameplayAudioPopupOverlay.style.alignItems = Align.Center;
+        gameplayAudioPopupOverlay.style.justifyContent = Justify.Center;
+        gameplayAudioPopupOverlay.style.display = DisplayStyle.None;
+
+        VisualElement gameplayAudioPopupCard = new VisualElement();
+        gameplayAudioPopupCard.style.width = Length.Percent(66f);
+        gameplayAudioPopupCard.style.maxWidth = 980f;
+        gameplayAudioPopupCard.style.minWidth = 680f;
+        gameplayAudioPopupCard.style.paddingLeft = 38f;
+        gameplayAudioPopupCard.style.paddingRight = 38f;
+        gameplayAudioPopupCard.style.paddingTop = 30f;
+        gameplayAudioPopupCard.style.paddingBottom = 36f;
+        gameplayAudioPopupCard.style.backgroundColor = new Color(0.07f, 0.08f, 0.09f, 1f);
+        gameplayAudioPopupCard.style.overflow = Overflow.Hidden;
+        gameplayAudioPopupCard.style.borderTopLeftRadius = 22f;
+        gameplayAudioPopupCard.style.borderTopRightRadius = 22f;
+        gameplayAudioPopupCard.style.borderBottomLeftRadius = 22f;
+        gameplayAudioPopupCard.style.borderBottomRightRadius = 22f;
+        gameplayAudioPopupCard.style.borderTopWidth = 2f;
+        gameplayAudioPopupCard.style.borderRightWidth = 2f;
+        gameplayAudioPopupCard.style.borderBottomWidth = 2f;
+        gameplayAudioPopupCard.style.borderLeftWidth = 2f;
+        gameplayAudioPopupCard.style.borderTopColor = new Color(1f, 1f, 1f, 0.14f);
+        gameplayAudioPopupCard.style.borderRightColor = new Color(1f, 1f, 1f, 0.14f);
+        gameplayAudioPopupCard.style.borderBottomColor = new Color(1f, 1f, 1f, 0.14f);
+        gameplayAudioPopupCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.14f);
+        gameplayAudioPopupCard.style.flexDirection = FlexDirection.Column;
+
+        Label gameplayAudioPopupEyebrowLabel = CreateLabel("ENTER / ESC SAVE", 20f, new Color(0.74f, 0.88f, 0.98f, 0.92f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        gameplayAudioPopupEyebrowLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayAudioPopupEyebrowLabel.style.marginBottom = 8f;
+        gameplayAudioPopupEyebrowLabel.style.letterSpacing = 1.8f;
+
+        Label gameplayAudioPopupTitleLabel = CreateLabel("AUDIO MIX", 70f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        gameplayAudioPopupTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayAudioPopupTitleLabel.style.marginBottom = 22f;
+
+        VisualElement gameplayAudioPopupRows = new VisualElement();
+        gameplayAudioPopupRows.style.flexDirection = FlexDirection.Column;
+        gameplayAudioPopupRows.style.marginTop = 4f;
+
+        gameplayAudioPopupSongRow = CreateGameplayAudioPopupSliderRow(
+            "Song Volume",
+            0,
+            out gameplayAudioPopupSongLabel,
+            out gameplayAudioPopupSongValueLabel,
+            out gameplayAudioPopupSongSlider);
+        gameplayAudioPopupSongSlider.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+
+            owner?.SetSelectedGameplayAudioPopupIndexFromUi(0);
+            owner?.SetSongVolumePercentFromUi(evt.newValue);
+        });
+        gameplayAudioPopupSongRow.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGameplayAudioPopupIndexFromUi(0));
+        gameplayAudioPopupRows.Add(gameplayAudioPopupSongRow);
+
+        gameplayAudioPopupGuitarRow = CreateGameplayAudioPopupSliderRow(
+            "Guitar Volume",
+            1,
+            out gameplayAudioPopupGuitarLabel,
+            out gameplayAudioPopupGuitarValueLabel,
+            out gameplayAudioPopupGuitarSlider);
+        gameplayAudioPopupGuitarSlider.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+
+            owner?.SetSelectedGameplayAudioPopupIndexFromUi(1);
+            owner?.SetSharedAudioGuitarVolumeFromUi(evt.newValue);
+        });
+        gameplayAudioPopupGuitarRow.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGameplayAudioPopupIndexFromUi(1));
+        gameplayAudioPopupRows.Add(gameplayAudioPopupGuitarRow);
+
+        gameplayAudioPopupCard.Add(gameplayAudioPopupEyebrowLabel);
+        gameplayAudioPopupCard.Add(gameplayAudioPopupTitleLabel);
+        gameplayAudioPopupCard.Add(gameplayAudioPopupRows);
+        gameplayAudioPopupOverlay.Add(gameplayAudioPopupCard);
+
         globalSettingsOverlay = CreateFullscreenOverlay();
 
         globalSettingsOverlay.style.backgroundColor = new Color(0.08f, 0.08f, 0.09f, 0.992f);
@@ -6782,13 +6960,14 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsTitleLabel.style.alignSelf = Align.Center;
 
-        globalSettingsHelpLabel = CreateLabel("Choose a category, then adjust values with left and right.", 30f, new Color(0.78f, 0.86f, 0.93f, 0.94f), false, TextAnchor.MiddleCenter);
+        globalSettingsHelpLabel = CreateLabel(string.Empty, 30f, new Color(0.78f, 0.86f, 0.93f, 0.94f), false, TextAnchor.MiddleCenter);
 
         globalSettingsHelpLabel.style.unityFontDefinition = modernUiFontDefinition;
 
         globalSettingsHelpLabel.style.marginBottom = 28f;
 
         globalSettingsHelpLabel.style.alignSelf = Align.Center;
+        globalSettingsHelpLabel.style.display = DisplayStyle.None;
 
 
 
@@ -9379,6 +9558,7 @@ public sealed class TabsSongHeaderOverlay
 
         root.Add(settingsOverlay);
         root.Add(generatedAudioTracksPopupOverlay);
+        root.Add(gameplayAudioPopupOverlay);
 
         root.Add(globalSettingsOverlay);
 
@@ -9834,6 +10014,8 @@ public sealed class TabsSongHeaderOverlay
         settingsStartDelaySlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songStartDelaySeconds, 0f, 8f));
 
         settingsVolumeSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songVolumePercent, 0f, 100f));
+        gameplayAudioPopupSongSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songVolumePercent, 0f, 100f));
+        gameplayAudioPopupGuitarSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.guitarVolumePercent, 0f, 100f));
 
         loopPauseDurationSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.loopPauseDurationSeconds, 0f, 8f));
 
@@ -9850,6 +10032,8 @@ public sealed class TabsSongHeaderOverlay
         settingsStartDelayLabel.text = $"Start Delay  {snapshot.songStartDelaySeconds:F2}s";
 
         settingsVolumeLabel.text = $"Song Volume  {snapshot.songVolumePercent:F0}%";
+        gameplayAudioPopupSongValueLabel.text = $"{snapshot.songVolumePercent:F0}%";
+        gameplayAudioPopupGuitarValueLabel.text = $"{snapshot.guitarVolumePercent:F0}%";
 
         loopPauseDurationLabel.text = $"Loop Pause  {snapshot.loopPauseDurationSeconds:F0}s";
 
@@ -9879,6 +10063,7 @@ public sealed class TabsSongHeaderOverlay
         bool showEnd = snapshot.songEnded;
         bool showToneLab = snapshot.showToneLab && !showEnd;
         bool showNotesDetectorTest = snapshot.showNotesDetectorTestMenu && !showEnd && !showToneLab;
+        bool showGameplayAudioPopup = snapshot.showGameplayAudioPopup && !showEnd && !showToneLab && !showNotesDetectorTest;
         bool showCharacterSelection = snapshot.showCharacterSelection && !showEnd && !showToneLab && !showNotesDetectorTest;
 
         bool showStartMenu = snapshot.showStartMenu && !showCharacterSelection && !showEnd && !showToneLab && !showNotesDetectorTest;
@@ -9902,23 +10087,23 @@ public sealed class TabsSongHeaderOverlay
 
         bool showOffsetHelper = snapshot.showOffsetHelper && !showEnd && !showToneLab;
 
-        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
 
-        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab;
+        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab && !showGameplayAudioPopup;
         bool showSharedPauseSidebarBase = showPause || showGameModes || showSettings;
 
         bool showSelection = snapshot.showSongSelection && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab;
 
         bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showEnd && !showToneLab;
 
-        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab;
+        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab && !showGameplayAudioPopup;
 
         bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
 
         bool isHighway3D = owner != null && owner.renderMode == GuitarRenderMode.Highway3D;
         bool isTabsGameplay = owner != null && owner.renderMode == GuitarRenderMode.Tabs && snapshot.gameplayMode == GuitarGameplayMode.Guitar;
 
-        bool showTechniqueLegend = isTabsGameplay && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showPause && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool showTechniqueLegend = isTabsGameplay && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showNotesDetectorTest && !showGameplayAudioPopup && !showPause && !showLoopSetup && !showLoopPausePopup && !showRocksmithDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
 
 
@@ -9984,7 +10169,17 @@ public sealed class TabsSongHeaderOverlay
 
         settingsOverlay.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
         settingsShell.style.display = showSettings ? DisplayStyle.Flex : DisplayStyle.None;
-        generatedAudioTracksPopupOverlay.style.display = showSettings && (snapshot.showGeneratedAudioTrackSelectionPopup || snapshot.showSongSettingsTrackSelectionPopup) ? DisplayStyle.Flex : DisplayStyle.None;
+        gameplayAudioPopupOverlay.style.display = showGameplayAudioPopup ? DisplayStyle.Flex : DisplayStyle.None;
+        if (gameplayAudioPopupOverlay.style.display == DisplayStyle.Flex)
+            gameplayAudioPopupOverlay.BringToFront();
+        generatedAudioTracksPopupOverlay.style.display =
+            (showSettings && (snapshot.showGeneratedAudioTrackSelectionPopup || snapshot.showSongSettingsTrackSelectionPopup)) ||
+            (showGlobalSettings && snapshot.showGlobalSettingsSelectionPopup)
+                ? DisplayStyle.Flex
+                : DisplayStyle.None;
+        if (generatedAudioTracksPopupOverlay.style.display == DisplayStyle.Flex)
+            generatedAudioTracksPopupOverlay.BringToFront();
+        UpdateGameplayAudioPopup(snapshot);
 
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
         if (selectionLibraryTypeButtonsRow != null)
@@ -10055,6 +10250,7 @@ public sealed class TabsSongHeaderOverlay
         bool showGameplayShortcuts = !showEnd
             && !showToneLab
             && !showNotesDetectorTest
+            && !showGameplayAudioPopup
             && !showMainMenu
             && !showStartMenu
             && !showSettings
@@ -10078,8 +10274,8 @@ public sealed class TabsSongHeaderOverlay
             else
             {
                 gameplayShortcutLabel.text = showPause
-                    ? $"Esc resume  •  R {restartTarget}  •  T Tone Lab  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
-                    : $"Esc pause  •  R {restartTarget}";
+                    ? $"Esc resume  •  R {restartTarget}  •  V Audio  •  T Tone Lab  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
+                    : $"Esc pause  •  R {restartTarget}  •  V Audio";
             }
             gameplayShortcutLabel.style.display = showGameplayShortcuts ? DisplayStyle.Flex : DisplayStyle.None;
         }
@@ -10109,6 +10305,7 @@ public sealed class TabsSongHeaderOverlay
 
 
         bool pauseLikeHudMenu = showPause || showSettings || showGlobalSettings || showGameModes || showHeroModeSettings;
+        pauseLikeHudMenu = pauseLikeHudMenu || showGameplayAudioPopup;
         bool showGameplayHudPreviewInMenus = snapshot.showGameplayHudPreviewInMenus;
         bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
         bool detectorGameplayMinimalHud = snapshot.notesDetectorGameplayTestActive;
@@ -10194,7 +10391,19 @@ public sealed class TabsSongHeaderOverlay
             notesDetectorTestInfoLabel.text = "The native notes detector runs continuously in the background. Tweak the safe settings below, then save to Custom when you want to keep your calibration.";
             notesDetectorTestStatusLabel.text = snapshot.notesDetectorStatusText ?? "Status unavailable.";
             notesDetectorTestDetailLabel.text = snapshot.notesDetectorDetailText ?? string.Empty;
-            notesDetectorTestRuntimeLabel.text = "Type: DLL native plugin  |  ONNX Runtime + native low-latency capture";
+            notesDetectorTestDetailLabel.style.display = string.IsNullOrWhiteSpace(notesDetectorTestDetailLabel.text) ? DisplayStyle.None : DisplayStyle.Flex;
+            string audioConfigPath = owner != null ? owner.GetSharedAudioSettingsPathForUi() : "audio_settings.json";
+            notesDetectorTestRuntimeLabel.text = $"Config File  {audioConfigPath}";
+            string captureRateText = snapshot.notesDetectorCaptureSampleRate > 0 ? $"{snapshot.notesDetectorCaptureSampleRate} Hz" : "--";
+            int internalRate = snapshot.notesDetectorInternalSampleRate > 0 ? snapshot.notesDetectorInternalSampleRate : 22050;
+            notesDetectorTestRatesLabel.text = $"Capture Rate  {captureRateText}  •  Internal Rate  {internalRate} Hz";
+            notesDetectorTestRatesLabel.style.display = DisplayStyle.Flex;
+            if (notesDetectorResamplerModeButton != null)
+            {
+                bool showResamplerToggle = snapshot.notesDetectorResamplerToggleVisible;
+                notesDetectorResamplerModeButton.text = $"Resampler: {(!string.IsNullOrWhiteSpace(snapshot.notesDetectorResamplerModeLabel) ? snapshot.notesDetectorResamplerModeLabel : "Filtered")}";
+                notesDetectorResamplerModeButton.style.display = showResamplerToggle ? DisplayStyle.Flex : DisplayStyle.None;
+            }
             if (notesDetectorTestFastNotesLabel != null)
                 notesDetectorTestFastNotesLabel.text = $"Fast Path Notes: {(!string.IsNullOrWhiteSpace(snapshot.notesDetectorFastNotesText) ? snapshot.notesDetectorFastNotesText : "--")}";
             if (notesDetectorTestAiNotesLabel != null)
@@ -10205,10 +10414,12 @@ public sealed class TabsSongHeaderOverlay
                     ? snapshot.notesDetectorAvailableInputDevices
                     : new List<string> { "Automatic" };
                 suppressNotesDetectorDropdownCallbacks = true;
-                notesDetectorTestInputDeviceDropdown.choices = deviceChoices;
+                if (!DropdownChoicesMatch(notesDetectorTestInputDeviceDropdown, deviceChoices))
+                    notesDetectorTestInputDeviceDropdown.choices = deviceChoices;
                 int selectedDeviceUiIndex = Mathf.Clamp(snapshot.selectedNotesDetectorInputDeviceIndex, 0, deviceChoices.Count - 1);
                 string selectedDeviceLabel = deviceChoices[selectedDeviceUiIndex];
-                notesDetectorTestInputDeviceDropdown.SetValueWithoutNotify(selectedDeviceLabel);
+                if (!string.Equals(notesDetectorTestInputDeviceDropdown.value, selectedDeviceLabel, StringComparison.Ordinal))
+                    notesDetectorTestInputDeviceDropdown.SetValueWithoutNotify(selectedDeviceLabel);
                 notesDetectorTestInputDeviceDropdown.SetEnabled(deviceChoices.Count > 0);
                 suppressNotesDetectorDropdownCallbacks = false;
             }
@@ -10218,10 +10429,12 @@ public sealed class TabsSongHeaderOverlay
                     ? snapshot.notesDetectorPresetLabels
                     : NativeDetectorSettingCatalog.BuildPresetLabels();
                 suppressNotesDetectorDropdownCallbacks = true;
-                notesDetectorPresetDropdown.choices = presetChoices;
+                if (!DropdownChoicesMatch(notesDetectorPresetDropdown, presetChoices))
+                    notesDetectorPresetDropdown.choices = presetChoices;
                 int selectedPresetIndex = Mathf.Clamp(snapshot.selectedNotesDetectorPresetIndex, 0, presetChoices.Count - 1);
                 string selectedPresetLabel = presetChoices[selectedPresetIndex];
-                notesDetectorPresetDropdown.SetValueWithoutNotify(selectedPresetLabel);
+                if (!string.Equals(notesDetectorPresetDropdown.value, selectedPresetLabel, StringComparison.Ordinal))
+                    notesDetectorPresetDropdown.SetValueWithoutNotify(selectedPresetLabel);
                 suppressNotesDetectorDropdownCallbacks = false;
             }
             if (notesDetectorRefreshDevicesButton != null)
@@ -10780,7 +10993,7 @@ public sealed class TabsSongHeaderOverlay
                 settingsHintLabel.text = snapshot.selectedSongSettingsIndex switch
                 {
                     0 => "Up/Down selects  \u2022  Enter opens track picker  \u2022  Esc returns",
-                    2 or 3 or 4 => "Up/Down selects  \u2022  Left/Right adjusts  \u2022  Enter confirms",
+                    2 or 3 => "Up/Down selects  \u2022  Left/Right adjusts  \u2022  Enter confirms",
                     5 => "Up/Down selects  \u2022  Enter opens track picker  \u2022  Esc returns",
                     _ => "Up/Down selects  \u2022  Enter confirms  \u2022  Esc returns"
                 };
@@ -10791,9 +11004,11 @@ public sealed class TabsSongHeaderOverlay
                     ? "Up/Down selects  \u2022  Enter opens helper  \u2022  Esc returns"
                     : (snapshot.selectedSongSettingsIndex == 5
                         ? "Up/Down selects  \u2022  Enter opens track picker  \u2022  Esc returns"
-                        : (snapshot.selectedSongSettingsIndex >= 1 && snapshot.selectedSongSettingsIndex <= 6
+                        : (snapshot.selectedSongSettingsIndex >= 1 && snapshot.selectedSongSettingsIndex <= 3
                         ? "Up/Down selects  \u2022  Left/Right adjusts  \u2022  Enter confirms"
-                        : "Up/Down selects  \u2022  Enter confirms  \u2022  Esc returns"));
+                        : (snapshot.selectedSongSettingsIndex == 6
+                        ? "Up/Down selects  \u2022  Left/Right toggles  \u2022  Enter confirms"
+                        : "Up/Down selects  \u2022  Enter confirms  \u2022  Esc returns")));
             }
 
             UpdateSongSettingsSelection(snapshot.selectedSongSettingsIndex);
@@ -10818,6 +11033,10 @@ public sealed class TabsSongHeaderOverlay
         if (showGlobalSettings)
 
             UpdateGlobalSettings(snapshot);
+
+        if (showGlobalSettings && snapshot.showGlobalSettingsSelectionPopup)
+
+            UpdateGeneratedAudioTrackPopup(snapshot);
 
     }
 
@@ -11574,8 +11793,8 @@ public sealed class TabsSongHeaderOverlay
     {
         string controls = GetArcadeFooterControlSummary();
         return showPause
-            ? $"{controls}  •  Esc resume  •  R {restartTarget}  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
-            : $"{controls}  •  Esc pause  •  R {restartTarget}";
+            ? $"{controls}  •  Esc resume  •  R {restartTarget}  •  V Audio  •  Enter open  •  Left/Right seek  •  Double Left/Right prev/next note"
+            : $"{controls}  •  Esc pause  •  R {restartTarget}  •  V Audio";
     }
 
     private string GetArcadeStartupPrimaryMessage()
@@ -12375,7 +12594,7 @@ public sealed class TabsSongHeaderOverlay
                 if (row.favoriteColumn != null)
                     row.favoriteColumn.style.display = showFavorite ? DisplayStyle.Flex : DisplayStyle.None;
                 row.favoriteButton.style.display = showFavorite ? DisplayStyle.Flex : DisplayStyle.None;
-                row.favoriteLabel.text = isFavorited ? "★" : "☆";
+                row.favoriteLabel.text = isFavorited ? "â˜…" : "â˜†";
                 row.favoriteLabel.style.color = isFavorited
                     ? new Color(0.95f, 0.54f, 0.22f, 1f)
                     : new Color(0.88f, 0.92f, 0.96f, isFavoriteHovered ? 0.78f : (isSelected ? 0.70f : 0.58f));
@@ -14860,11 +15079,8 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsTitleLabel.text = inSubmenu ? snapshot.activeGlobalSettingsCategory : "SETTINGS";
 
-        globalSettingsHelpLabel.text = inSubmenu
-
-            ? "Up/Down selects  \u2022  Left/Right changes value  \u2022  O toggles background  \u2022  P toggles HUD  \u2022  Esc goes back"
-
-            : "Up/Down selects  \u2022  Enter opens category  \u2022  Left/Right changes values  \u2022  O toggles background  \u2022  P toggles HUD";
+        globalSettingsHelpLabel.text = string.Empty;
+        globalSettingsHelpLabel.style.display = DisplayStyle.None;
 
 
 
@@ -14892,21 +15108,25 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsTopRow(menuList, 1, "Render Mode", snapshot.selectedGlobalSettingsTopIndex == 1, snapshot.availableSongNames != null, snapshot.activeGlobalSettingsCategory, snapshot, snapshot.selectedGlobalSettingsTopIndex, snapshot.selectedGlobalSettingsItemIndex, snapshot.runtimeSettingsSections);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 2, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 2);
+            AddGlobalSettingsTopRow(menuList, 2, "Songs Folder", snapshot.selectedGlobalSettingsTopIndex == 2, snapshot.availableSongNames != null, snapshot.activeGlobalSettingsCategory, snapshot, snapshot.selectedGlobalSettingsTopIndex, snapshot.selectedGlobalSettingsItemIndex, snapshot.runtimeSettingsSections);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 3, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 3);
+            AddGlobalSettingsTopCategoryRow(menuList, 3, "Audio", snapshot.selectedGlobalSettingsTopIndex == 3);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 4, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 4);
+            AddGlobalSettingsTopCategoryRow(menuList, 4, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 4);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 5, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 5);
+            AddGlobalSettingsTopCategoryRow(menuList, 5, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 5);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 6, "Controls", snapshot.selectedGlobalSettingsTopIndex == 6);
+            AddGlobalSettingsTopCategoryRow(menuList, 6, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 6);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 7, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 7);
+            AddGlobalSettingsTopCategoryRow(menuList, 7, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 7);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 8, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 8);
+            AddGlobalSettingsTopCategoryRow(menuList, 8, "Controls", snapshot.selectedGlobalSettingsTopIndex == 8);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 9, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 9);
+            AddGlobalSettingsTopCategoryRow(menuList, 9, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 9);
+
+            AddGlobalSettingsTopCategoryRow(menuList, 10, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 10);
+
+            AddGlobalSettingsTopCategoryRow(menuList, 11, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 11);
 
             return;
 
@@ -14958,21 +15178,35 @@ public sealed class TabsSongHeaderOverlay
 
     {
 
-        string value = index == 0
+        string value;
+        bool showArrows;
+        Action onLeft;
+        Action onRight;
 
-            ? ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "core.invertStrings", string.Empty)
+        if (index == 0)
+        {
+            value = ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "core.invertStrings", string.Empty);
+            value = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF";
+            showArrows = true;
+            onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
+            onRight = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1);
+        }
+        else if (index == 1)
+        {
+            value = ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "render.mode", string.Empty);
+            showArrows = true;
+            onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
+            onRight = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1);
+        }
+        else
+        {
+            value = snapshot.songsFolderMenuValueLabel ?? "DEFAULT";
+            showArrows = false;
+            onLeft = null;
+            onRight = null;
+        }
 
-            : ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "render.mode", string.Empty);
-
-        value = index == 0
-
-            ? (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF")
-
-            : value;
-
-
-
-        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(title, value, isSelected, showArrows: true, onHover: () => owner?.HoverGlobalSettingsTopSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsTopSelectionFromUi(index), onLeft: () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1), onRight: () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1));
+        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(title, value, isSelected, showArrows: showArrows, onHover: () => owner?.HoverGlobalSettingsTopSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsTopSelectionFromUi(index), onLeft: onLeft, onRight: onRight);
 
         parent.Add(row.row);
 
@@ -15009,7 +15243,9 @@ public sealed class TabsSongHeaderOverlay
         string value = FormatGlobalSettingsValue(setting);
         bool adjustable = !string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) &&
                           !string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase);
-        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(setting.label, value, isSelected, showArrows: adjustable, onHover: () => owner?.HoverGlobalSettingsItemSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsItemSelectionFromUi(index), onLeft: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, -1)) : null, onRight: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, 1)) : null, metaText: setting.tooltip);
+        bool showAudioSelectorHint = isSelected && IsAudioDevicePopupSetting(setting);
+        string metaText = showAudioSelectorHint ? "ENTER opens list selector" : GetGlobalSettingMetaText(setting);
+        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(setting.label, value, isSelected, showArrows: adjustable, onHover: () => owner?.HoverGlobalSettingsItemSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsItemSelectionFromUi(index), onLeft: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, -1)) : null, onRight: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, 1)) : null, metaText: metaText, metaAlignRight: showAudioSelectorHint, metaColor: showAudioSelectorHint ? new Color(0.74f, 0.88f, 0.98f, 0.92f) : new Color(0.56f, 0.63f, 0.70f, 0.96f));
 
         parent.Add(row.row);
 
@@ -15019,7 +15255,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-    private GlobalSettingsMenuRow CreateGlobalSettingsMenuRow(string title, string value, bool isSelected, bool showArrows, Action onHover, Action onActivate, Action onLeft, Action onRight, string metaText = null)
+    private GlobalSettingsMenuRow CreateGlobalSettingsMenuRow(string title, string value, bool isSelected, bool showArrows, Action onHover, Action onActivate, Action onLeft, Action onRight, string metaText = null, bool metaAlignRight = false, Color? metaColor = null)
 
     {
 
@@ -15145,6 +15381,22 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
+        valueWrap.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (evt.button != 0)
+                return;
+
+            if (evt.target is VisualElement element)
+            {
+                if ((leftButton != null && (element == leftButton || leftButton.Contains(element))) ||
+                    (rightButton != null && (element == rightButton || rightButton.Contains(element))))
+                    return;
+            }
+
+            onActivate?.Invoke();
+            evt.StopPropagation();
+        });
+
 
 
         topLine.Add(mainButton);
@@ -15161,13 +15413,17 @@ public sealed class TabsSongHeaderOverlay
 
         {
 
-            metaLabel = CreateLabel(metaText, 20f, new Color(0.56f, 0.63f, 0.70f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+            metaLabel = CreateLabel(metaText, 20f, metaColor ?? new Color(0.56f, 0.63f, 0.70f, 0.96f), false, metaAlignRight ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft, useTitleFont: false);
 
             metaLabel.style.unityFontDefinition = modernUiFontDefinition;
 
             metaLabel.style.whiteSpace = WhiteSpace.Normal;
 
             metaLabel.style.marginTop = 4f;
+
+            metaLabel.style.alignSelf = metaAlignRight ? Align.FlexEnd : Align.FlexStart;
+
+            metaLabel.style.unityTextAlign = metaAlignRight ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft;
 
             row.Add(metaLabel);
 
@@ -15259,6 +15515,35 @@ public sealed class TabsSongHeaderOverlay
 
         return setting.value ?? string.Empty;
 
+    }
+
+
+
+    private static string GetGlobalSettingMetaText(RuntimeSettingSnapshot setting)
+
+    {
+
+        if (setting == null || string.IsNullOrWhiteSpace(setting.tooltip))
+
+            return string.Empty;
+
+
+
+        return !string.IsNullOrWhiteSpace(setting.id) && setting.id.StartsWith("audio.", StringComparison.OrdinalIgnoreCase)
+
+            ? string.Empty
+
+            : setting.tooltip;
+
+    }
+
+    private static bool IsAudioDevicePopupSetting(RuntimeSettingSnapshot setting)
+    {
+        if (setting == null || string.IsNullOrWhiteSpace(setting.id))
+            return false;
+
+        return string.Equals(setting.id, "audio.inputDevice", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(setting.id, "audio.outputDevice", StringComparison.OrdinalIgnoreCase);
     }
 
 
@@ -15487,11 +15772,8 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsTitleLabel.text = inSubmenu ? snapshot.activeGlobalSettingsCategory : "SETTINGS";
 
-        globalSettingsHelpLabel.text = inSubmenu
-
-            ? "UP/DOWN NAVIGATES   LEFT/RIGHT CHANGES VALUES   ENTER TOGGLES OR CYCLES   O TOGGLES BACKGROUND   ESC GOES BACK"
-
-            : "UP/DOWN NAVIGATES   LEFT/RIGHT CHANGES VALUES   ENTER OPENS A CATEGORY   O TOGGLES BACKGROUND   ESC RETURNS";
+        globalSettingsHelpLabel.text = string.Empty;
+        globalSettingsHelpLabel.style.display = DisplayStyle.None;
 
 
 
@@ -15561,21 +15843,25 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsFullscreenTopValueRow(menuList, snapshot, 1, "Render Mode");
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 2, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 2);
+            AddGlobalSettingsFullscreenTopValueRow(menuList, snapshot, 2, "Songs Folder");
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 3, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 3);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 3, "Audio", snapshot.selectedGlobalSettingsTopIndex == 3);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 4, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 4);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 4, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 4);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 5);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 5);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 6, "Controls", snapshot.selectedGlobalSettingsTopIndex == 6);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 6, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 6);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 7, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 7);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 7, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 7);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 8, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 8);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 8, "Controls", snapshot.selectedGlobalSettingsTopIndex == 8);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 9, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 9, "DEFAULTS");
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 9, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 9);
+
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 10, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 10);
+
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 11, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 11, "DEFAULTS");
 
             return;
 
@@ -15600,6 +15886,8 @@ public sealed class TabsSongHeaderOverlay
             int rowIndex = i;
 
             string value = FormatGlobalSettingsValue(setting);
+            bool showAudioSelectorHint = rowIndex == snapshot.selectedGlobalSettingsItemIndex && IsAudioDevicePopupSetting(setting);
+            string metaText = showAudioSelectorHint ? "ENTER opens list selector" : GetGlobalSettingMetaText(setting);
 
             GlobalSettingsMenuRow row = CreateGlobalSettingsTextMenuRow(
 
@@ -15611,7 +15899,11 @@ public sealed class TabsSongHeaderOverlay
 
                 showArrows: true,
 
-                metaText: setting.tooltip,
+                metaText: metaText,
+
+                metaAlignRight: showAudioSelectorHint,
+
+                metaColor: showAudioSelectorHint ? new Color(0.74f, 0.88f, 0.98f, 0.92f) : new Color(0.66f, 0.70f, 0.75f, 0.98f),
 
                 onHover: null,
 
@@ -15686,6 +15978,8 @@ public sealed class TabsSongHeaderOverlay
         {
 
             snapshot.activeGlobalSettingsCategory ?? string.Empty,
+
+            snapshot.songsFolderMenuValueLabel ?? string.Empty,
 
             snapshot.selectedGlobalSettingsTopIndex.ToString(CultureInfo.InvariantCulture),
 
@@ -15795,19 +16089,33 @@ public sealed class TabsSongHeaderOverlay
 
     {
 
-        string value = index == 0
+        string value;
+        bool showArrows;
+        Action onLeft;
+        Action onRight;
 
-            ? ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "core.invertStrings", string.Empty)
-
-            : ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "render.mode", string.Empty);
-
-        value = index == 0
-
-            ? (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF")
-
-            : value;
-
-
+        if (index == 0)
+        {
+            value = ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "core.invertStrings", string.Empty);
+            value = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF";
+            showArrows = true;
+            onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
+            onRight = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1);
+        }
+        else if (index == 1)
+        {
+            value = ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "render.mode", string.Empty);
+            showArrows = true;
+            onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
+            onRight = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1);
+        }
+        else
+        {
+            value = snapshot.songsFolderMenuValueLabel ?? "DEFAULT";
+            showArrows = false;
+            onLeft = null;
+            onRight = null;
+        }
 
         GlobalSettingsMenuRow row = CreateGlobalSettingsTextMenuRow(
 
@@ -15817,7 +16125,7 @@ public sealed class TabsSongHeaderOverlay
 
             snapshot.selectedGlobalSettingsTopIndex == index,
 
-            showArrows: true,
+            showArrows: showArrows,
 
             metaText: null,
 
@@ -15825,9 +16133,9 @@ public sealed class TabsSongHeaderOverlay
 
             onActivate: () => owner?.ActivateGlobalSettingsTopSelectionFromUi(index),
 
-            onLeft: () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1),
+            onLeft: onLeft,
 
-            onRight: () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1));
+            onRight: onRight);
 
         parent.Add(row.row);
 
@@ -15869,7 +16177,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-    private GlobalSettingsMenuRow CreateGlobalSettingsTextMenuRow(string title, string value, bool isSelected, bool showArrows, string metaText, Action onHover, Action onActivate, Action onLeft, Action onRight)
+    private GlobalSettingsMenuRow CreateGlobalSettingsTextMenuRow(string title, string value, bool isSelected, bool showArrows, string metaText, Action onHover, Action onActivate, Action onLeft, Action onRight, bool metaAlignRight = false, Color? metaColor = null)
 
     {
 
@@ -16063,13 +16371,13 @@ public sealed class TabsSongHeaderOverlay
 
         {
 
-            metaLabel = CreateLabel(metaText, 28f, new Color(0.66f, 0.70f, 0.75f, 0.98f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+            metaLabel = CreateLabel(metaText, 28f, metaColor ?? new Color(0.66f, 0.70f, 0.75f, 0.98f), false, metaAlignRight ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft, useTitleFont: false);
 
             metaLabel.style.unityFontDefinition = modernUiFontDefinition;
 
             metaLabel.style.whiteSpace = WhiteSpace.Normal;
 
-            metaLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+            metaLabel.style.unityTextAlign = metaAlignRight ? TextAnchor.MiddleRight : TextAnchor.MiddleLeft;
 
             metaLabel.style.marginTop = 4f;
 
@@ -16078,6 +16386,8 @@ public sealed class TabsSongHeaderOverlay
             metaLabel.style.marginRight = 0f;
 
             metaLabel.style.flexShrink = 1f;
+
+            metaLabel.style.alignSelf = metaAlignRight ? Align.FlexEnd : Align.FlexStart;
 
         }
 
@@ -16094,6 +16404,23 @@ public sealed class TabsSongHeaderOverlay
         contentBox.Add(textColumn);
 
         contentBox.Add(valueLabel);
+
+        contentBox.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (evt.button != 0)
+                return;
+
+            if (evt.target is VisualElement element)
+            {
+                if ((mainButton != null && (element == mainButton || mainButton.Contains(element))) ||
+                    (leftButton != null && (element == leftButton || leftButton.Contains(element))) ||
+                    (rightButton != null && (element == rightButton || rightButton.Contains(element))))
+                    return;
+            }
+
+            onActivate?.Invoke();
+            evt.StopPropagation();
+        });
 
         topLine.Add(contentBox);
 
@@ -16371,6 +16698,8 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+        AddGlobalSettingsColumn(columnsWrapper, "Audio", addRightSpacing: true);
+
         AddGlobalSettingsColumn(columnsWrapper, "Gameplay Mechanics", addRightSpacing: true);
 
         AddGlobalSettingsColumn(columnsWrapper, "Tabs Visuals", addRightSpacing: true);
@@ -16615,6 +16944,10 @@ public sealed class TabsSongHeaderOverlay
 
             return "Multiplayer Visuals";
 
+        if (normalizedTitle.Contains("audio") || IsSectionIdPrefix(sectionSettings, "audio."))
+
+            return "Audio";
+
         if (normalizedTitle.Contains("control") || IsSectionIdPrefix(sectionSettings, "arcade.controls."))
 
             return "Controls";
@@ -16731,6 +17064,8 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+        string metaText = GetGlobalSettingMetaText(setting);
+
         Label label = CreateLabel(setting.label, 30f, new Color(0.96f, 0.98f, 1f, 1f), true, TextAnchor.MiddleLeft, useTitleFont: false);
 
         label.style.unityFontDefinition = modernUiFontDefinition;
@@ -16747,23 +17082,29 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        Label help = CreateLabel(setting.tooltip, 22f, new Color(0.69f, 0.78f, 0.86f, 0.92f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        if (!string.IsNullOrWhiteSpace(metaText))
 
-        help.style.unityFontDefinition = modernUiFontDefinition;
+        {
 
-        help.AddToClassList("global-setting-help");
+            Label help = CreateLabel(metaText, 22f, new Color(0.69f, 0.78f, 0.86f, 0.92f), false, TextAnchor.MiddleLeft, useTitleFont: false);
 
-        help.style.marginTop = 2f;
+            help.style.unityFontDefinition = modernUiFontDefinition;
 
-        help.style.marginBottom = 8f;
+            help.AddToClassList("global-setting-help");
 
-        help.tooltip = setting.tooltip;
+            help.style.marginTop = 2f;
 
-        help.style.whiteSpace = WhiteSpace.Normal;
+            help.style.marginBottom = 8f;
 
-        help.style.flexShrink = 1f;
+            help.tooltip = metaText;
 
-        row.Add(help);
+            help.style.whiteSpace = WhiteSpace.Normal;
+
+            help.style.flexShrink = 1f;
+
+            row.Add(help);
+
+        }
 
 
 
@@ -16843,7 +17184,8 @@ public sealed class TabsSongHeaderOverlay
 
             string buttonLabel = string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) ? "REMAP" : "RUN";
 
-            Button actionButton = CreateActionButton(buttonLabel, () =>
+            Button actionButton = null;
+            actionButton = CreateActionButton(buttonLabel, () =>
 
             {
 
@@ -16856,6 +17198,24 @@ public sealed class TabsSongHeaderOverlay
                 PreserveGlobalSettingsScrollOffset();
 
                 owner?.ActivateGlobalRuntimeSettingFromUi(setting.id);
+
+                if (string.Equals(setting.id, "audio.refreshDevices", StringComparison.OrdinalIgnoreCase))
+
+                {
+
+                    actionButton.text = "DONE";
+
+                    actionButton.schedule.Execute(() =>
+
+                    {
+
+                        if (actionButton != null)
+
+                            actionButton.text = "RUN";
+
+                    }).StartingIn(900);
+
+                }
 
             });
 
@@ -20813,6 +21173,27 @@ public sealed class TabsSongHeaderOverlay
         });
     }
 
+    private static bool DropdownChoicesMatch(DropdownField dropdown, List<string> expectedChoices)
+    {
+        if (dropdown == null)
+            return false;
+
+        IList<string> currentChoices = dropdown.choices;
+        if (ReferenceEquals(currentChoices, expectedChoices))
+            return true;
+
+        if (currentChoices == null || expectedChoices == null || currentChoices.Count != expectedChoices.Count)
+            return false;
+
+        for (int i = 0; i < currentChoices.Count; i++)
+        {
+            if (!string.Equals(currentChoices[i], expectedChoices[i], StringComparison.Ordinal))
+                return false;
+        }
+
+        return true;
+    }
+
     private VisualElement CreateNotesDetectorSettingRow(NativeDetectorSettingDefinition definition)
     {
         VisualElement row = new VisualElement();
@@ -20841,7 +21222,7 @@ public sealed class TabsSongHeaderOverlay
         headerRow.style.flexDirection = FlexDirection.Row;
         headerRow.style.justifyContent = Justify.SpaceBetween;
         headerRow.style.alignItems = Align.FlexStart;
-        headerRow.style.marginBottom = 8f;
+        headerRow.style.marginBottom = 10f;
 
         Label titleLabel = CreateLabel(definition.Label, 36f, new Color(0.95f, 0.97f, 1f, 1f), true, TextAnchor.MiddleLeft, useTitleFont: false);
         titleLabel.style.unityFontDefinition = modernUiFontDefinition;
@@ -20856,11 +21237,6 @@ public sealed class TabsSongHeaderOverlay
 
         headerRow.Add(titleLabel);
         headerRow.Add(valueLabel);
-
-        Label descriptionLabel = CreateLabel(definition.Description, 26f, new Color(0.78f, 0.82f, 0.88f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
-        descriptionLabel.style.unityFontDefinition = modernUiFontDefinition;
-        descriptionLabel.style.whiteSpace = WhiteSpace.Normal;
-        descriptionLabel.style.marginBottom = 14f;
 
         Slider slider = new Slider(definition.Min, definition.Max)
         {
@@ -20883,7 +21259,6 @@ public sealed class TabsSongHeaderOverlay
         });
 
         row.Add(headerRow);
-        row.Add(descriptionLabel);
         row.Add(slider);
 
         notesDetectorSettingSliders[definition.Key] = slider;
@@ -21368,8 +21743,6 @@ public sealed class TabsSongHeaderOverlay
 
         UpdateSongSettingsSliderSelection(settingsStartDelayLabel, settingsStartDelaySlider, resolvedIndex == 3);
 
-        UpdateSongSettingsSliderSelection(settingsVolumeLabel, settingsVolumeSlider, resolvedIndex == 4);
-
 
 
         for (int i = 0; i < songSettingsActionButtons.Count; i++)
@@ -21754,16 +22127,24 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+        bool isGlobalSettingsPopup = snapshot.showGlobalSettingsSelectionPopup;
         bool isTrackSelectionMode = snapshot.showSongSettingsTrackSelectionPopup;
+        bool isGeneratedAudioMode = snapshot.showGeneratedAudioTrackSelectionPopup;
 
-        generatedAudioTracksPopupEyebrowLabel.text = isTrackSelectionMode ? "SONG SETTINGS" : "GENERATED AUDIO";
-        generatedAudioTracksPopupTitleLabel.text = isTrackSelectionMode ? "TRACK SELECTION" : "AUDIO TRACKS";
+        generatedAudioTracksPopupEyebrowLabel.text = isGlobalSettingsPopup
+            ? snapshot.globalSettingsSelectionPopupEyebrow ?? string.Empty
+            : (isTrackSelectionMode ? "SONG SETTINGS" : "GENERATED AUDIO");
+        generatedAudioTracksPopupTitleLabel.text = isGlobalSettingsPopup
+            ? snapshot.globalSettingsSelectionPopupTitle ?? string.Empty
+            : (isTrackSelectionMode ? "TRACK SELECTION" : "AUDIO TRACKS");
 
         generatedAudioTracksPopupSummaryLabel.text = isTrackSelectionMode
 
             ? $"Current track: {FormatTrackName(snapshot.selectedTrackDisplayName)}"
 
-            : (snapshot.generatedAudioTrackSelectionAvailable
+            : isGlobalSettingsPopup
+                ? (snapshot.globalSettingsSelectionPopupSummary ?? string.Empty)
+                : (snapshot.generatedAudioTrackSelectionAvailable
 
                 ? $"Now playing: {snapshot.generatedAudioTrackSelectionSummary}"
 
@@ -21772,10 +22153,11 @@ public sealed class TabsSongHeaderOverlay
 
 
         Button[] topButtons = { generatedAudioTracksSelectAllButton, generatedAudioTracksDeselectAllButton, generatedAudioTracksCloseButton };
-        generatedAudioTracksPopupButtonsRow.style.display = isTrackSelectionMode ? DisplayStyle.None : DisplayStyle.Flex;
-        generatedAudioTracksSelectAllButton.style.display = isTrackSelectionMode ? DisplayStyle.None : DisplayStyle.Flex;
-        generatedAudioTracksDeselectAllButton.style.display = isTrackSelectionMode ? DisplayStyle.None : DisplayStyle.Flex;
-        generatedAudioTracksCloseButton.style.display = isTrackSelectionMode ? DisplayStyle.None : DisplayStyle.Flex;
+        bool showTopButtons = isGeneratedAudioMode && !isTrackSelectionMode && !isGlobalSettingsPopup;
+        generatedAudioTracksPopupButtonsRow.style.display = showTopButtons ? DisplayStyle.Flex : DisplayStyle.None;
+        generatedAudioTracksSelectAllButton.style.display = showTopButtons ? DisplayStyle.Flex : DisplayStyle.None;
+        generatedAudioTracksDeselectAllButton.style.display = showTopButtons ? DisplayStyle.Flex : DisplayStyle.None;
+        generatedAudioTracksCloseButton.style.display = showTopButtons ? DisplayStyle.Flex : DisplayStyle.None;
 
         for (int i = 0; i < topButtons.Length; i++)
 
@@ -21807,6 +22189,12 @@ public sealed class TabsSongHeaderOverlay
 
         int trackCount = isTrackSelectionMode
             ? (snapshot.songSettingsTrackOptionNames?.Count ?? 0)
+            : isGlobalSettingsPopup
+                ? Mathf.Min(
+                    snapshot.globalSettingsSelectionPopupOptionNames?.Count ?? 0,
+                    Mathf.Min(
+                        snapshot.globalSettingsSelectionPopupOptionStates?.Count ?? 0,
+                        snapshot.globalSettingsSelectionPopupOptionActions?.Count ?? 0))
             : Mathf.Min(snapshot.generatedAudioTrackNames?.Count ?? 0, snapshot.generatedAudioTrackEnabled?.Count ?? 0);
         EnsureGeneratedAudioTrackPopupRows(trackCount);
 
@@ -21814,10 +22202,12 @@ public sealed class TabsSongHeaderOverlay
 
         {
 
-            bool enabled = !isTrackSelectionMode && snapshot.generatedAudioTrackEnabled[i];
+            bool enabled = !isTrackSelectionMode && !isGlobalSettingsPopup && snapshot.generatedAudioTrackEnabled[i];
 
             string trackName = isTrackSelectionMode
                 ? snapshot.songSettingsTrackOptionNames[i]
+                : isGlobalSettingsPopup
+                    ? snapshot.globalSettingsSelectionPopupOptionNames[i]
                 : snapshot.generatedAudioTrackNames[i];
 
             GeneratedAudioTrackPopupRow row = generatedAudioTracksPopupTrackButtons[i];
@@ -21826,33 +22216,51 @@ public sealed class TabsSongHeaderOverlay
 
             bool isSelected = isTrackSelectionMode
                 ? snapshot.selectedSongSettingsTrackOptionIndex == i
+                : isGlobalSettingsPopup
+                    ? snapshot.selectedGlobalSettingsSelectionPopupIndex == i
                 : snapshot.selectedGeneratedAudioTrackIndex == i + 3;
 
+            string popupStateText = isGlobalSettingsPopup ? snapshot.globalSettingsSelectionPopupOptionStates[i] : string.Empty;
             row.stateLabel.text = isTrackSelectionMode
                 ? (isSelected ? "ACTIVE" : "TRACK")
+                : isGlobalSettingsPopup
+                    ? popupStateText
                 : (enabled ? "ON" : "OFF");
             row.stateLabel.style.color = isTrackSelectionMode
                 ? (isSelected ? LibraryPrimaryColor : new Color(0.74f, 0.80f, 0.86f, 1f))
+                : isGlobalSettingsPopup
+                    ? (isSelected ? LibraryPrimaryColor : new Color(0.74f, 0.80f, 0.86f, 1f))
                 : (enabled ? LibraryPrimaryColor : new Color(0.58f, 0.62f, 0.68f, 1f));
             row.stateLabel.style.backgroundColor = isTrackSelectionMode
                 ? (isSelected ? new Color(0.14f, 0.21f, 0.17f, 0.92f) : new Color(0.13f, 0.14f, 0.16f, 0.92f))
+                : isGlobalSettingsPopup
+                    ? (isSelected ? new Color(0.14f, 0.21f, 0.17f, 0.92f) : new Color(0.13f, 0.14f, 0.16f, 0.92f))
                 : (enabled ? new Color(0.14f, 0.21f, 0.17f, 0.92f) : new Color(0.13f, 0.14f, 0.16f, 0.92f));
             row.stateLabel.style.borderTopColor = isTrackSelectionMode
                 ? (isSelected ? new Color(0.30f, 0.66f, 0.48f, 0.72f) : new Color(1f, 1f, 1f, 0.10f))
+                : isGlobalSettingsPopup
+                    ? (isSelected ? new Color(0.30f, 0.66f, 0.48f, 0.72f) : new Color(1f, 1f, 1f, 0.10f))
                 : (enabled ? new Color(0.30f, 0.66f, 0.48f, 0.72f) : new Color(1f, 1f, 1f, 0.10f));
             row.stateLabel.style.borderRightColor = row.stateLabel.style.borderTopColor;
             row.stateLabel.style.borderBottomColor = row.stateLabel.style.borderTopColor;
             row.stateLabel.style.borderLeftColor = row.stateLabel.style.borderTopColor;
 
             row.nameLabel.text = FormatTrackName(trackName);
+            string popupActionText = isGlobalSettingsPopup ? snapshot.globalSettingsSelectionPopupOptionActions[i] : string.Empty;
             row.actionLabel.text = isTrackSelectionMode
                 ? (isSelected ? "Selected" : "Choose")
+                : isGlobalSettingsPopup
+                    ? popupActionText
                 : (enabled ? "Included" : "Muted");
             row.actionLabel.style.color = isTrackSelectionMode
                 ? (isSelected ? new Color(0.82f, 0.89f, 0.95f, 0.92f) : new Color(0.56f, 0.62f, 0.70f, 0.92f))
+                : isGlobalSettingsPopup
+                    ? (isSelected ? new Color(0.82f, 0.89f, 0.95f, 0.92f) : new Color(0.56f, 0.62f, 0.70f, 0.92f))
                 : (enabled ? new Color(0.82f, 0.89f, 0.95f, 0.92f) : new Color(0.56f, 0.62f, 0.70f, 0.92f));
+            row.stateLabel.style.display = string.IsNullOrWhiteSpace(row.stateLabel.text) ? DisplayStyle.None : DisplayStyle.Flex;
+            row.actionLabel.style.display = string.IsNullOrWhiteSpace(row.actionLabel.text) ? DisplayStyle.None : DisplayStyle.Flex;
 
-            row.button.style.color = isTrackSelectionMode || enabled ? new Color(0.95f, 0.97f, 0.99f, 1f) : new Color(0.62f, 0.68f, 0.75f, 1f);
+            row.button.style.color = isTrackSelectionMode || isGlobalSettingsPopup || enabled ? new Color(0.95f, 0.97f, 0.99f, 1f) : new Color(0.62f, 0.68f, 0.75f, 1f);
             row.button.style.borderTopColor = isSelected ? Color.white : new Color(1f, 1f, 1f, 0.10f);
             row.button.style.borderRightColor = row.button.style.borderTopColor;
             row.button.style.borderBottomColor = row.button.style.borderTopColor;
@@ -21861,6 +22269,147 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
+    }
+
+    private VisualElement CreateGameplayAudioPopupSliderRow(
+        string title,
+        int selectionIndex,
+        out Label titleLabel,
+        out Label valueLabel,
+        out Slider slider)
+    {
+        VisualElement row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Column;
+        row.style.width = Length.Percent(100f);
+        row.style.paddingLeft = 24f;
+        row.style.paddingRight = 24f;
+        row.style.paddingTop = 22f;
+        row.style.paddingBottom = 26f;
+        row.style.marginBottom = 16f;
+        row.style.backgroundColor = new Color(0.07f, 0.08f, 0.09f, 0.78f);
+        row.style.borderTopWidth = 1f;
+        row.style.borderRightWidth = 1f;
+        row.style.borderBottomWidth = 1f;
+        row.style.borderLeftWidth = 1f;
+        row.style.borderTopColor = new Color(0f, 0f, 0f, 0f);
+        row.style.borderRightColor = new Color(0f, 0f, 0f, 0f);
+        row.style.borderBottomColor = new Color(0f, 0f, 0f, 0f);
+        row.style.borderLeftColor = new Color(0f, 0f, 0f, 0f);
+        row.style.borderTopLeftRadius = 14f;
+        row.style.borderTopRightRadius = 14f;
+        row.style.borderBottomLeftRadius = 14f;
+        row.style.borderBottomRightRadius = 14f;
+        row.RegisterCallback<MouseDownEvent>(_ => owner?.SetSelectedGameplayAudioPopupIndexFromUi(selectionIndex));
+
+        VisualElement headerRow = new VisualElement();
+        headerRow.style.flexDirection = FlexDirection.Row;
+        headerRow.style.justifyContent = Justify.SpaceBetween;
+        headerRow.style.alignItems = Align.FlexStart;
+        headerRow.style.marginBottom = 10f;
+
+        titleLabel = CreateLabel(title, 36f, new Color(0.95f, 0.97f, 1f, 1f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+        titleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        titleLabel.style.flexGrow = 1f;
+        titleLabel.style.marginRight = 16f;
+        titleLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        valueLabel = CreateLabel("100%", 34f, LibraryConfirmedSongColor, true, TextAnchor.MiddleRight, useTitleFont: false);
+        valueLabel.style.unityFontDefinition = modernUiFontDefinition;
+        valueLabel.style.minWidth = 132f;
+        valueLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+
+        headerRow.Add(titleLabel);
+        headerRow.Add(valueLabel);
+
+        slider = new Slider(0f, 100f);
+        slider.focusable = false;
+        ApplyGameplayAudioPopupSliderStyle(slider);
+
+        row.Add(headerRow);
+        row.Add(slider);
+        return row;
+    }
+
+    private void UpdateGameplayAudioPopup(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || gameplayAudioPopupOverlay == null)
+            return;
+
+        UpdateGameplayAudioPopupRow(gameplayAudioPopupSongRow, gameplayAudioPopupSongLabel, gameplayAudioPopupSongValueLabel, snapshot.selectedGameplayAudioPopupIndex == 0);
+        UpdateGameplayAudioPopupRow(gameplayAudioPopupGuitarRow, gameplayAudioPopupGuitarLabel, gameplayAudioPopupGuitarValueLabel, snapshot.selectedGameplayAudioPopupIndex == 1);
+    }
+
+    private void UpdateGameplayAudioPopupRow(VisualElement row, Label titleLabel, Label valueLabel, bool isSelected)
+    {
+        if (row == null || titleLabel == null || valueLabel == null)
+            return;
+
+        row.style.backgroundColor = new Color(0.07f, 0.08f, 0.09f, 0.78f);
+        row.style.borderTopWidth = isSelected ? 2f : 1f;
+        row.style.borderRightWidth = isSelected ? 2f : 1f;
+        row.style.borderBottomWidth = isSelected ? 2f : 1f;
+        row.style.borderLeftWidth = isSelected ? 2f : 1f;
+        row.style.borderTopColor = isSelected ? Color.white : new Color(0f, 0f, 0f, 0f);
+        row.style.borderRightColor = isSelected ? Color.white : new Color(0f, 0f, 0f, 0f);
+        row.style.borderBottomColor = isSelected ? Color.white : new Color(0f, 0f, 0f, 0f);
+        row.style.borderLeftColor = isSelected ? Color.white : new Color(0f, 0f, 0f, 0f);
+        row.style.scale = new Scale(Vector3.one);
+        titleLabel.style.color = isSelected ? Color.white : new Color(0.95f, 0.97f, 1f, 1f);
+        valueLabel.style.color = isSelected ? Color.white : LibraryConfirmedSongColor;
+    }
+
+    private static void ApplyGameplayAudioPopupSliderStyle(Slider slider)
+    {
+        if (slider == null)
+            return;
+
+        slider.style.height = 30f;
+        slider.style.marginTop = 6f;
+        slider.style.marginBottom = 6f;
+
+        slider.RegisterCallback<AttachToPanelEvent>(_ =>
+        {
+            VisualElement dragContainer = slider.Q<VisualElement>(className: "unity-base-slider__drag-container");
+            if (dragContainer != null)
+            {
+                dragContainer.style.height = 12f;
+                dragContainer.style.backgroundColor = new Color(0.14f, 0.15f, 0.18f, 0.98f);
+                dragContainer.style.borderTopLeftRadius = 6f;
+                dragContainer.style.borderTopRightRadius = 6f;
+                dragContainer.style.borderBottomLeftRadius = 6f;
+                dragContainer.style.borderBottomRightRadius = 6f;
+            }
+
+            VisualElement tracker = slider.Q<VisualElement>(className: "unity-base-slider__tracker");
+            if (tracker != null)
+            {
+                tracker.style.backgroundColor = new Color(0.76f, 0.62f, 0.42f, 0.94f);
+                tracker.style.borderTopLeftRadius = 6f;
+                tracker.style.borderTopRightRadius = 6f;
+                tracker.style.borderBottomLeftRadius = 6f;
+                tracker.style.borderBottomRightRadius = 6f;
+            }
+
+            VisualElement dragger = slider.Q<VisualElement>(className: "unity-base-slider__dragger");
+            if (dragger != null)
+            {
+                dragger.style.width = 20f;
+                dragger.style.height = 20f;
+                dragger.style.backgroundColor = new Color(0.94f, 0.94f, 0.92f, 1f);
+                dragger.style.borderTopLeftRadius = 10f;
+                dragger.style.borderTopRightRadius = 10f;
+                dragger.style.borderBottomLeftRadius = 10f;
+                dragger.style.borderBottomRightRadius = 10f;
+                dragger.style.borderTopWidth = 1f;
+                dragger.style.borderRightWidth = 1f;
+                dragger.style.borderBottomWidth = 1f;
+                dragger.style.borderLeftWidth = 1f;
+                dragger.style.borderTopColor = new Color(0.90f, 0.88f, 0.84f, 1f);
+                dragger.style.borderRightColor = new Color(0.50f, 0.46f, 0.40f, 1f);
+                dragger.style.borderBottomColor = new Color(0.40f, 0.36f, 0.31f, 1f);
+                dragger.style.borderLeftColor = new Color(0.50f, 0.46f, 0.40f, 1f);
+            }
+        });
     }
 
 
@@ -23486,6 +24035,32 @@ public sealed class TabsSongHeaderOverlay
         int screenHeight = Mathf.Max(1, Screen.height);
 
         int screenWidth = Mathf.Max(1, Screen.width);
+        float hudLayoutWidth = screenWidth;
+        float hudLayoutHeight = screenHeight;
+
+        if (panelSettings != null && panelSettings.scaleMode == PanelScaleMode.ScaleWithScreenSize)
+        {
+            Vector2Int referenceResolution = panelSettings.referenceResolution;
+            if (referenceResolution.x > 0 && referenceResolution.y > 0)
+            {
+                float scaleX = screenWidth / (float)referenceResolution.x;
+                float scaleY = screenHeight / (float)referenceResolution.y;
+                float logWidth = Mathf.Log(Mathf.Max(scaleX, 0.0001f), 2f);
+                float logHeight = Mathf.Log(Mathf.Max(scaleY, 0.0001f), 2f);
+                float logWeightedAverage = Mathf.Lerp(logWidth, logHeight, panelSettings.match);
+                float layoutScale = Mathf.Pow(2f, logWeightedAverage);
+                if (layoutScale > 0.0001f)
+                {
+                    hudLayoutWidth = screenWidth / layoutScale;
+                    hudLayoutHeight = screenHeight / layoutScale;
+                }
+            }
+        }
+        else if (document != null && document.rootVisualElement != null && document.rootVisualElement.resolvedStyle.width > 1f && document.rootVisualElement.resolvedStyle.height > 1f)
+        {
+            hudLayoutWidth = document.rootVisualElement.resolvedStyle.width;
+            hudLayoutHeight = document.rootVisualElement.resolvedStyle.height;
+        }
 
         if (!force && screenHeight == lastScreenHeight && screenWidth == lastScreenWidth)
 
@@ -23637,17 +24212,19 @@ public sealed class TabsSongHeaderOverlay
 
         noteTallyLabel.style.fontSize = Mathf.Clamp(bodySize * 0.62f, 20f, 30f);
 
-        float gameplayScoreTop = Mathf.Clamp(screenHeight * 0.010f, 10f, 24f);
+        float gameplayScoreTop = Mathf.Clamp(hudLayoutHeight * 0.010f, 10f, 24f);
+
+        bool compactGameplayHud = hudLayoutHeight < 1800f || hudLayoutWidth < 3200f;
 
         float gameplayScoreWidth = isHighway3D
 
-            ? Mathf.Clamp(screenWidth * 0.23f, 420f, 700f)
+            ? Mathf.Clamp(hudLayoutWidth * 0.23f, compactGameplayHud ? 360f : 420f, 700f)
 
-            : Mathf.Clamp(screenWidth * 0.28f, 450f, 820f);
+            : Mathf.Clamp(hudLayoutWidth * 0.28f, compactGameplayHud ? 390f : 450f, 820f);
 
-        float gameplayScoreHorizontalPadding = Mathf.Clamp(screenWidth * 0.008f, 22f, 36f);
+        float gameplayScoreHorizontalPadding = Mathf.Clamp(hudLayoutWidth * 0.008f, 22f, 36f);
 
-        float gameplayScoreVerticalPadding = Mathf.Clamp(screenHeight * 0.009f, 12f, 22f);
+        float gameplayScoreVerticalPadding = Mathf.Clamp(hudLayoutHeight * 0.009f, 12f, 22f);
 
         gameplayScoreDock.style.top = gameplayScoreTop;
 
@@ -23657,7 +24234,7 @@ public sealed class TabsSongHeaderOverlay
 
         songCardScoreBlock.style.maxWidth = gameplayScoreWidth;
 
-        float gameplayScoreHeight = Mathf.Clamp(screenHeight * 0.14f, 120f, 188f);
+        float gameplayScoreHeight = Mathf.Clamp(hudLayoutHeight * 0.14f, 120f, 188f);
 
         songCardScoreBlock.style.minHeight = gameplayScoreHeight;
 
@@ -24599,15 +25176,23 @@ public sealed class TabsSongHeaderOverlay
 
         float songCardPreferredWidth = isHighway3D
 
-            ? Mathf.Clamp(Screen.width * 0.34f, 560f, 1320f)
+            ? Mathf.Clamp(hudLayoutWidth * (compactGameplayHud ? 0.42f : 0.34f), compactGameplayHud ? 620f : 560f, 1320f)
 
-            : Mathf.Clamp(Screen.width * 0.42f, 640f, 1520f);
+            : Mathf.Clamp(hudLayoutWidth * (compactGameplayHud ? 0.48f : 0.42f), compactGameplayHud ? 700f : 640f, 1520f);
 
-        float centeredScoreLeftEdge = (screenWidth - gameplayScoreWidth) * 0.5f;
+        float centeredScoreLeftEdge = (hudLayoutWidth - gameplayScoreWidth) * 0.5f;
 
-        float gameplayHudGap = Mathf.Clamp(screenWidth * 0.012f, 18f, 40f);
+        float gameplayHudLeftInset = Mathf.Clamp(hudLayoutWidth * 0.018f, 18f, 34f);
 
-        float maxSongCardWidthBeforeScore = Mathf.Max(420f, centeredScoreLeftEdge - 34f - gameplayHudGap);
+        float gameplayHudGap = Mathf.Clamp(hudLayoutWidth * 0.010f, compactGameplayHud ? 12f : 18f, 40f);
+
+        bool reserveScoreSpace = gameplayScoreDock != null && gameplayScoreDock.style.display != DisplayStyle.None;
+
+        float maxSongCardWidthBeforeScore = reserveScoreSpace
+            ? Mathf.Max(300f, centeredScoreLeftEdge - gameplayHudLeftInset - gameplayHudGap)
+            : (isHighway3D
+                ? Mathf.Clamp(hudLayoutWidth * 0.48f, compactGameplayHud ? 500f : 560f, 1320f)
+                : Mathf.Clamp(hudLayoutWidth * 0.54f, compactGameplayHud ? 580f : 640f, 1520f));
 
         float songCardWidth = Mathf.Min(songCardPreferredWidth, maxSongCardWidthBeforeScore);
 
@@ -24621,8 +25206,16 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        float logoReservedWidth = Mathf.Clamp(songCardWidth * 0.18f, 116f, 156f);
-        float titleMaxWidth = Mathf.Max(320f, songCardWidth - logoReservedWidth - 52f);
+        float logoReservedWidth = Mathf.Clamp(songCardWidth * (compactGameplayHud ? 0.15f : 0.18f), compactGameplayHud ? 88f : 116f, 156f);
+        float titleMaxWidth = Mathf.Max(compactGameplayHud ? 340f : 320f, songCardWidth - logoReservedWidth - (compactGameplayHud ? 40f : 52f));
+
+        if (songCardLogo != null)
+        {
+            float logoScale = compactGameplayHud ? 0.72f : 0.8f;
+            songCardLogo.style.scale = new Scale(new Vector3(logoScale, logoScale, 1f));
+            songCardLogo.style.right = compactGameplayHud ? 18f : 22f;
+            songCardLogo.style.top = compactGameplayHud ? 8f : 10f;
+        }
 
         songNameLabel.style.maxWidth = titleMaxWidth;
 
@@ -25089,6 +25682,7 @@ public sealed class TabsSongHeaderOverlay
     }
 
 }
+
 
 
 

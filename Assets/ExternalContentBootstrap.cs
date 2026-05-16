@@ -8,21 +8,27 @@ public static class ExternalContentBootstrap
 
     public static void EnsureRuntimeContentReady()
     {
-        if (runtimeContentReady)
-            return;
+        if (!runtimeContentReady)
+        {
+            Debug.Log($"[ExternalContentBootstrap] Persistent root: {ExternalContentPaths.PersistentRoot}");
 
-        Debug.Log($"[ExternalContentBootstrap] Persistent root: {ExternalContentPaths.PersistentRoot}");
+            EnsureDirectory(ExternalContentPaths.PersistentRoot);
+            EnsureDirectory(ExternalContentPaths.PersistentLicensesDirectory);
+            EnsureDirectory(ExternalContentPaths.PersistentToneLabDirectory);
+            EnsureDirectory(ExternalContentPaths.PersistentToneLabPresetDirectory);
 
-        EnsureDirectory(ExternalContentPaths.PersistentRoot);
-        EnsureDirectory(ExternalContentPaths.PersistentLicensesDirectory);
-        EnsureDirectory(ExternalContentPaths.PersistentToneLabDirectory);
-        EnsureDirectory(ExternalContentPaths.PersistentToneLabPresetDirectory);
+            SyncRecursive(ExternalContentPaths.StreamingLegalDirectory, ExternalContentPaths.PersistentLicensesDirectory);
+            CopyMissingRecursive(ExternalContentPaths.StreamingToneLabDirectory, ExternalContentPaths.PersistentToneLabDirectory);
+            runtimeContentReady = true;
+        }
+
+        EnsureSongsDirectoryReady();
+    }
+
+    public static void EnsureSongsDirectoryReady()
+    {
         EnsureDirectory(ExternalContentPaths.PersistentSongsDirectory);
-
-        SyncRecursive(ExternalContentPaths.StreamingLegalDirectory, ExternalContentPaths.PersistentLicensesDirectory);
-        CopyMissingRecursive(ExternalContentPaths.StreamingToneLabDirectory, ExternalContentPaths.PersistentToneLabDirectory);
         SyncSongContentRecursive(ExternalContentPaths.StreamingSongsDirectory, ExternalContentPaths.PersistentSongsDirectory);
-        runtimeContentReady = true;
     }
 
     private static void EnsureDirectory(string path)

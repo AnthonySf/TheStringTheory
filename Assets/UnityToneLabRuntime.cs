@@ -560,12 +560,14 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private int microphoneInputRingReadIndex;
     private int microphoneInputRingCount;
     private readonly object microphoneBufferLock = new object();
+    private string inputRouteLabel = "Automatic Input";
     private string outputRouteLabel = "System Default Output";
     private string activeHostApiName = string.Empty;
     private ToneLabPortAudio.DuplexStream portAudioStream;
     private ToneLabPortAudio.DeviceDescriptor[] portAudioInputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private ToneLabPortAudio.DeviceDescriptor[] portAudioOutputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private bool usingPortAudioBackend;
+    private float monitorVolumePercent = 100f;
 
     private CompiledPedalSlot[] compiledPedalChain = Array.Empty<CompiledPedalSlot>();
     private int preparedCompiledPedalSampleRate = -1;
@@ -637,7 +639,19 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public string StatusMessage => statusMessage;
     public int ActiveSampleRate => activeSampleRate;
     public int ActiveDspBufferSize => activeDspBufferSize;
+    public string InputRouteLabel => inputRouteLabel;
     public string OutputRouteLabel => outputRouteLabel;
+    public float MonitorVolumePercent => monitorVolumePercent;
+    public static string[] SharedMonitoringLatencyOptions => (string[])LatencyPresetLabels.Clone();
+    public static string GetSharedMonitoringLatencyLabel(int bufferSize) => GetLatencyPresetLabel(bufferSize);
+    public static int ParseSharedMonitoringLatencyBufferSize(string label)
+    {
+        if (string.Equals(label, LatencyPresetLabels[0], StringComparison.Ordinal))
+            return UltraLowDspBufferSize;
+        if (string.Equals(label, LatencyPresetLabels[2], StringComparison.Ordinal))
+            return SafeDspBufferSize;
+        return PreferredDspBufferSize;
+    }
 
     private void Awake()
     {
@@ -657,6 +671,11 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         portAudioStream = new ToneLabPortAudio.DuplexStream(ProcessPortAudioBlock);
         EnsureSettingsLoaded();
         RefreshInputDevices();
+    }
+
+    public void SetMonitorVolumePercent(float percent)
+    {
+        monitorVolumePercent = Mathf.Clamp(percent, 0f, 100f);
     }
 
     private void Update()
@@ -771,6 +790,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             {
                 settings.input_device_name = string.Empty;
                 settings.output_device_name = string.Empty;
+                inputRouteLabel = "No input devices";
                 outputRouteLabel = "No output devices";
                 statusMessage = "No PortAudio input devices found.";
                 MarkSettingsDirty();
@@ -785,6 +805,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 settings.input_device_name = resolvedInput;
                 MarkSettingsDirty();
             }
+            inputRouteLabel = string.IsNullOrWhiteSpace(resolvedInput) ? "Automatic Input" : resolvedInput;
 
             string resolvedOutput = ResolveSavedDeviceName(settings.output_device_name, portAudioOutputDevices);
             if (string.IsNullOrWhiteSpace(resolvedOutput))
@@ -809,6 +830,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             settings.input_device_name = string.Empty;
             settings.output_device_name = "System Default";
+            inputRouteLabel = "No input devices";
             outputRouteLabel = "System Default Output";
             statusMessage = string.IsNullOrWhiteSpace(portAudioError) ? "No microphone inputs found." : portAudioError;
             MarkSettingsDirty();
@@ -827,6 +849,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             MarkSettingsDirty();
         }
 
+        inputRouteLabel = string.IsNullOrWhiteSpace(settings.input_device_name) ? "Automatic Input" : settings.input_device_name;
         outputRouteLabel = "System Default Output";
     }
 
@@ -1091,6 +1114,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             activeDspBufferSize = monitoringBufferSize;
             activeHostApiName = outputDevice.HostApiName;
             pendingDeviceName = inputDevice.DisplayName;
+            inputRouteLabel = inputDevice.DisplayName;
             outputRouteLabel = outputDevice.DisplayName;
             preparedCompiledPedalSampleRate = -1;
             preparedCompiledPedalChannelCount = -1;
@@ -1110,6 +1134,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         pendingDeviceName = settings.input_device_name;
         if (string.IsNullOrWhiteSpace(pendingDeviceName))
             pendingDeviceName = inputDevices[0];
+        inputRouteLabel = pendingDeviceName;
 
         try
         {
@@ -1185,6 +1210,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         microphoneInputRingReadIndex = 0;
         microphoneInputRingCount = 0;
 
+        inputRouteLabel = string.IsNullOrWhiteSpace(settings?.input_device_name) ? "Automatic Input" : settings.input_device_name;
         statusMessage = "Stopped";
     }
 
@@ -1543,6 +1569,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         int sampleRate = activeSampleRate > 0 ? activeSampleRate : PreferredSampleRate;
         ProcessToneBuffer(portAudioProcessBuffer, processingChannels, sampleRate);
+        ApplyMonitorVolumeToBuffer(portAudioProcessBuffer);
         FillPortAudioOutputBufferFromProcessedAudio(portAudioProcessBuffer, processingChannels, frameCount, output, safeOutputChannels);
     }
 
@@ -2816,6 +2843,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         int sampleRate = activeSampleRate > 0 ? activeSampleRate : PreferredSampleRate;
         FillOutputBufferFromMicrophoneRing(data, channels);
         ProcessToneBuffer(data, channels, sampleRate);
+        ApplyMonitorVolumeToBuffer(data);
     }
 
     private void ProcessToneBuffer(float[] data, int channels, int sampleRate)
@@ -2851,6 +2879,19 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         for (int i = 0; i < data.Length; i++)
             data[i] = Mathf.Clamp(data[i], -1f, 1f);
+    }
+
+    private void ApplyMonitorVolumeToBuffer(float[] data)
+    {
+        if (data == null || data.Length == 0)
+            return;
+
+        float monitorGain = Mathf.Clamp01(monitorVolumePercent / 100f);
+        if (Mathf.Approximately(monitorGain, 1f))
+            return;
+
+        for (int i = 0; i < data.Length; i++)
+            data[i] *= monitorGain;
     }
 
     private void EnsurePortAudioProcessBufferCapacity(int sampleCount)
