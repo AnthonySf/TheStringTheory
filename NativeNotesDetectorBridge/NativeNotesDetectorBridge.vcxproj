@@ -50,8 +50,8 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;NATIVE_NOTES_DETECTOR_BRIDGE_EXPORTS;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\External\aubio\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;NATIVE_NOTES_DETECTOR_BRIDGE_EXPORTS;HAVE_CONFIG_H;ENABLE_SINC_FAST_CONVERTER;ENABLE_SINC_MEDIUM_CONVERTER;ENABLE_SINC_BEST_CONVERTER;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\External\aubio\src;$(ProjectDir)..\External\libsamplerate\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -68,8 +68,8 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;NATIVE_NOTES_DETECTOR_BRIDGE_EXPORTS;HAVE_CONFIG_H;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\External\aubio\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;NATIVE_NOTES_DETECTOR_BRIDGE_EXPORTS;HAVE_CONFIG_H;ENABLE_SINC_FAST_CONVERTER;ENABLE_SINC_MEDIUM_CONVERTER;ENABLE_SINC_BEST_CONVERTER;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\External\aubio\src;$(ProjectDir)..\External\libsamplerate\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
     </ClCompile>
@@ -113,6 +113,10 @@
     <ClCompile Include="..\External\aubio\src\utils\hist.c" />
     <ClCompile Include="..\External\aubio\src\utils\log.c" />
     <ClCompile Include="..\External\aubio\src\utils\scale.c" />
+    <ClCompile Include="..\External\libsamplerate\src\samplerate.c" />
+    <ClCompile Include="..\External\libsamplerate\src\src_linear.c" />
+    <ClCompile Include="..\External\libsamplerate\src\src_sinc.c" />
+    <ClCompile Include="..\External\libsamplerate\src\src_zoh.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

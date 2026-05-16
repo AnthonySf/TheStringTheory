@@ -33,12 +33,23 @@ public sealed class NativeDetectorRuntimeInfo
     public string selectedInputDeviceDisplayName = string.Empty;
     public string selectedHostApiName = string.Empty;
     public int sampleRate = 22050;
+    public int captureSampleRate;
+    public int internalSampleRate = 22050;
+    public string configuredResamplerMode = SharedAudioDetectorResamplerModes.Filtered;
+    public string activeResamplerMode = "Direct";
+    public bool resamplerToggleAvailable;
     public int hopSize = 512;
     public float captureSeconds = 0.3f;
     public float inputLevelNormalized;
     public string latestPacket = "--";
     public string statusText = "Native detector idle.";
     public string errorText = string.Empty;
+}
+
+public enum NativeDetectorResamplerMode
+{
+    Linear = 0,
+    Filtered = 1
 }
 
 public sealed class NativeNotesDetectorBridge
@@ -54,6 +65,7 @@ public sealed class NativeNotesDetectorBridge
     private NativeDetectorRuntimeInfo cachedRuntimeInfo = new NativeDetectorRuntimeInfo();
     private NativeDetectorPresetStore presetStore = new NativeDetectorPresetStore();
     private NativeDetectorSettingsData workingSettings = NativeDetectorSettingCatalog.CreateLevel2();
+    private NativeDetectorResamplerMode preferredResamplerMode = NativeDetectorResamplerMode.Filtered;
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_Initialize(
@@ -90,6 +102,9 @@ public sealed class NativeNotesDetectorBridge
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_SetSettingsJson([MarshalAs(UnmanagedType.LPUTF8Str)] string settingsJsonUtf8);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_SetResamplerMode(int mode);
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_SetDebugLogPath([MarshalAs(UnmanagedType.LPUTF8Str)] string debugLogPathUtf8);
@@ -129,6 +144,7 @@ public sealed class NativeNotesDetectorBridge
         if (initialized)
         {
             ApplyWorkingSettingsToNative();
+            ApplyPreferredResamplerModeToNative();
             return true;
         }
 
@@ -145,7 +161,10 @@ public sealed class NativeNotesDetectorBridge
             int result = NativeDetector_Initialize(modelPath, Application.persistentDataPath, string.Empty);
             initialized = result != 0;
             if (initialized)
+            {
                 ApplyWorkingSettingsToNative();
+                ApplyPreferredResamplerModeToNative();
+            }
             RefreshNativeStatus();
             RefreshDevices();
 
@@ -185,6 +204,7 @@ public sealed class NativeNotesDetectorBridge
         try
         {
             ApplyWorkingSettingsToNative();
+            ApplyPreferredResamplerModeToNative();
             bool ok = NativeDetector_Start(inputDeviceIndex) != 0;
             RefreshNativeStatus();
             return ok;
@@ -433,6 +453,25 @@ public sealed class NativeNotesDetectorBridge
         }
     }
 
+    public void SetResamplerMode(NativeDetectorResamplerMode mode)
+    {
+        preferredResamplerMode = NormalizeResamplerMode(mode);
+
+        if (!initialized)
+            return;
+
+        try
+        {
+            ApplyPreferredResamplerModeToNative();
+            RefreshNativeStatus();
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector resampler update failed: {ex.Message}";
+            lastStatus = lastError;
+        }
+    }
+
     public string GetInputDeviceDisplayName(int deviceIndex)
     {
         NativeDetectorInputDevice[] devices = InputDevices;
@@ -481,6 +520,21 @@ public sealed class NativeNotesDetectorBridge
 
         workingSettings = ResolveSettingsForPresetId(presetStore.selectedPresetId);
         SavePresetStore();
+    }
+
+    private NativeDetectorResamplerMode NormalizeResamplerMode(NativeDetectorResamplerMode mode)
+    {
+        return mode == NativeDetectorResamplerMode.Linear
+            ? NativeDetectorResamplerMode.Linear
+            : NativeDetectorResamplerMode.Filtered;
+    }
+
+    private void ApplyPreferredResamplerModeToNative()
+    {
+        if (!initialized)
+            return;
+
+        NativeDetector_SetResamplerMode((int)preferredResamplerMode);
     }
 
     private string GetPresetStorePath()

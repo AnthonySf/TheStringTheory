@@ -1,0 +1,43 @@
+<Project>
+  <PropertyGroup>
+    <_UnityScriptProject Condition="'$(MSBuildProjectName)' == 'Assembly-CSharp' or '$(MSBuildProjectName)' == 'Assembly-CSharp-Editor'">true</_UnityScriptProject>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(_UnityScriptProject)' == 'true'">
+    <None Remove="Assets\StreamingAssets\RocksmithImport\*.dll" />
+  </ItemGroup>
+
+  <Target Name="StripRocksmithImportRuntimeReferencesBeforeResolve"
+          BeforeTargets="ResolveReferences"
+          Condition="'$(_UnityScriptProject)' == 'true'">
+    <ItemGroup>
+      <Reference Remove="@(Reference)"
+                 Condition="'%(Reference.HintPath)' != '' and
+                            $([System.String]::Copy('%(Reference.HintPath)').Contains('Assets\\StreamingAssets\\RocksmithImport\\'))" />
+      <None Remove="@(None)"
+            Condition="$([System.String]::Copy('%(Identity)').Contains('Assets\\StreamingAssets\\RocksmithImport\\'))" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="DumpUnityResolvedReferences"
+          AfterTargets="ResolveReferences"
+          Condition="'$(_UnityScriptProject)' == 'true' and '$(DumpReferencePath)' == 'true'">
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)\.codex_tmp\$(MSBuildProjectName).ReferencePath.txt"
+                      Lines="@(ReferencePath)"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)\.codex_tmp\$(MSBuildProjectName).ReferencePathWithRefAssemblies.txt"
+                      Lines="@(ReferencePathWithRefAssemblies)"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+  </Target>
+
+  <Target Name="DumpUnityReferenceItemsBeforeResolve"
+          BeforeTargets="ResolveReferences"
+          Condition="'$(_UnityScriptProject)' == 'true' and '$(DumpReferenceItems)' == 'true'">
+    <WriteLinesToFile File="$(MSBuildProjectDirectory)\.codex_tmp\$(MSBuildProjectName).ReferenceItems.txt"
+                      Lines="@(Reference->'%(Identity)|%(HintPath)|%(Private)')"
+                      Overwrite="true"
+                      Encoding="UTF-8" />
+  </Target>
+</Project>

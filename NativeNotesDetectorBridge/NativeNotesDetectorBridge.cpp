@@ -32,6 +32,7 @@
 
 #include "third_party_onnxruntime_c_api.h"
 #include "aubio.h"
+#include "samplerate.h"
 
 namespace
 {
@@ -109,7 +110,7 @@ const std::array<const char*, 12> kNoteNames = { "C", "C#", "D", "D#", "E", "F",
 
 struct DetectorSettings
 {
-    float chordLeniency = 0.66f;
+    float chordLeniency = 0.90f;
     float continuousRmsGate = 0.007f;
     float continuousConfidenceGate = 0.73f;
     float continuousHoldSeconds = 0.10f;
@@ -129,6 +130,32 @@ struct DetectorSettings
     float chordScoreKeepRatio = 0.80f;
     float chordExpectedScoreKeepRatio = 0.70f;
 };
+
+enum class DetectorResamplerMode : int
+{
+    Linear = 0,
+    Filtered = 1
+};
+
+DetectorResamplerMode NormalizeDetectorResamplerMode(int rawValue)
+{
+    return rawValue == static_cast<int>(DetectorResamplerMode::Linear)
+        ? DetectorResamplerMode::Linear
+        : DetectorResamplerMode::Filtered;
+}
+
+const char* GetDetectorResamplerModeLabel(DetectorResamplerMode mode)
+{
+    return mode == DetectorResamplerMode::Linear ? "Linear" : "Filtered";
+}
+
+const char* GetActiveDetectorResamplerModeLabel(DetectorResamplerMode mode, int captureSampleRate)
+{
+    if (captureSampleRate == kSampleRate)
+        return "Direct";
+
+    return GetDetectorResamplerModeLabel(mode);
+}
 
 enum ExpectedHintNoteFlags : uint32_t
 {
@@ -230,6 +257,9 @@ struct ExpectedHintContext
     double windowStartPythonTime = 0.0;
     double windowEndPythonTime = 0.0;
 };
+
+int NormalizeInputSampleRate(double sampleRate);
+std::vector<int> BuildInputSampleRateCandidates(const NativeDeviceDescriptor* selectedDevice);
 
 struct HintWindow
 {
@@ -2711,6 +2741,7 @@ public:
     std::string ListInputDevicesJson() const;
     std::string GetRuntimeInfoJson() const;
     void ApplySettingsJson(const std::string& settingsJson);
+    void SetResamplerMode(int mode);
 
 private:
     static int __cdecl PortAudioCallback_(const void* input, void* output, unsigned long frameCount, const PaStreamCallbackTimeInfo*, PaStreamCallbackFlags, void* userData);
@@ -2744,6 +2775,10 @@ private:
     double GetCurrentAudioTime() const;
     void stopLocked_();
     void resetStateLocked_();
+    void resetResamplerState_();
+    bool prepareFilteredResamplerLocked_(std::wstring& warning);
+    uint64_t writeLinearResampledFrames_(const float* input, int frameCount, uint64_t startFrame);
+    uint64_t writeFilteredResampledFrames_(const float* input, int frameCount, uint64_t startFrame);
     void updateStatusLocked_();
     void setError_(const std::wstring& error);
     bool isKnownDeviceIndex_(int index) const;
@@ -2771,6 +2806,13 @@ private:
     int selectedDeviceIndex_ = -1;
     std::string selectedDeviceDisplayName_;
     std::string selectedHostApiName_;
+    int activeInputSampleRate_ = kSampleRate;
+    double resampleSourceCursor_ = 0.0;
+    DetectorResamplerMode configuredResamplerMode_ = DetectorResamplerMode::Filtered;
+    DetectorResamplerMode activeResamplerMode_ = DetectorResamplerMode::Filtered;
+    SRC_STATE* filteredResamplerState_ = nullptr;
+    std::vector<float> filteredResamplerOutputScratch_;
+    std::vector<float> filteredResamplerSilentInputScratch_;
 
     PaStream* stream_ = nullptr;
     std::atomic<bool> running_{ false };
@@ -2952,15 +2994,33 @@ bool NativeDetectorEngine::Start(int inputDeviceIndex, std::wstring& error)
         ? selected->defaultLowInputLatency
         : 0.008;
 
-    if (!portAudio_.OpenInputStream(
-        selectedDeviceIndex_,
-        kSampleRate,
-        static_cast<unsigned long>(kHopSize),
-        suggestedLatency,
-        &NativeDetectorEngine::PortAudioCallback_,
-        this,
-        stream_,
-        error))
+    std::vector<int> sampleRateCandidates = BuildInputSampleRateCandidates(selected);
+    std::vector<std::wstring> sampleRateErrors;
+    for (const int sampleRateCandidate : sampleRateCandidates)
+    {
+        std::wstring attemptError;
+        if (portAudio_.OpenInputStream(
+            selectedDeviceIndex_,
+            sampleRateCandidate,
+            static_cast<unsigned long>(kHopSize),
+            suggestedLatency,
+            &NativeDetectorEngine::PortAudioCallback_,
+            this,
+            stream_,
+            attemptError))
+        {
+            activeInputSampleRate_ = sampleRateCandidate;
+            resampleSourceCursor_ = 0.0;
+            error.clear();
+            break;
+        }
+
+        std::wostringstream attemptBuilder;
+        attemptBuilder << sampleRateCandidate << L" Hz: " << attemptError;
+        sampleRateErrors.push_back(attemptBuilder.str());
+    }
+
+    if (stream_ == nullptr)
     {
         running_.store(false, std::memory_order_release);
         dataCondition_.notify_all();
@@ -2969,11 +3029,32 @@ bool NativeDetectorEngine::Start(int inputDeviceIndex, std::wstring& error)
             fastThread_.join();
         if (deepThread_.joinable())
             deepThread_.join();
+        if (!sampleRateErrors.empty())
+        {
+            std::wostringstream errorBuilder;
+            errorBuilder << L"Unable to open detector input stream. ";
+            for (size_t i = 0; i < sampleRateErrors.size(); ++i)
+            {
+                if (i > 0)
+                    errorBuilder << L" | ";
+                errorBuilder << sampleRateErrors[i];
+            }
+            error = errorBuilder.str();
+        }
         setError_(error);
         return false;
     }
 
+    std::wstring resamplerWarning;
+    activeResamplerMode_ = configuredResamplerMode_;
+    if (activeInputSampleRate_ != kSampleRate && configuredResamplerMode_ == DetectorResamplerMode::Filtered)
+    {
+        if (!prepareFilteredResamplerLocked_(resamplerWarning))
+            activeResamplerMode_ = DetectorResamplerMode::Linear;
+    }
+
     updateStatusLocked_();
+    setError_(resamplerWarning);
     error.clear();
     return true;
 }
@@ -3055,14 +3136,20 @@ DetectorSettings NativeDetectorEngine::getSettingsSnapshot_() const
 std::string NativeDetectorEngine::GetRuntimeInfoJson() const
 {
     std::lock_guard<std::mutex> lock(stateMutex_);
+    const bool running = running_.load(std::memory_order_acquire);
     std::ostringstream builder;
     builder << "{"
-        << "\"running\":" << (running_.load(std::memory_order_acquire) ? "true" : "false")
+        << "\"running\":" << (running ? "true" : "false")
         << ",\"backendLabel\":\"Native C++ Detector\""
         << ",\"selectedInputDeviceIndex\":" << selectedDeviceIndex_
         << ",\"selectedInputDeviceDisplayName\":\"" << JsonEscape(selectedDeviceDisplayName_)
         << "\",\"selectedHostApiName\":\"" << JsonEscape(selectedHostApiName_)
         << "\",\"sampleRate\":" << kSampleRate
+        << ",\"captureSampleRate\":" << (running ? activeInputSampleRate_ : 0)
+        << ",\"internalSampleRate\":" << kSampleRate
+        << ",\"configuredResamplerMode\":\"" << GetDetectorResamplerModeLabel(configuredResamplerMode_)
+        << "\",\"activeResamplerMode\":\"" << GetActiveDetectorResamplerModeLabel(activeResamplerMode_, running ? activeInputSampleRate_ : kSampleRate)
+        << "\",\"resamplerToggleAvailable\":" << ((running && activeInputSampleRate_ != kSampleRate) ? "true" : "false")
         << ",\"hopSize\":" << kHopSize
         << ",\"captureSeconds\":0.3"
         << ",\"inputLevelNormalized\":" << smoothedInputLevel_.load(std::memory_order_relaxed)
@@ -3077,6 +3164,15 @@ void NativeDetectorEngine::ApplySettingsJson(const std::string& settingsJson)
 {
     std::lock_guard<std::mutex> lock(stateMutex_);
     settings_ = ParseDetectorSettingsJson(settingsJson, settings_);
+}
+
+void NativeDetectorEngine::SetResamplerMode(int mode)
+{
+    std::lock_guard<std::mutex> lock(controlMutex_);
+    configuredResamplerMode_ = NormalizeDetectorResamplerMode(mode);
+    if (!running_.load(std::memory_order_acquire))
+        activeResamplerMode_ = configuredResamplerMode_;
+    updateStatusLocked_();
 }
 
 int __cdecl NativeDetectorEngine::PortAudioCallback_(const void* input, void* output, unsigned long frameCount, const PaStreamCallbackTimeInfo*, PaStreamCallbackFlags, void* userData)
@@ -3094,10 +3190,24 @@ int NativeDetectorEngine::onAudio_(const float* input, int frameCount)
         return 0;
 
     const uint64_t startFrame = totalFramesWritten_.load(std::memory_order_relaxed);
-    for (int i = 0; i < frameCount; ++i)
+    uint64_t framesWritten = 0;
+    if (activeInputSampleRate_ == kSampleRate)
     {
-        const float sample = input != nullptr ? input[i] : 0.0f;
-        ringBuffer_[static_cast<size_t>((startFrame + static_cast<uint64_t>(i)) % ringBuffer_.size())] = sample;
+        for (int i = 0; i < frameCount; ++i)
+        {
+            const float sample = input != nullptr ? input[i] : 0.0f;
+            ringBuffer_[static_cast<size_t>((startFrame + static_cast<uint64_t>(i)) % ringBuffer_.size())] = sample;
+        }
+
+        framesWritten = static_cast<uint64_t>(frameCount);
+    }
+    else if (activeResamplerMode_ == DetectorResamplerMode::Linear)
+    {
+        framesWritten = writeLinearResampledFrames_(input, frameCount, startFrame);
+    }
+    else
+    {
+        framesWritten = writeFilteredResampledFrames_(input, frameCount, startFrame);
     }
 
     const float rms = input != nullptr ? ComputeRms(input, frameCount) : 0.0f;
@@ -3105,7 +3215,7 @@ int NativeDetectorEngine::onAudio_(const float* input, int frameCount)
     const float smoothed = std::clamp(previousLevel * 0.85f + rms * 7.5f * 0.15f, 0.0f, 1.0f);
     smoothedInputLevel_.store(smoothed, std::memory_order_relaxed);
 
-    totalFramesWritten_.store(startFrame + static_cast<uint64_t>(frameCount), std::memory_order_release);
+    totalFramesWritten_.store(startFrame + framesWritten, std::memory_order_release);
     dataCondition_.notify_one();
     return 0;
 }
@@ -3182,6 +3292,7 @@ void NativeDetectorEngine::stopLocked_()
         fastSingleTasks_.clear();
     }
 
+    resetResamplerState_();
     updateStatusLocked_();
 }
 
@@ -3190,6 +3301,10 @@ void NativeDetectorEngine::resetStateLocked_()
     std::fill(ringBuffer_.begin(), ringBuffer_.end(), 0.0f);
     totalFramesWritten_.store(0, std::memory_order_release);
     smoothedInputLevel_.store(0.0f, std::memory_order_relaxed);
+    activeInputSampleRate_ = kSampleRate;
+    resampleSourceCursor_ = 0.0;
+    activeResamplerMode_ = configuredResamplerMode_;
+    resetResamplerState_();
     {
         std::lock_guard<std::mutex> lock(captureMutex_);
         captures_.clear();
@@ -3239,6 +3354,150 @@ std::string EscapeJsonString(const std::string& value)
     }
 
     return builder.str();
+}
+
+int NormalizeInputSampleRate(double sampleRate)
+{
+    if (!std::isfinite(sampleRate))
+        return -1;
+
+    const int rounded = static_cast<int>(std::lround(sampleRate));
+    return rounded >= 8000 && rounded <= 192000 ? rounded : -1;
+}
+
+std::vector<int> BuildInputSampleRateCandidates(const NativeDeviceDescriptor* selectedDevice)
+{
+    std::vector<int> candidates;
+    candidates.reserve(4);
+    candidates.push_back(kSampleRate);
+
+    if (selectedDevice != nullptr)
+    {
+        const int defaultRate = NormalizeInputSampleRate(selectedDevice->defaultSampleRate);
+        if (defaultRate > 0 && std::find(candidates.begin(), candidates.end(), defaultRate) == candidates.end())
+            candidates.push_back(defaultRate);
+    }
+
+    for (const int fallbackRate : { 48000, 44100 })
+    {
+        if (std::find(candidates.begin(), candidates.end(), fallbackRate) == candidates.end())
+            candidates.push_back(fallbackRate);
+    }
+
+    return candidates;
+}
+
+void NativeDetectorEngine::resetResamplerState_()
+{
+    if (filteredResamplerState_ != nullptr)
+        filteredResamplerState_ = src_delete(filteredResamplerState_);
+
+    filteredResamplerOutputScratch_.clear();
+    filteredResamplerSilentInputScratch_.clear();
+}
+
+bool NativeDetectorEngine::prepareFilteredResamplerLocked_(std::wstring& warning)
+{
+    warning.clear();
+    resetResamplerState_();
+
+    if (activeInputSampleRate_ == kSampleRate)
+        return true;
+
+    int errorCode = 0;
+    filteredResamplerState_ = src_new(SRC_SINC_BEST_QUALITY, 1, &errorCode);
+    if (filteredResamplerState_ == nullptr)
+    {
+        warning = L"Filtered resampler unavailable";
+        const char* errorText = src_strerror(errorCode);
+        if (errorText != nullptr && *errorText != '\0')
+        {
+            warning += L" (";
+            warning += Utf8ToWide(errorText);
+            warning += L")";
+        }
+        warning += L"; using linear.";
+        return false;
+    }
+
+    src_reset(filteredResamplerState_);
+
+    const double ratio = static_cast<double>(kSampleRate) / static_cast<double>(std::max(1, activeInputSampleRate_));
+    const size_t outputCapacity = static_cast<size_t>(std::ceil(static_cast<double>(kHopSize) * std::max(1.0, ratio))) + 512u;
+    filteredResamplerOutputScratch_.assign(std::max<size_t>(outputCapacity, static_cast<size_t>(kHopSize)), 0.0f);
+    filteredResamplerSilentInputScratch_.clear();
+    return true;
+}
+
+uint64_t NativeDetectorEngine::writeLinearResampledFrames_(const float* input, int frameCount, uint64_t startFrame)
+{
+    uint64_t framesWritten = 0;
+    const double sourceStep = static_cast<double>(activeInputSampleRate_) / static_cast<double>(kSampleRate);
+    double sourceCursor = resampleSourceCursor_;
+    while (sourceCursor < static_cast<double>(frameCount))
+    {
+        const int sampleIndex = static_cast<int>(std::floor(sourceCursor));
+        const int nextSampleIndex = std::min(sampleIndex + 1, frameCount - 1);
+        const float sampleA = input != nullptr ? input[sampleIndex] : 0.0f;
+        const float sampleB = input != nullptr ? input[nextSampleIndex] : sampleA;
+        const float fraction = static_cast<float>(sourceCursor - static_cast<double>(sampleIndex));
+        const float sample = sampleA + ((sampleB - sampleA) * fraction);
+        ringBuffer_[static_cast<size_t>((startFrame + framesWritten) % ringBuffer_.size())] = sample;
+        ++framesWritten;
+        sourceCursor += sourceStep;
+    }
+
+    resampleSourceCursor_ = sourceCursor - static_cast<double>(frameCount);
+    return framesWritten;
+}
+
+uint64_t NativeDetectorEngine::writeFilteredResampledFrames_(const float* input, int frameCount, uint64_t startFrame)
+{
+    if (filteredResamplerState_ == nullptr)
+        return writeLinearResampledFrames_(input, frameCount, startFrame);
+
+    const double ratio = static_cast<double>(kSampleRate) / static_cast<double>(std::max(1, activeInputSampleRate_));
+    const size_t minimumOutputCapacity = static_cast<size_t>(std::ceil(static_cast<double>(frameCount) * std::max(1.0, ratio))) + 512u;
+    if (filteredResamplerOutputScratch_.size() < minimumOutputCapacity)
+        filteredResamplerOutputScratch_.resize(minimumOutputCapacity);
+
+    const float* inputSamples = input;
+    if (inputSamples == nullptr)
+    {
+        filteredResamplerSilentInputScratch_.assign(static_cast<size_t>(frameCount), 0.0f);
+        inputSamples = filteredResamplerSilentInputScratch_.data();
+    }
+
+    SRC_DATA data{};
+    data.data_in = inputSamples;
+    data.input_frames = frameCount;
+    data.data_out = filteredResamplerOutputScratch_.data();
+    data.output_frames = static_cast<long>(filteredResamplerOutputScratch_.size());
+    data.end_of_input = 0;
+    data.src_ratio = ratio;
+
+    const int errorCode = src_process(filteredResamplerState_, &data);
+    if (errorCode != 0)
+    {
+        std::wstring message = L"Filtered resampler processing failed";
+        const char* errorText = src_strerror(errorCode);
+        if (errorText != nullptr && *errorText != '\0')
+        {
+            message += L" (";
+            message += Utf8ToWide(errorText);
+            message += L")";
+        }
+        message += L"; using linear.";
+        setError_(message);
+        return writeLinearResampledFrames_(input, frameCount, startFrame);
+    }
+
+    const uint64_t framesWritten = static_cast<uint64_t>(std::max<long>(0, data.output_frames_gen));
+    for (uint64_t i = 0; i < framesWritten; ++i)
+        ringBuffer_[static_cast<size_t>((startFrame + i) % ringBuffer_.size())] = filteredResamplerOutputScratch_[static_cast<size_t>(i)];
+
+    resampleSourceCursor_ = 0.0;
+    return framesWritten;
 }
 
 void NativeDetectorEngine::updateStatusLocked_()
@@ -4685,6 +4944,15 @@ __declspec(dllexport) int NativeDetector_SetSettingsJson(const char* settingsJso
     return 1;
 }
 
+__declspec(dllexport) int NativeDetector_SetResamplerMode(int mode)
+{
+    std::lock_guard<std::mutex> lock(g_bridgeMutex);
+    if (!g_detector)
+        return 0;
+    g_detector->SetResamplerMode(mode);
+    return 1;
+}
+
 __declspec(dllexport) int NativeDetector_SetDebugLogPath(const char* debugLogPathUtf8)
 {
     SetDebugLogPathInternal(Utf8ToWide(debugLogPathUtf8 != nullptr ? debugLogPathUtf8 : ""));
@@ -4734,7 +5002,7 @@ __declspec(dllexport) int NativeDetector_GetRuntimeInfoJson(char* destination, i
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
-        return CopyUtf8String("{\"running\":false,\"backendLabel\":\"Native C++ Detector\",\"selectedInputDeviceIndex\":-1,\"selectedInputDeviceDisplayName\":\"\",\"selectedHostApiName\":\"\",\"sampleRate\":22050,\"hopSize\":512,\"captureSeconds\":0.3,\"inputLevelNormalized\":0,\"latestPacket\":\"--\",\"statusText\":\"Native detector idle.\",\"errorText\":\"\"}", destination, capacity) ? 1 : 0;
+        return CopyUtf8String("{\"running\":false,\"backendLabel\":\"Native C++ Detector\",\"selectedInputDeviceIndex\":-1,\"selectedInputDeviceDisplayName\":\"\",\"selectedHostApiName\":\"\",\"sampleRate\":22050,\"captureSampleRate\":0,\"internalSampleRate\":22050,\"configuredResamplerMode\":\"Filtered\",\"activeResamplerMode\":\"Direct\",\"resamplerToggleAvailable\":false,\"hopSize\":512,\"captureSeconds\":0.3,\"inputLevelNormalized\":0,\"latestPacket\":\"--\",\"statusText\":\"Native detector idle.\",\"errorText\":\"\"}", destination, capacity) ? 1 : 0;
     return CopyUtf8String(g_detector->GetRuntimeInfoJson(), destination, capacity) ? 1 : 0;
 }
 

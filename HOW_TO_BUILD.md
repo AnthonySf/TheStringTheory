@@ -148,14 +148,22 @@ If you want live note detection to work, add these runtime files:
 
 Recommended setup:
 
-1. Build the native bridge:
+1. Clone the detector resampler source used by the native bridge:
+
+   ```powershell
+   git clone https://github.com/libsndfile/libsamplerate External/libsamplerate
+   ```
+
+2. Build the native bridge:
 
    ```powershell
    msbuild NativeNotesDetectorBridge\NativeNotesDetectorBridge.vcxproj /p:Configuration=Release /p:Platform=x64
    Copy-Item NativeNotesDetectorBridge\build\Release\NativeNotesDetectorBridgeNative_v6.dll Assets\Plugins\x86_64\ -Force
    ```
 
-2. Download ONNX Runtime `1.19.2` for Windows x64 from the official release page:
+   The filtered detector resampler is compiled directly into `NativeNotesDetectorBridgeNative_v6.dll`, so there is no extra resampler DLL to ship with the final build.
+
+3. Download ONNX Runtime `1.19.2` for Windows x64 from the official release page:
 
    - https://github.com/microsoft/onnxruntime/releases/tag/v1.19.2
 
@@ -164,14 +172,14 @@ Recommended setup:
    - `onnxruntime.dll`
    - `onnxruntime_providers_shared.dll`
 
-3. Install `basic-pitch` and copy the ONNX model:
+4. Install `basic-pitch` and copy the ONNX model:
 
    ```powershell
    py -3.9 -m pip install basic-pitch==0.4.0
    py -3.9 -c "from pathlib import Path; from shutil import copyfile; from basic_pitch import ICASSP_2022_MODEL_PATH; dst = Path(r'Assets/StreamingAssets/NotesReader/Models/basic_pitch_nmp.onnx'); dst.parent.mkdir(parents=True, exist_ok=True); copyfile(ICASSP_2022_MODEL_PATH, dst); print(dst)"
    ```
 
-4. Place `libportaudio64bit-asio.dll` into `Assets/Plugins/x86_64/`.
+5. Place `libportaudio64bit-asio.dll` into `Assets/Plugins/x86_64/`.
 
 ### B. PSARC import
 
