@@ -64,6 +64,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private Button startButton;
     private Button stopButton;
     private Button backButton;
+    private Slider guitarVolumeSlider;
+    private Label guitarVolumeValueLabel;
     private VisualElement rigPanelCard;
     private VisualElement pedalSidePanelCard;
     private VisualElement sidePanelHost;
@@ -160,40 +162,61 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         if (refreshInteractiveState)
         {
             if (refreshDevices)
-                runtime.RefreshInputDevices();
+            {
+                if (owner != null)
+                    owner.RefreshSharedAudioDevicesFromUi();
+                else
+                    runtime.RefreshInputDevices();
+            }
 
             UnityToneLabRuntime.ToneLabSettings settings = runtime.CurrentSettings;
             suppressCallbacks = true;
 
-            List<string> deviceChoices = runtime.InputDevices != null && runtime.InputDevices.Length > 0
-                ? runtime.InputDevices.ToList()
-                : new List<string> { "No microphone inputs" };
+            List<string> deviceChoices = owner?.GetSharedAudioInputDeviceChoices()?.ToList()
+                ?? (runtime.InputDevices != null && runtime.InputDevices.Length > 0
+                    ? runtime.InputDevices.ToList()
+                    : new List<string> { "No microphone inputs" });
             inputDropdown.choices = deviceChoices;
-            string selectedInput = !string.IsNullOrWhiteSpace(settings.input_device_name) && deviceChoices.Contains(settings.input_device_name)
-                ? settings.input_device_name
-                : deviceChoices[0];
+            string selectedInput = owner != null
+                ? owner.GetSharedAudioSelectedInputLabel()
+                : (!string.IsNullOrWhiteSpace(settings.input_device_name) && deviceChoices.Contains(settings.input_device_name)
+                    ? settings.input_device_name
+                    : deviceChoices[0]);
             inputDropdown.SetValueWithoutNotify(selectedInput);
-            inputDropdown.SetEnabled(runtime.InputDevices != null && runtime.InputDevices.Length > 0);
+            inputDropdown.SetEnabled(deviceChoices.Count > 0);
 
-            List<string> outputChoices = runtime.OutputDevices != null && runtime.OutputDevices.Length > 0
-                ? runtime.OutputDevices.ToList()
-                : new List<string> { "No output devices" };
+            List<string> outputChoices = owner?.GetSharedAudioOutputDeviceChoices()?.ToList()
+                ?? (runtime.OutputDevices != null && runtime.OutputDevices.Length > 0
+                    ? runtime.OutputDevices.ToList()
+                    : new List<string> { "No output devices" });
             outputDropdown.choices = outputChoices;
-            string selectedOutput = !string.IsNullOrWhiteSpace(settings.output_device_name) && outputChoices.Contains(settings.output_device_name)
-                ? settings.output_device_name
-                : outputChoices[0];
+            string selectedOutput = owner != null
+                ? owner.GetSharedAudioSelectedOutputLabel()
+                : (!string.IsNullOrWhiteSpace(settings.output_device_name) && outputChoices.Contains(settings.output_device_name)
+                    ? settings.output_device_name
+                    : outputChoices[0]);
             outputDropdown.SetValueWithoutNotify(selectedOutput);
-            outputDropdown.SetEnabled(runtime.OutputDevices != null && runtime.OutputDevices.Length > 0);
+            outputDropdown.SetEnabled(outputChoices.Count > 0);
 
             List<string> latencyChoices = runtime.MonitoringLatencyOptions != null && runtime.MonitoringLatencyOptions.Length > 0
                 ? runtime.MonitoringLatencyOptions.ToList()
                 : new List<string> { "Low (128)" };
             latencyDropdown.choices = latencyChoices;
-            string selectedLatency = latencyChoices.Contains(runtime.CurrentMonitoringLatencyOption)
-                ? runtime.CurrentMonitoringLatencyOption
-                : latencyChoices[0];
+            string selectedLatency = owner != null
+                ? owner.GetSharedAudioSelectedLatencyLabel()
+                : (latencyChoices.Contains(runtime.CurrentMonitoringLatencyOption)
+                    ? runtime.CurrentMonitoringLatencyOption
+                    : latencyChoices[0]);
             latencyDropdown.SetValueWithoutNotify(selectedLatency);
             latencyDropdown.SetEnabled(true);
+
+            float guitarVolumePercent = owner != null
+                ? owner.GetSharedAudioGuitarVolumePercent()
+                : runtime.MonitorVolumePercent;
+            if (guitarVolumeSlider != null)
+                guitarVolumeSlider.SetValueWithoutNotify(guitarVolumePercent);
+            if (guitarVolumeValueLabel != null)
+                guitarVolumeValueLabel.text = $"{guitarVolumePercent:F0}%";
 
             UnityToneLabRuntime.ToneLabPreset[] presets = runtime.CurrentPresets;
             presetChoiceToId.Clear();
@@ -251,6 +274,27 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             RefreshSidePanel(pedalChain);
 
             suppressCallbacks = false;
+        }
+
+        string configPath = owner != null ? owner.GetSharedAudioSettingsPathForUi() : ExternalContentPaths.PersistentAudioSettingsPath;
+        if (backendLabel != null)
+        {
+            backendLabel.text = $"Config File  {configPath}";
+            backendLabel.style.display = DisplayStyle.Flex;
+        }
+        if (routeLabel != null)
+        {
+            routeLabel.text = string.Empty;
+            routeLabel.style.display = DisplayStyle.None;
+        }
+        if (statusLabel != null)
+        {
+            statusLabel.text = string.IsNullOrWhiteSpace(runtime.StatusMessage)
+                ? (runtime.IsMonitoring ? "Live monitoring active." : "Monitoring idle.")
+                : runtime.StatusMessage;
+            statusLabel.style.color = runtime.IsMonitoring || runtime.IsAwaitingStartup
+                ? new Color(0.69f, 0.92f, 0.76f, 1f)
+                : new Color(0.92f, 0.84f, 0.63f, 1f);
         }
 
         startButton.SetEnabled(!runtime.IsMonitoring && !runtime.IsAwaitingStartup);
@@ -486,7 +530,10 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             if (suppressCallbacks || runtime == null)
                 return;
 
-            runtime.UpdateSettings(settings => settings.input_device_name = evt.newValue, restartMonitoring: true);
+            if (owner != null)
+                owner.SetSharedAudioInputDeviceFromUi(evt.newValue);
+            else
+                runtime.UpdateSettings(settings => settings.input_device_name = evt.newValue, restartMonitoring: true);
             RefreshUi(syncControls: true);
         });
 
@@ -499,7 +546,10 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             if (suppressCallbacks || runtime == null)
                 return;
 
-            runtime.UpdateSettings(settings => settings.output_device_name = evt.newValue, restartMonitoring: true);
+            if (owner != null)
+                owner.SetSharedAudioOutputDeviceFromUi(evt.newValue);
+            else
+                runtime.UpdateSettings(settings => settings.output_device_name = evt.newValue, restartMonitoring: true);
             RefreshUi(syncControls: true);
         });
 
@@ -512,13 +562,15 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             if (suppressCallbacks || runtime == null)
                 return;
 
-            runtime.UpdateSettings(settings => settings.monitoring_buffer_size = ParseLatencyPresetBufferSize(evt.newValue), restartMonitoring: true);
+            if (owner != null)
+                owner.SetSharedAudioMonitoringLatencyFromUi(evt.newValue);
+            else
+                runtime.UpdateSettings(settings => settings.monitoring_buffer_size = ParseLatencyPresetBufferSize(evt.newValue), restartMonitoring: true);
             RefreshUi(syncControls: true);
         });
 
         refreshDevicesButton = CreateButton("Refresh", "tone-lab-button tone-lab-button-secondary", () =>
         {
-            runtime?.RefreshInputDevices();
             RefreshUi(syncControls: true, refreshDevices: true);
         });
         refreshDevicesButton.style.minWidth = 120f;
@@ -577,6 +629,47 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         transportRow.Add(startButton);
         transportRow.Add(stopButton);
 
+        VisualElement statusCard = new VisualElement();
+        statusCard.style.flexDirection = FlexDirection.Column;
+        statusCard.style.marginTop = 16f;
+        statusCard.style.marginBottom = 16f;
+        statusCard.style.paddingLeft = 14f;
+        statusCard.style.paddingRight = 14f;
+        statusCard.style.paddingTop = 12f;
+        statusCard.style.paddingBottom = 12f;
+        statusCard.style.backgroundColor = new Color(0.07f, 0.08f, 0.10f, 0.72f);
+        statusCard.style.borderTopWidth = 1f;
+        statusCard.style.borderRightWidth = 1f;
+        statusCard.style.borderBottomWidth = 1f;
+        statusCard.style.borderLeftWidth = 1f;
+        statusCard.style.borderTopColor = new Color(1f, 1f, 1f, 0.12f);
+        statusCard.style.borderRightColor = new Color(1f, 1f, 1f, 0.12f);
+        statusCard.style.borderBottomColor = new Color(1f, 1f, 1f, 0.12f);
+        statusCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.12f);
+        statusCard.style.borderTopLeftRadius = 10f;
+        statusCard.style.borderTopRightRadius = 10f;
+        statusCard.style.borderBottomLeftRadius = 10f;
+        statusCard.style.borderBottomRightRadius = 10f;
+        backendLabel = new Label(string.Empty);
+        backendLabel.style.color = new Color(0.82f, 0.86f, 0.91f, 0.96f);
+        backendLabel.style.fontSize = 12f;
+        backendLabel.style.marginBottom = 6f;
+        backendLabel.style.whiteSpace = WhiteSpace.Normal;
+        statusCard.Add(backendLabel);
+
+        routeLabel = new Label(string.Empty);
+        routeLabel.style.color = new Color(0.90f, 0.94f, 0.98f, 0.98f);
+        routeLabel.style.fontSize = 12f;
+        routeLabel.style.marginBottom = 6f;
+        routeLabel.style.whiteSpace = WhiteSpace.Normal;
+        statusCard.Add(routeLabel);
+
+        statusLabel = new Label(string.Empty);
+        statusLabel.style.color = new Color(0.92f, 0.84f, 0.63f, 1f);
+        statusLabel.style.fontSize = 12f;
+        statusLabel.style.whiteSpace = WhiteSpace.Normal;
+        statusCard.Add(statusLabel);
+
         rigSettingsHost.Add(CreateCompactSliderField(
             "Input Gain",
             -36f,
@@ -594,6 +687,23 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             settings => settings.output_gain_db,
             (settings, value) => settings.output_gain_db = value,
             410f));
+        rigSettingsHost.Add(CreateSharedVolumeSliderField(
+            "Guitar Volume",
+            0f,
+            100f,
+            value => $"{value:F0}%",
+            () => owner != null ? owner.GetSharedAudioGuitarVolumePercent() : runtime?.MonitorVolumePercent ?? 100f,
+            value =>
+            {
+                if (owner != null)
+                    owner.SetSharedAudioGuitarVolumeFromUi(value);
+                else
+                    runtime?.SetMonitorVolumePercent(value);
+            },
+            out guitarVolumeSlider,
+            out guitarVolumeValueLabel,
+            410f));
+        rigSettingsHost.Add(statusCard);
         rigPanelHost.Add(rigSettingsScroll);
 
         pedalInspectorScroll = new ScrollView(ScrollViewMode.Vertical);
@@ -1434,6 +1544,64 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         return field;
     }
 
+    private VisualElement CreateSharedVolumeSliderField(
+        string title,
+        float min,
+        float max,
+        Func<float, string> formatter,
+        Func<float> getter,
+        Action<float> setter,
+        out Slider slider,
+        out Label valueLabel,
+        float width)
+    {
+        VisualElement field = new VisualElement();
+        field.style.width = width;
+        field.style.minWidth = width;
+        field.style.marginRight = 12f;
+
+        Label titleLabel = new Label(title);
+        titleLabel.style.color = new Color(0.66f, 0.69f, 0.73f, 0.95f);
+        titleLabel.style.fontSize = 12f;
+        titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        titleLabel.style.marginBottom = 4f;
+        field.Add(titleLabel);
+
+        VisualElement row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.Center;
+        field.Add(row);
+
+        slider = new Slider(min, max);
+        ApplySliderStyle(slider);
+        slider.style.flexGrow = 1f;
+        slider.style.marginTop = 0f;
+        slider.style.marginBottom = 0f;
+        slider.style.marginRight = 10f;
+        float initialValue = getter != null ? getter() : min;
+        slider.SetValueWithoutNotify(initialValue);
+        row.Add(slider);
+
+        Label localValueLabel = new Label(formatter(initialValue));
+        localValueLabel.style.color = new Color(0.84f, 0.81f, 0.74f, 0.98f);
+        localValueLabel.style.fontSize = 13f;
+        localValueLabel.style.minWidth = 64f;
+        localValueLabel.style.unityTextAlign = TextAnchor.MiddleRight;
+        row.Add(localValueLabel);
+        valueLabel = localValueLabel;
+
+        slider.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+
+            localValueLabel.text = formatter(evt.newValue);
+            setter?.Invoke(evt.newValue);
+        });
+
+        return field;
+    }
+
     private static VisualElement CreateSettingRow(string labelText, out VisualElement valueHost)
     {
         VisualElement row = new VisualElement();
@@ -1744,13 +1912,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
     private static int ParseLatencyPresetBufferSize(string label)
     {
-        if (string.IsNullOrWhiteSpace(label))
-            return 128;
-        if (label.IndexOf("64", StringComparison.Ordinal) >= 0)
-            return 64;
-        if (label.IndexOf("256", StringComparison.Ordinal) >= 0)
-            return 256;
-        return 128;
+        return UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(label);
     }
 
     private string GetPresetName(string presetId)

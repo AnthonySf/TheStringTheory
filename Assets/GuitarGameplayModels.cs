@@ -437,6 +437,7 @@ public sealed class GuitarGameplaySnapshot
     public List<TabSectionData> sections;
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
+    public bool showGameplayAudioPopup;
     public bool showOffsetHelper;
     public bool offsetHelperAdjusting;
     public bool offsetHelperPreviewPlaying;
@@ -510,6 +511,8 @@ public sealed class GuitarGameplaySnapshot
     public float tabSpeedOffsetPercent;
     public float songStartDelaySeconds;
     public float songVolumePercent;
+    public float guitarVolumePercent;
+    public int selectedGameplayAudioPopupIndex;
     public string songPlaybackAudioModeLabel;
     public bool songPlaybackUsesGeneratedMode;
     public bool generatedAudioTrackSelectionAvailable;
@@ -548,6 +551,10 @@ public sealed class GuitarGameplaySnapshot
     public string notesDetectorBackendLabel;
     public string notesDetectorStatusText;
     public string notesDetectorDetailText;
+    public int notesDetectorCaptureSampleRate;
+    public int notesDetectorInternalSampleRate;
+    public bool notesDetectorResamplerToggleVisible;
+    public string notesDetectorResamplerModeLabel;
     public List<string> notesDetectorAvailableInputDevices;
     public int selectedNotesDetectorInputDeviceIndex;
     public List<string> notesDetectorPresetLabels;
@@ -571,10 +578,19 @@ public sealed class GuitarGameplaySnapshot
     public bool notesDetectorRoutineCompleted;
     public bool showStartupTuningReminder;
     public bool showGlobalSettings;
+    public string songsFolderMenuValueLabel;
     public int selectedGlobalSettingsTopIndex;
     public int selectedGlobalSettingsItemIndex;
     public string activeGlobalSettingsCategory;
     public bool globalSettingsTransparentBackground;
+    public bool showGlobalSettingsSelectionPopup;
+    public string globalSettingsSelectionPopupEyebrow;
+    public string globalSettingsSelectionPopupTitle;
+    public string globalSettingsSelectionPopupSummary;
+    public List<string> globalSettingsSelectionPopupOptionNames;
+    public List<string> globalSettingsSelectionPopupOptionStates;
+    public List<string> globalSettingsSelectionPopupOptionActions;
+    public int selectedGlobalSettingsSelectionPopupIndex;
     public bool showGameplayHudPreviewInMenus;
     public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
 }

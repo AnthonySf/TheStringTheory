@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public sealed class NativeDetectorSettingsData
 {
-    public float chordLeniency = 0.66f;
+    public float chordLeniency = 0.84f;
     public float continuousRmsGate = 0.007f;
     public float continuousConfidenceGate = 0.65f;
     public float continuousHoldSeconds = 0.10f;
