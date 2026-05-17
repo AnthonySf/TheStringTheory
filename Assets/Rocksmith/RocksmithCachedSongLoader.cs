@@ -179,6 +179,26 @@ public static class RocksmithCachedSongLoader
         return notes;
     }
 
+    public static bool TryLoadArrangementPart(
+        string manifestPath,
+        int targetPartIndex,
+        out RocksmithCachedArrangementSummary summary,
+        out RocksmithCachedArrangementPart part)
+    {
+        summary = null;
+        part = null;
+
+        if (!TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest))
+            return false;
+
+        int chosenIndex = ResolveArrangementIndex(manifest, targetPartIndex);
+        if (chosenIndex < 0 || manifest.arrangements == null || chosenIndex >= manifest.arrangements.Count)
+            return false;
+
+        summary = manifest.arrangements[chosenIndex];
+        return TryLoadPart(summary?.partFilePath, out part);
+    }
+
     public static List<ArpeggioGuideData> LoadArpeggioGuides(string manifestPath, int targetPartIndex = -1)
     {
         if (!TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest))
@@ -226,6 +246,9 @@ public static class RocksmithCachedSongLoader
              source.bendRelease);
         if (!wantsBendVisual)
             return RemoveFlatSustainUnderExpressiveSegments(segments);
+
+        if (source.bendPoints != null && source.bendPoints.Count > 0)
+            return RemoveFlatSustainUnderExpressiveSegments(BuildBendTechniqueSegmentsFromPoints(source, segments));
 
         if (HasRenderableBendTechniqueSegments(segments))
             return RemoveFlatSustainUnderExpressiveSegments(segments);
@@ -356,6 +379,99 @@ public static class RocksmithCachedSongLoader
                 fret,
                 0f,
                 bend));
+        }
+
+        return result;
+    }
+
+    private static List<NoteTechniqueSegmentData> BuildBendTechniqueSegmentsFromPoints(
+        RocksmithCachedNoteData source,
+        List<NoteTechniqueSegmentData> existingSegments)
+    {
+        List<NoteTechniqueSegmentData> result = new List<NoteTechniqueSegmentData>();
+        if (existingSegments != null)
+        {
+            for (int i = 0; i < existingSegments.Count; i++)
+            {
+                NoteTechniqueSegmentData segment = existingSegments[i];
+                if (segment.endOffset <= segment.startOffset + 0.0001f)
+                    continue;
+
+                if (segment.type == NoteTechniqueSegmentType.Bend)
+                    continue;
+
+                if ((segment.type == NoteTechniqueSegmentType.Sustain || segment.type == NoteTechniqueSegmentType.Vibrato) &&
+                    (Mathf.Abs(segment.startBend) > 0.01f || Mathf.Abs(segment.endBend) > 0.01f))
+                {
+                    continue;
+                }
+
+                result.Add(segment);
+            }
+        }
+
+        List<RocksmithCachedBendPointData> points = source.bendPoints
+            .Where(point => point != null)
+            .OrderBy(point => point.timeSeconds)
+            .ToList();
+        if (points.Count == 0)
+            return BuildFallbackBendTechniqueSegments(source, result);
+
+        float duration = Mathf.Max(source.duration, source.bendVisualDuration, 0.12f);
+        int fret = source.fret;
+        bool startsWithPreBend = source.bendPreBend ||
+                                 (points[0].timeSeconds <= 0.001f && Mathf.Abs(points[0].step) > 0.01f);
+
+        RocksmithCachedBendPointData firstPoint = points[0];
+        float firstPointTime = Mathf.Clamp(firstPoint.timeSeconds, 0f, duration);
+        if (firstPointTime > 0.0001f && Mathf.Abs(firstPoint.step) > 0.01f)
+        {
+            result.Add(new NoteTechniqueSegmentData(
+                NoteTechniqueSegmentType.Bend,
+                0f,
+                firstPointTime,
+                fret,
+                fret,
+                startsWithPreBend ? firstPoint.step : 0f,
+                firstPoint.step));
+        }
+
+        for (int i = 1; i < points.Count; i++)
+        {
+            RocksmithCachedBendPointData previous = points[i - 1];
+            RocksmithCachedBendPointData current = points[i];
+            float startOffset = Mathf.Clamp(previous.timeSeconds, 0f, duration);
+            float endOffset = Mathf.Clamp(current.timeSeconds, 0f, duration);
+            if (endOffset <= startOffset + 0.0001f)
+                continue;
+
+            NoteTechniqueSegmentType segmentType =
+                Mathf.Abs(current.step - previous.step) <= 0.01f
+                    ? NoteTechniqueSegmentType.Sustain
+                    : NoteTechniqueSegmentType.Bend;
+
+            result.Add(new NoteTechniqueSegmentData(
+                segmentType,
+                startOffset,
+                endOffset,
+                fret,
+                fret,
+                previous.step,
+                current.step));
+        }
+
+        RocksmithCachedBendPointData lastPoint = points[points.Count - 1];
+        float lastPointTime = Mathf.Clamp(lastPoint.timeSeconds, 0f, duration);
+        if (duration > lastPointTime + 0.0001f && Mathf.Abs(lastPoint.step) > 0.01f)
+        {
+            result.Add(new NoteTechniqueSegmentData(
+                NoteTechniqueSegmentType.Sustain,
+                lastPointTime,
+                duration,
+                fret,
+                fret,
+                lastPoint.step,
+                lastPoint.step));
         }
 
         return result;
@@ -765,6 +881,16 @@ public static class RocksmithCachedSongLoader
             loaded.notes ??= new List<RocksmithCachedNoteData>();
             loaded.arpeggioGuides ??= new List<RocksmithCachedArpeggioGuideData>();
             loaded.generatedNotes ??= new List<RocksmithCachedGeneratedNoteEvent>();
+            loaded.timing ??= new RocksmithCachedArrangementTimingData();
+            loaded.timing.ebeats ??= new List<RocksmithCachedEbeatData>();
+            if (loaded.timing.averageTempoBpm <= 0.01f)
+                loaded.timing.averageTempoBpm = 120f;
+            if (loaded.timing.capo < 0)
+                loaded.timing.capo = 0;
+            loaded.timing.ebeats = loaded.timing.ebeats
+                .Where(ebeat => ebeat != null)
+                .OrderBy(ebeat => ebeat.timeSeconds)
+                .ToList();
             if (loaded.generatedPart == null)
                 loaded.generatedPart = new RocksmithCachedGeneratedPartInfo();
             partCache[partFilePath] = new CachedPartEntry

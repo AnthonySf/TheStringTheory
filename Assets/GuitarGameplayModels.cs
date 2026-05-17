@@ -5,7 +5,32 @@ using UnityEngine;
 public enum GuitarRenderMode
 {
     Highway3D,
-    Tabs
+    Tabs,
+    TabsAlphaTab,
+    Highway3DAndTabs
+}
+
+public static class GuitarRenderModeExtensions
+{
+    public static bool UsesHighway3D(this GuitarRenderMode mode)
+    {
+        return mode == GuitarRenderMode.Highway3D || mode == GuitarRenderMode.Highway3DAndTabs;
+    }
+
+    public static bool UsesClassicTabs(this GuitarRenderMode mode)
+    {
+        return mode == GuitarRenderMode.Tabs;
+    }
+
+    public static bool UsesAlphaTab(this GuitarRenderMode mode)
+    {
+        return mode == GuitarRenderMode.TabsAlphaTab || mode == GuitarRenderMode.Highway3DAndTabs;
+    }
+
+    public static bool UsesTabHudLayout(this GuitarRenderMode mode)
+    {
+        return mode == GuitarRenderMode.Tabs || mode == GuitarRenderMode.TabsAlphaTab;
+    }
 }
 
 public enum GuitarGameplayMode
@@ -384,15 +409,16 @@ public sealed class GuitarGameplaySnapshot
     public bool loopEndConfigured;
     public int selectedLoopMarker;
     public bool showLoopSettings;
+    public bool showLoopBookmarksPanel;
     public bool loopPreviewPlaying;
     public bool showLoopPausePopup;
     public int selectedLoopPausePopupIndex;
     public float loopPauseDurationSeconds;
     public float loopRestartPauseRemainingSeconds;
-    public bool showRocksmithDifficultyPopup;
-    public bool rocksmithDifficultyModeAvailable;
-    public List<string> rocksmithDifficultyOptionLabels;
-    public int selectedRocksmithDifficultyOptionIndex;
+    public bool showArrangementDifficultyPopup;
+    public bool arrangementDifficultyModeAvailable;
+    public List<string> arrangementDifficultyOptionLabels;
+    public int selectedArrangementDifficultyOptionIndex;
     public List<string> loopBookmarkNames;
     public List<string> loopBookmarkDetails;
     public int selectedLoopBookmarkIndex;

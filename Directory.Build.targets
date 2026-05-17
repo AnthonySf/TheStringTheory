@@ -5,6 +5,7 @@
 
   <ItemGroup Condition="'$(_UnityScriptProject)' == 'true'">
     <None Remove="Assets\StreamingAssets\RocksmithImport\*.dll" />
+    <None Remove="Assets\StreamingAssets\AlphaTabRenderHelper\*.dll" />
   </ItemGroup>
 
   <Target Name="StripRocksmithImportRuntimeReferencesBeforeResolve"
@@ -13,9 +14,11 @@
     <ItemGroup>
       <Reference Remove="@(Reference)"
                  Condition="'%(Reference.HintPath)' != '' and
-                            $([System.String]::Copy('%(Reference.HintPath)').Contains('Assets\\StreamingAssets\\RocksmithImport\\'))" />
+                            ($([System.String]::Copy('%(Reference.HintPath)').Contains('Assets\\StreamingAssets\\RocksmithImport\\')) or
+                             $([System.String]::Copy('%(Reference.HintPath)').Contains('Assets\\StreamingAssets\\AlphaTabRenderHelper\\')))" />
       <None Remove="@(None)"
-            Condition="$([System.String]::Copy('%(Identity)').Contains('Assets\\StreamingAssets\\RocksmithImport\\'))" />
+            Condition="$([System.String]::Copy('%(Identity)').Contains('Assets\\StreamingAssets\\RocksmithImport\\')) or
+                       $([System.String]::Copy('%(Identity)').Contains('Assets\\StreamingAssets\\AlphaTabRenderHelper\\'))" />
     </ItemGroup>
   </Target>
 

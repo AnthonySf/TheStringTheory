@@ -70,6 +70,50 @@ public static class RocksmithImportService
             RefreshImportForFile(psarcFiles[i], songsDirectory, importToolPath);
     }
 
+    public static bool RefreshImportForPsarc(string psarcPath, out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(psarcPath))
+        {
+            error = "PSARC path was empty.";
+            return false;
+        }
+
+        if (!IsSupportedRuntimePlatform())
+        {
+            error = "PSARC import refresh is only available on Windows.";
+            return false;
+        }
+
+        string normalizedPsarcPath = Path.GetFullPath(psarcPath);
+        if (!File.Exists(normalizedPsarcPath))
+        {
+            error = $"PSARC file was not found: {normalizedPsarcPath}";
+            return false;
+        }
+
+        string songsDirectory = ExternalContentPaths.PersistentSongsDirectory;
+        string importToolPath = GetImportToolPath();
+        if (!File.Exists(importToolPath))
+        {
+            error = $"Import tool was not found: {importToolPath}";
+            return false;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(songsDirectory);
+            RefreshImportForFile(normalizedPsarcPath, songsDirectory, importToolPath);
+            string manifestPath = Path.Combine(songsDirectory, BuildImportDirectoryName(normalizedPsarcPath), RocksmithCachedSongFormat.ManifestFileName);
+            return File.Exists(manifestPath);
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            return false;
+        }
+    }
+
     private static bool IsSupportedRuntimePlatform()
     {
         RuntimePlatform platform = Application.platform;
@@ -162,6 +206,9 @@ public static class RocksmithImportService
         if (!RocksmithCachedSongLoader.TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest) || manifest == null)
             return false;
 
+        if (manifest.schemaVersion < RocksmithCachedSongFormat.SchemaVersion)
+            return false;
+
         long currentTicks = File.GetLastWriteTimeUtc(psarcPath).Ticks;
         if (!string.Equals(Path.GetFullPath(psarcPath), Path.GetFullPath(manifest.sourcePsarcPath ?? string.Empty), StringComparison.OrdinalIgnoreCase))
             return false;
@@ -180,6 +227,15 @@ public static class RocksmithImportService
             RocksmithCachedArrangementSummary arrangement = manifest.arrangements[i];
             if (arrangement == null || string.IsNullOrWhiteSpace(arrangement.partFilePath) || !File.Exists(arrangement.partFilePath))
                 return false;
+
+            if (!RocksmithCachedSongLoader.TryLoadArrangementPart(manifestPath, i, out _, out RocksmithCachedArrangementPart loadedPart) ||
+                loadedPart == null ||
+                loadedPart.timing == null ||
+                loadedPart.timing.ebeats == null ||
+                loadedPart.timing.ebeats.Count == 0)
+            {
+                return false;
+            }
         }
 
         return true;

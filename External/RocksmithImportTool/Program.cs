@@ -10,7 +10,7 @@ using Rocksmith2014.XML.Processing;
 
 internal static class Program
 {
-    private const int SchemaVersion = 11;
+    private const int SchemaVersion = 15;
     private const string ManifestFileName = "song.rs2song.json";
     private const string ContentDirectoryName = "psarc_content";
     private const float RocksmithVibratoCyclesPerSecond = 5f;
@@ -193,6 +193,7 @@ internal static class Program
             difficultyRating = CalculateDifficultyRating(context.SourceLevel, context.Arrangement.Arrangement.MetaData.SongLength / 1000f),
             tuningPitches = context.Arrangement.TuningPitches,
             tuningDisplayName = context.Arrangement.TuningDisplayName,
+            timing = RocksmithImportTimingExporter.Build(context.Arrangement.Arrangement),
             generatedPart = new CachedGeneratedPartInfo
             {
                 partId = context.PartId,
@@ -601,9 +602,29 @@ internal static class Program
             bendPreBend = StartsWithPreBend(source.BendValues),
             bendRelease = HasBendRelease(source.BendValues),
             isMuted = source.IsPalmMute || source.IsFretHandMute,
+            isPalmMute = source.IsPalmMute,
+            isFretHandMute = source.IsFretHandMute,
+            isHarmonic = source.IsHarmonic,
+            isAccent = source.IsAccent,
+            isTap = source.IsTap,
+            isTremolo = source.IsTremolo,
+            isPinchHarmonic = source.IsPinchHarmonic,
+            isHammerOn = source.IsHammerOn,
+            isPullOff = source.IsPullOff,
+            isHopo = source.IsHopo,
+            hasVibrato = source.HasVibrato,
+            vibratoStrength = source.VibratoStrength,
+            maxBend = source.MaxBend,
             isLegato = false,
             requiresPluck = true,
             linkedFromNoteId = -1,
+            bendPoints = source.BendValues
+                .Select(point => new CachedBendPointData
+                {
+                    timeSeconds = Math.Max(0f, point.TimeMs / 1000f),
+                    step = point.Step
+                })
+                .ToList(),
             techniqueSegments = segments
         };
     }
@@ -620,6 +641,29 @@ internal static class Program
         note.isLegato = true;
         note.requiresPluck = false;
         note.linkedFromNoteId = previous.id;
+
+        if (note.technique == 0)
+        {
+            if (source.SlideTargetFret >= 0)
+            {
+                note.technique = 3;
+            }
+            else if (source.IsHammerOn)
+            {
+                note.technique = 1;
+            }
+            else if (source.IsPullOff)
+            {
+                note.technique = 2;
+            }
+            else if (source.IsHopo)
+            {
+                if (note.fret > previous.fret)
+                    note.technique = 1;
+                else if (note.fret < previous.fret)
+                    note.technique = 2;
+            }
+        }
     }
 
     private static CachedGeneratedNoteEvent BuildGeneratedNote(SourceNote source, ArrangementVariantContext context, CachedNoteData note)
@@ -689,6 +733,23 @@ internal static class Program
 
         if (source.BendValues.Count > 0)
         {
+            BendPoint firstPoint = source.BendValues[0];
+            float firstPointTime = Math.Clamp(firstPoint.TimeMs / 1000f, 0f, Math.Max(durationSeconds, 0.001f));
+            bool startsWithPreBend = StartsWithPreBend(source.BendValues);
+            if (firstPointTime > 0.0001f && Math.Abs(firstPoint.Step) > 0.01f)
+            {
+                segments.Add(new CachedTechniqueSegmentData
+                {
+                    type = 1,
+                    startOffset = 0f,
+                    endOffset = firstPointTime,
+                    startFret = source.Fret,
+                    endFret = source.Fret,
+                    startBend = startsWithPreBend ? firstPoint.Step : 0f,
+                    endBend = firstPoint.Step
+                });
+            }
+
             for (int i = 1; i < source.BendValues.Count; i++)
             {
                 BendPoint previous = source.BendValues[i - 1];
@@ -758,7 +819,7 @@ internal static class Program
 
         if (source.BendValues.Count > 0 && durationSeconds > 0.0001f)
         {
-            if (source.BendValues[0].TimeMs > 0)
+            if (StartsWithPreBend(source.BendValues) && source.BendValues[0].TimeMs > 0)
             {
                 curve[0].semitoneOffset = source.BendValues[0].Step;
             }
@@ -1211,10 +1272,14 @@ internal static class Program
         public int SlideTargetFret = -1;
         public bool IsPalmMute;
         public bool IsFretHandMute;
+        public bool IsAccent;
+        public bool IsTap;
+        public bool IsTremolo;
         public bool IsHammerOn;
         public bool IsPullOff;
         public bool IsHopo;
         public bool IsHarmonic;
+        public bool IsPinchHarmonic;
         public bool HasVibrato;
         public int VibratoStrength;
         public float MaxBend;
@@ -1232,10 +1297,14 @@ internal static class Program
                 SlideTargetFret = note.SlideTo >= 0 ? note.SlideTo : note.SlideUnpitchTo >= 0 ? note.SlideUnpitchTo : -1,
                 IsPalmMute = note.IsPalmMute || chordPalmMute,
                 IsFretHandMute = note.IsFretHandMute || chordFretHandMute,
+                IsAccent = note.IsAccent,
+                IsTap = note.IsTap,
+                IsTremolo = note.IsTremolo,
                 IsHammerOn = note.IsHammerOn || chordHopo,
                 IsPullOff = note.IsPullOff,
                 IsHopo = note.IsHopo || chordHopo,
                 IsHarmonic = note.IsHarmonic || note.IsPinchHarmonic,
+                IsPinchHarmonic = note.IsPinchHarmonic,
                 HasVibrato = note.Vibrato > 0,
                 VibratoStrength = note.Vibrato,
                 MaxBend = note.MaxBend,
@@ -1255,10 +1324,14 @@ internal static class Program
                 SlideTargetFret = -1,
                 IsPalmMute = palmMute,
                 IsFretHandMute = fretHandMute,
+                IsAccent = false,
+                IsTap = false,
+                IsTremolo = false,
                 IsHammerOn = hopo && linkNext,
                 IsPullOff = false,
                 IsHopo = hopo,
                 IsHarmonic = false,
+                IsPinchHarmonic = false,
                 HasVibrato = false,
                 VibratoStrength = 0,
                 MaxBend = 0f,
@@ -1349,6 +1422,7 @@ internal static class Program
         public int difficultyRating;
         public int[]? tuningPitches;
         public string tuningDisplayName = string.Empty;
+        public CachedArrangementTimingData timing = new CachedArrangementTimingData();
         public CachedGeneratedPartInfo generatedPart = new CachedGeneratedPartInfo();
         public List<CachedNoteData> notes = new List<CachedNoteData>();
         public List<CachedArpeggioGuideData> arpeggioGuides = new List<CachedArpeggioGuideData>();
@@ -1386,10 +1460,30 @@ internal static class Program
         public bool bendPreBend;
         public bool bendRelease;
         public bool isMuted;
+        public bool isPalmMute;
+        public bool isFretHandMute;
+        public bool isHarmonic;
+        public bool isAccent;
+        public bool isTap;
+        public bool isTremolo;
+        public bool isPinchHarmonic;
+        public bool isHammerOn;
+        public bool isPullOff;
+        public bool isHopo;
+        public bool hasVibrato;
+        public int vibratoStrength;
+        public float maxBend;
         public bool isLegato;
         public bool requiresPluck = true;
         public int linkedFromNoteId = -1;
+        public List<CachedBendPointData> bendPoints = new List<CachedBendPointData>();
         public List<CachedTechniqueSegmentData> techniqueSegments = new List<CachedTechniqueSegmentData>();
+    }
+
+    private sealed class CachedBendPointData
+    {
+        public float timeSeconds;
+        public float step;
     }
 
     private sealed class CachedTechniqueSegmentData

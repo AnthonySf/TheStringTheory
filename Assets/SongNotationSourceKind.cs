@@ -3,5 +3,5 @@ public enum SongNotationSourceKind
     None = 0,
     MusicXml = 1,
     Gp5 = 2,
-    Rocksmith = 3
+    ArrangementCache = 3
 }
