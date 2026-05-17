@@ -194,7 +194,21 @@ git clone https://github.com/iminashi/Rocksmith2014.NET External/Rocksmith2014.N
 dotnet publish External\RocksmithImportTool\RocksmithImportTool.csproj -c Release -r win-x64 --self-contained true -o Assets\StreamingAssets\RocksmithImport
 ```
 
-### C. Song content
+### C. AlphaTab tabs rendering
+
+If you want the `Tabs (AlphaTab)` and `3D + Tabs` render modes to work, publish the Windows helper into `StreamingAssets`:
+
+```powershell
+dotnet publish Tools\AlphaTabRenderHelper\AlphaTabRenderHelper.csproj -c Release -r win-x64 --self-contained true -o Assets\StreamingAssets\AlphaTabRenderHelper
+```
+
+After publish, this file should exist:
+
+- `Assets/StreamingAssets/AlphaTabRenderHelper/AlphaTabRenderHelper.exe`
+
+The helper renders Guitar Pro files to tab images plus timing metadata. It is isolated from the main Unity renderers on purpose, so those modes fall back cleanly when the helper or GP source is unavailable.
+
+### D. Song content
 
 The public repo does not ship the local song library.
 

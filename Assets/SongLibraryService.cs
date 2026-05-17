@@ -260,7 +260,7 @@ public static class SongLibraryService
             return entries;
         }
 
-        RocksmithImportService.RefreshImports();
+        ArrangementCacheImportService.RefreshImports();
 
         string[] songDirectories = Directory.GetDirectories(ExternalContentPaths.PersistentSongsDirectory)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
@@ -358,30 +358,6 @@ public static class SongLibraryService
         return normalizedEntries;
     }
 
-    private static string BuildRocksmithDifficultySummary(RocksmithCachedSongManifest manifest)
-    {
-        if (manifest?.arrangements == null || manifest.arrangements.Count == 0)
-            return string.Empty;
-
-        bool hasMultiple = manifest.arrangements.Any(arrangement => arrangement != null && arrangement.hasDifficultyVariants);
-        if (!hasMultiple)
-            return string.Empty;
-
-        HashSet<string> labels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < manifest.arrangements.Count; i++)
-        {
-            string label = manifest.arrangements[i]?.difficultyLabel;
-            if (!string.IsNullOrWhiteSpace(label))
-                labels.Add(label.Trim().ToUpperInvariant());
-        }
-
-        if (labels.Count == 0)
-            return string.Empty;
-
-        string[] ordered = { "X", "H", "M", "E" };
-        return string.Concat(ordered.Where(labels.Contains));
-    }
-
     private static bool TryNormalizeCachedEntry(SongLibraryEntry entry, out SongLibraryEntry normalized)
     {
         normalized = null;
@@ -451,28 +427,28 @@ public static class SongLibraryService
         clone.Mp3Path = !string.IsNullOrWhiteSpace(clone.Mp3Path) && File.Exists(clone.Mp3Path) ? clone.Mp3Path : null;
         clone.MidiPath = !string.IsNullOrWhiteSpace(clone.MidiPath) && File.Exists(clone.MidiPath) ? clone.MidiPath : null;
 
-        if (resolvedNotationKind == SongNotationSourceKind.Rocksmith &&
-            RocksmithCachedSongLoader.TryLoadManifest(clone.PrimaryNotationPath, out RocksmithCachedSongManifest rocksmithManifest))
+        if (resolvedNotationKind == SongNotationSourceKind.ArrangementCache &&
+            ArrangementCacheSongLoader.TryLoadManifest(clone.PrimaryNotationPath, out var arrangementCacheManifest))
         {
             if ((string.IsNullOrWhiteSpace(clone.Mp3Path) || !File.Exists(clone.Mp3Path)) &&
-                !string.IsNullOrWhiteSpace(rocksmithManifest.audioPath) &&
-                File.Exists(rocksmithManifest.audioPath))
+                !string.IsNullOrWhiteSpace(arrangementCacheManifest.audioPath) &&
+                File.Exists(arrangementCacheManifest.audioPath))
             {
-                clone.Mp3Path = rocksmithManifest.audioPath;
+                clone.Mp3Path = arrangementCacheManifest.audioPath;
             }
 
             if ((string.IsNullOrWhiteSpace(clone.ArtworkPath) || !File.Exists(clone.ArtworkPath)) &&
-                !string.IsNullOrWhiteSpace(rocksmithManifest.artworkPath) &&
-                File.Exists(rocksmithManifest.artworkPath))
+                !string.IsNullOrWhiteSpace(arrangementCacheManifest.artworkPath) &&
+                File.Exists(arrangementCacheManifest.artworkPath))
             {
-                clone.ArtworkPath = rocksmithManifest.artworkPath;
+                clone.ArtworkPath = arrangementCacheManifest.artworkPath;
             }
 
             if (string.IsNullOrWhiteSpace(clone.DifficultyDisplayLabel))
-                clone.DifficultyDisplayLabel = BuildRocksmithDifficultySummary(rocksmithManifest);
+                clone.DifficultyDisplayLabel = ArrangementCacheMetadata.BuildDifficultySummary(arrangementCacheManifest);
 
             if (clone.DurationSeconds <= 0f)
-                clone.DurationSeconds = Mathf.Max(0f, rocksmithManifest.durationSeconds);
+                clone.DurationSeconds = Mathf.Max(0f, arrangementCacheManifest.durationSeconds);
         }
 
         normalized = clone;
@@ -729,7 +705,7 @@ public static class SongLibraryService
         string mp3Path = FindFirstFile(songDirectory, "*.mp3")
                          ?? FindFirstFile(songDirectory, "*.wav")
                          ?? FindFirstFile(songDirectory, "*.ogg");
-        string rocksmithManifestPath = RocksmithCachedSongLoader.FindManifestInDirectory(songDirectory);
+        string arrangementCacheManifestPath = ArrangementCacheSongLoader.FindManifestInDirectory(songDirectory);
         string arcadeChartPath = FindCloneHeroChartFile(songDirectory);
         string arcadeSongIniPath = Path.Combine(songDirectory, "song.ini");
         bool hasArcadeSongIni = File.Exists(arcadeSongIniPath);
@@ -737,8 +713,8 @@ public static class SongLibraryService
         string gpPath = FindPreferredGpNotation(songDirectory);
         string xmlPath = FindFirstFile(songDirectory, "*.musicxml") ?? FindFirstFile(songDirectory, "*.xml");
         string artworkPath = FindArtworkFile(songDirectory);
-        string primaryNotationPath = !string.IsNullOrWhiteSpace(rocksmithManifestPath)
-            ? rocksmithManifestPath
+        string primaryNotationPath = !string.IsNullOrWhiteSpace(arrangementCacheManifestPath)
+            ? arrangementCacheManifestPath
             : !string.IsNullOrWhiteSpace(gpPath)
                 ? gpPath
                 : xmlPath;
@@ -792,30 +768,30 @@ public static class SongLibraryService
             return true;
         }
 
-        if (primaryNotationKind == SongNotationSourceKind.Rocksmith &&
-            RocksmithCachedSongLoader.TryLoadManifest(primaryNotationPath, out RocksmithCachedSongManifest rocksmithManifest))
+        if (primaryNotationKind == SongNotationSourceKind.ArrangementCache &&
+            ArrangementCacheSongLoader.TryLoadManifest(primaryNotationPath, out var arrangementCacheManifest))
         {
-            string rocksmithMetadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
-            string rocksmithDifficultySummary = BuildRocksmithDifficultySummary(rocksmithManifest);
+            string arrangementCacheMetadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
+            string arrangementDifficultySummary = ArrangementCacheMetadata.BuildDifficultySummary(arrangementCacheManifest);
             entry = new SongLibraryEntry
             {
                 SongId = Path.GetFileName(songDirectory),
                 LibraryType = SongLibraryType.Guitar,
-                DisplayName = string.IsNullOrWhiteSpace(rocksmithManifest.displayName) ? Path.GetFileName(songDirectory) : rocksmithManifest.displayName.Trim(),
-                Artist = string.IsNullOrWhiteSpace(rocksmithManifest.artist) ? string.Empty : rocksmithManifest.artist.Trim(),
-                Album = string.IsNullOrWhiteSpace(rocksmithManifest.album) ? string.Empty : rocksmithManifest.album.Trim(),
-                Subtitle = BuildSubtitleDisplay(rocksmithManifest.artist, rocksmithManifest.subtitle),
-                ArtworkPath = File.Exists(rocksmithManifest.artworkPath) ? rocksmithManifest.artworkPath : artworkPath,
-                DifficultyRating = Mathf.Clamp(rocksmithManifest.difficultyRating, 0, 5),
-                DifficultyDisplayLabel = rocksmithDifficultySummary,
+                DisplayName = string.IsNullOrWhiteSpace(arrangementCacheManifest.displayName) ? Path.GetFileName(songDirectory) : arrangementCacheManifest.displayName.Trim(),
+                Artist = string.IsNullOrWhiteSpace(arrangementCacheManifest.artist) ? string.Empty : arrangementCacheManifest.artist.Trim(),
+                Album = string.IsNullOrWhiteSpace(arrangementCacheManifest.album) ? string.Empty : arrangementCacheManifest.album.Trim(),
+                Subtitle = BuildSubtitleDisplay(arrangementCacheManifest.artist, arrangementCacheManifest.subtitle),
+                ArtworkPath = File.Exists(arrangementCacheManifest.artworkPath) ? arrangementCacheManifest.artworkPath : artworkPath,
+                DifficultyRating = Mathf.Clamp(arrangementCacheManifest.difficultyRating, 0, 5),
+                DifficultyDisplayLabel = arrangementDifficultySummary,
                 SongDirectory = songDirectory,
-                Mp3Path = !string.IsNullOrWhiteSpace(rocksmithManifest.audioPath) && File.Exists(rocksmithManifest.audioPath) ? rocksmithManifest.audioPath : mp3Path,
+                Mp3Path = !string.IsNullOrWhiteSpace(arrangementCacheManifest.audioPath) && File.Exists(arrangementCacheManifest.audioPath) ? arrangementCacheManifest.audioPath : mp3Path,
                 PrimaryNotationPath = primaryNotationPath,
                 PrimaryNotationKind = primaryNotationKind,
                 GpPath = null,
                 XmlPath = null,
-                MetadataPath = rocksmithMetadataPath,
-                DurationSeconds = Mathf.Max(0f, rocksmithManifest.durationSeconds),
+                MetadataPath = arrangementCacheMetadataPath,
+                DurationSeconds = Mathf.Max(0f, arrangementCacheManifest.durationSeconds),
                 MidiPath = null
             };
 

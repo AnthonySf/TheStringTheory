@@ -90,6 +90,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly GameObject[] stringVisuals = new GameObject[6];
     private readonly Material[] stringVisualMats = new Material[6];
     private readonly Renderer[] stringVisualRenderers = new Renderer[6];
+    private readonly GameObject[] loopStartMarkerLines = new GameObject[6];
+    private readonly GameObject[] loopEndMarkerLines = new GameObject[6];
+    private readonly Renderer[] loopStartMarkerRenderers = new Renderer[6];
+    private readonly Renderer[] loopEndMarkerRenderers = new Renderer[6];
     private readonly Dictionary<int, TextMeshPro> fretNumberLabels = new Dictionary<int, TextMeshPro>();
     private Material[] fretBoundaryMats;
     private Renderer[] fretBoundaryRenderers;
@@ -130,6 +134,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool gameplayBuilt;
     private bool loopCountdownStaticVisualsPrimed;
     private float loopCountdownStaticVisualsSongTime = float.NaN;
+    private Material sharedLoopMarkerMaterial;
+    private float highwayCharacterViewportHeightScale = 1f;
+    private float highwayCharacterViewportCenterYOffset = 0f;
     private const int BackgroundLayer = 2;
     private const float HighwayCharacterViewportMarginX = 0.035f;
     private const float HighwayCharacterViewportMarginY = 0.035f;
@@ -356,6 +363,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         Initialize(owner, chartNotes, sections);
     }
 
+    public void SetHighwayCharacterViewportHeightScale(float scale)
+    {
+        highwayCharacterViewportHeightScale = Mathf.Clamp(scale, 0.5f, 2.5f);
+    }
+
+    public void SetHighwayCharacterViewportCenterYOffset(float offsetY)
+    {
+        highwayCharacterViewportCenterYOffset = Mathf.Clamp(offsetY, -0.25f, 0.25f);
+    }
+
     public void Render(GuitarGameplaySnapshot snapshot)
     {
         if (snapshot == null)
@@ -517,6 +534,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 }
 
                 UpdateSectionCamera(snapshot);
+                UpdateLoopConfigurationMarkers(snapshot);
                 if (logLoopCountdownDetail)
                 {
                     long afterSectionCameraTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -607,6 +625,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             Object.Destroy(sharedMuteSymbolMaterial);
             sharedMuteSymbolMaterial = null;
+        }
+
+        if (sharedLoopMarkerMaterial != null)
+        {
+            Object.Destroy(sharedLoopMarkerMaterial);
+            sharedLoopMarkerMaterial = null;
         }
 
         if (sharedHighwayCharacterMaterial != null)
@@ -1051,6 +1075,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         laneGuideRenderers = new Renderer[GetFretLightColumnCount()];
         GenerateFretboard();
         GenerateStrings();
+        GenerateLoopMarkers();
         GenerateLaneSurfaces();
         GenerateLaneGuides();
         GenerateFretLightGrid();
@@ -1170,8 +1195,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             highwayCharacterSourcePixelHeight,
             HighwayCharacterViewportMarginX,
             HighwayCharacterViewportMarginY,
-            HighwayCharacterHeightViewportFraction,
-            HighwayCharacterViewportCenterY,
+            HighwayCharacterHeightViewportFraction * highwayCharacterViewportHeightScale,
+            HighwayCharacterViewportCenterY + highwayCharacterViewportCenterYOffset,
             owner != null ? owner.highwayCharacterScale : 1f,
             0f,
             owner != null ? owner.highwayCharacterRigOffsetY : 0f);
@@ -1207,9 +1232,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             highwayCharacterAspect,
             highwayCharacterSourcePixelWidth,
             highwayCharacterSourcePixelHeight,
-            owner != null ? owner.highwayCharacterScale : 1f,
+            (owner != null ? owner.highwayCharacterScale : 1f) * highwayCharacterViewportHeightScale,
             owner != null ? owner.highwayCharacterOffsetX : 0f,
-            (owner != null ? owner.highwayCharacterRigOffsetY : 0f) + (owner != null ? owner.highwayCharacterOffsetY : 0f));
+            (owner != null ? owner.highwayCharacterRigOffsetY : 0f) + (owner != null ? owner.highwayCharacterOffsetY : 0f) + highwayCharacterViewportCenterYOffset);
     }
 
     private void EnsureHighwayCharacterTextureCurrent()
@@ -2063,6 +2088,82 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             stringVisuals[i] = s;
             stringVisualMats[i] = mat;
             stringVisualRenderers[i] = renderer;
+        }
+    }
+
+    private void GenerateLoopMarkers()
+    {
+        float stringStartX = 0f;
+        float stringEndX = (owner.TotalFrets * owner.FretSpacing) + (owner.FretSpacing * 0.75f);
+        float stringLength = Mathf.Max(0.01f, stringEndX - stringStartX);
+        float stringCenterX = stringStartX + (stringLength * 0.5f);
+
+        if (sharedLoopMarkerMaterial == null)
+        {
+            sharedLoopMarkerMaterial = owner.CreateSharedGlowMaterial(new Color(1f, 0.18f, 0.18f, 0.92f), 1.1f);
+            ConfigureOverlayMaterial(sharedLoopMarkerMaterial, 130, true);
+        }
+
+        for (int i = 0; i < stringVisuals.Length; i++)
+        {
+            loopStartMarkerLines[i] = CreateLoopMarkerLine($"LoopStartMarker_{i}", stringCenterX, stringLength, i, out loopStartMarkerRenderers[i]);
+            loopEndMarkerLines[i] = CreateLoopMarkerLine($"LoopEndMarker_{i}", stringCenterX, stringLength, i, out loopEndMarkerRenderers[i]);
+        }
+    }
+
+    private GameObject CreateLoopMarkerLine(string name, float centerX, float length, int stringIdx, out Renderer renderer)
+    {
+        GameObject line = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        line.name = name;
+        line.transform.SetParent(gameplayRoot.transform, false);
+        line.transform.position = new Vector3(centerX, GetStringY(stringIdx), owner.StrikeLineZ);
+        line.transform.localScale = new Vector3(length, Mathf.Max(0.045f, owner.FretSpacing * 0.025f), Mathf.Max(0.07f, owner.FretSpacing * 0.035f));
+        renderer = line.GetComponent<Renderer>();
+        renderer.sharedMaterial = sharedLoopMarkerMaterial;
+        renderer.shadowCastingMode = ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        Object.Destroy(line.GetComponent<Collider>());
+        line.SetActive(false);
+        return line;
+    }
+
+    private void UpdateLoopConfigurationMarkers(GuitarGameplaySnapshot snapshot)
+    {
+        bool showMarkers = snapshot != null && snapshot.showLoopSettings && owner != null;
+        UpdateLoopMarkerLineGroup(loopStartMarkerLines, snapshot?.loopStartTime ?? 0f, showMarkers);
+        UpdateLoopMarkerLineGroup(loopEndMarkerLines, snapshot?.loopEndTime ?? 0f, showMarkers);
+    }
+
+    private void UpdateLoopMarkerLineGroup(GameObject[] lines, float markerTime, bool visible)
+    {
+        if (lines == null || owner == null)
+            return;
+
+        int activeStringCount = GetRenderableStringCount();
+        float markerZ = owner.StrikeLineZ;
+        if (visible && renderSongTimeCacheSnapshot != null)
+        {
+            markerZ = Mathf.Clamp(
+                owner.StrikeLineZ + ((markerTime - GetRenderSongTime(renderSongTimeCacheSnapshot)) * currentVisualNoteSpeed),
+                owner.StrikeLineZ,
+                owner.SpawnZ);
+        }
+
+        for (int i = 0; i < lines.Length; i++)
+        {
+            GameObject line = lines[i];
+            if (line == null)
+                continue;
+
+            bool lineVisible = visible && i < activeStringCount;
+            line.SetActive(lineVisible);
+            if (!lineVisible)
+                continue;
+
+            Vector3 position = line.transform.position;
+            position.y = GetStringY(i);
+            position.z = markerZ;
+            line.transform.position = position;
         }
     }
 
@@ -3548,17 +3649,29 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static int GetDisplayedBendArrowCount(NoteData data)
     {
         float bendAmount = Mathf.Max(0f, data.bendStep);
+        if (data.techniqueSegments != null)
+        {
+            for (int i = 0; i < data.techniqueSegments.Count; i++)
+            {
+                NoteTechniqueSegmentData segment = data.techniqueSegments[i];
+                if (segment.type != NoteTechniqueSegmentType.Bend &&
+                    segment.type != NoteTechniqueSegmentType.Sustain &&
+                    segment.type != NoteTechniqueSegmentType.Vibrato)
+                {
+                    continue;
+                }
+
+                bendAmount = Mathf.Max(
+                    bendAmount,
+                    Mathf.Abs(segment.startBend),
+                    Mathf.Abs(segment.endBend));
+            }
+        }
+
         if (bendAmount <= 0.01f)
             return 0;
 
-        // Older/imported note sources do not agree on bend units:
-        // some encode half/full as 0.5/1.0, others as 1/2 semitones.
-        // Normalize here so visuals stay consistent.
-        float normalizedHalfStepUnits = bendAmount <= 1.25f
-            ? bendAmount * 2f
-            : bendAmount;
-
-        return Mathf.Clamp(Mathf.RoundToInt(normalizedHalfStepUnits), 1, 2);
+        return bendAmount > 1.01f ? 2 : 1;
     }
 
     private static bool HasTechniqueSegments(NoteData data)

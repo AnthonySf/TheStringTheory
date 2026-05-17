@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 public static class RocksmithCachedSongFormat
 {
-    public const int SchemaVersion = 11;
+    public const int SchemaVersion = 15;
     public const string ManifestFileName = "song.rs2song.json";
     public const string ContentDirectoryName = "psarc_content";
     public const string ImportedFolderPrefix = "__psarc_";
@@ -66,6 +66,7 @@ public sealed class RocksmithCachedArrangementPart
     public int difficultyRating;
     public int[] tuningPitches;
     public string tuningDisplayName;
+    public RocksmithCachedArrangementTimingData timing = new RocksmithCachedArrangementTimingData();
     public RocksmithCachedGeneratedPartInfo generatedPart = new RocksmithCachedGeneratedPartInfo();
     public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
     public List<RocksmithCachedArpeggioGuideData> arpeggioGuides = new List<RocksmithCachedArpeggioGuideData>();
@@ -105,10 +106,31 @@ public sealed class RocksmithCachedNoteData
     public bool bendPreBend;
     public bool bendRelease;
     public bool isMuted;
+    public bool isPalmMute;
+    public bool isFretHandMute;
+    public bool isHarmonic;
+    public bool isAccent;
+    public bool isTap;
+    public bool isTremolo;
+    public bool isPinchHarmonic;
+    public bool isHammerOn;
+    public bool isPullOff;
+    public bool isHopo;
+    public bool hasVibrato;
+    public int vibratoStrength;
+    public float maxBend;
     public bool isLegato;
     public bool requiresPluck = true;
     public int linkedFromNoteId = -1;
+    public List<RocksmithCachedBendPointData> bendPoints = new List<RocksmithCachedBendPointData>();
     public List<RocksmithCachedTechniqueSegmentData> techniqueSegments = new List<RocksmithCachedTechniqueSegmentData>();
+}
+
+[Serializable]
+public sealed class RocksmithCachedBendPointData
+{
+    public float timeSeconds;
+    public float step;
 }
 
 [Serializable]
@@ -160,4 +182,19 @@ public sealed class RocksmithCachedGeneratedPitchPoint
 {
     public float normalizedTime;
     public float semitoneOffset;
+}
+
+[Serializable]
+public sealed class RocksmithCachedArrangementTimingData
+{
+    public float averageTempoBpm = 120f;
+    public int capo;
+    public List<RocksmithCachedEbeatData> ebeats = new List<RocksmithCachedEbeatData>();
+}
+
+[Serializable]
+public sealed class RocksmithCachedEbeatData
+{
+    public float timeSeconds;
+    public short measure = -1;
 }
