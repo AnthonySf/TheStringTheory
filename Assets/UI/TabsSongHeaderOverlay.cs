@@ -1829,6 +1829,16 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label gameplayAudioPopupHintLabel;
     private readonly Slider gameplayAudioPopupSongSlider;
     private readonly Slider gameplayAudioPopupGuitarSlider;
+    private readonly Label gameplayAudioPopupStemStatusLabel;
+    private readonly Button gameplayAudioPopupGenerateStemsButton;
+    private readonly GameplayAudioOptionRow gameplayAudioPopupStemMixModeControl;
+    private readonly GameplayAudioOptionRow gameplayAudioPopupSmartDuckControl;
+    private readonly Label gameplayAudioPopupSmartDuckHelpLabel;
+    private readonly VisualElement gameplayAudioPopupStemRows;
+    private readonly List<StemMixerPopupRow> gameplayAudioPopupStemRowsList = new List<StemMixerPopupRow>();
+    private const int GameplayAudioPopupStemPlaybackSelectionIndex = 2;
+    private const int GameplayAudioPopupSmartDuckSelectionIndex = 3;
+    private const int GameplayAudioPopupStemSliderStartSelectionIndex = 4;
 
     private readonly List<Button> songSettingsActionButtons = new List<Button>();
     private readonly List<int> songSettingsActionSelectionIndices = new List<int>();
@@ -3803,7 +3813,7 @@ public sealed class TabsSongHeaderOverlay
 
         Button songSettingsButton = CreateActionButton("Song Settings", () => owner?.OpenSongSettingsFromUi());
 
-        audioModeButton = CreateActionButton("Audio: Generated", () => owner?.CycleSongPlaybackAudioModeFromUi(1));
+        audioModeButton = CreateActionButton("Audio Mix", () => owner?.OpenGameplayAudioPopupFromUi());
 
         Button songSelectButton = CreateActionButton("Library", () => owner?.OpenLibraryFromPauseFromUi());
 
@@ -6849,9 +6859,9 @@ public sealed class TabsSongHeaderOverlay
         gameplayAudioPopupOverlay.style.display = DisplayStyle.None;
 
         VisualElement gameplayAudioPopupCard = new VisualElement();
-        gameplayAudioPopupCard.style.width = Length.Percent(66f);
-        gameplayAudioPopupCard.style.maxWidth = 980f;
-        gameplayAudioPopupCard.style.minWidth = 680f;
+        gameplayAudioPopupCard.style.width = Length.Percent(78f);
+        gameplayAudioPopupCard.style.maxWidth = 1320f;
+        gameplayAudioPopupCard.style.minWidth = 860f;
         gameplayAudioPopupCard.style.paddingLeft = 38f;
         gameplayAudioPopupCard.style.paddingRight = 38f;
         gameplayAudioPopupCard.style.paddingTop = 30f;
@@ -6918,6 +6928,56 @@ public sealed class TabsSongHeaderOverlay
         });
         gameplayAudioPopupGuitarRow.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGameplayAudioPopupIndexFromUi(1));
         gameplayAudioPopupRows.Add(gameplayAudioPopupGuitarRow);
+
+        gameplayAudioPopupStemMixModeControl = CreateGameplayAudioPopupOptionRow(
+            "Playback",
+            GameplayAudioPopupStemPlaybackSelectionIndex,
+            () => owner?.CycleGameplayAudioSourceFromUi(-1),
+            () => owner?.CycleGameplayAudioSourceFromUi(1));
+        gameplayAudioPopupRows.Add(gameplayAudioPopupStemMixModeControl.row);
+
+        gameplayAudioPopupStemStatusLabel = CreateLabel("Generate stems to unlock per-instrument mixing.", 30f, new Color(0.88f, 0.92f, 0.96f, 0.94f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        gameplayAudioPopupStemStatusLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayAudioPopupStemStatusLabel.style.whiteSpace = WhiteSpace.Normal;
+        gameplayAudioPopupStemStatusLabel.style.marginTop = 10f;
+        gameplayAudioPopupStemStatusLabel.style.marginBottom = 16f;
+        gameplayAudioPopupRows.Add(gameplayAudioPopupStemStatusLabel);
+
+        gameplayAudioPopupGenerateStemsButton = CreateActionButton("Generate Stems", () => owner?.ActivateStemGenerationPrimaryActionFromUi());
+        gameplayAudioPopupGenerateStemsButton.style.height = 72f;
+        gameplayAudioPopupGenerateStemsButton.style.marginBottom = 16f;
+        gameplayAudioPopupGenerateStemsButton.style.fontSize = 38f;
+        gameplayAudioPopupGenerateStemsButton.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayAudioPopupRows.Add(gameplayAudioPopupGenerateStemsButton);
+
+        gameplayAudioPopupSmartDuckControl = CreateGameplayAudioPopupOptionRow(
+            "Smart Duck",
+            GameplayAudioPopupSmartDuckSelectionIndex,
+            () => owner?.ToggleStemSmartDuckingFromUi(),
+            () => owner?.ToggleStemSmartDuckingFromUi());
+        gameplayAudioPopupRows.Add(gameplayAudioPopupSmartDuckControl.row);
+
+        gameplayAudioPopupSmartDuckHelpLabel = CreateLabel(
+            "Uses the selected track note timings to briefly lower guitar/other residue while you play. On bass tracks, it lowers bass instead.",
+            22f,
+            new Color(0.68f, 0.75f, 0.82f, 0.92f),
+            false,
+            TextAnchor.MiddleCenter,
+            useTitleFont: false);
+        gameplayAudioPopupSmartDuckHelpLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayAudioPopupSmartDuckHelpLabel.style.whiteSpace = WhiteSpace.Normal;
+        gameplayAudioPopupSmartDuckHelpLabel.style.marginTop = 0f;
+        gameplayAudioPopupSmartDuckHelpLabel.style.marginBottom = 20f;
+        gameplayAudioPopupSmartDuckHelpLabel.style.paddingLeft = 24f;
+        gameplayAudioPopupSmartDuckHelpLabel.style.paddingRight = 24f;
+        gameplayAudioPopupRows.Add(gameplayAudioPopupSmartDuckHelpLabel);
+
+        gameplayAudioPopupStemRows = new VisualElement();
+        gameplayAudioPopupStemRows.style.flexDirection = FlexDirection.Row;
+        gameplayAudioPopupStemRows.style.flexWrap = Wrap.Wrap;
+        gameplayAudioPopupStemRows.style.justifyContent = Justify.SpaceBetween;
+        gameplayAudioPopupStemRows.style.width = Length.Percent(100f);
+        gameplayAudioPopupRows.Add(gameplayAudioPopupStemRows);
 
         gameplayAudioPopupCard.Add(gameplayAudioPopupEyebrowLabel);
         gameplayAudioPopupCard.Add(gameplayAudioPopupTitleLabel);
@@ -10016,6 +10076,7 @@ public sealed class TabsSongHeaderOverlay
         settingsVolumeSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songVolumePercent, 0f, 100f));
         gameplayAudioPopupSongSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songVolumePercent, 0f, 100f));
         gameplayAudioPopupGuitarSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.guitarVolumePercent, 0f, 100f));
+        UpdateGameplayAudioStemSliderValues(snapshot);
 
         loopPauseDurationSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.loopPauseDurationSeconds, 0f, 8f));
 
@@ -10852,7 +10913,7 @@ public sealed class TabsSongHeaderOverlay
             }
             else if (snapshot.selectedPauseActionIndex == 3)
             {
-                pauseHintLabel.text = "Up/Down selects  \u2022  Left/Right changes audio mode";
+                pauseHintLabel.text = "Up/Down selects  \u2022  Enter opens audio mix";
             }
             else
             {
@@ -10864,7 +10925,7 @@ public sealed class TabsSongHeaderOverlay
 
             gameModesButton.text = "Game Modes";
             if (audioModeButton != null)
-                audioModeButton.text = $"Audio: {snapshot.songPlaybackAudioModeLabel}";
+                audioModeButton.text = $"Audio Mix: {snapshot.songPlaybackAudioModeLabel}";
 
             for (int i = 0; i < pauseActionButtons.Count; i++)
             {
@@ -11935,6 +11996,24 @@ public sealed class TabsSongHeaderOverlay
 
         public Label actionLabel;
 
+    }
+
+    private sealed class StemMixerPopupRow
+    {
+        public string stemId;
+        public VisualElement row;
+        public Label titleLabel;
+        public Label valueLabel;
+        public Slider slider;
+    }
+
+    private sealed class GameplayAudioOptionRow
+    {
+        public VisualElement row;
+        public Label titleLabel;
+        public Label valueLabel;
+        public Button leftButton;
+        public Button rightButton;
     }
 
     private sealed class NotesDetectorTestPopupRow
@@ -18479,6 +18558,7 @@ public sealed class TabsSongHeaderOverlay
         Label popup = CreateLabel(text, judgePopupFontSize, popupColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
         popup.style.position = Position.Absolute;
         bool isHighway3D = owner != null && owner.renderMode.UsesHighway3D();
+        bool isHighway3DAndTabs = owner != null && owner.renderMode == GuitarRenderMode.Highway3DAndTabs;
         bool isAlphaTabTabsLayout = IsAlphaTabTabsGameplayLayout();
 
         if (isAlphaTabTabsLayout)
@@ -18533,6 +18613,68 @@ public sealed class TabsSongHeaderOverlay
                 startTime = Time.unscaledTime,
                 startY = popupStartY,
                 endY = popupStartY - (popupHeight * 0.85f),
+                duration = 1.05f,
+                fontSize = popupFontSize,
+                groupId = groupId
+            });
+            return;
+        }
+
+        if (isHighway3DAndTabs && arcadeComboBadge != null)
+        {
+            float panelWidth = document != null && document.rootVisualElement != null && document.rootVisualElement.worldBound.width > 1f
+                ? document.rootVisualElement.worldBound.width
+                : Screen.width;
+
+            float panelHeight = document != null && document.rootVisualElement != null && document.rootVisualElement.worldBound.height > 1f
+                ? document.rootVisualElement.worldBound.height
+                : Screen.height;
+
+            Rect popupLayerBounds = judgePopupLayer != null && judgePopupLayer.worldBound.width > 1f && judgePopupLayer.worldBound.height > 1f
+                ? judgePopupLayer.worldBound
+                : new Rect(0f, 0f, panelWidth, panelHeight);
+
+            Rect comboBounds = arcadeComboBadge.worldBound.width > 1f && arcadeComboBadge.worldBound.height > 1f
+                ? arcadeComboBadge.worldBound
+                : new Rect(panelWidth * 0.30f, panelHeight * 0.16f, 280f, 128f);
+            comboBounds.position -= popupLayerBounds.position;
+
+            float layerWidth = popupLayerBounds.width > 1f ? popupLayerBounds.width : panelWidth;
+            float layerHeight = popupLayerBounds.height > 1f ? popupLayerBounds.height : panelHeight;
+            int visibleTabs = owner != null ? Mathf.Clamp(owner.alphaTabHybridVisibleTabs, 1, 2) : 1;
+            float tabTopY = layerHeight * GuitarHighway3DAlphaTabRenderer.GetBottomTabViewportHeight(visibleTabs);
+
+            float popupWidth = Mathf.Clamp(comboBounds.width * 0.82f, 180f, 300f);
+            float popupHeight = Mathf.Clamp(comboBounds.height * 0.34f, 46f, 72f);
+            float popupFontSize = Mathf.Clamp(comboBounds.height * 0.20f, 30f, 48f);
+            int popupLayer = Mathf.Min(CountActiveJudgePopupsForGroup(groupId), 4);
+            float popupLayerOffset = popupLayer * Mathf.Clamp(popupHeight * 0.45f, 18f, 28f);
+            float popupLeft = Mathf.Clamp(comboBounds.center.x - (popupWidth * 0.5f), 18f, layerWidth - popupWidth - 18f);
+            float popupStartY = Mathf.Clamp(
+                comboBounds.yMax + 44f + popupLayerOffset,
+                18f,
+                Mathf.Max(18f, tabTopY - popupHeight - 18f));
+            float popupEndY = Mathf.Min(
+                popupStartY,
+                Mathf.Max(comboBounds.yMax + 20f + popupLayerOffset, popupStartY - (popupHeight * 0.35f)));
+
+            popup.style.left = popupLeft;
+            popup.style.right = StyleKeyword.Auto;
+            popup.style.width = popupWidth;
+            popup.style.minHeight = popupHeight;
+            popup.style.fontSize = popupFontSize;
+            popup.style.unityTextAlign = TextAnchor.MiddleCenter;
+            popup.style.letterSpacing = 0.8f;
+            popup.style.scale = new Scale(new Vector3(1.06f, 1.06f, 1f));
+            popup.style.top = popupStartY;
+
+            judgePopupLayer.Add(popup);
+            activeJudgePopups.Add(new JudgePopupEntry
+            {
+                label = popup,
+                startTime = Time.unscaledTime,
+                startY = popupStartY,
+                endY = popupEndY,
                 duration = 1.05f,
                 fontSize = popupFontSize,
                 groupId = groupId
@@ -22414,13 +22556,292 @@ public sealed class TabsSongHeaderOverlay
         return row;
     }
 
+    private GameplayAudioOptionRow CreateGameplayAudioPopupOptionRow(string title, int selectionIndex, Action onLeft, Action onRight)
+    {
+        GameplayAudioOptionRow option = new GameplayAudioOptionRow();
+
+        VisualElement row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.Center;
+        row.style.justifyContent = Justify.SpaceBetween;
+        row.style.width = Length.Percent(100f);
+        row.style.paddingLeft = 24f;
+        row.style.paddingRight = 24f;
+        row.style.paddingTop = 20f;
+        row.style.paddingBottom = 22f;
+        row.style.marginTop = 4f;
+        row.style.marginBottom = 16f;
+        row.style.backgroundColor = new Color(0.07f, 0.08f, 0.09f, 0.78f);
+        row.style.borderTopWidth = 1f;
+        row.style.borderRightWidth = 1f;
+        row.style.borderBottomWidth = 1f;
+        row.style.borderLeftWidth = 1f;
+        row.style.borderTopColor = new Color(0f, 0f, 0f, 0f);
+        row.style.borderRightColor = new Color(0f, 0f, 0f, 0f);
+        row.style.borderBottomColor = new Color(0f, 0f, 0f, 0f);
+        row.style.borderLeftColor = new Color(0f, 0f, 0f, 0f);
+        row.style.borderTopLeftRadius = 14f;
+        row.style.borderTopRightRadius = 14f;
+        row.style.borderBottomLeftRadius = 14f;
+        row.style.borderBottomRightRadius = 14f;
+        row.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGameplayAudioPopupIndexFromUi(selectionIndex));
+        row.RegisterCallback<MouseDownEvent>(_ => owner?.SetSelectedGameplayAudioPopupIndexFromUi(selectionIndex));
+
+        Label titleLabel = CreateLabel(title, 36f, new Color(0.95f, 0.97f, 1f, 1f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+        titleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        titleLabel.style.flexGrow = 1f;
+        titleLabel.style.minWidth = 0f;
+        titleLabel.style.marginRight = 18f;
+        titleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+
+        VisualElement valueWrap = new VisualElement();
+        valueWrap.style.flexDirection = FlexDirection.Row;
+        valueWrap.style.alignItems = Align.Center;
+        valueWrap.style.justifyContent = Justify.Center;
+
+        Action wrappedLeft = () =>
+        {
+            owner?.SetSelectedGameplayAudioPopupIndexFromUi(selectionIndex);
+            onLeft?.Invoke();
+        };
+        Action wrappedRight = () =>
+        {
+            owner?.SetSelectedGameplayAudioPopupIndexFromUi(selectionIndex);
+            onRight?.Invoke();
+        };
+
+        Button leftButton = CreateGameplayAudioPopupArrowButton("<", wrappedLeft);
+        Label valueLabel = CreateLabel(string.Empty, 36f, LibraryConfirmedSongColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        valueLabel.style.unityFontDefinition = modernUiFontDefinition;
+        valueLabel.style.minWidth = 300f;
+        valueLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        valueLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        Button rightButton = CreateGameplayAudioPopupArrowButton(">", wrappedRight);
+
+        valueWrap.Add(leftButton);
+        valueWrap.Add(valueLabel);
+        valueWrap.Add(rightButton);
+
+        row.Add(titleLabel);
+        row.Add(valueWrap);
+
+        option.row = row;
+        option.titleLabel = titleLabel;
+        option.valueLabel = valueLabel;
+        option.leftButton = leftButton;
+        option.rightButton = rightButton;
+        return option;
+    }
+
+    private Button CreateGameplayAudioPopupArrowButton(string text, Action onClick)
+    {
+        Button button = new Button(() => onClick?.Invoke()) { text = text };
+        button.focusable = false;
+        button.style.width = 58f;
+        button.style.height = 52f;
+        button.style.marginLeft = 12f;
+        button.style.marginRight = 12f;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        button.style.color = new Color(0.86f, 0.90f, 0.94f, 0.96f);
+        button.style.fontSize = 36f;
+        button.style.unityFontDefinition = modernUiFontDefinition;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+        button.style.borderTopWidth = 0f;
+        button.style.borderRightWidth = 0f;
+        button.style.borderBottomWidth = 0f;
+        button.style.borderLeftWidth = 0f;
+        button.style.borderTopLeftRadius = 10f;
+        button.style.borderTopRightRadius = 10f;
+        button.style.borderBottomLeftRadius = 10f;
+        button.style.borderBottomRightRadius = 10f;
+        return button;
+    }
+
     private void UpdateGameplayAudioPopup(GuitarGameplaySnapshot snapshot)
     {
         if (snapshot == null || gameplayAudioPopupOverlay == null)
             return;
 
+        EnsureGameplayAudioStemRows(snapshot);
         UpdateGameplayAudioPopupRow(gameplayAudioPopupSongRow, gameplayAudioPopupSongLabel, gameplayAudioPopupSongValueLabel, snapshot.selectedGameplayAudioPopupIndex == 0);
         UpdateGameplayAudioPopupRow(gameplayAudioPopupGuitarRow, gameplayAudioPopupGuitarLabel, gameplayAudioPopupGuitarValueLabel, snapshot.selectedGameplayAudioPopupIndex == 1);
+
+        if (gameplayAudioPopupStemStatusLabel != null)
+        {
+            gameplayAudioPopupStemStatusLabel.text = snapshot.stemMixAvailable
+                ? "- STEMS MIXER -"
+                : (string.IsNullOrWhiteSpace(snapshot.stemMixStatusText)
+                    ? "Generate stems to unlock per-instrument mixing."
+                    : snapshot.stemMixStatusText);
+            gameplayAudioPopupStemStatusLabel.style.fontSize = snapshot.stemMixAvailable ? 34f : 24f;
+            gameplayAudioPopupStemStatusLabel.style.color = snapshot.stemMixAvailable
+                ? new Color(0.95f, 0.97f, 1f, 1f)
+                : new Color(0.76f, 0.84f, 0.90f, 0.94f);
+        }
+
+        bool showGenerate = snapshot.stemMixSourceAvailable && !snapshot.stemMixAvailable;
+        if (gameplayAudioPopupGenerateStemsButton != null)
+        {
+            gameplayAudioPopupGenerateStemsButton.style.display = showGenerate ? DisplayStyle.Flex : DisplayStyle.None;
+            if (snapshot.stemGeneratorInstalling)
+            {
+                gameplayAudioPopupGenerateStemsButton.SetEnabled(false);
+                gameplayAudioPopupGenerateStemsButton.text = $"Installing... {Mathf.Clamp(snapshot.stemGeneratorInstallProgressPercent, 0f, 100f):F0}%";
+            }
+            else if (!snapshot.stemGeneratorReady)
+            {
+                gameplayAudioPopupGenerateStemsButton.SetEnabled(snapshot.stemGeneratorInstallAvailable);
+                gameplayAudioPopupGenerateStemsButton.text = snapshot.stemGeneratorInstallAvailable ? "Install Stem Generator" : "Stem Generator Missing";
+            }
+            else
+            {
+                gameplayAudioPopupGenerateStemsButton.SetEnabled(!snapshot.stemGenerationRunning);
+                gameplayAudioPopupGenerateStemsButton.text = snapshot.stemGenerationRunning ? "Generating..." : "Generate Stems";
+            }
+        }
+
+        UpdateGameplayAudioPopupOptionRow(
+            gameplayAudioPopupStemMixModeControl,
+            snapshot.songPlaybackAudioModeLabel,
+            snapshot.selectedGameplayAudioPopupIndex == GameplayAudioPopupStemPlaybackSelectionIndex,
+            snapshot.stemMixPlaybackEnabled || snapshot.songPlaybackUsesGeneratedMode,
+            true);
+        UpdateGameplayAudioPopupOptionRow(
+            gameplayAudioPopupSmartDuckControl,
+            snapshot.stemSmartDuckingEnabled ? "On" : "Off",
+            snapshot.selectedGameplayAudioPopupIndex == GameplayAudioPopupSmartDuckSelectionIndex,
+            snapshot.stemSmartDuckingEnabled,
+            snapshot.stemMixAvailable);
+
+        if (gameplayAudioPopupSmartDuckHelpLabel != null)
+            gameplayAudioPopupSmartDuckHelpLabel.style.display = snapshot.stemMixAvailable ? DisplayStyle.Flex : DisplayStyle.None;
+
+        for (int i = 0; i < gameplayAudioPopupStemRowsList.Count; i++)
+        {
+            StemMixerPopupRow row = gameplayAudioPopupStemRowsList[i];
+            bool visible = snapshot.stemMixAvailable && i < (snapshot.stemMixIds?.Count ?? 0);
+            if (row.row != null)
+                row.row.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+            if (!visible)
+                continue;
+
+            string displayName = snapshot.stemMixDisplayNames != null && i < snapshot.stemMixDisplayNames.Count
+                ? snapshot.stemMixDisplayNames[i]
+                : snapshot.stemMixIds[i];
+            float volume = snapshot.stemMixVolumePercents != null && i < snapshot.stemMixVolumePercents.Count
+                ? snapshot.stemMixVolumePercents[i]
+                : 100f;
+            row.stemId = snapshot.stemMixIds[i];
+            row.titleLabel.text = displayName;
+            row.valueLabel.text = $"{volume:F0}%";
+            UpdateGameplayAudioPopupRow(row.row, row.titleLabel, row.valueLabel, snapshot.selectedGameplayAudioPopupIndex == i + GameplayAudioPopupStemSliderStartSelectionIndex);
+        }
+    }
+
+    private void UpdateGameplayAudioPopupOptionRow(GameplayAudioOptionRow option, string value, bool isSelected, bool isActive, bool visible)
+    {
+        if (option?.row == null || option.titleLabel == null || option.valueLabel == null)
+            return;
+
+        option.row.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+        if (!visible)
+            return;
+
+        option.valueLabel.text = value ?? string.Empty;
+        option.row.style.backgroundColor = isSelected
+            ? new Color(0.10f, 0.11f, 0.12f, 0.96f)
+            : new Color(0.07f, 0.08f, 0.09f, 0.78f);
+        option.row.style.borderTopWidth = isSelected ? 2f : 1f;
+        option.row.style.borderRightWidth = isSelected ? 2f : 1f;
+        option.row.style.borderBottomWidth = isSelected ? 2f : 1f;
+        option.row.style.borderLeftWidth = isSelected ? 2f : 1f;
+        option.row.style.borderTopColor = isSelected ? Color.white : new Color(0f, 0f, 0f, 0f);
+        option.row.style.borderRightColor = option.row.style.borderTopColor;
+        option.row.style.borderBottomColor = option.row.style.borderTopColor;
+        option.row.style.borderLeftColor = option.row.style.borderTopColor;
+        option.row.style.scale = new Scale(isSelected ? new Vector3(1.015f, 1.015f, 1f) : Vector3.one);
+        option.titleLabel.style.color = isSelected ? Color.white : new Color(0.95f, 0.97f, 1f, 1f);
+        option.valueLabel.style.color = isSelected
+            ? Color.white
+            : (isActive ? LibraryConfirmedSongColor : new Color(0.78f, 0.84f, 0.90f, 0.96f));
+
+        UpdateGameplayAudioPopupArrowButton(option.leftButton, isSelected);
+        UpdateGameplayAudioPopupArrowButton(option.rightButton, isSelected);
+    }
+
+    private static void UpdateGameplayAudioPopupArrowButton(Button button, bool isSelected)
+    {
+        if (button == null)
+            return;
+
+        button.style.color = isSelected ? Color.white : new Color(0.86f, 0.90f, 0.94f, 0.96f);
+        button.style.borderTopWidth = 0f;
+        button.style.borderRightWidth = 0f;
+        button.style.borderBottomWidth = 0f;
+        button.style.borderLeftWidth = 0f;
+        button.style.scale = new Scale(isSelected ? new Vector3(1.08f, 1.08f, 1f) : Vector3.one);
+    }
+
+    private void UpdateGameplayAudioStemSliderValues(GuitarGameplaySnapshot snapshot)
+    {
+        EnsureGameplayAudioStemRows(snapshot);
+        for (int i = 0; i < gameplayAudioPopupStemRowsList.Count; i++)
+        {
+            StemMixerPopupRow row = gameplayAudioPopupStemRowsList[i];
+            if (row?.slider == null)
+                continue;
+
+            float value = snapshot?.stemMixVolumePercents != null && i < snapshot.stemMixVolumePercents.Count
+                ? Mathf.Clamp(snapshot.stemMixVolumePercents[i], 0f, 100f)
+                : 100f;
+            row.slider.SetValueWithoutNotify(value);
+        }
+    }
+
+    private void EnsureGameplayAudioStemRows(GuitarGameplaySnapshot snapshot)
+    {
+        int count = snapshot?.stemMixIds?.Count ?? 0;
+        while (gameplayAudioPopupStemRowsList.Count < count)
+        {
+            StemMixerPopupRow row = new StemMixerPopupRow();
+            int rowIndex = gameplayAudioPopupStemRowsList.Count;
+            int selectionIndex = rowIndex + GameplayAudioPopupStemSliderStartSelectionIndex;
+            row.row = CreateGameplayAudioPopupSliderRow(
+                "Stem",
+                selectionIndex,
+                out row.titleLabel,
+                out row.valueLabel,
+                out row.slider);
+            ApplyGameplayAudioStemGridRowStyle(row.row, rowIndex);
+            row.row.RegisterCallback<MouseEnterEvent>(_ => owner?.SetSelectedGameplayAudioPopupIndexFromUi(selectionIndex));
+            row.slider.RegisterValueChangedCallback(evt =>
+            {
+                if (suppressCallbacks)
+                    return;
+
+                owner?.SetSelectedGameplayAudioPopupIndexFromUi(selectionIndex);
+                owner?.SetStemMixerVolumePercentFromUi(row.stemId, evt.newValue);
+            });
+            gameplayAudioPopupStemRowsList.Add(row);
+            gameplayAudioPopupStemRows?.Add(row.row);
+        }
+    }
+
+    private static void ApplyGameplayAudioStemGridRowStyle(VisualElement row, int rowIndex)
+    {
+        if (row == null)
+            return;
+
+        bool leftColumn = rowIndex % 2 == 0;
+        row.style.width = Length.Percent(49f);
+        row.style.flexGrow = 0f;
+        row.style.flexShrink = 0f;
+        row.style.marginLeft = leftColumn ? 0f : 8f;
+        row.style.marginRight = leftColumn ? 8f : 0f;
+        row.style.marginBottom = 16f;
+        row.style.paddingTop = 18f;
+        row.style.paddingBottom = 22f;
     }
 
     private void UpdateGameplayAudioPopupRow(VisualElement row, Label titleLabel, Label valueLabel, bool isSelected)

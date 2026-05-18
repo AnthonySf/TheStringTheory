@@ -7,6 +7,10 @@ public sealed class GuitarHighway3DAlphaTabRenderer : IGuitarGameplayRenderer
     public const float TwoTabsBottomTabViewportHeight = 0.40f;
     private const int BaseBarsPerSection = 1;
     private const float BaseRenderScale = 1.15f;
+    private const float OneTabCharacterViewportScale = 1.18f;
+    private const float TwoTabsCharacterViewportScale = 1.24f;
+    private const float OneTabCharacterViewportOffsetY = -0.055f;
+    private const float TwoTabsCharacterViewportOffsetY = -0.075f;
 
     private readonly GuitarHighway3DRenderer highwayRenderer = new GuitarHighway3DRenderer();
     private readonly AlphaTabSheetRuntimeConfig sheetConfig = new AlphaTabSheetRuntimeConfig
@@ -141,8 +145,8 @@ public sealed class GuitarHighway3DAlphaTabRenderer : IGuitarGameplayRenderer
         if (split)
         {
             int visibleTabs = owner != null ? Mathf.Clamp(owner.alphaTabHybridVisibleTabs, 1, 2) : 1;
-            scale = visibleTabs >= 2 ? 1.18f : 1.14f;
-            offsetY = visibleTabs >= 2 ? -0.060f : -0.045f;
+            scale = visibleTabs >= 2 ? TwoTabsCharacterViewportScale : OneTabCharacterViewportScale;
+            offsetY = visibleTabs >= 2 ? TwoTabsCharacterViewportOffsetY : OneTabCharacterViewportOffsetY;
         }
 
         highwayRenderer.SetHighwayCharacterViewportHeightScale(scale);
