@@ -25,7 +25,7 @@ public sealed class GuitarHighway3DAlphaTabRenderer : IGuitarGameplayRenderer
         sectionInnerPaddingVerticalPixels = 0f,
         barsPerRow = 1,
         barsPerSection = BaseBarsPerSection,
-        renderWidth = 1200,
+        renderWidth = 1800,
         renderScale = BaseRenderScale,
         regionBackdropColor = new Color(0.05f, 0.06f, 0.08f, 1f),
         sectionBackgroundColor = new Color(1f, 1f, 1f, 0.995f),
@@ -141,8 +141,8 @@ public sealed class GuitarHighway3DAlphaTabRenderer : IGuitarGameplayRenderer
         if (split)
         {
             int visibleTabs = owner != null ? Mathf.Clamp(owner.alphaTabHybridVisibleTabs, 1, 2) : 1;
-            scale = visibleTabs >= 2 ? 1.08f : 1.05f;
-            offsetY = visibleTabs >= 2 ? -0.035f : -0.025f;
+            scale = visibleTabs >= 2 ? 1.18f : 1.14f;
+            offsetY = visibleTabs >= 2 ? -0.060f : -0.045f;
         }
 
         highwayRenderer.SetHighwayCharacterViewportHeightScale(scale);

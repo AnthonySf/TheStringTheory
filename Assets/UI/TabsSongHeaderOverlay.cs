@@ -4262,7 +4262,7 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorTestTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
         notesDetectorTestTitleLabel.style.marginBottom = 6f;
 
-        Label notesDetectorTestHintLabel = CreateLabel("Use mouse or Up/Down  â€¢  Enter activates  â€¢  Esc back", 34f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
+        Label notesDetectorTestHintLabel = CreateLabel("Use mouse or Up/Down  \u2022  Enter activates  \u2022  Esc back", 34f, new Color(0.82f, 0.92f, 1f, 0.96f), false, TextAnchor.MiddleCenter);
         notesDetectorTestHintLabel.style.unityFontDefinition = modernUiFontDefinition;
         notesDetectorTestHintLabel.style.marginBottom = 18f;
         notesDetectorTestHintLabel.style.display = DisplayStyle.None;
@@ -10275,8 +10275,8 @@ public sealed class TabsSongHeaderOverlay
             else
             {
                 gameplayShortcutLabel.text = showPause
-                    ? $"Esc resume  â€¢  R {restartTarget}  â€¢  V Audio  â€¢  T Tone Lab  â€¢  Enter open  â€¢  Left/Right seek  â€¢  Double Left/Right prev/next note"
-                    : $"Esc pause  â€¢  R {restartTarget}  â€¢  V Audio";
+                    ? $"Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
+                    : $"Esc pause  \u2022  R {restartTarget}  \u2022  V Audio";
             }
             gameplayShortcutLabel.style.display = showGameplayShortcuts ? DisplayStyle.Flex : DisplayStyle.None;
         }
@@ -10397,7 +10397,7 @@ public sealed class TabsSongHeaderOverlay
             notesDetectorTestRuntimeLabel.text = $"Config File  {audioConfigPath}";
             string captureRateText = snapshot.notesDetectorCaptureSampleRate > 0 ? $"{snapshot.notesDetectorCaptureSampleRate} Hz" : "--";
             int internalRate = snapshot.notesDetectorInternalSampleRate > 0 ? snapshot.notesDetectorInternalSampleRate : 22050;
-            notesDetectorTestRatesLabel.text = $"Capture Rate  {captureRateText}  â€¢  Internal Rate  {internalRate} Hz";
+            notesDetectorTestRatesLabel.text = $"Capture Rate  {captureRateText}  \u2022  Internal Rate  {internalRate} Hz";
             notesDetectorTestRatesLabel.style.display = DisplayStyle.Flex;
             if (notesDetectorResamplerModeButton != null)
             {
@@ -10548,24 +10548,24 @@ public sealed class TabsSongHeaderOverlay
                 string multiplayerScoreDisplayText = $"P1 {FormatArcadeScoreValue(playerOneScore)}\nP2 {FormatArcadeScoreValue(playerTwoScore)}";
                 /*
                 string multiplayerBestSummaryText =
-                    $"P1  ACC {Mathf.Clamp(playerOne?.scorePercent ?? 0f, 0f, 100f):F1}%   â€¢   MAX {Mathf.Max(0, playerOne?.maxCombo ?? 0):N0}\n" +
-                    $"P2  ACC {Mathf.Clamp(playerTwo?.scorePercent ?? 0f, 0f, 100f):F1}%   â€¢   MAX {Mathf.Max(0, playerTwo?.maxCombo ?? 0):N0}");
+                    $"P1  ACC {Mathf.Clamp(playerOne?.scorePercent ?? 0f, 0f, 100f):F1}%   \u2022   MAX {Mathf.Max(0, playerOne?.maxCombo ?? 0):N0}\n" +
+                    $"P2  ACC {Mathf.Clamp(playerTwo?.scorePercent ?? 0f, 0f, 100f):F1}%   \u2022   MAX {Mathf.Max(0, playerTwo?.maxCombo ?? 0):N0}";
                 string multiplayerDeltaText = snapshot.multiplayerRhythmDraw
                     ? "Perfect draw. Both players finished with identical match stats."
                     : FormattableString.Invariant($"{FormatArcadeScoreValue(Mathf.Abs(playerOneScore - playerTwoScore))} margin");
                 string multiplayerStatsText =
-                    $"P1  H {Mathf.Max(0, playerOne?.hitCount ?? 0):N0}   â€¢   M {Mathf.Max(0, playerOne?.missCount ?? 0):N0}\n" +
-                    $"P2  H {Mathf.Max(0, playerTwo?.hitCount ?? 0):N0}   â€¢   M {Mathf.Max(0, playerTwo?.missCount ?? 0):N0}");
+                    $"P1  H {Mathf.Max(0, playerOne?.hitCount ?? 0):N0}   \u2022   M {Mathf.Max(0, playerOne?.missCount ?? 0):N0}\n" +
+                    $"P2  H {Mathf.Max(0, playerTwo?.hitCount ?? 0):N0}   \u2022   M {Mathf.Max(0, playerTwo?.missCount ?? 0):N0}";
                 */
                 string multiplayerBestSummaryText =
-                    $"P1  ACC {Mathf.Clamp(playerOne?.scorePercent ?? 0f, 0f, 100f):F1}%   â€¢   MAX {Mathf.Max(0, playerOne?.maxCombo ?? 0):N0}\n" +
-                    $"P2  ACC {Mathf.Clamp(playerTwo?.scorePercent ?? 0f, 0f, 100f):F1}%   â€¢   MAX {Mathf.Max(0, playerTwo?.maxCombo ?? 0):N0}";
+                    $"P1  ACC {Mathf.Clamp(playerOne?.scorePercent ?? 0f, 0f, 100f):F1}%   \u2022   MAX {Mathf.Max(0, playerOne?.maxCombo ?? 0):N0}\n" +
+                    $"P2  ACC {Mathf.Clamp(playerTwo?.scorePercent ?? 0f, 0f, 100f):F1}%   \u2022   MAX {Mathf.Max(0, playerTwo?.maxCombo ?? 0):N0}";
                 string multiplayerDeltaText = snapshot.multiplayerRhythmDraw
                     ? "Perfect draw. Both players finished with identical match stats."
                     : $"{FormatArcadeScoreValue(Mathf.Abs(playerOneScore - playerTwoScore))} margin";
                 string multiplayerStatsText =
-                    $"P1  H {Mathf.Max(0, playerOne?.hitCount ?? 0):N0}   â€¢   M {Mathf.Max(0, playerOne?.missCount ?? 0):N0}\n" +
-                    $"P2  H {Mathf.Max(0, playerTwo?.hitCount ?? 0):N0}   â€¢   M {Mathf.Max(0, playerTwo?.missCount ?? 0):N0}";
+                    $"P1  H {Mathf.Max(0, playerOne?.hitCount ?? 0):N0}   \u2022   M {Mathf.Max(0, playerOne?.missCount ?? 0):N0}\n" +
+                    $"P2  H {Mathf.Max(0, playerTwo?.hitCount ?? 0):N0}   \u2022   M {Mathf.Max(0, playerTwo?.missCount ?? 0):N0}";
                 multiplayerStatsText =
                     $"P1 ACCURACY  {Mathf.Clamp(playerOne?.scorePercent ?? 0f, 0f, 100f):F1}%\n" +
                     $"P1 HITS  {Mathf.Max(0, playerOne?.hitCount ?? 0):N0}\n" +
@@ -11799,14 +11799,14 @@ public sealed class TabsSongHeaderOverlay
     {
         string controls = GetArcadeFooterControlSummary();
         return showPause
-            ? $"{controls}  â€¢  Esc resume  â€¢  R {restartTarget}  â€¢  V Audio  â€¢  Enter open  â€¢  Left/Right seek  â€¢  Double Left/Right prev/next note"
-            : $"{controls}  â€¢  Esc pause  â€¢  R {restartTarget}  â€¢  V Audio";
+            ? $"{controls}  \u2022  Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
+            : $"{controls}  \u2022  Esc pause  \u2022  R {restartTarget}  \u2022  V Audio";
     }
 
     private string GetArcadeStartupPrimaryMessage()
     {
         if (UsesArcadeKeyboardInput())
-            return $"Keyboard: <color=#F99E6B>{GetArcadeKeyboardFretSummary()}</color>  â€¢  <color=#F99E6B>{GetArcadeKeyboardStrumSummary()}</color>.";
+            return $"Keyboard: <color=#F99E6B>{GetArcadeKeyboardFretSummary()}</color>  \u2022  <color=#F99E6B>{GetArcadeKeyboardStrumSummary()}</color>.";
 
         if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
             return "Use your guitar controller or MIDI controller.";
@@ -11834,15 +11834,15 @@ public sealed class TabsSongHeaderOverlay
     private string GetArcadeFooterControlSummary()
     {
         if (UsesArcadeKeyboardInput())
-            return $"{GetArcadeKeyboardFretSummary()} frets  â€¢  {GetArcadeKeyboardStrumSummary()}";
+            return $"{GetArcadeKeyboardFretSummary()} frets  \u2022  {GetArcadeKeyboardStrumSummary()}";
 
         if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
-            return "Use guitar controller or MIDI controller  â€¢  Configure Rhythm Controls in Settings";
+            return "Use guitar controller or MIDI controller  \u2022  Configure Rhythm Controls in Settings";
 
         if (UsesArcadeMidiInput())
-            return "Use MIDI controller  â€¢  Configure Rhythm Controls in Settings";
+            return "Use MIDI controller  \u2022  Configure Rhythm Controls in Settings";
 
-        return "Use guitar/controller  â€¢  Configure Rhythm Controls in Settings";
+        return "Use guitar/controller  \u2022  Configure Rhythm Controls in Settings";
     }
 
     private string GetArcadeKeyboardFretSummary()
@@ -11994,7 +11994,7 @@ public sealed class TabsSongHeaderOverlay
 
         if (hasArtist && hasAlbum)
 
-            return $"{artist.Trim()}  â€¢  {album.Trim()}";
+            return $"{artist.Trim()}  \u2022  {album.Trim()}";
 
 
 
@@ -14123,7 +14123,7 @@ public sealed class TabsSongHeaderOverlay
                     selectionInfoArrangementValueLabel.text = string.IsNullOrWhiteSpace(snapshot.selectedLibraryHeroScoreText) ? "--" : snapshot.selectedLibraryHeroScoreText;
                 selectionInfoBestTrackLabel.text = string.IsNullOrWhiteSpace(selectedDifficulty)
                     ? selectedTrackName
-                    : $"{selectedTrackName}  â€¢  {selectedDifficulty}";
+                    : $"{selectedTrackName}  \u2022  {selectedDifficulty}";
             }
             else
             {
@@ -14143,7 +14143,7 @@ public sealed class TabsSongHeaderOverlay
                         : string.Empty;
                     selectionInfoBestTrackLabel.text = string.IsNullOrWhiteSpace(selectedDifficultyLabel)
                         ? selectedTrackName
-                        : $"{selectedTrackName}  â€¢  {selectedDifficultyLabel}";
+                        : $"{selectedTrackName}  \u2022  {selectedDifficultyLabel}";
                 }
                 else
                 {
@@ -20348,8 +20348,8 @@ public sealed class TabsSongHeaderOverlay
             ? $"{snapshot.selectedArcadeArrangementDisplayName}  {snapshot.selectedArcadeDifficultyLabel}"
             : $"Selected Track: {(!string.IsNullOrWhiteSpace(snapshot.loopBookmarkTrackLabel) ? snapshot.loopBookmarkTrackLabel : "--")}";
         loopBookmarksHintLabel.text = rhythmPracticeMode
-            ? "1 set start  â€¢  2 set end  â€¢  Enter apply  â€¢  Del clear"
-            : "Bookmark adds current loop  â€¢  Save updates selected  â€¢  Rename renames selected";
+            ? "1 set start  \u2022  2 set end  \u2022  Enter apply  \u2022  Del clear"
+            : "Bookmark adds current loop  \u2022  Save updates selected  \u2022  Rename renames selected";
 
         loopBookmarkAddButton.text = rhythmPracticeMode ? "Start" : "Bookmark";
         loopBookmarkSaveButton.text = rhythmPracticeMode ? "End" : "Save";
@@ -20357,7 +20357,7 @@ public sealed class TabsSongHeaderOverlay
         loopBookmarkDeleteButton.text = rhythmPracticeMode ? "Clear" : "Delete";
         if (rhythmPracticeMode)
         {
-            loopBookmarksHintLabel.text = "Enter select  â€¢  Space preview  â€¢  Esc start";
+            loopBookmarksHintLabel.text = "Enter select  \u2022  Space preview  \u2022  Esc start";
             loopBookmarkSaveButton.text = string.Empty;
             loopBookmarkRenameButton.text = string.Empty;
         }

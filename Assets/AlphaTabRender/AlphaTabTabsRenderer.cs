@@ -29,7 +29,7 @@ public sealed class AlphaTabTabsRenderer : IGuitarGameplayRenderer
         sectionInnerPaddingVerticalPixels = 0f,
         barsPerRow = BaseBarsPerRow,
         barsPerSection = BaseBarsPerRow,
-        renderWidth = 1400,
+        renderWidth = 2200,
         renderScale = BaseRenderScale,
         regionBackdropColor = new Color(0f, 0f, 0f, 0f),
         sectionBackgroundColor = new Color(1f, 1f, 1f, 0.995f),
