@@ -665,6 +665,9 @@ public class GuitarBridgeServer : MonoBehaviour
         public bool useAllGeneratedPlaybackParts = true;
         public List<string> generatedEnabledPartIds = new List<string>();
         public List<GeneratedPlaybackSelectionOverride> generatedPlaybackSelectionOverrides = new List<GeneratedPlaybackSelectionOverride>();
+        public List<StemMixerVolumeOverride> stemMixerVolumeOverrides = new List<StemMixerVolumeOverride>();
+        public bool stemMixPlaybackEnabled = false;
+        public bool stemSmartDuckingEnabled = false;
         public int bestScoreValue = 0;
         public float bestScorePercent = 0f;
         public int bestArcadeScoreValue = 0;
@@ -699,6 +702,19 @@ public class GuitarBridgeServer : MonoBehaviour
         public string partId;
         public bool useAllGeneratedPlaybackParts;
         public List<string> generatedEnabledPartIds = new List<string>();
+    }
+
+    [Serializable]
+    private class StemMixerVolumeOverride
+    {
+        public string stemId;
+        public float volumePercent = 100f;
+    }
+
+    private sealed class StemAudioSourceState
+    {
+        public string stemId;
+        public AudioSource source;
     }
 
     [Serializable]
@@ -932,6 +948,30 @@ public class GuitarBridgeServer : MonoBehaviour
     private UnityToneLabOverlay unityToneLabOverlay;
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
+    private StemCacheManifest currentStemManifest;
+    private string currentStemSourceAudioPath = string.Empty;
+    private string currentStemStatusMessage = string.Empty;
+    private bool currentStemPlaybackActive;
+    private bool stemGenerationWasRunning;
+    private int pendingStemAudioLoadCount;
+    private readonly List<StemAudioSourceState> stemAudioSources = new List<StemAudioSourceState>();
+    private readonly Dictionary<string, float> stemVolumePercents = new Dictionary<string, float>(StringComparer.OrdinalIgnoreCase);
+    private bool stemMixPlaybackEnabled;
+    private bool stemSmartDuckingEnabled;
+    private enum GameplayAudioSourceOption
+    {
+        Generated,
+        OriginalMix,
+        StemMix,
+        Muted
+    }
+
+    private const int GameplayAudioPopupBaseOptionCount = 3;
+    private const int GameplayAudioPopupPlaybackOptionIndex = 2;
+    private const int GameplayAudioPopupSmartDuckOptionIndex = 3;
+    private const int GameplayAudioPopupStemSliderStartIndex = 4;
+    private const float DefaultStemSmartDuckingStrengthPercent = 75f;
+    private float stemSmartDuckCurrentMultiplier = 1f;
     private bool songHasEnded;
     private bool songEndedAsGameOver;
     private Coroutine openSongSelectionRoutine;
@@ -1412,6 +1452,8 @@ public class GuitarBridgeServer : MonoBehaviour
             sectionStartTicks = afterSongEndTicks;
         }
 
+        UpdateStemGenerationState();
+
         ApplyPlaybackSpeedToAudio();
         if (shouldLogLoopCountdownFrame)
         {
@@ -1880,13 +1922,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (selectedPauseActionIndex == 3)
         {
-            int horizontalDirection = GetHeldHorizontalArrowDirection();
-            if (ConsumeHeldHorizontalUiStep("pause-audio-mode", horizontalDirection))
-            {
-                CycleSongPlaybackAudioModeFromUi(horizontalDirection);
-                return;
-            }
-
+            ConsumeHeldHorizontalUiStep("pause-audio-mode", GetHeldHorizontalArrowDirection());
             return;
         }
 
@@ -7275,7 +7311,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 OpenSongSettingsFromUi();
                 break;
             case 3:
-                CycleSongPlaybackAudioModeFromUi(1);
+                OpenGameplayAudioPopupFromUi();
                 break;
             case 4:
                 OpenLibraryFromPauseFromUi();
@@ -9907,11 +9943,120 @@ public class GuitarBridgeServer : MonoBehaviour
         ApplyPlaybackSpeedToAudio();
     }
 
+    public void GenerateCurrentSongStemsFromUi()
+    {
+        if (string.IsNullOrWhiteSpace(currentStemSourceAudioPath) || !File.Exists(currentStemSourceAudioPath))
+        {
+            currentStemStatusMessage = "No source audio is available for stem generation.";
+            return;
+        }
+
+        if (!StemSeparationService.StartDemucsGeneration(currentStemSourceAudioPath, out string error))
+        {
+            currentStemStatusMessage = error;
+            return;
+        }
+
+        stemGenerationWasRunning = true;
+        currentStemStatusMessage = "Generating stems with Demucs...";
+    }
+
+    public void ActivateStemGenerationPrimaryActionFromUi()
+    {
+        if (currentStemManifest?.stems != null && currentStemManifest.stems.Count > 0)
+            return;
+
+        if (!StemSeparationService.IsManagedRuntimeReady() && StemSeparationService.IsManagedRuntimeInstallAvailable())
+        {
+            InstallStemGeneratorFromUi();
+            return;
+        }
+
+        GenerateCurrentSongStemsFromUi();
+    }
+
+    public void InstallStemGeneratorFromUi()
+    {
+        if (StemSeparationService.IsManagedRuntimeReady())
+        {
+            currentStemStatusMessage = "Stem generator already installed.";
+            return;
+        }
+
+        if (!StemSeparationService.StartManagedRuntimeInstall(out string error))
+        {
+            currentStemStatusMessage = error;
+            return;
+        }
+
+        currentStemStatusMessage = "Installing stem generator... 0%";
+    }
+
+    public void SetStemMixerVolumePercentFromUi(string stemId, float percent)
+    {
+        if (string.IsNullOrWhiteSpace(stemId))
+            return;
+
+        bool wasUsingStemMix = IsStemMixPlaybackReady();
+        if (currentStemManifest?.stems != null && currentStemManifest.stems.Count > 0)
+        {
+            stemMixPlaybackEnabled = true;
+            songPlaybackAudioMode = NormalizeSongPlaybackAudioModeForCurrentGameMode(SongPlaybackAudioMode.Mp3);
+        }
+
+        stemVolumePercents[stemId] = Mathf.Clamp(percent, 0f, 100f);
+        SaveStemMixerSettingsToMetadata();
+        ApplyPlaybackSpeedToAudio();
+
+        if (!wasUsingStemMix && IsStemMixPlaybackReady())
+            ReloadBackingTrackForCurrentStemMode();
+    }
+
+    public void ToggleStemMixPlaybackFromUi()
+    {
+        SetGameplayAudioSourceOptionFromUi(IsStemMixPlaybackReady()
+            ? GameplayAudioSourceOption.OriginalMix
+            : GameplayAudioSourceOption.StemMix);
+    }
+
+    public void CycleGameplayAudioSourceFromUi(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        List<GameplayAudioSourceOption> options = GetAvailableGameplayAudioSourceOptions();
+        if (options.Count == 0)
+            return;
+
+        GameplayAudioSourceOption current = GetCurrentGameplayAudioSourceOption();
+        int currentIndex = options.IndexOf(current);
+        if (currentIndex < 0)
+            currentIndex = 0;
+
+        int nextIndex = (currentIndex + delta) % options.Count;
+        if (nextIndex < 0)
+            nextIndex += options.Count;
+
+        SetGameplayAudioSourceOptionFromUi(options[nextIndex]);
+    }
+
+    public void ToggleStemSmartDuckingFromUi()
+    {
+        stemSmartDuckingEnabled = !stemSmartDuckingEnabled;
+        if (songMetadata != null)
+        {
+            songMetadata.stemSmartDuckingEnabled = stemSmartDuckingEnabled;
+            SaveSongMetadata();
+        }
+
+        ApplyPlaybackSpeedToAudio();
+    }
+
     public void OpenGameplayAudioPopupFromUi()
     {
         gameplayAudioPopupOpenedWhilePaused = isPaused;
         showGameplayAudioPopup = true;
-        selectedGameplayAudioPopupIndex = Mathf.Clamp(selectedGameplayAudioPopupIndex, 0, 1);
+        selectedGameplayAudioPopupIndex = Mathf.Clamp(selectedGameplayAudioPopupIndex, 0, Mathf.Max(0, GetGameplayAudioPopupOptionCount() - 1));
         showSongSettings = false;
         showGlobalSettings = false;
         showTrackSelection = false;
@@ -9935,7 +10080,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void SetSelectedGameplayAudioPopupIndexFromUi(int index)
     {
-        selectedGameplayAudioPopupIndex = Mathf.Clamp(index, 0, 1);
+        selectedGameplayAudioPopupIndex = Mathf.Clamp(index, 0, Mathf.Max(0, GetGameplayAudioPopupOptionCount() - 1));
     }
 
     public void MoveGameplayAudioPopupSelectionFromUi(int delta)
@@ -9943,7 +10088,10 @@ public class GuitarBridgeServer : MonoBehaviour
         if (delta == 0)
             return;
 
-        const int optionCount = 2;
+        int optionCount = GetGameplayAudioPopupOptionCount();
+        if (optionCount <= 0)
+            return;
+
         selectedGameplayAudioPopupIndex = (selectedGameplayAudioPopupIndex + delta + optionCount) % optionCount;
     }
 
@@ -9960,6 +10108,301 @@ public class GuitarBridgeServer : MonoBehaviour
             case 1:
                 SetSharedAudioGuitarVolumeFromUi(GetSharedAudioGuitarVolumePercent() + delta);
                 break;
+            case GameplayAudioPopupPlaybackOptionIndex:
+                CycleGameplayAudioSourceFromUi(delta);
+                break;
+            case GameplayAudioPopupSmartDuckOptionIndex:
+                ToggleStemSmartDuckingFromUi();
+                break;
+            default:
+                int stemIndex = selectedGameplayAudioPopupIndex - GameplayAudioPopupStemSliderStartIndex;
+                List<StemCacheEntry> stems = GetCurrentStemEntries();
+                if (stemIndex >= 0 && stemIndex < stems.Count)
+                {
+                    StemCacheEntry stem = stems[stemIndex];
+                    SetStemMixerVolumePercentFromUi(stem.id, GetStemMixerVolumePercent(stem.id) + delta);
+                }
+                break;
+        }
+    }
+
+    private int GetGameplayAudioPopupOptionCount()
+    {
+        int stemCount = currentStemManifest?.stems?.Count ?? 0;
+        return stemCount > 0
+            ? GameplayAudioPopupStemSliderStartIndex + stemCount
+            : GameplayAudioPopupBaseOptionCount;
+    }
+
+    private List<StemCacheEntry> GetCurrentStemEntries()
+    {
+        return currentStemManifest?.stems != null
+            ? currentStemManifest.stems
+            : new List<StemCacheEntry>();
+    }
+
+    private float GetStemMixerVolumePercent(string stemId)
+    {
+        if (string.IsNullOrWhiteSpace(stemId))
+            return 100f;
+
+        return stemVolumePercents.TryGetValue(stemId, out float value)
+            ? Mathf.Clamp(value, 0f, 100f)
+            : 100f;
+    }
+
+    private bool IsStemMixPlaybackReady()
+    {
+        return stemMixPlaybackEnabled &&
+               songPlaybackAudioMode == SongPlaybackAudioMode.Mp3 &&
+               currentStemManifest?.stems != null &&
+               currentStemManifest.stems.Count > 0;
+    }
+
+    private List<GameplayAudioSourceOption> GetAvailableGameplayAudioSourceOptions()
+    {
+        List<GameplayAudioSourceOption> options = new List<GameplayAudioSourceOption>();
+        if (gameplayMode != GuitarGameplayMode.Arcade)
+            options.Add(GameplayAudioSourceOption.Generated);
+
+        options.Add(GameplayAudioSourceOption.OriginalMix);
+        if (currentStemManifest?.stems != null && currentStemManifest.stems.Count > 0)
+            options.Add(GameplayAudioSourceOption.StemMix);
+        options.Add(GameplayAudioSourceOption.Muted);
+        return options;
+    }
+
+    private GameplayAudioSourceOption GetCurrentGameplayAudioSourceOption()
+    {
+        if (IsStemMixPlaybackReady())
+            return GameplayAudioSourceOption.StemMix;
+
+        if (songPlaybackAudioMode == SongPlaybackAudioMode.Generated && gameplayMode != GuitarGameplayMode.Arcade)
+            return GameplayAudioSourceOption.Generated;
+
+        if (songPlaybackAudioMode == SongPlaybackAudioMode.Muted)
+            return GameplayAudioSourceOption.Muted;
+
+        return GameplayAudioSourceOption.OriginalMix;
+    }
+
+    private void SetGameplayAudioSourceOptionFromUi(GameplayAudioSourceOption option)
+    {
+        if (option == GameplayAudioSourceOption.StemMix &&
+            (currentStemManifest?.stems == null || currentStemManifest.stems.Count == 0))
+        {
+            option = GameplayAudioSourceOption.OriginalMix;
+        }
+
+        if (option == GameplayAudioSourceOption.Generated && gameplayMode == GuitarGameplayMode.Arcade)
+            option = GameplayAudioSourceOption.OriginalMix;
+
+        bool wasUsingStemMix = IsStemMixPlaybackReady();
+        bool resetStemVolumes = false;
+
+        switch (option)
+        {
+            case GameplayAudioSourceOption.Generated:
+                stemMixPlaybackEnabled = false;
+                songPlaybackAudioMode = SongPlaybackAudioMode.Generated;
+                break;
+            case GameplayAudioSourceOption.StemMix:
+                stemMixPlaybackEnabled = true;
+                songPlaybackAudioMode = NormalizeSongPlaybackAudioModeForCurrentGameMode(SongPlaybackAudioMode.Mp3);
+                break;
+            case GameplayAudioSourceOption.Muted:
+                stemMixPlaybackEnabled = false;
+                songPlaybackAudioMode = SongPlaybackAudioMode.Muted;
+                break;
+            default:
+                stemMixPlaybackEnabled = false;
+                resetStemVolumes = true;
+                songPlaybackAudioMode = NormalizeSongPlaybackAudioModeForCurrentGameMode(SongPlaybackAudioMode.Mp3);
+                break;
+        }
+
+        if (resetStemVolumes)
+            ResetStemMixerVolumesToDefault();
+
+        SaveStemMixerSettingsToMetadata();
+
+        bool shouldReloadBackingTrack =
+            wasUsingStemMix != IsStemMixPlaybackReady() &&
+            !string.IsNullOrWhiteSpace(currentStemSourceAudioPath) &&
+            File.Exists(currentStemSourceAudioPath);
+
+        if (shouldReloadBackingTrack)
+        {
+            ReloadBackingTrackForCurrentStemMode();
+            return;
+        }
+
+        SyncAudioToSongTimer(
+            playImmediately: ShouldPlaybackAudio(
+                showLoopSettings && loopSettingsPreviewPlaying,
+                showOffsetHelper && offsetHelperAdjusting && offsetHelperPreviewPlaying,
+                loopRestartPauseRemainingSeconds > 0.0001f),
+            forceSeek: true);
+    }
+
+    private void ResetStemMixerVolumesToDefault()
+    {
+        List<StemCacheEntry> stems = GetCurrentStemEntries();
+        for (int i = 0; i < stems.Count; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(stems[i].id))
+                stemVolumePercents[stems[i].id] = 100f;
+        }
+
+        stemSmartDuckCurrentMultiplier = 1f;
+    }
+
+    private void ReloadBackingTrackForCurrentStemMode()
+    {
+        if (string.IsNullOrWhiteSpace(currentStemSourceAudioPath) || !File.Exists(currentStemSourceAudioPath))
+        {
+            ApplyPlaybackSpeedToAudio();
+            return;
+        }
+
+        StartCoroutine(LoadBackingTrackFromFile(currentStemSourceAudioPath));
+    }
+
+    private string GetStemMixStatusText()
+    {
+        if (string.IsNullOrWhiteSpace(currentStemSourceAudioPath) || !File.Exists(currentStemSourceAudioPath))
+            return "No source audio available for stem generation.";
+
+        StemRuntimeInstallStatus installStatus = StemSeparationService.GetRuntimeInstallStatus();
+        if (installStatus.state == StemRuntimeInstallState.Running)
+        {
+            float progress = Mathf.Clamp(installStatus.progressPercent, 0f, 100f);
+            return string.IsNullOrWhiteSpace(installStatus.message)
+                ? $"Installing stem generator... {progress:F0}%"
+                : installStatus.message;
+        }
+
+        StemGenerationStatus status = StemSeparationService.GetStatus(currentStemSourceAudioPath);
+        if (status.state == StemGenerationState.Running)
+            return string.IsNullOrWhiteSpace(status.message) ? "Generating stems..." : status.message;
+        if (status.state == StemGenerationState.Failed && !status.consumed)
+            return string.IsNullOrWhiteSpace(status.error) ? "Stem generation failed." : status.error;
+        if (currentStemManifest?.stems != null && currentStemManifest.stems.Count > 0)
+            return $"Stems ready: {string.Join(", ", currentStemManifest.stems.Select(stem => stem.id))}";
+
+        if (!StemSeparationService.IsManagedRuntimeReady())
+        {
+            if (installStatus.state == StemRuntimeInstallState.Failed && !string.IsNullOrWhiteSpace(installStatus.error))
+                return installStatus.error;
+
+            return StemSeparationService.IsManagedRuntimeInstallAvailable()
+                ? "Install the stem generator to enable local separation."
+                : $"Stem generator package missing. Add {ExternalContentPaths.StemSeparatorPackageFileName} to StreamingAssets/{ExternalContentPaths.StemSeparatorFolderName}.";
+        }
+
+        return string.IsNullOrWhiteSpace(currentStemStatusMessage)
+            ? "Generate stems to unlock per-instrument mixing."
+            : currentStemStatusMessage;
+    }
+
+    private void RefreshCurrentStemCacheState(string sourceAudioPath)
+    {
+        currentStemSourceAudioPath = !string.IsNullOrWhiteSpace(sourceAudioPath) ? sourceAudioPath : string.Empty;
+        currentStemManifest = null;
+        currentStemStatusMessage = string.Empty;
+        stemVolumePercents.Clear();
+        stemSmartDuckCurrentMultiplier = 1f;
+
+        if (string.IsNullOrWhiteSpace(currentStemSourceAudioPath) || !File.Exists(currentStemSourceAudioPath))
+        {
+            stemMixPlaybackEnabled = false;
+            return;
+        }
+
+        if (StemSeparationService.TryLoadValidManifest(currentStemSourceAudioPath, out StemCacheManifest manifest))
+        {
+            currentStemManifest = manifest;
+            RestoreStemMixerSettingsFromMetadata();
+            currentStemStatusMessage = $"Stems ready: {manifest.stems.Count}";
+        }
+        else
+        {
+            stemMixPlaybackEnabled = false;
+            currentStemStatusMessage = "Generate stems to unlock per-instrument mixing.";
+        }
+    }
+
+    private void RestoreStemMixerSettingsFromMetadata()
+    {
+        stemVolumePercents.Clear();
+        List<StemCacheEntry> stems = GetCurrentStemEntries();
+        for (int i = 0; i < stems.Count; i++)
+            stemVolumePercents[stems[i].id] = 100f;
+
+        if (songMetadata?.stemMixerVolumeOverrides != null)
+        {
+            for (int i = 0; i < songMetadata.stemMixerVolumeOverrides.Count; i++)
+            {
+                StemMixerVolumeOverride entry = songMetadata.stemMixerVolumeOverrides[i];
+                if (entry == null || string.IsNullOrWhiteSpace(entry.stemId))
+                    continue;
+
+                stemVolumePercents[entry.stemId] = Mathf.Clamp(entry.volumePercent, 0f, 100f);
+            }
+        }
+
+        if (!stemMixPlaybackEnabled)
+            ResetStemMixerVolumesToDefault();
+    }
+
+    private void SaveStemMixerSettingsToMetadata()
+    {
+        if (songMetadata == null)
+            return;
+
+        songMetadata.stemMixPlaybackEnabled = stemMixPlaybackEnabled;
+        songMetadata.stemMixerVolumeOverrides = stemVolumePercents
+            .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(pair => new StemMixerVolumeOverride
+            {
+                stemId = pair.Key,
+                volumePercent = Mathf.Clamp(pair.Value, 0f, 100f)
+            })
+            .ToList();
+        songMetadata.stemSmartDuckingEnabled = stemSmartDuckingEnabled;
+        SaveSongMetadata();
+    }
+
+    private void UpdateStemGenerationState()
+    {
+        if (string.IsNullOrWhiteSpace(currentStemSourceAudioPath))
+            return;
+
+        StemGenerationStatus status = StemSeparationService.GetStatus(currentStemSourceAudioPath);
+        bool isRunning = status.state == StemGenerationState.Running;
+        if (isRunning)
+        {
+            stemGenerationWasRunning = true;
+            if (!string.IsNullOrWhiteSpace(status.message))
+                currentStemStatusMessage = status.message;
+            return;
+        }
+
+        if (!stemGenerationWasRunning || status.consumed)
+            return;
+
+        stemGenerationWasRunning = false;
+        if (status.state == StemGenerationState.Succeeded)
+        {
+            RefreshCurrentStemCacheState(currentStemSourceAudioPath);
+            StemSeparationService.MarkStatusConsumed(currentStemSourceAudioPath);
+            if (currentStemManifest != null && IsStemMixPlaybackReady())
+                LoadStemBackingTracks(currentStemManifest);
+        }
+        else if (status.state == StemGenerationState.Failed)
+        {
+            currentStemStatusMessage = string.IsNullOrWhiteSpace(status.error) ? "Stem generation failed." : status.error;
+            StemSeparationService.MarkStatusConsumed(currentStemSourceAudioPath);
         }
     }
 
@@ -9985,6 +10428,10 @@ public class GuitarBridgeServer : MonoBehaviour
         mode = NormalizeSongPlaybackAudioModeForCurrentGameMode(mode);
         if (songPlaybackAudioMode == mode)
             return;
+
+        stemMixPlaybackEnabled = false;
+        if (mode == SongPlaybackAudioMode.Mp3)
+            ResetStemMixerVolumesToDefault();
 
         songPlaybackAudioMode = mode;
         SaveSongMetadata();
@@ -15777,6 +16224,8 @@ private void ParseDetectorPacket(string detectorPacket)
         }
 
         bool multiplayerRhythmUiMode = multiplayerRhythmModeActive || pendingMultiplayerRhythmSongSelection || showMultiplayerRhythmSetup;
+        StemRuntimeInstallStatus stemRuntimeInstallStatus = StemSeparationService.GetRuntimeInstallStatus();
+        bool stemGeneratorReady = StemSeparationService.IsManagedRuntimeReady();
 
         return new GuitarGameplaySnapshot
         {
@@ -15967,6 +16416,19 @@ private void ParseDetectorPacket(string detectorPacket)
             selectedGameplayAudioPopupIndex = selectedGameplayAudioPopupIndex,
             songPlaybackAudioModeLabel = GetCurrentSongPlaybackAudioModeLabel(),
             songPlaybackUsesGeneratedMode = GetEffectiveSongPlaybackAudioMode() == SongPlaybackAudioMode.Generated,
+            stemMixSourceAvailable = !string.IsNullOrWhiteSpace(currentStemSourceAudioPath) && File.Exists(currentStemSourceAudioPath),
+            stemMixAvailable = currentStemManifest?.stems != null && currentStemManifest.stems.Count > 0,
+            stemMixPlaybackEnabled = IsStemMixPlaybackReady(),
+            stemGenerationRunning = StemSeparationService.GetStatus(currentStemSourceAudioPath).state == StemGenerationState.Running,
+            stemGeneratorReady = stemGeneratorReady,
+            stemGeneratorInstallAvailable = StemSeparationService.IsManagedRuntimeInstallAvailable(),
+            stemGeneratorInstalling = stemRuntimeInstallStatus.state == StemRuntimeInstallState.Running,
+            stemGeneratorInstallProgressPercent = Mathf.Clamp(stemRuntimeInstallStatus.progressPercent, 0f, 100f),
+            stemMixStatusText = GetStemMixStatusText(),
+            stemMixIds = GetCurrentStemEntries().Select(stem => stem.id).ToList(),
+            stemMixDisplayNames = GetCurrentStemEntries().Select(stem => string.IsNullOrWhiteSpace(stem.displayName) ? StemSeparationService.FormatStemDisplayName(stem.id) : stem.displayName).ToList(),
+            stemMixVolumePercents = GetCurrentStemEntries().Select(stem => GetStemMixerVolumePercent(stem.id)).ToList(),
+            stemSmartDuckingEnabled = stemSmartDuckingEnabled,
             generatedAudioTrackSelectionAvailable = GetAvailableGeneratedPlaybackParts().Count > 0,
             generatedAudioTrackSelectionSummary = GetGeneratedPlaybackTrackSelectionSummary(),
             showGeneratedAudioTrackSelectionPopup = showGeneratedAudioTrackSelectionPopup,
@@ -16959,7 +17421,7 @@ private void ParseDetectorPacket(string detectorPacket)
         switch (mode)
         {
             case SongPlaybackAudioMode.Mp3:
-                return "MP3";
+                return "Original Mix";
             case SongPlaybackAudioMode.Muted:
                 return "Muted";
             default:
@@ -16985,6 +17447,9 @@ private void ParseDetectorPacket(string detectorPacket)
 
     private string GetCurrentSongPlaybackAudioModeLabel()
     {
+        if (IsStemMixPlaybackReady())
+            return "Stem Mix";
+
         SongPlaybackAudioMode effectiveMode = GetEffectiveSongPlaybackAudioMode();
         if (effectiveMode != songPlaybackAudioMode)
             return $"{GetSongPlaybackAudioModeLabel(songPlaybackAudioMode)} (Fallback {GetSongPlaybackAudioModeLabel(effectiveMode)})";
@@ -17039,6 +17504,10 @@ private void ParseDetectorPacket(string detectorPacket)
             generatedSongPlayer?.ClearArrangement();
             showGeneratedAudioTrackSelectionPopup = false;
             showSongSettingsTrackSelectionPopup = false;
+            ClearStemAudioSources();
+            currentStemManifest = null;
+            currentStemSourceAudioPath = string.Empty;
+            currentStemStatusMessage = string.Empty;
             hasBackingTrack = false;
             backingTrackLoadError = "No runtime song selected.";
             currentSongBestScoreValue = 0;
@@ -17082,6 +17551,9 @@ private void ParseDetectorPacket(string detectorPacket)
         string metadataPath = BuildSongMetadataPath(currentSongEntry);
         bool metadataExists = !string.IsNullOrWhiteSpace(metadataPath) && File.Exists(metadataPath);
         songMetadata = LoadSongMetadata(currentSongFileName, metadataPath);
+        stemMixPlaybackEnabled = songMetadata.stemMixPlaybackEnabled;
+        stemSmartDuckingEnabled = songMetadata.stemSmartDuckingEnabled;
+        RefreshCurrentStemCacheState(songPath);
         SongPlaybackAudioMode loadedPlaybackAudioMode = songMetadata.playbackAudioMode;
         if (arrangementCacheHasBackingTrack)
             songMetadata.playbackAudioMode = SongPlaybackAudioMode.Mp3;
@@ -17135,6 +17607,8 @@ private void ParseDetectorPacket(string detectorPacket)
             currentTrackHeroBestHeartsRemaining = currentArcadeHeroBest.heartsRemaining;
             currentTrackHeroBestHeartsTotal = currentArcadeHeroBest.heartsTotal;
             RefreshEffectiveAudioOffset();
+            ClearStemAudioSources();
+            currentStemManifest = null;
             LoadArcadeBackingTracks(currentSongEntry);
             return;
         }
@@ -17210,8 +17684,18 @@ private void ParseDetectorPacket(string detectorPacket)
 
     private System.Collections.IEnumerator LoadBackingTrackFromFile(string absolutePath)
     {
+        if (TryStartStemBackingTrackLoad(absolutePath))
+            yield break;
+
+        yield return LoadSingleBackingTrackFromFile(absolutePath);
+    }
+
+    private System.Collections.IEnumerator LoadSingleBackingTrackFromFile(string absolutePath)
+    {
         isLoadingBackingTrack = true;
         hasBackingTrack = false;
+        currentStemPlaybackActive = false;
+        ClearStemAudioSources();
 
         string uri = "file://" + absolutePath.Replace("\\", "/");
         using (UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(uri, AudioType.UNKNOWN))
@@ -17334,6 +17818,163 @@ private void ParseDetectorPacket(string detectorPacket)
             backingTrackSource.Stop();
             backingTrackSource.clip = null;
         }
+    }
+
+    private bool TryStartStemBackingTrackLoad(string absolutePath)
+    {
+        if (gameplayMode != GuitarGameplayMode.Guitar ||
+            !IsStemMixPlaybackReady() ||
+            string.IsNullOrWhiteSpace(absolutePath) ||
+            currentStemManifest == null ||
+            currentStemManifest.stems == null ||
+            currentStemManifest.stems.Count == 0 ||
+            !string.Equals(Path.GetFullPath(absolutePath), Path.GetFullPath(currentStemSourceAudioPath ?? string.Empty), StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        LoadStemBackingTracks(currentStemManifest);
+        return true;
+    }
+
+    private void LoadStemBackingTracks(StemCacheManifest manifest)
+    {
+        EnsureBackingTrackSource();
+        ClearStemAudioSources();
+
+        List<StemCacheEntry> stems = manifest?.stems != null
+            ? manifest.stems.Where(stem => stem != null && !string.IsNullOrWhiteSpace(stem.id)).ToList()
+            : new List<StemCacheEntry>();
+        if (stems.Count == 0)
+            return;
+
+        EnsureStemAudioSourceCount(stems.Count);
+        backingTrackLoadError = string.Empty;
+        hasBackingTrack = false;
+        isLoadingBackingTrack = true;
+        currentStemPlaybackActive = false;
+        pendingStemAudioLoadCount = stems.Count;
+
+        for (int i = 0; i < stems.Count; i++)
+        {
+            StemCacheEntry stem = stems[i];
+            string path = StemSeparationService.ResolveStemPath(currentStemSourceAudioPath, stem);
+            StartCoroutine(LoadStemAudioClipFromFile(path, stem.id, stemAudioSources[i].source));
+        }
+    }
+
+    private void EnsureStemAudioSourceCount(int count)
+    {
+        EnsureBackingTrackSource();
+        if (stemAudioSources.Count == 0 || stemAudioSources[0].source != backingTrackSource)
+        {
+            stemAudioSources.Insert(0, new StemAudioSourceState { source = backingTrackSource });
+        }
+
+        while (stemAudioSources.Count < count)
+        {
+            AudioSource source = gameObject.AddComponent<AudioSource>();
+            source.playOnAwake = false;
+            source.loop = false;
+            source.spatialBlend = 0f;
+            stemAudioSources.Add(new StemAudioSourceState { source = source });
+        }
+
+        for (int i = 0; i < stemAudioSources.Count; i++)
+        {
+            StemAudioSourceState state = stemAudioSources[i];
+            AudioSource source = state?.source;
+            if (source == null)
+                continue;
+
+            state.stemId = string.Empty;
+            source.playOnAwake = false;
+            source.loop = false;
+            source.spatialBlend = 0f;
+            source.Stop();
+            source.clip = null;
+            source.enabled = i < count;
+        }
+    }
+
+    private void ClearStemAudioSources()
+    {
+        pendingStemAudioLoadCount = 0;
+        currentStemPlaybackActive = false;
+        for (int i = 0; i < stemAudioSources.Count; i++)
+        {
+            StemAudioSourceState state = stemAudioSources[i];
+            AudioSource source = state?.source;
+            if (source == null)
+                continue;
+
+            source.Stop();
+            source.clip = null;
+            state.stemId = string.Empty;
+            if (source != backingTrackSource)
+                source.enabled = false;
+        }
+    }
+
+    private System.Collections.IEnumerator LoadStemAudioClipFromFile(string absolutePath, string stemId, AudioSource targetSource)
+    {
+        if (string.IsNullOrWhiteSpace(absolutePath) || !File.Exists(absolutePath))
+        {
+            backingTrackLoadError = $"Stem audio missing: {absolutePath}";
+            Debug.LogWarning(backingTrackLoadError);
+            CompletePendingStemLoad();
+            yield break;
+        }
+
+        string uri = "file://" + absolutePath.Replace("\\", "/");
+        using (UnityWebRequest request = UnityWebRequestMultimedia.GetAudioClip(uri, AudioType.UNKNOWN))
+        {
+            yield return request.SendWebRequest();
+
+#if UNITY_2020_1_OR_NEWER
+            bool failed = request.result != UnityWebRequest.Result.Success;
+#else
+            bool failed = request.isNetworkError || request.isHttpError;
+#endif
+            if (failed)
+            {
+                backingTrackLoadError = $"Failed to load stem '{absolutePath}': {request.error}";
+                Debug.LogWarning(backingTrackLoadError);
+            }
+            else
+            {
+                AudioClip loadedClip = DownloadHandlerAudioClip.GetContent(request);
+                if (loadedClip != null && targetSource != null)
+                {
+                    loadedClip.name = Path.GetFileNameWithoutExtension(absolutePath);
+                    targetSource.clip = loadedClip;
+                    StemAudioSourceState state = stemAudioSources.FirstOrDefault(s => s != null && s.source == targetSource);
+                    if (state != null)
+                        state.stemId = stemId ?? string.Empty;
+                    hasBackingTrack = true;
+                }
+            }
+        }
+
+        CompletePendingStemLoad();
+    }
+
+    private void CompletePendingStemLoad()
+    {
+        pendingStemAudioLoadCount = Mathf.Max(0, pendingStemAudioLoadCount - 1);
+        if (pendingStemAudioLoadCount > 0)
+            return;
+
+        isLoadingBackingTrack = false;
+        currentStemPlaybackActive = hasBackingTrack && stemAudioSources.Any(state => state?.source != null && state.source.clip != null);
+        if (!currentStemPlaybackActive && !string.IsNullOrWhiteSpace(currentStemSourceAudioPath) && File.Exists(currentStemSourceAudioPath))
+        {
+            StartCoroutine(LoadSingleBackingTrackFromFile(currentStemSourceAudioPath));
+            return;
+        }
+
+        ApplyPlaybackSpeedToAudio();
+        SyncAudioToSongTimer(playImmediately: !isPaused);
     }
 
     private System.Collections.IEnumerator LoadArcadeAudioStemFromFile(string absolutePath, AudioSource targetSource)
@@ -18330,6 +18971,9 @@ private void ParseDetectorPacket(string detectorPacket)
             useAllGeneratedPlaybackParts = true,
             generatedEnabledPartIds = new List<string>(),
             generatedPlaybackSelectionOverrides = new List<GeneratedPlaybackSelectionOverride>(),
+            stemMixerVolumeOverrides = new List<StemMixerVolumeOverride>(),
+            stemMixPlaybackEnabled = false,
+            stemSmartDuckingEnabled = false,
             bestArcadeScoreValue = 0,
             loopBookmarkScopes = new List<LoopBookmarkScopeEntry>(),
             trackScores = new List<TrackScoreEntry>(),
@@ -18423,6 +19067,16 @@ private void ParseDetectorPacket(string detectorPacket)
                     data.generatedEnabledPartIds = new List<string>();
                 if (data.generatedPlaybackSelectionOverrides == null)
                     data.generatedPlaybackSelectionOverrides = new List<GeneratedPlaybackSelectionOverride>();
+                if (data.stemMixerVolumeOverrides == null)
+                    data.stemMixerVolumeOverrides = new List<StemMixerVolumeOverride>();
+                data.stemMixerVolumeOverrides = data.stemMixerVolumeOverrides
+                    .Where(entry => entry != null && !string.IsNullOrWhiteSpace(entry.stemId))
+                    .Select(entry => new StemMixerVolumeOverride
+                    {
+                        stemId = entry.stemId.Trim(),
+                        volumePercent = Mathf.Clamp(entry.volumePercent, 0f, 100f)
+                    })
+                    .ToList();
                 if (!Enum.IsDefined(typeof(SongPlaybackAudioMode), data.playbackAudioMode))
                     data.playbackAudioMode = SongPlaybackAudioMode.Generated;
                 if (data.trackScores.Count == 0 && data.bestScorePercent > 0.01f && !string.IsNullOrEmpty(data.selectedMusicXmlPartId))
@@ -18480,6 +19134,8 @@ private void ParseDetectorPacket(string detectorPacket)
             : generatedEnabledPartIds != null
             ? generatedEnabledPartIds.Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             : new List<string>();
+        songMetadata.stemMixPlaybackEnabled = stemMixPlaybackEnabled;
+        songMetadata.stemSmartDuckingEnabled = stemSmartDuckingEnabled;
         songMetadata.bestScoreValue = GetHighestTrackScoreValue(songMetadata);
         songMetadata.bestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
         songMetadata.bestArcadeScoreValue = GetHighestArcadeScoreValue(songMetadata);
@@ -18637,6 +19293,17 @@ private void ParseDetectorPacket(string detectorPacket)
                             : new List<string>()
                     }).ToList()
                 : new List<GeneratedPlaybackSelectionOverride>(),
+            stemMixerVolumeOverrides = source.stemMixerVolumeOverrides != null
+                ? source.stemMixerVolumeOverrides
+                    .Where(entry => entry != null && !string.IsNullOrWhiteSpace(entry.stemId))
+                    .Select(entry => new StemMixerVolumeOverride
+                    {
+                        stemId = entry.stemId,
+                        volumePercent = Mathf.Clamp(entry.volumePercent, 0f, 100f)
+                    }).ToList()
+                : new List<StemMixerVolumeOverride>(),
+            stemMixPlaybackEnabled = source.stemMixPlaybackEnabled,
+            stemSmartDuckingEnabled = source.stemSmartDuckingEnabled,
             bestScoreValue = source.bestScoreValue,
             bestScorePercent = source.bestScorePercent,
             bestArcadeScoreValue = source.bestArcadeScoreValue,
@@ -20047,6 +20714,28 @@ private void ParseDetectorPacket(string detectorPacket)
         if (!Mathf.Approximately(backingTrackSource.volume, volume))
             backingTrackSource.volume = volume;
 
+        if (currentStemPlaybackActive)
+        {
+            ApplyStemSmartDucking();
+            for (int i = 0; i < stemAudioSources.Count; i++)
+            {
+                StemAudioSourceState state = stemAudioSources[i];
+                AudioSource source = state?.source;
+                if (source == null || source.clip == null)
+                    continue;
+
+                if (!Mathf.Approximately(source.pitch, speed))
+                    source.pitch = speed;
+
+                float stemVolume = volume * Mathf.Clamp01(GetStemMixerVolumePercent(state.stemId) / 100f);
+                if (IsSmartDuckedStem(state.stemId))
+                    stemVolume *= stemSmartDuckCurrentMultiplier;
+
+                if (!Mathf.Approximately(source.volume, stemVolume))
+                    source.volume = stemVolume;
+            }
+        }
+
         if (gameplayMode == GuitarGameplayMode.Arcade && arcadeAudioSources != null)
         {
             for (int i = 0; i < arcadeAudioSources.Count; i++)
@@ -20063,6 +20752,54 @@ private void ParseDetectorPacket(string detectorPacket)
         }
     }
 
+    private void ApplyStemSmartDucking()
+    {
+        if (!stemSmartDuckingEnabled || !currentStemPlaybackActive || chartNotes == null || chartNotes.Count == 0)
+        {
+            stemSmartDuckCurrentMultiplier = Mathf.MoveTowards(stemSmartDuckCurrentMultiplier, 1f, Time.deltaTime * 4.5f);
+            return;
+        }
+
+        float audibleTimelineTime = audioSongTimer + (audioOffsetMs / 1000f);
+        bool active = IsSelectedChartActiveNearTime(audibleTimelineTime);
+        float target = active ? Mathf.Clamp01(1f - DefaultStemSmartDuckingStrengthPercent / 100f) : 1f;
+        float speed = active ? 12f : 4.5f;
+        stemSmartDuckCurrentMultiplier = Mathf.MoveTowards(stemSmartDuckCurrentMultiplier, target, Time.deltaTime * speed);
+    }
+
+    private bool IsSmartDuckedStem(string stemId)
+    {
+        if (!stemSmartDuckingEnabled || string.IsNullOrWhiteSpace(stemId))
+            return false;
+
+        MusicXmlLoader.MusicXmlPartSummary summary = GetResolvedActiveTrackSummary();
+        bool bassTrack = IsBassLikeTrackSummary(summary);
+        if (bassTrack)
+            return string.Equals(stemId, "bass", StringComparison.OrdinalIgnoreCase);
+
+        return string.Equals(stemId, "guitar", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(stemId, "other", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsSelectedChartActiveNearTime(float timeSeconds)
+    {
+        const float PreRollSeconds = 0.035f;
+        const float ReleaseSeconds = 0.11f;
+        for (int i = 0; i < chartNotes.Count; i++)
+        {
+            NoteData note = chartNotes[i];
+            float start = note.time - PreRollSeconds;
+            if (start > timeSeconds)
+                continue;
+
+            float end = note.time + Mathf.Max(0.05f, note.duration) + ReleaseSeconds;
+            if (timeSeconds <= end)
+                return true;
+        }
+
+        return false;
+    }
+
     private void SyncAudioToSongTimer(bool playImmediately, bool forceSeek = false)
     {
         SongPlaybackAudioMode effectiveMode = GetEffectiveSongPlaybackAudioMode();
@@ -20072,6 +20809,7 @@ private void ParseDetectorPacket(string detectorPacket)
         {
             if (backingTrackSource != null && backingTrackSource.isPlaying)
                 backingTrackSource.Pause();
+            PauseStemAudioSources(skipPrimary: true);
             PauseArcadeAudioSources(skipPrimary: true);
 
             generatedSongPlayer?.SyncTransport(audioSongTimer, playbackSpeedScale, playImmediately, forceSeek);
@@ -20084,6 +20822,7 @@ private void ParseDetectorPacket(string detectorPacket)
         {
             if (backingTrackSource != null && backingTrackSource.isPlaying)
                 backingTrackSource.Pause();
+            PauseStemAudioSources(skipPrimary: true);
             PauseArcadeAudioSources(skipPrimary: true);
             return;
         }
@@ -20102,6 +20841,7 @@ private void ParseDetectorPacket(string detectorPacket)
         {
             if (backingTrackSource.isPlaying)
                 backingTrackSource.Pause();
+            PauseStemAudioSources(skipPrimary: true);
             return;
         }
 
@@ -20117,6 +20857,49 @@ private void ParseDetectorPacket(string detectorPacket)
 
         if (gameplayMode == GuitarGameplayMode.Arcade)
             SyncArcadeAudioSources(timelineAudioTime, playImmediately, forceSeek);
+        else if (currentStemPlaybackActive)
+            SyncStemAudioSources(timelineAudioTime, playImmediately, forceSeek);
+    }
+
+    private void SyncStemAudioSources(float timelineAudioTime, bool playImmediately, bool forceSeek)
+    {
+        if (stemAudioSources == null || stemAudioSources.Count <= 1)
+            return;
+
+        bool shouldBeSilentForCountdown = timelineAudioTime <= 0f;
+        for (int i = 1; i < stemAudioSources.Count; i++)
+        {
+            AudioSource source = stemAudioSources[i]?.source;
+            if (source == null || source.clip == null)
+                continue;
+
+            float audioTime = Mathf.Clamp(timelineAudioTime, 0f, source.clip.length);
+            if (forceSeek || Mathf.Abs(source.time - audioTime) > 0.04f)
+                source.time = audioTime;
+
+            if (shouldBeSilentForCountdown || !playImmediately)
+            {
+                if (source.isPlaying)
+                    source.Pause();
+                continue;
+            }
+
+            if (!source.isPlaying && audioTime < source.clip.length)
+                source.Play();
+        }
+    }
+
+    private void PauseStemAudioSources(bool skipPrimary)
+    {
+        if (stemAudioSources == null)
+            return;
+
+        for (int i = skipPrimary ? 1 : 0; i < stemAudioSources.Count; i++)
+        {
+            AudioSource source = stemAudioSources[i]?.source;
+            if (source != null && source.isPlaying)
+                source.Pause();
+        }
     }
 
     private void SyncArcadeAudioSources(float timelineAudioTime, bool playImmediately, bool forceSeek)

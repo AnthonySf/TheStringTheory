@@ -8,6 +8,8 @@ public static class ExternalContentBootstrap
 
     public static void EnsureRuntimeContentReady()
     {
+        ExternalContentPaths.EnsureUnityRootsCaptured();
+
         if (!runtimeContentReady)
         {
             Debug.Log($"[ExternalContentBootstrap] Persistent root: {ExternalContentPaths.PersistentRoot}");
@@ -16,6 +18,8 @@ public static class ExternalContentBootstrap
             EnsureDirectory(ExternalContentPaths.PersistentLicensesDirectory);
             EnsureDirectory(ExternalContentPaths.PersistentToneLabDirectory);
             EnsureDirectory(ExternalContentPaths.PersistentToneLabPresetDirectory);
+            EnsureDirectory(ExternalContentPaths.PersistentStemSeparatorDirectory);
+            EnsureDirectory(ExternalContentPaths.PersistentStemSeparatorModelCacheDirectory);
 
             SyncRecursive(ExternalContentPaths.StreamingLegalDirectory, ExternalContentPaths.PersistentLicensesDirectory);
             CopyMissingRecursive(ExternalContentPaths.StreamingToneLabDirectory, ExternalContentPaths.PersistentToneLabDirectory);
