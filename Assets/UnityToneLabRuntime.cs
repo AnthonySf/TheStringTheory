@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 using UnityEngine;
+using Unity.Collections;
 
 [DisallowMultipleComponent]
 [RequireComponent(typeof(AudioSource))]
@@ -537,6 +539,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private string[] inputDevices = Array.Empty<string>();
     private string[] outputDevices = Array.Empty<string>();
     private float[] portAudioProcessBuffer = Array.Empty<float>();
+    private float[] unityOutputMixBuffer = Array.Empty<float>();
     private string statusMessage = "Stopped";
     private bool settingsLoaded;
     private bool settingsDirty;
@@ -564,10 +567,30 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private string outputRouteLabel = "System Default Output";
     private string activeHostApiName = string.Empty;
     private ToneLabPortAudio.DuplexStream portAudioStream;
+    private ToneLabPortAudio.DeviceDescriptor[] portAudioAllDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private ToneLabPortAudio.DeviceDescriptor[] portAudioInputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private ToneLabPortAudio.DeviceDescriptor[] portAudioOutputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private bool usingPortAudioBackend;
     private float monitorVolumePercent = 100f;
+    private AdvancedRoutingOptions advancedRoutingOptions = new AdvancedRoutingOptions();
+    private string lastRoutingDiagnostics = string.Empty;
+    private string lastRoutingAttemptSummary = string.Empty;
+    private bool unityOutputCaptureActive;
+    private int unityOutputCaptureChannels = 2;
+    private int unityOutputCaptureSampleRate = PreferredSampleRate;
+    private float[] unityOutputCaptureRingBuffer = Array.Empty<float>();
+    private int unityOutputCaptureWriteIndex;
+    private int unityOutputCaptureReadIndex;
+    private int unityOutputCaptureCount;
+    private int unityOutputCaptureUnderrunCount;
+    private int unityOutputCaptureOverflowCount;
+    private int unityOutputCapturePeakQueuedSamples;
+    private float unityOutputLimiterGain = 1f;
+    private readonly object unityOutputCaptureLock = new object();
+    private GuitarBridgeServer unifiedSongSourceOwner;
+    private readonly List<UnityToneLabAudioSourceTap> unifiedSongSourceTaps = new List<UnityToneLabAudioSourceTap>();
+    private UnityToneLabAudioSourceTap[] unifiedSongSourceTapSnapshot = Array.Empty<UnityToneLabAudioSourceTap>();
+    private float nextUnifiedSongSourceRefreshTime = -1f;
 
     private CompiledPedalSlot[] compiledPedalChain = Array.Empty<CompiledPedalSlot>();
     private int preparedCompiledPedalSampleRate = -1;
@@ -642,6 +665,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public string InputRouteLabel => inputRouteLabel;
     public string OutputRouteLabel => outputRouteLabel;
     public float MonitorVolumePercent => monitorVolumePercent;
+    public string LastRoutingDiagnostics => lastRoutingDiagnostics;
+    public string LastRoutingAttemptSummary => lastRoutingAttemptSummary;
+    public bool IsAdvancedRoutingBetaEnabled => advancedRoutingOptions != null && advancedRoutingOptions.betaEnabled;
     public static string[] SharedMonitoringLatencyOptions => (string[])LatencyPresetLabels.Clone();
     public static string GetSharedMonitoringLatencyLabel(int bufferSize) => GetLatencyPresetLabel(bufferSize);
     public static int ParseSharedMonitoringLatencyBufferSize(string label)
@@ -651,6 +677,27 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (string.Equals(label, LatencyPresetLabels[2], StringComparison.Ordinal))
             return SafeDspBufferSize;
         return PreferredDspBufferSize;
+    }
+
+    public sealed class AdvancedRoutingOptions
+    {
+        public bool betaEnabled;
+        public string backendMode = SharedAudioBackendModes.Auto;
+        public bool allowFallback = true;
+        public string preferredInputDeviceName = string.Empty;
+        public string preferredOutputDeviceName = string.Empty;
+        public int sampleRate;
+        public int bufferSize = PreferredDspBufferSize;
+        public bool unifiedOutputEnabled;
+    }
+
+    private sealed class PortAudioRoutePlan
+    {
+        public ToneLabPortAudio.DeviceDescriptor InputDevice;
+        public ToneLabPortAudio.DeviceDescriptor OutputDevice;
+        public int SampleRate;
+        public int BufferSize;
+        public int Rank;
     }
 
     private void Awake()
@@ -678,13 +725,451 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         monitorVolumePercent = Mathf.Clamp(percent, 0f, 100f);
     }
 
+    public void SetAdvancedRoutingOptions(AdvancedRoutingOptions options)
+    {
+        advancedRoutingOptions = options ?? new AdvancedRoutingOptions();
+        advancedRoutingOptions.backendMode = SharedAudioBackendModes.Normalize(advancedRoutingOptions.backendMode);
+        advancedRoutingOptions.bufferSize = ResolveMonitoringBufferSize(advancedRoutingOptions.bufferSize);
+        advancedRoutingOptions.sampleRate = SharedAudioSampleRateOptions.Normalize(advancedRoutingOptions.sampleRate);
+        advancedRoutingOptions.preferredInputDeviceName = NormalizeStoredDeviceLabel(advancedRoutingOptions.preferredInputDeviceName);
+        advancedRoutingOptions.preferredOutputDeviceName = NormalizeStoredDeviceLabel(advancedRoutingOptions.preferredOutputDeviceName);
+    }
+
+    public IReadOnlyList<string> GetAdvancedInputDeviceChoices(string backendMode)
+    {
+        RefreshInputDevices();
+        List<string> choices = new List<string> { "Automatic" };
+        AppendAdvancedDeviceChoices(choices, portAudioAllDevices, input: true, backendMode);
+        return choices;
+    }
+
+    public IReadOnlyList<string> GetAdvancedOutputDeviceChoices(string backendMode)
+    {
+        RefreshInputDevices();
+        List<string> choices = new List<string> { "Automatic" };
+        AppendAdvancedDeviceChoices(choices, portAudioAllDevices, input: false, backendMode);
+        return choices;
+    }
+
+    private static string NormalizeStoredDeviceLabel(string value)
+    {
+        return SharedAudioSettingsUtility.NormalizeStoredDeviceName(value);
+    }
+
+    private static bool IsAutomaticDeviceChoice(string value)
+    {
+        return string.IsNullOrWhiteSpace(value) ||
+               string.Equals(value.Trim(), "Automatic", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetNormalizedHostApiLabel(string hostApiName)
+    {
+        if (string.IsNullOrWhiteSpace(hostApiName))
+            return "Unknown";
+
+        if (hostApiName.IndexOf("ASIO", StringComparison.OrdinalIgnoreCase) >= 0)
+            return SharedAudioBackendModes.Asio;
+
+        if (hostApiName.IndexOf("WASAPI", StringComparison.OrdinalIgnoreCase) >= 0)
+            return SharedAudioBackendModes.Wasapi;
+
+        return hostApiName.Trim();
+    }
+
+    private static int GetAdvancedHostPriority(string hostApiName)
+    {
+        string normalized = GetNormalizedHostApiLabel(hostApiName);
+        if (string.Equals(normalized, SharedAudioBackendModes.Asio, StringComparison.Ordinal))
+            return 0;
+        if (string.Equals(normalized, SharedAudioBackendModes.Wasapi, StringComparison.Ordinal))
+            return 1;
+        return int.MaxValue;
+    }
+
+    private static bool MatchesBackendMode(string hostApiName, string backendMode)
+    {
+        string normalizedBackendMode = SharedAudioBackendModes.Normalize(backendMode);
+        if (string.Equals(normalizedBackendMode, SharedAudioBackendModes.Auto, StringComparison.Ordinal))
+            return true;
+
+        return string.Equals(GetNormalizedHostApiLabel(hostApiName), normalizedBackendMode, StringComparison.Ordinal);
+    }
+
+    private static string BuildAdvancedDeviceChoiceLabel(ToneLabPortAudio.DeviceDescriptor descriptor)
+    {
+        if (descriptor == null)
+            return string.Empty;
+
+        string deviceName = string.IsNullOrWhiteSpace(descriptor.Name)
+            ? NormalizePortAudioDeviceName(descriptor.DisplayName)
+            : descriptor.Name.Trim();
+        string hostLabel = GetNormalizedHostApiLabel(descriptor.HostApiName);
+        return $"{deviceName} [{hostLabel}] (#{descriptor.Index})";
+    }
+
+    private static string BuildAdvancedDeviceMatchKey(string label)
+    {
+        if (string.IsNullOrWhiteSpace(label))
+            return string.Empty;
+
+        string trimmed = NormalizeStoredDeviceLabel(label);
+        int suffixIndex = trimmed.LastIndexOf(" (#", StringComparison.Ordinal);
+        if (suffixIndex >= 0 && trimmed.EndsWith(")", StringComparison.Ordinal))
+            trimmed = trimmed.Substring(0, suffixIndex);
+        return trimmed.Trim().ToLowerInvariant();
+    }
+
+    private static string BuildAdvancedDeviceMatchKey(ToneLabPortAudio.DeviceDescriptor descriptor)
+    {
+        if (descriptor == null)
+            return string.Empty;
+
+        string deviceName = string.IsNullOrWhiteSpace(descriptor.Name)
+            ? NormalizePortAudioDeviceName(descriptor.DisplayName)
+            : descriptor.Name.Trim();
+        return $"{deviceName} [{GetNormalizedHostApiLabel(descriptor.HostApiName)}]".Trim().ToLowerInvariant();
+    }
+
+    private static bool SameHostApi(ToneLabPortAudio.DeviceDescriptor left, ToneLabPortAudio.DeviceDescriptor right)
+    {
+        if (left == null || right == null)
+            return false;
+
+        return string.Equals(
+            GetNormalizedHostApiLabel(left.HostApiName),
+            GetNormalizedHostApiLabel(right.HostApiName),
+            StringComparison.Ordinal);
+    }
+
+    private static int ResolveRequestedChannelCount(ToneLabPortAudio.DeviceDescriptor descriptor, bool input)
+    {
+        if (descriptor == null)
+            return 1;
+
+        int maxChannels = input ? descriptor.MaxInputChannels : descriptor.MaxOutputChannels;
+        return Mathf.Clamp(maxChannels, 1, 2);
+    }
+
+    private GuitarBridgeServer ResolveUnifiedSongSourceOwner()
+    {
+        if (unifiedSongSourceOwner == null)
+            unifiedSongSourceOwner = GetComponentInParent<GuitarBridgeServer>();
+        return unifiedSongSourceOwner;
+    }
+
+    private void RefreshUnifiedSongSourceTaps(bool forceBufferReset)
+    {
+        if (!advancedRoutingOptions.betaEnabled || !advancedRoutingOptions.unifiedOutputEnabled)
+        {
+            StopUnifiedSongSourceTaps();
+            return;
+        }
+
+        GuitarBridgeServer owner = ResolveUnifiedSongSourceOwner();
+        List<AudioSource> desiredSources = owner != null ? owner.GetToneLabUnifiedPlaybackSources() : null;
+        desiredSources ??= new List<AudioSource>();
+
+        for (int i = unifiedSongSourceTaps.Count - 1; i >= 0; i--)
+        {
+            UnityToneLabAudioSourceTap tap = unifiedSongSourceTaps[i];
+            AudioSource tappedSource = tap != null ? tap.Source : null;
+            bool keep = tappedSource != null && desiredSources.Contains(tappedSource);
+            if (keep)
+                continue;
+
+            if (tap != null)
+                tap.SetCaptureState(false, false);
+            unifiedSongSourceTaps.RemoveAt(i);
+        }
+
+        for (int i = 0; i < desiredSources.Count; i++)
+        {
+            AudioSource source = desiredSources[i];
+            if (source == null)
+                continue;
+
+            UnityToneLabAudioSourceTap tap = unifiedSongSourceTaps.FirstOrDefault(candidate => candidate != null && candidate.Source == source);
+            bool isNewTap = tap == null;
+            if (tap == null)
+            {
+                tap = source.GetComponent<UnityToneLabAudioSourceTap>();
+                if (tap == null)
+                    tap = source.gameObject.AddComponent<UnityToneLabAudioSourceTap>();
+                unifiedSongSourceTaps.Add(tap);
+            }
+
+            tap.SetCaptureState(true, suppress: true);
+            tap.SetOutputGain(source.mute ? 0f : source.volume);
+            if (forceBufferReset || isNewTap)
+                tap.ResetCapturedAudio();
+        }
+
+        unifiedSongSourceTapSnapshot = unifiedSongSourceTaps
+            .Where(tap => tap != null && tap.Source != null)
+            .ToArray();
+    }
+
+    private void StopUnifiedSongSourceTaps()
+    {
+        for (int i = 0; i < unifiedSongSourceTaps.Count; i++)
+        {
+            UnityToneLabAudioSourceTap tap = unifiedSongSourceTaps[i];
+            if (tap != null)
+                tap.SetCaptureState(false, false);
+        }
+
+        unifiedSongSourceTaps.Clear();
+        unifiedSongSourceTapSnapshot = Array.Empty<UnityToneLabAudioSourceTap>();
+        nextUnifiedSongSourceRefreshTime = -1f;
+    }
+
+    private bool TryStartUnifiedSongSourceTaps(out string notice)
+    {
+        RefreshUnifiedSongSourceTaps(forceBufferReset: true);
+        nextUnifiedSongSourceRefreshTime = Time.unscaledTime + 0.25f;
+        if (unifiedSongSourceTapSnapshot.Length > 0)
+        {
+            notice = $"Unified source taps active ({unifiedSongSourceTapSnapshot.Length} source{(unifiedSongSourceTapSnapshot.Length == 1 ? string.Empty : "s")}).";
+            return true;
+        }
+
+        notice = "Unified source taps armed; waiting for song audio sources.";
+        return true;
+    }
+
+    private void AppendAdvancedDeviceChoices(List<string> choices, ToneLabPortAudio.DeviceDescriptor[] devices, bool input, string backendMode)
+    {
+        if (choices == null || devices == null || devices.Length == 0)
+            return;
+
+        IEnumerable<ToneLabPortAudio.DeviceDescriptor> filtered = devices
+            .Where(device => device != null)
+            .Where(device => input ? device.MaxInputChannels > 0 : device.MaxOutputChannels > 0)
+            .Where(device => MatchesBackendMode(device.HostApiName, backendMode))
+            .OrderBy(device => GetAdvancedHostPriority(device.HostApiName))
+            .ThenBy(device => GetNormalizedHostApiLabel(device.HostApiName), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(device => device.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(device => device.Index);
+
+        foreach (ToneLabPortAudio.DeviceDescriptor descriptor in filtered)
+        {
+            string label = BuildAdvancedDeviceChoiceLabel(descriptor);
+            bool exists = false;
+            for (int i = 0; i < choices.Count; i++)
+            {
+                if (string.Equals(choices[i], label, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (!exists)
+                choices.Add(label);
+        }
+    }
+
+    private ToneLabPortAudio.DeviceDescriptor ResolveAdvancedDeviceSelection(string selectedLabel, IReadOnlyList<ToneLabPortAudio.DeviceDescriptor> devices, bool input)
+    {
+        if (IsAutomaticDeviceChoice(selectedLabel) || devices == null || devices.Count == 0)
+            return null;
+
+        for (int i = 0; i < devices.Count; i++)
+        {
+            ToneLabPortAudio.DeviceDescriptor descriptor = devices[i];
+            if (descriptor == null)
+                continue;
+
+            string exactLabel = BuildAdvancedDeviceChoiceLabel(descriptor);
+            if (string.Equals(exactLabel, selectedLabel, StringComparison.OrdinalIgnoreCase))
+                return descriptor;
+        }
+
+        string selectionKey = BuildAdvancedDeviceMatchKey(selectedLabel);
+        for (int i = 0; i < devices.Count; i++)
+        {
+            ToneLabPortAudio.DeviceDescriptor descriptor = devices[i];
+            if (descriptor == null)
+                continue;
+
+            if (string.Equals(BuildAdvancedDeviceMatchKey(descriptor), selectionKey, StringComparison.Ordinal))
+                return descriptor;
+        }
+
+        ToneLabPortAudio.DeviceDescriptor[] candidateArray = devices.ToArray();
+        ToneLabPortAudio.DeviceDescriptor legacyMatch = ResolvePortAudioDevice(selectedLabel, candidateArray);
+        if (legacyMatch != null && (input ? legacyMatch.MaxInputChannels > 0 : legacyMatch.MaxOutputChannels > 0))
+            return legacyMatch;
+
+        return null;
+    }
+
+    private static List<int> BuildSampleRateCandidates(int requestedSampleRate, ToneLabPortAudio.DeviceDescriptor inputDevice, ToneLabPortAudio.DeviceDescriptor outputDevice, bool allowFallback, int forcedSampleRate)
+    {
+        List<int> rates = new List<int>();
+
+        void AddRate(int value)
+        {
+            if (value <= 0 || rates.Contains(value))
+                return;
+            rates.Add(value);
+        }
+
+        if (forcedSampleRate > 0)
+        {
+            AddRate(forcedSampleRate);
+            return rates;
+        }
+
+        AddRate(requestedSampleRate);
+        AddRate(ResolveSampleRate(inputDevice, outputDevice));
+        if (allowFallback)
+        {
+            AddRate(48000);
+            AddRate(44100);
+        }
+
+        if (rates.Count == 0)
+            AddRate(PreferredSampleRate);
+
+        return rates;
+    }
+
+    private static List<int> BuildBufferSizeCandidates(int requestedBufferSize, bool allowFallback)
+    {
+        List<int> buffers = new List<int>();
+
+        void AddBuffer(int value)
+        {
+            int resolved = ResolveMonitoringBufferSize(value);
+            if (!buffers.Contains(resolved))
+                buffers.Add(resolved);
+        }
+
+        AddBuffer(requestedBufferSize);
+        if (allowFallback)
+        {
+            AddBuffer(PreferredDspBufferSize);
+            AddBuffer(SafeDspBufferSize);
+            AddBuffer(UltraLowDspBufferSize);
+        }
+
+        return buffers;
+    }
+
+    private List<PortAudioRoutePlan> BuildAdvancedRoutePlans()
+    {
+        string backendMode = SharedAudioBackendModes.Normalize(advancedRoutingOptions.backendMode);
+        bool allowFallback = advancedRoutingOptions.allowFallback;
+        int forcedUnifiedSampleRate = advancedRoutingOptions.unifiedOutputEnabled ? GetUnityOutputSampleRate() : 0;
+
+        List<ToneLabPortAudio.DeviceDescriptor> inputCandidates = portAudioAllDevices
+            .Where(device => device != null && device.MaxInputChannels > 0 && MatchesBackendMode(device.HostApiName, backendMode))
+            .OrderBy(device => GetAdvancedHostPriority(device.HostApiName))
+            .ThenBy(device => device.Index)
+            .ToList();
+        List<ToneLabPortAudio.DeviceDescriptor> outputCandidates = portAudioAllDevices
+            .Where(device => device != null && device.MaxOutputChannels > 0 && MatchesBackendMode(device.HostApiName, backendMode))
+            .OrderBy(device => GetAdvancedHostPriority(device.HostApiName))
+            .ThenBy(device => device.Index)
+            .ToList();
+
+        ToneLabPortAudio.DeviceDescriptor selectedInput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredInputDeviceName, inputCandidates, input: true)
+            ?? ResolvePortAudioDevice(settings.input_device_name, inputCandidates.ToArray());
+        ToneLabPortAudio.DeviceDescriptor selectedOutput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredOutputDeviceName, outputCandidates, input: false)
+            ?? ResolvePortAudioDevice(settings.output_device_name, outputCandidates.ToArray());
+
+        List<(ToneLabPortAudio.DeviceDescriptor input, ToneLabPortAudio.DeviceDescriptor output, int rank)> rankedPairs = new List<(ToneLabPortAudio.DeviceDescriptor, ToneLabPortAudio.DeviceDescriptor, int)>();
+        for (int i = 0; i < inputCandidates.Count; i++)
+        {
+            ToneLabPortAudio.DeviceDescriptor inputDevice = inputCandidates[i];
+            for (int j = 0; j < outputCandidates.Count; j++)
+            {
+                ToneLabPortAudio.DeviceDescriptor outputDevice = outputCandidates[j];
+                if (!SameHostApi(inputDevice, outputDevice))
+                    continue;
+
+                int rank = 0;
+                if (selectedInput != null && inputDevice.Index != selectedInput.Index)
+                    rank += 10;
+                if (selectedOutput != null && outputDevice.Index != selectedOutput.Index)
+                    rank += 10;
+                rank += GetAdvancedHostPriority(inputDevice.HostApiName) * 100;
+                rankedPairs.Add((inputDevice, outputDevice, rank));
+            }
+        }
+
+        if (rankedPairs.Count == 0)
+            return new List<PortAudioRoutePlan>();
+
+        rankedPairs = rankedPairs
+            .OrderBy(pair => pair.rank)
+            .ThenBy(pair => pair.input.Index)
+            .ThenBy(pair => pair.output.Index)
+            .ToList();
+
+        if (!allowFallback)
+            rankedPairs = rankedPairs.Take(1).ToList();
+
+        List<PortAudioRoutePlan> plans = new List<PortAudioRoutePlan>();
+        for (int i = 0; i < rankedPairs.Count; i++)
+        {
+            (ToneLabPortAudio.DeviceDescriptor inputDevice, ToneLabPortAudio.DeviceDescriptor outputDevice, int rank) = rankedPairs[i];
+            List<int> sampleRates = BuildSampleRateCandidates(advancedRoutingOptions.sampleRate, inputDevice, outputDevice, allowFallback, forcedUnifiedSampleRate);
+            List<int> bufferSizes = BuildBufferSizeCandidates(advancedRoutingOptions.bufferSize, allowFallback);
+            for (int sampleIndex = 0; sampleIndex < sampleRates.Count; sampleIndex++)
+            {
+                for (int bufferIndex = 0; bufferIndex < bufferSizes.Count; bufferIndex++)
+                {
+                    plans.Add(new PortAudioRoutePlan
+                    {
+                        InputDevice = inputDevice,
+                        OutputDevice = outputDevice,
+                        SampleRate = sampleRates[sampleIndex],
+                        BufferSize = bufferSizes[bufferIndex],
+                        Rank = rank + (sampleIndex * 10) + bufferIndex
+                    });
+                }
+            }
+        }
+
+        return plans
+            .OrderBy(plan => plan.Rank)
+            .ThenBy(plan => plan.InputDevice.Index)
+            .ThenBy(plan => plan.OutputDevice.Index)
+            .ToList();
+    }
+
     private void Update()
     {
         if (settingsDirty && Time.unscaledTime >= nextSettingsSaveTime)
             FlushSettingsToDisk();
 
         if (usingPortAudioBackend)
+        {
+            if (advancedRoutingOptions.betaEnabled && advancedRoutingOptions.unifiedOutputEnabled)
+            {
+                if (Time.unscaledTime >= nextUnifiedSongSourceRefreshTime)
+                {
+                    RefreshUnifiedSongSourceTaps(forceBufferReset: false);
+                    nextUnifiedSongSourceRefreshTime = Time.unscaledTime + 0.25f;
+                }
+
+                for (int i = 0; i < unifiedSongSourceTaps.Count; i++)
+                {
+                    UnityToneLabAudioSourceTap tap = unifiedSongSourceTaps[i];
+                    AudioSource source = tap != null ? tap.Source : null;
+                    if (tap == null || source == null)
+                        continue;
+
+                    tap.SetOutputGain(source.mute ? 0f : source.volume);
+                }
+            }
+
+            if (unityOutputCaptureActive)
+                PumpUnityOutputCapture();
             return;
+        }
 
         if (monitoring && pendingMicrophoneClip != null && !string.IsNullOrWhiteSpace(pendingDeviceName))
         {
@@ -781,6 +1266,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (ToneLabPortAudio.TryEnsureInitialized(out string portAudioError))
         {
             ToneLabPortAudio.DeviceDescriptor[] allDevices = ToneLabPortAudio.EnumerateDevices().ToArray();
+            portAudioAllDevices = allDevices;
             portAudioInputDevices = ToneLabPortAudio.GetPreferredInputDevices(allDevices).ToArray();
             portAudioOutputDevices = ToneLabPortAudio.GetPreferredOutputDevices(allDevices).ToArray();
             inputDevices = portAudioInputDevices.Select(device => device.DisplayName).ToArray();
@@ -824,6 +1310,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         portAudioInputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
         portAudioOutputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
+        portAudioAllDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
         inputDevices = Microphone.devices ?? Array.Empty<string>();
         outputDevices = new[] { "System Default" };
         if (inputDevices.Length == 0)
@@ -1068,93 +1555,13 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         EnsureSettingsLoaded();
         RefreshInputDevices();
+        lastRoutingDiagnostics = string.Empty;
+        lastRoutingAttemptSummary = string.Empty;
 
-        if (portAudioInputDevices.Length > 0)
-        {
-            StopMonitoringInternal(restoreAudioConfiguration: false);
+        if (advancedRoutingOptions != null && advancedRoutingOptions.betaEnabled)
+            return TryStartMonitoringAdvancedPath();
 
-            ToneLabPortAudio.DeviceDescriptor inputDevice = ResolvePortAudioDevice(settings.input_device_name, portAudioInputDevices) ?? portAudioInputDevices[0];
-            ToneLabPortAudio.DeviceDescriptor outputDevice = ResolvePortAudioDevice(settings.output_device_name, portAudioOutputDevices)
-                ?? (portAudioOutputDevices.Length > 0 ? portAudioOutputDevices[0] : null);
-
-            if (inputDevice == null || outputDevice == null)
-            {
-                statusMessage = "No PortAudio duplex route available.";
-                return false;
-            }
-
-            int sampleRate = ResolveSampleRate(inputDevice, outputDevice);
-            int outputChannels = Mathf.Clamp(outputDevice.MaxOutputChannels, 1, 2);
-            int monitoringBufferSize = ResolveMonitoringBufferSize(settings.monitoring_buffer_size);
-            uint framesPerBuffer = (uint)monitoringBufferSize;
-
-            string portAudioStartError = string.Empty;
-            bool started = portAudioStream != null && portAudioStream.Start(
-                inputDevice.Index,
-                outputDevice.Index,
-                1,
-                outputChannels,
-                sampleRate,
-                framesPerBuffer,
-                Math.Max(0.0, inputDevice.DefaultLowInputLatency),
-                Math.Max(0.0, outputDevice.DefaultLowOutputLatency),
-                out portAudioStartError);
-
-            if (!started)
-            {
-                statusMessage = portAudioStartError;
-                Debug.LogWarning($"[UnityToneLabRuntime] PortAudio start failed: {portAudioStartError}");
-                return false;
-            }
-
-            monitoring = true;
-            usingPortAudioBackend = true;
-            awaitingMicrophoneStart = false;
-            activeSampleRate = sampleRate;
-            activeDspBufferSize = monitoringBufferSize;
-            activeHostApiName = outputDevice.HostApiName;
-            pendingDeviceName = inputDevice.DisplayName;
-            inputRouteLabel = inputDevice.DisplayName;
-            outputRouteLabel = outputDevice.DisplayName;
-            preparedCompiledPedalSampleRate = -1;
-            preparedCompiledPedalChannelCount = -1;
-            statusMessage = $"Live  {inputDevice.DisplayName}  \u2022  {sampleRate} Hz  \u2022  Buffer {monitoringBufferSize}  \u2022  PortAudio  {outputDevice.HostApiName}";
-            return true;
-        }
-
-        if (inputDevices.Length == 0)
-        {
-            statusMessage = "No microphone inputs found.";
-            return false;
-        }
-
-        ApplyLowLatencyAudioConfiguration();
-        StopMonitoringInternal(restoreAudioConfiguration: false);
-
-        pendingDeviceName = settings.input_device_name;
-        if (string.IsNullOrWhiteSpace(pendingDeviceName))
-            pendingDeviceName = inputDevices[0];
-        inputRouteLabel = pendingDeviceName;
-
-        try
-        {
-            pendingMicrophoneClip = Microphone.Start(pendingDeviceName, true, MicrophoneClipLengthSeconds, PreferredSampleRate);
-            awaitingMicrophoneStart = pendingMicrophoneClip != null;
-            activeHostApiName = awaitingMicrophoneStart ? "Unity Audio" : string.Empty;
-            microphoneStartupDeadline = Time.unscaledTime + MicrophoneStartupTimeoutSeconds;
-            statusMessage = awaitingMicrophoneStart
-                ? $"Starting live monitoring on {pendingDeviceName}..."
-                : "Failed to allocate microphone clip.";
-            return awaitingMicrophoneStart;
-        }
-        catch (Exception ex)
-        {
-            awaitingMicrophoneStart = false;
-            pendingMicrophoneClip = null;
-            statusMessage = $"Microphone start failed: {ex.Message}";
-            Debug.LogWarning($"[UnityToneLabRuntime] Failed to start microphone '{pendingDeviceName}': {ex.Message}");
-            return false;
-        }
+        return TryStartMonitoringLegacyPath();
     }
 
     public void RestartMonitoring()
@@ -1171,8 +1578,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private void StopMonitoringInternal(bool restoreAudioConfiguration)
     {
         usingPortAudioBackend = false;
+        StopUnityOutputCapture();
         if (portAudioStream != null && portAudioStream.IsRunning)
             portAudioStream.Stop();
+        StopUnifiedSongSourceTaps();
 
         if (monitorSource != null && monitorSource.isPlaying)
             monitorSource.Stop();
@@ -1212,6 +1621,243 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         inputRouteLabel = string.IsNullOrWhiteSpace(settings?.input_device_name) ? "Automatic Input" : settings.input_device_name;
         statusMessage = "Stopped";
+    }
+
+    private bool TryStartMonitoringLegacyPath()
+    {
+        if (portAudioInputDevices.Length > 0)
+        {
+            StopMonitoringInternal(restoreAudioConfiguration: false);
+
+            ToneLabPortAudio.DeviceDescriptor inputDevice = ResolvePortAudioDevice(settings.input_device_name, portAudioInputDevices) ?? portAudioInputDevices[0];
+            ToneLabPortAudio.DeviceDescriptor outputDevice = ResolvePortAudioDevice(settings.output_device_name, portAudioOutputDevices)
+                ?? (portAudioOutputDevices.Length > 0 ? portAudioOutputDevices[0] : null);
+
+            if (inputDevice == null || outputDevice == null)
+            {
+                statusMessage = "No PortAudio duplex route available.";
+                return false;
+            }
+
+            return TryStartPortAudioRoute(
+                inputDevice,
+                outputDevice,
+                ResolveSampleRate(inputDevice, outputDevice),
+                ResolveMonitoringBufferSize(settings.monitoring_buffer_size),
+                enableUnityOutputCapture: false,
+                out _,
+                out _);
+        }
+
+        return TryStartUnityMicrophoneMonitoring();
+    }
+
+    private bool TryStartMonitoringAdvancedPath()
+    {
+        StringBuilder diagnostics = new StringBuilder();
+        StringBuilder attempts = new StringBuilder();
+        string backendMode = SharedAudioBackendModes.Normalize(advancedRoutingOptions.backendMode);
+        bool allowFallback = advancedRoutingOptions.allowFallback;
+
+        diagnostics.AppendLine($"Beta enabled: {advancedRoutingOptions.betaEnabled}");
+        diagnostics.AppendLine($"Backend mode: {backendMode}");
+        diagnostics.AppendLine($"Allow fallback: {allowFallback}");
+        diagnostics.AppendLine($"Unified output beta: {advancedRoutingOptions.unifiedOutputEnabled}");
+        if (advancedRoutingOptions.unifiedOutputEnabled)
+            diagnostics.AppendLine($"Unified output sample rate lock: {GetUnityOutputSampleRate()} Hz");
+        diagnostics.AppendLine($"Requested input: {(string.IsNullOrWhiteSpace(advancedRoutingOptions.preferredInputDeviceName) ? "Automatic" : advancedRoutingOptions.preferredInputDeviceName)}");
+        diagnostics.AppendLine($"Requested output: {(string.IsNullOrWhiteSpace(advancedRoutingOptions.preferredOutputDeviceName) ? "Automatic" : advancedRoutingOptions.preferredOutputDeviceName)}");
+        diagnostics.AppendLine($"Requested sample rate: {SharedAudioSampleRateOptions.ToLabel(advancedRoutingOptions.sampleRate)}");
+        diagnostics.AppendLine($"Requested buffer: {ResolveMonitoringBufferSize(advancedRoutingOptions.bufferSize)}");
+
+        List<PortAudioRoutePlan> plans = BuildAdvancedRoutePlans();
+        diagnostics.AppendLine($"PortAudio devices: {portAudioAllDevices.Length}");
+        diagnostics.AppendLine($"Candidate route plans: {plans.Count}");
+
+        if (plans.Count > 0)
+        {
+            StopMonitoringInternal(restoreAudioConfiguration: false);
+            for (int i = 0; i < plans.Count; i++)
+            {
+                PortAudioRoutePlan plan = plans[i];
+                attempts.AppendLine(
+                    $"Attempt {i + 1}: {BuildAdvancedDeviceChoiceLabel(plan.InputDevice)} -> {BuildAdvancedDeviceChoiceLabel(plan.OutputDevice)} @ {plan.SampleRate} Hz / {plan.BufferSize}");
+
+                if (TryStartPortAudioRoute(
+                    plan.InputDevice,
+                    plan.OutputDevice,
+                    plan.SampleRate,
+                    plan.BufferSize,
+                    advancedRoutingOptions.unifiedOutputEnabled,
+                    out string error,
+                    out string captureNotice))
+                {
+                    if (!string.IsNullOrWhiteSpace(captureNotice))
+                        attempts.AppendLine($"  Note: {captureNotice}");
+                    attempts.AppendLine("  Result: success");
+                    lastRoutingDiagnostics = diagnostics.ToString().TrimEnd();
+                    lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
+                    return true;
+                }
+
+                attempts.AppendLine($"  Result: {error}");
+                Debug.LogWarning($"[UnityToneLabRuntime] Advanced PortAudio attempt failed: {error}");
+            }
+        }
+
+        if (allowFallback)
+        {
+            attempts.AppendLine("Fallback: trying legacy monitoring path.");
+            bool fallbackStarted = TryStartMonitoringLegacyPath();
+            if (fallbackStarted)
+            {
+                attempts.AppendLine("  Result: legacy path success");
+                statusMessage = $"{statusMessage}  (advanced fallback)";
+                lastRoutingDiagnostics = diagnostics.ToString().TrimEnd();
+                lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
+                return true;
+            }
+
+            attempts.AppendLine($"  Result: legacy path failed ({statusMessage})");
+        }
+
+        if (plans.Count == 0)
+        {
+            statusMessage = backendMode == SharedAudioBackendModes.Auto
+                ? "Advanced audio beta found no valid PortAudio duplex route."
+                : $"Advanced audio beta found no valid {backendMode} duplex route.";
+        }
+
+        lastRoutingDiagnostics = diagnostics.ToString().TrimEnd();
+        lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
+        return false;
+    }
+
+    private bool TryStartPortAudioRoute(
+        ToneLabPortAudio.DeviceDescriptor inputDevice,
+        ToneLabPortAudio.DeviceDescriptor outputDevice,
+        int sampleRate,
+        int monitoringBufferSize,
+        bool enableUnityOutputCapture,
+        out string error,
+        out string captureNotice)
+    {
+        error = string.Empty;
+        captureNotice = string.Empty;
+        if (inputDevice == null || outputDevice == null)
+        {
+            error = "No PortAudio duplex route available.";
+            statusMessage = error;
+            return false;
+        }
+
+        if (enableUnityOutputCapture)
+        {
+            int unityOutputSampleRate = GetUnityOutputSampleRate();
+            if (sampleRate != unityOutputSampleRate)
+                sampleRate = unityOutputSampleRate;
+        }
+
+        int inputChannels = ResolveRequestedChannelCount(inputDevice, input: true);
+        int outputChannels = ResolveRequestedChannelCount(outputDevice, input: false);
+        uint framesPerBuffer = (uint)ResolveMonitoringBufferSize(monitoringBufferSize);
+
+        string portAudioStartError = string.Empty;
+        bool started = portAudioStream != null && portAudioStream.Start(
+            inputDevice.Index,
+            outputDevice.Index,
+            inputChannels,
+            outputChannels,
+            sampleRate,
+            framesPerBuffer,
+            Math.Max(0.0, inputDevice.DefaultLowInputLatency),
+            Math.Max(0.0, outputDevice.DefaultLowOutputLatency),
+            out portAudioStartError);
+
+        if (!started)
+        {
+            error = portAudioStartError;
+            statusMessage = portAudioStartError;
+            return false;
+        }
+
+        monitoring = true;
+        usingPortAudioBackend = true;
+        awaitingMicrophoneStart = false;
+        activeSampleRate = sampleRate;
+        activeDspBufferSize = ResolveMonitoringBufferSize(monitoringBufferSize);
+        activeHostApiName = outputDevice.HostApiName;
+        pendingDeviceName = inputDevice.DisplayName;
+        inputRouteLabel = BuildAdvancedDeviceChoiceLabel(inputDevice);
+        outputRouteLabel = BuildAdvancedDeviceChoiceLabel(outputDevice);
+        preparedCompiledPedalSampleRate = -1;
+        preparedCompiledPedalChannelCount = -1;
+
+        if (enableUnityOutputCapture)
+        {
+            bool usingDirectSourceTaps = TryStartUnifiedSongSourceTaps(out captureNotice);
+            if (!usingDirectSourceTaps)
+            {
+                if (!TryStartUnityOutputCapture(out string captureError))
+                {
+                    if (!advancedRoutingOptions.allowFallback)
+                    {
+                        error = captureError;
+                        statusMessage = captureError;
+                        StopMonitoringInternal(restoreAudioConfiguration: false);
+                        return false;
+                    }
+
+                    captureNotice = captureError;
+                }
+                else
+                {
+                    captureNotice = "Unified output capture active.";
+                }
+            }
+        }
+
+        statusMessage = $"Live  {inputRouteLabel}  \u2022  {sampleRate} Hz  \u2022  Buffer {activeDspBufferSize}  \u2022  PortAudio  {GetNormalizedHostApiLabel(outputDevice.HostApiName)}";
+        if (!string.IsNullOrWhiteSpace(captureNotice))
+            statusMessage = $"{statusMessage}  \u2022  {captureNotice}";
+        return true;
+    }
+
+    private bool TryStartUnityMicrophoneMonitoring()
+    {
+        if (inputDevices.Length == 0)
+        {
+            statusMessage = "No microphone inputs found.";
+            return false;
+        }
+
+        ApplyLowLatencyAudioConfiguration();
+        StopMonitoringInternal(restoreAudioConfiguration: false);
+
+        pendingDeviceName = settings.input_device_name;
+        if (string.IsNullOrWhiteSpace(pendingDeviceName))
+            pendingDeviceName = inputDevices[0];
+        inputRouteLabel = pendingDeviceName;
+
+        try
+        {
+            pendingMicrophoneClip = Microphone.Start(pendingDeviceName, true, MicrophoneClipLengthSeconds, PreferredSampleRate);
+            awaitingMicrophoneStart = pendingMicrophoneClip != null;
+            activeHostApiName = awaitingMicrophoneStart ? "Unity Audio" : string.Empty;
+            microphoneStartupDeadline = Time.unscaledTime + MicrophoneStartupTimeoutSeconds;
+            statusMessage = awaitingMicrophoneStart
+                ? $"Starting live monitoring on {pendingDeviceName}..."
+                : "Failed to allocate microphone clip.";
+            return awaitingMicrophoneStart;
+        }
+        catch (Exception ex)
+        {
+            awaitingMicrophoneStart = false;
+            pendingMicrophoneClip = null;
+            statusMessage = $"Microphone start failed: {ex.Message}";
+            Debug.LogWarning($"[UnityToneLabRuntime] Failed to start microphone '{pendingDeviceName}': {ex.Message}");
+            return false;
+        }
     }
 
     private void BeginMicrophonePlayback(int requiredLeadSamples)
@@ -1556,6 +2202,397 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return resolved;
     }
 
+    private static int ResolveUnityOutputCaptureChannelCount()
+    {
+        switch (AudioSettings.speakerMode)
+        {
+            case AudioSpeakerMode.Mono:
+                return 1;
+            case AudioSpeakerMode.Stereo:
+            case AudioSpeakerMode.Prologic:
+                return 2;
+            case AudioSpeakerMode.Quad:
+                return 4;
+            case AudioSpeakerMode.Surround:
+                return 5;
+            case AudioSpeakerMode.Mode5point1:
+                return 6;
+            case AudioSpeakerMode.Mode7point1:
+                return 8;
+            default:
+                return 2;
+        }
+    }
+
+    private static int GetUnityOutputSampleRate()
+    {
+        int sampleRate = AudioSettings.outputSampleRate;
+        return sampleRate > 0 ? sampleRate : PreferredSampleRate;
+    }
+
+    private bool TryStartUnityOutputCapture(out string error)
+    {
+        error = string.Empty;
+        if (unityOutputCaptureActive)
+            return true;
+
+        try
+        {
+            unityOutputCaptureChannels = ResolveUnityOutputCaptureChannelCount();
+            unityOutputCaptureSampleRate = GetUnityOutputSampleRate();
+            bool started = AudioRenderer.Start();
+            if (!started)
+            {
+                error = "Unity output capture could not start.";
+                return false;
+            }
+
+            unityOutputCaptureActive = true;
+            unityOutputCaptureRingBuffer = Array.Empty<float>();
+            unityOutputCaptureWriteIndex = 0;
+            unityOutputCaptureReadIndex = 0;
+            unityOutputCaptureCount = 0;
+            unityOutputCaptureUnderrunCount = 0;
+            unityOutputCaptureOverflowCount = 0;
+            unityOutputCapturePeakQueuedSamples = 0;
+            unityOutputLimiterGain = 1f;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = $"Unity output capture failed: {ex.Message}";
+            return false;
+        }
+    }
+
+    private void StopUnityOutputCapture()
+    {
+        if (!unityOutputCaptureActive)
+            return;
+
+        try
+        {
+            AudioRenderer.Stop();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[UnityToneLabRuntime] Failed to stop Unity output capture: {ex.Message}");
+        }
+
+        unityOutputCaptureActive = false;
+        unityOutputCaptureRingBuffer = Array.Empty<float>();
+        unityOutputCaptureWriteIndex = 0;
+        unityOutputCaptureReadIndex = 0;
+        unityOutputCaptureCount = 0;
+        unityOutputCaptureUnderrunCount = 0;
+        unityOutputCaptureOverflowCount = 0;
+        unityOutputCapturePeakQueuedSamples = 0;
+        unityOutputLimiterGain = 1f;
+    }
+
+    private void PumpUnityOutputCapture()
+    {
+        if (!unityOutputCaptureActive)
+            return;
+
+        int sampleCount = 0;
+        NativeArray<float> captureBuffer = default;
+        try
+        {
+            sampleCount = AudioRenderer.GetSampleCountForCaptureFrame();
+            if (sampleCount <= 0)
+                return;
+
+            captureBuffer = new NativeArray<float>(sampleCount, Allocator.Temp);
+            if (!AudioRenderer.Render(captureBuffer))
+                return;
+
+            AppendUnityOutputCapturedSamples(captureBuffer);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[UnityToneLabRuntime] Unity output capture render failed: {ex.Message}");
+            StopUnityOutputCapture();
+        }
+        finally
+        {
+            if (captureBuffer.IsCreated)
+                captureBuffer.Dispose();
+        }
+    }
+
+    private void AppendUnityOutputCapturedSamples(NativeArray<float> samples)
+    {
+        if (!samples.IsCreated || samples.Length <= 0)
+            return;
+
+        lock (unityOutputCaptureLock)
+        {
+            int requiredCapacity = Mathf.Max(samples.Length * 4, unityOutputCaptureCount + samples.Length + 2048);
+            if (unityOutputCaptureRingBuffer == null || unityOutputCaptureRingBuffer.Length < requiredCapacity)
+            {
+                float[] replacement = new float[requiredCapacity];
+                for (int i = 0; i < unityOutputCaptureCount; i++)
+                {
+                    int sourceIndex = (unityOutputCaptureReadIndex + i) % Mathf.Max(1, unityOutputCaptureRingBuffer.Length);
+                    replacement[i] = unityOutputCaptureRingBuffer.Length > 0 ? unityOutputCaptureRingBuffer[sourceIndex] : 0f;
+                }
+
+                unityOutputCaptureRingBuffer = replacement;
+                unityOutputCaptureReadIndex = 0;
+                unityOutputCaptureWriteIndex = unityOutputCaptureCount;
+            }
+
+            for (int i = 0; i < samples.Length; i++)
+            {
+                unityOutputCaptureRingBuffer[unityOutputCaptureWriteIndex] = samples[i];
+                unityOutputCaptureWriteIndex = (unityOutputCaptureWriteIndex + 1) % unityOutputCaptureRingBuffer.Length;
+                if (unityOutputCaptureCount < unityOutputCaptureRingBuffer.Length)
+                {
+                    unityOutputCaptureCount++;
+                }
+                else
+                {
+                    unityOutputCaptureOverflowCount++;
+                    unityOutputCaptureReadIndex = (unityOutputCaptureReadIndex + 1) % unityOutputCaptureRingBuffer.Length;
+                }
+            }
+
+            if (unityOutputCaptureCount > unityOutputCapturePeakQueuedSamples)
+                unityOutputCapturePeakQueuedSamples = unityOutputCaptureCount;
+        }
+    }
+
+    private int ConsumeUnityOutputCapturedSamples(float[] destination, int requestedSamples)
+    {
+        if (destination == null || requestedSamples <= 0)
+            return 0;
+
+        int copied = 0;
+        lock (unityOutputCaptureLock)
+        {
+            int samplesToCopy = Mathf.Min(requestedSamples, unityOutputCaptureCount);
+            for (int i = 0; i < samplesToCopy; i++)
+            {
+                destination[i] = unityOutputCaptureRingBuffer[unityOutputCaptureReadIndex];
+                unityOutputCaptureReadIndex = (unityOutputCaptureReadIndex + 1) % unityOutputCaptureRingBuffer.Length;
+            }
+
+            unityOutputCaptureCount -= samplesToCopy;
+            copied = samplesToCopy;
+            if (samplesToCopy < requestedSamples)
+                unityOutputCaptureUnderrunCount += requestedSamples - samplesToCopy;
+        }
+
+        if (copied < requestedSamples)
+            Array.Clear(destination, copied, requestedSamples - copied);
+
+        return copied;
+    }
+
+    private static void DownmixUnityCapturedFrameToStereo(float[] source, int frameIndex, int captureChannels, out float left, out float right)
+    {
+        left = 0f;
+        right = 0f;
+        if (source == null || captureChannels <= 0)
+            return;
+
+        int frameStart = frameIndex * captureChannels;
+        if (frameStart < 0 || frameStart >= source.Length)
+            return;
+
+        switch (captureChannels)
+        {
+            case 1:
+            {
+                float mono = source[frameStart];
+                left = mono;
+                right = mono;
+                return;
+            }
+            case 2:
+            {
+                left = source[frameStart];
+                right = frameStart + 1 < source.Length ? source[frameStart + 1] : left;
+                return;
+            }
+            case 4:
+            {
+                float frontLeft = source[frameStart];
+                float frontRight = frameStart + 1 < source.Length ? source[frameStart + 1] : frontLeft;
+                float rearLeft = frameStart + 2 < source.Length ? source[frameStart + 2] : 0f;
+                float rearRight = frameStart + 3 < source.Length ? source[frameStart + 3] : 0f;
+                left = frontLeft + (rearLeft * 0.5f);
+                right = frontRight + (rearRight * 0.5f);
+                return;
+            }
+            case 5:
+            {
+                float frontLeft = source[frameStart];
+                float frontRight = frameStart + 1 < source.Length ? source[frameStart + 1] : frontLeft;
+                float center = frameStart + 2 < source.Length ? source[frameStart + 2] : 0f;
+                float rearLeft = frameStart + 3 < source.Length ? source[frameStart + 3] : 0f;
+                float rearRight = frameStart + 4 < source.Length ? source[frameStart + 4] : 0f;
+                left = frontLeft + (center * 0.7071f) + (rearLeft * 0.5f);
+                right = frontRight + (center * 0.7071f) + (rearRight * 0.5f);
+                return;
+            }
+            case 6:
+            {
+                float frontLeft = source[frameStart];
+                float frontRight = frameStart + 1 < source.Length ? source[frameStart + 1] : frontLeft;
+                float center = frameStart + 2 < source.Length ? source[frameStart + 2] : 0f;
+                float rearLeft = frameStart + 3 < source.Length ? source[frameStart + 3] : 0f;
+                float rearRight = frameStart + 4 < source.Length ? source[frameStart + 4] : 0f;
+                float lfe = frameStart + 5 < source.Length ? source[frameStart + 5] : 0f;
+                left = frontLeft + (center * 0.7071f) + (rearLeft * 0.5f) + (lfe * 0.2f);
+                right = frontRight + (center * 0.7071f) + (rearRight * 0.5f) + (lfe * 0.2f);
+                return;
+            }
+            case 8:
+            {
+                float frontLeft = source[frameStart];
+                float frontRight = frameStart + 1 < source.Length ? source[frameStart + 1] : frontLeft;
+                float center = frameStart + 2 < source.Length ? source[frameStart + 2] : 0f;
+                float rearLeft = frameStart + 3 < source.Length ? source[frameStart + 3] : 0f;
+                float rearRight = frameStart + 4 < source.Length ? source[frameStart + 4] : 0f;
+                float sideLeft = frameStart + 5 < source.Length ? source[frameStart + 5] : 0f;
+                float sideRight = frameStart + 6 < source.Length ? source[frameStart + 6] : 0f;
+                float lfe = frameStart + 7 < source.Length ? source[frameStart + 7] : 0f;
+                left = frontLeft + (center * 0.7071f) + (rearLeft * 0.35f) + (sideLeft * 0.35f) + (lfe * 0.2f);
+                right = frontRight + (center * 0.7071f) + (rearRight * 0.35f) + (sideRight * 0.35f) + (lfe * 0.2f);
+                return;
+            }
+            default:
+            {
+                float leftSum = 0f;
+                float rightSum = 0f;
+                int leftCount = 0;
+                int rightCount = 0;
+                for (int channel = 0; channel < captureChannels; channel++)
+                {
+                    int sampleIndex = frameStart + channel;
+                    if (sampleIndex >= source.Length)
+                        break;
+
+                    if ((channel & 1) == 0)
+                    {
+                        leftSum += source[sampleIndex];
+                        leftCount++;
+                    }
+                    else
+                    {
+                        rightSum += source[sampleIndex];
+                        rightCount++;
+                    }
+                }
+
+                left = leftCount > 0 ? leftSum / leftCount : 0f;
+                right = rightCount > 0 ? rightSum / rightCount : left;
+                return;
+            }
+        }
+    }
+
+    private void MixUnifiedSongSourceTapAudio(float[] destination, int destinationChannels, int frameCount)
+    {
+        UnityToneLabAudioSourceTap[] taps = unifiedSongSourceTapSnapshot;
+        if (taps == null || taps.Length == 0 || destination == null || destination.Length == 0 || frameCount <= 0)
+            return;
+
+        for (int tapIndex = 0; tapIndex < taps.Length; tapIndex++)
+        {
+            UnityToneLabAudioSourceTap tap = taps[tapIndex];
+            if (tap == null)
+                continue;
+
+            int tapChannels = Mathf.Max(1, tap.ChannelCount);
+            int requestedSamples = frameCount * tapChannels;
+            EnsureUnityOutputMixBufferCapacity(requestedSamples);
+            tap.Consume(unityOutputMixBuffer, requestedSamples);
+
+            if (tapChannels == destinationChannels)
+            {
+                int sampleCount = Mathf.Min(destination.Length, requestedSamples);
+                for (int i = 0; i < sampleCount; i++)
+                    destination[i] += unityOutputMixBuffer[i];
+                continue;
+            }
+
+            int frameLimit = Mathf.Min(frameCount, requestedSamples / tapChannels);
+            if (destinationChannels == 1)
+            {
+                for (int frame = 0; frame < frameLimit; frame++)
+                {
+                    DownmixUnityCapturedFrameToStereo(unityOutputMixBuffer, frame, tapChannels, out float left, out float right);
+                    destination[frame] += (left + right) * 0.5f;
+                }
+
+                continue;
+            }
+
+            if (destinationChannels >= 2)
+            {
+                for (int frame = 0; frame < frameLimit; frame++)
+                {
+                    DownmixUnityCapturedFrameToStereo(unityOutputMixBuffer, frame, tapChannels, out float left, out float right);
+                    int destinationIndex = frame * destinationChannels;
+                    if (destinationIndex >= destination.Length)
+                        break;
+
+                    destination[destinationIndex] += left;
+                    if (destinationIndex + 1 < destination.Length)
+                        destination[destinationIndex + 1] += right;
+                }
+            }
+        }
+    }
+
+    private void MixUnityOutputCapturedAudio(float[] destination, int destinationChannels, int frameCount)
+    {
+        if (!unityOutputCaptureActive || destination == null || destination.Length == 0 || frameCount <= 0)
+            return;
+
+        int captureChannels = Mathf.Max(1, unityOutputCaptureChannels);
+        int requestedSamples = frameCount * captureChannels;
+        EnsureUnityOutputMixBufferCapacity(requestedSamples);
+        ConsumeUnityOutputCapturedSamples(unityOutputMixBuffer, requestedSamples);
+
+        if (captureChannels == destinationChannels)
+        {
+            int sampleCount = Mathf.Min(destination.Length, requestedSamples);
+            for (int i = 0; i < sampleCount; i++)
+                destination[i] += unityOutputMixBuffer[i];
+            return;
+        }
+
+        int frameLimit = Mathf.Min(frameCount, requestedSamples / captureChannels);
+        if (destinationChannels == 1)
+        {
+            for (int frame = 0; frame < frameLimit; frame++)
+            {
+                DownmixUnityCapturedFrameToStereo(unityOutputMixBuffer, frame, captureChannels, out float left, out float right);
+                destination[frame] += (left + right) * 0.5f;
+            }
+            return;
+        }
+
+        if (destinationChannels >= 2)
+        {
+            for (int frame = 0; frame < frameLimit; frame++)
+            {
+                DownmixUnityCapturedFrameToStereo(unityOutputMixBuffer, frame, captureChannels, out float left, out float right);
+                int destinationIndex = frame * destinationChannels;
+                if (destinationIndex >= destination.Length)
+                    break;
+
+                destination[destinationIndex] += left;
+                if (destinationIndex + 1 < destination.Length)
+                    destination[destinationIndex + 1] += right;
+            }
+        }
+    }
+
     private void ProcessPortAudioBlock(float[] input, int inputChannels, int outputChannels, int frameCount, float[] output)
     {
         if (input == null || output == null)
@@ -1570,7 +2607,49 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         int sampleRate = activeSampleRate > 0 ? activeSampleRate : PreferredSampleRate;
         ProcessToneBuffer(portAudioProcessBuffer, processingChannels, sampleRate);
         ApplyMonitorVolumeToBuffer(portAudioProcessBuffer);
+        MixUnifiedSongSourceTapAudio(portAudioProcessBuffer, processingChannels, frameCount);
+        MixUnityOutputCapturedAudio(portAudioProcessBuffer, processingChannels, frameCount);
+        ApplyUnifiedOutputLimiter(portAudioProcessBuffer, sampleRate, frameCount);
         FillPortAudioOutputBufferFromProcessedAudio(portAudioProcessBuffer, processingChannels, frameCount, output, safeOutputChannels);
+    }
+
+    private void ApplyUnifiedOutputLimiter(float[] data, int sampleRate, int frameCount)
+    {
+        if ((unifiedSongSourceTapSnapshot == null || unifiedSongSourceTapSnapshot.Length == 0) &&
+            !unityOutputCaptureActive)
+        {
+            unityOutputLimiterGain = 1f;
+            return;
+        }
+
+        if (data == null || data.Length == 0)
+            return;
+
+        float peak = 0f;
+        for (int i = 0; i < data.Length; i++)
+        {
+            float absolute = Mathf.Abs(data[i]);
+            if (absolute > peak)
+                peak = absolute;
+        }
+
+        float targetGain = peak > 0.98f ? 0.98f / peak : 1f;
+        float blockDurationSeconds = sampleRate > 0 && frameCount > 0
+            ? frameCount / (float)sampleRate
+            : 0.01f;
+        float attackBlend = 1f - Mathf.Exp(-blockDurationSeconds / 0.003f);
+        float releaseBlend = 1f - Mathf.Exp(-blockDurationSeconds / 0.080f);
+        float blend = targetGain < unityOutputLimiterGain ? attackBlend : releaseBlend;
+        unityOutputLimiterGain = Mathf.Lerp(unityOutputLimiterGain, targetGain, Mathf.Clamp01(blend));
+
+        if (unityOutputLimiterGain >= 0.9995f && targetGain >= 0.9995f)
+        {
+            unityOutputLimiterGain = 1f;
+            return;
+        }
+
+        for (int i = 0; i < data.Length; i++)
+            data[i] = Mathf.Clamp(data[i] * unityOutputLimiterGain, -1f, 1f);
     }
 
     private static void ClampSettings(ToneLabSettings toneSettings)
@@ -2898,6 +3977,12 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         if (portAudioProcessBuffer == null || portAudioProcessBuffer.Length != sampleCount)
             portAudioProcessBuffer = new float[sampleCount];
+    }
+
+    private void EnsureUnityOutputMixBufferCapacity(int sampleCount)
+    {
+        if (unityOutputMixBuffer == null || unityOutputMixBuffer.Length < sampleCount)
+            unityOutputMixBuffer = new float[sampleCount];
     }
 
     private static void FillProcessBufferFromPortAudioInput(float[] input, int inputChannels, int outputChannels, int frameCount, float[] destination, int sampleCount)

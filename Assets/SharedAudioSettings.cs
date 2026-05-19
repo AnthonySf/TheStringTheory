@@ -6,13 +6,72 @@ using UnityEngine;
 [Serializable]
 public sealed class SharedAudioSettings
 {
-    public int version = 4;
+    public int version = 5;
     public string inputDeviceName = string.Empty;
     public string outputDeviceName = string.Empty;
     public int monitoringBufferSize = 128;
     public float guitarVolumePercent = 100f;
     public float songVolumePercent = 100f;
     public string detectorResamplerMode = SharedAudioDetectorResamplerModes.Filtered;
+    public SharedAudioAdvancedSettings advanced = new SharedAudioAdvancedSettings();
+}
+
+[Serializable]
+public sealed class SharedAudioAdvancedSettings
+{
+    public bool betaEnabled;
+    public string backendMode = SharedAudioBackendModes.Auto;
+    public bool allowFallback = true;
+    public string inputDeviceName = string.Empty;
+    public string outputDeviceName = string.Empty;
+    public int sampleRate;
+    public int bufferSize;
+    public bool unifiedOutputEnabled;
+}
+
+public static class SharedAudioBackendModes
+{
+    public const string Auto = "Auto";
+    public const string Wasapi = "WASAPI";
+    public const string Asio = "ASIO";
+
+    public static string Normalize(string value)
+    {
+        if (string.Equals(value, Wasapi, StringComparison.OrdinalIgnoreCase))
+            return Wasapi;
+        if (string.Equals(value, Asio, StringComparison.OrdinalIgnoreCase))
+            return Asio;
+        return Auto;
+    }
+}
+
+public static class SharedAudioSampleRateOptions
+{
+    public const int Auto = 0;
+
+    public static readonly int[] SupportedRates =
+    {
+        Auto,
+        44100,
+        48000,
+        96000
+    };
+
+    public static int Normalize(int value)
+    {
+        for (int i = 0; i < SupportedRates.Length; i++)
+        {
+            if (SupportedRates[i] == value)
+                return value;
+        }
+
+        return Auto;
+    }
+
+    public static string ToLabel(int value)
+    {
+        return value <= 0 ? "Auto" : $"{value} Hz";
+    }
 }
 
 public static class SharedAudioDetectorResamplerModes
@@ -98,5 +157,23 @@ public static class SharedAudioSettingsUtility
             return string.Empty;
 
         return WhitespaceRegex.Replace(deviceName.Trim(), " ");
+    }
+
+    public static SharedAudioAdvancedSettings CloneAdvancedSettings(SharedAudioAdvancedSettings source)
+    {
+        if (source == null)
+            return new SharedAudioAdvancedSettings();
+
+        return new SharedAudioAdvancedSettings
+        {
+            betaEnabled = source.betaEnabled,
+            backendMode = SharedAudioBackendModes.Normalize(source.backendMode),
+            allowFallback = source.allowFallback,
+            inputDeviceName = NormalizeStoredDeviceName(source.inputDeviceName),
+            outputDeviceName = NormalizeStoredDeviceName(source.outputDeviceName),
+            sampleRate = SharedAudioSampleRateOptions.Normalize(source.sampleRate),
+            bufferSize = source.bufferSize,
+            unifiedOutputEnabled = source.unifiedOutputEnabled
+        };
     }
 }

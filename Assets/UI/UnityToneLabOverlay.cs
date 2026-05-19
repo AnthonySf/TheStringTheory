@@ -57,6 +57,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private DropdownField latencyDropdown;
     private Button createPresetButton;
     private Button refreshDevicesButton;
+    private Button advancedAudioButton;
     private Button savePresetButton;
     private Button saveAsPresetButton;
     private Button deletePresetButton;
@@ -75,17 +76,31 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private ScrollView pedalInspectorScroll;
     private ScrollView pedalLibraryScroll;
     private VisualElement presetModalScrim;
+    private VisualElement advancedAudioModalScrim;
     private TextField presetNameField;
     private Button presetCreateButton;
     private Button presetCancelButton;
     private Label presetModalTitleLabel;
     private Label presetModalSubtitleLabel;
     private VisualElement presetNameSection;
+    private DropdownField advancedBackendDropdown;
+    private DropdownField advancedInputDropdown;
+    private DropdownField advancedOutputDropdown;
+    private DropdownField advancedSampleRateDropdown;
+    private DropdownField advancedBufferDropdown;
+    private Button advancedBetaToggleButton;
+    private Button advancedFallbackToggleButton;
+    private Button advancedUnifiedToggleButton;
+    private Button advancedAudioApplyButton;
+    private Button advancedAudioCloseButton;
+    private Label advancedAudioStatusLabel;
+    private Label advancedAudioDiagnosticsLabel;
     private VisualElement actionToast;
     private Label actionToastLabel;
     private string selectedPedalInstanceId = string.Empty;
     private ToneLabSidePanelMode sidePanelMode = ToneLabSidePanelMode.Pedal;
     private ToneLabPresetModalMode presetModalMode = ToneLabPresetModalMode.Create;
+    private SharedAudioAdvancedSettings advancedAudioDraft = new SharedAudioAdvancedSettings();
     private readonly Dictionary<string, string> presetChoiceToId = new Dictionary<string, string>(StringComparer.Ordinal);
 
     private readonly List<ToneSliderBinding> sliderBindings = new List<ToneSliderBinding>();
@@ -125,8 +140,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         get
         {
             return isVisible
-                && presetModalScrim != null
-                && presetModalScrim.style.display == DisplayStyle.Flex;
+                && ((presetModalScrim != null && presetModalScrim.style.display == DisplayStyle.Flex)
+                    || (advancedAudioModalScrim != null && advancedAudioModalScrim.style.display == DisplayStyle.Flex));
         }
     }
 
@@ -149,6 +164,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         else
         {
             CloseCreatePresetModal();
+            CloseAdvancedAudioModal();
             HideActionToast();
         }
     }
@@ -284,8 +300,11 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         }
         if (routeLabel != null)
         {
-            routeLabel.text = string.Empty;
-            routeLabel.style.display = DisplayStyle.None;
+            string routeText = runtime.IsMonitoring || runtime.IsAwaitingStartup
+                ? $"{runtime.ActiveAudioBackendLabel}  \u2022  {runtime.ActiveHostApiLabel}  \u2022  In {runtime.InputRouteLabel}  \u2022  Out {runtime.OutputRouteLabel}"
+                : string.Empty;
+            routeLabel.text = routeText;
+            routeLabel.style.display = string.IsNullOrWhiteSpace(routeText) ? DisplayStyle.None : DisplayStyle.Flex;
         }
         if (statusLabel != null)
         {
@@ -300,6 +319,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         startButton.SetEnabled(!runtime.IsMonitoring && !runtime.IsAwaitingStartup);
         stopButton.SetEnabled(runtime.IsMonitoring || runtime.IsAwaitingStartup);
         RefreshSidePanelButtonStates();
+        RefreshAdvancedAudioModalStatus();
     }
 
     private void BuildUi(VisualElement root)
@@ -577,6 +597,11 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         refreshDevicesButton.style.height = 38f;
         refreshDevicesButton.style.fontSize = 14f;
 
+        advancedAudioButton = CreateButton("Advanced Audio", "tone-lab-button tone-lab-button-secondary", OpenAdvancedAudioModal);
+        advancedAudioButton.style.minWidth = 164f;
+        advancedAudioButton.style.height = 38f;
+        advancedAudioButton.style.fontSize = 14f;
+
         startButton = CreateButton("Start Audio", "tone-lab-button tone-lab-button-primary", () =>
         {
             runtime?.TryStartMonitoring();
@@ -626,6 +651,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         transportRow.style.marginBottom = 14f;
         rigSettingsHost.Add(transportRow);
         transportRow.Add(refreshDevicesButton);
+        transportRow.Add(advancedAudioButton);
         transportRow.Add(startButton);
         transportRow.Add(stopButton);
 
@@ -847,6 +873,205 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         presetCreateButton.style.marginRight = 0f;
         presetModalActions.Add(presetCreateButton);
 
+        advancedAudioModalScrim = new VisualElement();
+        advancedAudioModalScrim.style.position = Position.Absolute;
+        advancedAudioModalScrim.style.left = 0f;
+        advancedAudioModalScrim.style.right = 0f;
+        advancedAudioModalScrim.style.top = 0f;
+        advancedAudioModalScrim.style.bottom = 0f;
+        advancedAudioModalScrim.style.display = DisplayStyle.None;
+        advancedAudioModalScrim.style.alignItems = Align.Center;
+        advancedAudioModalScrim.style.justifyContent = Justify.Center;
+        advancedAudioModalScrim.style.backgroundColor = new Color(0.01f, 0.02f, 0.03f, 0.78f);
+        advancedAudioModalScrim.RegisterCallback<MouseDownEvent>(_ => CloseAdvancedAudioModal());
+        overlayRoot.Add(advancedAudioModalScrim);
+
+        VisualElement advancedAudioCard = new VisualElement();
+        advancedAudioCard.style.width = 760f;
+        advancedAudioCard.style.maxWidth = 760f;
+        advancedAudioCard.style.minHeight = 0f;
+        advancedAudioCard.style.maxHeight = Length.Percent(84f);
+        advancedAudioCard.style.paddingLeft = 22f;
+        advancedAudioCard.style.paddingRight = 22f;
+        advancedAudioCard.style.paddingTop = 20f;
+        advancedAudioCard.style.paddingBottom = 18f;
+        advancedAudioCard.style.backgroundColor = new Color(0.06f, 0.07f, 0.09f, 1f);
+        advancedAudioCard.style.borderTopWidth = 1f;
+        advancedAudioCard.style.borderRightWidth = 1f;
+        advancedAudioCard.style.borderBottomWidth = 1f;
+        advancedAudioCard.style.borderLeftWidth = 1f;
+        advancedAudioCard.style.borderTopColor = new Color(0.24f, 0.26f, 0.30f, 1f);
+        advancedAudioCard.style.borderRightColor = new Color(0.17f, 0.18f, 0.21f, 1f);
+        advancedAudioCard.style.borderBottomColor = new Color(0.12f, 0.13f, 0.15f, 1f);
+        advancedAudioCard.style.borderLeftColor = new Color(0.17f, 0.18f, 0.21f, 1f);
+        advancedAudioCard.style.borderTopLeftRadius = 16f;
+        advancedAudioCard.style.borderTopRightRadius = 16f;
+        advancedAudioCard.style.borderBottomLeftRadius = 16f;
+        advancedAudioCard.style.borderBottomRightRadius = 16f;
+        advancedAudioCard.style.flexDirection = FlexDirection.Column;
+        advancedAudioCard.RegisterCallback<MouseDownEvent>(evt => evt.StopPropagation());
+        advancedAudioModalScrim.Add(advancedAudioCard);
+
+        Label advancedAudioTitle = new Label("Advanced Audio (Beta)");
+        advancedAudioTitle.style.color = Color.white;
+        advancedAudioTitle.style.fontSize = 24f;
+        advancedAudioTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
+        advancedAudioTitle.style.marginBottom = 6f;
+        advancedAudioCard.Add(advancedAudioTitle);
+
+        Label advancedAudioSubtitle = new Label("Default routing above stays unchanged unless Beta Mode is ON. Applying these settings restarts monitoring.");
+        advancedAudioSubtitle.style.color = new Color(0.66f, 0.69f, 0.73f, 0.96f);
+        advancedAudioSubtitle.style.fontSize = 13f;
+        advancedAudioSubtitle.style.whiteSpace = WhiteSpace.Normal;
+        advancedAudioSubtitle.style.marginBottom = 14f;
+        advancedAudioCard.Add(advancedAudioSubtitle);
+
+        ScrollView advancedAudioScroll = new ScrollView(ScrollViewMode.Vertical);
+        advancedAudioScroll.style.flexGrow = 1f;
+        advancedAudioScroll.style.minHeight = 0f;
+        advancedAudioScroll.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        advancedAudioScroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        advancedAudioCard.Add(advancedAudioScroll);
+
+        VisualElement advancedAudioHost = advancedAudioScroll.contentContainer;
+        advancedAudioHost.style.flexDirection = FlexDirection.Column;
+        advancedAudioHost.style.paddingRight = 6f;
+
+        advancedBetaToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedBetaDraft);
+        advancedFallbackToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedFallbackDraft);
+        advancedUnifiedToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedUnifiedDraft);
+
+        advancedBackendDropdown = new DropdownField();
+        ApplyDropdownStyle(advancedBackendDropdown);
+        advancedBackendDropdown.style.minWidth = 300f;
+        advancedBackendDropdown.style.width = 300f;
+        advancedBackendDropdown.choices = new List<string> { SharedAudioBackendModes.Auto, SharedAudioBackendModes.Wasapi, SharedAudioBackendModes.Asio };
+        advancedBackendDropdown.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+
+            advancedAudioDraft.backendMode = SharedAudioBackendModes.Normalize(evt.newValue);
+            RefreshAdvancedAudioDeviceChoices();
+        });
+
+        advancedInputDropdown = new DropdownField();
+        ApplyDropdownStyle(advancedInputDropdown);
+        advancedInputDropdown.style.minWidth = 440f;
+        advancedInputDropdown.style.width = 440f;
+        advancedInputDropdown.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+            advancedAudioDraft.inputDeviceName = NormalizeAdvancedPopupSelection(evt.newValue);
+        });
+
+        advancedOutputDropdown = new DropdownField();
+        ApplyDropdownStyle(advancedOutputDropdown);
+        advancedOutputDropdown.style.minWidth = 440f;
+        advancedOutputDropdown.style.width = 440f;
+        advancedOutputDropdown.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+            advancedAudioDraft.outputDeviceName = NormalizeAdvancedPopupSelection(evt.newValue);
+        });
+
+        advancedSampleRateDropdown = new DropdownField();
+        ApplyDropdownStyle(advancedSampleRateDropdown);
+        advancedSampleRateDropdown.style.minWidth = 220f;
+        advancedSampleRateDropdown.style.width = 220f;
+        advancedSampleRateDropdown.choices = new List<string> { "Auto", "44100 Hz", "48000 Hz", "96000 Hz" };
+        advancedSampleRateDropdown.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+            advancedAudioDraft.sampleRate = ParseAdvancedSampleRateLabel(evt.newValue);
+        });
+
+        advancedBufferDropdown = new DropdownField();
+        ApplyDropdownStyle(advancedBufferDropdown);
+        advancedBufferDropdown.style.minWidth = 220f;
+        advancedBufferDropdown.style.width = 220f;
+        advancedBufferDropdown.choices = new List<string> { "64 Samples", "128 Samples", "256 Samples" };
+        advancedBufferDropdown.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+            advancedAudioDraft.bufferSize = ParseAdvancedBufferLabel(evt.newValue);
+        });
+
+        advancedAudioHost.Add(CreateSettingRow("Beta Mode", out VisualElement advancedBetaHost));
+        advancedBetaHost.Add(advancedBetaToggleButton);
+        advancedAudioHost.Add(CreateSettingRow("Backend", out VisualElement advancedBackendHost));
+        advancedBackendHost.Add(advancedBackendDropdown);
+        advancedAudioHost.Add(CreateSettingRow("Input Device", out VisualElement advancedInputHost));
+        advancedInputHost.Add(advancedInputDropdown);
+        advancedAudioHost.Add(CreateSettingRow("Output Device", out VisualElement advancedOutputHost));
+        advancedOutputHost.Add(advancedOutputDropdown);
+        advancedAudioHost.Add(CreateSettingRow("Sample Rate", out VisualElement advancedSampleRateHost));
+        advancedSampleRateHost.Add(advancedSampleRateDropdown);
+        advancedAudioHost.Add(CreateSettingRow("Buffer", out VisualElement advancedBufferHost));
+        advancedBufferHost.Add(advancedBufferDropdown);
+        advancedAudioHost.Add(CreateSettingRow("Allow Fallback", out VisualElement advancedFallbackHost));
+        advancedFallbackHost.Add(advancedFallbackToggleButton);
+        advancedAudioHost.Add(CreateSettingRow("Unified Output", out VisualElement advancedUnifiedHost));
+        advancedUnifiedHost.Add(advancedUnifiedToggleButton);
+
+        VisualElement advancedStatusCard = new VisualElement();
+        advancedStatusCard.style.marginTop = 14f;
+        advancedStatusCard.style.paddingLeft = 14f;
+        advancedStatusCard.style.paddingRight = 14f;
+        advancedStatusCard.style.paddingTop = 12f;
+        advancedStatusCard.style.paddingBottom = 12f;
+        advancedStatusCard.style.backgroundColor = new Color(0.07f, 0.08f, 0.10f, 0.72f);
+        advancedStatusCard.style.borderTopWidth = 1f;
+        advancedStatusCard.style.borderRightWidth = 1f;
+        advancedStatusCard.style.borderBottomWidth = 1f;
+        advancedStatusCard.style.borderLeftWidth = 1f;
+        advancedStatusCard.style.borderTopColor = new Color(1f, 1f, 1f, 0.12f);
+        advancedStatusCard.style.borderRightColor = new Color(1f, 1f, 1f, 0.12f);
+        advancedStatusCard.style.borderBottomColor = new Color(1f, 1f, 1f, 0.12f);
+        advancedStatusCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.12f);
+        advancedStatusCard.style.borderTopLeftRadius = 10f;
+        advancedStatusCard.style.borderTopRightRadius = 10f;
+        advancedStatusCard.style.borderBottomLeftRadius = 10f;
+        advancedStatusCard.style.borderBottomRightRadius = 10f;
+        advancedAudioHost.Add(advancedStatusCard);
+
+        advancedAudioStatusLabel = new Label(string.Empty);
+        advancedAudioStatusLabel.style.color = new Color(0.90f, 0.94f, 0.98f, 0.98f);
+        advancedAudioStatusLabel.style.fontSize = 12f;
+        advancedAudioStatusLabel.style.whiteSpace = WhiteSpace.Normal;
+        advancedAudioStatusLabel.style.marginBottom = 8f;
+        advancedStatusCard.Add(advancedAudioStatusLabel);
+
+        advancedAudioDiagnosticsLabel = new Label(string.Empty);
+        advancedAudioDiagnosticsLabel.style.color = new Color(0.76f, 0.80f, 0.86f, 0.96f);
+        advancedAudioDiagnosticsLabel.style.fontSize = 11f;
+        advancedAudioDiagnosticsLabel.style.whiteSpace = WhiteSpace.Normal;
+        advancedStatusCard.Add(advancedAudioDiagnosticsLabel);
+
+        VisualElement advancedAudioActions = new VisualElement();
+        advancedAudioActions.style.flexDirection = FlexDirection.Row;
+        advancedAudioActions.style.justifyContent = Justify.FlexEnd;
+        advancedAudioActions.style.alignItems = Align.Center;
+        advancedAudioActions.style.marginTop = 14f;
+        advancedAudioCard.Add(advancedAudioActions);
+
+        advancedAudioCloseButton = CreateButton("Close", "tone-lab-button tone-lab-button-secondary", CloseAdvancedAudioModal);
+        advancedAudioCloseButton.style.minWidth = 110f;
+        advancedAudioCloseButton.style.height = 40f;
+        advancedAudioCloseButton.style.fontSize = 15f;
+        advancedAudioActions.Add(advancedAudioCloseButton);
+
+        advancedAudioApplyButton = CreateButton("Apply", "tone-lab-button tone-lab-button-primary", CommitAdvancedAudioSettings);
+        advancedAudioApplyButton.style.minWidth = 118f;
+        advancedAudioApplyButton.style.height = 40f;
+        advancedAudioApplyButton.style.fontSize = 15f;
+        advancedAudioApplyButton.style.marginRight = 0f;
+        advancedAudioActions.Add(advancedAudioApplyButton);
+
         actionToast = new VisualElement();
         actionToast.style.position = Position.Absolute;
         actionToast.style.right = 26f;
@@ -949,6 +1174,178 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         }
         CloseCreatePresetModal();
         RefreshUi(syncControls: true);
+    }
+
+    private void OpenAdvancedAudioModal()
+    {
+        if (advancedAudioModalScrim == null)
+            return;
+
+        advancedAudioDraft = owner != null
+            ? owner.GetSharedAdvancedAudioSettingsForUi()
+            : new SharedAudioAdvancedSettings();
+        advancedAudioDraft.backendMode = SharedAudioBackendModes.Normalize(advancedAudioDraft.backendMode);
+        if (advancedAudioDraft.bufferSize <= 0)
+            advancedAudioDraft.bufferSize = UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(advancedAudioDraft.bufferSize));
+
+        RefreshAdvancedAudioModalControls();
+        advancedAudioModalScrim.style.display = DisplayStyle.Flex;
+    }
+
+    private void CloseAdvancedAudioModal()
+    {
+        if (advancedAudioModalScrim == null)
+            return;
+
+        advancedAudioModalScrim.style.display = DisplayStyle.None;
+    }
+
+    private void ToggleAdvancedBetaDraft()
+    {
+        advancedAudioDraft.betaEnabled = !advancedAudioDraft.betaEnabled;
+        RefreshAdvancedAudioToggleStates();
+    }
+
+    private void ToggleAdvancedFallbackDraft()
+    {
+        advancedAudioDraft.allowFallback = !advancedAudioDraft.allowFallback;
+        RefreshAdvancedAudioToggleStates();
+    }
+
+    private void ToggleAdvancedUnifiedDraft()
+    {
+        advancedAudioDraft.unifiedOutputEnabled = !advancedAudioDraft.unifiedOutputEnabled;
+        RefreshAdvancedAudioToggleStates();
+    }
+
+    private void RefreshAdvancedAudioModalControls()
+    {
+        if (advancedAudioModalScrim == null)
+            return;
+
+        suppressCallbacks = true;
+        advancedBackendDropdown?.SetValueWithoutNotify(SharedAudioBackendModes.Normalize(advancedAudioDraft.backendMode));
+        advancedSampleRateDropdown?.SetValueWithoutNotify(FormatAdvancedSampleRateLabel(advancedAudioDraft.sampleRate));
+        advancedBufferDropdown?.SetValueWithoutNotify(FormatAdvancedBufferLabel(advancedAudioDraft.bufferSize));
+        suppressCallbacks = false;
+
+        RefreshAdvancedAudioToggleStates();
+        RefreshAdvancedAudioDeviceChoices();
+        RefreshAdvancedAudioModalStatus();
+    }
+
+    private void RefreshAdvancedAudioToggleStates()
+    {
+        ApplyToggleButtonState(advancedBetaToggleButton, advancedAudioDraft.betaEnabled);
+        ApplyToggleButtonState(advancedFallbackToggleButton, advancedAudioDraft.allowFallback);
+        ApplyToggleButtonState(advancedUnifiedToggleButton, advancedAudioDraft.unifiedOutputEnabled);
+        advancedBackendDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
+        advancedInputDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
+        advancedOutputDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
+        advancedSampleRateDropdown?.SetEnabled(advancedAudioDraft.betaEnabled && !advancedAudioDraft.unifiedOutputEnabled);
+        advancedBufferDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
+        advancedFallbackToggleButton?.SetEnabled(advancedAudioDraft.betaEnabled);
+        advancedUnifiedToggleButton?.SetEnabled(advancedAudioDraft.betaEnabled);
+    }
+
+    private void RefreshAdvancedAudioDeviceChoices()
+    {
+        if (advancedInputDropdown == null || advancedOutputDropdown == null)
+            return;
+
+        IReadOnlyList<string> inputChoices = owner != null
+            ? owner.GetSharedAdvancedAudioInputDeviceChoices(advancedAudioDraft.backendMode)
+            : new List<string> { "Automatic" };
+        IReadOnlyList<string> outputChoices = owner != null
+            ? owner.GetSharedAdvancedAudioOutputDeviceChoices(advancedAudioDraft.backendMode)
+            : new List<string> { "Automatic" };
+
+        suppressCallbacks = true;
+        advancedInputDropdown.choices = inputChoices.ToList();
+        advancedOutputDropdown.choices = outputChoices.ToList();
+        string selectedInput = ResolveAdvancedPopupChoice(inputChoices, advancedAudioDraft.inputDeviceName);
+        string selectedOutput = ResolveAdvancedPopupChoice(outputChoices, advancedAudioDraft.outputDeviceName);
+        advancedInputDropdown.SetValueWithoutNotify(selectedInput);
+        advancedOutputDropdown.SetValueWithoutNotify(selectedOutput);
+        suppressCallbacks = false;
+    }
+
+    private void RefreshAdvancedAudioModalStatus()
+    {
+        if (advancedAudioStatusLabel == null || runtime == null)
+            return;
+
+        string summary = $"{runtime.ActiveAudioBackendLabel}  \u2022  {runtime.ActiveHostApiLabel}  \u2022  In {runtime.InputRouteLabel}  \u2022  Out {runtime.OutputRouteLabel}";
+        if (advancedAudioDraft != null && advancedAudioDraft.betaEnabled && advancedAudioDraft.unifiedOutputEnabled)
+            summary = $"{summary}\nUnified output locks sample rate to Unity output.";
+        string diagnostics = runtime.StatusMessage;
+        if (!string.IsNullOrWhiteSpace(runtime.LastRoutingAttemptSummary))
+            diagnostics = $"{diagnostics}\n\n{runtime.LastRoutingAttemptSummary}";
+        if (!string.IsNullOrWhiteSpace(runtime.LastRoutingDiagnostics))
+            diagnostics = $"{diagnostics}\n\n{runtime.LastRoutingDiagnostics}";
+
+        advancedAudioStatusLabel.text = summary;
+        advancedAudioDiagnosticsLabel.text = diagnostics;
+    }
+
+    private void CommitAdvancedAudioSettings()
+    {
+        if (owner == null)
+            return;
+
+        owner.ApplySharedAdvancedAudioSettingsFromUi(advancedAudioDraft);
+        RefreshUi(syncControls: true, refreshDevices: true);
+        RefreshAdvancedAudioModalStatus();
+    }
+
+    private static string NormalizeAdvancedPopupSelection(string value)
+    {
+        return string.Equals(value, "Automatic", StringComparison.OrdinalIgnoreCase) ? string.Empty : value?.Trim() ?? string.Empty;
+    }
+
+    private static string ResolveAdvancedPopupChoice(IReadOnlyList<string> choices, string storedValue)
+    {
+        if (choices == null || choices.Count == 0)
+            return "Automatic";
+
+        if (string.IsNullOrWhiteSpace(storedValue))
+            return choices[0];
+
+        for (int i = 0; i < choices.Count; i++)
+        {
+            if (string.Equals(choices[i], storedValue, StringComparison.OrdinalIgnoreCase))
+                return choices[i];
+        }
+
+        return choices[0];
+    }
+
+    private static string FormatAdvancedSampleRateLabel(int sampleRate)
+    {
+        return sampleRate <= 0 ? "Auto" : $"{sampleRate} Hz";
+    }
+
+    private static int ParseAdvancedSampleRateLabel(string label)
+    {
+        if (string.IsNullOrWhiteSpace(label) || string.Equals(label.Trim(), "Auto", StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        string digits = new string(label.Where(char.IsDigit).ToArray());
+        return int.TryParse(digits, out int parsed) ? parsed : 0;
+    }
+
+    private static string FormatAdvancedBufferLabel(int bufferSize)
+    {
+        int normalized = UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(bufferSize));
+        return $"{normalized} Samples";
+    }
+
+    private static int ParseAdvancedBufferLabel(string label)
+    {
+        string digits = new string((label ?? string.Empty).Where(char.IsDigit).ToArray());
+        if (!int.TryParse(digits, out int parsed))
+            parsed = 128;
+        return UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(parsed));
     }
 
     private void EnsureSelectedPedal(IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> pedalChain)
