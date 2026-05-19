@@ -601,6 +601,13 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedAudioButton.style.minWidth = 164f;
         advancedAudioButton.style.height = 38f;
         advancedAudioButton.style.fontSize = 14f;
+        advancedAudioButton.style.marginRight = 0f;
+        advancedAudioButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        advancedAudioButton.style.color = new Color(0.98f, 0.62f, 0.42f, 1f);
+        advancedAudioButton.style.borderTopColor = new Color(0.98f, 0.62f, 0.42f, 1f);
+        advancedAudioButton.style.borderRightColor = new Color(0.98f, 0.62f, 0.42f, 1f);
+        advancedAudioButton.style.borderBottomColor = new Color(0.98f, 0.62f, 0.42f, 1f);
+        advancedAudioButton.style.borderLeftColor = new Color(0.98f, 0.62f, 0.42f, 1f);
 
         startButton = CreateButton("Start Audio", "tone-lab-button tone-lab-button-primary", () =>
         {
@@ -630,6 +637,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         routingRow.Add(CreateToolbarField("Input", inputDropdown, 286f));
         routingRow.Add(CreateToolbarField("Output", outputDropdown, 286f));
         routingRow.Add(CreateToolbarField("Latency", latencyDropdown, 192f));
+        routingRow.Add(CreateToolbarField("Beta", advancedAudioButton, 176f));
         header.Add(routingRow);
         
         rigSettingsScroll = new ScrollView(ScrollViewMode.Vertical);
@@ -651,7 +659,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         transportRow.style.marginBottom = 14f;
         rigSettingsHost.Add(transportRow);
         transportRow.Add(refreshDevicesButton);
-        transportRow.Add(advancedAudioButton);
         transportRow.Add(startButton);
         transportRow.Add(stopButton);
 

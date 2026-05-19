@@ -15217,6 +15217,9 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
+        if (string.Equals(snapshot.activeGlobalSettingsCategory, "Audio", StringComparison.OrdinalIgnoreCase))
+            AddGlobalSettingsAudioToneLabHint(menuList);
+
 
 
         List<RuntimeSettingSnapshot> items = GetGlobalSettingsMenuItems(snapshot);
@@ -15952,6 +15955,9 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
+        if (string.Equals(snapshot.activeGlobalSettingsCategory, "Audio", StringComparison.OrdinalIgnoreCase))
+            AddGlobalSettingsAudioToneLabHint(menuList);
+
 
 
         List<RuntimeSettingSnapshot> items = GetGlobalSettingsMenuItems(snapshot);
@@ -16073,6 +16079,34 @@ public sealed class TabsSongHeaderOverlay
             string.Join("||", sectionBits)
 
         });
+
+    }
+
+    private void AddGlobalSettingsAudioToneLabHint(VisualElement parent)
+
+    {
+
+        if (parent == null)
+
+            return;
+
+
+
+        Label hintLabel = CreateLabel("Please refer to Tone Lab for full and advanced audio settings management.", 30f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+
+        hintLabel.style.unityFontDefinition = modernUiFontDefinition;
+
+        hintLabel.style.whiteSpace = WhiteSpace.Normal;
+
+        hintLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+
+        hintLabel.style.marginBottom = 18f;
+
+        hintLabel.style.paddingLeft = 2f;
+
+        hintLabel.style.paddingRight = 2f;
+
+        parent.Add(hintLabel);
 
     }
 
