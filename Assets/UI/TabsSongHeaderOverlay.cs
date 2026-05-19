@@ -619,7 +619,8 @@ public sealed class TabsSongHeaderOverlay
 
             captureCamera.rect = new Rect(0f, 0f, 1f, 1f);
 
-            captureCamera.stereoTargetEye = StereoTargetEyeMask.None;
+            if (UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline == null)
+                captureCamera.stereoTargetEye = StereoTargetEyeMask.None;
 
 #if UNITY_RENDER_PIPELINE_UNIVERSAL
 
@@ -17693,7 +17694,19 @@ public sealed class TabsSongHeaderOverlay
 
             return;
 
+        Color gradeColor = GetScoreLetterGradeColor(scorePercent);
 
+        Color accentColor = songEndedAsGameOver
+
+            ? Color.Lerp(GameplayScoreCardMissColor, Color.white, 0.12f)
+
+            : Color.Lerp(GameplayHudAccentWarmColor, gradeColor, newRecord ? 0.44f : 0.20f);
+
+        Color plateFill = songEndedAsGameOver
+
+            ? new Color(0.040f, 0.020f, 0.024f, 0.985f)
+
+            : new Color(0.018f, 0.023f, 0.032f, 0.975f);
 
         float now = Time.unscaledTime;
 
@@ -17712,20 +17725,6 @@ public sealed class TabsSongHeaderOverlay
         float shimmer = 0.5f + (0.5f * Mathf.Sin((now * 2.55f) + 0.15f));
 
         float idleFloat = Mathf.Sin(now * 1.10f) * SongEndIdleFloatAmplitude;
-
-        Color gradeColor = GetScoreLetterGradeColor(scorePercent);
-
-        Color accentColor = songEndedAsGameOver
-
-            ? Color.Lerp(GameplayScoreCardMissColor, Color.white, 0.12f)
-
-            : Color.Lerp(GameplayHudAccentWarmColor, gradeColor, newRecord ? 0.44f : 0.20f);
-
-        Color plateFill = songEndedAsGameOver
-
-            ? new Color(0.040f, 0.020f, 0.024f, 0.985f)
-
-            : new Color(0.018f, 0.023f, 0.032f, 0.975f);
 
         float accentOpacity = songEndedAsGameOver
             ? 0f
