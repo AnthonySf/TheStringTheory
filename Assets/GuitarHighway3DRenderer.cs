@@ -416,8 +416,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 phaseStartTicks = renderStartTicks;
             }
 
-            bool suppressGameplay = snapshot.mainMenuFlowActive;
-            EnsureBackgroundMode(suppressGameplay);
+            bool useMenuBackgroundMode = snapshot.mainMenuFlowActive;
+            bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded;
+            EnsureBackgroundMode(useMenuBackgroundMode);
             ConfigureCamera();
             if (logLoopCountdownDetail)
             {
