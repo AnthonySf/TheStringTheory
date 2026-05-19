@@ -33,6 +33,7 @@ public sealed class GeneratedSongPlayer : IDisposable
     public bool HasArrangement => arrangement != null && arrangement.IsValid;
     public float ArrangementDurationSeconds => arrangement != null ? arrangement.durationSeconds : 0f;
     public bool IsReady => midiStreamPlayer != null && midiStreamPlayer.MPTK_SoundFont.IsReady;
+    public AudioSource PlaybackAudioSource => midiStreamPlayer != null ? midiStreamPlayer.CoreAudioSource : null;
 
     public void EnsureInitialized(Transform parent)
     {

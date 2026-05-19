@@ -11522,6 +11522,12 @@ private void OpenOrFocusToneLab()
         if (!File.Exists(ExternalContentPaths.PersistentAudioSettingsPath))
             needsSave = true;
 
+        if (sharedAudioSettings.advanced == null)
+        {
+            sharedAudioSettings.advanced = new SharedAudioAdvancedSettings();
+            needsSave = true;
+        }
+
         if (string.IsNullOrWhiteSpace(sharedAudioSettings.inputDeviceName))
         {
             string legacyToneInput = unityToneLabRuntime?.CurrentSettings?.input_device_name;
@@ -11580,6 +11586,11 @@ private void OpenOrFocusToneLab()
             needsSave = true;
         }
 
+        SharedAudioAdvancedSettings normalizedAdvanced = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, normalizedBuffer, out bool advancedChanged);
+        sharedAudioSettings.advanced = normalizedAdvanced;
+        if (advancedChanged)
+            needsSave = true;
+
         if (!string.IsNullOrWhiteSpace(sharedAudioSettings.inputDeviceName))
             sharedAudioSettings.inputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.inputDeviceName);
         if (!string.IsNullOrWhiteSpace(sharedAudioSettings.outputDeviceName))
@@ -11594,13 +11605,14 @@ private void OpenOrFocusToneLab()
         if (sharedAudioSettings == null)
             sharedAudioSettings = new SharedAudioSettings();
 
-        sharedAudioSettings.version = 4;
+        sharedAudioSettings.version = 5;
         sharedAudioSettings.inputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.inputDeviceName);
         sharedAudioSettings.outputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.outputDeviceName);
         sharedAudioSettings.monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize);
         sharedAudioSettings.songVolumePercent = Mathf.Clamp(sharedAudioSettings.songVolumePercent, 0f, 100f);
         sharedAudioSettings.guitarVolumePercent = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, 100f);
         sharedAudioSettings.detectorResamplerMode = SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings.detectorResamplerMode);
+        sharedAudioSettings.advanced = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, sharedAudioSettings.monitoringBufferSize, out _);
         SharedAudioSettingsUtility.Save(ExternalContentPaths.PersistentAudioSettingsPath, sharedAudioSettings);
     }
 
@@ -11694,6 +11706,51 @@ private void OpenOrFocusToneLab()
     private static bool IsSharedAudioAutomaticValue(string value)
     {
         return string.IsNullOrWhiteSpace(value) || string.Equals(value, SharedAudioAutomaticLabel, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static SharedAudioAdvancedSettings NormalizeSharedAudioAdvancedSettings(SharedAudioAdvancedSettings source, int fallbackBufferSize, out bool changed)
+    {
+        SharedAudioAdvancedSettings normalized = SharedAudioSettingsUtility.CloneAdvancedSettings(source);
+        changed = source == null;
+
+        if (!string.Equals(normalized.backendMode, SharedAudioBackendModes.Normalize(normalized.backendMode), StringComparison.Ordinal))
+        {
+            normalized.backendMode = SharedAudioBackendModes.Normalize(normalized.backendMode);
+            changed = true;
+        }
+
+        string normalizedInput = NormalizeSharedAudioStoredSelection(normalized.inputDeviceName);
+        if (!string.Equals(normalized.inputDeviceName, normalizedInput, StringComparison.Ordinal))
+        {
+            normalized.inputDeviceName = normalizedInput;
+            changed = true;
+        }
+
+        string normalizedOutput = NormalizeSharedAudioStoredSelection(normalized.outputDeviceName);
+        if (!string.Equals(normalized.outputDeviceName, normalizedOutput, StringComparison.Ordinal))
+        {
+            normalized.outputDeviceName = normalizedOutput;
+            changed = true;
+        }
+
+        int normalizedSampleRate = SharedAudioSampleRateOptions.Normalize(normalized.sampleRate);
+        if (normalized.sampleRate != normalizedSampleRate)
+        {
+            normalized.sampleRate = normalizedSampleRate;
+            changed = true;
+        }
+
+        int safeFallbackBuffer = NormalizeSharedMonitoringBufferSize(fallbackBufferSize);
+        int normalizedBuffer = normalized.bufferSize <= 0
+            ? safeFallbackBuffer
+            : NormalizeSharedMonitoringBufferSize(normalized.bufferSize);
+        if (normalized.bufferSize != normalizedBuffer)
+        {
+            normalized.bufferSize = normalizedBuffer;
+            changed = true;
+        }
+
+        return normalized;
     }
 
     private static string ResolveChoiceLabel(IReadOnlyList<string> choices, string storedValue)
@@ -11790,6 +11847,18 @@ private void OpenOrFocusToneLab()
         {
             string resolvedToneLabInput = ResolveToneLabSharedDeviceName(sharedAudioSettings.inputDeviceName, unityToneLabRuntime.InputDevices);
             string resolvedToneLabOutput = ResolveToneLabSharedDeviceName(sharedAudioSettings.outputDeviceName, unityToneLabRuntime.OutputDevices);
+            SharedAudioAdvancedSettings advancedSettings = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, monitoringBufferSize, out _);
+            unityToneLabRuntime.SetAdvancedRoutingOptions(new UnityToneLabRuntime.AdvancedRoutingOptions
+            {
+                betaEnabled = advancedSettings.betaEnabled,
+                backendMode = advancedSettings.backendMode,
+                allowFallback = advancedSettings.allowFallback,
+                preferredInputDeviceName = advancedSettings.inputDeviceName,
+                preferredOutputDeviceName = advancedSettings.outputDeviceName,
+                sampleRate = advancedSettings.sampleRate,
+                bufferSize = advancedSettings.bufferSize,
+                unifiedOutputEnabled = advancedSettings.unifiedOutputEnabled
+            });
             bool toneLabWasMonitoring = unityToneLabRuntime.IsMonitoring || unityToneLabRuntime.IsAwaitingStartup;
             unityToneLabRuntime.UpdateSettings(settings =>
             {
@@ -11881,6 +11950,41 @@ private void OpenOrFocusToneLab()
     public float GetSharedAudioSongVolumePercent()
     {
         return Mathf.Clamp(sharedAudioSettings?.songVolumePercent ?? songVolumePercent, 0f, 100f);
+    }
+
+    public SharedAudioAdvancedSettings GetSharedAdvancedAudioSettingsForUi()
+    {
+        return SharedAudioSettingsUtility.CloneAdvancedSettings(sharedAudioSettings?.advanced);
+    }
+
+    public IReadOnlyList<string> GetSharedAdvancedAudioInputDeviceChoices(string backendMode)
+    {
+        EnsureToneLabRuntimeComponent();
+        return unityToneLabRuntime != null
+            ? unityToneLabRuntime.GetAdvancedInputDeviceChoices(backendMode)
+            : new List<string> { SharedAudioAutomaticLabel };
+    }
+
+    public IReadOnlyList<string> GetSharedAdvancedAudioOutputDeviceChoices(string backendMode)
+    {
+        EnsureToneLabRuntimeComponent();
+        return unityToneLabRuntime != null
+            ? unityToneLabRuntime.GetAdvancedOutputDeviceChoices(backendMode)
+            : new List<string> { SharedAudioAutomaticLabel };
+    }
+
+    public void ApplySharedAdvancedAudioSettingsFromUi(SharedAudioAdvancedSettings updated)
+    {
+        if (sharedAudioSettings == null)
+            sharedAudioSettings = new SharedAudioSettings();
+
+        sharedAudioSettings.advanced = NormalizeSharedAudioAdvancedSettings(
+            updated,
+            NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize),
+            out _);
+        SaveSharedAudioSettingsToDisk();
+        ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: true, refreshCatalogs: true);
+        runtimeSettingsSnapshotDirty = true;
     }
 
     public string GetSharedAudioSettingsPathForUi()
@@ -17455,6 +17559,70 @@ private void ParseDetectorPacket(string detectorPacket)
             return $"{GetSongPlaybackAudioModeLabel(songPlaybackAudioMode)} (Fallback {GetSongPlaybackAudioModeLabel(effectiveMode)})";
 
         return GetSongPlaybackAudioModeLabel(songPlaybackAudioMode);
+    }
+
+    public List<AudioSource> GetToneLabUnifiedPlaybackSources()
+    {
+        List<AudioSource> result = new List<AudioSource>();
+        HashSet<int> seenInstanceIds = new HashSet<int>();
+
+        void AddSource(AudioSource source)
+        {
+            if (source == null || !source.enabled)
+                return;
+
+            int instanceId = source.GetInstanceID();
+            if (!seenInstanceIds.Add(instanceId))
+                return;
+
+            result.Add(source);
+        }
+
+        SongPlaybackAudioMode effectiveMode = GetEffectiveSongPlaybackAudioMode();
+        if (effectiveMode == SongPlaybackAudioMode.Muted)
+            return result;
+
+        if (effectiveMode == SongPlaybackAudioMode.Generated)
+        {
+            AddSource(generatedSongPlayer?.PlaybackAudioSource);
+            return result;
+        }
+
+        if (gameplayMode == GuitarGameplayMode.Arcade && arcadeAudioSources != null && arcadeAudioSources.Count > 0)
+        {
+            for (int i = 0; i < arcadeAudioSources.Count; i++)
+            {
+                AudioSource source = arcadeAudioSources[i];
+                if (source == null)
+                    continue;
+
+                if (source != backingTrackSource && source.clip == null)
+                    continue;
+
+                AddSource(source);
+            }
+
+            return result;
+        }
+
+        if (IsStemMixPlaybackReady() && stemAudioSources != null && stemAudioSources.Count > 0)
+        {
+            for (int i = 0; i < stemAudioSources.Count; i++)
+            {
+                AudioSource source = stemAudioSources[i]?.source;
+                if (source == null || source.clip == null)
+                    continue;
+
+                AddSource(source);
+            }
+
+            return result;
+        }
+
+        if (backingTrackSource != null && backingTrackSource.clip != null)
+            AddSource(backingTrackSource);
+
+        return result;
     }
 
     private SongPlaybackAudioMode[] GetAvailableSongPlaybackAudioModesForCurrentGameMode()
