@@ -199,6 +199,9 @@ internal static class Program
                 float noteX01 = partial.width > 0.0001f
                     ? Clamp01((float)((beatBounds.OnNotesX - partial.absoluteX) / partial.width))
                     : 0f;
+                float visualStartX01 = partial.width > 0.0001f
+                    ? Clamp01((float)((beatVisual.X - partial.absoluteX) / partial.width))
+                    : noteX01;
                 float indicatorY01 = partial.height > 0.0001f
                     ? Clamp01((float)((barVisual.Y - partial.absoluteY) / partial.height))
                     : 0f;
@@ -208,12 +211,12 @@ internal static class Program
                 float visualWidth01 = partial.width > 0.0001f
                     ? Clamp01((float)(beatVisual.W / partial.width))
                     : 0f;
-                (_, float timeEndX01) = ResolveTimeBasedIndicatorSpan(
+                (float timeStartX01, float timeEndX01) = ResolveTimeBasedIndicatorSpan(
                     beatTiming,
                     beatBounds,
                     partial,
                     barTimingRanges);
-                float indicatorX01 = noteX01;
+                float indicatorX01 = Math.Min(timeStartX01, visualStartX01);
                 float indicatorEndX01 = timeEndX01;
 
                 if (allRestSection)
@@ -529,11 +532,17 @@ internal static class Program
         if (beat?.beat == null || beat.beat.IsRest || beat.beat.Notes == null || beat.beat.Notes.Count == 0)
             return "rest";
 
+        int stringCount = Math.Max(1, beat.beat.Voice?.Bar?.Staff?.Tuning?.Count ?? 6);
         List<string> parts = beat.beat.Notes
             .Where(note => note != null)
-            .OrderBy(note => note.String)
-            .ThenBy(note => note.Fret)
-            .Select(note => $"{note.String}:{Math.Max(0, note.Fret)}:{(note.IsDead ? 1 : 0)}")
+            .Select(note => new
+            {
+                note,
+                normalizedString = Math.Max(1, stringCount - Math.Max(0, note.String - 1))
+            })
+            .OrderBy(entry => entry.normalizedString)
+            .ThenBy(entry => entry.note.Fret)
+            .Select(entry => $"{entry.normalizedString}:{Math.Max(0, entry.note.Fret)}:{(entry.note.IsDead ? 1 : 0)}")
             .ToList();
 
         return parts.Count == 0 ? "rest" : string.Join("|", parts);
@@ -688,8 +697,8 @@ internal static class Program
         if (endFraction <= startFraction + 0.0005f)
             endFraction = Math.Min(1f, startFraction + 0.05f);
 
-        float startX01 = LerpClamped(usableStartX01, usableEndX01, startFraction);
-        float endX01 = LerpClamped(usableStartX01, usableEndX01, endFraction);
+        float startX01 = LerpClamped(barStartX01, usableEndX01, startFraction);
+        float endX01 = LerpClamped(barStartX01, usableEndX01, endFraction);
         if (endX01 <= startX01 + 0.0005f)
             endX01 = Math.Min(1f, startX01 + 0.02f);
         return (startX01, endX01);
@@ -700,7 +709,7 @@ internal static class Program
         if (beats == null || beats.Count == 0)
             return;
 
-        float previousStartX01 = 0.08f;
+        float previousStartX01 = 0f;
         for (int i = 0; i < beats.Count; i++)
         {
             AlphaTabRenderBeatMarker beat = beats[i];

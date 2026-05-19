@@ -213,17 +213,17 @@ public static class RocksmithAlphaTabSourceBuilder
         if (!RocksmithCachedSongLoader.TryLoadManifest(normalizedManifestPath, out RocksmithCachedSongManifest manifest) || manifest == null)
             throw new InvalidOperationException($"Failed to load Rocksmith manifest '{normalizedManifestPath}'.");
 
-        if (!TryLoadArrangementWithTiming(normalizedManifestPath, arrangementIndex, out manifest, out RocksmithCachedArrangementSummary summary, out RocksmithCachedArrangementPart part))
+        if (!TryLoadArrangementWithTiming(normalizedManifestPath, arrangementIndex, out string resolvedManifestPath, out manifest, out RocksmithCachedArrangementSummary summary, out RocksmithCachedArrangementPart part))
             throw new InvalidOperationException($"Failed to load Rocksmith arrangement {arrangementIndex} from '{normalizedManifestPath}'.");
 
         string cacheDirectory = Path.Combine(
             ExternalContentPaths.PersistentAlphaTabRenderCacheDirectory,
             CacheFolderName,
-            ComputeCacheKey(normalizedManifestPath, summary?.partId, manifest.sourcePsarcLastWriteUtcTicks));
+            ComputeCacheKey(resolvedManifestPath, summary?.partId, manifest.sourcePsarcLastWriteUtcTicks));
         Directory.CreateDirectory(cacheDirectory);
 
         string outputPath = Path.Combine(cacheDirectory, $"{SanitizeFileName(summary?.partId ?? $"arrangement_{arrangementIndex.ToString(CultureInfo.InvariantCulture)}")}.musicxml");
-        long sourceTicks = GetSourceTicks(normalizedManifestPath, summary?.partFilePath);
+        long sourceTicks = GetSourceTicks(resolvedManifestPath, summary?.partFilePath);
         long outputTicks = File.Exists(outputPath) ? File.GetLastWriteTimeUtc(outputPath).Ticks : 0L;
         if (outputTicks >= sourceTicks && File.Exists(outputPath))
             return outputPath;
@@ -235,10 +235,12 @@ public static class RocksmithAlphaTabSourceBuilder
     private static bool TryLoadArrangementWithTiming(
         string manifestPath,
         int arrangementIndex,
+        out string resolvedManifestPath,
         out RocksmithCachedSongManifest manifest,
         out RocksmithCachedArrangementSummary summary,
         out RocksmithCachedArrangementPart part)
     {
+        resolvedManifestPath = manifestPath;
         manifest = null;
         summary = null;
         part = null;
@@ -253,14 +255,30 @@ public static class RocksmithAlphaTabSourceBuilder
             return true;
 
         string sourcePsarcPath = manifest?.sourcePsarcPath;
+        string importedManifestPath = RocksmithImportService.GetImportedManifestPathForPsarc(sourcePsarcPath);
+        if (!string.IsNullOrWhiteSpace(importedManifestPath) &&
+            !string.Equals(importedManifestPath, manifestPath, StringComparison.OrdinalIgnoreCase) &&
+            RocksmithCachedSongLoader.TryLoadManifest(importedManifestPath, out RocksmithCachedSongManifest importedManifest) &&
+            RocksmithCachedSongLoader.TryLoadArrangementPart(importedManifestPath, arrangementIndex, out RocksmithCachedArrangementSummary importedSummary, out RocksmithCachedArrangementPart importedPart) &&
+            HasTimingData(importedPart?.timing) &&
+            (importedPart?.schemaVersion ?? 0) >= MinimumAlphaTabSchemaVersion)
+        {
+            resolvedManifestPath = importedManifestPath;
+            manifest = importedManifest;
+            summary = importedSummary;
+            part = importedPart;
+            return true;
+        }
+
         if (string.IsNullOrWhiteSpace(sourcePsarcPath) || !File.Exists(sourcePsarcPath))
             throw new InvalidOperationException("This Rocksmith import does not contain the timing data needed for AlphaTab, and the original PSARC file is no longer available to refresh it.");
 
         if (!RocksmithImportService.RefreshImportForPsarc(sourcePsarcPath, out string refreshError))
             throw new InvalidOperationException($"Failed to refresh Rocksmith timing data from '{sourcePsarcPath}': {refreshError}");
 
-        if (!RocksmithCachedSongLoader.TryLoadManifest(manifestPath, out manifest) ||
-            !RocksmithCachedSongLoader.TryLoadArrangementPart(manifestPath, arrangementIndex, out summary, out part))
+        resolvedManifestPath = importedManifestPath;
+        if (!RocksmithCachedSongLoader.TryLoadManifest(resolvedManifestPath, out manifest) ||
+            !RocksmithCachedSongLoader.TryLoadArrangementPart(resolvedManifestPath, arrangementIndex, out summary, out part))
         {
             return false;
         }
@@ -1703,7 +1721,7 @@ public sealed class RocksmithAlphaTabTimingBeatEntry
 public static class RocksmithAlphaTabGpSourceBuilder
 {
     private const string CacheFolderName = "RocksmithSources";
-    private const string ExportVersion = "alphatex_v5";
+    private const string ExportVersion = "alphatex_v6";
     private const int MinimumAlphaTabSchemaVersion = 15;
 
     public static string GetOrCreate(string manifestPath, int arrangementIndex)
@@ -1715,18 +1733,18 @@ public static class RocksmithAlphaTabGpSourceBuilder
         if (!RocksmithCachedSongLoader.TryLoadManifest(normalizedManifestPath, out RocksmithCachedSongManifest manifest) || manifest == null)
             throw new InvalidOperationException($"Failed to load Rocksmith manifest '{normalizedManifestPath}'.");
 
-        if (!TryLoadArrangementWithTiming(normalizedManifestPath, arrangementIndex, out manifest, out RocksmithCachedArrangementSummary summary, out RocksmithCachedArrangementPart part))
+        if (!TryLoadArrangementWithTiming(normalizedManifestPath, arrangementIndex, out string resolvedManifestPath, out manifest, out RocksmithCachedArrangementSummary summary, out RocksmithCachedArrangementPart part))
             throw new InvalidOperationException($"Failed to load Rocksmith arrangement {arrangementIndex} from '{normalizedManifestPath}'.");
 
         string cacheDirectory = Path.Combine(
             ExternalContentPaths.PersistentAlphaTabRenderCacheDirectory,
             CacheFolderName,
-            ComputeCacheKey(normalizedManifestPath, summary?.partId, manifest.sourcePsarcLastWriteUtcTicks));
+            ComputeCacheKey(resolvedManifestPath, summary?.partId, manifest.sourcePsarcLastWriteUtcTicks));
         Directory.CreateDirectory(cacheDirectory);
 
         string fileBaseName = SanitizeFileName(summary?.partId ?? $"arrangement_{arrangementIndex.ToString(CultureInfo.InvariantCulture)}");
         string outputGpPath = Path.Combine(cacheDirectory, $"{fileBaseName}.alphatex");
-        long sourceTicks = GetSourceTicks(normalizedManifestPath, summary?.partFilePath);
+        long sourceTicks = GetSourceTicks(resolvedManifestPath, summary?.partFilePath);
         long outputTicks = File.Exists(outputGpPath) ? File.GetLastWriteTimeUtc(outputGpPath).Ticks : 0L;
         if (outputTicks >= sourceTicks && File.Exists(outputGpPath))
             return outputGpPath;
@@ -1738,10 +1756,12 @@ public static class RocksmithAlphaTabGpSourceBuilder
     private static bool TryLoadArrangementWithTiming(
         string manifestPath,
         int arrangementIndex,
+        out string resolvedManifestPath,
         out RocksmithCachedSongManifest manifest,
         out RocksmithCachedArrangementSummary summary,
         out RocksmithCachedArrangementPart part)
     {
+        resolvedManifestPath = manifestPath;
         manifest = null;
         summary = null;
         part = null;
@@ -1756,14 +1776,30 @@ public static class RocksmithAlphaTabGpSourceBuilder
             return true;
 
         string sourcePsarcPath = manifest?.sourcePsarcPath;
+        string importedManifestPath = RocksmithImportService.GetImportedManifestPathForPsarc(sourcePsarcPath);
+        if (!string.IsNullOrWhiteSpace(importedManifestPath) &&
+            !string.Equals(importedManifestPath, manifestPath, StringComparison.OrdinalIgnoreCase) &&
+            RocksmithCachedSongLoader.TryLoadManifest(importedManifestPath, out RocksmithCachedSongManifest importedManifest) &&
+            RocksmithCachedSongLoader.TryLoadArrangementPart(importedManifestPath, arrangementIndex, out RocksmithCachedArrangementSummary importedSummary, out RocksmithCachedArrangementPart importedPart) &&
+            HasTimingData(importedPart?.timing) &&
+            (importedPart?.schemaVersion ?? 0) >= MinimumAlphaTabSchemaVersion)
+        {
+            resolvedManifestPath = importedManifestPath;
+            manifest = importedManifest;
+            summary = importedSummary;
+            part = importedPart;
+            return true;
+        }
+
         if (string.IsNullOrWhiteSpace(sourcePsarcPath) || !File.Exists(sourcePsarcPath))
             throw new InvalidOperationException("This Rocksmith import does not contain the timing/effect data needed for AlphaTab, and the original PSARC file is no longer available to refresh it.");
 
         if (!RocksmithImportService.RefreshImportForPsarc(sourcePsarcPath, out string refreshError))
             throw new InvalidOperationException($"Failed to refresh Rocksmith AlphaTab data from '{sourcePsarcPath}': {refreshError}");
 
-        if (!RocksmithCachedSongLoader.TryLoadManifest(manifestPath, out manifest) ||
-            !RocksmithCachedSongLoader.TryLoadArrangementPart(manifestPath, arrangementIndex, out summary, out part))
+        resolvedManifestPath = importedManifestPath;
+        if (!RocksmithCachedSongLoader.TryLoadManifest(resolvedManifestPath, out manifest) ||
+            !RocksmithCachedSongLoader.TryLoadArrangementPart(resolvedManifestPath, arrangementIndex, out summary, out part))
         {
             return false;
         }
@@ -2136,7 +2172,7 @@ internal static class RocksmithAlphaTabGpWriter
                 continuesFromPrevious = continuesFromPrevious,
                 continuesToNext = continuesToNext,
                 voiceIndex = voiceIndex,
-                noteKey = BuildTimingNoteKey(quantized.notes)
+                noteKey = BuildTimingNoteKey(quantized.notes, tuningPitches != null && tuningPitches.Length > 0 ? tuningPitches.Length : 6)
             });
             cursorTime = nextTime;
         }
@@ -2249,16 +2285,20 @@ internal static class RocksmithAlphaTabGpWriter
         return 8;
     }
 
-    private static string BuildTimingNoteKey(IEnumerable<RocksmithCachedNoteData> notes)
+    private static string BuildTimingNoteKey(IEnumerable<RocksmithCachedNoteData> notes, int stringCount)
     {
         if (notes == null)
             return "rest";
 
         List<string> parts = notes
             .Where(note => note != null)
-            .OrderBy(note => note.stringIdx)
+            .OrderBy(note => Math.Max(1, stringCount - Mathf.Clamp(note.stringIdx, 0, Math.Max(0, stringCount - 1))))
             .ThenBy(note => note.fret)
-            .Select(note => $"{Math.Max(1, note.stringIdx + 1)}:{Math.Max(0, note.fret)}:{(note.isFretHandMute || note.isMuted ? 1 : 0)}")
+            .Select(note =>
+            {
+                int alphaTexString = Math.Max(1, stringCount - Mathf.Clamp(note.stringIdx, 0, Math.Max(0, stringCount - 1)));
+                return $"{alphaTexString}:{Math.Max(0, note.fret)}:{(note.isFretHandMute ? 1 : 0)}";
+            })
             .ToList();
 
         return parts.Count == 0 ? "rest" : string.Join("|", parts);

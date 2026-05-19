@@ -114,6 +114,18 @@ public static class RocksmithImportService
         }
     }
 
+    public static string GetImportedManifestPathForPsarc(string psarcPath)
+    {
+        if (string.IsNullOrWhiteSpace(psarcPath))
+            return string.Empty;
+
+        string normalizedPsarcPath = Path.GetFullPath(psarcPath);
+        return Path.Combine(
+            ExternalContentPaths.PersistentSongsDirectory,
+            BuildImportDirectoryName(normalizedPsarcPath),
+            RocksmithCachedSongFormat.ManifestFileName);
+    }
+
     private static bool IsSupportedRuntimePlatform()
     {
         RuntimePlatform platform = Application.platform;
