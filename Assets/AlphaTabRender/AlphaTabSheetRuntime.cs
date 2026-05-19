@@ -769,13 +769,31 @@ public sealed class AlphaTabSheetRuntime
         AlphaTabRenderBeatData selectedLast = beats[selectedEndIndex];
         const float epsilon = 0.0005f;
 
-        if (candidate.startTime > selected.startTime + epsilon)
-            return true;
-        if (candidate.startTime < selected.startTime - epsilon)
-            return false;
+        bool candidateAttack = !candidate.continuesFromPrevious;
+        bool selectedAttack = !selected.continuesFromPrevious;
+        if (candidateAttack != selectedAttack)
+            return candidateAttack;
 
-        if (candidate.continuesFromPrevious != selected.continuesFromPrevious)
-            return !candidate.continuesFromPrevious;
+        if (candidateAttack && selectedAttack)
+        {
+            if (candidate.voiceIndex != selected.voiceIndex)
+                return candidate.voiceIndex < selected.voiceIndex;
+
+            if (candidate.startTime < selected.startTime - epsilon)
+                return true;
+            if (candidate.startTime > selected.startTime + epsilon)
+                return false;
+        }
+        else
+        {
+            if (candidate.voiceIndex != selected.voiceIndex)
+                return candidate.voiceIndex < selected.voiceIndex;
+
+            if (candidate.startTime > selected.startTime + epsilon)
+                return true;
+            if (candidate.startTime < selected.startTime - epsilon)
+                return false;
+        }
 
         float candidateEndX = ResolveIndicatorEndX01(candidateLast);
         float selectedEndX = ResolveIndicatorEndX01(selectedLast);
@@ -791,7 +809,7 @@ public sealed class AlphaTabSheetRuntime
         if (candidateDuration > selectedDuration + epsilon)
             return false;
 
-        return candidate.voiceIndex > selected.voiceIndex;
+        return candidate.voiceIndex < selected.voiceIndex;
     }
 
 
@@ -824,7 +842,7 @@ public sealed class AlphaTabSheetRuntime
 
         float endX = beat.indicatorEndX01;
         if (endX <= beat.indicatorX01 + 0.0005f)
-            endX = beat.indicatorX01 + Mathf.Max(beat.visualWidth01, 0.02f);
+            endX = beat.indicatorX01 + Mathf.Max(beat.visualWidth01, 0.002f);
 
         return Mathf.Clamp01(endX);
     }

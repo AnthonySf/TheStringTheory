@@ -17,7 +17,8 @@ internal static class Program
 {
     private const bool UseGameplayAlphaTabVoiceStyling = true;
     private const bool UseGameplayAlphaTabTiedBendCleanup = true;
-    private const int RenderManifestVersion = 12;
+    private const bool UseGameplaySecondaryVoiceRestHiding = true;
+    private const int RenderManifestVersion = 23;
 
     private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
     {
@@ -87,6 +88,7 @@ internal static class Program
         Score score = ScoreLoader.LoadScoreFromBytes(new Uint8Array(File.ReadAllBytes(request.notationPath)), settings);
         int trackIndex = Math.Clamp(request.trackIndex, 0, Math.Max(0, score.Tracks.Count - 1));
         Track selectedTrack = score.Tracks[(int)trackIndex];
+        ApplyGameplaySecondaryVoiceRestHiding(selectedTrack);
         List<TempoPoint> tempoPoints = BuildTempoPoints(score, settings, out double midiDivision);
         List<BeatTiming> beatTimings = BuildBeatTimings(selectedTrack, tempoPoints, midiDivision);
         ApplyTimingOverridesIfAvailable(request.notationPath, beatTimings);
@@ -177,6 +179,10 @@ internal static class Program
             List<BeatTiming> beatsInSection = beatTimings
                 .Where(beat => beat.masterBarIndex >= partial.firstMasterBarIndex && beat.masterBarIndex <= partial.lastMasterBarIndex)
                 .Where(ShouldIncludeBeatInSection)
+                .OrderBy(beat => beat.startSeconds)
+                .ThenBy(beat => beat.endSeconds)
+                .ThenBy(beat => beat.continuesFromPrevious ? 1 : 0)
+                .ThenBy(beat => beat.voiceIndex)
                 .ToList();
             bool allRestSection = beatsInSection.Count > 0 && beatsInSection.All(beat => beat.beat.IsRest);
             Dictionary<int, BarTimingRange> barTimingRanges = BuildBarTimingRanges(beatsInSection);
@@ -216,7 +222,15 @@ internal static class Program
                     beatBounds,
                     partial,
                     barTimingRanges);
-                float indicatorX01 = Math.Min(timeStartX01, visualStartX01);
+                float indicatorX01;
+                if (beatIndex == 0 && beatTiming.continuesFromPrevious)
+                    indicatorX01 = 0f;
+                else if (beatTiming.beat.IsRest)
+                    indicatorX01 = visualStartX01;
+                else if (beatIndex == 0)
+                    indicatorX01 = visualStartX01;
+                else
+                    indicatorX01 = noteX01;
                 float indicatorEndX01 = timeEndX01;
 
                 if (allRestSection)
@@ -247,6 +261,7 @@ internal static class Program
                 });
             }
 
+            RemoveOutlierUnmatchedNonRestBeats(section);
             ResolveSequentialIndicatorAnchors(section.beats);
             manifest.sections.Add(section);
         }
@@ -286,6 +301,42 @@ internal static class Program
             settings.Notation.Elements.Set(NotationElement.TabNotesOnTiedBends, false);
         }
         return settings;
+    }
+
+    private static void ApplyGameplaySecondaryVoiceRestHiding(Track track)
+    {
+        if (!UseGameplaySecondaryVoiceRestHiding || track?.Staves == null)
+            return;
+
+        AlphaTabColor transparent = new AlphaTabColor(1d, 1d, 1d, 0d);
+
+        foreach (Staff staff in track.Staves)
+        {
+            if (staff?.Bars == null)
+                continue;
+
+            foreach (Bar bar in staff.Bars)
+            {
+                if (bar?.Voices == null)
+                    continue;
+
+                for (int voiceIndex = 1; voiceIndex < bar.Voices.Count; voiceIndex++)
+                {
+                    Voice voice = bar.Voices[voiceIndex];
+                    if (voice?.Beats == null)
+                        continue;
+
+                    foreach (Beat beat in voice.Beats)
+                    {
+                        if (beat == null || !beat.IsRest)
+                            continue;
+
+                        beat.Style ??= new BeatStyle();
+                        beat.Style.Colors.Set(BeatSubElement.GuitarTabRests, transparent);
+                    }
+                }
+            }
+        }
     }
 
     private static void ApplyMinimalDisplayPadding(Settings settings)
@@ -448,6 +499,7 @@ internal static class Program
             .ToDictionary(group => group.Key, group => group.ToList());
 
         HashSet<BeatTiming> assigned = new HashSet<BeatTiming>();
+        HashSet<RocksmithAlphaTabTimingBeatEntry> assignedEntries = new HashSet<RocksmithAlphaTabTimingBeatEntry>();
         int applied = 0;
         foreach (KeyValuePair<(int bar, int voice), List<RocksmithAlphaTabTimingBeatEntry>> pair in sidecarGroups)
         {
@@ -466,6 +518,38 @@ internal static class Program
                 BeatTiming beat = groupBeats[matchIndex];
                 ApplyTimingOverride(entry, beat);
                 assigned.Add(beat);
+                assignedEntries.Add(entry);
+                cursor = matchIndex + 1;
+                applied++;
+            }
+        }
+
+        Dictionary<int, List<RocksmithAlphaTabTimingBeatEntry>> sidecarBarGroups = entries
+            .Where(entry => !assignedEntries.Contains(entry))
+            .GroupBy(entry => entry.masterBarIndex)
+            .ToDictionary(group => group.Key, group => group.OrderBy(entry => entry.startTime).ThenBy(entry => entry.voiceIndex).ToList());
+
+        Dictionary<int, List<BeatTiming>> beatBarGroups = beatTimings
+            .Where(beat => !assigned.Contains(beat))
+            .GroupBy(beat => beat.masterBarIndex)
+            .ToDictionary(group => group.Key, group => group.OrderBy(beat => beat.startSeconds).ThenBy(beat => beat.voiceIndex).ToList());
+
+        foreach (KeyValuePair<int, List<RocksmithAlphaTabTimingBeatEntry>> pair in sidecarBarGroups)
+        {
+            if (!beatBarGroups.TryGetValue(pair.Key, out List<BeatTiming>? groupBeats))
+                continue;
+
+            int cursor = 0;
+            foreach (RocksmithAlphaTabTimingBeatEntry entry in pair.Value)
+            {
+                int matchIndex = FindMatchingBeatIndex(groupBeats, entry, cursor, assigned);
+                if (matchIndex < 0)
+                    continue;
+
+                BeatTiming beat = groupBeats[matchIndex];
+                ApplyTimingOverride(entry, beat);
+                assigned.Add(beat);
+                assignedEntries.Add(entry);
                 cursor = matchIndex + 1;
                 applied++;
             }
@@ -488,12 +572,12 @@ internal static class Program
                 return i;
         }
 
-        for (int i = 0; i < Math.Max(0, startIndex); i++)
+        for (int i = Math.Max(0, startIndex); i < beats.Count; i++)
         {
             BeatTiming beat = beats[i];
             if (assigned.Contains(beat))
                 continue;
-            if (BeatMatchesEntry(beat, entry))
+            if (BeatMatchesEntryRelaxed(beat, entry))
                 return i;
         }
 
@@ -512,6 +596,19 @@ internal static class Program
         if (ResolveLoadedBeatContinuesFromPrevious(beat) != entry.continuesFromPrevious)
             return false;
         if (ResolveLoadedBeatContinuesToNext(beat) != entry.continuesToNext)
+            return false;
+
+        return true;
+    }
+
+    private static bool BeatMatchesEntryRelaxed(BeatTiming beat, RocksmithAlphaTabTimingBeatEntry entry)
+    {
+        if (beat == null || entry == null)
+            return false;
+
+        if ((beat.beat?.IsRest ?? true) != entry.isRest)
+            return false;
+        if (!string.Equals(BuildLoadedBeatNoteKey(beat), entry.noteKey ?? string.Empty, StringComparison.Ordinal))
             return false;
 
         return true;
@@ -709,6 +806,7 @@ internal static class Program
         if (beats == null || beats.Count == 0)
             return;
 
+        const float overlapEpsilon = 0.0005f;
         float previousStartX01 = 0f;
         for (int i = 0; i < beats.Count; i++)
         {
@@ -716,10 +814,9 @@ internal static class Program
             if (beat == null)
                 continue;
 
+            beat.indicatorX01 = Clamp01(beat.indicatorX01);
             if (beat.indicatorX01 < previousStartX01)
                 beat.indicatorX01 = previousStartX01;
-
-            beat.indicatorX01 = Clamp01(beat.indicatorX01);
             previousStartX01 = beat.indicatorX01;
         }
 
@@ -729,17 +826,63 @@ internal static class Program
             if (beat == null)
                 continue;
 
-            float minWidth = Math.Max(beat.visualWidth01, 0.02f);
             float fallbackEndX01 = beat.indicatorEndX01;
-            float desiredEndX01 = i < beats.Count - 1
-                ? beats[i + 1].indicatorX01
-                : fallbackEndX01;
+            float desiredEndX01 = fallbackEndX01;
+            bool foundNextAnchor = false;
+
+            for (int nextIndex = i + 1; nextIndex < beats.Count; nextIndex++)
+            {
+                AlphaTabRenderBeatMarker nextBeat = beats[nextIndex];
+                if (nextBeat == null)
+                    continue;
+
+                bool sameEventContinuation = beat.sourceEventId >= 0 && nextBeat.sourceEventId == beat.sourceEventId;
+                bool nonOverlappingNextBeat = nextBeat.startTime >= beat.endTime - overlapEpsilon;
+                if (!sameEventContinuation && !nonOverlappingNextBeat)
+                    continue;
+
+                desiredEndX01 = nextBeat.indicatorX01;
+                foundNextAnchor = true;
+                break;
+            }
+
+            float minWidth = foundNextAnchor
+                ? 0.001f
+                : Math.Max(beat.visualWidth01, 0.002f);
 
             if (desiredEndX01 < beat.indicatorX01 + minWidth)
                 desiredEndX01 = beat.indicatorX01 + minWidth;
 
             beat.indicatorEndX01 = Clamp01(Math.Max(desiredEndX01, beat.indicatorX01 + 0.001f));
         }
+    }
+
+    private static void RemoveOutlierUnmatchedNonRestBeats(AlphaTabRenderSectionManifest section)
+    {
+        if (section?.beats == null || section.beats.Count == 0)
+            return;
+
+        List<AlphaTabRenderBeatMarker> matchedBeats = section.beats
+            .Where(beat => beat != null && beat.sourceEventId >= 0)
+            .ToList();
+        if (matchedBeats.Count == 0)
+            return;
+
+        float matchedStart = matchedBeats.Min(beat => beat.startTime);
+        float matchedEnd = matchedBeats.Max(beat => beat.endTime);
+        const float outlierPaddingSeconds = 0.5f;
+
+        int removed = section.beats.RemoveAll(beat =>
+            beat != null &&
+            beat.sourceEventId < 0 &&
+            !beat.isRest &&
+            (beat.endTime < matchedStart - outlierPaddingSeconds || beat.startTime > matchedEnd + outlierPaddingSeconds));
+
+        if (removed <= 0)
+            return;
+
+        section.startTime = section.beats.Count > 0 ? section.beats.Min(beat => beat.startTime) : matchedStart;
+        section.endTime = section.beats.Count > 0 ? section.beats.Max(beat => beat.endTime) : matchedEnd;
     }
 
     private static T LoadJson<T>(string path)
