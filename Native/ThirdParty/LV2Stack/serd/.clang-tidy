@@ -1,0 +1,16 @@
+# Copyright 2020-2026 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  *,
+  -altera-*,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-suspicious-realloc-usage,
+  -clang-diagnostic-unused-macros,
+  -llvmlibc-*,
+  -misc-include-cleaner,
+  -readability-identifier-length,
+  -readability-implicit-bool-conversion,
+FormatStyle: file
+HeaderFilterRegex: '.*/serd/.*\.h'
+WarningsAsErrors: '*'

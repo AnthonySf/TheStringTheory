@@ -10338,7 +10338,7 @@ public sealed class TabsSongHeaderOverlay
             {
                 gameplayShortcutLabel.text = showPause
                     ? $"Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
-                    : $"Esc pause  \u2022  R {restartTarget}  \u2022  V Audio";
+                    : $"Esc pause  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab";
             }
             gameplayShortcutLabel.style.display = showGameplayShortcuts ? DisplayStyle.Flex : DisplayStyle.None;
         }
@@ -11861,8 +11861,8 @@ public sealed class TabsSongHeaderOverlay
     {
         string controls = GetArcadeFooterControlSummary();
         return showPause
-            ? $"{controls}  \u2022  Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
-            : $"{controls}  \u2022  Esc pause  \u2022  R {restartTarget}  \u2022  V Audio";
+            ? $"{controls}  \u2022  Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
+            : $"{controls}  \u2022  Esc pause  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab";
     }
 
     private string GetArcadeStartupPrimaryMessage()
@@ -15196,23 +15196,25 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsTopRow(menuList, 2, "Songs Folder", snapshot.selectedGlobalSettingsTopIndex == 2, snapshot.availableSongNames != null, snapshot.activeGlobalSettingsCategory, snapshot, snapshot.selectedGlobalSettingsTopIndex, snapshot.selectedGlobalSettingsItemIndex, snapshot.runtimeSettingsSections);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 3, "Audio", snapshot.selectedGlobalSettingsTopIndex == 3);
+            AddGlobalSettingsTopRow(menuList, 3, "Effects Folder", snapshot.selectedGlobalSettingsTopIndex == 3, snapshot.availableSongNames != null, snapshot.activeGlobalSettingsCategory, snapshot, snapshot.selectedGlobalSettingsTopIndex, snapshot.selectedGlobalSettingsItemIndex, snapshot.runtimeSettingsSections);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 4, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 4);
+            AddGlobalSettingsTopCategoryRow(menuList, 4, "Audio", snapshot.selectedGlobalSettingsTopIndex == 4);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 5, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 5);
+            AddGlobalSettingsTopCategoryRow(menuList, 5, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 5);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 6, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 6);
+            AddGlobalSettingsTopCategoryRow(menuList, 6, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 6);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 7, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 7);
+            AddGlobalSettingsTopCategoryRow(menuList, 7, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 7);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 8, "Controls", snapshot.selectedGlobalSettingsTopIndex == 8);
+            AddGlobalSettingsTopCategoryRow(menuList, 8, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 8);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 9, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 9);
+            AddGlobalSettingsTopCategoryRow(menuList, 9, "Controls", snapshot.selectedGlobalSettingsTopIndex == 9);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 10, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 10);
+            AddGlobalSettingsTopCategoryRow(menuList, 10, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 10);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 11, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 11);
+            AddGlobalSettingsTopCategoryRow(menuList, 11, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 11);
+
+            AddGlobalSettingsTopCategoryRow(menuList, 12, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 12);
 
             return;
 
@@ -15287,9 +15289,16 @@ public sealed class TabsSongHeaderOverlay
             onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
             onRight = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1);
         }
-        else
+        else if (index == 2)
         {
             value = snapshot.songsFolderMenuValueLabel ?? "DEFAULT";
+            showArrows = false;
+            onLeft = null;
+            onRight = null;
+        }
+        else
+        {
+            value = snapshot.effectsFolderMenuValueLabel ?? "DEFAULT";
             showArrows = false;
             onLeft = null;
             onRight = null;
@@ -15934,23 +15943,25 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsFullscreenTopValueRow(menuList, snapshot, 2, "Songs Folder");
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 3, "Audio", snapshot.selectedGlobalSettingsTopIndex == 3);
+            AddGlobalSettingsFullscreenTopValueRow(menuList, snapshot, 3, "Effects Folder");
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 4, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 4);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 4, "Audio", snapshot.selectedGlobalSettingsTopIndex == 4);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 5);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 5);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 6, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 6);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 6, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 6);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 7, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 7);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 7, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 7);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 8, "Controls", snapshot.selectedGlobalSettingsTopIndex == 8);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 8, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 8);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 9, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 9);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 9, "Controls", snapshot.selectedGlobalSettingsTopIndex == 9);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 10, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 10);
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 10, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 10);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 11, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 11, "DEFAULTS");
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 11, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 11);
+
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 12, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 12, "DEFAULTS");
 
             return;
 
@@ -16072,6 +16083,8 @@ public sealed class TabsSongHeaderOverlay
             snapshot.activeGlobalSettingsCategory ?? string.Empty,
 
             snapshot.songsFolderMenuValueLabel ?? string.Empty,
+
+            snapshot.effectsFolderMenuValueLabel ?? string.Empty,
 
             snapshot.selectedGlobalSettingsTopIndex.ToString(CultureInfo.InvariantCulture),
 
@@ -16229,9 +16242,16 @@ public sealed class TabsSongHeaderOverlay
             onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
             onRight = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1);
         }
-        else
+        else if (index == 2)
         {
             value = snapshot.songsFolderMenuValueLabel ?? "DEFAULT";
+            showArrows = false;
+            onLeft = null;
+            onRight = null;
+        }
+        else
+        {
+            value = snapshot.effectsFolderMenuValueLabel ?? "DEFAULT";
             showArrows = false;
             onLeft = null;
             onRight = null;

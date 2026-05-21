@@ -1,0 +1,42 @@
+# Copyright 2020-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  -*-avoid-c-arrays,
+  -*-narrowing-conversions,
+  -*-use-default-member-init,
+  -abseil-string-find-str-contains,
+  -android-cloexec-fopen,
+  -cppcoreguidelines-avoid-const-or-ref-data-members,
+  -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-special-member-functions,
+  -cppcoreguidelines-use-enum-class,
+  -fuchsia-default-arguments-calls,
+  -fuchsia-default-arguments-declarations,
+  -fuchsia-overloaded-operator,
+  -google-explicit-constructor,
+  -hicpp-explicit-conversions,
+  -hicpp-no-array-decay,
+  -hicpp-special-member-functions,
+  -hicpp-vararg,
+  -misc-const-correctness,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-return-braced-init-list,
+  -modernize-use-nodiscard,
+  -modernize-use-trailing-return-type,
+  -modernize-use-using,
+  -performance-avoid-endl,
+  -performance-enum-size,
+  -readability-implicit-bool-conversion,
+  -readability-redundant-inline-specifier,
+  -readability-redundant-member-init,
+CheckOptions:
+  - key:   readability-function-cognitive-complexity.Threshold
+    value: '6'
+HeaderFilterRegex: '.*\.hpp$'
+InheritParentConfig: true

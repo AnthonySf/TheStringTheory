@@ -1,0 +1,13 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<http://www.niallmoody.com/ndcplugs/cycleshifter.htm#preset001>
+    lv2:port [
+        lv2:symbol "ncvolume" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "ipvolume" ;
+        pset:value 1 ;
+    ] .
+

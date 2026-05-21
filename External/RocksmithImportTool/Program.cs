@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 using ImageMagick;
 using Microsoft.FSharp.Core;
 using Rocksmith2014.Audio;
@@ -10,7 +11,7 @@ using Rocksmith2014.XML.Processing;
 
 internal static class Program
 {
-    private const int SchemaVersion = 15;
+    private const int SchemaVersion = 16;
     private const string ManifestFileName = "song.rs2song.json";
     private const string ContentDirectoryName = "psarc_content";
     private const float RocksmithVibratoCyclesPerSecond = 5f;
@@ -81,6 +82,10 @@ internal static class Program
         if (arrangementXmlPaths.Count == 0)
             throw new InvalidOperationException("No instrumental Rocksmith arrangements were extracted.");
 
+        List<string> manifestJsonPaths = Directory.GetFiles(contentDirectory, "*.json", SearchOption.AllDirectories)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         List<CachedArrangementSummary> arrangementSummaries = new List<CachedArrangementSummary>();
         int maxDifficultyRating = 0;
         float maxDurationSeconds = 0f;
@@ -93,6 +98,7 @@ internal static class Program
             firstArrangement ??= arrangement;
             ImproveArrangementForImport(arrangement);
             ArrangementContext context = ArrangementContext.From(arrangement, xmlPath, i);
+            context.Tones = ExtractArrangementTones(manifestJsonPaths, xmlPath, context.Route);
 
             List<ArrangementVariantBuildResult> variants = BuildVariants(context);
             for (int variantIndex = 0; variantIndex < variants.Count; variantIndex++)
@@ -176,6 +182,231 @@ internal static class Program
         }
     }
 
+    private static CachedArrangementToneData ExtractArrangementTones(IReadOnlyList<string> manifestJsonPaths, string xmlPath, string arrangementName)
+    {
+        ManifestToneData manifestToneData = FindManifestToneData(manifestJsonPaths, arrangementName);
+        CachedArrangementToneData tones = ParseXmlToneData(xmlPath, manifestToneData.IdNameMap);
+        if (string.IsNullOrWhiteSpace(tones.baseToneName) &&
+            manifestToneData.IdNameMap.TryGetValue(0, out string fallbackBaseTone) &&
+            !string.IsNullOrWhiteSpace(fallbackBaseTone))
+        {
+            tones.baseToneName = fallbackBaseTone.Trim();
+        }
+
+        tones.definitions = manifestToneData.Definitions;
+        return NormalizeToneData(tones);
+    }
+
+    private static ManifestToneData FindManifestToneData(IReadOnlyList<string> manifestJsonPaths, string arrangementName)
+    {
+        ManifestToneData result = new ManifestToneData();
+        if (manifestJsonPaths == null || string.IsNullOrWhiteSpace(arrangementName))
+            return result;
+
+        string targetName = arrangementName.Trim();
+        for (int fileIndex = 0; fileIndex < manifestJsonPaths.Count; fileIndex++)
+        {
+            string jsonPath = manifestJsonPaths[fileIndex];
+            if (string.IsNullOrWhiteSpace(jsonPath) || !File.Exists(jsonPath))
+                continue;
+
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(File.ReadAllText(jsonPath));
+                JsonElement root = document.RootElement;
+                if (root.ValueKind != JsonValueKind.Object ||
+                    !root.TryGetProperty("Entries", out JsonElement entries) ||
+                    entries.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                foreach (JsonProperty entryProperty in entries.EnumerateObject())
+                {
+                    JsonElement entry = entryProperty.Value;
+                    if (entry.ValueKind != JsonValueKind.Object ||
+                        !entry.TryGetProperty("Attributes", out JsonElement attributes) ||
+                        attributes.ValueKind != JsonValueKind.Object ||
+                        !TryGetJsonString(attributes, "ArrangementName", out string entryArrangementName) ||
+                        !string.Equals(entryArrangementName.Trim(), targetName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    result.Definitions = ExtractToneDefinitions(attributes);
+                    result.IdNameMap = ExtractToneIdNameMap(attributes);
+                    return result;
+                }
+            }
+            catch (Exception ex) when (ex is JsonException || ex is IOException || ex is UnauthorizedAccessException)
+            {
+                Console.WriteLine($"[RocksmithImportTool] Skipping unparseable manifest JSON '{Path.GetFileName(jsonPath)}': {ex.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    private static List<CachedToneDefinitionData> ExtractToneDefinitions(JsonElement attributes)
+    {
+        List<CachedToneDefinitionData> definitions = new List<CachedToneDefinitionData>();
+        if (!attributes.TryGetProperty("Tones", out JsonElement tonesElement) ||
+            tonesElement.ValueKind != JsonValueKind.Array)
+        {
+            return definitions;
+        }
+
+        HashSet<string> seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (JsonElement toneElement in tonesElement.EnumerateArray())
+        {
+            if (toneElement.ValueKind != JsonValueKind.Object)
+                continue;
+
+            TryGetJsonString(toneElement, "Key", out string key);
+            if (!string.IsNullOrWhiteSpace(key) && !seenKeys.Add(key))
+                continue;
+
+            TryGetJsonString(toneElement, "Name", out string name);
+            definitions.Add(new CachedToneDefinitionData
+            {
+                name = name ?? string.Empty,
+                key = key ?? string.Empty,
+                rawJson = toneElement.GetRawText()
+            });
+        }
+
+        return definitions;
+    }
+
+    private static Dictionary<int, string> ExtractToneIdNameMap(JsonElement attributes)
+    {
+        Dictionary<int, string> idNameMap = new Dictionary<int, string>();
+        string[] keys = { "Tone_A", "Tone_B", "Tone_C", "Tone_D" };
+        for (int i = 0; i < keys.Length; i++)
+        {
+            if (TryGetJsonString(attributes, keys[i], out string toneName) && !string.IsNullOrWhiteSpace(toneName))
+                idNameMap[i] = toneName.Trim();
+        }
+
+        return idNameMap;
+    }
+
+    private static CachedArrangementToneData ParseXmlToneData(string xmlPath, IReadOnlyDictionary<int, string> idNameMap)
+    {
+        CachedArrangementToneData result = new CachedArrangementToneData();
+        if (string.IsNullOrWhiteSpace(xmlPath) || !File.Exists(xmlPath))
+            return result;
+
+        try
+        {
+            XDocument document = XDocument.Load(xmlPath);
+            XElement root = document.Root;
+            if (root == null || !string.Equals(root.Name.LocalName, "song", StringComparison.OrdinalIgnoreCase))
+                return result;
+
+            XElement toneBaseElement = root.Elements().FirstOrDefault(element => string.Equals(element.Name.LocalName, "tonebase", StringComparison.OrdinalIgnoreCase));
+            if (toneBaseElement != null && !string.IsNullOrWhiteSpace(toneBaseElement.Value))
+                result.baseToneName = toneBaseElement.Value.Trim();
+
+            XElement tonesElement = root.Elements().FirstOrDefault(element => string.Equals(element.Name.LocalName, "tones", StringComparison.OrdinalIgnoreCase));
+            if (tonesElement == null)
+                return result;
+
+            foreach (XElement toneElement in tonesElement.Elements().Where(element => string.Equals(element.Name.LocalName, "tone", StringComparison.OrdinalIgnoreCase)))
+            {
+                string timeText = toneElement.Attribute("time")?.Value;
+                if (!float.TryParse(timeText, NumberStyles.Float, CultureInfo.InvariantCulture, out float timeSeconds) ||
+                    float.IsNaN(timeSeconds) ||
+                    float.IsInfinity(timeSeconds))
+                {
+                    continue;
+                }
+
+                string idText = toneElement.Attribute("id")?.Value;
+                int toneId = -1;
+                if (!string.IsNullOrWhiteSpace(idText))
+                    int.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out toneId);
+
+                string toneName = toneElement.Attribute("name")?.Value ?? string.Empty;
+                if ((string.IsNullOrWhiteSpace(toneName) || string.Equals(toneName, "N/A", StringComparison.OrdinalIgnoreCase)) &&
+                    toneId >= 0 &&
+                    idNameMap != null &&
+                    idNameMap.TryGetValue(toneId, out string mappedName))
+                {
+                    toneName = mappedName;
+                }
+
+                if (string.IsNullOrWhiteSpace(toneName))
+                    continue;
+
+                result.changes.Add(new CachedToneChangeData
+                {
+                    timeSeconds = MathF.Round(Math.Max(0f, timeSeconds), 3),
+                    toneName = toneName.Trim(),
+                    toneId = toneId
+                });
+            }
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is System.Xml.XmlException)
+        {
+            Console.WriteLine($"[RocksmithImportTool] Failed to parse arrangement tones from '{Path.GetFileName(xmlPath)}': {ex.Message}");
+        }
+
+        return result;
+    }
+
+    private static CachedArrangementToneData NormalizeToneData(CachedArrangementToneData source)
+    {
+        CachedArrangementToneData normalized = new CachedArrangementToneData
+        {
+            baseToneName = source?.baseToneName?.Trim() ?? string.Empty,
+            changes = source?.changes != null
+                ? source.changes
+                    .Where(change => change != null && !string.IsNullOrWhiteSpace(change.toneName))
+                    .OrderBy(change => change.timeSeconds)
+                    .Select(change => new CachedToneChangeData
+                    {
+                        timeSeconds = MathF.Round(Math.Max(0f, change.timeSeconds), 3),
+                        toneName = change.toneName.Trim(),
+                        toneId = change.toneId
+                    })
+                    .ToList()
+                : new List<CachedToneChangeData>(),
+            definitions = source?.definitions != null
+                ? source.definitions
+                    .Where(definition => definition != null && (!string.IsNullOrWhiteSpace(definition.name) || !string.IsNullOrWhiteSpace(definition.key) || !string.IsNullOrWhiteSpace(definition.rawJson)))
+                    .Select(definition => new CachedToneDefinitionData
+                    {
+                        name = definition.name?.Trim() ?? string.Empty,
+                        key = definition.key?.Trim() ?? string.Empty,
+                        rawJson = definition.rawJson ?? string.Empty
+                    })
+                    .ToList()
+                : new List<CachedToneDefinitionData>()
+        };
+
+        return normalized;
+    }
+
+    private static CachedArrangementToneData CloneToneData(CachedArrangementToneData source)
+    {
+        return NormalizeToneData(source ?? new CachedArrangementToneData());
+    }
+
+    private static bool TryGetJsonString(JsonElement element, string propertyName, out string value)
+    {
+        value = string.Empty;
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out JsonElement property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
+            return false;
+        }
+
+        value = property.GetString() ?? string.Empty;
+        return true;
+    }
+
     private static CachedArrangementPart BuildPart(ArrangementVariantContext context)
     {
         CachedArrangementPart part = new CachedArrangementPart
@@ -194,6 +425,7 @@ internal static class Program
             tuningPitches = context.Arrangement.TuningPitches,
             tuningDisplayName = context.Arrangement.TuningDisplayName,
             timing = RocksmithImportTimingExporter.Build(context.Arrangement.Arrangement),
+            tones = CloneToneData(context.Arrangement.Tones),
             generatedPart = new CachedGeneratedPartInfo
             {
                 partId = context.PartId,
@@ -1200,6 +1432,7 @@ internal static class Program
         public required string PartId;
         public required int[] TuningPitches;
         public required string TuningDisplayName;
+        public CachedArrangementToneData Tones = new CachedArrangementToneData();
 
         public static ArrangementContext From(InstrumentalArrangement arrangement, string xmlPath, int index)
         {
@@ -1216,7 +1449,8 @@ internal static class Program
                 DisplayName = displayName,
                 PartId = $"{route.ToLowerInvariant()}::{partNumber}",
                 TuningPitches = tuningPitches,
-                TuningDisplayName = FormatTuningDisplayName(tuningPitches)
+                TuningDisplayName = FormatTuningDisplayName(tuningPitches),
+                Tones = new CachedArrangementToneData()
             };
         }
 
@@ -1423,10 +1657,38 @@ internal static class Program
         public int[]? tuningPitches;
         public string tuningDisplayName = string.Empty;
         public CachedArrangementTimingData timing = new CachedArrangementTimingData();
+        public CachedArrangementToneData tones = new CachedArrangementToneData();
         public CachedGeneratedPartInfo generatedPart = new CachedGeneratedPartInfo();
         public List<CachedNoteData> notes = new List<CachedNoteData>();
         public List<CachedArpeggioGuideData> arpeggioGuides = new List<CachedArpeggioGuideData>();
         public List<CachedGeneratedNoteEvent> generatedNotes = new List<CachedGeneratedNoteEvent>();
+    }
+
+    private sealed class CachedArrangementToneData
+    {
+        public string baseToneName = string.Empty;
+        public List<CachedToneChangeData> changes = new List<CachedToneChangeData>();
+        public List<CachedToneDefinitionData> definitions = new List<CachedToneDefinitionData>();
+    }
+
+    private sealed class CachedToneChangeData
+    {
+        public float timeSeconds;
+        public string toneName = string.Empty;
+        public int toneId = -1;
+    }
+
+    private sealed class CachedToneDefinitionData
+    {
+        public string name = string.Empty;
+        public string key = string.Empty;
+        public string rawJson = string.Empty;
+    }
+
+    private sealed class ManifestToneData
+    {
+        public List<CachedToneDefinitionData> Definitions = new List<CachedToneDefinitionData>();
+        public Dictionary<int, string> IdNameMap = new Dictionary<int, string>();
     }
 
     private sealed class CachedGeneratedPartInfo

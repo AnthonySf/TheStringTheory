@@ -136,6 +136,24 @@ public static class ArrangementCacheSongLoader
         return RocksmithCachedSongLoader.TryLoadManifest(manifestPath, out manifest);
     }
 
+    public static bool TryLoadArrangementPartByPartId(
+        string manifestPath,
+        string partId,
+        out RocksmithCachedArrangementSummary summary,
+        out RocksmithCachedArrangementPart part)
+    {
+        return RocksmithCachedSongLoader.TryLoadArrangementPartByPartId(manifestPath, partId, out summary, out part);
+    }
+
+    public static bool TryLoadArrangementPartByGroupId(
+        string manifestPath,
+        string arrangementGroupId,
+        out RocksmithCachedArrangementSummary summary,
+        out RocksmithCachedArrangementPart part)
+    {
+        return RocksmithCachedSongLoader.TryLoadArrangementPartByGroupId(manifestPath, arrangementGroupId, out summary, out part);
+    }
+
     public static List<MusicXmlLoader.MusicXmlPartSummary> GetPartSummaries(string manifestPath)
     {
         return RocksmithCachedSongLoader.GetPartSummaries(manifestPath);

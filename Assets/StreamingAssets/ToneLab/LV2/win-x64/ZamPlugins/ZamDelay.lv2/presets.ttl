@@ -1,0 +1,37 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamDelay#preset001>
+    lv2:port [
+        lv2:symbol "inv" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "time" ;
+        pset:value 160 ;
+    ] ,
+    [
+        lv2:symbol "sync" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "lpf" ;
+        pset:value 6000 ;
+    ] ,
+    [
+        lv2:symbol "div" ;
+        pset:value 3 ;
+    ] ,
+    [
+        lv2:symbol "gain" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "drywet" ;
+        pset:value 0.5 ;
+    ] ,
+    [
+        lv2:symbol "feedb" ;
+        pset:value 0 ;
+    ] .
+

@@ -1,0 +1,59 @@
+.\" # Copyright 2009-2025 David Robillard <d@drobilla.net>
+.\" # SPDX-License-Identifier: ISC
+.Dd January 20, 2025
+.Dt LV2INFO 1
+.Os
+.Sh NAME
+.Nm lv2info
+.Nd print information about an installed LV2 plugin
+.Sh SYNOPSIS
+.Nm lv2info
+.Op Fl hV
+.Op Fl m Ar file
+.Op Fl p Ar file
+.Ar plugin_uri
+.Sh DESCRIPTION
+.Nm
+prints a human-readable summary of information about an installed LV2 plugin.
+.Pp
+The options are as follows:
+.Pp
+.Bl -tag -compact -width 3n
+.It Fl V , Fl Fl version
+Print version information and exit.
+.Pp
+.It Fl h , Fl Fl help
+Print usage information and exit.
+.Pp
+.It Fl m Ar file
+Add record of plugin to Turtle manifest
+.Ar file .
+.Pp
+.It Fl p Ar file
+Write description of plugin to Turtle
+.Ar file .
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width LV2_PATH -compact
+.It Ev LV2_PATH
+List of directories to search for LV2 plugin bundles,
+in the style of
+.Ev PATH .
+.El
+.Sh EXIT STATUS
+.Nm
+exits with a status of 0, or non-zero if an error occurred.
+.Sh SEE ALSO
+.Bl -item -compact
+.It
+.Xr lv2apply 1
+.It
+.Xr lv2bench 1
+.It
+.Xr lv2ls 1
+.El
+.Sh AUTHORS
+.Nm
+is a part of lilv, by
+.An David Robillard
+.Aq Mt d@drobilla.net .

@@ -1,0 +1,6 @@
+<http://drobilla.net/sw/serd/test> a <http://example.org/Parent> .
+<http://drobilla.net/sw/serd/test/good/a/> a <http://example.org/Child> .
+<a/b> a <http://example.org/GrandChild> .
+<http://drobilla.net/sw/serd/test/good/test-rel.ttl> a <http://example.org/TestFile> .
+<test-not.ttl> a <http://example.org/TestFile> .
+<http://www.w3.org/> a <http://example.org/External> .

@@ -1,0 +1,21 @@
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix pset: <http://lv2plug.in/ns/ext/presets#> .
+@prefix ui:   <http://lv2plug.in/ns/extensions/ui#> .
+
+<urn:zamaudio:ZamGrains>
+    a lv2:Plugin ;
+    lv2:binary <ZamGrains_dsp.dll> ;
+    rdfs:seeAlso <ZamGrains_dsp.ttl> .
+
+<urn:zamaudio:ZamGrains#DPF_UI>
+    a ui:WindowsUI ;
+    ui:binary <ZamGrains_ui.dll> ;
+    rdfs:seeAlso <ZamGrains_ui.ttl> .
+
+<urn:zamaudio:ZamGrains#preset001>
+    a pset:Preset ;
+    lv2:appliesTo <urn:zamaudio:ZamGrains> ;
+    rdfs:label "Zero" ;
+    rdfs:seeAlso <presets.ttl> .
+

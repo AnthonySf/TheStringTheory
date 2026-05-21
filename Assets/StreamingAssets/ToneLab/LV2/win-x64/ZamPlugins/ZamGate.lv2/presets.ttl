@@ -1,0 +1,33 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamGate#preset001>
+    lv2:port [
+        lv2:symbol "att" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "rel" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "thr" ;
+        pset:value -60 ;
+    ] ,
+    [
+        lv2:symbol "mak" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "sidechain" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "close" ;
+        pset:value -50 ;
+    ] ,
+    [
+        lv2:symbol "mode" ;
+        pset:value 0 ;
+    ] .
+

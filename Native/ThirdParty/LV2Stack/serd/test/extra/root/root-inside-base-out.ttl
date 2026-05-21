@@ -1,0 +1,23 @@
+@base <http://example.org/top/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<>
+	rdfs:label "base node" .
+
+<root/>
+	rdfs:label "root node" .
+
+<root/s>
+	rdfs:label "within root" .
+
+<http://example.org/top/s>
+	rdfs:label "within base" .
+
+<http://example.org/other/s>
+	rdfs:label "outside base" .
+
+<http://example.com/s>
+	rdfs:label "outside domain" .
+
+<https://example.org/s>
+	rdfs:label "outside scheme" .

@@ -1,0 +1,3 @@
+<http://example.org/eg#s> <http://example.org/eg#p> "1: Two byte Unicode escape: \u00E0" .
+<http://example.org/eg#s> <http://example.org/eg#p> "2: Largest Unicode escape in Turtle: \U0010FFFF" .
+<http://example.org/eg#s> <http://example.org/eg#p> "3: \u222E E\u22C5da = Q,  n \u2192 \u221E, \u2211 f(i) = \u220F g(i)" .

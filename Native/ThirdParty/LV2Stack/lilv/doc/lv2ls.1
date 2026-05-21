@@ -1,0 +1,56 @@
+.\" # Copyright 2010-2025 David Robillard <d@drobilla.net>
+.\" # SPDX-License-Identifier: ISC
+.Dd January 20, 2025
+.Dt LV2LS 1
+.Os
+.Sh NAME
+.Nm lv2ls
+.Nd list installed LV2 plugins
+.Sh SYNOPSIS
+.Nm lv2ls
+.Op Fl Vhn
+.Op Fl Fl help
+.Op Fl Fl names
+.Op Fl Fl version
+.Sh DESCRIPTION
+.Nm
+prints the URI of every installed LV2 plugin to stdout.
+.Pp
+Plugins are discovered with the same mechanism used by most hosts.
+.Pp
+The options are as follows:
+.Pp
+.Bl -tag -compact -width 3n
+.It Fl V , Fl Fl version
+Print version information and exit.
+.Pp
+.It Fl h , Fl Fl help
+Print usage information and exit.
+.Pp
+.It Fl n , Fl Fl names
+Show names instead of URIs.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width LV2_PATH -compact
+.It Ev LV2_PATH
+List of directories to search for LV2 plugin bundles,
+in the style of
+.Ev PATH .
+.El
+.Sh EXIT STATUS
+.Nm
+exits with a status of 0, or non-zero if an error occurred.
+.Sh SEE ALSO
+.Bl -item -compact
+.It
+.Xr lv2apply 1
+.It
+.Xr lv2bench 1
+.It
+.Xr lv2info 1
+.El
+.Sh AUTHORS
+.Nm
+is a part of lilv, by
+.An David Robillard
+.Aq Mt d@drobilla.net .

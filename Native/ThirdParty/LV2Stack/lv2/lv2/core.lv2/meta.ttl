@@ -1,0 +1,34 @@
+@prefix doap: <http://usefulinc.com/ns/doap#> .
+@prefix lv2: <http://lv2plug.in/ns/lv2core#> .
+@prefix meta: <http://lv2plug.in/ns/meta#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<http://opensource.org/licenses/isc>
+	rdf:value """
+Permission to use, copy, modify, and/or distribute this software for any purpose with or without fee is hereby granted, provided that the above copyright notice and this permission notice appear in all copies.
+
+THIS SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+""" .
+
+<http://lv2plug.in/ns/lv2>
+	a doap:Project ;
+	lv2:symbol "lv2" ;
+	rdfs:label "LV2" ;
+	rdfs:comment "The LV2 Plugin Interface Project." ;
+	doap:name "LV2" ;
+	doap:license <http://opensource.org/licenses/isc> ;
+	doap:shortdesc "The LV2 Plugin Interface Project." ;
+	doap:description "LV2 is a plugin standard for audio systems. It defines a minimal yet extensible C API for plugin code and a format for plugin bundles" ;
+	doap:created "2006-05-10" ;
+	doap:homepage <http://lv2plug.in/> ;
+	doap:mailing-list <http://lists.lv2plug.in/listinfo.cgi/devel-lv2plug.in> ;
+	doap:programming-language "C" ;
+	doap:developer <http://drobilla.net/drobilla#me> ,
+		<http://plugin.org.uk/swh.xrdf#me> ;
+	doap:helper meta:larsl ,
+		meta:bmwiedemann ,
+		meta:gabrbedd ,
+		meta:daste ,
+		meta:kfoltman ,
+		meta:paniq .

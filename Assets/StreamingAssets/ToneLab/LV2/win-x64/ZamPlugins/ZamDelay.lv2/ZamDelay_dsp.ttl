@@ -1,0 +1,162 @@
+@prefix atom:  <http://lv2plug.in/ns/ext/atom#> .
+@prefix dg:    <http://www.darkglass.com/lv2/ns#> .
+@prefix doap:  <http://usefulinc.com/ns/doap#> .
+@prefix foaf:  <http://xmlns.com/foaf/0.1/> .
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix midi:  <http://lv2plug.in/ns/ext/midi#> .
+@prefix mod:   <http://moddevices.com/ns/mod#> .
+@prefix opts:  <http://lv2plug.in/ns/ext/options#> .
+@prefix pg:    <http://lv2plug.in/ns/ext/port-groups#> .
+@prefix patch: <http://lv2plug.in/ns/ext/patch#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rsz:   <http://lv2plug.in/ns/ext/resize-port#> .
+@prefix spdx:  <http://spdx.org/rdf/terms#> .
+@prefix ui:    <http://lv2plug.in/ns/extensions/ui#> .
+@prefix unit:  <http://lv2plug.in/ns/extensions/units#> .
+
+<urn:zamaudio:ZamDelay>
+    a lv2:DelayPlugin, lv2:Plugin, doap:Project ;
+
+    lv2:extensionData opts:interface ,
+                      <http://kxstudio.sf.net/ns/lv2ext/programs#Interface> ;
+
+    lv2:optionalFeature <http://lv2plug.in/ns/lv2core#hardRTCapable> ,
+                        <http://lv2plug.in/ns/ext/buf-size#boundedBlockLength> ;
+
+    lv2:requiredFeature opts:options ,
+                        <http://lv2plug.in/ns/ext/urid#map> ;
+
+    opts:supportedOption <http://lv2plug.in/ns/ext/buf-size#nominalBlockLength> ,
+                         <http://lv2plug.in/ns/ext/buf-size#maxBlockLength> ,
+                         <http://lv2plug.in/ns/ext/parameters#sampleRate> ;
+
+    ui:ui <urn:zamaudio:ZamDelay#DPF_UI> ;
+
+    lv2:port [
+        a lv2:InputPort, lv2:AudioPort ;
+        lv2:index 0 ;
+        lv2:symbol "lv2_audio_in_1" ;
+        lv2:name "Audio Input 1" ;
+    ] ;
+
+    lv2:port [
+        a lv2:OutputPort, lv2:AudioPort ;
+        lv2:index 1 ;
+        lv2:symbol "lv2_audio_out_1" ;
+        lv2:name "Audio Output 1" ;
+    ] ;
+
+    lv2:port [
+        a lv2:InputPort, atom:AtomPort ;
+        lv2:index 2 ;
+        lv2:name "Events Input" ;
+        lv2:symbol "lv2_events_in" ;
+        rsz:minimumSize 2048 ;
+        atom:bufferType atom:Sequence ;
+        atom:supports <http://lv2plug.in/ns/ext/time#Position> ;
+    ] ;
+
+    lv2:port [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 3 ;
+        lv2:name "Invert" ;
+        lv2:symbol "inv" ;
+        lv2:default 0 ;
+        lv2:minimum 0 ;
+        lv2:maximum 1 ;
+        lv2:portProperty lv2:toggled ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 4 ;
+        lv2:name "Time" ;
+        lv2:symbol "time" ;
+        lv2:default 160 ;
+        lv2:minimum 1 ;
+        lv2:maximum 8000 ;
+        unit:unit unit:ms ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 5 ;
+        lv2:name "Sync BPM" ;
+        lv2:symbol "sync" ;
+        lv2:default 0 ;
+        lv2:minimum 0 ;
+        lv2:maximum 1 ;
+        lv2:portProperty lv2:toggled ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 6 ;
+        lv2:name "LPF" ;
+        lv2:symbol "lpf" ;
+        lv2:default 6000 ;
+        lv2:minimum 20 ;
+        lv2:maximum 20000 ;
+        unit:unit unit:hz ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 7 ;
+        lv2:name "Divisor" ;
+        lv2:symbol "div" ;
+        lv2:default 3 ;
+        lv2:minimum 1 ;
+        lv2:maximum 5 ;
+        lv2:portProperty lv2:integer ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 8 ;
+        lv2:name "Output Gain" ;
+        lv2:symbol "gain" ;
+        lv2:default 0 ;
+        lv2:minimum -60 ;
+        lv2:maximum 0 ;
+        unit:unit unit:db ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 9 ;
+        lv2:name "Dry/Wet" ;
+        lv2:symbol "drywet" ;
+        lv2:default 0.5 ;
+        lv2:minimum 0 ;
+        lv2:maximum 1 ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 10 ;
+        lv2:name "Feedback" ;
+        lv2:symbol "feedb" ;
+        lv2:default 0 ;
+        lv2:minimum 0 ;
+        lv2:maximum 1 ;
+    ] ,
+    [
+        a lv2:OutputPort, lv2:ControlPort ;
+        lv2:index 11 ;
+        lv2:name "Delaytime" ;
+        lv2:symbol "delaytime" ;
+        lv2:minimum 1 ;
+        lv2:maximum 8000 ;
+        unit:unit unit:ms ;
+    ] ;
+
+    rdfs:comment "A simple mono delay plugin" ;
+
+    mod:brand "ZamAudio" ;
+    mod:label "ZamDelay" ;
+
+    doap:name "ZamDelay" ;
+    doap:license <http://spdx.org/licenses/GPL-2.0-or-later.html> ;
+
+    doap:maintainer [
+        foaf:name "Damien Zammit" ;
+        foaf:homepage <http://www.zamaudio.com> ;
+    ] ;
+
+    lv2:microVersion 0 ;
+    lv2:minorVersion 7 .

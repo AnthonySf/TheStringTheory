@@ -1,0 +1,126 @@
+@prefix eg: <http://example.org/> .
+
+eg:sa01
+	eg:p1 [] ,
+		eg:o1 ,
+		eg:o2 .
+
+eg:sa02
+	eg:p1 [] ,
+		[] .
+
+eg:sa03
+	eg:p1 [] ,
+	[
+		eg:p2 eg:o2
+	] .
+
+eg:sa04
+	eg:p1 [] ,
+		() .
+
+eg:sa05
+	eg:p1 [] ,
+	(
+		eg:o1
+		eg:o2
+	) .
+
+eg:sa06
+	eg:p1 [
+		eg:p2 eg:o2
+	] ,
+		eg:o3 ,
+		eg:o4 .
+
+eg:sa07
+	eg:p1 [
+		eg:p2 eg:o2
+	] ,
+		[] .
+
+eg:sa08
+	eg:p1 [
+		eg:p2 eg:o2
+	] , [
+		eg:p3 eg:o3
+	] .
+
+eg:sa09
+	eg:p1 [
+		eg:p2 eg:o2
+	] ,
+		() .
+
+eg:sa10
+	eg:p1 [
+		eg:p2 eg:o2
+	] , (
+		eg:o3
+		eg:o4
+	) .
+
+eg:sl01
+	eg:p1 () ,
+		eg:o1 ,
+		eg:o2 .
+
+eg:sl02
+	eg:p1 () ,
+		[] .
+
+eg:sl03
+	eg:p1 () ,
+	[
+		eg:p2 eg:o2
+	] .
+
+eg:sl04
+	eg:p1 () ,
+		() .
+
+eg:sl05
+	eg:p1 () ,
+	(
+		eg:o1
+		eg:o2
+	) .
+
+eg:sl06
+	eg:p1 (
+		eg:o1
+		eg:o2
+	) ,
+		eg:o3 ,
+		eg:o4 .
+
+eg:sl07
+	eg:p1 (
+		eg:o1
+		eg:o2
+	) ,
+		[] .
+
+eg:sl08
+	eg:p1 (
+		eg:o1
+		eg:o2
+	) , [
+		eg:p3 eg:o3
+	] .
+
+eg:sl09
+	eg:p1 (
+		eg:o1
+		eg:o2
+	) ,
+		() .
+
+eg:sl10
+	eg:p1 (
+		eg:o1
+		eg:o2
+	) , (
+		eg:o3
+		eg:o4
+	) .

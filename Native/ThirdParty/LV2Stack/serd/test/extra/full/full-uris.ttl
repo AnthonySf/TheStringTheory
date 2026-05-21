@@ -1,0 +1,7 @@
+@prefix eg: <http://example.org/> .
+
+<http://example.org/s1>
+	eg:prefixed false .
+
+eg:s2
+	eg:prefixed true .

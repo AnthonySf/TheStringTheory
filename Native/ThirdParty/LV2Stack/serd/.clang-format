@@ -1,0 +1,43 @@
+# Copyright 2020-2024 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+---
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignEscapedNewlines: Left
+AttributeMacros:
+  - SERD_ALLOCATED
+  - SERD_API
+  - SERD_CONST_API
+  - SERD_CONST_FUNC
+  - SERD_FALLTHROUGH
+  - SERD_MALLOC_FUNC
+  - SERD_NODISCARD
+  - SERD_NONNULL
+  - SERD_NULLABLE
+  - SERD_PURE_API
+  - SERD_PURE_FUNC
+  - SERD_UNSPECIFIED
+BasedOnStyle: Mozilla
+BraceWrapping:
+  AfterClass: true
+  AfterEnum: false
+  AfterExternBlock: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+BreakBeforeBraces: Custom
+Cpp11BracedListStyle: true
+IndentCaseLabels: false
+IndentPPDirectives: AfterHash
+KeepEmptyLinesAtTheStartOfBlocks: false
+SpacesInContainerLiterals: false
+StatementMacros:
+  - SERD_DEPRECATED_BY
+  - SERD_DISABLE_NULL_WARNINGS
+  - SERD_LOG_FUNC
+  - SERD_RESTORE_WARNINGS
+  - _Pragma
+...

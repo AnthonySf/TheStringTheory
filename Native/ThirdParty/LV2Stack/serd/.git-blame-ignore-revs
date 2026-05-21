@@ -1,0 +1,5 @@
+# Copyright 2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+# Format all code with clang-format
+d101d926946a5e8067a90d157b6553aae7bddc19

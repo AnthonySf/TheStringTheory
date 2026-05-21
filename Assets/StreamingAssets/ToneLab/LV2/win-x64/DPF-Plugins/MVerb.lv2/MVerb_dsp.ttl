@@ -1,0 +1,177 @@
+@prefix doap:  <http://usefulinc.com/ns/doap#> .
+@prefix foaf:  <http://xmlns.com/foaf/0.1/> .
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix midi:  <http://lv2plug.in/ns/ext/midi#> .
+@prefix mod:   <http://moddevices.com/ns/mod#> .
+@prefix opts:  <http://lv2plug.in/ns/ext/options#> .
+@prefix pg:    <http://lv2plug.in/ns/ext/port-groups#> .
+@prefix patch: <http://lv2plug.in/ns/ext/patch#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix spdx:  <http://spdx.org/rdf/terms#> .
+@prefix ui:    <http://lv2plug.in/ns/extensions/ui#> .
+@prefix unit:  <http://lv2plug.in/ns/extensions/units#> .
+
+<http://distrho.sf.net/plugins/MVerb>
+    a lv2:ReverbPlugin, lv2:Plugin, doap:Project ;
+
+    lv2:extensionData opts:interface ,
+                      <http://kxstudio.sf.net/ns/lv2ext/programs#Interface> ;
+
+    lv2:optionalFeature <http://lv2plug.in/ns/lv2core#hardRTCapable> ,
+                        <http://lv2plug.in/ns/ext/buf-size#boundedBlockLength> ;
+
+    lv2:requiredFeature opts:options ,
+                        <http://lv2plug.in/ns/ext/urid#map> ;
+
+    opts:supportedOption <http://lv2plug.in/ns/ext/buf-size#nominalBlockLength> ,
+                         <http://lv2plug.in/ns/ext/buf-size#maxBlockLength> ,
+                         <http://lv2plug.in/ns/ext/parameters#sampleRate> ;
+
+    ui:ui <http://distrho.sf.net/plugins/MVerb#DPF_UI> ;
+
+    lv2:port [
+        a lv2:InputPort, lv2:AudioPort ;
+        lv2:index 0 ;
+        lv2:symbol "lv2_audio_in_1" ;
+        lv2:name "Audio Input 1" ;
+        pg:group <http://distrho.sf.net/plugins/MVerb#portGroup_dpf_stereo> ;
+        lv2:designation pg:left ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:AudioPort ;
+        lv2:index 1 ;
+        lv2:symbol "lv2_audio_in_2" ;
+        lv2:name "Audio Input 2" ;
+        pg:group <http://distrho.sf.net/plugins/MVerb#portGroup_dpf_stereo> ;
+        lv2:designation pg:right ;
+    ] ;
+
+    lv2:port [
+        a lv2:OutputPort, lv2:AudioPort ;
+        lv2:index 2 ;
+        lv2:symbol "lv2_audio_out_1" ;
+        lv2:name "Audio Output 1" ;
+        pg:group <http://distrho.sf.net/plugins/MVerb#portGroup_dpf_stereo> ;
+        lv2:designation pg:left ;
+    ] ,
+    [
+        a lv2:OutputPort, lv2:AudioPort ;
+        lv2:index 3 ;
+        lv2:symbol "lv2_audio_out_2" ;
+        lv2:name "Audio Output 2" ;
+        pg:group <http://distrho.sf.net/plugins/MVerb#portGroup_dpf_stereo> ;
+        lv2:designation pg:right ;
+    ] ;
+
+    lv2:port [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 4 ;
+        lv2:name "Damping" ;
+        lv2:symbol "damping" ;
+        lv2:default 50 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 5 ;
+        lv2:name "Density" ;
+        lv2:symbol "density" ;
+        lv2:default 50 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 6 ;
+        lv2:name "Bandwidth" ;
+        lv2:symbol "bandwidth" ;
+        lv2:default 50 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 7 ;
+        lv2:name "Decay" ;
+        lv2:symbol "decay" ;
+        lv2:default 50 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 8 ;
+        lv2:name "Predelay" ;
+        lv2:symbol "predelay" ;
+        lv2:default 50 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 9 ;
+        lv2:name "Size" ;
+        lv2:symbol "size" ;
+        lv2:default 75 ;
+        lv2:minimum 5 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 10 ;
+        lv2:name "Gain" ;
+        lv2:symbol "gain" ;
+        lv2:default 100 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 11 ;
+        lv2:name "Mix" ;
+        lv2:symbol "mix" ;
+        lv2:default 50 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 12 ;
+        lv2:name "Early/Late Mix" ;
+        lv2:symbol "earlymix" ;
+        lv2:default 50 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ;
+
+    rdfs:comment "Studio quality reverb, provides a practical demonstration of Dattorro’s figure-of-eight reverb structure." ;
+
+    mod:brand "DISTRHO" ;
+    mod:label "MVerb" ;
+
+    doap:name "MVerb" ;
+    doap:license <http://spdx.org/licenses/GPL-3.0-or-later.html> ;
+
+    doap:maintainer [
+        foaf:name "Martin Eastwood, falkTX" ;
+        foaf:homepage <https://github.com/DISTRHO/MVerb> ;
+    ] ;
+
+    lv2:microVersion 0 ;
+    lv2:minorVersion 2 .
+
+<http://distrho.sf.net/plugins/MVerb#portGroup_dpf_stereo>
+    a pg:Group , pg:StereoGroup ;
+    lv2:name "Stereo" ;
+    lv2:symbol "dpf_stereo" .

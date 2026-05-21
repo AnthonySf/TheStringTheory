@@ -1,0 +1,92 @@
+# Copyright 2020-2026 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: ISC
+
+# Project information
+
+project = "@SRATOM_TITLE@"
+copyright = "2026, David Robillard"
+author = "David Robillard"
+release = "@SRATOM_VERSION@"
+version = "@SRATOM_VERSION@"
+desc = "A small library for serializing LV2 atoms"
+
+# General configuration
+
+exclude_patterns = ["xml"]
+language = "en"
+nitpicky = True
+pygments_style = "friendly"
+
+try:
+    import sphinx_lv2_theme
+
+    have_lv2_theme = True
+except ModuleNotFoundError:
+    have_lv2_theme = False
+
+# Ignore everything opaque or external for nitpicky mode
+_opaque = [
+    "LV2_Atom",
+    "LV2_Atom_Forge",
+    "LV2_Atom_Forge_Ref",
+    "LV2_Atom_Forge_Sink_Handle",
+    "LV2_URID_Map",
+    "LV2_URID_Unmap",
+    "SerdEndSink",
+    "SerdEnv",
+    "SerdNode",
+    "SerdStatementSink",
+    "SordModel",
+    "SordNode",
+    "SordWorld",
+    "SratomImpl",
+    "uint32_t",
+]
+
+nitpick_ignore = list(map(lambda x: ("c:identifier", x), _opaque))
+
+# HTML output
+
+html_copy_source = False
+html_short_title = "Sratom"
+
+if have_lv2_theme:
+    html_theme = "sphinx_lv2_theme"
+
+    if tags.has("singlehtml"):
+        html_sidebars = {
+            "**": [
+                "globaltoc.html",
+            ]
+        }
+
+        html_theme_options = {
+            "body_max_width": "48em",
+            "body_min_width": "48em",
+            "description": desc,
+            "globaltoc_collapse": False,
+            "globaltoc_maxdepth": 3,
+            "logo_name": True,
+            "nosidebar": False,
+            "page_width": "80em",
+            "show_footer_version": True,
+            "show_logo_version": False,
+            "sidebar_width": "18em",
+        }
+
+    else:
+        html_theme_options = {
+            "body_max_width": "60em",
+            "body_min_width": "40em",
+            "description": desc,
+            "globaltoc_collapse": True,
+            "globaltoc_maxdepth": 1,
+            "logo_name": True,
+            "nosidebar": True,
+            "page_width": "60em",
+            "show_footer_version": True,
+            "show_logo_version": False,
+            "sidebar_width": "14em",
+        }
+else:
+    html_theme = "alabaster"

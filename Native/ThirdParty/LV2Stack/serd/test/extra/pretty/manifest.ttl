@@ -1,0 +1,275 @@
+@prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdft: <http://www.w3.org/ns/rdftest#> .
+
+<>
+	a mf:Manifest ;
+	rdfs:comment "Serd pretty-printing test suite" ;
+	mf:entries (
+		<#abbreviation>
+		<#anonymous-comma>
+		<#anonymous-in-list-object>
+		<#anonymous-object>
+		<#anonymous-subject>
+		<#anonymous-subject-and-object>
+		<#base-after-statement>
+		<#datatypes>
+		<#empty-anonymous-object>
+		<#empty-list-object>
+		<#empty-list-subject>
+		<#empty-list-subject-and-object>
+		<#graph-abbreviation>
+		<#inline-blank-subject>
+		<#inline-blanks-and-lists>
+		<#inline-list-subject>
+		<#langtags>
+		<#list-in-object>
+		<#list-object>
+		<#list-subject>
+		<#list-subject-with-extras>
+		<#list-subject-with-list-extras>
+		<#local-name-escapes>
+		<#long-end-quote>
+		<#long-end-two-quotes>
+		<#long-string-escapes>
+		<#long-string-quotes>
+		<#many-objects>
+		<#many-objects-ending-anon>
+		<#named-graph>
+		<#nested-list-object>
+		<#nested-list-object-with-empty-lists>
+		<#prefix-after-statement>
+		<#relative-uris>
+		<#repeated-directives>
+		<#short-string-escapes>
+		<#uri-escapes>
+		<#nested-list-subject>
+	) .
+
+<#abbreviation>
+	a rdft:TestTurtleEval ;
+	mf:action <abbreviation.ttl> ;
+	mf:name "abbreviation" ;
+	mf:result <abbreviation.ttl> .
+
+<#anonymous-comma>
+	a rdft:TestTurtleEval ;
+	mf:action <anonymous-comma.ttl> ;
+	mf:name "anonymous-comma" ;
+	mf:result <anonymous-comma.ttl> .
+
+<#anonymous-in-list-object>
+	a rdft:TestTurtleEval ;
+	mf:action <anonymous-in-list-object.ttl> ;
+	mf:name "anonymous-in-list-object" ;
+	mf:result <anonymous-in-list-object.ttl> .
+
+<#anonymous-object>
+	a rdft:TestTurtleEval ;
+	mf:action <anonymous-object.ttl> ;
+	mf:name "anonymous-object" ;
+	mf:result <anonymous-object.ttl> .
+
+<#anonymous-subject>
+	a rdft:TestTurtleEval ;
+	mf:action <anonymous-subject.ttl> ;
+	mf:name "anonymous-subject" ;
+	mf:result <anonymous-subject.ttl> .
+
+<#anonymous-subject-and-object>
+	a rdft:TestTurtleEval ;
+	mf:action <anonymous-subject-and-object.ttl> ;
+	mf:name "anonymous-subject-and-object" ;
+	mf:result <anonymous-subject-and-object.ttl> .
+
+<#base-after-statement>
+	a rdft:TestTurtleEval ;
+	mf:action <base-after-statement.ttl> ;
+	mf:name "base-after-statement" ;
+	mf:result <base-after-statement.ttl> .
+
+<#datatypes>
+	a rdft:TestTurtleEval ;
+	mf:action <datatypes.ttl> ;
+	mf:name "datatypes" ;
+	mf:result <datatypes.ttl> .
+
+<#empty-anonymous-object>
+	a rdft:TestTurtleEval ;
+	mf:action <empty-anonymous-object.ttl> ;
+	mf:name "empty-anonymous-object" ;
+	mf:result <empty-anonymous-object.ttl> .
+
+<#empty-list-object>
+	a rdft:TestTurtleEval ;
+	mf:action <empty-list-object.ttl> ;
+	mf:name "empty-list-object" ;
+	mf:result <empty-list-object.ttl> .
+
+<#empty-list-subject>
+	a rdft:TestTurtleEval ;
+	mf:action <empty-list-subject.ttl> ;
+	mf:name "empty-list-subject" ;
+	mf:result <empty-list-subject.ttl> .
+
+<#empty-list-subject-and-object>
+	a rdft:TestTurtleEval ;
+	mf:action <empty-list-subject-and-object.ttl> ;
+	mf:name "empty-list-subject-and-object" ;
+	mf:result <empty-list-subject-and-object.ttl> .
+
+<#graph-abbreviation>
+	a rdft:TestTrigEval ;
+	mf:action <graph-abbreviation.trig> ;
+	mf:name "graph-abbreviation" ;
+	mf:result <graph-abbreviation.trig> .
+
+<#inline-blank-subject>
+	a rdft:TestTurtleEval ;
+	mf:action <inline-blank-subject.ttl> ;
+	mf:name "inline-blank-subject" ;
+	mf:result <inline-blank-subject.ttl> .
+
+<#inline-blanks-and-lists>
+	a rdft:TestTurtleEval ;
+	mf:action <inline-blanks-and-lists.ttl> ;
+	mf:name "inline-blanks-and-lists" ;
+	mf:result <inline-blanks-and-lists.ttl> .
+
+<#inline-list-subject>
+	a rdft:TestTurtleEval ;
+	mf:action <inline-list-subject.ttl> ;
+	mf:name "inline-list-subject" ;
+	mf:result <inline-list-subject.ttl> .
+
+<#langtags>
+	a rdft:TestTurtleEval ;
+	mf:action <langtags.ttl> ;
+	mf:name "langtags" ;
+	mf:result <langtags.ttl> .
+
+<#list-in-object>
+	a rdft:TestTurtleEval ;
+	mf:action <list-in-object.ttl> ;
+	mf:name "list-in-object" ;
+	mf:result <list-in-object.ttl> .
+
+<#list-object>
+	a rdft:TestTurtleEval ;
+	mf:action <list-object.ttl> ;
+	mf:name "list-object" ;
+	mf:result <list-object.ttl> .
+
+<#list-subject>
+	a rdft:TestTurtleEval ;
+	mf:action <list-subject.ttl> ;
+	mf:name "list-subject" ;
+	mf:result <list-subject.ttl> .
+
+<#list-subject-with-extras>
+	a rdft:TestTurtleEval ;
+	mf:action <list-subject-with-extras.ttl> ;
+	mf:name "list-subject-with-extras" ;
+	mf:result <list-subject-with-extras.ttl> .
+
+<#list-subject-with-list-extras>
+	a rdft:TestTurtleEval ;
+	mf:action <list-subject-with-list-extras.ttl> ;
+	mf:name "list-subject-with-list-extras" ;
+	mf:result <list-subject-with-list-extras.ttl> .
+
+<#local-name-escapes>
+	a rdft:TestTurtleEval ;
+	mf:action <local-name-escapes.ttl> ;
+	mf:name "local-name-escapes" ;
+	mf:result <local-name-escapes.ttl> .
+
+<#long-end-quote>
+	a rdft:TestTurtleEval ;
+	mf:action <long-end-quote.ttl> ;
+	mf:name "long-end-quote" ;
+	mf:result <long-end-quote.ttl> .
+
+<#long-end-two-quotes>
+	a rdft:TestTurtleEval ;
+	mf:action <long-end-two-quotes.ttl> ;
+	mf:name "long-end-two-quotes" ;
+	mf:result <long-end-two-quotes.ttl> .
+
+<#long-string-escapes>
+	a rdft:TestTurtleEval ;
+	mf:action <long-string-escapes.ttl> ;
+	mf:name "long-string-escapes" ;
+	mf:result <long-string-escapes.ttl> .
+
+<#long-string-quotes>
+	a rdft:TestTurtleEval ;
+	mf:action <long-string-quotes.ttl> ;
+	mf:name "long-string-quotes" ;
+	mf:result <long-string-quotes.ttl> .
+
+<#many-objects>
+	a rdft:TestTurtleEval ;
+	mf:action <many-objects.ttl> ;
+	mf:name "many-objects" ;
+	mf:result <many-objects.ttl> .
+
+<#many-objects-ending-anon>
+	a rdft:TestTurtleEval ;
+	mf:action <many-objects-ending-anon.ttl> ;
+	mf:name "many-objects-ending-anon" ;
+	mf:result <many-objects-ending-anon.ttl> .
+
+<#named-graph>
+	a rdft:TestTrigEval ;
+	mf:action <named-graph.trig> ;
+	mf:name "named-graph" ;
+	mf:result <named-graph.trig> .
+
+<#nested-list-object>
+	a rdft:TestTurtleEval ;
+	mf:action <nested-list-object.ttl> ;
+	mf:name "nested-list-object" ;
+	mf:result <nested-list-object.ttl> .
+
+<#nested-list-object-with-empty-lists>
+	a rdft:TestTurtleEval ;
+	mf:action <nested-list-object-with-empty-lists.ttl> ;
+	mf:name "nested-list-object-with-empty-lists" ;
+	mf:result <nested-list-object-with-empty-lists.ttl> .
+
+<#nested-list-subject>
+	a rdft:TestTurtleEval ;
+	mf:action <nested-list-subject.ttl> ;
+	mf:name "nested-list-subject" ;
+	mf:result <nested-list-subject.ttl> .
+
+<#prefix-after-statement>
+	a rdft:TestTurtleEval ;
+	mf:action <prefix-after-statement.ttl> ;
+	mf:name "prefix-after-statement" ;
+	mf:result <prefix-after-statement.ttl> .
+
+<#relative-uris>
+	a rdft:TestTurtleEval ;
+	mf:action <relative-uris.ttl> ;
+	mf:name "relative-uris" ;
+	mf:result <relative-uris.ttl> .
+
+<#repeated-directives>
+	a rdft:TestTurtleEval ;
+	mf:action <repeated-directives.ttl> ;
+	mf:name "repeated-directives" ;
+	mf:result <repeated-directives.ttl> .
+
+<#short-string-escapes>
+	a rdft:TestTurtleEval ;
+	mf:action <short-string-escapes.ttl> ;
+	mf:name "short-string-escapes" ;
+	mf:result <short-string-escapes.ttl> .
+
+<#uri-escapes>
+	a rdft:TestTurtleEval ;
+	mf:action <uri-escapes.ttl> ;
+	mf:name "uri-escapes" ;
+	mf:result <uri-escapes.ttl> .

@@ -1,0 +1,4 @@
+<http://example.org/s> <http://example.org/p> <http://example.org/\u0009bado1> .
+<http://example.org/s> <http://example.org/p> <http://example.org/goodo1> .
+<http://example.org/s> <http://example.org/p> <http://example.org/\uFFFD\uFFFDbado2> .
+<http://example.org/s> <http://example.org/p> <http://example.org/goodo2> .

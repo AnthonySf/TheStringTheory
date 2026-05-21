@@ -87,7 +87,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         Phaser,
         Delay,
         Reverb,
-        Compressor
+        Compressor,
+        Lv2Plugin,
+        NamModel
     }
 
     [Serializable]
@@ -95,6 +97,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         public string pedal_instance_id = string.Empty;
         public ToneLabPedalType pedal_type;
+        public string descriptor_id = string.Empty;
         public bool enabled = true;
         public string settings_json = string.Empty;
     }
@@ -105,6 +108,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         public IToneLabPedalDescriptor descriptor;
         public IToneLabPedalProcessor processor;
     }
+
+    private ToneLabPreset playbackPresetOverride;
+    private bool playbackPresetOverrideActive;
+    private string playbackPresetOverrideId = string.Empty;
 
     private sealed class SoftClipDistortionEffect
     {
@@ -667,6 +674,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public float MonitorVolumePercent => monitorVolumePercent;
     public string LastRoutingDiagnostics => lastRoutingDiagnostics;
     public string LastRoutingAttemptSummary => lastRoutingAttemptSummary;
+    public string LastExternalPedalRefreshSummary => ToneLabPedalRegistry.LastExternalRefreshSummary;
     public bool IsAdvancedRoutingBetaEnabled => advancedRoutingOptions != null && advancedRoutingOptions.betaEnabled;
     public static string[] SharedMonitoringLatencyOptions => (string[])LatencyPresetLabels.Clone();
     public static string GetSharedMonitoringLatencyLabel(int bufferSize) => GetLatencyPresetLabel(bufferSize);
@@ -1256,6 +1264,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public void RestoreSelectedPresetWorkingRig()
     {
         EnsureSettingsLoaded();
+        playbackPresetOverrideActive = false;
+        playbackPresetOverride = null;
+        playbackPresetOverrideId = string.Empty;
         RestoreWorkingRigFromSelectedPreset();
         RebuildCompiledPedalChain();
     }
@@ -1340,12 +1351,21 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         outputRouteLabel = "System Default Output";
     }
 
-    public void UpdateSettings(Action<ToneLabSettings> mutate, bool restartMonitoring)
+    public void RefreshExternalPedalLibrary(bool force = false)
+    {
+        ExternalContentBootstrap.EnsureToneLabRuntimeContentReady();
+        bool changed = ToneLabPedalRegistry.RefreshExternalDescriptors(force);
+        if (settingsLoaded && (changed || force))
+            RebuildCompiledPedalChain();
+    }
+
+    public void UpdateSettings(Action<ToneLabSettings> mutate, bool restartMonitoring, bool rebuildPedalChain = true)
     {
         EnsureSettingsLoaded();
         mutate?.Invoke(settings);
         ClampSettings(settings);
-        RebuildCompiledPedalChain();
+        if (rebuildPedalChain)
+            RebuildCompiledPedalChain();
         MarkSettingsDirty();
 
         if (restartMonitoring && (monitoring || awaitingMicrophoneStart))
@@ -1365,6 +1385,11 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     public string AddPedalToChain(ToneLabPedalType pedalType)
     {
+        return AddPedalToChain(pedalType, int.MaxValue);
+    }
+
+    public string AddPedalToChain(ToneLabPedalType pedalType, int insertionIndex)
+    {
         string createdInstanceId = string.Empty;
         UpdateSettings(toneSettings =>
         {
@@ -1375,10 +1400,45 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             {
                 pedal_instance_id = CreatePedalInstanceId(),
                 pedal_type = pedalType,
+                descriptor_id = descriptor.DescriptorId,
                 enabled = true,
                 settings_json = descriptor.SerializeSettingsObject(descriptor.CreateDefaultSettingsObject())
             };
-            toneSettings.pedal_chain.Add(slot);
+            int clampedInsertionIndex = Mathf.Clamp(insertionIndex, 0, toneSettings.pedal_chain.Count);
+            toneSettings.pedal_chain.Insert(clampedInsertionIndex, slot);
+            createdInstanceId = slot.pedal_instance_id;
+            SyncLegacySettingsFromChain(toneSettings);
+        }, restartMonitoring: false);
+
+        return createdInstanceId;
+    }
+
+    public string AddPedalToChain(string descriptorId)
+    {
+        return AddPedalToChain(descriptorId, int.MaxValue);
+    }
+
+    public string AddPedalToChain(string descriptorId, int insertionIndex)
+    {
+        if (string.IsNullOrWhiteSpace(descriptorId))
+            return string.Empty;
+
+        string createdInstanceId = string.Empty;
+        UpdateSettings(toneSettings =>
+        {
+            EnsurePedalChain(toneSettings);
+
+            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(descriptorId);
+            ToneLabPedalSlot slot = new ToneLabPedalSlot
+            {
+                pedal_instance_id = CreatePedalInstanceId(),
+                pedal_type = descriptor.PedalType,
+                descriptor_id = descriptor.DescriptorId,
+                enabled = true,
+                settings_json = descriptor.SerializeSettingsObject(descriptor.CreateDefaultSettingsObject())
+            };
+            int clampedInsertionIndex = Mathf.Clamp(insertionIndex, 0, toneSettings.pedal_chain.Count);
+            toneSettings.pedal_chain.Insert(clampedInsertionIndex, slot);
             createdInstanceId = slot.pedal_instance_id;
             SyncLegacySettingsFromChain(toneSettings);
         }, restartMonitoring: false);
@@ -1406,6 +1466,25 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (string.IsNullOrWhiteSpace(pedalInstanceId) || string.IsNullOrWhiteSpace(parameterId))
             return;
 
+        EnsureSettingsLoaded();
+        ToneLabPedalSlot existingSlot = FindPedalSlot(settings, pedalInstanceId);
+        if (existingSlot != null &&
+            (existingSlot.pedal_type == ToneLabPedalType.Lv2Plugin || existingSlot.pedal_type == ToneLabPedalType.NamModel))
+        {
+            IToneLabPedalDescriptor externalDescriptor = ToneLabPedalRegistry.GetDescriptor(existingSlot);
+            ToneLabPedalParameterDefinition externalParameter = externalDescriptor.Parameters.FirstOrDefault(candidate =>
+                string.Equals(candidate.ParameterId, parameterId, StringComparison.Ordinal));
+            if (externalParameter == null)
+                return;
+
+            object externalSettingsObject = externalDescriptor.DeserializeSettingsObject(existingSlot.settings_json);
+            externalParameter.SetValue(externalSettingsObject, value);
+            existingSlot.settings_json = externalDescriptor.SerializeSettingsObject(externalSettingsObject);
+            ApplyCompiledPedalSettings(existingSlot, externalDescriptor, externalSettingsObject);
+            MarkSettingsDirty();
+            return;
+        }
+
         UpdateSettings(toneSettings =>
         {
             EnsurePedalChain(toneSettings);
@@ -1413,7 +1492,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             if (slot == null)
                 return;
 
-            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot.pedal_type);
+            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot);
             ToneLabPedalParameterDefinition parameterDefinition = descriptor.Parameters.FirstOrDefault(candidate =>
                 string.Equals(candidate.ParameterId, parameterId, StringComparison.Ordinal));
             if (parameterDefinition == null)
@@ -1437,6 +1516,45 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
             ApplyPresetToSettings(toneSettings, preset);
         }, restartMonitoring: false);
+    }
+
+    public bool SetPlaybackPresetOverride(string presetId)
+    {
+        if (string.IsNullOrWhiteSpace(presetId))
+            return false;
+
+        EnsureSettingsLoaded();
+        if (settings == null)
+            return false;
+
+        EnsurePresetLibrary(settings);
+        ToneLabPreset preset = FindPreset(settings, presetId);
+        if (preset == null)
+            return false;
+
+        if (playbackPresetOverrideActive &&
+            string.Equals(playbackPresetOverrideId, preset.preset_id, StringComparison.Ordinal) &&
+            playbackPresetOverride != null)
+        {
+            return true;
+        }
+
+        playbackPresetOverride = ClonePreset(preset);
+        playbackPresetOverrideId = playbackPresetOverride?.preset_id ?? string.Empty;
+        playbackPresetOverrideActive = true;
+        RebuildCompiledPedalChain();
+        return true;
+    }
+
+    public void ClearPlaybackPresetOverride()
+    {
+        if (!playbackPresetOverrideActive && playbackPresetOverride == null && string.IsNullOrWhiteSpace(playbackPresetOverrideId))
+            return;
+
+        playbackPresetOverrideActive = false;
+        playbackPresetOverride = null;
+        playbackPresetOverrideId = string.Empty;
+        RebuildCompiledPedalChain();
     }
 
     public string CreatePresetFromCurrent(string presetName)
@@ -1993,7 +2111,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (settingsLoaded)
             return;
 
-        ExternalContentBootstrap.EnsureRuntimeContentReady();
+        ExternalContentBootstrap.EnsureToneLabRuntimeContentReady();
+        ToneLabPedalRegistry.RefreshExternalDescriptors();
         settings = LoadSettingsFromDisk();
         List<ToneLabPreset> presetsFromDisk = LoadPresetLibraryFromDisk();
         if (presetsFromDisk.Count > 0)
@@ -2694,15 +2813,25 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             return;
         }
 
-        EnsurePedalChain(settings);
-        List<CompiledPedalSlot> rebuiltChain = new List<CompiledPedalSlot>(settings.pedal_chain.Count);
-        for (int i = 0; i < settings.pedal_chain.Count; i++)
+        List<ToneLabPedalSlot> sourceChain;
+        if (playbackPresetOverrideActive && playbackPresetOverride != null)
         {
-            ToneLabPedalSlot slot = settings.pedal_chain[i];
+            sourceChain = playbackPresetOverride.pedal_chain ?? new List<ToneLabPedalSlot>();
+        }
+        else
+        {
+            EnsurePedalChain(settings);
+            sourceChain = settings.pedal_chain ?? new List<ToneLabPedalSlot>();
+        }
+
+        List<CompiledPedalSlot> rebuiltChain = new List<CompiledPedalSlot>(sourceChain.Count);
+        for (int i = 0; i < sourceChain.Count; i++)
+        {
+            ToneLabPedalSlot slot = sourceChain[i];
             if (slot == null)
                 continue;
 
-            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot.pedal_type);
+            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot);
             object settingsObject = descriptor.DeserializeSettingsObject(slot.settings_json);
             IToneLabPedalProcessor processor = descriptor.CreateProcessor();
             processor.ApplySettings(settingsObject);
@@ -2739,6 +2868,28 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         preparedCompiledPedalSampleRate = safeSampleRate;
         preparedCompiledPedalChannelCount = safeChannels;
+    }
+
+    private void ApplyCompiledPedalSettings(ToneLabPedalSlot slot, IToneLabPedalDescriptor descriptor, object settingsObject)
+    {
+        if (slot == null || descriptor == null)
+            return;
+
+        CompiledPedalSlot[] chain = compiledPedalChain;
+        for (int i = 0; i < chain.Length; i++)
+        {
+            CompiledPedalSlot compiledSlot = chain[i];
+            if (compiledSlot?.slot == null ||
+                !string.Equals(compiledSlot.slot.pedal_instance_id, slot.pedal_instance_id, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            compiledSlot.slot = ClonePedalSlot(slot);
+            compiledSlot.descriptor = descriptor;
+            compiledSlot.processor?.ApplySettings(settingsObject);
+            return;
+        }
     }
 
     private static ToneLabPreset ClonePreset(ToneLabPreset preset)
@@ -2781,6 +2932,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             pedal_instance_id = slot.pedal_instance_id ?? string.Empty,
             pedal_type = slot.pedal_type,
+            descriptor_id = slot.descriptor_id ?? string.Empty,
             enabled = slot.enabled,
             settings_json = slot.settings_json ?? string.Empty
         };
@@ -2814,6 +2966,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         }
 
         UpgradeLegacyFactoryPresets(toneSettings);
+        AddMissingFactoryPresets(toneSettings);
 
         ToneLabPreset selectedPreset = FindPreset(toneSettings, toneSettings.selected_preset_id);
         if (selectedPreset == null)
@@ -2866,7 +3019,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         normalized.preset_id = string.IsNullOrWhiteSpace(normalized.preset_id) || !presetIds.Add(normalized.preset_id)
             ? CreatePresetId()
             : normalized.preset_id;
-        normalized.preset_name = MakeUniquePresetName(normalized.preset_name, presetNames);
+        normalized.preset_name = MakeUniquePresetName(NormalizePresetName(normalized.preset_name), presetNames);
         normalized.input_gain_db = Mathf.Clamp(normalized.input_gain_db, MinRigGainDb, MaxRigGainDb);
         normalized.output_gain_db = Mathf.Clamp(normalized.output_gain_db, MinRigGainDb, MaxRigGainDb);
 
@@ -2883,15 +3036,28 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return normalized;
     }
 
+    private static string NormalizePresetName(string presetName)
+    {
+        string name = string.IsNullOrWhiteSpace(presetName) ? "New Preset" : presetName.Trim();
+        if (name.StartsWith("RS ", StringComparison.OrdinalIgnoreCase))
+            name = name.Substring(3).TrimStart();
+
+        return string.IsNullOrWhiteSpace(name) ? "New Preset" : name;
+    }
+
     private static ToneLabPedalSlot NormalizePedalSlot(ToneLabSettings toneSettings, ToneLabPedalSlot slot)
     {
         ToneLabPedalSlot normalized = ClonePedalSlot(slot);
         if (normalized == null)
             return null;
 
-        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(normalized.pedal_type);
+        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(normalized);
         if (string.IsNullOrWhiteSpace(normalized.pedal_instance_id))
             normalized.pedal_instance_id = CreatePedalInstanceId();
+        if (string.IsNullOrWhiteSpace(normalized.descriptor_id))
+            normalized.descriptor_id = descriptor.DescriptorId;
+        else if (normalized.pedal_type == ToneLabPedalType.NamModel || normalized.pedal_type == ToneLabPedalType.Lv2Plugin)
+            normalized.descriptor_id = descriptor.DescriptorId;
 
         if (string.IsNullOrWhiteSpace(normalized.settings_json))
         {
@@ -2910,9 +3076,13 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (normalized == null)
             return null;
 
-        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(normalized.pedal_type);
+        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(normalized);
         if (string.IsNullOrWhiteSpace(normalized.pedal_instance_id))
             normalized.pedal_instance_id = CreatePedalInstanceId();
+        if (string.IsNullOrWhiteSpace(normalized.descriptor_id))
+            normalized.descriptor_id = descriptor.DescriptorId;
+        else if (normalized.pedal_type == ToneLabPedalType.NamModel || normalized.pedal_type == ToneLabPedalType.Lv2Plugin)
+            normalized.descriptor_id = descriptor.DescriptorId;
         if (string.IsNullOrWhiteSpace(normalized.settings_json))
             normalized.settings_json = descriptor.SerializeSettingsObject(descriptor.CreateDefaultSettingsObject());
 
@@ -2928,6 +3098,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             pedal_instance_id = CreatePedalInstanceId(),
             pedal_type = pedalType,
+            descriptor_id = descriptor.DescriptorId,
             enabled = GetLegacyPedalEnabled(toneSettings, pedalType),
             settings_json = descriptor.SerializeSettingsObject(legacySettings ?? descriptor.CreateDefaultSettingsObject())
         };
@@ -2993,7 +3164,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (toneSettings == null || slot == null)
             return;
 
-        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot.pedal_type);
+        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot);
         object settingsObject = descriptor.DeserializeSettingsObject(slot.settings_json);
         switch (slot.pedal_type)
         {
@@ -3186,6 +3357,31 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return null;
     }
 
+    private static void AddMissingFactoryPresets(ToneLabSettings toneSettings)
+    {
+        if (toneSettings?.presets == null)
+            return;
+
+        HashSet<string> existingNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < toneSettings.presets.Count; i++)
+        {
+            ToneLabPreset existing = toneSettings.presets[i];
+            if (existing != null && !string.IsNullOrWhiteSpace(existing.preset_name))
+                existingNames.Add(existing.preset_name.Trim());
+        }
+
+        List<ToneLabPreset> factoryDefaults = CreateDefaultPresets();
+        for (int i = 0; i < factoryDefaults.Count; i++)
+        {
+            ToneLabPreset factoryPreset = factoryDefaults[i];
+            if (factoryPreset == null || string.IsNullOrWhiteSpace(factoryPreset.preset_name))
+                continue;
+
+            if (existingNames.Add(factoryPreset.preset_name.Trim()))
+                toneSettings.presets.Add(factoryPreset);
+        }
+    }
+
     private static void UpgradeLegacyFactoryPresets(ToneLabSettings toneSettings)
     {
         if (toneSettings?.presets == null || toneSettings.presets.Count == 0)
@@ -3224,6 +3420,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (preset?.pedal_chain == null || preset.pedal_chain.Count == 0)
             return true;
 
+        if (PresetContainsPedalType(preset, ToneLabPedalType.NamModel))
+            return false;
+
         bool hasAmp = false;
         bool hasCabSim = false;
         bool hasStudioEq = false;
@@ -3251,6 +3450,21 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             return true;
 
         return LooksLikeOutdatedFactoryPreset(preset);
+    }
+
+    private static bool PresetContainsPedalType(ToneLabPreset preset, ToneLabPedalType pedalType)
+    {
+        if (preset?.pedal_chain == null)
+            return false;
+
+        for (int i = 0; i < preset.pedal_chain.Count; i++)
+        {
+            ToneLabPedalSlot slot = preset.pedal_chain[i];
+            if (slot != null && slot.pedal_type == pedalType)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool LooksLikeOutdatedFactoryPreset(ToneLabPreset preset)
@@ -3345,7 +3559,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             if (slot == null || slot.pedal_type != pedalType)
                 continue;
 
-            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot.pedal_type);
+            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot);
             return descriptor.DeserializeSettingsObject(slot.settings_json) as TSettings;
         }
 
@@ -3403,7 +3617,33 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             CreateBluesPreset(),
             CreateJazzPreset(),
             CreateEdgyPreset(),
-            CreateMetalPreset()
+            CreateMetalPreset(),
+            CreateLv2SessionCleanPreset(),
+            CreateLv2TexasEdgePreset(),
+            CreateLv2BritishCrunchPreset(),
+            CreateLv2FuzzLeadPreset(),
+            CreateLv2SwellWahPreset(),
+            CreateLv2BoutiqueBoardPreset(),
+            CreateLv2ModernDriveBoardPreset(),
+            CreateLv2PsychedelicFuzzPreset(),
+            CreateNamTwoRockCleanPreset(),
+            CreateNamPlexiCrunchPreset(),
+            CreateNamPowerballTightPreset(),
+            CreateRsCleanPopPreset(),
+            CreateRsIndieJanglePreset(),
+            CreateRsFunkSnapPreset(),
+            CreateRsCountryTwangPreset(),
+            CreateRsBluesBreakupPreset(),
+            CreateRsClassicCrunchPreset(),
+            CreateRsPunkRhythmPreset(),
+            CreateRsAltLeadPreset(),
+            CreateRsMetalTightPreset(),
+            CreateRsDropModernPreset(),
+            CreateRsAmbientCleanPreset(),
+            CreateRsShoegazeWallPreset(),
+            CreateRsSurfPlatePreset(),
+            CreateRsOctaveFuzzPreset(),
+            CreateRsBassGrindPreset()
         };
     }
 
@@ -3730,6 +3970,945 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             }));
     }
 
+    private static ToneLabPreset CreateLv2SessionCleanPreset()
+    {
+        return BuildPreset(
+            "LV2 Session Clean",
+            inputGainDb: 12f,
+            outputGainDb: 9.5f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -67f,
+                attack_ms = 1.2f,
+                hold_ms = 18f,
+                release_ms = 90f,
+                range_db = -74f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
+            {
+                threshold_db = -27f,
+                ratio = 2.2f,
+                attack_ms = 18f,
+                release_ms = 165f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_MicroAmp_#_MicroAmp_", "GxMicroAmp", true,
+                new[] { "GAIN" },
+                new[] { 0.22f }),
+            CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+            {
+                gain_db = 7.8f,
+                tone = 0.62f,
+                presence = 0.44f,
+                master_db = 1.4f,
+                sag = 0.06f
+            }),
+            CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+            {
+                thump = 0.34f,
+                presence = 0.38f,
+                air = 0.62f,
+                mix = 1f
+            }),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 72f,
+                low_shelf_db = -0.6f,
+                mid_db = -1.0f,
+                high_shelf_db = 1.2f,
+                high_cut_hz = 8200f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.22f,
+                damping = 0.56f,
+                wet = 0.08f,
+                dry = 1f,
+                width = 0.92f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateLv2TexasEdgePreset()
+    {
+        return BuildPreset(
+            "LV2 Texas Edge",
+            inputGainDb: 13.5f,
+            outputGainDb: 8.8f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -61f,
+                attack_ms = 1.0f,
+                hold_ms = 20f,
+                release_ms = 98f,
+                range_db = -76f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_timray_#_timray_", "GxTimRay", true,
+                new[] { "BASS", "GAIN", "TREBLE", "TRIM", "VOLUME" },
+                new[] { 0.55f, 0.42f, 0.58f, 0.46f, 0.56f }),
+            CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+            {
+                gain_db = 18f,
+                tone = 0.54f,
+                presence = 0.46f,
+                master_db = 0.6f,
+                sag = 0.15f
+            }),
+            CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+            {
+                thump = 0.48f,
+                presence = 0.42f,
+                air = 0.38f,
+                mix = 1f
+            }),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 82f,
+                low_shelf_db = 0.4f,
+                mid_db = 1.8f,
+                high_shelf_db = -0.2f,
+                high_cut_hz = 6900f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
+            {
+                delay_seconds = 0.16f,
+                feedback = 0.14f,
+                mix = 0.08f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.18f,
+                damping = 0.50f,
+                wet = 0.08f,
+                dry = 1f,
+                width = 0.88f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateLv2BritishCrunchPreset()
+    {
+        return BuildPreset(
+            "LV2 British Crunch",
+            inputGainDb: 14f,
+            outputGainDb: 8.2f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -55f,
+                attack_ms = 0.9f,
+                hold_ms = 22f,
+                release_ms = 86f,
+                range_db = -78f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_guvnor_#_guvnor_", "GxGuvnor", true,
+                new[] { "BASS", "GAIN", "LEVEL", "MID", "TREBLE" },
+                new[] { 0.48f, 0.62f, 0.54f, 0.58f, 0.56f }),
+            CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+            {
+                gain_db = 24f,
+                tone = 0.56f,
+                presence = 0.54f,
+                master_db = -0.2f,
+                sag = 0.18f
+            }),
+            CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+            {
+                thump = 0.58f,
+                presence = 0.50f,
+                air = 0.30f,
+                mix = 1f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_ultracab_#_ultracab_", "GxUltraCab", true,
+                new[] { "GAIN", "MIDS", "PUNCH", "RESONANCE", "SIZE", "TOP" },
+                new[] { 0.46f, 0.58f, 0.54f, 0.48f, 0.52f, 0.44f }),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 88f,
+                low_shelf_db = -0.4f,
+                mid_db = 1.2f,
+                high_shelf_db = 0.7f,
+                high_cut_hz = 6400f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.12f,
+                damping = 0.58f,
+                wet = 0.05f,
+                dry = 1f,
+                width = 0.78f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateLv2FuzzLeadPreset()
+    {
+        return BuildPreset(
+            "LV2 Fuzz Lead",
+            inputGainDb: 13f,
+            outputGainDb: 7.6f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -52f,
+                attack_ms = 0.8f,
+                hold_ms = 26f,
+                release_ms = 82f,
+                range_db = -80f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_SunFace_#_SunFace_", "GxSunFace", true,
+                new[] { "DRIVE", "INPUT", "VOLUME" },
+                new[] { 0.70f, 0.58f, 0.46f }),
+            CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+            {
+                gain_db = 20f,
+                tone = 0.44f,
+                presence = 0.50f,
+                master_db = -0.3f,
+                sag = 0.12f
+            }),
+            CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+            {
+                thump = 0.50f,
+                presence = 0.46f,
+                air = 0.25f,
+                mix = 1f
+            }),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 104f,
+                low_shelf_db = -1.6f,
+                mid_db = 2.4f,
+                high_shelf_db = -0.8f,
+                high_cut_hz = 5600f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
+            {
+                delay_seconds = 0.28f,
+                feedback = 0.20f,
+                mix = 0.10f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.18f,
+                damping = 0.62f,
+                wet = 0.07f,
+                dry = 1f,
+                width = 0.82f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateLv2SwellWahPreset()
+    {
+        return BuildPreset(
+            "LV2 Swell Wah",
+            inputGainDb: 12.5f,
+            outputGainDb: 8.9f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -63f,
+                attack_ms = 1.0f,
+                hold_ms = 18f,
+                release_ms = 105f,
+                range_db = -74f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_slowgear_#_slowgear_", "GxSlowGear", true,
+                new[] { "DOWNTIME", "TRESHOLD", "UPTIME" },
+                new[] { 12f, 1.8f, 180f }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_quack_#_quack_", "GxQuack", true,
+                new[] { "DEPTH", "DRIVE", "GAIN", "MODE", "PEAK", "RANGE", "TONE" },
+                new[] { 0.62f, 0f, -3f, 2f, 8f, 1f, 1f }),
+            CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+            {
+                gain_db = 11f,
+                tone = 0.58f,
+                presence = 0.42f,
+                master_db = 0.8f,
+                sag = 0.08f
+            }),
+            CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+            {
+                thump = 0.40f,
+                presence = 0.38f,
+                air = 0.48f,
+                mix = 1f
+            }),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 80f,
+                low_shelf_db = -0.8f,
+                mid_db = 0.6f,
+                high_shelf_db = 0.4f,
+                high_cut_hz = 7200f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
+            {
+                delay_seconds = 0.22f,
+                feedback = 0.16f,
+                mix = 0.10f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.30f,
+                damping = 0.55f,
+                wet = 0.12f,
+                dry = 1f,
+                width = 0.94f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateLv2BoutiqueBoardPreset()
+    {
+        return BuildPreset(
+            "LV2 Boutique Board",
+            inputGainDb: 12.5f,
+            outputGainDb: 8.4f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -64f,
+                attack_ms = 1.2f,
+                hold_ms = 18f,
+                release_ms = 100f,
+                range_db = -74f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
+            {
+                threshold_db = -27f,
+                ratio = 2.2f,
+                attack_ms = 18f,
+                release_ms = 165f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_MicroAmp_#_MicroAmp_", "GxMicroAmp", true,
+                new[] { "GAIN" },
+                new[] { 0.18f }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_eternity_#_eternity_", "GxEternity", true,
+                new[] { "DRIVE", "GLASS", "LEVEL" },
+                new[] { 0.28f, 0.54f, 0.48f }),
+            CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+            {
+                gain_db = 11.5f,
+                tone = 0.58f,
+                presence = 0.42f,
+                master_db = 0.8f,
+                sag = 0.10f
+            }),
+            CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+            {
+                thump = 0.42f,
+                presence = 0.38f,
+                air = 0.52f,
+                mix = 1f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_ultracab_#_ultracab_", "GxUltraCab", true,
+                new[] { "GAIN", "MIDS", "PUNCH", "RESONANCE", "SIZE", "TOP" },
+                new[] { 0.40f, 0.50f, 0.46f, 0.38f, 0.56f, 0.42f }),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 78f,
+                low_shelf_db = -0.4f,
+                mid_db = 0.7f,
+                high_shelf_db = 0.5f,
+                high_cut_hz = 7600f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
+            {
+                delay_seconds = 0.18f,
+                feedback = 0.16f,
+                mix = 0.08f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.22f,
+                damping = 0.56f,
+                wet = 0.09f,
+                dry = 1f,
+                width = 0.90f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateLv2ModernDriveBoardPreset()
+    {
+        return BuildPreset(
+            "LV2 Modern Drive Board",
+            inputGainDb: 13.8f,
+            outputGainDb: 7.8f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -50f,
+                attack_ms = 0.8f,
+                hold_ms = 26f,
+                release_ms = 80f,
+                range_db = -80f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_sd1sim_#_sd1sim_", "GxSD1", true,
+                new[] { "DRIVE", "LEVEL", "TONE" },
+                new[] { 0.18f, 0.62f, 0.58f }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_guvnor_#_guvnor_", "GxGuvnor", true,
+                new[] { "BASS", "GAIN", "LEVEL", "MID", "TREBLE" },
+                new[] { 0.48f, 0.54f, 0.52f, 0.58f, 0.54f }),
+            CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+            {
+                gain_db = 28f,
+                tone = 0.50f,
+                presence = 0.60f,
+                master_db = -0.5f,
+                sag = 0.16f
+            }),
+            CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+            {
+                thump = 0.62f,
+                presence = 0.50f,
+                air = 0.26f,
+                mix = 1f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_ultracab_#_ultracab_", "GxUltraCab", true,
+                new[] { "GAIN", "MIDS", "PUNCH", "RESONANCE", "SIZE", "TOP" },
+                new[] { 0.42f, 0.58f, 0.58f, 0.50f, 0.48f, 0.36f }),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 92f,
+                low_shelf_db = -1.2f,
+                mid_db = 0.8f,
+                high_shelf_db = 1.2f,
+                high_cut_hz = 6200f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
+            {
+                delay_seconds = 0.24f,
+                feedback = 0.12f,
+                mix = 0.06f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.10f,
+                damping = 0.64f,
+                wet = 0.045f,
+                dry = 1f,
+                width = 0.76f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateLv2PsychedelicFuzzPreset()
+    {
+        return BuildPreset(
+            "LV2 Psychedelic Fuzz",
+            inputGainDb: 13f,
+            outputGainDb: 7.4f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -54f,
+                attack_ms = 0.9f,
+                hold_ms = 28f,
+                release_ms = 90f,
+                range_db = -80f
+            }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_AxisFace_#_AxisFace_", "GxAxisFace", true,
+                new[] { "ATTACK", "SMOOTH", "VOLUME" },
+                new[] { 0.70f, 0.42f, 0.48f }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_quack_#_quack_", "GxQuack", true,
+                new[] { "DEPTH", "DRIVE", "GAIN", "MODE", "PEAK", "RANGE", "TONE" },
+                new[] { 0.54f, 0.08f, -3f, 2f, 6f, 0.78f, 0.9f }),
+            CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+            {
+                gain_db = 19f,
+                tone = 0.48f,
+                presence = 0.46f,
+                master_db = -0.4f,
+                sag = 0.14f
+            }),
+            CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+            {
+                thump = 0.48f,
+                presence = 0.42f,
+                air = 0.28f,
+                mix = 1f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Phaser, true, new PhaserPedalSettings
+            {
+                rate_hz = 0.26f,
+                depth = 0.36f,
+                mix = 0.18f,
+                center_hz = 900f,
+                feedback = 0.08f
+            }),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 110f,
+                low_shelf_db = -2.0f,
+                mid_db = 2.2f,
+                high_shelf_db = -0.6f,
+                high_cut_hz = 5600f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
+            {
+                delay_seconds = 0.31f,
+                feedback = 0.22f,
+                mix = 0.11f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.24f,
+                damping = 0.54f,
+                wet = 0.09f,
+                dry = 1f,
+                width = 0.88f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateNamTwoRockCleanPreset()
+    {
+        return BuildPreset(
+            "NAM Two Rock Clean",
+            inputGainDb: 12.2f,
+            outputGainDb: 8.8f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -64f,
+                attack_ms = 1.2f,
+                hold_ms = 18f,
+                release_ms = 105f,
+                range_db = -74f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
+            {
+                threshold_db = -27f,
+                ratio = 2.1f,
+                attack_ms = 18f,
+                release_ms = 170f
+            }),
+            CreateNamPresetSlot(
+                "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/All 5s Traditional.nam",
+                "Two Rock All 5s",
+                true,
+                inputTrimDb: 0.0f,
+                outputTrimDb: -1.0f,
+                mix: 1f),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 82f,
+                low_shelf_db = -0.6f,
+                mid_db = -0.8f,
+                high_shelf_db = 1.4f,
+                high_cut_hz = 8200f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Chorus, true, new ChorusPedalSettings
+            {
+                rate_hz = 0.36f,
+                depth = 0.18f,
+                mix = 0.10f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
+            {
+                delay_seconds = 0.22f,
+                feedback = 0.14f,
+                mix = 0.07f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.26f,
+                damping = 0.56f,
+                wet = 0.10f,
+                dry = 1f,
+                width = 0.92f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateNamPlexiCrunchPreset()
+    {
+        return BuildPreset(
+            "NAM Plexi Crunch",
+            inputGainDb: 13.2f,
+            outputGainDb: 7.6f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -55f,
+                attack_ms = 0.9f,
+                hold_ms = 22f,
+                release_ms = 90f,
+                range_db = -78f
+            }),
+            CreateNamPresetSlot(
+                "pLEXI-LORE/model (1).nam",
+                "pLEXI-LORE",
+                true,
+                inputTrimDb: -1.5f,
+                outputTrimDb: -3.0f,
+                mix: 1f),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 92f,
+                low_shelf_db = -0.8f,
+                mid_db = 1.2f,
+                high_shelf_db = 0.4f,
+                high_cut_hz = 6400f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Delay, true, new DelayPedalSettings
+            {
+                delay_seconds = 0.18f,
+                feedback = 0.12f,
+                mix = 0.06f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.16f,
+                damping = 0.60f,
+                wet = 0.06f,
+                dry = 1f,
+                width = 0.78f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateNamPowerballTightPreset()
+    {
+        return BuildPreset(
+            "NAM Powerball Tight",
+            inputGainDb: 14.6f,
+            outputGainDb: 6.6f,
+            CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
+            {
+                threshold_db = -42f,
+                attack_ms = 0.4f,
+                hold_ms = 24f,
+                release_ms = 58f,
+                range_db = -82f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Compressor, false, new CompressorPedalSettings
+            {
+                threshold_db = -18f,
+                ratio = 1.6f,
+                attack_ms = 8f,
+                release_ms = 90f
+            }),
+            CreateNamPresetSlot(
+                "Engl Powerball II/Engle_Powerball_II.nam",
+                "ENGL Powerball II",
+                true,
+                inputTrimDb: -3.0f,
+                outputTrimDb: -4.5f,
+                mix: 1f),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 86f,
+                low_shelf_db = -1.8f,
+                mid_db = -3.6f,
+                high_shelf_db = 1.2f,
+                high_cut_hz = 5600f
+            }),
+            CreatePresetSlot(ToneLabPedalType.Reverb, true, new ReverbPedalSettings
+            {
+                room_size = 0.08f,
+                damping = 0.72f,
+                wet = 0.035f,
+                dry = 1f,
+                width = 0.70f,
+                freeze = 0f
+            }));
+    }
+
+    private static ToneLabPreset CreateRsCleanPopPreset()
+    {
+        return BuildPreset(
+            "Clean Pop",
+            inputGainDb: 12.2f,
+            outputGainDb: 8.8f,
+            CreateLv2ZamGateX2Slot(-58f, -50f, 8f, 120f),
+            CreateLv2ZamCompX2Slot(-24f, 2.4f, 2.5f, 18f, 160f, 2f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_MicroAmp_#_MicroAmp_", "GxMicroAmp", true,
+                new[] { "GAIN" },
+                new[] { 0.16f }),
+            CreateCleanAmpSlot(8.4f, 0.62f, 0.42f, 1.1f, 0.06f),
+            CreateOpenCabSlot(0.34f, 0.36f, 0.60f),
+            CreateLv2Dpf3BandEqSlot(-1.2f, -0.8f, 1.8f, -0.8f, 420f, 3100f),
+            CreatePresetSlot(ToneLabPedalType.Chorus, true, new ChorusPedalSettings
+            {
+                rate_hz = 0.42f,
+                depth = 0.20f,
+                mix = 0.12f
+            }),
+            CreateLv2DragonflyRoomSlot(88f, 5f, 9f, 10f, 0.32f, 90f, 9000f, 90f));
+    }
+
+    private static ToneLabPreset CreateRsIndieJanglePreset()
+    {
+        return BuildPreset(
+            "Indie Jangle",
+            inputGainDb: 12.6f,
+            outputGainDb: 8.4f,
+            CreateLv2ZamGateX2Slot(-60f, -48f, 6f, 110f),
+            CreateLv2ZamCompX2Slot(-26f, 3.2f, 3.0f, 12f, 130f, 3f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_MicroAmp_#_MicroAmp_", "GxMicroAmp", true,
+                new[] { "GAIN" },
+                new[] { 0.20f }),
+            CreateCleanAmpSlot(10.5f, 0.68f, 0.48f, 0.9f, 0.05f),
+            CreateOpenCabSlot(0.30f, 0.42f, 0.68f),
+            CreateLv2Dpf3BandEqSlot(-1.8f, -1.0f, 3.0f, -1.2f, 520f, 3600f),
+            CreateLv2ZamDelaySlot(115f, 0.08f, 0.09f, 7200f, -5f),
+            CreateLv2DragonflyPlateSlot(84f, 8f, 1f, 0.55f, 26f, 8800f, 100f));
+    }
+
+    private static ToneLabPreset CreateRsFunkSnapPreset()
+    {
+        return BuildPreset(
+            "Funk Snap",
+            inputGainDb: 12.8f,
+            outputGainDb: 8.2f,
+            CreateLv2ZamGateX2Slot(-56f, -50f, 2.5f, 90f),
+            CreateLv2ZamCompX2Slot(-30f, 4.2f, 4.0f, 5f, 95f, 4f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_quack_#_quack_", "GxQuack", true,
+                new[] { "DEPTH", "DRIVE", "GAIN", "MODE", "PEAK", "RANGE", "TONE" },
+                new[] { 0.58f, 0.0f, -4f, 2f, 7f, 0.82f, 0.92f }),
+            CreateCleanAmpSlot(7.2f, 0.58f, 0.38f, 1.0f, 0.04f),
+            CreateOpenCabSlot(0.30f, 0.34f, 0.55f),
+            CreateLv2Dpf3BandEqSlot(-2.0f, 1.4f, 1.0f, -1.2f, 380f, 2600f),
+            CreateLv2DragonflyRoomSlot(92f, 4f, 5f, 8f, 0.22f, 65f, 7600f, 100f));
+    }
+
+    private static ToneLabPreset CreateRsCountryTwangPreset()
+    {
+        return BuildPreset(
+            "Country Twang",
+            inputGainDb: 12.5f,
+            outputGainDb: 8.6f,
+            CreateLv2ZamGateX2Slot(-60f, -48f, 3f, 105f),
+            CreateLv2ZamCompX2Slot(-27f, 3.6f, 3.2f, 7f, 120f, 3f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_timray_#_timray_", "GxTimRay", true,
+                new[] { "BASS", "GAIN", "TREBLE", "TRIM", "VOLUME" },
+                new[] { 0.42f, 0.24f, 0.68f, 0.38f, 0.58f }),
+            CreateCleanAmpSlot(11f, 0.64f, 0.48f, 0.8f, 0.06f),
+            CreateOpenCabSlot(0.36f, 0.46f, 0.58f),
+            CreateLv2Dpf3BandEqSlot(-1.2f, 0.4f, 2.6f, -1.0f, 430f, 3000f),
+            CreateLv2ZamDelaySlot(88f, 0.05f, 0.10f, 6600f, -5f),
+            CreateLv2DragonflyRoomSlot(88f, 5f, 8f, 9f, 0.30f, 78f, 8200f, 90f));
+    }
+
+    private static ToneLabPreset CreateRsBluesBreakupPreset()
+    {
+        return BuildPreset(
+            "Blues Breakup",
+            inputGainDb: 13.2f,
+            outputGainDb: 8.0f,
+            CreateLv2ZamGateX2Slot(-58f, -46f, 4f, 120f),
+            CreateLv2ZamCompX2Slot(-23f, 2.0f, 1.5f, 20f, 170f, 2f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_timray_#_timray_", "GxTimRay", true,
+                new[] { "BASS", "GAIN", "TREBLE", "TRIM", "VOLUME" },
+                new[] { 0.54f, 0.44f, 0.52f, 0.44f, 0.56f }),
+            CreateLv2ZamTubeSlot(1.8f, 5.4f, 5.8f, 5.0f, 0f, -2f, 0f),
+            CreateCleanAmpSlot(18f, 0.52f, 0.44f, 0.3f, 0.14f),
+            CreateOpenCabSlot(0.50f, 0.42f, 0.36f),
+            CreateLv2ZamEq2Slot(0.8f, 180f, 1.6f, 900f, 1.3f, 1.0f, 2800f, 1.3f, -1.0f, 6500f, -1f, 0f),
+            CreateLv2DragonflyPlateSlot(86f, 10f, 0f, 0.70f, 22f, 6800f, 95f));
+    }
+
+    private static ToneLabPreset CreateRsClassicCrunchPreset()
+    {
+        return BuildPreset(
+            "Classic Crunch",
+            inputGainDb: 13.8f,
+            outputGainDb: 7.6f,
+            CreateLv2ZamGateX2Slot(-52f, -50f, 1.5f, 85f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_guvnor_#_guvnor_", "GxGuvnor", true,
+                new[] { "BASS", "GAIN", "LEVEL", "MID", "TREBLE" },
+                new[] { 0.48f, 0.56f, 0.50f, 0.58f, 0.52f }),
+            CreateLv2ZamTubeSlot(2.8f, 5.0f, 5.8f, 5.2f, 0f, -3f, 0f),
+            CreateCrunchAmpSlot(25f, 0.54f, 0.54f, -0.3f, 0.16f),
+            CreateClosedCabSlot(0.58f, 0.48f, 0.30f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_ultracab_#_ultracab_", "GxUltraCab", true,
+                new[] { "GAIN", "MIDS", "PUNCH", "RESONANCE", "SIZE", "TOP" },
+                new[] { 0.42f, 0.56f, 0.52f, 0.46f, 0.52f, 0.38f }),
+            CreateLv2Dpf3BandEqSlot(-1.0f, 0.8f, 0.6f, -1.2f, 460f, 3200f),
+            CreateLv2DragonflyPlateSlot(90f, 6f, 1f, 0.46f, 16f, 6200f, 110f));
+    }
+
+    private static ToneLabPreset CreateRsPunkRhythmPreset()
+    {
+        return BuildPreset(
+            "Punk Rhythm",
+            inputGainDb: 14f,
+            outputGainDb: 7.4f,
+            CreateLv2ZamGateX2Slot(-50f, -50f, 0.9f, 72f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_sd1sim_#_sd1sim_", "GxSD1", true,
+                new[] { "DRIVE", "LEVEL", "TONE" },
+                new[] { 0.32f, 0.64f, 0.56f }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_guvnor_#_guvnor_", "GxGuvnor", true,
+                new[] { "BASS", "GAIN", "LEVEL", "MID", "TREBLE" },
+                new[] { 0.44f, 0.62f, 0.52f, 0.54f, 0.56f }),
+            CreateCrunchAmpSlot(28f, 0.52f, 0.60f, -0.6f, 0.14f),
+            CreateClosedCabSlot(0.54f, 0.50f, 0.24f),
+            CreateLv2Dpf3BandEqSlot(-1.8f, 1.2f, 0.8f, -1.6f, 380f, 2800f),
+            CreateLv2DragonflyRoomSlot(96f, 2f, 3f, 8f, 0.18f, 55f, 6000f, 120f));
+    }
+
+    private static ToneLabPreset CreateRsAltLeadPreset()
+    {
+        return BuildPreset(
+            "Alt Lead",
+            inputGainDb: 13.6f,
+            outputGainDb: 7.5f,
+            CreateLv2ZamGateX2Slot(-54f, -50f, 1.2f, 90f),
+            CreateLv2ZamCompX2Slot(-22f, 2.4f, 2.0f, 14f, 140f, 2f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_eternity_#_eternity_", "GxEternity", true,
+                new[] { "DRIVE", "GLASS", "LEVEL" },
+                new[] { 0.48f, 0.56f, 0.52f }),
+            CreateCrunchAmpSlot(24f, 0.50f, 0.56f, -0.4f, 0.14f),
+            CreateClosedCabSlot(0.50f, 0.46f, 0.30f),
+            CreateLv2ZamEq2Slot(-0.8f, 140f, 1.4f, 850f, 2.2f, 1.4f, 3200f, 1.2f, -1.6f, 6400f, -1.5f, 0f),
+            CreateLv2ZamDelaySlot(360f, 0.24f, 0.18f, 5200f, -7f),
+            CreateLv2DragonflyHallSlot(86f, 7f, 12f, 18f, 1.0f, 18f, 6200f, 90f));
+    }
+
+    private static ToneLabPreset CreateRsMetalTightPreset()
+    {
+        return BuildPreset(
+            "Metal Tight",
+            inputGainDb: 15f,
+            outputGainDb: 6.8f,
+            CreateLv2ZamGateX2Slot(-42f, -50f, 0.4f, 55f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_sd1sim_#_sd1sim_", "GxSD1", true,
+                new[] { "DRIVE", "LEVEL", "TONE" },
+                new[] { 0.08f, 0.72f, 0.62f }),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_guvnor_#_guvnor_", "GxGuvnor", true,
+                new[] { "BASS", "GAIN", "LEVEL", "MID", "TREBLE" },
+                new[] { 0.38f, 0.62f, 0.50f, 0.56f, 0.56f }),
+            CreateHighGainAmpSlot(37f, 0.38f, 0.78f, -0.8f, 0.08f),
+            CreateClosedCabSlot(0.78f, 0.62f, 0.18f),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 92f,
+                low_shelf_db = -1.2f,
+                mid_db = -4.6f,
+                high_shelf_db = 1.5f,
+                high_cut_hz = 6100f
+            }),
+            CreateLv2Dpf3BandEqSlot(-2.0f, -1.5f, 1.0f, -2.5f, 360f, 2800f),
+            CreateLv2DragonflyRoomSlot(98f, 1f, 2f, 8f, 0.14f, 40f, 5200f, 120f));
+    }
+
+    private static ToneLabPreset CreateRsDropModernPreset()
+    {
+        return BuildPreset(
+            "Drop Modern",
+            inputGainDb: 15.5f,
+            outputGainDb: 6.4f,
+            CreateLv2ZamGateX2Slot(-39f, -50f, 0.3f, 45f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_sd1sim_#_sd1sim_", "GxSD1", true,
+                new[] { "DRIVE", "LEVEL", "TONE" },
+                new[] { 0.05f, 0.76f, 0.66f }),
+            CreateLv2ZamTubeSlot(2.2f, 3.8f, 5.0f, 6.4f, 0f, -5f, 0f),
+            CreateHighGainAmpSlot(40f, 0.34f, 0.84f, -1.0f, 0.07f),
+            CreateClosedCabSlot(0.90f, 0.66f, 0.15f),
+            CreatePresetSlot(ToneLabPedalType.StudioEq, true, new StudioEqPedalSettings
+            {
+                low_cut_hz = 78f,
+                low_shelf_db = -2.6f,
+                mid_db = -5.2f,
+                high_shelf_db = 1.8f,
+                high_cut_hz = 5600f
+            }),
+            CreateLv2Dpf3BandEqSlot(-3.0f, -1.8f, 0.8f, -3.0f, 320f, 2400f));
+    }
+
+    private static ToneLabPreset CreateRsAmbientCleanPreset()
+    {
+        return BuildPreset(
+            "Ambient Clean",
+            inputGainDb: 12f,
+            outputGainDb: 7.8f,
+            CreateLv2ZamGateX2Slot(-62f, -46f, 10f, 150f),
+            CreateLv2ZamCompX2Slot(-28f, 2.8f, 3.0f, 22f, 220f, 3f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_MicroAmp_#_MicroAmp_", "GxMicroAmp", true,
+                new[] { "GAIN" },
+                new[] { 0.12f }),
+            CreateCleanAmpSlot(6.8f, 0.60f, 0.36f, 1.0f, 0.05f),
+            CreateOpenCabSlot(0.32f, 0.34f, 0.62f),
+            CreateLv2Dpf3BandEqSlot(-1.6f, -1.0f, 1.2f, -1.8f, 420f, 3000f),
+            CreateLv2ZamDelaySlot(520f, 0.38f, 0.22f, 5200f, -8f),
+            CreateLv2DragonflyHallSlot(78f, 10f, 24f, 34f, 2.8f, 28f, 6800f, 95f));
+    }
+
+    private static ToneLabPreset CreateRsShoegazeWallPreset()
+    {
+        return BuildPreset(
+            "Shoegaze Wall",
+            inputGainDb: 13f,
+            outputGainDb: 6.8f,
+            CreateLv2ZamGateX2Slot(-58f, -42f, 8f, 180f),
+            CreateLv2ZamCompX2Slot(-30f, 3.0f, 4.0f, 18f, 230f, 4f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_AxisFace_#_AxisFace_", "GxAxisFace", true,
+                new[] { "ATTACK", "SMOOTH", "VOLUME" },
+                new[] { 0.48f, 0.55f, 0.42f }),
+            CreateCrunchAmpSlot(18f, 0.46f, 0.42f, -0.6f, 0.18f),
+            CreateClosedCabSlot(0.48f, 0.38f, 0.22f),
+            CreatePresetSlot(ToneLabPedalType.Phaser, true, new PhaserPedalSettings
+            {
+                rate_hz = 0.18f,
+                depth = 0.40f,
+                mix = 0.16f,
+                center_hz = 820f,
+                feedback = 0.08f
+            }),
+            CreateLv2ZamDelaySlot(420f, 0.46f, 0.24f, 4200f, -9f),
+            CreateLv2DragonflyHallSlot(72f, 14f, 32f, 46f, 4.2f, 32f, 5600f, 100f));
+    }
+
+    private static ToneLabPreset CreateRsSurfPlatePreset()
+    {
+        return BuildPreset(
+            "Surf Plate",
+            inputGainDb: 12.7f,
+            outputGainDb: 8.2f,
+            CreateLv2ZamGateX2Slot(-61f, -48f, 4f, 120f),
+            CreateLv2ZamCompX2Slot(-25f, 3.0f, 2.6f, 9f, 135f, 3f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_MicroAmp_#_MicroAmp_", "GxMicroAmp", true,
+                new[] { "GAIN" },
+                new[] { 0.14f }),
+            CreateCleanAmpSlot(9.2f, 0.68f, 0.52f, 0.8f, 0.04f),
+            CreateOpenCabSlot(0.34f, 0.46f, 0.64f),
+            CreateLv2Dpf3BandEqSlot(-1.0f, -0.4f, 3.2f, -1.4f, 430f, 3500f),
+            CreateLv2PresetSlot("http://distrho.sf.net/plugins/PingPongPan", "Ping Pong Pan", true,
+                new[] { "freq", "width" },
+                new[] { 50f, 20f }),
+            CreateLv2ZamDelaySlot(110f, 0.10f, 0.11f, 7600f, -5f),
+            CreateLv2DragonflyPlateSlot(72f, 30f, 2f, 1.4f, 12f, 9300f, 120f));
+    }
+
+    private static ToneLabPreset CreateRsOctaveFuzzPreset()
+    {
+        return BuildPreset(
+            "Octave Fuzz",
+            inputGainDb: 13.4f,
+            outputGainDb: 6.9f,
+            CreateLv2ZamGateX2Slot(-51f, -50f, 0.8f, 80f),
+            CreateLv2PresetSlot("http://guitarix.sourceforge.net/plugins/gx_SunFace_#_SunFace_", "GxSunFace", true,
+                new[] { "DRIVE", "INPUT", "VOLUME" },
+                new[] { 0.66f, 0.58f, 0.42f }),
+            CreateLv2PresetSlot("http://distrho.sf.net/plugins/MaPitchshift", "MaPitchshift", true,
+                new[] { "blur", "window", "ratio", "xfade" },
+                new[] { 0.02f, 80f, 2.0f, 0.42f }),
+            CreateCrunchAmpSlot(19f, 0.44f, 0.48f, -0.5f, 0.12f),
+            CreateClosedCabSlot(0.48f, 0.42f, 0.24f),
+            CreateLv2Dpf3BandEqSlot(-2.4f, 2.0f, -1.2f, -2.5f, 480f, 2500f),
+            CreateLv2DragonflyPlateSlot(86f, 8f, 0f, 0.65f, 20f, 5600f, 90f));
+    }
+
+    private static ToneLabPreset CreateRsBassGrindPreset()
+    {
+        return BuildPreset(
+            "Bass Grind",
+            inputGainDb: 12.8f,
+            outputGainDb: 8.0f,
+            CreateLv2ZamGateX2Slot(-56f, -46f, 4f, 120f),
+            CreateLv2ZamCompX2Slot(-32f, 4.5f, 5.5f, 14f, 180f, 4f),
+            CreateLv2ZamTubeSlot(1.2f, 7.2f, 5.2f, 3.8f, 0f, -4f, 0f),
+            CreateCrunchAmpSlot(13f, 0.36f, 0.30f, 0.2f, 0.12f),
+            CreateClosedCabSlot(0.92f, 0.26f, 0.12f),
+            CreateLv2Dpf3BandEqSlot(3.0f, 0.8f, -3.4f, -1.8f, 280f, 1800f),
+            CreateLv2DragonflyRoomSlot(96f, 1f, 2f, 10f, 0.20f, 45f, 4200f, 80f));
+    }
+
     private static ToneLabPreset BuildPreset(string presetName, float inputGainDb, float outputGainDb, params ToneLabPedalSlot[] pedalSlots)
     {
         return new ToneLabPreset
@@ -3749,9 +4928,187 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             pedal_instance_id = CreatePedalInstanceId(),
             pedal_type = pedalType,
+            descriptor_id = descriptor.DescriptorId,
             enabled = enabled,
             settings_json = descriptor.SerializeSettingsObject(settingsObject ?? descriptor.CreateDefaultSettingsObject())
         };
+    }
+
+    private static ToneLabPedalSlot CreateLv2PresetSlot(string pluginUri, string displayName, bool enabled, string[] parameterIds, float[] parameterValues)
+    {
+        string descriptorId = ToneLabExternalPedalCatalog.BuildLv2DescriptorId(pluginUri);
+        ToneLabExternalPedalSettings settings = new ToneLabExternalPedalSettings
+        {
+            descriptor_id = descriptorId,
+            processor_kind = "lv2",
+            plugin_uri = pluginUri ?? string.Empty,
+            display_name = displayName ?? "LV2 Effect",
+            parameters = new List<ToneLabExternalParameterValue>()
+        };
+
+        int parameterCount = Mathf.Min(parameterIds?.Length ?? 0, parameterValues?.Length ?? 0);
+        for (int i = 0; i < parameterCount; i++)
+        {
+            if (string.IsNullOrWhiteSpace(parameterIds[i]))
+                continue;
+
+            settings.parameters.Add(new ToneLabExternalParameterValue
+            {
+                parameter_id = parameterIds[i],
+                value = parameterValues[i]
+            });
+        }
+
+        return new ToneLabPedalSlot
+        {
+            pedal_instance_id = CreatePedalInstanceId(),
+            pedal_type = ToneLabPedalType.Lv2Plugin,
+            descriptor_id = descriptorId,
+            enabled = enabled,
+            settings_json = JsonUtility.ToJson(settings)
+        };
+    }
+
+    private static ToneLabPedalSlot CreateNamPresetSlot(string modelRelativePath, string displayName, bool enabled, float inputTrimDb, float outputTrimDb, float mix)
+    {
+        string normalizedRelativePath = (modelRelativePath ?? string.Empty).Replace('\\', '/').Trim('/');
+        string descriptorId = ToneLabExternalPedalCatalog.BuildNamDescriptorIdFromRelativePath(normalizedRelativePath);
+        string modelPath = Path.Combine(ExternalContentPaths.PersistentToneLabNamDirectory, normalizedRelativePath);
+        ToneLabExternalPedalSettings settings = new ToneLabExternalPedalSettings
+        {
+            descriptor_id = descriptorId,
+            processor_kind = "nam",
+            display_name = string.IsNullOrWhiteSpace(displayName) ? "NAM Amp" : displayName.Trim(),
+            model_path = modelPath,
+            parameters = new List<ToneLabExternalParameterValue>
+            {
+                new ToneLabExternalParameterValue { parameter_id = "input_trim_db", value = Mathf.Clamp(inputTrimDb, -24f, 24f) },
+                new ToneLabExternalParameterValue { parameter_id = "output_trim_db", value = Mathf.Clamp(outputTrimDb, -24f, 24f) },
+                new ToneLabExternalParameterValue { parameter_id = "mix", value = Mathf.Clamp01(mix) }
+            }
+        };
+
+        return new ToneLabPedalSlot
+        {
+            pedal_instance_id = CreatePedalInstanceId(),
+            pedal_type = ToneLabPedalType.NamModel,
+            descriptor_id = descriptorId,
+            enabled = enabled,
+            settings_json = JsonUtility.ToJson(settings)
+        };
+    }
+
+    private static ToneLabPedalSlot CreateLv2ZamGateX2Slot(float thresholdDb, float closeDb, float attackMs, float releaseMs)
+    {
+        return CreateLv2PresetSlot("urn:zamaudio:ZamGateX2", "ZamGateX2", true,
+            new[] { "att", "rel", "thr", "mak", "sidechain", "close", "mode" },
+            new[] { attackMs, releaseMs, thresholdDb, 0f, 0f, closeDb, 0f });
+    }
+
+    private static ToneLabPedalSlot CreateLv2ZamCompX2Slot(float thresholdDb, float ratio, float makeupDb, float attackMs, float releaseMs, float kneeDb)
+    {
+        return CreateLv2PresetSlot("urn:zamaudio:ZamCompX2", "ZamCompX2", true,
+            new[] { "att", "rel", "kn", "rat", "thr", "mak", "slew", "stereodet", "sidechain" },
+            new[] { attackMs, releaseMs, kneeDb, ratio, thresholdDb, makeupDb, 1f, 1f, 0f });
+    }
+
+    private static ToneLabPedalSlot CreateLv2ZamTubeSlot(float drive, float bass, float mids, float treble, float toneStack, float inputGainDb, float insane)
+    {
+        return CreateLv2PresetSlot("urn:zamaudio:ZamTube", "ZamTube", true,
+            new[] { "tubedrive", "bass", "mids", "treb", "tonestack", "gain", "insane" },
+            new[] { drive, bass, mids, treble, toneStack, inputGainDb, insane });
+    }
+
+    private static ToneLabPedalSlot CreateLv2ZamDelaySlot(float timeMs, float feedback, float dryWet, float lowPassHz, float outputGainDb)
+    {
+        return CreateLv2PresetSlot("urn:zamaudio:ZamDelay", "ZamDelay", true,
+            new[] { "inv", "time", "sync", "lpf", "div", "gain", "drywet", "feedb" },
+            new[] { 0f, timeMs, 0f, lowPassHz, 3f, outputGainDb, dryWet, feedback });
+    }
+
+    private static ToneLabPedalSlot CreateLv2ZamEq2Slot(
+        float lowBoostDb,
+        float lowFreqHz,
+        float mid1BoostDb,
+        float mid1FreqHz,
+        float mid1Bandwidth,
+        float mid2BoostDb,
+        float mid2FreqHz,
+        float mid2Bandwidth,
+        float highBoostDb,
+        float highFreqHz,
+        float outputGainDb,
+        float inputGainDb)
+    {
+        return CreateLv2PresetSlot("urn:zamaudio:ZamEQ2", "ZamEQ2", true,
+            new[] { "boost1", "bw1", "f1", "boost2", "bw2", "f2", "boostl", "fl", "boosth", "fh", "outputgain", "inputgain" },
+            new[] { mid1BoostDb, mid1Bandwidth, mid1FreqHz, mid2BoostDb, mid2Bandwidth, mid2FreqHz, lowBoostDb, lowFreqHz, highBoostDb, highFreqHz, outputGainDb, inputGainDb });
+    }
+
+    private static ToneLabPedalSlot CreateLv2Dpf3BandEqSlot(float lowDb, float midDb, float highDb, float masterDb, float lowMidHz, float midHighHz)
+    {
+        return CreateLv2PresetSlot("http://distrho.sf.net/plugins/3BandEQ", "3 Band EQ", true,
+            new[] { "low", "mid", "high", "master", "low_mid", "mid_high" },
+            new[] { lowDb, midDb, highDb, masterDb, lowMidHz, midHighHz });
+    }
+
+    private static ToneLabPedalSlot CreateLv2DragonflyRoomSlot(float dryLevel, float earlyLevel, float lateLevel, float size, float decay, float diffuse, float highCutHz, float lowCutHz)
+    {
+        return CreateLv2PresetSlot("urn:dragonfly:room", "Dragonfly Room", true,
+            new[] { "dry_level", "early_level", "early_send", "late_level", "size", "width", "predelay", "decay", "diffuse", "spin", "wander", "in_high_cut", "early_damp", "late_damp", "low_boost", "boost_freq", "in_low_cut" },
+            new[] { dryLevel, earlyLevel, earlyLevel, lateLevel, size, 100f, 6f, decay, diffuse, 0.6f, 20f, highCutHz, highCutHz, highCutHz, 40f, 520f, lowCutHz });
+    }
+
+    private static ToneLabPedalSlot CreateLv2DragonflyPlateSlot(float dryLevel, float wetLevel, float algorithm, float decay, float predelayMs, float highCutHz, float width)
+    {
+        return CreateLv2PresetSlot("urn:dragonfly:plate", "Dragonfly Plate", true,
+            new[] { "dry_level", "early_level", "algorithm", "width", "predelay", "decay", "low_cut", "high_cut", "early_damp" },
+            new[] { dryLevel, wetLevel, algorithm, width, predelayMs, decay, 120f, highCutHz, highCutHz });
+    }
+
+    private static ToneLabPedalSlot CreateLv2DragonflyHallSlot(float dryLevel, float earlyLevel, float lateLevel, float size, float decay, float predelayMs, float highCutHz, float lowCutHz)
+    {
+        return CreateLv2PresetSlot("https://github.com/michaelwillis/dragonfly-reverb", "Dragonfly Hall", true,
+            new[] { "dry_level", "early_level", "late_level", "size", "width", "delay", "diffuse", "low_cut", "low_xo", "low_mult", "high_cut", "high_xo", "high_mult", "spin", "wander", "decay", "early_send", "modulation" },
+            new[] { dryLevel, earlyLevel, lateLevel, size, 100f, predelayMs, 90f, lowCutHz, 500f, 1.1f, highCutHz, 5200f, 0.55f, 2.6f, 12f, decay, earlyLevel, 14f });
+    }
+
+    private static ToneLabPedalSlot CreateCleanAmpSlot(float gainDb, float tone, float presence, float masterDb, float sag)
+    {
+        return CreatePresetSlot(ToneLabPedalType.Amp, true, new AmpPedalSettings
+        {
+            gain_db = gainDb,
+            tone = tone,
+            presence = presence,
+            master_db = masterDb,
+            sag = sag
+        });
+    }
+
+    private static ToneLabPedalSlot CreateCrunchAmpSlot(float gainDb, float tone, float presence, float masterDb, float sag)
+    {
+        return CreateCleanAmpSlot(gainDb, tone, presence, masterDb, sag);
+    }
+
+    private static ToneLabPedalSlot CreateHighGainAmpSlot(float gainDb, float tone, float presence, float masterDb, float sag)
+    {
+        return CreateCleanAmpSlot(gainDb, tone, presence, masterDb, sag);
+    }
+
+    private static ToneLabPedalSlot CreateOpenCabSlot(float thump, float presence, float air)
+    {
+        return CreatePresetSlot(ToneLabPedalType.CabSim, true, new CabSimPedalSettings
+        {
+            thump = thump,
+            presence = presence,
+            air = air,
+            mix = 1f
+        });
+    }
+
+    private static ToneLabPedalSlot CreateClosedCabSlot(float thump, float presence, float air)
+    {
+        return CreateOpenCabSlot(thump, presence, air);
     }
 
     private static string MakeUniquePresetName(ToneLabSettings toneSettings, string requestedName)
@@ -3932,7 +5289,11 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         PrepareCompiledPedalChainIfNeeded(sampleRate, channels);
 
-        float inputGain = ToneLabPedalUtility.DbToLinear(settings.input_gain_db);
+        ToneLabPreset overridePreset = playbackPresetOverrideActive ? playbackPresetOverride : null;
+        float inputGainDb = overridePreset != null ? overridePreset.input_gain_db : settings.input_gain_db;
+        float outputGainDb = overridePreset != null ? overridePreset.output_gain_db : settings.output_gain_db;
+
+        float inputGain = ToneLabPedalUtility.DbToLinear(inputGainDb);
         if (!Mathf.Approximately(inputGain, 1f))
         {
             for (int i = 0; i < data.Length; i++)
@@ -3949,7 +5310,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             compiledSlot.processor?.Process(data, channels, sampleRate);
         }
 
-        float outputGain = ToneLabPedalUtility.DbToLinear(settings.output_gain_db);
+        float outputGain = ToneLabPedalUtility.DbToLinear(outputGainDb);
         if (!Mathf.Approximately(outputGain, 1f))
         {
             for (int i = 0; i < data.Length; i++)

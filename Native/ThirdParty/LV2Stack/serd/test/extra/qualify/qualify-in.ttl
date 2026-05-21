@@ -1,0 +1,26 @@
+@prefix : <http://example.net/prefixless/> .
+@prefix eg: <http://example.org/> .
+
+<http://example.net/prefixless/s>
+	<http://example.net/prefixless/p> <http://example.net/prefixless/o> .
+
+<http://example.org/s>
+	<http://example.org/p> <http://example.org/o> .
+
+<http://example.org/a-subject>
+	<http://example.org/a-predicate> <http://example.org/a-object> .
+
+<http://example.org/normal\u00B70‿5⁀9\u00B7chars>
+	<http://example.org/p> <http://example.org/o> .
+
+<http://example.org/special-!#$%&'()*+,-./;=?@_~-chars>
+	<http://example.org/p> <http://example.org/o> .
+
+<http://example.org/boundary-x̀xͯx˿ͰȂȃxͯ-chars>
+	<http://example.org/p> <http://example.org/o> .
+
+<http://example.org/escape-⁂-chars>
+	<http://example.org/p> <http://example.org/o> .
+
+<http://www.w3.org/1999/02/22-rdf-syntax-ns#nil>
+	<http://www.w3.org/2000/01/rdf-schema#label> "nil" .

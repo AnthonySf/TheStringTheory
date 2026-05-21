@@ -1,0 +1,6 @@
+<http://example.org/eg#s>
+	<http://example.org/eg#p> "\f first" ,
+		"last \f" ,
+		"""long
+
+""" .

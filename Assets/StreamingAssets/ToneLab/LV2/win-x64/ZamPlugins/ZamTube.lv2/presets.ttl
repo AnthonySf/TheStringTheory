@@ -1,0 +1,33 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamTube#preset001>
+    lv2:port [
+        lv2:symbol "tubedrive" ;
+        pset:value 0.10000000149 ;
+    ] ,
+    [
+        lv2:symbol "bass" ;
+        pset:value 5 ;
+    ] ,
+    [
+        lv2:symbol "mids" ;
+        pset:value 5 ;
+    ] ,
+    [
+        lv2:symbol "treb" ;
+        pset:value 5 ;
+    ] ,
+    [
+        lv2:symbol "tonestack" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "gain" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "insane" ;
+        pset:value 0 ;
+    ] .
+

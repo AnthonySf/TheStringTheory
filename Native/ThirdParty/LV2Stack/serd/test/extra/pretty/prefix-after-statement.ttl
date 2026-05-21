@@ -1,0 +1,9 @@
+@prefix a: <http://example.org/a/> .
+
+a:s
+	a:p a:o .
+
+@prefix b: <http://example.org/b/> .
+
+b:s
+	b:p b:o .

@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML+RDFa 1.0//EN" "http://www.w3.org/MarkUp/DTD/xhtml-rdfa-1.dtd">
+<html about="@URI@"
+      xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:dcterms="http://purl.org/dc/terms/"
+      xmlns:doap="http://usefulinc.com/ns/doap#"
+      xmlns:foaf="http://xmlns.com/foaf/0.1/"
+      xmlns:owl="http://www.w3.org/2002/07/owl#"
+      xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+      xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+      xmlns:xsd="http://www.w3.org/2001/XMLSchema#"
+      xml:lang="en">
+  <head>
+    <title>@TITLE@</title>
+    <meta http-equiv="content-type" content="text/xhtml+xml; charset=utf-8" />
+    <meta name="generator" content="lv2specgen" />
+    <link href="@STYLE_URI@" rel="stylesheet" type="text/css" />
+  </head>
+  <body>
+
+    <!-- HEADER -->
+    <div id="topbar">
+      <div id="header">
+        <div id="titlebox">
+          <h1 id="title">@NAME@</h1>
+          <div id="shortdesc">@SHORT_DESC@</div>
+        </div>
+        <div id="metabox">
+          <table id="meta">
+            <tr><th>ID</th><td><a href="@URI@">@URI@</a></td></tr>
+            <tr><th>Version</th><td>@VERSION@</td></tr>
+            @MAIL@
+            @AUTHORS@
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="content">
+      <div id="contentsbox">
+        <!-- Contents: -->
+        <ul id="contents">
+          <!-- <li><a href="#sec-description">Description</a></li> -->
+          <li><a href="#sec-index">Index</a></li>
+          @CONTENT_LINKS@
+        </ul>
+      </div>
+
+      <!-- DESCRIPTION -->
+      <div class="section">@DESCRIPTION@</div>
+
+      <!-- INDEX -->
+      <h2 id="sec-index">Index</h2>
+      <div class="section">
+        @INDEX@
+      </div>
+
+      <!-- REFERENCE -->
+      <div class="section">
+        @REFERENCE@
+      </div>
+
+      <!-- FOOTER -->
+      <div id="footer">
+        <div>
+          This document is available under the
+          <a about="" rel="license" href="http://creativecommons.org/licenses/by-sa/3.0/">
+            Creative Commons Attribution-ShareAlike License
+          </a>
+        </div>
+	    <div>
+          Valid
+          <a about="" rel="dcterms:conformsTo" resource="http://www.w3.org/TR/rdfa-syntax"
+             href="http://validator.w3.org/check?uri=referer">
+            XHTML+RDFa
+          </a>
+          and
+          <a about="" rel="dcterms:conformsTo" resource="http://www.w3.org/TR/CSS2"
+             href="http://jigsaw.w3.org/css-validator/check/referer">
+            CSS
+          </a>
+          generated from @FILENAME@ by lv2specgen
+        </div>
+      </div>
+
+    </div>
+  </body>
+</html>

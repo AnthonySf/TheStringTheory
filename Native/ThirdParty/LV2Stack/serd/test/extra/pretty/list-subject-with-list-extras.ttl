@@ -1,0 +1,12 @@
+@prefix eg: <http://example.org/> .
+
+(
+	"apple"
+	"banana"
+	"cherry"
+)
+	eg:list (
+		"asparagus"
+		"beet"
+		"carrot"
+	) .

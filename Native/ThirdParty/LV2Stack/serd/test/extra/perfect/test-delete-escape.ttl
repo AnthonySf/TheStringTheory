@@ -1,0 +1,6 @@
+<http://example.org/eg#s>
+	<http://example.org/eg#p> "last \u007F" ,
+		"""long
+\u007F
+""" ,
+		"\u007F first" .

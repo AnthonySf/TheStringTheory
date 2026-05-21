@@ -1,0 +1,61 @@
+# Copyright 2020-2026 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+---
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignEscapedNewlines: Left
+AttributeMacros:
+  - LILV_ALLOCATED
+  - LILV_API
+  - LILV_DEPRECATED
+  - LILV_LOG_FUNC
+  - LILV_NONNULL
+  - LILV_NULLABLE
+  - LILV_UNSPECIFIED
+BasedOnStyle: Mozilla
+BraceWrapping:
+  AfterClass: true
+  AfterEnum: false
+  AfterExternBlock: false
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: false
+  SplitEmptyFunction: false
+  SplitEmptyRecord: false
+BreakBeforeBraces: Custom
+Cpp11BracedListStyle: true
+FixNamespaceComments: true
+ForEachMacros:
+  - FOREACH_MATCH
+  - NODE_HASH_FOREACH
+  - LILV_FOREACH
+  - LV2_ATOM_OBJECT_BODY_FOREACH
+  - LV2_ATOM_OBJECT_FOREACH
+  - LV2_ATOM_SEQUENCE_BODY_FOREACH
+  - LV2_ATOM_SEQUENCE_FOREACH
+  - LV2_ATOM_TUPLE_BODY_FOREACH
+  - LV2_ATOM_TUPLE_FOREACH
+IndentCaseLabels: false
+IndentPPDirectives: AfterHash
+KeepEmptyLinesAtTheStartOfBlocks: false
+SpacesInContainerLiterals: false
+StatementMacros:
+  - LILV_ERROR
+  - LILV_ERRORF
+  - LILV_NOTE
+  - LILV_NOTEF
+  - LILV_PORT_WRAP0
+  - LILV_PORT_WRAP1
+  - LILV_WARN
+  - LILV_WARNF
+  - LILV_WRAP0
+  - LILV_WRAP0_VOID
+  - LILV_WRAP1
+  - LILV_WRAP1_VOID
+  - LILV_WRAP2
+  - LILV_WRAP2_VOID
+  - LILV_WRAP3
+  - LILV_WRAP_CONVERSION
+  - _Pragma
+...

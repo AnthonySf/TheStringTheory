@@ -1,0 +1,21 @@
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix pset: <http://lv2plug.in/ns/ext/presets#> .
+@prefix ui:   <http://lv2plug.in/ns/extensions/ui#> .
+
+<urn:zamaudio:ZaMaximX2>
+    a lv2:Plugin ;
+    lv2:binary <ZaMaximX2_dsp.dll> ;
+    rdfs:seeAlso <ZaMaximX2_dsp.ttl> .
+
+<urn:zamaudio:ZaMaximX2#DPF_UI>
+    a ui:WindowsUI ;
+    ui:binary <ZaMaximX2_ui.dll> ;
+    rdfs:seeAlso <ZaMaximX2_ui.ttl> .
+
+<urn:zamaudio:ZaMaximX2#preset001>
+    a pset:Preset ;
+    lv2:appliesTo <urn:zamaudio:ZaMaximX2> ;
+    rdfs:label "Zero" ;
+    rdfs:seeAlso <presets.ttl> .
+

@@ -1,0 +1,13 @@
+@prefix eg: <http://example.org/> .
+
+eg:s
+	eg:list (
+		(
+			eg:l1e1
+			eg:l1e2
+		)
+		(
+			eg:l2e1
+			eg:l2e2
+		)
+	) .

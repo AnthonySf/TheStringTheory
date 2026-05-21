@@ -1,0 +1,108 @@
+.\" # Copyright 2011-2025 David Robillard <d@drobilla.net>
+.\" # SPDX-License-Identifier: ISC
+.Dd January 20, 2025
+.Dt SORDI 1
+.Os
+.Sh NAME
+.Nm sordi
+.Nd load and rewrite RDF data
+.Sh SYNOPSIS
+.Nm sordi
+.Op Fl hv
+.Op Fl i Ar syntax
+.Op Fl o Ar syntax
+.Op Fl s Ar string
+.Ar input
+.Op Ar base_uri
+.Sh DESCRIPTION
+.Nm
+is a command-line utility for loading RDF data into a model,
+and writing it out again.
+.Pp
+.Nm
+is mainly useful for things like removing duplicate statements,
+merging data files,
+or aggressive pretty-printing with statement reordering.
+.Pp
+The options are as follows:
+.Pp
+.Bl -tag -compact -width 3n
+.It Fl h , Fl Fl help
+Print the command line options.
+.Pp
+.It Fl i Ar syntax
+Read input as
+.Ar syntax .
+Case is ignored, valid values are:
+.Dq NQuads ,
+.Dq NTriples ,
+.Dq TriG ,
+.Dq Turtle .
+.Pp
+.It Fl o Ar syntax
+Write output as
+.Ar syntax .
+Case is ignored, valid values are:
+.Dq NQuads ,
+.Dq NTriples ,
+.Dq TriG ,
+.Dq Turtle .
+.Pp
+.It Fl s Ar string
+Parse
+.Ar string
+input instead of a file (terminates options).
+.Pp
+.It Fl v
+Display version information and exit.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with a status of 0, or non-zero if an error occurred.
+.Sh SEE ALSO
+.Bl -item -compact
+.It
+.Xr serdi 1
+.It
+.Xr sord_validate 1
+.It
+.Lk http://drobilla.net/software/sord/
+.It
+.Lk http://gitlab.com/drobilla/sord/
+.El
+.Sh STANDARDS
+.Bl -item
+.It
+.Rs
+.%A W3C
+.%T RDF 1.1 NQuads
+.%D February 2014
+.Re
+.Lk https://www.w3.org/TR/n-quads/
+.It
+.Rs
+.%A W3C
+.%D February 2014
+.%T RDF 1.1 NTriples
+.Re
+.Lk https://www.w3.org/TR/n-triples/
+.It
+.Rs
+.%A W3C
+.%T RDF 1.1 TriG
+.%D February 2014
+.Re
+.Lk https://www.w3.org/TR/trig/
+.It
+.Rs
+.%A W3C
+.%D February 2014
+.%T RDF 1.1 Turtle
+.Re
+.Lk https://www.w3.org/TR/turtle/
+.El
+.Sh AUTHORS
+.Nm
+is a part of sord, by
+.An David Robillard
+.Aq Mt d@drobilla.net .

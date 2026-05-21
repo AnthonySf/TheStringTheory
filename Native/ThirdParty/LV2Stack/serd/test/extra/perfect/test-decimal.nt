@@ -1,0 +1,6 @@
+<http://example.org/eg#s> <http://example.org/eg#p> "+.1"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://example.org/eg#s> <http://example.org/eg#p> "+0.2"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://example.org/eg#s> <http://example.org/eg#p> "-.3"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://example.org/eg#s> <http://example.org/eg#p> "-0.4"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://example.org/eg#s> <http://example.org/eg#p> ".5"^^<http://www.w3.org/2001/XMLSchema#decimal> .
+<http://example.org/eg#s> <http://example.org/eg#p> "0.6"^^<http://www.w3.org/2001/XMLSchema#decimal> .

@@ -1,0 +1,26 @@
+@prefix : <http://example.net/prefixless/> .
+@prefix eg: <http://example.org/> .
+
+:s
+	:p :o .
+
+eg:s
+	eg:p eg:o .
+
+eg:a-subject
+	eg:a-predicate eg:a-object .
+
+eg:normal·0‿5⁀9·chars
+	eg:p eg:o .
+
+eg:special-\!\#\$\%\&\'\(\)\*\+\,-.\/\;\=\?\@_\~-chars
+	eg:p eg:o .
+
+eg:boundary-x̀xͯx˿ͰȂȃxͯ-chars
+	eg:p eg:o .
+
+eg:escape-%E2%81%82-chars
+	eg:p eg:o .
+
+()
+	<http://www.w3.org/2000/01/rdf-schema#label> "nil" .

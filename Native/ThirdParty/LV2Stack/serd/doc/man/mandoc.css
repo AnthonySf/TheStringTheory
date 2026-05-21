@@ -1,0 +1,327 @@
+/*
+  Copyright 2021-2022 David Robillard <d@drobilla.net>
+  SPDX-License-Identifier: ISC
+*/
+
+/* Generic page style */
+
+/*
+  Smaller sizes: 0.236em 0.271em 0.382em 0.438em 0.618em 0.708em
+  Larger sizes:  1.146em 1.618em 1.854em 2.618em 3em     4.236em
+*/
+
+html {
+  margin: 0 1.618em;
+  background: #fff;
+  color: #000;
+}
+
+body {
+  font-style: normal;
+  line-height: 1.618em;
+  margin: 0 auto auto;
+  padding: 0;
+  max-width: 60em;
+  font-family: "SF Pro Text", Verdana, "DejaVu Sans", sans-serif;
+  text-rendering: optimizelegibility;
+}
+
+h1 {
+  font-family: Helvetica, Arial, "DejaVu Sans Condensed", Verdana, sans-serif;
+  font-size: 1.854em;
+  font-weight: 600;
+  line-height: 114.6%;
+  margin: 1.146em 0;
+}
+
+a {
+  text-decoration: none;
+}
+
+h1 a,
+h2 a,
+h3 a,
+h4 a,
+h5 a,
+h6 a {
+  color: #222;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1 a:link,
+h2 a:link,
+h3 a:link,
+h4 a:link,
+h5 a:link,
+h6 a:link {
+  color: #222;
+}
+
+h1 a:visited,
+h2 a:visited,
+h3 a:visited,
+h4 a:visited,
+h5 a:visited,
+h6 a:visited {
+  color: #222;
+}
+
+pre,
+tt,
+code {
+  overflow: auto;
+  font-family: "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace, fixed;
+  hyphens: none;
+  white-space: nowrap;
+
+  /* stylelint-disable property-no-vendor-prefix */
+  -epub-hyphens: none;
+  -moz-hyphens: none;
+  -ms-hyphens: none;
+  -webkit-hyphens: none;
+  /* stylelint-enable property-no-vendor-prefix */
+}
+
+ul,
+ol,
+dl {
+  margin: 0;
+  padding: 0;
+}
+
+ul {
+  padding: 0;
+  hyphens: auto;
+}
+
+dt {
+  font-weight: 600;
+  padding: 0.618em 0 0;
+}
+
+dd {
+  margin: 0 0 0 2.618em;
+  hyphens: auto;
+}
+
+dd > ul:only-child,
+dd > ol:only-child {
+  padding-left: 0;
+}
+
+li {
+  margin-left: 2.618em;
+}
+
+dt:empty {
+  margin: 0;
+  display: none;
+}
+
+dd:empty {
+  margin: 0;
+  display: none;
+}
+
+dt:blank {
+  margin: 0;
+  display: none;
+}
+
+dd:blank {
+  margin: 0;
+  display: none;
+}
+
+/* Media-specific style */
+
+/* Color links on screens */
+@media screen {
+  a {
+    color: #546e00;
+  }
+}
+
+@media print {
+  body {
+    color: #000;
+  }
+
+  a,
+  h1 a,
+  h2 a,
+  h3 a,
+  h4 a,
+  h5 a,
+  h6 a {
+    color: #000;
+  }
+
+  a:link {
+    color: #000;
+  }
+
+  a:visited {
+    color: #000;
+  }
+}
+
+/* Mandoc specific style */
+
+/* stylelint-disable selector-class-pattern */
+
+table.head {
+  font-size: 0.708em;
+  margin: 0.438em 0 1.854em;
+  width: 100%;
+}
+
+table.foot {
+  font-size: 0.708em;
+  margin: 2.618em 0 0.438em;
+  width: 100%;
+}
+
+td.head-rtitle,
+td.foot-os {
+  text-align: right;
+}
+
+td.head-vol {
+  text-align: center;
+}
+
+div.Pp {
+  margin: 1ex 0;
+}
+
+a.permalink {
+  color: #222;
+}
+
+div.Nd,
+div.Bf,
+div.Op {
+  display: inline;
+}
+
+span.Pa,
+span.Ad {
+  font-style: italic;
+}
+
+span.Ms {
+  font-weight: bold;
+}
+
+dl.Bl-diag > dt {
+  font-weight: bold;
+}
+
+table.Nm tbody tr {
+  vertical-align: baseline;
+}
+
+code.Nm,
+code.Fl,
+code.Cm,
+code.Ic,
+code.In,
+code.Fd,
+code.Fn,
+code.Cd {
+  font-weight: bold;
+  color: #444;
+}
+
+code.Ev {
+  font-weight: bold;
+  color: #444;
+}
+
+code.Li {
+  color: #333;
+}
+
+var.Ar {
+  font-style: italic;
+}
+
+/* stylelint-enable selector-class-pattern */
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  html {
+    background: #222;
+    color: #ddd;
+  }
+
+  a {
+    color: #b4c342;
+  }
+
+  a.permalink {
+    color: #ddd;
+  }
+
+  h1 a,
+  h2 a,
+  h3 a,
+  h4 a,
+  h5 a,
+  h6 a {
+    color: #ddd;
+  }
+
+  h1 a:link,
+  h2 a:link,
+  h3 a:link,
+  h4 a:link,
+  h5 a:link,
+  h6 a:link {
+    color: #ddd;
+  }
+
+  h1 a:visited,
+  h2 a:visited,
+  h3 a:visited,
+  h4 a:visited,
+  h5 a:visited,
+  h6 a:visited {
+    color: #ddd;
+  }
+
+  /* stylelint-disable selector-class-pattern */
+
+  code.Nm,
+  code.Fl,
+  code.Cm,
+  code.Ic,
+  code.In,
+  code.Fd,
+  code.Fn,
+  code.Cd {
+    color: #aaa;
+  }
+
+  code.Ev {
+    color: #aaa;
+  }
+
+  code.Li {
+    color: #ccc;
+  }
+
+  /* stylelint-enable selector-class-pattern */
+}
+
+/* Hard black for dark mode on mobile (since it's likely to be an OLED screen) */
+@media only screen and (hover: none) and (pointer: coarse) and (prefers-color-scheme: dark) {
+  html {
+    background: #000;
+    color: #ccc;
+  }
+}

@@ -1,0 +1,9 @@
+CastIntegerToAddressAtReturn
+ctunullpointerOutOfMemory
+knownConditionTrueFalse
+memleakOnRealloc
+noExplicitConstructor
+normalCheckLevelMaxBranches
+nullPointerOutOfMemory
+redundantInitialization
+varFuncNullUB

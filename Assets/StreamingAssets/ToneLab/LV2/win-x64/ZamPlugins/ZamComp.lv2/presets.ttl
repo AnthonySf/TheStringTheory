@@ -1,0 +1,105 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamComp#preset001>
+    lv2:port [
+        lv2:symbol "att" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "rel" ;
+        pset:value 80 ;
+    ] ,
+    [
+        lv2:symbol "kn" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "rat" ;
+        pset:value 4 ;
+    ] ,
+    [
+        lv2:symbol "thr" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "mak" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "slew" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "sidech" ;
+        pset:value 0 ;
+    ] .
+
+<urn:zamaudio:ZamComp#preset002>
+    lv2:port [
+        lv2:symbol "att" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "rel" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "kn" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "rat" ;
+        pset:value 5 ;
+    ] ,
+    [
+        lv2:symbol "thr" ;
+        pset:value -18 ;
+    ] ,
+    [
+        lv2:symbol "mak" ;
+        pset:value 6 ;
+    ] ,
+    [
+        lv2:symbol "slew" ;
+        pset:value 20 ;
+    ] ,
+    [
+        lv2:symbol "sidech" ;
+        pset:value 0 ;
+    ] .
+
+<urn:zamaudio:ZamComp#preset003>
+    lv2:port [
+        lv2:symbol "att" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "rel" ;
+        pset:value 400 ;
+    ] ,
+    [
+        lv2:symbol "kn" ;
+        pset:value 8 ;
+    ] ,
+    [
+        lv2:symbol "rat" ;
+        pset:value 5 ;
+    ] ,
+    [
+        lv2:symbol "thr" ;
+        pset:value -16 ;
+    ] ,
+    [
+        lv2:symbol "mak" ;
+        pset:value 9 ;
+    ] ,
+    [
+        lv2:symbol "slew" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "sidech" ;
+        pset:value 0 ;
+    ] .
+

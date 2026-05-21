@@ -1,0 +1,59 @@
+zix (0.8.1) unstable; urgency=medium
+
+  * Fix build with configure checks disabled
+  * Fix handling of invalid ring size parameters
+  * Fix potential out of bounds access on error
+
+ -- David Robillard <d@drobilla.net>  Fri, 23 Jan 2026 21:45:41 +0000
+
+zix (0.8.0) stable; urgency=medium
+
+  * Add ZIX_REALTIME and ZIX_NONBLOCKING attributes
+  * Add warning suppression macros
+  * Annotate count and size parameters of allocator API
+  * Avoid "deprecated" POSIX functions on Windows
+  * Avoid over-use of yielding meson options
+  * Clean up attribute documentation
+  * Gracefully handle failed allocation in path and filesystem functions
+  * Reduce empty BTree memory requirements
+  * Strengthen zix_file_equals()
+  * Use getenv() instead of environ to avoid issues on FreeBSD
+
+ -- David Robillard <d@drobilla.net>  Wed, 12 Nov 2025 18:40:15 +0000
+
+zix (0.6.2) stable; urgency=medium
+
+  * Fix documentation build with sphinxygen fallback wrap
+
+ -- David Robillard <d@drobilla.net>  Sat, 18 Jan 2025 23:53:31 +0000
+
+zix (0.6.0) stable; urgency=medium
+
+  * Add ZIX_NODISCARD attribute
+  * Add option to build for older Windows versions
+  * Add zix_expand_environment_strings()
+  * Add zix_string_view_equals()
+  * Avoid fdatasync() on Darwin
+  * Fix build on POSIX systems without PATH_MAX defined
+  * Fix library current_version on MacOS
+  * Fix nullability annotations for zix_canonical_path() and friends
+  * Fix ring unit test when mlock() is unavailable
+  * Improve documentation
+  * Support building for UWP
+  * Support building for Windows with or without UNICODE
+
+ -- David Robillard <d@drobilla.net>  Sat, 18 Jan 2025 21:49:37 +0000
+
+zix (0.4.2) stable; urgency=medium
+
+  * Clean up documentation build
+  * Fix documentation build in a virtualenv
+  * Improve test suite code coverage
+
+ -- David Robillard <d@drobilla.net>  Sun, 22 Oct 2023 18:56:14 +0000
+
+zix (0.4.0) stable; urgency=medium
+
+  * Initial release
+
+ -- David Robillard <d@drobilla.net>  Wed, 23 Aug 2023 23:25:38 +0000

@@ -1,0 +1,3 @@
+<http://example.org/eg#s> <http://example.org/eg#p> "last \u007F" .
+<http://example.org/eg#s> <http://example.org/eg#p> "long\n\u007F\n" .
+<http://example.org/eg#s> <http://example.org/eg#p> "\u007F first" .

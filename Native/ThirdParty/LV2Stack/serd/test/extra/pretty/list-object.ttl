@@ -1,0 +1,8 @@
+@prefix eg: <http://example.org/> .
+
+eg:s
+	eg:list (
+		"apple"
+		"banana"
+		"cherry"
+	) .

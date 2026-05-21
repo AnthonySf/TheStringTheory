@@ -1,0 +1,11 @@
+# Copyright 2021-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+/.meson-subproject-wrap-hash.txt
+/build/
+/subprojects/.wraplock
+/subprojects/packagecache/
+/subprojects/sphinxygen-1.0.12/
+
+*.pyc
+__pycache__/

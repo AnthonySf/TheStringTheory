@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{c216f874-4479-4a76-9d62-a95bf018f2d7}</ProjectGuid>
+    <RootNamespace>StringTheoryToneHost</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+
+  <PropertyGroup>
+    <OutDir>..\..\Assets\Plugins\x86_64\</OutDir>
+    <IntDir>build\$(Configuration)\</IntDir>
+    <TargetName>StringTheoryToneHost</TargetName>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING;LILV_STATIC;SERD_STATIC;SORD_STATIC;SRATOM_STATIC;ZIX_STATIC;LILV_INTERNAL;SERD_INTERNAL;SORD_INTERNAL;SRATOM_INTERNAL;ZIX_INTERNAL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore;$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore\NAM;$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore\Dependencies\eigen;$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore\Dependencies\nlohmann;$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore\Dependencies\AudioDSPTools;$(ProjectDir)..\ThirdParty\LV2Stack\lilv\include;$(ProjectDir)..\ThirdParty\LV2Stack\serd\include;$(ProjectDir)..\ThirdParty\LV2Stack\sord\include;$(ProjectDir)..\ThirdParty\LV2Stack\sratom\include;$(ProjectDir)..\ThirdParty\LV2Stack\zix\include;$(ProjectDir)..\ThirdParty\LV2Stack\lv2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
+      <DisableSpecificWarnings>4244;4267;4305;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;NOMINMAX;WIN32_LEAN_AND_MEAN;_CRT_SECURE_NO_WARNINGS;_SILENCE_CXX17_CODECVT_HEADER_DEPRECATION_WARNING;NAM_ENABLE_A2_FAST;LILV_STATIC;SERD_STATIC;SORD_STATIC;SRATOM_STATIC;ZIX_STATIC;LILV_INTERNAL;SERD_INTERNAL;SORD_INTERNAL;SRATOM_INTERNAL;ZIX_INTERNAL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore;$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore\NAM;$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore\Dependencies\eigen;$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore\Dependencies\nlohmann;$(ProjectDir)..\ThirdParty\NeuralAmpModelerCore\Dependencies\AudioDSPTools;$(ProjectDir)..\ThirdParty\LV2Stack\lilv\include;$(ProjectDir)..\ThirdParty\LV2Stack\serd\include;$(ProjectDir)..\ThirdParty\LV2Stack\sord\include;$(ProjectDir)..\ThirdParty\LV2Stack\sratom\include;$(ProjectDir)..\ThirdParty\LV2Stack\zix\include;$(ProjectDir)..\ThirdParty\LV2Stack\lv2\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <ObjectFileName>$(IntDir)%(RelativeDir)</ObjectFileName>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <DisableSpecificWarnings>4244;4267;4305;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>false</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+
+  <ItemGroup>
+    <ClInclude Include="StringTheoryToneHost.h" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ClCompile Include="StringTheoryToneHost.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\activations.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\container.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\conv1d.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\convnet.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\dsp.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\get_dsp.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\lstm.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\ring_buffer.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\util.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\wavenet\a2_fast.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\wavenet\model.cpp" />
+    <ClCompile Include="..\ThirdParty\NeuralAmpModelerCore\NAM\wavenet\slimmable.cpp" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\allocator.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\btree.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\bump_allocator.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\digest.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\errno_status.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\filesystem.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\hash.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\path.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\ring.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\status.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\string_view.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\system.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\tree.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\win32\environment_win32.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\win32\filesystem_win32.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\win32\sem_win32.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\win32\system_win32.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\win32\thread_win32.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\zix\src\win32\win32_util.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\base64.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\byte_source.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\env.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\n3.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\node.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\read_utf8.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\reader.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\string.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\system.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\uri.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\serd\src\writer.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\sord\src\sord.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\sord\src\syntax.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\sratom\src\sratom.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\collections.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\dylib.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\instance.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\lib.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\load_skimmer.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\node.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\node_hash.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\node_skimmer.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\plugin.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\pluginclass.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\port.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\query.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\scalepoint.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\state.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\string_util.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\syntax_skimmer.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\sys_util.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\type_skimmer.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\ui.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\uris.c" />
+    <ClCompile Include="..\ThirdParty\LV2Stack\lilv\src\world.c" />
+  </ItemGroup>
+
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

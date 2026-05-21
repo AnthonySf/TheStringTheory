@@ -1,0 +1,30 @@
+@prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdft: <http://www.w3.org/ns/rdftest#> .
+
+<>
+	a mf:Manifest ;
+	rdfs:comment "Serd abbreviation test cases" ;
+	mf:entries (
+		<#collapse-graphs>
+		<#collapse-predicates>
+		<#collapse-subjects>
+	) .
+
+<#collapse-graphs>
+	a rdft:TestTurtleEval ;
+	mf:action <collapse-graphs.nq> ;
+	mf:name "collapse-graphs" ;
+	mf:result <collapse-graphs.trig> .
+
+<#collapse-predicates>
+	a rdft:TestTurtleEval ;
+	mf:action <collapse-predicates.nt> ;
+	mf:name "collapse-predicates" ;
+	mf:result <collapse-predicates.ttl> .
+
+<#collapse-subjects>
+	a rdft:TestTurtleEval ;
+	mf:action <collapse-subjects.nt> ;
+	mf:name "collapse-subjects" ;
+	mf:result <collapse-subjects.ttl> .

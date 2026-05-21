@@ -1,0 +1,7 @@
+_:tests1
+	<http://example.org/p1> _:testo1 ;
+	<http://example.org/p2> _:testo3 ,
+		_:testo4 .
+
+_:testb0
+	<http://example.org/p3> _:testb1 .

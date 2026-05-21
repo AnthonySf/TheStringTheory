@@ -1,0 +1,19 @@
+# Copyright 2020-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  -*-avoid-c-arrays,
+  -*-no-malloc,
+  -android-cloexec-fopen,
+  -bugprone-exception-escape,
+  -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-use-enum-class,
+  -fuchsia-default-arguments-calls,
+  -llvm-prefer-static-over-anonymous-namespace,
+  -modernize-raw-string-literal,
+  -modernize-redundant-void-arg,
+  -modernize-use-trailing-return-type,
+  -modernize-use-using,
+  -performance-enum-size,
+InheritParentConfig: true

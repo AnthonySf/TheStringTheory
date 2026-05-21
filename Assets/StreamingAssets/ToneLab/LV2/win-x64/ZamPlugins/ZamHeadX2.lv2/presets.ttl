@@ -1,0 +1,17 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamHeadX2#preset001>
+    lv2:port [
+        lv2:symbol "az" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "elev" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "width" ;
+        pset:value 1 ;
+    ] .
+

@@ -1,0 +1,4 @@
+<http://example.org/eg#s>
+	<http://example.org/eg#p> "1: Two byte Unicode escape: à" ,
+		"2: Largest Unicode escape in Turtle: 􏿿" ,
+		"3: ∮ E⋅da = Q,  n → ∞, ∑ f(i) = ∏ g(i)" .

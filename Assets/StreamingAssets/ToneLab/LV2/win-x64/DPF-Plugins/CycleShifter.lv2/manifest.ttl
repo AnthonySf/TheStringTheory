@@ -1,0 +1,21 @@
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix pset: <http://lv2plug.in/ns/ext/presets#> .
+@prefix ui:   <http://lv2plug.in/ns/extensions/ui#> .
+
+<http://www.niallmoody.com/ndcplugs/cycleshifter.htm>
+    a lv2:Plugin ;
+    lv2:binary <CycleShifter_dsp.dll> ;
+    rdfs:seeAlso <CycleShifter_dsp.ttl> .
+
+<http://www.niallmoody.com/ndcplugs/cycleshifter.htm#DPF_UI>
+    a ui:WindowsUI ;
+    ui:binary <CycleShifter_ui.dll> ;
+    rdfs:seeAlso <CycleShifter_ui.ttl> .
+
+<http://www.niallmoody.com/ndcplugs/cycleshifter.htm#preset001>
+    a pset:Preset ;
+    lv2:appliesTo <http://www.niallmoody.com/ndcplugs/cycleshifter.htm> ;
+    rdfs:label "Default" ;
+    rdfs:seeAlso <presets.ttl> .
+

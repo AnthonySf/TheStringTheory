@@ -6,13 +6,16 @@ public sealed class ToneLabPedalTile : VisualElement
 {
     private readonly ToneLabPedalAppearance appearance;
     private readonly ToneLabPedalVisualParts visualParts;
+    private readonly Button deleteButton;
     private bool isSelected;
     private bool isHovered;
     private bool isDragging;
 
     public string PedalInstanceId { get; }
     public UnityToneLabRuntime.ToneLabPedalType PedalType { get; }
+    public string DescriptorId { get; }
     public Button BypassButton => visualParts.BypassButton;
+    public Button DeleteButton => deleteButton;
     public bool IsPedalEnabled { get; private set; }
 
     public ToneLabPedalTile(string pedalInstanceId, IToneLabPedalDescriptor descriptor)
@@ -22,6 +25,7 @@ public sealed class ToneLabPedalTile : VisualElement
 
         PedalInstanceId = pedalInstanceId ?? string.Empty;
         PedalType = descriptor.PedalType;
+        DescriptorId = descriptor.DescriptorId;
         appearance = descriptor.Appearance ?? ToneLabPedalAppearance.CreateDefault();
         visualParts = ToneLabPedalVisualBuilder.BuildBoardTile(appearance, descriptor.DisplayName, descriptor.ShortName);
 
@@ -32,20 +36,57 @@ public sealed class ToneLabPedalTile : VisualElement
         style.height = ToneLabPedalVisualBuilder.BoardTileHeight;
         style.marginRight = 18f;
         style.marginTop = 4f;
-        style.marginBottom = 4f;
+        style.marginBottom = 22f;
         style.alignItems = Align.Center;
         style.justifyContent = Justify.Center;
 
         Add(visualParts.Root);
 
+        deleteButton = new Button { text = "X" };
+        deleteButton.style.position = Position.Absolute;
+        deleteButton.style.top = -8f;
+        deleteButton.style.right = 0f;
+        deleteButton.style.width = 48f;
+        deleteButton.style.minWidth = 48f;
+        deleteButton.style.height = 48f;
+        deleteButton.style.paddingLeft = 0f;
+        deleteButton.style.paddingRight = 0f;
+        deleteButton.style.paddingTop = 0f;
+        deleteButton.style.paddingBottom = 0f;
+        deleteButton.style.marginRight = 0f;
+        deleteButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        deleteButton.style.color = new Color(1f, 0.08f, 0.12f, 1f);
+        deleteButton.style.fontSize = 32f;
+        deleteButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+        deleteButton.style.borderTopWidth = 0f;
+        deleteButton.style.borderRightWidth = 0f;
+        deleteButton.style.borderBottomWidth = 0f;
+        deleteButton.style.borderLeftWidth = 0f;
+        deleteButton.style.display = DisplayStyle.None;
+        deleteButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+        deleteButton.RegisterCallback<PointerUpEvent>(evt => evt.StopPropagation());
+        deleteButton.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            deleteButton.style.color = new Color(1f, 0.0f, 0.05f, 1f);
+            deleteButton.style.scale = new Scale(new Vector3(1.16f, 1.16f, 1f));
+        });
+        deleteButton.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            deleteButton.style.color = new Color(1f, 0.08f, 0.12f, 1f);
+            deleteButton.style.scale = new Scale(Vector3.one);
+        });
+        Add(deleteButton);
+
         RegisterCallback<MouseEnterEvent>(_ =>
         {
             isHovered = true;
+            deleteButton.style.display = DisplayStyle.Flex;
             UpdateVisualState();
         });
         RegisterCallback<MouseLeaveEvent>(_ =>
         {
             isHovered = false;
+            deleteButton.style.display = DisplayStyle.None;
             UpdateVisualState();
         });
 

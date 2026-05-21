@@ -1,0 +1,231 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZaMultiCompX2#preset001>
+    lv2:port [
+        lv2:symbol "att1" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "att2" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "att3" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "rel1" ;
+        pset:value 80 ;
+    ] ,
+    [
+        lv2:symbol "rel2" ;
+        pset:value 80 ;
+    ] ,
+    [
+        lv2:symbol "rel3" ;
+        pset:value 80 ;
+    ] ,
+    [
+        lv2:symbol "kn1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "kn2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "kn3" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "rat1" ;
+        pset:value 4 ;
+    ] ,
+    [
+        lv2:symbol "rat2" ;
+        pset:value 4 ;
+    ] ,
+    [
+        lv2:symbol "rat3" ;
+        pset:value 4 ;
+    ] ,
+    [
+        lv2:symbol "thr1" ;
+        pset:value -20 ;
+    ] ,
+    [
+        lv2:symbol "thr2" ;
+        pset:value -18 ;
+    ] ,
+    [
+        lv2:symbol "thr3" ;
+        pset:value -16 ;
+    ] ,
+    [
+        lv2:symbol "mak1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "mak2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "mak3" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "xover1" ;
+        pset:value 160 ;
+    ] ,
+    [
+        lv2:symbol "xover2" ;
+        pset:value 1400 ;
+    ] ,
+    [
+        lv2:symbol "toggle1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "toggle2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "toggle3" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "listen1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "listen2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "listen3" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "stereodet" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "globalgain" ;
+        pset:value 0 ;
+    ] .
+
+<urn:zamaudio:ZaMultiCompX2#preset002>
+    lv2:port [
+        lv2:symbol "att1" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "att2" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "att3" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "rel1" ;
+        pset:value 200 ;
+    ] ,
+    [
+        lv2:symbol "rel2" ;
+        pset:value 200 ;
+    ] ,
+    [
+        lv2:symbol "rel3" ;
+        pset:value 200 ;
+    ] ,
+    [
+        lv2:symbol "kn1" ;
+        pset:value 3 ;
+    ] ,
+    [
+        lv2:symbol "kn2" ;
+        pset:value 3 ;
+    ] ,
+    [
+        lv2:symbol "kn3" ;
+        pset:value 3 ;
+    ] ,
+    [
+        lv2:symbol "rat1" ;
+        pset:value 5 ;
+    ] ,
+    [
+        lv2:symbol "rat2" ;
+        pset:value 5 ;
+    ] ,
+    [
+        lv2:symbol "rat3" ;
+        pset:value 5 ;
+    ] ,
+    [
+        lv2:symbol "thr1" ;
+        pset:value -20 ;
+    ] ,
+    [
+        lv2:symbol "thr2" ;
+        pset:value -18 ;
+    ] ,
+    [
+        lv2:symbol "thr3" ;
+        pset:value -16 ;
+    ] ,
+    [
+        lv2:symbol "mak1" ;
+        pset:value 9 ;
+    ] ,
+    [
+        lv2:symbol "mak2" ;
+        pset:value 6 ;
+    ] ,
+    [
+        lv2:symbol "mak3" ;
+        pset:value 6 ;
+    ] ,
+    [
+        lv2:symbol "xover1" ;
+        pset:value 160 ;
+    ] ,
+    [
+        lv2:symbol "xover2" ;
+        pset:value 1400 ;
+    ] ,
+    [
+        lv2:symbol "toggle1" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "toggle2" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "toggle3" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "listen1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "listen2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "listen3" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "stereodet" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "globalgain" ;
+        pset:value 0 ;
+    ] .
+

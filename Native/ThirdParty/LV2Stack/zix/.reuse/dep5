@@ -1,0 +1,8 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: zix
+Upstream-Contact: David Robillard <d@drobilla.net>
+Source: https://gitlab.com/drobilla/zix
+
+Files: *.md NEWS
+Copyright: 2021-2025 David Robillard <d@drobilla.net>
+License: 0BSD OR ISC

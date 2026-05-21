@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Xml;
 using UnityEngine;
 
@@ -44,13 +45,14 @@ public sealed class SongLibraryEntry
 public static class SongLibraryService
 {
     private const string SongDefinitionFileName = "song.json";
-    private const int SongLibraryCacheVersion = 9;
+    private const int SongLibraryCacheVersion = 10;
 
     [Serializable]
     private sealed class SongLibraryCacheManifest
     {
         public int version = SongLibraryCacheVersion;
         public long generatedAtUtcTicks;
+        public string librarySignature;
         public List<SongLibraryEntry> entries = new List<SongLibraryEntry>();
     }
 
@@ -293,6 +295,10 @@ public static class SongLibraryService
             if (manifest == null || manifest.version != SongLibraryCacheVersion || manifest.entries == null)
                 return false;
 
+            string currentSignature = BuildSongsDirectorySignature();
+            if (!string.Equals(manifest.librarySignature ?? string.Empty, currentSignature, StringComparison.Ordinal))
+                return false;
+
             entries = NormalizeCachedEntries(manifest.entries);
             if (entries.Count == 0 && SongsDirectoryHasAnySubdirectories())
                 return false;
@@ -325,6 +331,7 @@ public static class SongLibraryService
             {
                 version = SongLibraryCacheVersion,
                 generatedAtUtcTicks = DateTime.UtcNow.Ticks,
+                librarySignature = BuildSongsDirectorySignature(),
                 entries = CloneEntries(entries)
             };
 
@@ -428,6 +435,13 @@ public static class SongLibraryService
         clone.MidiPath = !string.IsNullOrWhiteSpace(clone.MidiPath) && File.Exists(clone.MidiPath) ? clone.MidiPath : null;
 
         if (resolvedNotationKind == SongNotationSourceKind.ArrangementCache &&
+            IsCompleteCachedArrangementEntry(clone))
+        {
+            normalized = clone;
+            return true;
+        }
+
+        if (resolvedNotationKind == SongNotationSourceKind.ArrangementCache &&
             ArrangementCacheSongLoader.TryLoadManifest(clone.PrimaryNotationPath, out var arrangementCacheManifest))
         {
             if ((string.IsNullOrWhiteSpace(clone.Mp3Path) || !File.Exists(clone.Mp3Path)) &&
@@ -453,6 +467,129 @@ public static class SongLibraryService
 
         normalized = clone;
         return true;
+    }
+
+    private static bool IsCompleteCachedArrangementEntry(SongLibraryEntry entry)
+    {
+        if (entry == null)
+            return false;
+
+        return !string.IsNullOrWhiteSpace(entry.DisplayName) &&
+               !string.IsNullOrWhiteSpace(entry.PrimaryNotationPath) &&
+               File.Exists(entry.PrimaryNotationPath) &&
+               !string.IsNullOrWhiteSpace(entry.Mp3Path) &&
+               File.Exists(entry.Mp3Path) &&
+               !string.IsNullOrWhiteSpace(entry.DifficultyDisplayLabel) &&
+               entry.DurationSeconds > 0.01f;
+    }
+
+    private static string BuildSongsDirectorySignature()
+    {
+        string songsDirectory = ExternalContentPaths.PersistentSongsDirectory;
+        if (string.IsNullOrWhiteSpace(songsDirectory) || !Directory.Exists(songsDirectory))
+            return string.Empty;
+
+        StringBuilder builder = new StringBuilder();
+        string[] songDirectories = Directory.GetDirectories(songsDirectory)
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        for (int i = 0; i < songDirectories.Length; i++)
+        {
+            string directory = songDirectories[i];
+            builder.Append("dir:");
+            builder.Append(Path.GetFileName(directory));
+            builder.Append('|');
+
+            AppendDirectorySignatureFiles(builder, directory);
+        }
+
+        return builder.ToString();
+    }
+
+    private static void AppendDirectorySignatureFiles(StringBuilder builder, string directory)
+    {
+        if (builder == null || string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            return;
+
+        try
+        {
+            string[] files = Directory.GetFiles(directory, "*", SearchOption.TopDirectoryOnly)
+                .Where(path => !ShouldIgnoreLibrarySignatureFile(Path.GetFileName(path)))
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            for (int i = 0; i < files.Length; i++)
+                AppendFileSignature(builder, directory, files[i]);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[SongLibraryService] Failed to inspect song folder signature '{directory}': {ex.Message}");
+        }
+
+        string cacheDirectory = Path.Combine(directory, RocksmithCachedSongFormat.ContentDirectoryName);
+        if (Directory.Exists(cacheDirectory))
+        {
+            try
+            {
+                string[] partFiles = Directory.GetFiles(cacheDirectory, "*.rs2part.json", SearchOption.TopDirectoryOnly)
+                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                builder.Append("parts:");
+                builder.Append(partFiles.Length);
+                builder.Append('|');
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private static void AppendFileSignature(StringBuilder builder, string directory, string filePath)
+    {
+        if (builder == null || string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
+        try
+        {
+            FileInfo fileInfo = new FileInfo(filePath);
+            string relativePath = GetRelativePath(directory, filePath);
+            builder.Append(relativePath.Replace('\\', '/'));
+            builder.Append(':');
+            builder.Append(fileInfo.Length.ToString(CultureInfo.InvariantCulture));
+            builder.Append(':');
+            builder.Append(fileInfo.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture));
+            builder.Append('|');
+        }
+        catch
+        {
+        }
+    }
+
+    private static string GetRelativePath(string rootPath, string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(rootPath) || string.IsNullOrWhiteSpace(filePath))
+            return Path.GetFileName(filePath) ?? string.Empty;
+
+        try
+        {
+            return Path.GetRelativePath(rootPath, filePath);
+        }
+        catch
+        {
+            return Path.GetFileName(filePath) ?? string.Empty;
+        }
+    }
+
+    private static bool ShouldIgnoreLibrarySignatureFile(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return true;
+
+        if (fileName.EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return fileName.Equals(Path.GetFileName(ExternalContentPaths.PersistentSongLibraryCachePath), StringComparison.OrdinalIgnoreCase);
     }
 
     private static void PopulateCachedLibrarySummary(SongLibraryEntry entry)

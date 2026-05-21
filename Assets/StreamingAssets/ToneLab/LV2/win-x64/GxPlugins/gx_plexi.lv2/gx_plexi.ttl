@@ -1,0 +1,148 @@
+#
+# Copyright (C) 2014 Guitarix project MOD project
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+# --------------------------------------------------------------------------
+#
+
+
+@prefix doap: <http://usefulinc.com/ns/doap#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+@prefix lv2: <http://lv2plug.in/ns/lv2core#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix guiext: <http://lv2plug.in/ns/extensions/ui#>.
+@prefix time: <http://lv2plug.in/ns/ext/time#>.
+@prefix units: <http://lv2plug.in/ns/extensions/units#> .
+
+<http://guitarix.sourceforge.net#me>
+	a foaf:Person ;
+	foaf:name "Guitarix team" ;
+	foaf:mbox <mailto:guitarix-developer@lists.sourceforge.net> ;
+	rdfs:seeAlso <http://guitarix.sourceforge.net> .
+
+<http://guitarix.sourceforge.net/plugins/gx_plexi_>
+	a doap:Project ;
+	doap:maintainer <http://guitarix.sourceforge.net#me> ;
+	doap:name "Gx_plexi_" .
+
+<http://guitarix.sourceforge.net/plugins/gx_plexi_#_plexi_>
+    a lv2:Plugin ,
+        lv2:AmplifierPlugin ;
+    doap:maintainer <http://guitarix.sourceforge.net#me> ;
+    doap:name "GxPlexi";
+    doap:license <http://opensource.org/licenses/isc> ;
+    lv2:project <http://guitarix.sourceforge.net/plugins/gx_plexi_> ;
+    lv2:optionalFeature lv2:hardRTCapable ;
+      
+    lv2:minorVersion 35;
+    lv2:microVersion 0;
+
+  guiext:ui <http://guitarix.sourceforge.net/plugins/gx_plexi_gui#_plexi_>;
+    
+rdfs:comment """
+
+...
+
+""";
+
+    lv2:port  [
+        a lv2:AudioPort ,
+            lv2:OutputPort ;
+        lv2:index 0 ;
+        lv2:symbol "out" ;
+        lv2:name "Out"
+    ] , [
+        a lv2:AudioPort ,
+            lv2:InputPort ;
+        lv2:index 1 ;
+        lv2:symbol "in" ;
+        lv2:name "In" ;
+    ] , [
+        a lv2:InputPort ,
+            lv2:ControlPort ;
+        lv2:index 2 ;
+        lv2:symbol "BYPASS" ;
+        lv2:name "BYPASS" ;
+        lv2:default 1.0 ;
+        lv2:minimum 0.0 ;
+        lv2:maximum 1.0 ;
+        lv2:designation lv2:enabled;
+        lv2:portProperty lv2:toggled;
+    ] 
+      , [
+        a lv2:InputPort ,
+            lv2:ControlPort ;
+        lv2:index 3 ;
+        lv2:symbol "BASS" ;
+        lv2:name "BASS" ;
+        lv2:default 0.5 ;
+        lv2:minimum 0.0 ;
+        lv2:maximum 1.0 ;
+    ]      , [
+        a lv2:InputPort ,
+            lv2:ControlPort ;
+        lv2:index 4 ;
+        lv2:symbol "MASTER" ;
+        lv2:name "MASTER" ;
+        lv2:default 0.4 ;
+        lv2:minimum 0.0 ;
+        lv2:maximum 1.0 ;
+    ]      , [
+        a lv2:InputPort ,
+            lv2:ControlPort ;
+        lv2:index 5 ;
+        lv2:symbol "MID" ;
+        lv2:name "MID" ;
+        lv2:default 0.5 ;
+        lv2:minimum 0.0 ;
+        lv2:maximum 1.0 ;
+    ]      , [
+        a lv2:InputPort ,
+            lv2:ControlPort ;
+        lv2:index 6 ;
+        lv2:symbol "PRESENSE" ;
+        lv2:name "PRESENSE" ;
+        lv2:default 0.15 ;
+        lv2:minimum 0.0 ;
+        lv2:maximum 1.0 ;
+    ]      , [
+        a lv2:InputPort ,
+            lv2:ControlPort ;
+        lv2:index 7 ;
+        lv2:symbol "TREBLE" ;
+        lv2:name "TREBLE" ;
+        lv2:default 0.5 ;
+        lv2:minimum 0.0 ;
+        lv2:maximum 1.0 ;
+    ]      , [
+        a lv2:InputPort ,
+            lv2:ControlPort ;
+        lv2:index 8 ;
+        lv2:symbol "VOLUME" ;
+        lv2:name "VOLUME" ;
+        lv2:default 0.15 ;
+        lv2:minimum 0.0 ;
+        lv2:maximum 1.0 ;
+    ] .
+
+<http://guitarix.sourceforge.net/plugins/gx_plexi_gui#_plexi_>
+  a guiext:WindowsUI;
+  guiext:binary <gx_plexi_ui.dll>;
+        lv2:extensionData guiext::idle ;
+        lv2:extensionData guiext:resize ;
+        lv2:extensionData guiext:idleInterface;
+        lv2:requiredFeature guiext:idleInterface ;
+  .

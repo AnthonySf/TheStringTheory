@@ -1,0 +1,80 @@
+# Copyright 2021-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+PROJECT_NAME           = Zix
+PROJECT_BRIEF          = "A lightweight C library of portability wrappers and data structures"
+
+QUIET                  = YES
+WARN_AS_ERROR          = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_NO_PARAMDOC       = NO
+
+RECURSIVE=YES
+
+JAVADOC_AUTOBRIEF      = YES
+
+FULL_PATH_NAMES        = NO
+CASE_SENSE_NAMES       = YES
+HIDE_IN_BODY_DOCS      = YES
+REFERENCES_LINK_SOURCE = NO
+
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+GENERATE_XML           = YES
+XML_PROGRAMLISTING     = NO
+SHOW_FILES             = NO
+
+
+EXPAND_ONLY_PREDEF     = YES
+MACRO_EXPANSION        = YES
+SKIP_FUNCTION_MACROS   = NO
+PREDEFINED             = ZIX_ALLOCATED= \
+                         ZIX_ALLOC_COUNT_SIZE(n,s)= \
+                         ZIX_ALLOC_SIZE(s)= \
+                         ZIX_ALWAYS_INLINE_FUNC= \
+                         ZIX_API= \
+                         ZIX_BEGIN_DECLS= \
+                         ZIX_CONST_API= \
+                         ZIX_CONST_FUNC= \
+                         ZIX_END_DECLS= \
+                         ZIX_LOG_FUNC(f,a)= \
+                         ZIX_MALLOC_API= \
+                         ZIX_MALLOC_FUNC= \
+                         ZIX_NODISCARD= \
+                         ZIX_NONBLOCKING= \
+                         ZIX_NONNULL= \
+                         ZIX_NULLABLE= \
+                         ZIX_PURE_API= \
+                         ZIX_PURE_FUNC= \
+                         ZIX_PURE_WIN_API= \
+                         ZIX_REALTIME= \
+                         ZIX_THREAD_FUNC= \
+                         ZIX_UNSPECIFIED= \
+                         ZIX_UNUSED(n)= \
+
+STRIP_FROM_PATH        = @ZIX_SRCDIR@
+INPUT                  = @ZIX_SRCDIR@/include/zix/zix.h \
+                         \
+                         @ZIX_SRCDIR@/include/zix/attributes.h \
+                         @ZIX_SRCDIR@/include/zix/status.h \
+                         @ZIX_SRCDIR@/include/zix/string_view.h \
+                         \
+                         @ZIX_SRCDIR@/include/zix/allocator.h \
+                         @ZIX_SRCDIR@/include/zix/bump_allocator.h \
+                         \
+                         @ZIX_SRCDIR@/include/zix/digest.h \
+                         \
+                         @ZIX_SRCDIR@/include/zix/btree.h \
+                         @ZIX_SRCDIR@/include/zix/hash.h \
+                         @ZIX_SRCDIR@/include/zix/ring.h \
+                         @ZIX_SRCDIR@/include/zix/tree.h \
+                         \
+                         @ZIX_SRCDIR@/include/zix/sem.h \
+                         @ZIX_SRCDIR@/include/zix/thread.h \
+                         \
+                         @ZIX_SRCDIR@/include/zix/filesystem.h \
+                         @ZIX_SRCDIR@/include/zix/path.h \
+                         \
+                         @ZIX_SRCDIR@/include/zix/environment.h \
+
+OUTPUT_DIRECTORY       = @DOX_OUTPUT@

@@ -1,0 +1,193 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<http://distrho.sf.net/plugins/MVerb#preset001>
+    lv2:port [
+        lv2:symbol "damping" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "density" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "bandwidth" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "decay" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "predelay" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "size" ;
+        pset:value 75 ;
+    ] ,
+    [
+        lv2:symbol "gain" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "mix" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "earlymix" ;
+        pset:value 50 ;
+    ] .
+
+<http://distrho.sf.net/plugins/MVerb#preset002>
+    lv2:port [
+        lv2:symbol "damping" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "density" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "bandwidth" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "decay" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "predelay" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "size" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "gain" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "mix" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "earlymix" ;
+        pset:value 75 ;
+    ] .
+
+<http://distrho.sf.net/plugins/MVerb#preset003>
+    lv2:port [
+        lv2:symbol "damping" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "density" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "bandwidth" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "decay" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "predelay" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "size" ;
+        pset:value 25 ;
+    ] ,
+    [
+        lv2:symbol "gain" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "mix" ;
+        pset:value 35 ;
+    ] ,
+    [
+        lv2:symbol "earlymix" ;
+        pset:value 75 ;
+    ] .
+
+<http://distrho.sf.net/plugins/MVerb#preset004>
+    lv2:port [
+        lv2:symbol "damping" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "density" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "bandwidth" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "decay" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "predelay" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "size" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "gain" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "mix" ;
+        pset:value 35 ;
+    ] ,
+    [
+        lv2:symbol "earlymix" ;
+        pset:value 75 ;
+    ] .
+
+<http://distrho.sf.net/plugins/MVerb#preset005>
+    lv2:port [
+        lv2:symbol "damping" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "density" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "bandwidth" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "decay" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "predelay" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "size" ;
+        pset:value 50 ;
+    ] ,
+    [
+        lv2:symbol "gain" ;
+        pset:value 100 ;
+    ] ,
+    [
+        lv2:symbol "mix" ;
+        pset:value 15.0000009537 ;
+    ] ,
+    [
+        lv2:symbol "earlymix" ;
+        pset:value 75 ;
+    ] .
+

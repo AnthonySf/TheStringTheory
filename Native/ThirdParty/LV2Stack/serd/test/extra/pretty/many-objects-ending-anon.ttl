@@ -1,0 +1,22 @@
+@prefix eg: <http://example.org/> .
+
+eg:s1
+	eg:p1 [
+		eg:p11 eg:o11 ,
+			eg:o12
+	] , [
+		eg:p11 eg:o11 ,
+			eg:o12
+	] .
+
+eg:s2
+	eg:p2 (
+		[
+			eg:p21 eg:o21 ,
+				eg:o22
+		]
+		[
+			eg:p21 eg:o21 ,
+				eg:o22
+		]
+	) .

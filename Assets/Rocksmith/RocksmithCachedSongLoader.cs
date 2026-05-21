@@ -882,6 +882,9 @@ public static class RocksmithCachedSongLoader
             loaded.arpeggioGuides ??= new List<RocksmithCachedArpeggioGuideData>();
             loaded.generatedNotes ??= new List<RocksmithCachedGeneratedNoteEvent>();
             loaded.timing ??= new RocksmithCachedArrangementTimingData();
+            loaded.tones ??= new RocksmithCachedArrangementToneData();
+            loaded.tones.changes ??= new List<RocksmithCachedToneChangeData>();
+            loaded.tones.definitions ??= new List<RocksmithCachedToneDefinitionData>();
             loaded.timing.ebeats ??= new List<RocksmithCachedEbeatData>();
             if (loaded.timing.averageTempoBpm <= 0.01f)
                 loaded.timing.averageTempoBpm = 120f;
@@ -906,6 +909,68 @@ public static class RocksmithCachedSongLoader
             Debug.LogWarning($"[ImportedSongCache] Failed to parse part '{partFilePath}': {ex.Message}");
             return false;
         }
+    }
+
+    public static bool TryLoadArrangementPartByPartId(
+        string manifestPath,
+        string partId,
+        out RocksmithCachedArrangementSummary summary,
+        out RocksmithCachedArrangementPart part)
+    {
+        summary = null;
+        part = null;
+
+        if (string.IsNullOrWhiteSpace(partId) ||
+            !TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest) ||
+            manifest?.arrangements == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < manifest.arrangements.Count; i++)
+        {
+            RocksmithCachedArrangementSummary candidate = manifest.arrangements[i];
+            if (candidate == null ||
+                !string.Equals(candidate.partId ?? string.Empty, partId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            summary = candidate;
+            return TryLoadPart(candidate.partFilePath, out part);
+        }
+
+        return false;
+    }
+
+    public static bool TryLoadArrangementPartByGroupId(
+        string manifestPath,
+        string arrangementGroupId,
+        out RocksmithCachedArrangementSummary summary,
+        out RocksmithCachedArrangementPart part)
+    {
+        summary = null;
+        part = null;
+
+        if (string.IsNullOrWhiteSpace(arrangementGroupId) ||
+            !TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest) ||
+            manifest?.arrangements == null)
+        {
+            return false;
+        }
+
+        RocksmithCachedArrangementSummary best = manifest.arrangements
+            .Where(candidate => candidate != null &&
+                                string.Equals(candidate.arrangementGroupId ?? candidate.partId ?? string.Empty, arrangementGroupId, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(candidate => candidate.difficultyUiIndex < 0 ? int.MaxValue : candidate.difficultyUiIndex)
+            .ThenByDescending(candidate => candidate.noteCount)
+            .FirstOrDefault();
+
+        if (best == null)
+            return false;
+
+        summary = best;
+        return TryLoadPart(best.partFilePath, out part);
     }
 
     private static int ResolveArrangementIndex(RocksmithCachedSongManifest manifest, int targetPartIndex)
