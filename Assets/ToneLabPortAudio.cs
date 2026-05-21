@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 
 internal static class ToneLabPortAudio
 {
@@ -97,6 +98,12 @@ internal static class ToneLabPortAudio
         ulong streamFlags,
         StreamCallback streamCallback,
         IntPtr userData);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int Pa_IsFormatSupported(
+        ref StreamParameters inputParameters,
+        ref StreamParameters outputParameters,
+        double sampleRate);
 
     [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int Pa_StartStream(IntPtr stream);
@@ -277,6 +284,7 @@ internal static class ToneLabPortAudio
             uint framesPerBuffer,
             double inputLatency,
             double outputLatency,
+            string routeDescription,
             out string error)
         {
             error = string.Empty;
@@ -306,6 +314,24 @@ internal static class ToneLabPortAudio
                 hostApiSpecificStreamInfo = IntPtr.Zero
             };
 
+            int supportResult = Pa_IsFormatSupported(ref inputParameters, ref outputParameters, sampleRate);
+            if (supportResult != PaNoError)
+            {
+                error = BuildRouteFailureMessage(
+                    "PortAudio route unsupported",
+                    supportResult,
+                    inputDeviceIndex,
+                    outputDeviceIndex,
+                    inputChannels,
+                    outputChannels,
+                    sampleRate,
+                    framesPerBuffer,
+                    inputLatency,
+                    outputLatency,
+                    routeDescription);
+                return false;
+            }
+
             int openResult = Pa_OpenStream(
                 out stream,
                 ref inputParameters,
@@ -318,7 +344,18 @@ internal static class ToneLabPortAudio
 
             if (openResult != PaNoError || stream == IntPtr.Zero)
             {
-                error = $"PortAudio open failed: {GetErrorText(openResult)}";
+                error = BuildRouteFailureMessage(
+                    "PortAudio open failed",
+                    openResult,
+                    inputDeviceIndex,
+                    outputDeviceIndex,
+                    inputChannels,
+                    outputChannels,
+                    sampleRate,
+                    framesPerBuffer,
+                    inputLatency,
+                    outputLatency,
+                    routeDescription);
                 stream = IntPtr.Zero;
                 return false;
             }
@@ -326,7 +363,18 @@ internal static class ToneLabPortAudio
             int startResult = Pa_StartStream(stream);
             if (startResult != PaNoError)
             {
-                error = $"PortAudio start failed: {GetErrorText(startResult)}";
+                error = BuildRouteFailureMessage(
+                    "PortAudio start failed",
+                    startResult,
+                    inputDeviceIndex,
+                    outputDeviceIndex,
+                    inputChannels,
+                    outputChannels,
+                    sampleRate,
+                    framesPerBuffer,
+                    inputLatency,
+                    outputLatency,
+                    routeDescription);
                 Stop();
                 return false;
             }
@@ -391,6 +439,46 @@ internal static class ToneLabPortAudio
         {
             if (buffer == null || buffer.Length < requiredLength)
                 buffer = new float[requiredLength];
+        }
+
+        private static string BuildRouteFailureMessage(
+            string prefix,
+            int portAudioResult,
+            int inputDeviceIndex,
+            int outputDeviceIndex,
+            int inputChannelCount,
+            int outputChannelCount,
+            int sampleRate,
+            uint framesPerBuffer,
+            double inputLatency,
+            double outputLatency,
+            string routeDescription)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.Append(prefix);
+            builder.Append(": ");
+            builder.Append(GetErrorText(portAudioResult));
+            builder.Append(" | route=");
+            builder.Append(string.IsNullOrWhiteSpace(routeDescription)
+                ? $"input #{inputDeviceIndex} -> output #{outputDeviceIndex}"
+                : routeDescription.Trim());
+            builder.Append(" | inputDeviceIndex=");
+            builder.Append(inputDeviceIndex);
+            builder.Append(", outputDeviceIndex=");
+            builder.Append(outputDeviceIndex);
+            builder.Append(", inputChannels=");
+            builder.Append(inputChannelCount);
+            builder.Append(", outputChannels=");
+            builder.Append(outputChannelCount);
+            builder.Append(", sampleRate=");
+            builder.Append(sampleRate);
+            builder.Append(", framesPerBuffer=");
+            builder.Append(framesPerBuffer);
+            builder.Append(", inputLatency=");
+            builder.Append(inputLatency.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture));
+            builder.Append(", outputLatency=");
+            builder.Append(outputLatency.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture));
+            return builder.ToString();
         }
     }
 

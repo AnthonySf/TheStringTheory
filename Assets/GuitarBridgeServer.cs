@@ -11758,7 +11758,7 @@ private void OpenOrFocusToneLab()
         if (sharedAudioSettings == null)
             sharedAudioSettings = new SharedAudioSettings();
 
-        sharedAudioSettings.version = 5;
+        sharedAudioSettings.version = 6;
         sharedAudioSettings.inputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.inputDeviceName);
         sharedAudioSettings.outputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.outputDeviceName);
         sharedAudioSettings.monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize);
@@ -12010,7 +12010,8 @@ private void OpenOrFocusToneLab()
                 preferredOutputDeviceName = advancedSettings.outputDeviceName,
                 sampleRate = advancedSettings.sampleRate,
                 bufferSize = advancedSettings.bufferSize,
-                unifiedOutputEnabled = advancedSettings.unifiedOutputEnabled
+                unifiedOutputEnabled = advancedSettings.unifiedOutputEnabled,
+                unityRecorderCaptureEnabled = advancedSettings.unityRecorderCaptureEnabled
             });
             bool toneLabWasMonitoring = unityToneLabRuntime.IsMonitoring || unityToneLabRuntime.IsAwaitingStartup;
             unityToneLabRuntime.UpdateSettings(settings =>

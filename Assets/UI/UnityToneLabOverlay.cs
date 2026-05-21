@@ -454,6 +454,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private Button advancedBetaToggleButton;
     private Button advancedFallbackToggleButton;
     private Button advancedUnifiedToggleButton;
+    private Button advancedRecorderCaptureToggleButton;
     private Button advancedAudioApplyButton;
     private Button advancedAudioCloseButton;
     private Label advancedAudioStatusLabel;
@@ -1254,7 +1255,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedAudioTitle.style.marginBottom = 6f;
         advancedAudioCard.Add(advancedAudioTitle);
 
-        Label advancedAudioSubtitle = new Label("Default routing above stays unchanged unless Beta Mode is ON. Applying these settings restarts monitoring.");
+        Label advancedAudioSubtitle = new Label("Beta Mode controls routing. Unity Recorder Capture only mirrors processed guitar into Unity audio for recording. Applying these settings restarts monitoring.");
         advancedAudioSubtitle.style.color = new Color(0.66f, 0.69f, 0.73f, 0.96f);
         advancedAudioSubtitle.style.fontSize = 13f;
         advancedAudioSubtitle.style.whiteSpace = WhiteSpace.Normal;
@@ -1275,6 +1276,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedBetaToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedBetaDraft);
         advancedFallbackToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedFallbackDraft);
         advancedUnifiedToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedUnifiedDraft);
+        advancedRecorderCaptureToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedRecorderCaptureDraft);
 
         advancedBackendDropdown = new DropdownField();
         ApplyDropdownStyle(advancedBackendDropdown);
@@ -1352,6 +1354,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedFallbackHost.Add(advancedFallbackToggleButton);
         advancedAudioHost.Add(CreateSettingRow("Unified Output", out VisualElement advancedUnifiedHost));
         advancedUnifiedHost.Add(advancedUnifiedToggleButton);
+        advancedAudioHost.Add(CreateSettingRow("Unity Recorder Capture", out VisualElement advancedRecorderCaptureHost));
+        advancedRecorderCaptureHost.Add(advancedRecorderCaptureToggleButton);
 
         VisualElement advancedStatusCard = new VisualElement();
         advancedStatusCard.style.marginTop = 14f;
@@ -1890,6 +1894,12 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         RefreshAdvancedAudioToggleStates();
     }
 
+    private void ToggleAdvancedRecorderCaptureDraft()
+    {
+        advancedAudioDraft.unityRecorderCaptureEnabled = !advancedAudioDraft.unityRecorderCaptureEnabled;
+        RefreshAdvancedAudioToggleStates();
+    }
+
     private void RefreshAdvancedAudioModalControls()
     {
         if (advancedAudioModalScrim == null)
@@ -1911,13 +1921,15 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         ApplyToggleButtonState(advancedBetaToggleButton, advancedAudioDraft.betaEnabled);
         ApplyToggleButtonState(advancedFallbackToggleButton, advancedAudioDraft.allowFallback);
         ApplyToggleButtonState(advancedUnifiedToggleButton, advancedAudioDraft.unifiedOutputEnabled);
+        ApplyToggleButtonState(advancedRecorderCaptureToggleButton, advancedAudioDraft.unityRecorderCaptureEnabled);
         advancedBackendDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedInputDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedOutputDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
-        advancedSampleRateDropdown?.SetEnabled(advancedAudioDraft.betaEnabled && !advancedAudioDraft.unifiedOutputEnabled);
+        advancedSampleRateDropdown?.SetEnabled(advancedAudioDraft.betaEnabled && !advancedAudioDraft.unifiedOutputEnabled && !advancedAudioDraft.unityRecorderCaptureEnabled);
         advancedBufferDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedFallbackToggleButton?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedUnifiedToggleButton?.SetEnabled(advancedAudioDraft.betaEnabled);
+        advancedRecorderCaptureToggleButton?.SetEnabled(true);
     }
 
     private void RefreshAdvancedAudioDeviceChoices()
@@ -1950,6 +1962,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         string summary = $"{runtime.ActiveAudioBackendLabel}  \u2022  {runtime.ActiveHostApiLabel}  \u2022  In {runtime.InputRouteLabel}  \u2022  Out {runtime.OutputRouteLabel}";
         if (advancedAudioDraft != null && advancedAudioDraft.betaEnabled && advancedAudioDraft.unifiedOutputEnabled)
             summary = $"{summary}\nUnified output locks sample rate to Unity output.";
+        if (advancedAudioDraft != null && advancedAudioDraft.unityRecorderCaptureEnabled)
+            summary = $"{summary}\nUnity Recorder Capture mirrors processed guitar into Unity audio. Use only while recording to avoid hearing a second monitoring path.";
         string diagnostics = runtime.StatusMessage;
         if (!string.IsNullOrWhiteSpace(runtime.LastRoutingAttemptSummary))
             diagnostics = $"{diagnostics}\n\n{runtime.LastRoutingAttemptSummary}";

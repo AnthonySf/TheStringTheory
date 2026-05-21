@@ -1,6 +1,6 @@
 {
-  "input_device_name": "17: Headset Microphone (Oculus Virtual Audio Device)",
-  "output_device_name": "14: Headphones (Oculus Virtual Audio Device)",
+  "input_device_name": "",
+  "output_device_name": "",
   "input_gain_db": 0.0,
   "output_gain_db": 0.0,
   "dist_enabled": true,
