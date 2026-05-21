@@ -59,6 +59,7 @@ Assets/Plugins/x86_64/*.exp
 # Public source release: bundled libraries / binaries / packaged runtimes
 Assets/MidiPlayer/
 Assets/Plugins/**/*.dll
+!Assets/Plugins/x86_64/StringTheoryToneHost.dll
 Assets/Plugins/**/*.so
 Assets/Plugins/**/*.dylib
 Assets/Plugins/**/*.a
