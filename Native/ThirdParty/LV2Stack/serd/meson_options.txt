@@ -1,0 +1,35 @@
+# Copyright 2021-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+option('checks', type: 'feature', value: 'enabled',
+       description: 'Check for platform-specific features')
+
+option('docs', type: 'feature',
+       description: 'Build documentation')
+
+option('html', type: 'feature',
+       description: 'Build paginated HTML documentation')
+
+option('lint', type: 'boolean', value: false,
+       description: 'Run code quality checks')
+
+option('man', type: 'feature', value: 'enabled',
+       description: 'Install man pages')
+
+option('man_html', type: 'feature',
+       description: 'Build HTML man pages')
+
+option('singlehtml', type: 'feature',
+       description: 'Build single-page HTML documentation')
+
+option('static', type: 'boolean', value: false,
+       description: 'Statically link executables')
+
+option('tests', type: 'feature',
+       description: 'Build tests')
+
+option('title', type: 'string', value: 'Serd',
+       description: 'Project title')
+
+option('tools', type: 'feature',
+       description: 'Build command line utilities')

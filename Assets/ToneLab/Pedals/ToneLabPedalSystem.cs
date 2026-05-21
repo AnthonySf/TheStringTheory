@@ -12,6 +12,7 @@ public interface IToneLabPedalProcessor
 
 public interface IToneLabPedalDescriptor
 {
+    string DescriptorId { get; }
     UnityToneLabRuntime.ToneLabPedalType PedalType { get; }
     string DisplayName { get; }
     string ShortName { get; }
@@ -108,6 +109,7 @@ public abstract class ToneLabPedalDescriptorBase<TSettings, TProcessor> : IToneL
     where TSettings : class, new()
     where TProcessor : IToneLabPedalProcessor, new()
 {
+    public virtual string DescriptorId => PedalType.ToString();
     public abstract UnityToneLabRuntime.ToneLabPedalType PedalType { get; }
     public abstract string DisplayName { get; }
     public abstract string ShortName { get; }

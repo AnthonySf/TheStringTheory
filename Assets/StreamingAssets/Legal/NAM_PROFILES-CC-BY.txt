@@ -1,0 +1,25 @@
+Bundled NAM Profile Attributions
+================================
+
+The Tone Lab NAM profile bundle contains Neural Amp Modeler captures from TONE3000.
+Each listed source page declares the model license as CC BY, allowing redistribution and commercial use with attribution.
+
+Creative Commons Attribution 4.0 International:
+https://creativecommons.org/licenses/by/4.0/
+
+ENGL Powerball II
+- Creator: cobraska
+- Source: https://www.tone3000.com/tones/engl-powerball-ii-5770
+- Files: Assets/StreamingAssets/ToneLab/NAM/Engl Powerball II/Engle_Powerball_II.nam
+
+pLEXI-LORE
+- Creator: greyback05
+- Source: https://www.tone3000.com/tones/plexi-lore-1863
+- Files: Assets/StreamingAssets/ToneLab/NAM/pLEXI-LORE/model (1).nam
+
+Two Rock Studio Signature + OX Box 2x12 Two Rock Cab (V2)
+- Creator: danielnguyen
+- Source: https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367
+- Files: Assets/StreamingAssets/ToneLab/NAM/Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/*.nam
+
+Brand and product names are used only to identify captured gear and remain the property of their owners.

@@ -118,7 +118,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         ConfigureCamera();
         RefreshStateCache(snapshot.noteStates);
 
-        bool suppressGameplay = snapshot.mainMenuFlowActive;
+        bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.showToneLab;
         SetGameplayVisualsVisible(!suppressGameplay);
 
         if (!suppressGameplay)

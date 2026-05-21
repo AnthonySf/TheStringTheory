@@ -1,0 +1,9 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamEcho#preset001>
+    lv2:port [
+        lv2:symbol "echo" ;
+        pset:value 0.5 ;
+    ] .
+

@@ -1,0 +1,203 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamEQ2#preset001>
+    lv2:port [
+        lv2:symbol "boost1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "bw1" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "f1" ;
+        pset:value 1000 ;
+    ] ,
+    [
+        lv2:symbol "boost2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "bw2" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "f2" ;
+        pset:value 3000 ;
+    ] ,
+    [
+        lv2:symbol "boostl" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "fl" ;
+        pset:value 250 ;
+    ] ,
+    [
+        lv2:symbol "boosth" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "fh" ;
+        pset:value 8000 ;
+    ] ,
+    [
+        lv2:symbol "outputgain" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "inputgain" ;
+        pset:value 0 ;
+    ] .
+
+<urn:zamaudio:ZamEQ2#preset002>
+    lv2:port [
+        lv2:symbol "boost1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "bw1" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "f1" ;
+        pset:value 500 ;
+    ] ,
+    [
+        lv2:symbol "boost2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "bw2" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "f2" ;
+        pset:value 3000 ;
+    ] ,
+    [
+        lv2:symbol "boostl" ;
+        pset:value 6 ;
+    ] ,
+    [
+        lv2:symbol "fl" ;
+        pset:value 60 ;
+    ] ,
+    [
+        lv2:symbol "boosth" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "fh" ;
+        pset:value 8000 ;
+    ] ,
+    [
+        lv2:symbol "outputgain" ;
+        pset:value -6 ;
+    ] ,
+    [
+        lv2:symbol "inputgain" ;
+        pset:value 0 ;
+    ] .
+
+<urn:zamaudio:ZamEQ2#preset003>
+    lv2:port [
+        lv2:symbol "boost1" ;
+        pset:value 5.59999990463 ;
+    ] ,
+    [
+        lv2:symbol "bw1" ;
+        pset:value 1.46000003815 ;
+    ] ,
+    [
+        lv2:symbol "f1" ;
+        pset:value 175 ;
+    ] ,
+    [
+        lv2:symbol "boost2" ;
+        pset:value 0.699999988079 ;
+    ] ,
+    [
+        lv2:symbol "bw2" ;
+        pset:value 1.33000004292 ;
+    ] ,
+    [
+        lv2:symbol "f2" ;
+        pset:value 500 ;
+    ] ,
+    [
+        lv2:symbol "boostl" ;
+        pset:value -1.04999995232 ;
+    ] ,
+    [
+        lv2:symbol "fl" ;
+        pset:value 30 ;
+    ] ,
+    [
+        lv2:symbol "boosth" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "fh" ;
+        pset:value 8000 ;
+    ] ,
+    [
+        lv2:symbol "outputgain" ;
+        pset:value -6 ;
+    ] ,
+    [
+        lv2:symbol "inputgain" ;
+        pset:value 0 ;
+    ] .
+
+<urn:zamaudio:ZamEQ2#preset004>
+    lv2:port [
+        lv2:symbol "boost1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "bw1" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "f1" ;
+        pset:value 500 ;
+    ] ,
+    [
+        lv2:symbol "boost2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "bw2" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "f2" ;
+        pset:value 3000 ;
+    ] ,
+    [
+        lv2:symbol "boostl" ;
+        pset:value 6 ;
+    ] ,
+    [
+        lv2:symbol "fl" ;
+        pset:value 6600 ;
+    ] ,
+    [
+        lv2:symbol "boosth" ;
+        pset:value 6 ;
+    ] ,
+    [
+        lv2:symbol "fh" ;
+        pset:value 330 ;
+    ] ,
+    [
+        lv2:symbol "outputgain" ;
+        pset:value -12 ;
+    ] ,
+    [
+        lv2:symbol "inputgain" ;
+        pset:value 0 ;
+    ] .
+

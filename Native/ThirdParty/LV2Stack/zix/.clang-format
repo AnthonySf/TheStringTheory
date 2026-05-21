@@ -1,0 +1,48 @@
+# Copyright 2020-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+---
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignEscapedNewlines: Left
+AttributeMacros:
+  - ZIX_ALLOCATED
+  - ZIX_ALLOC_COUNT_SIZE
+  - ZIX_ALLOC_SIZE
+  - ZIX_ALWAYS_INLINE_FUNC
+  - ZIX_API
+  - ZIX_CONST_API
+  - ZIX_CONST_FUNC
+  - ZIX_MALLOC_API
+  - ZIX_MALLOC_FUNC
+  - ZIX_NODISCARD
+  - ZIX_NONBLOCKING
+  - ZIX_NONNULL
+  - ZIX_NULLABLE
+  - ZIX_PURE_API
+  - ZIX_PURE_FUNC
+  - ZIX_PURE_WIN_API
+  - ZIX_REALTIME
+  - ZIX_UNSPECIFIED
+BasedOnStyle: Mozilla
+BraceWrapping:
+  AfterEnum: false
+  AfterExternBlock: false
+  AfterFunction: true
+  AfterStruct: false
+  AfterUnion: false
+BreakBeforeBraces: Custom
+Cpp11BracedListStyle: true
+IndentCaseLabels: false
+IndentPPDirectives: AfterHash
+KeepEmptyLinesAtTheStartOfBlocks: false
+SpacesInContainerLiterals: false
+StatementMacros:
+  - FALLTHROUGH
+  - ZIX_BEGIN_DECLS
+  - ZIX_DISABLE_EFFECT_WARNINGS
+  - ZIX_DISABLE_GLIB_WARNINGS
+  - ZIX_END_DECLS
+  - ZIX_RESTORE_WARNINGS
+  - _Pragma
+...

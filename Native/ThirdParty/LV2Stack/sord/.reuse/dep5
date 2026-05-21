@@ -1,0 +1,19 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: sord
+Upstream-Contact: David Robillard <d@drobilla.net>
+Source: https://gitlab.com/drobilla/sord
+
+Files: tests/*.out tests/*.ttl tests/README.txt
+Copyright: 2010 World Wide Web Consortium, (MIT, ERCIM, Keio, Beihang) and others.
+Comment: Standard test suites from the W3C (only required for testing)
+License: BSD-3-Clause
+
+Files: AUTHORS NEWS
+Copyright: 2011-2025 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a representation of simple facts
+License: 0BSD OR ISC
+
+Files: .clant.json .includes.imp
+Copyright: 2020 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a tool configuration
+License: 0BSD OR ISC

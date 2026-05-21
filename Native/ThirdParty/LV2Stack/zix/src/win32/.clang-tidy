@@ -1,0 +1,8 @@
+# Copyright 2021-2022 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  -hicpp-signed-bitwise,
+  -misc-misplaced-const,
+  -performance-no-int-to-ptr,
+InheritParentConfig: true

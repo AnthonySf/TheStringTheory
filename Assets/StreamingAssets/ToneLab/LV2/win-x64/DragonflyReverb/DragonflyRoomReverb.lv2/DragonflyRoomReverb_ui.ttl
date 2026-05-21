@@ -1,0 +1,20 @@
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix ui:   <http://lv2plug.in/ns/extensions/ui#> .
+@prefix opts: <http://lv2plug.in/ns/ext/options#> .
+
+<urn:dragonfly:room#DPF_UI>
+    lv2:extensionData opts:interface ,
+                      ui:idleInterface ,
+                      ui:showInterface ;
+
+    lv2:optionalFeature ui:noUserResize ,
+                        ui:parent ,
+                        ui:touch ,
+                        ui:requestValue ;
+
+    lv2:requiredFeature opts:options ,
+                        ui:idleInterface ,
+                        <http://lv2plug.in/ns/ext/urid#map> ;
+
+    opts:supportedOption <http://lv2plug.in/ns/ext/parameters#sampleRate> .
+

@@ -1,0 +1,29 @@
+<http://example.org/s> <http://example.org/p> "The other values of this property should align nicely" .
+<http://example.org/s> <http://example.org/p> "Impossible byte 1:                                   \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "Impossible byte 2:                                   \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "Four impossible bytes:                               \uFFFD\uFFFD\uFFFD\uFFFD                            |" .
+<http://example.org/s> <http://example.org/p> "First continuation byte:                             \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "Last continuation byte:                              \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "2 continuation bytes:                                \uFFFD\uFFFD                              |" .
+<http://example.org/s> <http://example.org/p> "3 continuation bytes:                                \uFFFD\uFFFD\uFFFD                             |" .
+<http://example.org/s> <http://example.org/p> "4 continuation bytes:                                \uFFFD\uFFFD\uFFFD\uFFFD                            |" .
+<http://example.org/s> <http://example.org/p> "5 continuation bytes:                                \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD                           |" .
+<http://example.org/s> <http://example.org/p> "6 continuation bytes:                                \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD                          |" .
+<http://example.org/s> <http://example.org/p> "7 continuation bytes:                                \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD                         |" .
+<http://example.org/s> <http://example.org/p> "Continuation bytes 1:                                \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD                |" .
+<http://example.org/s> <http://example.org/p> "Continuation bytes 2:                                \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD                |" .
+<http://example.org/s> <http://example.org/p> "Continuation bytes 3:                                \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD                |" .
+<http://example.org/s> <http://example.org/p> "Continuation bytes 4:                                \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD                |" .
+<http://example.org/s> <http://example.org/p> "Lonely leading bytes of 2-byte sequences 1:          \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD |" .
+<http://example.org/s> <http://example.org/p> "Lonely leading bytes of 2-byte sequences 2:          \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD |" .
+<http://example.org/s> <http://example.org/p> "Lonely leading bytes of 3-byte sequences:            \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD |" .
+<http://example.org/s> <http://example.org/p> "Lonely leading bytes of 4-byte sequences:            \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD \uFFFD                 |" .
+<http://example.org/s> <http://example.org/p> "Lonely leading bytes of 5-byte sequences:            \uFFFD \uFFFD \uFFFD \uFFFD                         |" .
+<http://example.org/s> <http://example.org/p> "Lonely leading bytes of 6-byte sequences:            \uFFFD \uFFFD                             |" .
+<http://example.org/s> <http://example.org/p> "2-byte sequence with last byte missing (U+0000):     \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "3-byte sequence with last byte missing (U+0000):     \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "4-byte sequence with last byte missing (U+0000):     \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "2-byte sequence with last byte missing (U-000007FF): \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "3-byte sequence with last byte missing (U-0000FFFF): \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "4-byte sequence with last byte missing (U-001FFFFF): \uFFFD                               |" .
+<http://example.org/s> <http://example.org/p> "6 sequences with last byte missing:                  \uFFFD\uFFFD\uFFFD\uFFFD\uFFFD\uFFFD                          |" .

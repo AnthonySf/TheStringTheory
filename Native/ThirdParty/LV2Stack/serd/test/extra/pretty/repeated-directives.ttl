@@ -1,0 +1,17 @@
+@base <http://example.org/base> .
+@base <http://example.org/base> .
+@base <base> .
+@prefix eg: <http://example.org/eg#> .
+@prefix eg: <http://example.org/eg#> .
+@prefix eg: <eg#> .
+
+eg:s
+	eg:p eg:o ,
+		eg:o .
+
+@prefix eg: <eg#> .
+@prefix eg: <http://example.org/eg#> .
+@prefix eg: <http://example.org/eg#> .
+@base <base> .
+@base <http://example.org/base> .
+@base <http://example.org/base> .

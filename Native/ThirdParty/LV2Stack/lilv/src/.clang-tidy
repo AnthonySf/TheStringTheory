@@ -1,0 +1,22 @@
+# Copyright 2020-2026 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  -clang-analyzer-optin.taint.TaintedAlloc,
+  -clang-analyzer-security.ArrayBound,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-analyzer-valist.Uninitialized,
+  -concurrency-mt-unsafe,
+  -google-readability-todo,
+  -hicpp-multiway-paths-covered,
+  -hicpp-signed-bitwise,
+  -performance-no-int-to-ptr,
+  -readability-avoid-nested-conditional-operator,
+  -readability-implicit-bool-conversion,
+  -readability-redundant-casting,
+  -readability-suspicious-call-argument,
+CheckOptions:
+  - key:   readability-function-cognitive-complexity.Threshold
+    value: '25'
+InheritParentConfig: true

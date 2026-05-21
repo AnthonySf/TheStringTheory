@@ -1,0 +1,21 @@
+# Copyright 2020-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  -bugprone-assignment-in-if-condition,
+  -cert-err33-c,
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-macro-to-enum,
+  -hicpp-signed-bitwise,
+  -llvm-else-after-return,
+  -misc-include-cleaner,
+  -modernize-macro-to-enum,
+  -readability-else-after-return,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+CheckOptions:
+  - key:   readability-function-cognitive-complexity.Threshold
+    value: '96'
+InheritParentConfig: true

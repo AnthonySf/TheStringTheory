@@ -1,0 +1,39 @@
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix pset: <http://lv2plug.in/ns/ext/presets#> .
+@prefix ui:   <http://lv2plug.in/ns/extensions/ui#> .
+
+<urn:zamaudio:ZamEQ2>
+    a lv2:Plugin ;
+    lv2:binary <ZamEQ2_dsp.dll> ;
+    rdfs:seeAlso <ZamEQ2_dsp.ttl> .
+
+<urn:zamaudio:ZamEQ2#DPF_UI>
+    a ui:WindowsUI ;
+    ui:binary <ZamEQ2_ui.dll> ;
+    rdfs:seeAlso <ZamEQ2_ui.ttl> .
+
+<urn:zamaudio:ZamEQ2#preset001>
+    a pset:Preset ;
+    lv2:appliesTo <urn:zamaudio:ZamEQ2> ;
+    rdfs:label "Zero" ;
+    rdfs:seeAlso <presets.ttl> .
+
+<urn:zamaudio:ZamEQ2#preset002>
+    a pset:Preset ;
+    lv2:appliesTo <urn:zamaudio:ZamEQ2> ;
+    rdfs:label "CarvedBass" ;
+    rdfs:seeAlso <presets.ttl> .
+
+<urn:zamaudio:ZamEQ2#preset003>
+    a pset:Preset ;
+    lv2:appliesTo <urn:zamaudio:ZamEQ2> ;
+    rdfs:label "CarvedGuitar" ;
+    rdfs:seeAlso <presets.ttl> .
+
+<urn:zamaudio:ZamEQ2#preset004>
+    a pset:Preset ;
+    lv2:appliesTo <urn:zamaudio:ZamEQ2> ;
+    rdfs:label "CarvedVox" ;
+    rdfs:seeAlso <presets.ttl> .
+

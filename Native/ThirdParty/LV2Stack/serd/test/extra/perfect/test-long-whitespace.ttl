@@ -1,0 +1,11 @@
+<http://example.org/eg#a>
+	<http://example.org/eg#b> """
+this is a 𕙸long	
+literalꯍ
+""" .
+
+<http://example.org/eg#d>
+	<http://example.org/eg#e> """	This ꯍis 𕙸another
+
+one
+""" .

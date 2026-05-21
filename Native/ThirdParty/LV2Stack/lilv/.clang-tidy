@@ -1,0 +1,31 @@
+# Copyright 2020-2026 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  *,
+  -*-magic-numbers,
+  -*-narrowing-conversions,
+  -*-vararg,
+  -altera-*,
+  -bugprone-assignment-in-if-condition,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-macro-parentheses,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -bugprone-suspicious-realloc-usage,
+  -cert-err33-c,
+  -clang-diagnostic-unused-function,
+  -clang-diagnostic-unused-macros,
+  -llvm-header-guard,
+  -llvmlibc-*,
+  -misc-include-cleaner,
+  -readability-identifier-length,
+CheckOptions:
+  - key:   hicpp-uppercase-literal-suffix.NewSuffixes
+    value: 'L;U;UL;ULL'
+  - key:   readability-function-cognitive-complexity.IgnoreMacros
+    value: 'true'
+  - key:   readability-uppercase-literal-suffix.NewSuffixes
+    value: 'L;U;UL;ULL'
+FormatStyle: file
+HeaderFilterRegex: '.*/lilv/[^/]+.h'
+WarningsAsErrors: '*'

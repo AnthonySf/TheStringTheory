@@ -1,0 +1,12 @@
+/* Copyright 2022 David Robillard <d@drobilla.net> */
+/* SPDX-License-Identifier: 0BSD or ISC */
+
+section > dl {
+  margin-bottom: 30px;
+}
+
+.struct > dd > dl.member > dt,
+.enum > dd > dl.member > dt,
+.enum-class > dd > dl.member > dt {
+  padding: 15px 0 0;
+}

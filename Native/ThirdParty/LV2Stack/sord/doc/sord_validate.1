@@ -1,0 +1,99 @@
+.\" # Copyright 2012-2025 David Robillard <d@drobilla.net>
+.\" # SPDX-License-Identifier: ISC
+.Dd January 20, 2025
+.Dt SORD_VALIDATE 1
+.Os
+.Sh NAME
+.Nm sord_validate
+.Nd validate RDF data
+.Sh SYNOPSIS
+.Nm sord_validate
+.Op Fl hlv
+.Ar input ...
+.Sh DESCRIPTION
+.Nm
+is a simple validator which checks that all used properties are actually defined,
+and that the domain and range of properties is explicitly correct.
+Note that a validation "error" here doesn't necessarily mean that data is invalid,
+since it isn't, for example, required to explicitly list types in RDF.
+This validator implements a more strict and explicit set of rules,
+based on the realistic needs of simple real-world implementations.
+For example, missing explicit type information may be warned about,
+even though even a simple inference engine would be able to deduce it.
+.Pp
+.Nm
+never retrieves data from the web or special places on the file system,
+it only processes the files passed directly on the command line.
+This means you must pass all used vocabularies to get a useful result.
+.Pp
+If an appropriate schema is available,
+literals are checked against datatype definitions
+(both the explicit datatype of the literal itself,
+as well as any types implied by the corresponding property).
+Three XML Schema Datatypes (XSD) constraints are currently supported:
+regular expressions (xsd:pattern),
+and inclusive ranges (xsd:minimumInclusive and xsd:maximumInclusive).
+Given an appropriate schema,
+this is enough to validate against most of the standard XSD datatypes.
+.Pp
+The options are as follows:
+.Pp
+.Bl -tag -compact -width 3n
+.It Fl h
+Print the command line options.
+.Pp
+.It Fl l
+Print errors on a single line.
+.Pp
+.It Fl v
+Display version information and exit.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with a status of 0 if the input data is valid, or non-zero if there are
+issues with the data or if an error occurred.
+.Sh SEE ALSO
+.Bl -item -compact
+.It
+.Xr sordi 1
+.It
+.Lk http://drobilla.net/software/sord/
+.It
+.Lk http://gitlab.com/drobilla/sord/
+.El
+.Sh STANDARDS
+.Bl -item
+.It
+.Rs
+.%A W3C
+.%T RDF 1.1 NQuads
+.%D February 2014
+.Re
+.Lk https://www.w3.org/TR/n-quads/
+.It
+.Rs
+.%A W3C
+.%D February 2014
+.%T RDF 1.1 NTriples
+.Re
+.Lk https://www.w3.org/TR/n-triples/
+.It
+.Rs
+.%A W3C
+.%T RDF 1.1 TriG
+.%D February 2014
+.Re
+.Lk https://www.w3.org/TR/trig/
+.It
+.Rs
+.%A W3C
+.%D February 2014
+.%T RDF 1.1 Turtle
+.Re
+.Lk https://www.w3.org/TR/turtle/
+.El
+.Sh AUTHORS
+.Nm
+is a part of sord, by
+.An David Robillard
+.Aq Mt d@drobilla.net .

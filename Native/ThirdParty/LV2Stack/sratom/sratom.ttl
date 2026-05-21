@@ -1,0 +1,29 @@
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix doap: <http://usefulinc.com/ns/doap#> .
+@prefix foaf: <http://xmlns.com/foaf/0.1/> .
+
+<http://drobilla.net/drobilla#me>
+	a foaf:Person ;
+	rdfs:seeAlso <http://drobilla.net/drobilla> ;
+	foaf:mbox <mailto:d@drobilla.net> ;
+	foaf:name "David Robillard" ;
+	foaf:nick "drobilla" .
+
+<http://drobilla.net/software/sratom>
+	a doap:Project ;
+	doap:blog <https://drobilla.net/category/sratom/> ;
+	doap:bug-database <https://gitlab.com/lv2/sratom/issues> ;
+	doap:description "Library for loading and wrapping LV2 plugin UIs" ;
+	doap:developer <http://drobilla.net/drobilla#me> ;
+	doap:download-page <http://download.drobilla.net/> ;
+	doap:homepage <http://drobilla.net/software/sratom> ;
+	doap:implements <http://lv2plug.in/ns/extensions/ui> ;
+	doap:license <http://opensource.org/licenses/isc> ;
+	doap:maintainer <http://drobilla.net/drobilla#me> ;
+	doap:name "Sratom" ;
+	doap:programming-language "C" ;
+	doap:repository [
+		a doap:GitBranch ;
+		doap:location <https://gitlab.com/lv2/sratom.git>
+	] .

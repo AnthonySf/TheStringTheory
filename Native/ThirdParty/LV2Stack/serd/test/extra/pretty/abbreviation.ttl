@@ -1,0 +1,58 @@
+@prefix eg: <http://example.org/> .
+
+eg:s1
+	eg:b eg:c ,
+		eg:d ,
+		eg:e ;
+	eg:f eg:g ,
+		eg:h ;
+	eg:i eg:j ;
+	eg:k eg:l .
+
+eg:s2
+	a eg:Thing ;
+	eg:p1 eg:o1 ,
+	[
+		a eg:SubThing ;
+		eg:p2 eg:o2
+	] , [
+		a eg:OtherSubThing ;
+		eg:p3 eg:o3
+	] ;
+	eg:p4 eg:o4 .
+
+eg:s3
+	eg:resource eg:Blank .
+
+eg:s4
+	eg:anon [] .
+
+eg:s5
+	eg:blank [
+		eg:nestedEmptyBlank [] ;
+		eg:nestedNonEmptyBlanks [
+			eg:value 1
+		] , [
+			eg:value 2
+		]
+	] ;
+	eg:listOfNumbers (
+		3
+		4
+	) .
+
+eg:s6
+	eg:listOfNumbers (
+		5
+		6
+	) .
+
+eg:s7
+	eg:listOfResources (
+		[
+			eg:value 7
+		]
+		[
+			eg:value 8
+		]
+	) .

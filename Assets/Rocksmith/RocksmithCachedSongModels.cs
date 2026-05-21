@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 public static class RocksmithCachedSongFormat
 {
-    public const int SchemaVersion = 15;
+    public const int SchemaVersion = 16;
     public const string ManifestFileName = "song.rs2song.json";
     public const string ContentDirectoryName = "psarc_content";
     public const string ImportedFolderPrefix = "__psarc_";
@@ -67,10 +67,35 @@ public sealed class RocksmithCachedArrangementPart
     public int[] tuningPitches;
     public string tuningDisplayName;
     public RocksmithCachedArrangementTimingData timing = new RocksmithCachedArrangementTimingData();
+    public RocksmithCachedArrangementToneData tones = new RocksmithCachedArrangementToneData();
     public RocksmithCachedGeneratedPartInfo generatedPart = new RocksmithCachedGeneratedPartInfo();
     public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
     public List<RocksmithCachedArpeggioGuideData> arpeggioGuides = new List<RocksmithCachedArpeggioGuideData>();
     public List<RocksmithCachedGeneratedNoteEvent> generatedNotes = new List<RocksmithCachedGeneratedNoteEvent>();
+}
+
+[Serializable]
+public sealed class RocksmithCachedArrangementToneData
+{
+    public string baseToneName;
+    public List<RocksmithCachedToneChangeData> changes = new List<RocksmithCachedToneChangeData>();
+    public List<RocksmithCachedToneDefinitionData> definitions = new List<RocksmithCachedToneDefinitionData>();
+}
+
+[Serializable]
+public sealed class RocksmithCachedToneChangeData
+{
+    public float timeSeconds;
+    public string toneName;
+    public int toneId = -1;
+}
+
+[Serializable]
+public sealed class RocksmithCachedToneDefinitionData
+{
+    public string name;
+    public string key;
+    public string rawJson;
 }
 
 [Serializable]

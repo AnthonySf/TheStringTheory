@@ -1,0 +1,805 @@
+@import "./pygments.css";
+
+/* Generic page style */
+
+html {
+  background: #FFF;
+  color: #222;
+}
+
+body {
+  font-family: "DejaVu Sans", "SF Pro Text", Verdana, sans-serif;
+  font-style: normal;
+  line-height: 1.6em;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 60em;
+  padding: 1em;
+}
+
+h1 {
+  font-family: "DejaVu Sans Condensed", Helvetica, Arial, sans-serif;
+  font-size: 2.38em;
+  font-weight: 600;
+  line-height: 1.41em;
+  margin: 0 0 0.25em;
+}
+
+h2 {
+  font-family: "DejaVu Sans Condensed", Helvetica, Arial, sans-serif;
+  font-size: 1.68em;
+  font-weight: 600;
+  line-height: 1.3em;
+  margin: 1.25em 0 0.5em;
+}
+
+h3 {
+  font-family: "DejaVu Sans Condensed", Helvetica, Arial, sans-serif;
+  font-size: 1.41em;
+  font-weight: 600;
+  line-height: 1.19em;
+  margin: 1.25em 0 0.5em;
+}
+
+h4 {
+  font-family: "DejaVu Sans Condensed", Helvetica, Arial, sans-serif;
+  font-size: 1.19em;
+  font-weight: 600;
+  line-height: 1.09em;
+  margin: 1.25em 0 0.5em;
+}
+
+h5, h6 {
+  font-family: "DejaVu Sans Condensed", Helvetica, Arial, sans-serif;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1em;
+  margin: 1.25em 0 0.5em;
+}
+
+a {
+  color: #546E00;
+  text-decoration: none;
+}
+
+h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
+  color: #222;
+}
+
+a:link {
+  color: #546E00;
+  text-decoration: none;
+}
+
+a:visited {
+  color: #546E00;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+h1 a:link, h2 a:link, h3 a:link, h4 a:link, h5 a:link, h6 a:link {
+  color: #222;
+}
+
+h1 a:visited, h2 a:visited, h3 a:visited, h4 a:visited, h5 a:visited, h6 a:visited {
+  color: #222;
+}
+
+img {
+  border: 0;
+}
+
+p {
+  margin: 0.5em 0;
+}
+
+blockquote {
+  border-left: 1px solid #CCC;
+  margin-left: 1em;
+  padding-left: 1em;
+}
+
+pre, code, kbd, samp {
+  color: #444;
+  font-family: "DejaVu Sans Mono", "SF Mono", Consolas, monospace;
+  margin: 1em 0;
+  white-space: pre;
+}
+
+ul, ol {
+  margin: 0 0 0.5em;
+  padding-top: 0;
+}
+
+dt {
+  font-weight: 600;
+  margin: 0.75em 0 0.125em;
+}
+
+dt::after {
+  content: ": ";
+  margin-right: 0.5em;
+}
+
+hr {
+  background-color: #EEE;
+  border: 0;
+  color: #666;
+  height: 1px;
+  margin-bottom: 1.5ex;
+  margin-top: 1.5ex;
+}
+
+table {
+  border-collapse: collapse;
+  border-spacing: 1em 1em;
+  border-style: hidden;
+  border: 0;
+  margin: 0;
+}
+
+th {
+  border: 1px solid #EEE;
+  padding: 0.25em 0.5em;
+  text-align: left;
+}
+
+table tbody tr th {
+  text-align: left;
+}
+
+td {
+  border: 1px solid #EEE;
+  padding: 0.25em 0.5em;
+  vertical-align: top;
+}
+
+caption {
+  caption-side: bottom;
+  font-size: small;
+  font-style: italic;
+  margin: 0.75em 0;
+}
+
+footer {
+  color: #444;
+  font-size: small;
+}
+
+/* Specgen style */
+
+#titlebox {
+  display: inline-block;
+  max-width: 60%;
+  left: 0;
+  top: 0;
+}
+
+#metabox {
+  display: inline-block;
+  font-size: x-small;
+  font-family: "DejaVu Sans Condensed", Helvetica, Arial, sans-serif;
+  position: absolute;
+  right: 0;
+  bottom: 0.25em;
+  color: #666;
+  font-style: italic;
+}
+
+#meta {
+  border-style: hidden;
+}
+
+#meta tr, #meta th, #meta td {
+  border: 0;
+  font-weight: normal;
+  padding: 0 0 0.125em;
+  background-color: transparent;
+}
+
+#meta th {
+  padding-right: 0.5em;
+  text-align: right;
+}
+
+#meta th::after {
+  content: ": ";
+}
+
+#subtitle {
+  font-size: small;
+}
+
+#shortdesc {
+  padding: 0;
+  margin: 0 0 0.5em;
+  font-style: italic;
+  color: #666;
+  display: inline-block;
+}
+
+#logo {
+  height: 63px;
+  margin-left: 1em;
+  margin-top: 10px;
+  width: 100px;
+}
+
+#titlesep {
+  color: #EEE;
+}
+
+#content-body {
+  border-bottom: 0;
+  display: block;
+  font-size: 75%;
+  left: 0;
+  margin-left: 2em;
+  min-width: 660px;
+  padding: 3px 10px 0 0;
+  position: absolute;
+  top: 63px;
+  width: 93.9%;
+  z-index: 0;
+}
+
+#menu {
+  font-size: 75%;
+  margin-bottom: 5px;
+  padding: 0;
+  width: 16em;
+}
+
+#menu ul {
+  border: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#menu a {
+  text-decoration: none;
+}
+
+#menu ul.level-one a {
+  background-color: #F5F5F5;
+  border: 1px solid #DADADA;
+  color: #4B5A6A;
+  display: block;
+  margin: 0 0 4px 1.4em;
+  padding: 2px 2px 2px 4px;
+  text-transform: uppercase;
+  width: 13.4em !important;
+}
+
+#menu ul.level-two a {
+  background: none;
+  background-color: transparent;
+  border: 0;
+  border-top: 1px solid #DDD;
+  color: #3C4B7B;
+  display: block;
+  margin: 0 3em 0 1.5em;
+  padding: 0.1em;
+  text-transform: none;
+  width: 11em !important;
+}
+
+#menu ul.level-three a {
+  border: 0;
+  color: #5E72A5;
+  display: block;
+  font-size: 95%;
+  margin: 0 3em 0 1.8em;
+  padding: 0.1em 0.1em 0.1em 1em;
+  width: 10em !important;
+}
+
+#menu ul.level-one a:hover,
+#menu ul.level-two a:hover,
+#menu ul.level-three a:hover {
+  color: #000;
+  text-decoration: underline;
+}
+
+#menu ul.level-one a.selected {
+  background-color: #FFF;
+  border-left: 3px solid #FFDB4C;
+  color: #000;
+}
+
+#menu ul.level-two a:visited {
+  color: #4C3B5B;
+}
+
+#menu ul.level-two li:first-child a {
+  border-top: 0;
+}
+
+#menu ul.level-one ul.level-two a.selected {
+  background-color: #FFF;
+  border-left: 0;
+  color: #000;
+  font-weight: 700;
+}
+
+#menu li ul {
+  margin-bottom: 7px;
+}
+
+#menu ul.level-three li.selected a.selected {
+  color: #000;
+  font-weight: 400;
+}
+
+#menu ul.level-three {
+  margin-top: 5px;
+}
+
+#searchbox {
+  font-weight: 700;
+  position: absolute;
+  right: 0;
+  text-align: right;
+  top: 0;
+  vertical-align: middle;
+  white-space: nowrap;
+  width: 28.1em;
+}
+
+#search {
+  color: #A38E60;
+  padding: 5px 5px 0 0;
+}
+
+#search .input-text {
+  background-color: #FFF;
+  border: 1px solid #C4CCCC;
+  font-size: 116%;
+  font-weight: 400;
+  margin-top: 3px;
+  vertical-align: top;
+  width: 11em;
+}
+
+#search .input-button {
+  background-color: #F8F7F7;
+  border-bottom: 1px solid #6F7777;
+  border-left: 1px solid #C4CCCC;
+  border-right: 1px solid #6F7777;
+  border-top: 1px solid #C4CCCC;
+  color: #234;
+  font-weight: 700;
+  margin: 3px 0.4em 0;
+  padding: 0 0.2em;
+  vertical-align: text-top;
+}
+
+input.formbutton {
+  background-color: #F8F7F7;
+  border-bottom: 1px solid #6F7777;
+  border-left: 1px solid #C4CCCC;
+  border-right: 1px solid #6F7777;
+  border-top: 1px solid #C4CCCC;
+  color: #234;
+  font-weight: 700;
+  vertical-align: text-top;
+}
+
+.formtextinput {
+  background-color: #FFF;
+  border: 1px solid #C4CCCC;
+  font-size: 116%;
+  font-weight: 400;
+  vertical-align: top;
+}
+
+#content table {
+  clear: right;
+}
+
+.content-section {
+  margin-top: 15px;
+}
+
+.content-section h1 {
+  margin: 0 0 10px;
+}
+
+.content-section p {
+  margin: 0 0 5px;
+  padding-left: 12px;
+}
+
+.content-section .pubdate {
+  color: #696969;
+  margin: 0 0 8px;
+  padding: 0 0 0 12px;
+}
+
+#footer {
+  bottom: 0;
+  clear: both;
+  font-size: x-small;
+  margin: 2em 0 0;
+  padding: 0;
+  color: #888;
+}
+
+#searchbox a.reference, #searchbox span.reference {
+  color: #339;
+  font-size: 85%;
+  font-weight: 400;
+  position: absolute;
+  right: 8.3em;
+  text-decoration: none;
+  top: 2.9em;
+}
+
+#topbar {
+  line-height: 1em;
+  border-bottom: 1px solid #EEE;
+}
+
+@media print {
+  #topbar {
+    color: #000;
+    margin: 0.25em auto;
+    padding: 0.25em 0.5em 0.5em;
+    max-width: 60em;
+    position: relative;
+  }
+
+  #contentsbox {
+    display: none;
+  }
+
+  #topbar a, #title a, #topbar a:visited, #title a:visited {
+    color: #000;
+  }
+
+  #contents {
+    display: none;
+  }
+}
+
+@media screen {
+  #topbar {
+    margin: 0.25em auto;
+    padding: 0;
+    max-width: 60em;
+    position: relative;
+  }
+
+  #contentsbox {
+    color: #546E00;
+    font-size: small;
+    margin: 0 0 1.5em;
+  }
+
+  #contents {
+    display: inline;
+    padding: 0;
+  }
+
+  #contents li {
+    display: inline;
+    list-style-type: none;
+    margin-left: 0;
+    margin-right: 0.5em;
+    padding: 0.25ex 0.25ex 0.25ex 0;
+  }
+}
+
+#content {
+  clear: both;
+  padding: 0;
+  max-width: 60em;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.section {
+  clear: right;
+  padding: 0 0 1.5em;
+}
+
+.category {
+  font-size: small;
+  color: #AAA;
+  float: right;
+  vertical-align: bottom;
+  padding: 0;
+  margin: 0;
+  padding-right: 0.25em;
+}
+
+.label {
+  font-style: italic;
+  margin-top: 0.25em;
+  color: #666;
+}
+
+table.index {
+  border: 0;
+  line-height: 1.5em;
+  margin-top: 2em;
+}
+
+.index ul {
+  padding-left: 1.25em;
+  margin-left: 0;
+  list-style-type: circle;
+}
+
+.index ul li {
+  padding-left: 0;
+  color: #888;
+}
+
+.prop {
+  margin: 0;
+  padding: 0;
+}
+
+.description {
+  margin-top: 0;
+  margin-bottom: 0.75em;
+}
+
+.blankdesc, .blankdef {
+  border-spacing: 0;
+  margin: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.blankdesc tbody tr td, .blankdef {
+  border: 0 !important;
+}
+
+.blankdesc td {
+  padding-right: 0.5em;
+}
+
+.blankdesc tbody tr td:first-child {
+  border-left: 1px solid #BBB;
+  text-align: right;
+}
+
+.terminfo, .restriction {
+  border-collapse: collapse;
+  border-spacing: 0;
+  font-size: small;
+  color: #666;
+  border-radius: 0;
+  border-bottom-left-radius: 6px;
+}
+
+table.terminfo {
+  border-top: 0;
+  border-collapse: collapse;
+  margin: -1px 0 2em 2em;
+  padding: 0.25em 0;
+  float: right;
+  border-bottom: 1px solid #EEE;
+  border-left: 1px solid #EEE;
+  border-bottom-left-radius: 6px;
+  max-width: 50%;
+  line-height: 1.4em;
+  min-width: 25%;
+}
+
+table.terminfo td {
+  padding: 0 0.5em;
+}
+
+.restriction {
+  border-style: hidden;
+  margin: 0 0 0.5ex;
+  padding: 0;
+  vertical-align: text-top;
+}
+
+.restriction td {
+  vertical-align: text-top;
+}
+
+.terminfo th {
+  padding: 0 0.5em;
+  text-align: right;
+  vertical-align: top;
+}
+
+.specterm {
+  border: 0;
+  margin: 0;
+  padding: 1em 0;
+  clear: both;
+}
+
+.specterm h3 {
+  display: inline-block;
+  margin-bottom: 0.25em;
+  width: 80%;
+}
+
+.spectermtype {
+  color: #888;
+  display: inline-block;
+  font-size: small;
+  font-style: italic;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 0.25em 0 0;
+  text-align: right;
+  vertical-align: bottom;
+  width: 20%;
+}
+
+.spectermbody {
+  border-top: 1px solid #EEE;
+  padding: 0;
+}
+
+.spectermbody .description .comment > p:first-child {
+  color: #444;
+  font-style: italic;
+  margin-bottom: 0.75em;
+}
+
+dl {
+  margin: 0;
+  padding: 0;
+}
+
+div.head {
+  margin-bottom: 1em;
+}
+
+div.head h1 {
+  clear: both;
+  margin-top: 2em;
+}
+
+div.head table {
+  margin-left: 2em;
+  margin-top: 2em;
+}
+
+#menu li {
+  display: inline;
+}
+
+.error {
+  color: #990A1B;
+}
+
+.warning {
+  color: #7B6000;
+}
+
+.success {
+  color: #546E00;
+}
+
+.highlight, .codehilite {
+  margin-left: 2em;
+}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  /* Dark generic page style */
+
+  html {
+    background: #222;
+    color: #DDD;
+  }
+
+  a {
+    color: #B4C342;
+  }
+
+  a:link {
+    color: #B4C342;
+  }
+
+  a:visited {
+    color: #B4C342;
+  }
+
+  h1 a, h2 a, h3 a, h4 a, h5 a, h6 a {
+    color: #DDD;
+  }
+
+  h1 a:link, h2 a:link, h3 a:link, h4 a:link, h5 a:link, h6 a:link {
+    color: #DDD;
+  }
+
+  h1 a:visited, h2 a:visited, h3 a:visited, h4 a:visited, h5 a:visited, h6 a:visited {
+    color: #DDD;
+  }
+
+  blockquote {
+    border-left: 1px solid #444;
+  }
+
+  pre, code, kbd, samp {
+    color: #DDD;
+  }
+
+  hr {
+    background-color: #333;
+    border: 0;
+    color: #666;
+  }
+
+  th {
+    border: 1px solid #444;
+  }
+
+  td {
+    border: 1px solid #444;
+  }
+
+  footer {
+    color: #BBB;
+  }
+
+  /* Dark specgen style */
+
+  #metabox {
+    color: #999;
+  }
+
+  #shortdesc {
+    color: #999;
+  }
+
+  #titlesep {
+    color: #444;
+  }
+
+  .terminfo, .restriction {
+    color: #999;
+  }
+
+  table.terminfo {
+    border-bottom: 1px solid #444;
+    border-left: 1px solid #444;
+  }
+
+  .spectermbody {
+    border-top: 1px solid #444;
+  }
+
+  .spectermbody .description .comment > p:first-child {
+    color: #BBB;
+  }
+
+  .error {
+    color: #DC322F;
+  }
+
+  .warning {
+    color: #B58900;
+  }
+
+  .success {
+    color: #859900;
+  }
+
+  #topbar {
+    border-bottom: 1px solid #444;
+  }
+}
+
+/* Hard black for dark mode on mobile (since it's likely to be an OLED screen) */
+@media only screen and (hover: none) and (pointer: coarse) and (prefers-color-scheme: dark) {
+  html {
+    background: #000;
+    color: #CCC;
+  }
+}

@@ -79,7 +79,7 @@ public sealed class AlphaTabTabsRenderer : IGuitarGameplayRenderer
         ConfigureCamera();
         ApplyOwnerConfig();
         ApplyTheme();
-        sheetRuntime.SetVisible(snapshot != null && !snapshot.mainMenuFlowActive);
+        sheetRuntime.SetVisible(snapshot != null && !snapshot.mainMenuFlowActive && !snapshot.showToneLab);
         sheetRuntime.Render(snapshot);
         backgroundEffect?.Tick(Time.deltaTime);
         songHeaderOverlay?.UpdateFromSnapshot(snapshot);

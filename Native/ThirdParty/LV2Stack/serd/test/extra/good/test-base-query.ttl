@@ -1,0 +1,10 @@
+@base <http://example.org/a/b/c/d;p?q> .
+
+<>
+	a <http://example.org/Base> .
+
+<child>
+	a <http://example.org/Child> .
+
+<http://example.org/a/b/x>
+	a <http://example.org/NonChild> .

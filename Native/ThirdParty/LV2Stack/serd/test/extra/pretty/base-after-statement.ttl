@@ -1,0 +1,9 @@
+@base <http://example.org/a/> .
+
+<s>
+	<p> <o> .
+
+@base <http://example.org/b/> .
+
+<s>
+	<p> <o> .

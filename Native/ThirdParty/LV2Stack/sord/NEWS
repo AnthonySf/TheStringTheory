@@ -1,0 +1,220 @@
+sord (0.16.23) unstable; urgency=medium
+
+  * Address new warnings in clang-tidy 22
+
+ -- David Robillard <d@drobilla.net>  Wed, 08 Apr 2026 00:23:32 +0000
+
+sord (0.16.22) stable; urgency=medium
+
+  * Add clang nullability annotations
+  * Address new warnings in clang and clang-tidy 21
+  * Make more API functions tolerate NULL
+
+ -- David Robillard <d@drobilla.net>  Tue, 10 Feb 2026 18:43:50 +0000
+
+sord (0.16.20) stable; urgency=medium
+
+  * Add header warnings test
+  * Add missing const qualifiers to API
+  * Avoid over-use of yielding meson options
+  * Update man pages
+
+ -- David Robillard <d@drobilla.net>  Tue, 21 Oct 2025 17:13:17 +0000
+
+sord (0.16.18) stable; urgency=medium
+
+  * Add option to install tool man pages
+  * Enable clang nullability checks
+  * Fix build as C with MSVC
+  * Fix library current_version on MacOS
+  * Replace more platform-specific code with use of zix
+
+ -- David Robillard <d@drobilla.net>  Sun, 19 Jan 2025 13:46:35 +0000
+
+sord (0.16.16) stable; urgency=medium
+
+  * Allow SORD_API to be defined by the user
+  * Fix command line help interface of sord_validate
+  * Fix dependencies in pkg-config file
+  * Override pkg-config dependency within meson
+  * Port sord_validate to pcre2
+  * Switch to external zix dependency
+
+ -- David Robillard <d@drobilla.net>  Sun, 22 Oct 2023 19:59:16 +0000
+
+sord (0.16.14) stable; urgency=medium
+
+  * Adopt REUSE machine-readable licensing standard
+  * Allow programs to be used from subproject
+  * Fix accidentally exposed internal zix symbols
+
+ -- David Robillard <d@drobilla.net>  Fri, 09 Sep 2022 03:07:46 +0000
+
+sord (0.16.12) stable; urgency=medium
+
+  * Fix various warnings
+  * Switch to meson build system
+
+ -- David Robillard <d@drobilla.net>  Sun, 17 Jul 2022 21:22:04 +0000
+
+sord (0.16.10) stable; urgency=medium
+
+  * Fix Windows build
+  * Fix potential crash or incorrectness issue with GCC 10 again
+
+ -- David Robillard <d@drobilla.net>  Thu, 26 May 2022 23:22:39 +0000
+
+sord (0.16.8) stable; urgency=medium
+
+  * Clean up code
+  * Fix potential undefined behavior
+  * Fix potentially incorrect search results
+  * Remove the need for a generated configuration header
+
+ -- David Robillard <d@drobilla.net>  Thu, 07 Jan 2021 21:33:53 +0000
+
+sord (0.16.6) stable; urgency=medium
+
+  * Fix potential crash or incorrectness issues with GCC 10
+  * Fix various minor warnings and other code quality issues
+
+ -- David Robillard <d@drobilla.net>  Sun, 27 Sep 2020 11:08:18 +0000
+
+sord (0.16.4) stable; urgency=medium
+
+  * Update build system
+
+ -- David Robillard <d@drobilla.net>  Sun, 10 Nov 2019 21:26:16 +0000
+
+sord (0.16.2) stable; urgency=medium
+
+  * sord_validate: Add support for maximum cardinality
+  * sord_validate: Fix restriction count reporting
+  * sord_validate: Only report functional / inverse functional property errors
+    if the subjects / objects are not blank
+  * sord_validate: Use consistent error format
+
+ -- David Robillard <d@drobilla.net>  Sun, 22 Jul 2018 18:38:03 +0000
+
+sord (0.16.0) stable; urgency=medium
+
+  * Add sord_node_get_string_measured() to get both byte and character counts
+  * Fix construction and comparison of URIs with UTF-8 characters
+  * Fix documentation generation
+  * Make sord_node_get_counted return byte count, and clarify documentation
+  * Return error from sord_inserter_write_statement() if a node can not be
+    written (e.g. undefined prefix)
+  * Safely return NULL from sord_iter_get() for end iterators
+  * sord_validate: Do proper numeric comparison for property bounds checking
+  * sord_validate: Tolerate xsd:decimal literals for double and float
+    properties if literals match pattern
+
+ -- David Robillard <d@drobilla.net>  Tue, 20 Sep 2016 02:23:17 +0000
+
+sord (0.14.0) stable; urgency=medium
+
+  * Add sord_erase() for erasing statements via an iterator
+  * Fix bugs with stores that contain both graphs and default graph statements
+  * Fix compilation on compilers that do not support -pthread flag
+  * Fix crash caused by multiple deletion of datatype nodes
+  * Fix minor memory leak in sordi
+  * Fix using sordi with stdin
+  * Improve test coverage
+  * Reduce memory usage and increase performance with a better data structure
+  * Show sordi errors in standard format
+  * This release does not break the ABI, but the semantics of iterators has
+    changed: any modification to a model invalidates iterators on that model
+  * Upgrade to waf 1.8.14
+  * sord_validate: More extensive validation, including cardinality,
+    PlainLiteral, and someValuesFrom restrictions.
+
+ -- David Robillard <d@drobilla.net>  Thu, 08 Oct 2015 19:37:36 +0000
+
+sord (0.12.2) stable; urgency=medium
+
+  * Fix iteration over an entire graph (* * * graph)
+  * Update to waf 1.7.16
+  * sordmm.hpp: Remove unused members
+
+ -- David Robillard <d@drobilla.net>  Fri, 08 Aug 2014 22:03:02 +0000
+
+sord (0.12.0) stable; urgency=medium
+
+  * Add sord_get() for easily getting single property values
+  * Update to waf 1.7.9 and autowaf r90 (install docs to versioned directory)
+  * sord_validate: Pass type check when range is xsd:anyURI and value is a URI
+  * sord_validate: Support any subClassOf rdf:Property, not just baked-in ones
+  * sordmm.hpp: Add Node::to_serd_node()
+  * sordmm.hpp: Add convenient constructors for decimal and integer literals
+  * sordmm.hpp: Don't automatically add RDF namespace prefix to world
+
+ -- David Robillard <d@drobilla.net>  Mon, 18 Feb 2013 16:05:59 +0000
+
+sord (0.10.4) stable; urgency=medium
+
+  * Disable timestamps in HTML documentation for reproducible build
+  * Fix memory leaks in sord_validate
+  * Implement better data type validation in sord_validate conformant with the
+    XSD and OWL specifications
+  * Install sord_validate man page
+
+ -- David Robillard <d@drobilla.net>  Sun, 14 Oct 2012 22:23:55 +0000
+
+sord (0.10.0) stable; urgency=medium
+
+  * Add error callback to world for custom error reporting
+  * Add option to build utilities as static binaries
+  * Do not require a C++ compiler to build
+  * Fix various hyper-strict warnings
+  * Make all 'zix' symbols private to avoid symbol clashes in static builds
+  * Performance and space (per node) improvements
+  * Remove problematic "Loaded n statements" output from serdi
+  * SSE4.2 accelerated hashing for node interning, where available
+  * Strip down API documentation to a single clean page
+  * Upgrade to waf 1.7.2
+  * sordmm.hpp: Add indices and graphs parameters to Model constructor
+  * sordmm.hpp: Correctly handle Sord::Node self-assignment
+  * sordmm.hpp: Remove overzealous URI scheme assertion
+
+ -- David Robillard <d@drobilla.net>  Thu, 23 Aug 2012 04:19:51 +0000
+
+sord (0.8.0) stable; urgency=medium
+
+  * Add SordInserter for writing to a model via Serd sink functions.
+  * Add convenient sord_search(), sord_ask(), and sord_count()
+  * Add sord_iter_get_node()
+  * Add sord_new_relative_uri()
+  * Add sord_validate tool for validating data against RDF/OWL schemas
+  * Fix comparison of typed literals
+  * Install man page to DATADIR (e.g. PREFIX/share/man, not PREFIX/man)
+  * Refuse to intern relative URIs in sord_new_uri*()
+  * Support compilation as C++ under MSVC++.
+  * Take advantage of interning in sord_node_equals()
+  * Tolerate serd passing NULL nodes to reader callback (serd 0.6.0)
+  * Use path variables in pkgconfig files
+
+ -- David Robillard <d@drobilla.net>  Tue, 17 Apr 2012 22:24:53 +0000
+
+sord (0.5.0) stable; urgency=medium
+
+  * Add ability to build static library
+  * Add function sord_contains for checking for a triple pattern
+  * Add function sord_write_iter for writing a queried range
+  * Fix Sord::Namespaces::qualify to no longer chop prefixes
+  * Remove glib dependency
+
+ -- David Robillard <d@drobilla.net>  Thu, 29 Sep 2011 04:00:00 +0000
+
+sord (0.4.2) stable; urgency=medium
+
+  * Bump Serd dependency to 0.4.0
+  * Fix build system Python 3 compatibility
+  * Fix compilation issues on some systems
+
+ -- David Robillard <d@drobilla.net>  Wed, 25 May 2011 23:00:00 +0000
+
+sord (0.4.0) stable; urgency=medium
+
+  * Initial release
+
+ -- David Robillard <d@drobilla.net>  Wed, 25 May 2011 03:00:00 +0000

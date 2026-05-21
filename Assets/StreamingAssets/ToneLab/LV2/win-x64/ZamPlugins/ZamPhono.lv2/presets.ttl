@@ -1,0 +1,13 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamPhono#preset001>
+    lv2:port [
+        lv2:symbol "inv" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "type" ;
+        pset:value 3 ;
+    ] .
+

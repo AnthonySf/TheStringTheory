@@ -1,0 +1,67 @@
+.\" # Copyright 2010-2025 David Robillard <d@drobilla.net>
+.\" # SPDX-License-Identifier: ISC
+.Dd January 20, 2025
+.Dt LV2APPLY 1
+.Os
+.Sh NAME
+.Nm lv2apply
+.Nd apply an LV2 plugin to an audio file
+.Sh SYNOPSIS
+.Nm lv2apply
+.Op Fl Vh
+.Op Fl c Ar symbol value
+.Op Fl i Ar in_file
+.Op Fl o Ar out_file
+.Op Fl Fl control Ar symbol value
+.Op Fl Fl help
+.Op Fl Fl version
+.Ar plugin_uri
+.Sh DESCRIPTION
+.Nm
+runs an LV2 plugin on an audio file and writes the processed output to another.
+.Pp
+The options are as follows:
+.Pp
+.Bl -tag -compact -width 3n
+.It Fl V , Fl Fl version
+Print version information and exit.
+.Pp
+.It Fl c , Fl Fl control Ar symbol value
+Set control port
+.Ar symbol
+to
+.Ar value.
+.Pp
+.It Fl h , Fl Fl help
+Print usage information and exit.
+.Pp
+.It Fl i Ar in_file
+Input file path.
+.Pp
+.It Fl o Ar out_file
+Output file path.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width LV2_PATH -compact
+.It Ev LV2_PATH
+List of directories to search for LV2 plugin bundles,
+in the style of
+.Ev PATH .
+.El
+.Sh EXIT STATUS
+.Nm
+exits with a status of 0, or non-zero if an error occurred.
+.Sh SEE ALSO
+.Bl -item -compact
+.It
+.Xr lv2bench 1
+.It
+.Xr lv2info 1
+.It
+.Xr lv2ls 1
+.El
+.Sh AUTHORS
+.Nm
+is a part of lilv, by
+.An David Robillard
+.Aq Mt d@drobilla.net .

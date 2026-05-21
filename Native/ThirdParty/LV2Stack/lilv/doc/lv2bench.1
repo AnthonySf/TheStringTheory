@@ -1,0 +1,57 @@
+.\" # Copyright 2024-2025 David Robillard <d@drobilla.net>
+.\" # SPDX-License-Identifier: ISC
+.Dd January 20, 2025
+.Dt LV2BENCH 1
+.Os
+.Sh NAME
+.Nm lv2bench
+.Nd benchmark installed and supported LV2 plugins
+.Sh SYNOPSIS
+.Nm lv2bench
+.Op Fl hV
+.Op Fl b Ar block_size
+.Op Fl n Ar frames
+.Op Fl s Ar buffers
+.Op Fl Fl help
+.Op Fl Fl version
+.Sh DESCRIPTION
+.Nm
+runs a simple benchmark of installed LV2 plugins.
+The results are written to stdout as a simple tab-delimited table.
+.Pp
+The options are as follows:
+.Pp
+.Bl -tag -compact -width 3n
+.It Fl V , Fl Fl version
+Print version information and exit.
+.Pp
+.It Fl b , Fl Fl block Ar frames
+Block length to run, in audio frames.
+.Pp
+.It Fl h , Fl Fl help
+Print usage information and exit.
+.Pp
+.It Fl n , Fl Fl length Ar frames
+Total number of frames to process, excluding any pre-roll buffers given by
+.Fl s .
+.Pp
+.It Fl s , Fl Fl skip Ar buffers
+Skip a number of buffers before recording timings.
+.El
+.Sh EXIT STATUS
+.Nm
+exits with a status of 0, or non-zero if an error occurred.
+.Sh SEE ALSO
+.Bl -item -compact
+.It
+.Xr lv2apply 1
+.It
+.Xr lv2info 1
+.It
+.Xr lv2ls 1
+.El
+.Sh AUTHORS
+.Nm
+is a part of lilv, by
+.An David Robillard
+.Aq Mt d@drobilla.net .

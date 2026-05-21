@@ -7,8 +7,9 @@ public static class ExternalContentPaths
     [Serializable]
     private sealed class ExternalContentSettingsData
     {
-        public int version = 1;
+        public int version = 2;
         public string songsDirectoryOverride = string.Empty;
+        public string toneLabEffectsDirectoryOverride = string.Empty;
     }
 
     public const string LegalFolderName = "Legal";
@@ -34,6 +35,8 @@ public static class ExternalContentPaths
     public const string ToneLabConfigFileName = "tone.json";
     public const string AudioSettingsFileName = "audio_settings.json";
     public const string ToneLabPresetsFolderName = "Presets";
+    public const string ToneLabLv2FolderName = "LV2";
+    public const string ToneLabNamFolderName = "NAM";
     public const string SongMetadataFileName = "metadata.json";
     public const string SongSaveDataFileName = "saveData.json";
     public const string SongLibraryCacheFileName = "song_library_cache.json";
@@ -41,6 +44,7 @@ public static class ExternalContentPaths
 
     private static bool externalContentSettingsLoaded;
     private static string songsDirectoryOverride = string.Empty;
+    private static string toneLabEffectsDirectoryOverride = string.Empty;
     private static string cachedStreamingRoot = string.Empty;
     private static string cachedPersistentRoot = string.Empty;
 
@@ -79,6 +83,10 @@ public static class ExternalContentPaths
     public static string StreamingStemSeparatorPackagePath => Path.Combine(StreamingStemSeparatorDirectory, StemSeparatorPackageFileName);
     public static string PersistentToneLabDirectory => Path.Combine(PersistentRoot, ToneLabFolderName);
     public static string PersistentToneLabPresetDirectory => Path.Combine(PersistentToneLabDirectory, ToneLabPresetsFolderName);
+    public static string DefaultPersistentToneLabEffectsDirectory => PersistentToneLabDirectory;
+    public static string PersistentToneLabEffectsDirectory => string.IsNullOrWhiteSpace(GetToneLabEffectsDirectoryOverride()) ? DefaultPersistentToneLabEffectsDirectory : GetToneLabEffectsDirectoryOverride();
+    public static string PersistentToneLabLv2Directory => Path.Combine(PersistentToneLabEffectsDirectory, ToneLabLv2FolderName);
+    public static string PersistentToneLabNamDirectory => Path.Combine(PersistentToneLabEffectsDirectory, ToneLabNamFolderName);
     public static string PersistentToneLabDistDirectory => Path.Combine(PersistentToneLabDirectory, ToneLabDistFolderName, ToneLabDistAppFolderName);
     public static string PersistentAlphaTabRenderCacheDirectory => Path.Combine(PersistentRoot, AlphaTabRenderCacheFolderName);
     public static string PersistentStemCacheDirectory => Path.Combine(PersistentRoot, StemCacheFolderName);
@@ -129,6 +137,24 @@ public static class ExternalContentPaths
         SaveExternalContentSettings();
     }
 
+    public static string GetToneLabEffectsDirectoryOverride()
+    {
+        EnsureExternalContentSettingsLoaded();
+        return toneLabEffectsDirectoryOverride;
+    }
+
+    public static bool IsUsingDefaultToneLabEffectsDirectory()
+    {
+        return string.IsNullOrWhiteSpace(GetToneLabEffectsDirectoryOverride());
+    }
+
+    public static void SetToneLabEffectsDirectoryOverride(string directoryPath)
+    {
+        EnsureExternalContentSettingsLoaded();
+        toneLabEffectsDirectoryOverride = NormalizeToneLabEffectsDirectoryOverride(directoryPath);
+        SaveExternalContentSettings();
+    }
+
     private static void EnsureExternalContentSettingsLoaded()
     {
         if (externalContentSettingsLoaded)
@@ -136,6 +162,7 @@ public static class ExternalContentPaths
 
         externalContentSettingsLoaded = true;
         songsDirectoryOverride = string.Empty;
+        toneLabEffectsDirectoryOverride = string.Empty;
 
         string path = PersistentExternalContentSettingsPath;
         try
@@ -145,11 +172,13 @@ public static class ExternalContentPaths
 
             ExternalContentSettingsData loaded = JsonUtility.FromJson<ExternalContentSettingsData>(File.ReadAllText(path));
             songsDirectoryOverride = NormalizeSongsDirectoryOverride(loaded?.songsDirectoryOverride);
+            toneLabEffectsDirectoryOverride = NormalizeToneLabEffectsDirectoryOverride(loaded?.toneLabEffectsDirectoryOverride);
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"[ExternalContentPaths] Failed to load content settings '{path}': {ex.Message}");
             songsDirectoryOverride = string.Empty;
+            toneLabEffectsDirectoryOverride = string.Empty;
         }
     }
 
@@ -164,8 +193,9 @@ public static class ExternalContentPaths
 
             ExternalContentSettingsData data = new ExternalContentSettingsData
             {
-                version = 1,
-                songsDirectoryOverride = songsDirectoryOverride ?? string.Empty
+                version = 2,
+                songsDirectoryOverride = songsDirectoryOverride ?? string.Empty,
+                toneLabEffectsDirectoryOverride = toneLabEffectsDirectoryOverride ?? string.Empty
             };
 
             File.WriteAllText(path, JsonUtility.ToJson(data, true));
@@ -186,6 +216,26 @@ public static class ExternalContentPaths
             string normalized = Path.GetFullPath(directoryPath.Trim())
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             string defaultDirectory = DefaultPersistentSongsDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return string.Equals(normalized, defaultDirectory, StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : normalized;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string NormalizeToneLabEffectsDirectoryOverride(string directoryPath)
+    {
+        if (string.IsNullOrWhiteSpace(directoryPath))
+            return string.Empty;
+
+        try
+        {
+            string normalized = Path.GetFullPath(directoryPath.Trim())
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string defaultDirectory = DefaultPersistentToneLabEffectsDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             return string.Equals(normalized, defaultDirectory, StringComparison.OrdinalIgnoreCase)
                 ? string.Empty
                 : normalized;

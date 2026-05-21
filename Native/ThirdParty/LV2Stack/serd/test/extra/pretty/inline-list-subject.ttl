@@ -1,0 +1,7 @@
+@prefix eg: <http://example.org/eg#> .
+
+(
+	eg:item1
+	eg:item2
+)
+	eg:isA eg:List .

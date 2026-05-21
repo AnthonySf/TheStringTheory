@@ -1,0 +1,29 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<http://distrho.sf.net/plugins/3BandEQ#preset001>
+    lv2:port [
+        lv2:symbol "low" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "mid" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "high" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "master" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "low_mid" ;
+        pset:value 220 ;
+    ] ,
+    [
+        lv2:symbol "mid_high" ;
+        pset:value 2000 ;
+    ] .
+

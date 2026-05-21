@@ -1,0 +1,6 @@
+<http://example.org/eg#s>
+	<http://example.org/eg#p> "Bonjour"@fr ,
+		"Gueten Tag"@de-latn-de ,
+		"HEY"@en-s0mewh3re ,
+		"Hello"@en ,
+		"Howdy"@en-us .

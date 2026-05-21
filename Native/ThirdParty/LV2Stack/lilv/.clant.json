@@ -1,0 +1,4 @@
+{
+  "exclude_patterns": ["lilvmm\\.hpp"],
+  "version": "1.0.0"
+}

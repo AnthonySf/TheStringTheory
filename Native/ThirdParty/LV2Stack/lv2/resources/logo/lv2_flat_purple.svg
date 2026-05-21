@@ -1,0 +1,10 @@
+<svg height="512" width="512" xmlns="http://www.w3.org/2000/svg">
+  <path d="M128 16l96 352h192l-34.91 128H130.91L0 16z" fill="#292961" fill-rule="evenodd"/>
+  <path d="M128 16l96 352h192l-34.91 128H130.91L0 16z" fill="none"/>
+  <path d="M128 16l96 352h64l96-352h-64l-64 234.668L192 16z" fill="#fff" fill-rule="evenodd"/>
+  <path d="M128 16l96 352h64l96-352h-64l-64 234.668L192 16z" fill="#5555c7"/>
+  <path d="M288 368h64l96-352h-64z" fill="#fff" fill-rule="evenodd"/>
+  <path d="M288 368h64l96-352h-64z" fill="#3f3f94"/>
+  <path d="M352 368h64l96-352h-64z" fill="#fff" fill-rule="evenodd"/>
+  <path d="M352 368h64l96-352h-64z" fill="#5555c7"/>
+</svg>

@@ -1,0 +1,14 @@
+<svg height="512" width="512" xmlns="http://www.w3.org/2000/svg">
+  <g stroke="#202020" stroke-width="6.618">
+    <g stroke-linecap="round" stroke-linejoin="round">
+      <path d="M129.748 20.412l94.119 345.102h188.238l-34.226 125.492H132.6L4.256 20.412z" fill="#546e00" fill-rule="evenodd" stroke-width="8.82397794"/>
+      <path d="M129.748 20.412l94.119 345.102h188.238l-34.226 125.492H132.6L4.256 20.412z" fill="none" stroke-width="8.82397794"/>
+      <path d="M129.748 20.412l94.119 345.102h62.746l94.119-345.102h-62.746l-62.746 230.07-62.746-230.07z" fill="#fff" fill-rule="evenodd" stroke-width="8.82397794"/>
+      <path d="M129.748 20.412l94.119 345.102h62.746l94.119-345.102h-62.746l-62.746 230.07-62.746-230.07z" fill="#b4c342" stroke-width="8.82397794"/>
+      <path d="M286.613 365.514h62.746l94.119-345.102h-62.746z" fill="#fff" fill-rule="evenodd" stroke-width="8.82397794"/>
+      <path d="M286.613 365.514h62.746l94.119-345.102h-62.746z" fill="#96ac00" stroke-width="8.82397794"/>
+    </g>
+    <path d="M349.359 365.514h62.746l94.119-345.102h-62.746z" fill="#fff" fill-rule="evenodd" stroke-width="8.82397794"/>
+    <path d="M349.359 365.514h62.746l94.119-345.102h-62.746z" fill="#859900" stroke-linecap="round" stroke-linejoin="round" stroke-width="8.82397794"/>
+  </g>
+</svg>

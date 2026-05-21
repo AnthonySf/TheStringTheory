@@ -1,0 +1,25 @@
+# Copyright 2020-2024 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  -*-macro-to-enum,
+  -*-magic-numbers,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-inc-dec-in-conditions,
+  -bugprone-multi-level-implicit-pointer-conversion,
+  -cert-err33-c,
+  -clang-analyzer-optin.core.EnumCastOutOfRange,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -concurrency-mt-unsafe,
+  -google-readability-todo,
+  -hicpp-multiway-paths-covered,
+  -hicpp-signed-bitwise,
+  -llvm-header-guard,
+  -misc-no-recursion,
+  -readability-avoid-nested-conditional-operator,
+CheckOptions:
+  - key:   readability-function-cognitive-complexity.IgnoreMacros
+    value: 'true'
+  - key:   readability-function-cognitive-complexity.Threshold
+    value: '91'
+InheritParentConfig: true

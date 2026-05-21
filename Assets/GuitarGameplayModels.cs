@@ -618,6 +618,7 @@ public sealed class GuitarGameplaySnapshot
     public bool showStartupTuningReminder;
     public bool showGlobalSettings;
     public string songsFolderMenuValueLabel;
+    public string effectsFolderMenuValueLabel;
     public int selectedGlobalSettingsTopIndex;
     public int selectedGlobalSettingsItemIndex;
     public string activeGlobalSettingsCategory;

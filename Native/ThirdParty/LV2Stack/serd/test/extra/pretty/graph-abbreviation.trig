@@ -1,0 +1,66 @@
+@prefix : <http://example.org/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+:graph {
+	:a
+		:b :c ,
+			:d ,
+			:e ;
+		:f :g ,
+			:h ;
+		:i :j ;
+		:k :l .
+
+	:s
+		a :Thing ;
+		:p1 :o1 ,
+		[
+			a :SubThing ;
+			:p2 :o2
+		] , [
+			a :OtherSubThing ;
+			:p3 :o3
+		] ;
+		:p4 :o4 .
+
+	[]
+		:isA :Blank .
+
+	[]
+		:sameAs [] .
+
+	[]
+		:blank [
+			:nestedEmptyBlank [] ;
+			:nestedNonEmptyBlanks [
+				rdf:value 1
+			] , [
+				rdf:value 2
+			]
+		] ;
+		:lists (
+			3
+			4
+		) .
+
+	[]
+		:lists (
+			5
+			6
+		) .
+
+	[]
+		:lists (
+			[
+				rdf:value 7
+			]
+			[
+				rdf:value 8
+			]
+		) .
+}
+
+:separateGraph {
+	:m
+		a :OtherThing .
+}

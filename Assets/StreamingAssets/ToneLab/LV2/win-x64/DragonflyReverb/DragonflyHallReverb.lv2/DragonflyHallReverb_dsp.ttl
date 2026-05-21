@@ -1,0 +1,306 @@
+@prefix atom:  <http://lv2plug.in/ns/ext/atom#> .
+@prefix doap:  <http://usefulinc.com/ns/doap#> .
+@prefix foaf:  <http://xmlns.com/foaf/0.1/> .
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix midi:  <http://lv2plug.in/ns/ext/midi#> .
+@prefix mod:   <http://moddevices.com/ns/mod#> .
+@prefix opts:  <http://lv2plug.in/ns/ext/options#> .
+@prefix pg:    <http://lv2plug.in/ns/ext/port-groups#> .
+@prefix patch: <http://lv2plug.in/ns/ext/patch#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rsz:   <http://lv2plug.in/ns/ext/resize-port#> .
+@prefix spdx:  <http://spdx.org/rdf/terms#> .
+@prefix ui:    <http://lv2plug.in/ns/extensions/ui#> .
+@prefix unit:  <http://lv2plug.in/ns/extensions/units#> .
+
+<https://github.com/michaelwillis/dragonfly-reverb>
+    a lv2:ReverbPlugin, lv2:Plugin, doap:Project ;
+
+    lv2:extensionData opts:interface ,
+                      <http://lv2plug.in/ns/ext/state#interface> ,
+                      <http://lv2plug.in/ns/ext/worker#interface> ;
+
+    lv2:optionalFeature <http://lv2plug.in/ns/lv2core#hardRTCapable> ,
+                        <http://lv2plug.in/ns/ext/buf-size#boundedBlockLength> ;
+
+    lv2:requiredFeature opts:options ,
+                        <http://lv2plug.in/ns/ext/urid#map> ,
+                        <http://lv2plug.in/ns/ext/worker#schedule> ;
+
+    opts:supportedOption <http://lv2plug.in/ns/ext/buf-size#nominalBlockLength> ,
+                         <http://lv2plug.in/ns/ext/buf-size#maxBlockLength> ,
+                         <http://lv2plug.in/ns/ext/parameters#sampleRate> ;
+
+    ui:ui <https://github.com/michaelwillis/dragonfly-reverb#DPF_UI> ;
+
+    lv2:port [
+        a lv2:InputPort, lv2:AudioPort ;
+        lv2:index 0 ;
+        lv2:symbol "lv2_audio_in_1" ;
+        lv2:name "Audio Input 1" ;
+        pg:group <https://github.com/michaelwillis/dragonfly-reverb#portGroup_dpf_stereo> ;
+        lv2:designation pg:left ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:AudioPort ;
+        lv2:index 1 ;
+        lv2:symbol "lv2_audio_in_2" ;
+        lv2:name "Audio Input 2" ;
+        pg:group <https://github.com/michaelwillis/dragonfly-reverb#portGroup_dpf_stereo> ;
+        lv2:designation pg:right ;
+    ] ;
+
+    lv2:port [
+        a lv2:OutputPort, lv2:AudioPort ;
+        lv2:index 2 ;
+        lv2:symbol "lv2_audio_out_1" ;
+        lv2:name "Audio Output 1" ;
+        pg:group <https://github.com/michaelwillis/dragonfly-reverb#portGroup_dpf_stereo> ;
+        lv2:designation pg:left ;
+    ] ,
+    [
+        a lv2:OutputPort, lv2:AudioPort ;
+        lv2:index 3 ;
+        lv2:symbol "lv2_audio_out_2" ;
+        lv2:name "Audio Output 2" ;
+        pg:group <https://github.com/michaelwillis/dragonfly-reverb#portGroup_dpf_stereo> ;
+        lv2:designation pg:right ;
+    ] ;
+
+    lv2:port [
+        a lv2:InputPort, atom:AtomPort ;
+        lv2:index 4 ;
+        lv2:name "Events Input" ;
+        lv2:symbol "lv2_events_in" ;
+        rsz:minimumSize 2048 ;
+        atom:bufferType atom:Sequence ;
+        atom:supports atom:String ;
+    ] ;
+
+    lv2:port [
+        a lv2:OutputPort, atom:AtomPort ;
+        lv2:index 5 ;
+        lv2:name "Events Output" ;
+        lv2:symbol "lv2_events_out" ;
+        rsz:minimumSize 2048 ;
+        atom:bufferType atom:Sequence ;
+        atom:supports atom:String ;
+    ] ;
+
+    lv2:port [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 6 ;
+        lv2:name "Dry Level" ;
+        lv2:symbol "dry_level" ;
+        lv2:default 80 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 7 ;
+        lv2:name "Early Level" ;
+        lv2:symbol "early_level" ;
+        lv2:default 10 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 8 ;
+        lv2:name "Late Level" ;
+        lv2:symbol "late_level" ;
+        lv2:default 20 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 9 ;
+        lv2:name "Size" ;
+        lv2:symbol "size" ;
+        lv2:default 24 ;
+        lv2:minimum 10 ;
+        lv2:maximum 60 ;
+        unit:unit [
+            a unit:Unit ;
+            rdfs:label  "m" ;
+            unit:symbol "m" ;
+            unit:render "%f m" ;
+        ] ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 10 ;
+        lv2:name "Width" ;
+        lv2:symbol "width" ;
+        lv2:default 100 ;
+        lv2:minimum 50 ;
+        lv2:maximum 150 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 11 ;
+        lv2:name "Predelay" ;
+        lv2:symbol "delay" ;
+        lv2:default 4 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:ms ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 12 ;
+        lv2:name "Diffuse" ;
+        lv2:symbol "diffuse" ;
+        lv2:default 90 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 13 ;
+        lv2:name "Low Cut" ;
+        lv2:symbol "low_cut" ;
+        lv2:default 4 ;
+        lv2:minimum 0 ;
+        lv2:maximum 200 ;
+        unit:unit unit:hz ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 14 ;
+        lv2:name "Low Cross" ;
+        lv2:symbol "low_xo" ;
+        lv2:default 500 ;
+        lv2:minimum 200 ;
+        lv2:maximum 1200 ;
+        unit:unit unit:hz ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 15 ;
+        lv2:name "Low Mult" ;
+        lv2:symbol "low_mult" ;
+        lv2:default 1.29999995232 ;
+        lv2:minimum 0.5 ;
+        lv2:maximum 2.5 ;
+        unit:unit [
+            a unit:Unit ;
+            rdfs:label  "X" ;
+            unit:symbol "X" ;
+            unit:render "%f X" ;
+        ] ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 16 ;
+        lv2:name "High Cut" ;
+        lv2:symbol "high_cut" ;
+        lv2:default 7600 ;
+        lv2:minimum 1000 ;
+        lv2:maximum 16000 ;
+        unit:unit unit:hz ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 17 ;
+        lv2:name "High Cross" ;
+        lv2:symbol "high_xo" ;
+        lv2:default 5500 ;
+        lv2:minimum 1000 ;
+        lv2:maximum 16000 ;
+        unit:unit unit:hz ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 18 ;
+        lv2:name "High Mult" ;
+        lv2:symbol "high_mult" ;
+        lv2:default 0.5 ;
+        lv2:minimum 0.20000000298 ;
+        lv2:maximum 1.20000004768 ;
+        unit:unit [
+            a unit:Unit ;
+            rdfs:label  "X" ;
+            unit:symbol "X" ;
+            unit:render "%f X" ;
+        ] ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 19 ;
+        lv2:name "Spin" ;
+        lv2:symbol "spin" ;
+        lv2:default 3.29999995232 ;
+        lv2:minimum 0 ;
+        lv2:maximum 10 ;
+        unit:unit unit:hz ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 20 ;
+        lv2:name "Wander" ;
+        lv2:symbol "wander" ;
+        lv2:default 15 ;
+        lv2:minimum 0 ;
+        lv2:maximum 40 ;
+        unit:unit unit:ms ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 21 ;
+        lv2:name "Decay" ;
+        lv2:symbol "decay" ;
+        lv2:default 1.29999995232 ;
+        lv2:minimum 0.10000000149 ;
+        lv2:maximum 10 ;
+        unit:unit unit:s ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 22 ;
+        lv2:name "Early Send" ;
+        lv2:symbol "early_send" ;
+        lv2:default 20 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ,
+    [
+        a lv2:InputPort, lv2:ControlPort ;
+        lv2:index 23 ;
+        lv2:name "Modulation" ;
+        lv2:symbol "modulation" ;
+        lv2:default 15 ;
+        lv2:minimum 0 ;
+        lv2:maximum 100 ;
+        unit:unit unit:pc ;
+    ] ;
+
+    rdfs:comment "A hall-style reverb" ;
+
+    mod:brand "Dragonfly" ;
+    mod:label "Dragonfly Hall Reverb" ;
+
+    doap:name "Dragonfly Hall Reverb" ;
+    doap:license <http://www.gnu.org/licenses/gpl-3.0.html> ;
+
+    doap:maintainer [
+        foaf:name "Michael Willis and Rob vd Berg" ;
+        foaf:homepage <https://michaelwillis.github.io/dragonfly-reverb> ;
+    ] ;
+
+    lv2:microVersion 10 ;
+    lv2:minorVersion 4 .
+
+<https://github.com/michaelwillis/dragonfly-reverb#portGroup_dpf_stereo>
+    a pg:Group , pg:StereoGroup ;
+    lv2:name "Stereo" ;
+    lv2:symbol "dpf_stereo" .

@@ -1,0 +1,34 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: serd
+Upstream-Contact: David Robillard <d@drobilla.net>
+Source: https://gitlab.com/drobilla/serd
+
+Files: .suppress.cppcheck
+Copyright: 2024 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a tool configuration
+License: 0BSD OR ISC
+
+Files: test/w3c/*
+Copyright: 2010 World Wide Web Consortium, (MIT, ERCIM, Keio, Beihang) and others.
+Comment: Standard test suites from the W3C
+License: BSD-3-Clause
+
+Files: test/extra/*
+Copyright: 2011-2025 David Robillard <d@drobilla.net>
+Comment: Extra test suites for serd
+License: BSD-3-Clause OR ISC
+
+Files: AUTHORS NEWS serd.ttl
+Copyright: 2011-2025 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a representation of simple facts
+License: 0BSD OR ISC
+
+Files: doc/.stylelintrc.json
+Copyright: 2022-2024 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a tool configuration
+License: 0BSD OR ISC
+
+Files: doc/_static/serd.svg doc/serdi-*.svg doc/serdi-*.txt
+Copyright: 2011-2022 David Robillard <d@drobilla.net>
+Comment: Documentation
+License: ISC

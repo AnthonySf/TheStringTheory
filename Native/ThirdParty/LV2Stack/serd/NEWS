@@ -1,0 +1,358 @@
+serd (0.32.9) unstable; urgency=medium
+
+  * Address new warnings in clang-tidy 22
+  * Fix writing quotes at the end of long literals
+
+ -- David Robillard <d@drobilla.net>  Tue, 19 May 2026 04:36:05 +0000
+
+serd (0.32.8) stable; urgency=medium
+
+  * Avoid use of snprintf() when writing
+  * Fix unbounded reader stack growth when reading NQuads
+  * Improve reader error handling
+  * Relax nullability of SerdNode buffer field
+  * Release reader stack memory on read error
+  * Strengthen handling of corrupt UTF-8 input
+  * Support writing all escapes in Turtle and TriG prefixed names
+
+ -- David Robillard <d@drobilla.net>  Tue, 10 Feb 2026 18:02:20 +0000
+
+serd (0.32.6) stable; urgency=medium
+
+  * Avoid over-use of yielding meson options
+  * Drop graphs when writing Turtle output
+  * Eliminate recursion in the writer
+  * Fix handling of bad predicates in anonymous blank nodes
+  * Fix handling of some invalid EOF cases in lax mode
+  * Fix indentation of named objects after anonymous objects
+  * Fix indentation when ending anonymous nodes with many objects
+  * Fix invalid characters in error messages
+  * Fix reading numbers with no space before the final dot
+  * Fix reading prefix names that start with "true." or "false."
+  * Refuse to write incoherent statements
+  * Remove project and version number from man page OS field
+  * Write a blank line between statements and Turtle/TriG directives
+
+ -- David Robillard <d@drobilla.net>  Wed, 12 Nov 2025 18:54:35 +0000
+
+serd (0.32.4) stable; urgency=medium
+
+  * Clean up enum declarations
+  * Fix library current_version on MacOS
+  * Fix overly permissive parsing of syntax names on the command line
+  * Fix parsing NQuads lines with no space before the final dot
+  * Fix reading chunks from files without trailing newlines
+  * Fix rewriting special literals when datatype URIs are prefixed names
+  * Gracefully handle errors while writing the end of anonymous nodes
+  * Improve test suite coverage
+  * Simplify some character classification and comparison code
+  * Support reading lone lists in lax mode
+  * Treat out of range unicode characters as errors
+  * Write blank lines between graphs and statements in TriG
+
+ -- David Robillard <d@drobilla.net>  Sun, 19 Jan 2025 00:17:58 +0000
+
+serd (0.32.2) stable; urgency=medium
+
+  * Enable clang nullability checks
+  * Fix writing empty list objects within blank nodes
+
+ -- David Robillard <d@drobilla.net>  Tue, 23 Jan 2024 19:32:21 +0000
+
+serd (0.32.0) stable; urgency=medium
+
+  * Add Windows path separator support to serd_node_new_file_uri()
+  * Add long "help" and "version" options to serdi
+  * Add options to disable html or singlehtml documentation
+  * Add serd_reader_skip_until_byte() to public API
+  * Allow SERD_API to be defined by the user
+  * Avoid creating test files in the current directory
+  * Avoid using ASCII grave as a quote
+  * Check for POSIX features with the build system
+  * Clean up and improve test suite
+  * Clean up code
+  * Fix crash when trying to read chunks without starting
+  * Fix hang when skipping an error at EOF when lax parsing
+  * Fix incorrect parsing of strange quote escape patterns
+  * Fix possible hang when writing nested Turtle lists
+  * Fix potential memory leaks when a write is aborted
+  * Fix relative URI creation
+  * Gracefully handle bad characters in Turtle blank node syntax
+  * Gracefully handle bad characters in Turtle datatype syntax
+  * Improve TriG pretty-printing and remove trailing newlines
+  * Improve pretty-printing of lists and inline subjects
+  * Improve serdi man page
+  * Improve writer error handling
+  * Make URI writing stricter by default
+  * Make serd_reader_read_chunk() work with NQuads
+  * Override pkg-config dependency within meson
+  * Remove junk files from documentation install
+  * Remove support for writing Turtle named inline nodes extension
+  * Replace duplicated dox_to_sphinx script with sphinxygen dependency
+  * Test header for warnings more strictly
+  * Update standard test suites
+
+ -- David Robillard <d@drobilla.net>  Sun, 22 Oct 2023 19:36:29 +0000
+
+serd (0.30.16) stable; urgency=medium
+
+  * Add SERD_STATIC to pkg-config Cflags for static-only builds
+  * Adopt REUSE machine-readable licensing standard
+  * Allow programs to be used from subproject
+  * Fix spelling mistake in serdi man page
+
+ -- David Robillard <d@drobilla.net>  Fri, 09 Sep 2022 03:06:45 +0000
+
+serd (0.30.14) stable; urgency=medium
+
+  * Fix memory consumption when reading documents
+  * Switch to Meson build system
+  * Update README and project metadata
+
+ -- David Robillard <d@drobilla.net>  Sun, 10 Jul 2022 16:58:43 +0000
+
+serd (0.30.12) stable; urgency=medium
+
+  * Fix warnings and build issues with clang 13 and VS 2019
+  * Fix writing long literals with triple quotes
+  * Improve documentation style
+  * Support combining several BSD-style command line flags in serdi
+  * Write statements with invalid URI characters in lax mode
+
+ -- David Robillard <d@drobilla.net>  Thu, 26 May 2022 22:47:35 +0000
+
+serd (0.30.10) stable; urgency=medium
+
+  * Add fallback configuration if documentation theme is unavailable
+  * Fix SERD_DISABLE_DEPRECATED
+  * Fix building for older MacOS versions on newer MacOS
+  * Fix documentation installation directory
+
+ -- David Robillard <d@drobilla.net>  Wed, 20 Jan 2021 15:55:35 +0000
+
+serd (0.30.8) stable; urgency=medium
+
+  * Deprecate serd_uri_to_path()
+  * Don't install API man pages
+  * Fix potential memory error when serialising URIs
+  * Move headers to an include directory
+  * Refuse to write relative URI references to NTriples
+  * Remove the need for a generated configuration header
+  * Remove use of C character class functions that may use locale
+  * Split up and reorganize unit tests
+  * Use aligned allocation via C11 or Windows API where possible
+
+ -- David Robillard <d@drobilla.net>  Thu, 07 Jan 2021 21:19:36 +0000
+
+serd (0.30.6) stable; urgency=medium
+
+  * Fix various minor warnings and other code quality issues
+  * Improve reader error handling
+  * Make all free functions tolerant of NULL
+  * Parse prefixed names more strictly
+
+ -- David Robillard <d@drobilla.net>  Sun, 27 Sep 2020 10:51:38 +0000
+
+serd (0.30.4) stable; urgency=medium
+
+  * Fix EOF handling while reading in bulk or from strings
+  * Fix lax handling of string errors
+  * Fix reading from a null-delimited socket
+
+ -- David Robillard <d@drobilla.net>  Sun, 26 Apr 2020 16:04:05 +0000
+
+serd (0.30.2) stable; urgency=medium
+
+  * Fix GCC 4 build
+  * Fix colliding blank nodes when parsing TriG
+  * Fix missing parse error messages
+  * Fix parsing "a" abbreviation without padding whitespace
+  * Fix parsing TriG graphs with several squashed trailing dots
+  * Fix resolving some URIs against base URIs with no trailing slash
+  * Improve build system and CI integration
+  * Improve documentation
+
+ -- David Robillard <d@drobilla.net>  Sun, 20 Oct 2019 22:28:01 +0000
+
+serd (0.30.0) stable; urgency=medium
+
+  * Add NTriples test suite
+  * Add basic error tolerant parsing for line-based formats
+  * Add serd_free for freeing memory allocated by serd
+  * Add serdi option to write ASCII output
+  * Clarify errors returned by serd_env_expand()
+  * Clean up testing code
+  * Fix building with MSVC
+  * Fix length of base64 encoded nodes
+  * Fix parsing local names that end with escaped dots
+  * Fix reported error when reading statements with only a blank node
+  * Improve relative URI serialisation
+  * Make serdi guess input syntax from extension if unspecified
+  * Make serdi syntax options case-insensitive
+  * Report errors for all failing test cases
+  * Support strict parsing of prefixed names
+  * Upgrade to waf 2.0.9 and autowaf a328983
+  * Use more efficient stack allocation and growth policies
+
+ -- David Robillard <d@drobilla.net>  Sun, 22 Jul 2018 18:34:09 +0000
+
+serd (0.28.0) stable; urgency=medium
+
+  * Add serd_node_from_substring()
+  * Add support for reading from a user provided callback
+  * Fix hangs when reading corrupt UTF-8
+  * Fix parsing of hex escapes in file URIs (thanks Johannes Mueller)
+  * Fix strict parsing of absolute URI schemes
+  * Gracefully handle applications that write corrupt UTF-8
+
+ -- David Robillard <d@drobilla.net>  Fri, 21 Jul 2017 06:28:47 +0000
+
+serd (0.26.0) stable; urgency=medium
+
+  * Add support for TriG and NQuads
+  * Add support for braindead SPARQL PREFIX and BASE directives
+
+ -- David Robillard <d@drobilla.net>  Tue, 10 Jan 2017 01:10:35 +0000
+
+serd (0.24.0) stable; urgency=medium
+
+  * Add serd_node_new_relative_uri()
+  * Fix construction and comparison of URIs with UTF-8 characters
+  * Fix documentation generation
+  * Fix potential out of bounds read
+  * Fix unaligned memory access, undefined behaviour which breaks on ARM
+  * Report I/O errors with message and return appropriate status code
+  * Report missing statement separator errors
+  * Update serdi man page
+
+ -- David Robillard <d@drobilla.net>  Tue, 20 Sep 2016 02:21:47 +0000
+
+serd (0.22.0) stable; urgency=medium
+
+  * Add serd_reader_set_strict() and -l (lax) option to serdi to tolerate
+    parsing URIs with escaped characters
+  * Add support for Turtle named inline nodes extension
+  * Fix clash resolution when a blank node ID prefix is set
+  * Fix reading statements ending with a blank then dot with no space
+  * Fix serd_reader_read_file() for URIs with escaped characters (spaces)
+  * Fix serializing fractional decimals that would round up
+  * Fix warnings when building with ISO C++ compilers
+  * Remove dependence on fmax() to avoid portability issues
+  * Report errors for invalid IRI characters and missing terminators
+  * Show serdi errors in standard format
+  * Upgrade to waf 1.8.14
+
+ -- David Robillard <d@drobilla.net>  Thu, 08 Oct 2015 19:34:18 +0000
+
+serd (0.20.0) stable; urgency=medium
+
+  * Add -lm to pkg-config libs
+  * Correctly handle posix_memalign failure
+  * Don't write xsd:decimal literals to Turtle bare if they would not be read
+    back with the same type
+  * Fix const-correctness violation for reader input string
+  * Fix possible crash in serd_writer_end_anon() when writing invalid lists
+  * Generate blank names like _:b1 and _:B2 not _:genid1 _:docid2
+  * Support new RDF 1.1 Turtle
+  * Update to waf 1.7.14
+
+ -- David Robillard <d@drobilla.net>  Fri, 08 Aug 2014 22:02:54 +0000
+
+serd (0.18.2) stable; urgency=medium
+
+  * Disable timestamps in HTML documentation for reproducible build
+  * Fix bug that caused "a" abbreviation in non-predicate position
+  * Fix clashing symbol "error" in amalgamation build
+  * Fix crash when resolving against non-standard base URIs
+  * Fix crash when serd_node_new_decimal is called with infinity or NaN
+  * Update to waf 1.7.8 and autowaf r90 (install docs to versioned directory)
+
+ -- David Robillard <d@drobilla.net>  Sun, 23 Dec 2012 02:32:15 +0000
+
+serd (0.18.0) stable; urgency=medium
+
+  * Add -e option to serdi to use incremental reading
+  * Add -q option to serdi to suppress all non-data output, e.g. errors
+  * Add error callback to reader and writer for custom error reporting
+  * Add incremental read interface suitable for reading from infinite streams
+  * Add option to build utilities as static binaries
+  * Do not require a C++ compiler to build
+  * Fix various hyper-strict warnings
+  * Report write size correctly when invalid UTF-8 is encountered and a
+    replacement character is written
+  * Reset indent when finishing a write
+  * Strip down API documentation to a single clean page
+  * Support digits at start of local names as per new Turtle grammar
+  * Upgrade to waf 1.7.2
+
+ -- David Robillard <d@drobilla.net>  Thu, 23 Aug 2012 04:18:34 +0000
+
+serd (0.14.0) stable; urgency=medium
+
+  * Add SerdBulkSink for writing bulk output and corresponding serdi -B option
+  * Add serd_chunk_sink for easy writing to a string
+  * Add serd_file_sink for easy writing to a FILE* stream
+  * Add serd_node_new_blob and serd_base64_decode for handling arbitrary
+    binary data via base64 encoding
+  * Add serd_node_new_file_uri() and serd_file_uri_parse() and implement
+    proper URI to/from path hex escaping, etc.
+  * Add serd_reader_set_default_graph() for reading a file as a named graph
+  * Add serd_strtod(), serd_node_new_decimal(), and serd_node_new_integer()
+    for locale-independent numeric node parsing/serialising
+  * Add serd_uri_serialise_relative() for making URIs relative to a base where
+    possible (by chopping a common prefix and adding dot segments)
+  * Add serd_writer_get_env()
+  * Add serd_writer_set_root_uri() and corresponding -r option to serdi to
+    enable writing URIs with up references (../)
+  * Add serdi -f option to prevent URI qualification
+  * Escape ASCII control characters in output (e.g. fix problems with string
+    literals that start with a backspace)
+  * Handle a quote as the last character of a long string literal in the
+    writer (by escaping it) rather than the reader, to avoid writing Turtle
+    other tools fail to parse
+  * Handle files and strings that start with a UTF-8 Byte Order Mark
+  * Implement pretty-printing for collections
+  * Improve URI resolution to cover most of the abnormal cases from RFC3986
+  * Improve write performance by doing bulk writes for unescaped substrings
+  * Install man page to DATADIR (e.g. PREFIX/share/man, not PREFIX/man)
+  * Make URIs serialised by the writer properly escape characters
+  * Parse collections iteratively in O(1) space
+  * Remove use of multi-byte peek (readahead) and use exactly 1 page for read
+    buffer (instead of 2)
+  * Report read error if both "genid" and "docid" IDs are found in the same
+    document, to prevent silent merging of distinct blank nodes
+  * Report reason for failure to open file in serdi
+  * Resolve dot segments in serd_uri_resolve() instead of at write time
+  * Support Windows file://c:/foo URIs in serd_uri_to_path() on all platforms
+  * Support compilation as C++ under MSVC++
+  * Support file://localhost/foo URIs in serd_uri_to_path()
+  * Tolerate invalid characters in string literals by replacing with the
+    Unicode replacement character
+  * Use path variables in pkgconfig files
+
+ -- David Robillard <d@drobilla.net>  Tue, 17 Apr 2012 22:23:53 +0000
+
+serd (0.5.0) stable; urgency=medium
+
+  * Add ability to build static library
+  * Add serd_env_set_prefix_from_strings for convenience
+  * Add serd_strerror
+  * Avoid writing illegal Turtle names as a result of URI qualifying
+  * Fix erroneously equal SERD_ERR_BAD_SYNTAX and SERD_ERR_BAD_ARG
+  * Fix pretty printing of successive blank descriptions, i.e. "] , ["
+  * Gracefully handle NULL reader sinks
+
+ -- David Robillard <d@drobilla.net>  Thu, 29 Sep 2011 04:00:00 +0000
+
+serd (0.4.2) stable; urgency=medium
+
+  * Fix build system Python 3 compatibility
+  * Fix compilation issues on some systems
+
+ -- David Robillard <d@drobilla.net>  Wed, 25 May 2011 23:00:00 +0000
+
+serd (0.4.0) stable; urgency=medium
+
+  * Initial release
+
+ -- David Robillard <d@drobilla.net>  Wed, 25 May 2011 03:00:00 +0000

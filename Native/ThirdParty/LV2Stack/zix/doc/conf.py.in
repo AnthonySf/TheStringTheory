@@ -1,0 +1,138 @@
+# Copyright 2021-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+# Project information
+
+project = "Zix"
+copyright = "2011-2025, David Robillard"
+author = "David Robillard"
+release = "@ZIX_VERSION@"
+version = "@ZIX_VERSION@"
+desc = "A lightweight C library of portability wrappers and data structures"
+
+# General configuration
+
+exclude_patterns = ["xml"]
+language = "en"
+nitpicky = True
+pygments_style = "friendly"
+
+try:
+    import sphinx_lv2_theme
+
+    have_lv2_theme = True
+except ModuleNotFoundError:
+    have_lv2_theme = False
+
+# Ignore everything opaque or external for nitpicky mode
+_opaque = [
+    "FILE",
+    "ZixAllocator",
+    "ZixAllocatorImpl",
+    "ZixBTree",
+    "ZixBTreeImpl",
+    "ZixBTreeNode",
+    "ZixBTreeNodeImpl",
+    "ZixHash",
+    "ZixHashImpl",
+    "ZixRing",
+    "ZixRingImpl",
+    "ZixSem",
+    "ZixSemImpl",
+    "ZixTree",
+    "ZixTreeImpl",
+    "ZixTreeIter",
+    "ZixTreeNode",
+    "ZixTreeNodeImpl",
+    "int64_t",
+    "pthread_t",
+    "ptrdiff_t",
+    "size_t",
+    "uint16_t",
+    "uint32_t",
+    "uint64_t",
+    "uint8_t",
+]
+
+_c_nitpick_ignore = map(lambda x: ("c:identifier", x), _opaque)
+_cpp_nitpick_ignore = map(lambda x: ("cpp:identifier", x), _opaque)
+nitpick_ignore = list(_c_nitpick_ignore) + list(_cpp_nitpick_ignore)
+
+# HTML output
+
+html_copy_source = False
+html_secnumber_suffix = " "
+html_short_title = "@ZIX_TITLE@"
+
+html_theme_options = {
+    "description": desc,
+    "logo_name": True,
+}
+
+if tags.has("singlehtml"):
+    html_sidebars = {"**": ["globaltoc.html"]}
+    html_theme_options.update(
+        {
+            "globaltoc_collapse": False,
+            "globaltoc_maxdepth": 3,
+            "nosidebar": False,
+            "page_width": "80em",
+        }
+    )
+else:
+    html_theme_options.update(
+        {
+            "globaltoc_collapse": True,
+            "globaltoc_maxdepth": 1,
+            "nosidebar": True,
+            "page_width": "60em",
+        }
+    )
+
+if have_lv2_theme:
+    html_theme = "sphinx_lv2_theme"
+
+    html_theme_options.update(
+        {
+            "show_footer_version": True,
+            "show_logo_version": True,
+        }
+    )
+
+    if tags.has("singlehtml"):
+        html_theme_options.update(
+            {
+                "body_max_width": "62em",
+                "body_min_width": "62em",
+                "sidebar_width": "14em",
+            }
+        )
+
+    else:
+        html_theme_options.update(
+            {
+                "body_max_width": "60em",
+                "body_min_width": "40em",
+            }
+        )
+else:
+    html_theme = "alabaster"
+    html_static_path = ["@ZIX_SRCDIR@/doc/_static"]
+
+    if tags.has("singlehtml"):
+        html_theme_options.update(
+            {
+                "body_max_width": "58em",
+                "body_min_width": "40em",
+                "sidebar_width": "14em",
+            }
+        )
+
+    else:
+        html_theme_options.update(
+            {
+                "body_max_width": "60em",
+                "body_min_width": "40em",
+                "show_relbars": True,
+            }
+        )

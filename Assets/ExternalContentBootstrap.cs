@@ -5,34 +5,101 @@ using UnityEngine;
 public static class ExternalContentBootstrap
 {
     private static bool runtimeContentReady;
+    private static bool toneLabContentReady;
+    private static string toneLabContentReadyPath = string.Empty;
+    private static bool toneLabEffectsDirectoryReady;
+    private static string toneLabEffectsDirectoryReadyPath = string.Empty;
+    private static bool songsDirectoryReady;
+    private static string songsDirectoryReadyPath = string.Empty;
 
     public static void EnsureRuntimeContentReady()
     {
         ExternalContentPaths.EnsureUnityRootsCaptured();
+        EnsureBaseRuntimeContentReady();
+        EnsureToneLabContentReady();
+        EnsureToneLabEffectsDirectoryReady();
+        EnsureSongsDirectoryReady();
+    }
 
+    public static void EnsureToneLabRuntimeContentReady()
+    {
+        ExternalContentPaths.EnsureUnityRootsCaptured();
+        EnsureBaseRuntimeContentReady();
+        EnsureToneLabContentReady();
+        EnsureToneLabEffectsDirectoryReady();
+    }
+
+    private static void EnsureBaseRuntimeContentReady()
+    {
         if (!runtimeContentReady)
         {
             Debug.Log($"[ExternalContentBootstrap] Persistent root: {ExternalContentPaths.PersistentRoot}");
 
             EnsureDirectory(ExternalContentPaths.PersistentRoot);
             EnsureDirectory(ExternalContentPaths.PersistentLicensesDirectory);
-            EnsureDirectory(ExternalContentPaths.PersistentToneLabDirectory);
-            EnsureDirectory(ExternalContentPaths.PersistentToneLabPresetDirectory);
             EnsureDirectory(ExternalContentPaths.PersistentStemSeparatorDirectory);
             EnsureDirectory(ExternalContentPaths.PersistentStemSeparatorModelCacheDirectory);
 
             SyncRecursive(ExternalContentPaths.StreamingLegalDirectory, ExternalContentPaths.PersistentLicensesDirectory);
-            CopyMissingRecursive(ExternalContentPaths.StreamingToneLabDirectory, ExternalContentPaths.PersistentToneLabDirectory);
             runtimeContentReady = true;
         }
+    }
 
-        EnsureSongsDirectoryReady();
+    private static void EnsureToneLabContentReady()
+    {
+        string toneLabPath = ExternalContentPaths.PersistentToneLabDirectory;
+        if (toneLabContentReady &&
+            string.Equals(toneLabContentReadyPath, toneLabPath, StringComparison.OrdinalIgnoreCase) &&
+            Directory.Exists(toneLabPath))
+        {
+            return;
+        }
+
+        EnsureDirectory(ExternalContentPaths.PersistentToneLabDirectory);
+        EnsureDirectory(ExternalContentPaths.PersistentToneLabPresetDirectory);
+        CopyMissingRecursive(ExternalContentPaths.StreamingToneLabDirectory, ExternalContentPaths.PersistentToneLabDirectory);
+        toneLabContentReady = true;
+        toneLabContentReadyPath = toneLabPath;
     }
 
     public static void EnsureSongsDirectoryReady()
     {
+        string songsPath = ExternalContentPaths.PersistentSongsDirectory;
+        if (songsDirectoryReady &&
+            string.Equals(songsDirectoryReadyPath, songsPath, StringComparison.OrdinalIgnoreCase) &&
+            Directory.Exists(songsPath))
+        {
+            return;
+        }
+
         EnsureDirectory(ExternalContentPaths.PersistentSongsDirectory);
         SyncSongContentRecursive(ExternalContentPaths.StreamingSongsDirectory, ExternalContentPaths.PersistentSongsDirectory);
+        songsDirectoryReady = true;
+        songsDirectoryReadyPath = songsPath;
+    }
+
+    public static void EnsureToneLabEffectsDirectoryReady()
+    {
+        string effectsPath = ExternalContentPaths.PersistentToneLabEffectsDirectory;
+        if (toneLabEffectsDirectoryReady &&
+            string.Equals(toneLabEffectsDirectoryReadyPath, effectsPath, StringComparison.OrdinalIgnoreCase) &&
+            Directory.Exists(ExternalContentPaths.PersistentToneLabLv2Directory) &&
+            Directory.Exists(ExternalContentPaths.PersistentToneLabNamDirectory))
+        {
+            return;
+        }
+
+        EnsureDirectory(ExternalContentPaths.PersistentToneLabEffectsDirectory);
+        EnsureDirectory(ExternalContentPaths.PersistentToneLabLv2Directory);
+        EnsureDirectory(ExternalContentPaths.PersistentToneLabNamDirectory);
+        CopyMissingRecursive(
+            Path.Combine(ExternalContentPaths.StreamingToneLabDirectory, ExternalContentPaths.ToneLabLv2FolderName),
+            ExternalContentPaths.PersistentToneLabLv2Directory);
+        CopyMissingRecursive(
+            Path.Combine(ExternalContentPaths.StreamingToneLabDirectory, ExternalContentPaths.ToneLabNamFolderName),
+            ExternalContentPaths.PersistentToneLabNamDirectory);
+        toneLabEffectsDirectoryReady = true;
+        toneLabEffectsDirectoryReadyPath = effectsPath;
     }
 
     private static void EnsureDirectory(string path)
@@ -61,7 +128,7 @@ public static class ExternalContentBootstrap
 
             if (!File.Exists(destinationFilePath))
             {
-                File.Copy(sourceFilePath, destinationFilePath);
+                CopyFilePreservingTimestamp(sourceFilePath, destinationFilePath, overwrite: false);
                 Debug.Log($"[ExternalContentBootstrap] Copied default file: {destinationFilePath}");
             }
         }
@@ -95,7 +162,7 @@ public static class ExternalContentBootstrap
                 continue;
             }
 
-            File.Copy(sourceFilePath, destinationFilePath, true);
+            CopyFilePreservingTimestamp(sourceFilePath, destinationFilePath, overwrite: true);
             Debug.Log($"[ExternalContentBootstrap] Synced legal file: {destinationFilePath}");
         }
 
@@ -128,7 +195,7 @@ public static class ExternalContentBootstrap
             if (!shouldCopy)
                 continue;
 
-            File.Copy(sourceFilePath, destinationFilePath, true);
+            CopyFilePreservingTimestamp(sourceFilePath, destinationFilePath, overwrite: true);
             Debug.Log($"[ExternalContentBootstrap] Synced song content file: {destinationFilePath}");
         }
 
@@ -156,23 +223,13 @@ public static class ExternalContentBootstrap
         FileInfo sourceInfo = new FileInfo(sourceFilePath);
         FileInfo destinationInfo = new FileInfo(destinationFilePath);
 
-        if (sourceInfo.Length != destinationInfo.Length)
-        {
-            return false;
-        }
+        return sourceInfo.Length == destinationInfo.Length &&
+               sourceInfo.LastWriteTimeUtc == destinationInfo.LastWriteTimeUtc;
+    }
 
-        using FileStream sourceStream = File.OpenRead(sourceFilePath);
-        using FileStream destinationStream = File.OpenRead(destinationFilePath);
-
-        int sourceByte;
-        while ((sourceByte = sourceStream.ReadByte()) != -1)
-        {
-            if (sourceByte != destinationStream.ReadByte())
-            {
-                return false;
-            }
-        }
-
-        return true;
+    private static void CopyFilePreservingTimestamp(string sourceFilePath, string destinationFilePath, bool overwrite)
+    {
+        File.Copy(sourceFilePath, destinationFilePath, overwrite);
+        File.SetLastWriteTimeUtc(destinationFilePath, File.GetLastWriteTimeUtc(sourceFilePath));
     }
 }

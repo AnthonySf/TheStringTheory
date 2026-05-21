@@ -1,0 +1,17 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZaMaximX2#preset001>
+    lv2:port [
+        lv2:symbol "rel" ;
+        pset:value 25 ;
+    ] ,
+    [
+        lv2:symbol "gain" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "thresh" ;
+        pset:value 0 ;
+    ] .
+

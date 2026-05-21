@@ -1,0 +1,19 @@
+# Copyright 2020-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  *,
+  -*-macro-to-enum,
+  -*-magic-numbers,
+  -altera-*,
+  -bugprone-easily-swappable-parameters,
+  -llvmlibc-*,
+  -readability-identifier-length,
+CheckOptions:
+  - key: hicpp-uppercase-literal-suffix.NewSuffixes
+    value: L;U;f
+  - key: readability-uppercase-literal-suffix.NewSuffixes
+    value: L;U;f
+FormatStyle: file
+HeaderFilterRegex: 'lv2/.*\.h$'
+WarningsAsErrors: '*'

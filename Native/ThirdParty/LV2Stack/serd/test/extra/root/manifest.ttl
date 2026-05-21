@@ -1,0 +1,26 @@
+@prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdft: <http://www.w3.org/ns/rdftest#> .
+
+<>
+	a mf:Manifest ;
+	rdfs:comment "Serd root URI test suite" ;
+	mf:entries (
+		<#root-inside-base>
+		<#root-outside-base>
+	) .
+
+<#root-inside-base>
+	a rdft:TestTurtleEval ;
+	mf:action <root-inside-base-in.ttl> ;
+	mf:name "root-inside-base" ;
+	mf:result <root-inside-base-out.ttl> .
+
+<#root-outside-base>
+	a rdft:TestTurtleEval ;
+	mf:action <root-outside-base-in.ttl> ;
+	mf:name "root-outside-base" ;
+	mf:result <root-outside-base-out.ttl> .
+
+rdft:Test
+	rdfs:subClassOf mf:ManifestEntry .

@@ -1,0 +1,14 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: sratom
+Upstream-Contact: David Robillard <d@drobilla.net>
+Source: https://gitlab.com/drobilla/sratom
+
+Files: NEWS sratom.ttl
+Copyright: 2012-2026 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a representation of simple facts
+License: 0BSD OR ISC
+
+Files: .suppress.cppcheck
+Copyright: 2025 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a tool configuration
+License: 0BSD OR ISC

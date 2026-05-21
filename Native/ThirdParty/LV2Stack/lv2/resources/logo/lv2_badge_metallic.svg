@@ -1,0 +1,25 @@
+<svg height="512" width="512" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <linearGradient id="a">
+    <stop offset="0" stop-color="#999"/>
+    <stop offset="1" stop-color="#f9f9f9"/>
+  </linearGradient>
+  <linearGradient id="f" gradientUnits="userSpaceOnUse" x1="2937.115" x2="3097.115" xlink:href="#a" y1="-172.966" y2="179.034"/>
+  <linearGradient id="c" gradientUnits="userSpaceOnUse" x1="2716.025" x2="2969.115" xlink:href="#a" y1="-300.966" y2="179.034"/>
+  <linearGradient id="d" gradientUnits="userSpaceOnUse" x1="2809.115" x2="2969.115" xlink:href="#a" y1="-172.966" y2="179.034"/>
+  <linearGradient id="e" gradientUnits="userSpaceOnUse" x1="2873.115" x2="3033.115" xlink:href="#a" y1="-172.966" y2="179.034"/>
+  <linearGradient id="b" gradientUnits="userSpaceOnUse" x1="3033.349" x2="2649.479" y1="235.742" y2="-146.408">
+    <stop offset="0" stop-color="#464646"/>
+    <stop offset="1" stop-color="#d5d5d5"/>
+  </linearGradient>
+  <circle cx="2841.115" cy="44.966" r="188.926" transform="matrix(1.33333 0 0 1.33333 -3532.153 196.045)" stroke="#000" stroke-width="6.148" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" fill="url(#b)"/>
+  <g stroke="#000" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10">
+    <path d="M2713.115 179.034l96-352h192l-34.91-128h-250.18l-130.91 480z" fill="url(#c)" fill-rule="evenodd" stroke-width="12" transform="matrix(.68315 0 0 -.68315 -1684.916 245.093)"/>
+    <path d="M168.556 122.785l65.583 240.47h131.165l-23.848 87.444H170.544L81.113 122.785z" fill="none" stroke-width="1.3663"/>
+    <path d="M2713.115 179.034l96-352h64l96 352h-64l-64-234.668-64 234.668z" fill="url(#d)" fill-rule="evenodd" stroke-width="12" transform="matrix(.68315 0 0 -.68315 -1684.916 245.093)"/>
+    <path d="M168.556 122.785l65.583 240.47h43.722l65.583-240.47h-43.722L256 283.1l-43.722-160.314z" fill="none" stroke-width="1.3663"/>
+    <path d="M2873.115-172.966h64l96 352h-64z" fill="url(#e)" fill-rule="evenodd" stroke-width="12" transform="matrix(.68315 0 0 -.68315 -1684.916 245.093)"/>
+    <path d="M277.86 363.255h43.723l65.582-240.47h-43.721z" fill="none" stroke-width="1.3663"/>
+  </g>
+  <path d="M321.583 363.255h43.721l65.583-240.47h-43.722z" fill="#bebebe" fill-rule="evenodd"/>
+  <path d="M2937.115-172.966h64l96 352h-64z" stroke="#000" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" stroke-miterlimit="10" fill="url(#f)" transform="matrix(.68315 0 0 -.68315 -1684.916 245.093)"/>
+</svg>

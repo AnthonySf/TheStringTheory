@@ -1,0 +1,125 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamGEQ31#preset001>
+    lv2:port [
+        lv2:symbol "master" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band1" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band2" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band3" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band4" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band5" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band6" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band7" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band8" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band9" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band10" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band11" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band12" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band13" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band14" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band15" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band16" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band17" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band18" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band19" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band20" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band21" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band22" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band23" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band24" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band25" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band26" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band27" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band28" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "band29" ;
+        pset:value 0 ;
+    ] .
+

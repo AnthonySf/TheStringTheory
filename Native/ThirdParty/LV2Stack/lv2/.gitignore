@@ -1,0 +1,18 @@
+# Copyright 2016-2021 David Robillard <d@drobilla.net>
+# Copyright 2016 Robin Gareus <robin@gareus.org>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+# generated files and folders
+/build
+*.pyc
+
+# misc editor/tools
+*.swp
+cscope.*
+tags
+
+# cached files when used as a meson subproject
+.meson-subproject-wrap-hash.txt
+
+# .wraplock file added in meson 1.9.0
+/subprojects/.wraplock

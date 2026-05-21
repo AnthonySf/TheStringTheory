@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML+RDFa 1.0//EN" "http://www.w3.org/MarkUp/DTD/xhtml-rdfa-1.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <title>LV2 Specifications</title>
+    <meta http-equiv="Content-Type"
+          content="application/xhtml+xml;charset=utf-8" />
+    <link rel="stylesheet" type="text/css"
+          href="../style/style.css" />
+  </head>
+  <body>
+
+    <!-- HEADER -->
+    <div id="topbar">
+      <div id="header">
+        <div id="titlebox">
+          <h1 id="title">LV2 Specifications</h1>
+        </div>
+        <div id="metabox">
+          <table id="meta">
+            <tr><th>Version</th><td>@LV2_VERSION@</td></tr>
+            <tr><th>Discuss</th>
+              <td>
+                <a href="mailto:devel@lists.lv2plug.in">devel@lists.lv2plug.in</a>
+                <a href="http://lists.lv2plug.in/listinfo.cgi/devel-lv2plug.in">(subscribe)</a>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="content">
+
+      <!-- INDEX -->
+      <div class="section">
+        <a id="sec-index"></a>
+        <table class="index" summary="An index of LV2 specifications">
+          <thead>
+            <tr>
+              <th>Specification</th>
+              <th>API</th>
+              <th>Description</th>
+              <th>Version</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            @ROWS@
+          </tbody>
+        </table>
+      </div>
+
+      <!-- FOOTER -->
+      <div id="footer">
+        <div>
+          This document is available under the
+          <a about="" rel="license" href="http://creativecommons.org/licenses/by-sa/3.0/">
+            Creative Commons Attribution-ShareAlike License
+          </a>
+        </div>
+	    <div>
+          Valid
+          <a about="" rel="dcterms:conformsTo" resource="http://www.w3.org/TR/rdfa-syntax"
+             href="http://validator.w3.org/check?uri=referer">
+            XHTML+RDFa
+          </a>
+          and
+          <a about="" rel="dcterms:conformsTo" resource="http://www.w3.org/TR/CSS2"
+             href="http://jigsaw.w3.org/css-validator/check/referer">
+            CSS
+          </a>
+          generated from the LV2 source distribution.
+        </div>
+      </div>
+
+    </div>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+# Copyright 2022-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  *,
+  -*-use-nullptr,
+  -altera-*,
+  -llvmlibc-*,
+  -readability-identifier-length,
+  -readability-implicit-bool-conversion,
+WarningsAsErrors: '*'
+HeaderFilterRegex: '.*'
+FormatStyle: file

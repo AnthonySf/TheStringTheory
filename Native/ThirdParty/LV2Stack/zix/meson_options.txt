@@ -1,0 +1,42 @@
+# Copyright 2020-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+option('benchmarks', type: 'feature',
+       description: 'Build benchmarks')
+
+option('checks', type: 'feature', value: 'enabled',
+       description: 'Check for platform-specific features')
+
+option('docs', type: 'feature',
+       description: 'Build documentation')
+
+option('html', type: 'feature',
+       description: 'Build paginated HTML documentation')
+
+option('lint', type: 'boolean', value: false,
+       description: 'Run code quality checks')
+
+option('posix', type: 'feature',
+       description: 'Use POSIX system facilities')
+
+option('singlehtml', type: 'feature',
+       description: 'Build single-page HTML documentation')
+
+option('threads', type: 'feature',
+       description: 'Enable thread support')
+
+option('tests', type: 'feature',
+       description: 'Build tests')
+
+option('tests_cpp', type: 'feature',
+       description: 'Build C++ standard library comparison tests')
+
+option('title', type: 'string', value: 'Zix',
+       description: 'Project title')
+
+option('win_ver', type: 'combo', value: 'win8',
+       choices: ['nt4', 'winxp', 'vista', 'win8'],
+       description: 'Latest Windows API version to use')
+
+option('win_wchar', type: 'feature',
+       description: 'Use UTF-16 wchar_t and UNICODE with Windows API')

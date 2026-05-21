@@ -1,0 +1,127 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamDynamicEQ#preset001>
+    lv2:port [
+        lv2:symbol "att" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "rel" ;
+        pset:value 80 ;
+    ] ,
+    [
+        lv2:symbol "kn" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "rat" ;
+        pset:value 1.5 ;
+    ] ,
+    [
+        lv2:symbol "thr" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "max" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "slew" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "sidech" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "togglelow" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "togglepeak" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "togglehigh" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "detectfreq" ;
+        pset:value 1000 ;
+    ] ,
+    [
+        lv2:symbol "targetfreq" ;
+        pset:value 1000 ;
+    ] ,
+    [
+        lv2:symbol "targetwidth" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "boostcut" ;
+        pset:value 0 ;
+    ] .
+
+<urn:zamaudio:ZamDynamicEQ#preset002>
+    lv2:port [
+        lv2:symbol "att" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "rel" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "kn" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "rat" ;
+        pset:value 1.5 ;
+    ] ,
+    [
+        lv2:symbol "thr" ;
+        pset:value -18 ;
+    ] ,
+    [
+        lv2:symbol "max" ;
+        pset:value 10 ;
+    ] ,
+    [
+        lv2:symbol "slew" ;
+        pset:value 20 ;
+    ] ,
+    [
+        lv2:symbol "sidech" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "togglelow" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "togglepeak" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "togglehigh" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "detectfreq" ;
+        pset:value 1000 ;
+    ] ,
+    [
+        lv2:symbol "targetfreq" ;
+        pset:value 1000 ;
+    ] ,
+    [
+        lv2:symbol "targetwidth" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "boostcut" ;
+        pset:value 0 ;
+    ] .
+

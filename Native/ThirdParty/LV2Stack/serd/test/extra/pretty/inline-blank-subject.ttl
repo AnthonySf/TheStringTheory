@@ -1,0 +1,6 @@
+@prefix eg: <http://example.org/eg#> .
+
+[
+	a eg:BlankSubject
+]
+	eg:isA eg:Blank .

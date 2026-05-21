@@ -1,0 +1,4 @@
+_:s1 <http://example.org/p1> _:o1 .
+_:s1 <http://example.org/p2> _:o3 .
+_:s1 <http://example.org/p2> _:o4 .
+_:b0 <http://example.org/p3> _:b1 .

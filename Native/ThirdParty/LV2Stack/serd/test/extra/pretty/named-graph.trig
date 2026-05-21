@@ -1,0 +1,18 @@
+@prefix eg: <http://example.org/> .
+
+eg:g1 {
+	eg:s1
+		eg:p1 [
+			a eg:Object
+		] .
+}
+
+eg:g2 {
+	eg:s2
+		eg:p2 [
+			a eg:Object
+		] .
+}
+
+eg:s3
+	eg:p3 eg:o3 .

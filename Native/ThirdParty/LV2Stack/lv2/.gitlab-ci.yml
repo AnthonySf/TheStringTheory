@@ -1,0 +1,141 @@
+# Copyright 2018-2023 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+default:
+  image: lv2plugin/debian-x64
+  script:
+    - meson setup build -Dwerror=true
+    - ninja -C build test
+
+dev:
+  image: lv2plugin/debian-x64-big
+  script:
+    - meson setup build -Dbuildtype=debug -Dwarning_level=3 -Dwerror=true -Db_coverage=true -Dlint=true
+    - ninja -C build test
+    - ninja -C build coverage-html
+    - meson configure -Dbuildtype=release -Db_coverage=false build
+    - ninja -C build test
+  coverage: '/ *lines\.*: \d+\.\d+.*/'
+  artifacts:
+    paths:
+      - build/meson-logs/coveragereport
+
+static:
+  image: lv2plugin/debian-x64
+  script:
+    - meson setup build -Ddefault_library=static -Dwarning_level=3 -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+
+sanitize:
+  image: lv2plugin/debian-x64-clang
+  script:
+    - meson setup build -Db_lundef=false -Dbuildtype=plain -Dwarning_level=3 -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+  variables:
+    CC: "clang"
+    CFLAGS: "-fno-sanitize-recover=all -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fsanitize=unsigned-integer-overflow -fsanitize=implicit-conversion -fsanitize=local-bounds -fsanitize=nullability"
+    LDFLAGS: "-fno-sanitize-recover=all -fsanitize=address -fsanitize=undefined -fsanitize=float-divide-by-zero -fsanitize=unsigned-integer-overflow -fsanitize=implicit-conversion -fsanitize=local-bounds -fsanitize=nullability"
+
+# Linux Distributions
+
+fedora:
+  image: lv2plugin/fedora-big
+  script:
+    - meson setup build -Dbuildtype=plain -Dwarning_level=3 -Ddocs=enabled -Dwerror=true
+    - ninja -C build test
+  variables:
+    CFLAGS: -O2 -D_FORTIFY_SOURCE=2
+  artifacts:
+    paths:
+      - build/doc
+
+# Linux Platforms
+
+arm32:
+  image: lv2plugin/debian-arm32
+  script:
+    - meson setup build --cross-file=/usr/share/meson/cross/arm-linux-gnueabihf.ini -Dbuildtype=debug -Dwarning_level=3 -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+arm64:
+  image: lv2plugin/debian-arm64
+  script:
+    - meson setup build --cross-file=/usr/share/meson/cross/aarch64-linux-gnu.ini -Dbuildtype=debug -Dwarning_level=3 -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+mingw32:
+  image: lv2plugin/debian-mingw32
+  script:
+    - meson setup build --cross-file=/usr/share/meson/cross/i686-w64-mingw32.ini -Dbuildtype=debug -Dwarning_level=everything -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+mingw64:
+  image: lv2plugin/debian-mingw64
+  script:
+    - meson setup build --cross-file=/usr/share/meson/cross/x86_64-w64-mingw32.ini -Dbuildtype=debug -Dwarning_level=3 -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+wasm:
+  image: lv2plugin/debian-wasm
+  script:
+    - meson setup build --cross-file=/usr/share/meson/cross/wasm.ini -Dbuildtype=debug -Dwarning_level=3 -Dwerror=true -Ddefault_library=static -Ddocs=disabled
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+x32:
+  image: lv2plugin/debian-x32
+  script:
+    - meson setup build --cross-file=/usr/share/meson/cross/i686-linux-gnu.ini -Dbuildtype=debug -Dwarning_level=3 -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+# Non-Linux/Docker rows (not hosted)
+
+freebsd:
+  tags: [freebsd,meson]
+  script:
+    - meson setup build -Dbuildtype=debug -Dwarning_level=3 -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+mac:
+  tags: [macos]
+  script:
+    - meson setup build -Dbuildtype=debug -Dwarning_level=everything -Dwerror=true
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+win:
+  tags: [windows,meson]
+  script:
+    - meson setup build -Dbuildtype=debug -Dwarning_level=everything -Dwerror=true -Ddocs=disabled
+    - ninja -C build test
+    - meson configure -Dbuildtype=release build
+    - ninja -C build test
+
+# Documentation
+
+pages:
+  stage: deploy
+  script:
+    - mkdir -p public
+    - mv build/meson-logs/coveragereport/ public/coverage
+  needs:
+    - dev
+  artifacts:
+    paths:
+      - public
+  only:
+    - main

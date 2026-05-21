@@ -1,0 +1,17 @@
+# Copyright 2020-2025 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+Checks: >
+  -android-cloexec-fopen,
+  -bugprone-assert-side-effect,
+  -bugprone-branch-clone,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -concurrency-mt-unsafe,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -hicpp-multiway-paths-covered,
+  -hicpp-signed-bitwise,
+  -readability-suspicious-call-argument,
+CheckOptions:
+  - key:   readability-function-cognitive-complexity.Threshold
+    value: '22'
+InheritParentConfig: true

@@ -1,0 +1,23 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: lilv
+Upstream-Contact: David Robillard <d@drobilla.net>
+Source: https://gitlab.com/drobilla/lilv
+
+Files: AUTHORS NEWS lilv.ttl
+Copyright: 2006-2025 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a representation of simple facts
+License: 0BSD OR ISC
+
+Files: .clant.json
+Copyright: 2020 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a tool configuration
+License: 0BSD OR ISC
+
+Files: .suppress.cppcheck
+Copyright: 2024 David Robillard <d@drobilla.net>
+Comment: Contributed to the Commons as a tool configuration
+License: 0BSD OR ISC
+
+Files: bindings/bindings_test_plugin.lv2/*.ttl.in test/*/*.ttl.in test/lv2/core.lv2/*.ttl
+Copyright: 2015-2022 David Robillard <d@drobilla.net>
+License: ISC

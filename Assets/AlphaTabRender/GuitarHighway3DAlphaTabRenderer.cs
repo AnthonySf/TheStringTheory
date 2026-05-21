@@ -76,7 +76,7 @@ public sealed class GuitarHighway3DAlphaTabRenderer : IGuitarGameplayRenderer
 
     public void Render(GuitarGameplaySnapshot snapshot)
     {
-        bool useSplitViewport = snapshot != null && !snapshot.mainMenuFlowActive;
+        bool useSplitViewport = snapshot != null && !snapshot.mainMenuFlowActive && !snapshot.showToneLab;
         ApplyViewport(useSplitViewport);
         ApplyHighwayCharacterViewportCompensation(useSplitViewport);
         ApplyOwnerConfig();

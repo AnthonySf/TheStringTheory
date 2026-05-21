@@ -1,0 +1,135 @@
+@prefix mf: <http://www.w3.org/2001/sw/DataAccess/tests/test-manifest#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix rdft: <http://www.w3.org/ns/rdftest#> .
+
+<>
+	a mf:Manifest ;
+	rdfs:comment "Serd perfect (reversible) test suite" ;
+	mf:entries (
+		<#test-backspace-escape>
+		<#test-decimal>
+		<#test-delete-escape>
+		<#test-empty>
+		<#test-escapes>
+		<#test-exact-uri>
+		<#test-form-feed-escape>
+		<#test-integer>
+		<#test-lang>
+		<#test-list>
+		<#test-long-whitespace>
+		<#test-short-end-quote>
+		<#test-short-end-two-quotes>
+		<#test-triple>
+		<#test-uri-escape>
+		<#test-uri-query>
+		<#test-utf8>
+		<#test-utf8-uri>
+	) .
+
+<#test-backspace-escape>
+	a rdft:TestTurtleEval ;
+	mf:action <test-backspace-escape.ttl> ;
+	mf:name "test-backspace-escape" ;
+	mf:result <test-backspace-escape.nt> .
+
+<#test-decimal>
+	a rdft:TestTurtleEval ;
+	mf:action <test-decimal.ttl> ;
+	mf:name "test-decimal" ;
+	mf:result <test-decimal.nt> .
+
+<#test-delete-escape>
+	a rdft:TestTurtleEval ;
+	mf:action <test-delete-escape.ttl> ;
+	mf:name "test-delete-escape" ;
+	mf:result <test-delete-escape.nt> .
+
+<#test-empty>
+	a rdft:TestTurtleEval ;
+	mf:action <test-empty.ttl> ;
+	mf:name "test-empty" ;
+	mf:result <test-empty.nt> .
+
+<#test-escapes>
+	a rdft:TestTurtleEval ;
+	mf:action <test-escapes.ttl> ;
+	mf:name "test-escapes" ;
+	mf:result <test-escapes.nt> .
+
+<#test-exact-uri>
+	a rdft:TestTurtleEval ;
+	mf:action <test-exact-uri.ttl> ;
+	mf:name "test-exact-uri" ;
+	mf:result <test-exact-uri.nt> .
+
+<#test-form-feed-escape>
+	a rdft:TestTurtleEval ;
+	mf:action <test-form-feed-escape.ttl> ;
+	mf:name "test-form-feed-escape" ;
+	mf:result <test-form-feed-escape.nt> .
+
+<#test-integer>
+	a rdft:TestTurtleEval ;
+	mf:action <test-integer.ttl> ;
+	mf:name "test-integer" ;
+	mf:result <test-integer.nt> .
+
+<#test-lang>
+	a rdft:TestTurtleEval ;
+	mf:action <test-lang.ttl> ;
+	mf:name "test-lang" ;
+	mf:result <test-lang.nt> .
+
+<#test-list>
+	a rdft:TestTurtleEval ;
+	mf:action <test-list.ttl> ;
+	mf:name "test-list" ;
+	mf:result <test-list.nt> .
+
+<#test-long-whitespace>
+	a rdft:TestTurtleEval ;
+	mf:action <test-long-whitespace.ttl> ;
+	mf:name "test-long-whitespace" ;
+	mf:result <test-long-whitespace.nt> .
+
+<#test-short-end-quote>
+	a rdft:TestTurtleEval ;
+	mf:action <test-short-end-quote.ttl> ;
+	mf:name "test-short-end-quote" ;
+	mf:result <test-short-end-quote.nt> .
+
+<#test-short-end-two-quotes>
+	a rdft:TestTurtleEval ;
+	mf:action <test-short-end-two-quotes.ttl> ;
+	mf:name "test-short-end-two-quotes" ;
+	mf:result <test-short-end-two-quotes.nt> .
+
+<#test-triple>
+	a rdft:TestTurtleEval ;
+	mf:action <test-triple.ttl> ;
+	mf:name "test-triple" ;
+	mf:result <test-triple.nt> .
+
+<#test-uri-escape>
+	a rdft:TestTurtleEval ;
+	mf:action <test-uri-escape.ttl> ;
+	mf:name "test-uri-escape" ;
+	mf:result <test-uri-escape.nt> .
+
+<#test-uri-query>
+	a rdft:TestTurtleEval ;
+	mf:action <test-uri-query.ttl> ;
+	mf:name "test-uri-query" ;
+	mf:result <test-uri-query.nt> .
+
+<#test-utf8>
+	a rdft:TestTurtleEval ;
+	mf:action <test-utf8.ttl> ;
+	mf:name "test-utf8" ;
+	mf:result <test-utf8.nt> .
+
+<#test-utf8-uri>
+	a rdft:TestTurtleEval ;
+	mf:action <test-utf8-uri.ttl> ;
+	mf:name "test-utf8-uri" ;
+	mf:result <test-utf8-uri.nt> .

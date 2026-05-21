@@ -1,0 +1,7 @@
+# Copyright 2020 David Robillard <d@drobilla.net>
+# SPDX-License-Identifier: 0BSD OR ISC
+
+*.nq -text
+*.nt -text
+*.trig -text
+*.ttl -text

@@ -1,0 +1,4 @@
+<http://example.org/eg#s>
+	<http://example.org/eg#p> +1 ,
+		-2 ,
+		3 .

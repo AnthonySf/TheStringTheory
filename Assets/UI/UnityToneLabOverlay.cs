@@ -1,7 +1,12 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using UnityEngine;
+#if UNITY_RENDER_PIPELINE_UNIVERSAL
+using UnityEngine.Rendering.Universal;
+#endif
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
@@ -9,8 +14,22 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 {
     private enum ToneLabSidePanelMode
     {
-        Pedal,
-        Library
+        Presets,
+        Library,
+        Details
+    }
+
+    private enum ToneLabBoardMode
+    {
+        Pedalboard,
+        SongMapping
+    }
+
+    private enum ToneLabSongMappingBrowseMode
+    {
+        All,
+        Artists,
+        Albums
     }
 
     private enum ToneLabPresetModalMode
@@ -18,6 +37,21 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         Create,
         SaveAs,
         ResetAll
+    }
+
+    private enum ToneLabUnsavedAction
+    {
+        None,
+        SelectPreset,
+        CloseToneLab
+    }
+
+    private enum ToneLabLibraryFilter
+    {
+        All,
+        BuiltIn,
+        Lv2,
+        Nam
     }
 
     private sealed class ToneSliderBinding
@@ -36,6 +70,303 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         public Action<UnityToneLabRuntime.ToneLabSettings, bool> setter;
     }
 
+    private sealed class ToneLabBackdropBlurController : MonoBehaviour
+    {
+        private const string BlurShaderName = "Hidden/StringTheory/UIBackdropBlur";
+        private const string BlurShaderResourcePath = "Shaders/UIBackdropBlur";
+        private static readonly int BlurDirectionId = Shader.PropertyToID("_BlurDirection");
+        private static readonly int BlurSizeId = Shader.PropertyToID("_BlurSize");
+        private const int Downsample = 4;
+        private const int GameplayBackgroundLayer = 2;
+        private const float BlurSize = 4.5f;
+        private const float DefaultBlurBrightness = 0.48f;
+        private const int BlurPassPairs = 3;
+
+        public VisualElement TargetElement { get; set; }
+        public Camera SourceCamera { get; set; }
+        public float Brightness { get; set; } = DefaultBlurBrightness;
+
+        private Camera captureCamera;
+        private Material blurMaterial;
+        private RenderTexture sceneTexture;
+        private RenderTexture blurTextureA;
+        private RenderTexture blurTextureB;
+        private RenderTexture targetTexture;
+        private int textureWidth = -1;
+        private int textureHeight = -1;
+        private int targetTextureWidth = -1;
+        private int targetTextureHeight = -1;
+
+        private void LateUpdate()
+        {
+            if (!ShouldRender())
+                return;
+
+            EnsureBlurMaterial();
+            if (blurMaterial == null || blurMaterial.shader == null || !blurMaterial.shader.isSupported)
+            {
+                if (TargetElement != null)
+                    TargetElement.style.backgroundImage = StyleKeyword.None;
+                return;
+            }
+
+            int width = Mathf.Max(256, Mathf.CeilToInt(Screen.width / (float)Downsample));
+            int height = Mathf.Max(144, Mathf.CeilToInt(Screen.height / (float)Downsample));
+            Rect targetScreenBounds = GetTargetScreenBounds();
+            int targetWidth = Mathf.Max(16, Mathf.CeilToInt(targetScreenBounds.width / (float)Downsample));
+            int targetHeight = Mathf.Max(16, Mathf.CeilToInt(targetScreenBounds.height / (float)Downsample));
+
+            EnsureRenderTextures(width, height);
+            if (!RenderLiveCameraToSceneTexture())
+            {
+                return;
+            }
+
+            RenderTexture source = sceneTexture;
+            for (int pass = 0; pass < BlurPassPairs; pass++)
+            {
+                blurMaterial.SetVector(BlurDirectionId, new Vector2(1f / textureWidth, 0f));
+                blurMaterial.SetFloat(BlurSizeId, BlurSize);
+                Graphics.Blit(source, blurTextureA, blurMaterial, 0);
+
+                blurMaterial.SetVector(BlurDirectionId, new Vector2(0f, 1f / textureHeight));
+                Graphics.Blit(blurTextureA, blurTextureB, blurMaterial, 0);
+                source = blurTextureB;
+            }
+
+            if (TargetElement == null)
+                return;
+
+            EnsureTargetTexture(targetWidth, targetHeight);
+            int sourceX = Mathf.Clamp(Mathf.FloorToInt(targetScreenBounds.xMin / Downsample), 0, Mathf.Max(0, textureWidth - targetWidth));
+            int sourceY = Mathf.Clamp(textureHeight - Mathf.CeilToInt(targetScreenBounds.yMax / Downsample), 0, Mathf.Max(0, textureHeight - targetHeight));
+            Vector2 scale = new Vector2(targetWidth / (float)textureWidth, targetHeight / (float)textureHeight);
+            Vector2 offset = new Vector2(sourceX / (float)textureWidth, sourceY / (float)textureHeight);
+            Graphics.Blit(blurTextureB, targetTexture, scale, offset);
+
+            TargetElement.style.backgroundImage = StyleKeyword.None;
+            TargetElement.style.backgroundImage = new StyleBackground(Background.FromRenderTexture(targetTexture));
+            TargetElement.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
+            TargetElement.style.unityBackgroundImageTintColor = new Color(Brightness, Brightness, Brightness, 1f);
+        }
+
+        private bool ShouldRender()
+        {
+            return TargetElement != null
+                && TargetElement.style.display.value != DisplayStyle.None
+                && TargetElement.worldBound.width > 16f
+                && TargetElement.worldBound.height > 16f;
+        }
+
+        private Rect GetTargetScreenBounds()
+        {
+            if (TargetElement == null)
+                return default;
+
+            Rect targetBounds = TargetElement.worldBound;
+            VisualElement panelRoot = TargetElement.panel?.visualTree;
+            if (panelRoot == null)
+                return targetBounds;
+
+            Rect panelBounds = panelRoot.worldBound;
+            if (panelBounds.width <= 1f || panelBounds.height <= 1f)
+                return targetBounds;
+
+            float scaleX = Screen.width / panelBounds.width;
+            float scaleY = Screen.height / panelBounds.height;
+            if (!float.IsFinite(scaleX) || !float.IsFinite(scaleY) || scaleX <= 0f || scaleY <= 0f)
+                return targetBounds;
+
+            return new Rect(
+                (targetBounds.xMin - panelBounds.xMin) * scaleX,
+                (targetBounds.yMin - panelBounds.yMin) * scaleY,
+                targetBounds.width * scaleX,
+                targetBounds.height * scaleY);
+        }
+
+        private Camera ResolveSourceCamera()
+        {
+            if (SourceCamera != null)
+                return SourceCamera;
+
+            SourceCamera = Camera.main;
+            return SourceCamera;
+        }
+
+        private void EnsureBlurMaterial()
+        {
+            if (blurMaterial != null)
+                return;
+
+            Shader shader = Resources.Load<Shader>(BlurShaderResourcePath);
+            if (shader == null)
+                shader = Shader.Find(BlurShaderName);
+            if (shader == null)
+                return;
+
+            blurMaterial = new Material(shader)
+            {
+                hideFlags = HideFlags.HideAndDontSave
+            };
+        }
+
+        private void EnsureCaptureCamera()
+        {
+            if (captureCamera != null)
+                return;
+
+            GameObject cameraObject = new GameObject("ToneLabBackdropBlurCamera");
+            cameraObject.hideFlags = HideFlags.HideAndDontSave;
+            cameraObject.transform.SetParent(transform, false);
+            captureCamera = cameraObject.AddComponent<Camera>();
+            captureCamera.enabled = false;
+#if UNITY_RENDER_PIPELINE_UNIVERSAL
+            cameraObject.AddComponent<UniversalAdditionalCameraData>();
+#endif
+        }
+
+        private bool RenderLiveCameraToSceneTexture()
+        {
+            Camera sourceCamera = ResolveSourceCamera();
+            if (sourceCamera == null)
+                return false;
+
+            EnsureCaptureCamera();
+
+            captureCamera.CopyFrom(sourceCamera);
+            captureCamera.enabled = false;
+            captureCamera.targetTexture = sceneTexture;
+            captureCamera.forceIntoRenderTexture = true;
+            captureCamera.rect = new Rect(0f, 0f, 1f, 1f);
+            if (sourceCamera.clearFlags == CameraClearFlags.Depth || sourceCamera.clearFlags == CameraClearFlags.Nothing)
+            {
+                captureCamera.clearFlags = CameraClearFlags.SolidColor;
+                captureCamera.backgroundColor = sourceCamera.backgroundColor;
+                captureCamera.cullingMask = sourceCamera.cullingMask | (1 << GameplayBackgroundLayer);
+            }
+            if (UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline == null)
+                captureCamera.stereoTargetEye = StereoTargetEyeMask.None;
+#if UNITY_RENDER_PIPELINE_UNIVERSAL
+            SyncUniversalCameraSettings(sourceCamera, captureCamera);
+#endif
+            captureCamera.Render();
+            return true;
+        }
+
+        private void EnsureRenderTextures(int width, int height)
+        {
+            if (width == textureWidth && height == textureHeight && sceneTexture != null && blurTextureA != null && blurTextureB != null)
+                return;
+
+            ReleaseRenderTextures();
+            textureWidth = width;
+            textureHeight = height;
+            sceneTexture = CreateBlurTexture("ToneLabBackdropScene", width, height);
+            blurTextureA = CreateBlurTexture("ToneLabBackdropBlurA", width, height);
+            blurTextureB = CreateBlurTexture("ToneLabBackdropBlurB", width, height);
+        }
+
+        private void EnsureTargetTexture(int width, int height)
+        {
+            if (width == targetTextureWidth && height == targetTextureHeight && targetTexture != null)
+                return;
+
+            ReleaseTexture(ref targetTexture);
+            targetTextureWidth = width;
+            targetTextureHeight = height;
+            targetTexture = CreateBlurTexture("ToneLabBackdropTarget", width, height);
+        }
+
+        private static RenderTexture CreateBlurTexture(string textureName, int width, int height)
+        {
+            RenderTexture texture = new RenderTexture(width, height, 16, RenderTextureFormat.ARGB32)
+            {
+                name = textureName,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                hideFlags = HideFlags.HideAndDontSave
+            };
+            texture.Create();
+            return texture;
+        }
+
+        private void ReleaseRenderTextures()
+        {
+            ReleaseTexture(ref sceneTexture);
+            ReleaseTexture(ref blurTextureA);
+            ReleaseTexture(ref blurTextureB);
+            ReleaseTexture(ref targetTexture);
+            textureWidth = -1;
+            textureHeight = -1;
+            targetTextureWidth = -1;
+            targetTextureHeight = -1;
+        }
+
+        private static void ReleaseTexture(ref RenderTexture texture)
+        {
+            if (texture == null)
+                return;
+
+            texture.Release();
+            Destroy(texture);
+            texture = null;
+        }
+
+#if UNITY_RENDER_PIPELINE_UNIVERSAL
+        private static void SyncUniversalCameraSettings(Camera source, Camera destination)
+        {
+            if (source == null || destination == null)
+                return;
+
+            if (!source.TryGetComponent(out UniversalAdditionalCameraData sourceData))
+                return;
+
+            UniversalAdditionalCameraData destinationData = destination.GetComponent<UniversalAdditionalCameraData>();
+            if (destinationData == null)
+                return;
+
+            destinationData.renderType = CameraRenderType.Base;
+            destinationData.renderPostProcessing = sourceData.renderPostProcessing;
+            destinationData.antialiasing = sourceData.antialiasing;
+            destinationData.antialiasingQuality = sourceData.antialiasingQuality;
+            destinationData.stopNaN = sourceData.stopNaN;
+            destinationData.dithering = sourceData.dithering;
+            destinationData.renderShadows = sourceData.renderShadows;
+            destinationData.requiresColorOption = sourceData.requiresColorOption;
+            destinationData.requiresDepthOption = sourceData.requiresDepthOption;
+            destinationData.volumeLayerMask = sourceData.volumeLayerMask;
+            destinationData.volumeTrigger = sourceData.volumeTrigger;
+            destinationData.allowXRRendering = false;
+        }
+#endif
+
+        private void OnDisable()
+        {
+            Cleanup();
+        }
+
+        private void OnDestroy()
+        {
+            Cleanup();
+        }
+
+        private void Cleanup()
+        {
+            ReleaseRenderTextures();
+            if (blurMaterial != null)
+            {
+                Destroy(blurMaterial);
+                blurMaterial = null;
+            }
+
+            if (captureCamera != null)
+            {
+                Destroy(captureCamera.gameObject);
+                captureCamera = null;
+            }
+        }
+    }
+
     private GuitarBridgeServer owner;
     private UnityToneLabRuntime runtime;
     private UIDocument document;
@@ -45,13 +376,36 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private bool suppressCallbacks;
 
     private VisualElement overlayRoot;
+    private VisualElement blurBackdrop;
+    private ToneLabBackdropBlurController backdropBlurController;
     private Label statusLabel;
     private Label routeLabel;
     private Label backendLabel;
     private ToneLabPedalBoardView pedalBoardView;
+    private VisualElement sidebarRoot;
+    private Button presetsTabButton;
+    private Button libraryTabButton;
+    private Button detailsTabButton;
+    private ScrollView presetListScroll;
+    private VisualElement presetListHost;
+    private VisualElement presetSearchRoot;
+    private TextField presetSearchField;
+    private VisualElement libraryFilterRoot;
+    private Button libraryAllFilterButton;
+    private Button libraryBuiltInFilterButton;
+    private Button libraryLv2FilterButton;
+    private Button libraryNamFilterButton;
+    private Button libraryRefreshButton;
+    private Button songMappingAllFilterButton;
+    private Button songMappingArtistsFilterButton;
+    private Button songMappingAlbumsFilterButton;
+    private VisualElement librarySearchRoot;
+    private TextField librarySearchField;
+    private VisualElement songMappingSearchRoot;
+    private TextField songMappingSearchField;
+    private VisualElement songMappingFilterRoot;
     private VisualElement pedalInspectorHost;
     private VisualElement pedalLibraryHost;
-    private DropdownField presetDropdown;
     private DropdownField inputDropdown;
     private DropdownField outputDropdown;
     private DropdownField latencyDropdown;
@@ -60,23 +414,32 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private Button advancedAudioButton;
     private Button savePresetButton;
     private Button saveAsPresetButton;
-    private Button deletePresetButton;
     private Button resetAllButton;
     private Button startButton;
     private Button stopButton;
     private Button backButton;
+    private Button effectsFolderButton;
+    private Button songMappingButton;
+    private VisualElement pedalBoardRoot;
+    private VisualElement songMappingRoot;
+    private VisualElement songMappingLeftHost;
+    private VisualElement songMappingToneHost;
+    private ScrollView songMappingLeftScroll;
+    private ScrollView songMappingToneScroll;
+    private VisualElement songMappingSelectedArtwork;
+    private Label songMappingHeaderLabel;
+    private Label songMappingSubheaderLabel;
     private Slider guitarVolumeSlider;
     private Label guitarVolumeValueLabel;
-    private VisualElement rigPanelCard;
-    private VisualElement pedalSidePanelCard;
     private VisualElement sidePanelHost;
-    private Label sidePanelTitleLabel;
-    private Label sidePanelSubtitleLabel;
-    private ScrollView rigSettingsScroll;
     private ScrollView pedalInspectorScroll;
     private ScrollView pedalLibraryScroll;
     private VisualElement presetModalScrim;
     private VisualElement advancedAudioModalScrim;
+    private VisualElement unsavedChangesModalScrim;
+    private Label unsavedChangesPresetLabel;
+    private Button unsavedChangesSaveButton;
+    private Button unsavedChangesDiscardButton;
     private TextField presetNameField;
     private Button presetCreateButton;
     private Button presetCancelButton;
@@ -95,16 +458,40 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private Button advancedAudioCloseButton;
     private Label advancedAudioStatusLabel;
     private Label advancedAudioDiagnosticsLabel;
+    private ReusableLoadingOverlay openingLoadingOverlay;
     private VisualElement actionToast;
     private Label actionToastLabel;
     private string selectedPedalInstanceId = string.Empty;
-    private ToneLabSidePanelMode sidePanelMode = ToneLabSidePanelMode.Pedal;
+    private ToneLabSidePanelMode sidePanelMode = ToneLabSidePanelMode.Presets;
+    private ToneLabBoardMode boardMode = ToneLabBoardMode.Pedalboard;
+    private string selectedMappingSongKey = string.Empty;
+    private string selectedMappingArrangementKey = string.Empty;
+    private string pendingMappingToneName = string.Empty;
+    private string pendingMappingArrangementKey = string.Empty;
+    private string pendingMappingSongKey = string.Empty;
+    private string songMappingSearchQuery = string.Empty;
+    private string songMappingBrowseScopeKey = string.Empty;
+    private ToneLabSongMappingBrowseMode songMappingBrowseMode = ToneLabSongMappingBrowseMode.All;
+    private VisualElement libraryDragPreview;
+    private string libraryDragDescriptorId = string.Empty;
+    private Vector2 libraryDragStartPosition;
+    private int libraryDragPointerId = -1;
+    private bool libraryDragMoved;
     private ToneLabPresetModalMode presetModalMode = ToneLabPresetModalMode.Create;
+    private ToneLabUnsavedAction pendingUnsavedAction = ToneLabUnsavedAction.None;
     private SharedAudioAdvancedSettings advancedAudioDraft = new SharedAudioAdvancedSettings();
-    private readonly Dictionary<string, string> presetChoiceToId = new Dictionary<string, string>(StringComparer.Ordinal);
+    private string presetSearchQuery = string.Empty;
+    private string librarySearchQuery = string.Empty;
+    private string pendingUnsavedPresetId = string.Empty;
+    private ToneLabLibraryFilter libraryFilter = ToneLabLibraryFilter.All;
+    private Coroutine openRefreshRoutine;
+    private bool openingRefreshInProgress;
 
     private readonly List<ToneSliderBinding> sliderBindings = new List<ToneSliderBinding>();
     private readonly List<ToneToggleBinding> toggleBindings = new List<ToneToggleBinding>();
+    private static Texture2D presetSelectionGradientTexture;
+    private static Texture2D selectedSidebarTabTexture;
+    private static readonly Dictionary<string, Texture2D> songArtworkTextureCache = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
 
     public void Initialize(GuitarBridgeServer owner, UnityToneLabRuntime runtime)
     {
@@ -141,8 +528,24 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         {
             return isVisible
                 && ((presetModalScrim != null && presetModalScrim.style.display == DisplayStyle.Flex)
-                    || (advancedAudioModalScrim != null && advancedAudioModalScrim.style.display == DisplayStyle.Flex));
+                    || (advancedAudioModalScrim != null && advancedAudioModalScrim.style.display == DisplayStyle.Flex)
+                    || (unsavedChangesModalScrim != null && unsavedChangesModalScrim.style.display == DisplayStyle.Flex)
+                    || IsTextFieldFocused(presetSearchField)
+                    || IsTextFieldFocused(librarySearchField)
+                    || IsTextFieldFocused(songMappingSearchField)
+                    || IsTextFieldFocused(presetNameField));
         }
+    }
+
+    public void RequestCloseFromUi()
+    {
+        if (HasUnsavedPresetChanges())
+        {
+            OpenUnsavedChangesModal(ToneLabUnsavedAction.CloseToneLab, string.Empty);
+            return;
+        }
+
+        CloseToneLabNow();
     }
 
     public void SetVisible(bool visible)
@@ -158,13 +561,16 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         overlayRoot.style.display = targetDisplay;
         if (visible)
         {
-            sidePanelMode = ToneLabSidePanelMode.Pedal;
-            RefreshUi(syncControls: true, refreshDevices: true);
+            BeginOpeningRefresh();
         }
         else
         {
+            CancelOpeningRefresh();
             CloseCreatePresetModal();
             CloseAdvancedAudioModal();
+            CloseUnsavedChangesModal();
+            CancelLibraryDrag();
+            ClearPendingToneMappingAssignment();
             HideActionToast();
         }
     }
@@ -192,39 +598,42 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 ?? (runtime.InputDevices != null && runtime.InputDevices.Length > 0
                     ? runtime.InputDevices.ToList()
                     : new List<string> { "No microphone inputs" });
-            inputDropdown.choices = deviceChoices;
+            if (inputDropdown != null)
+                inputDropdown.choices = deviceChoices;
             string selectedInput = owner != null
                 ? owner.GetSharedAudioSelectedInputLabel()
                 : (!string.IsNullOrWhiteSpace(settings.input_device_name) && deviceChoices.Contains(settings.input_device_name)
                     ? settings.input_device_name
                     : deviceChoices[0]);
-            inputDropdown.SetValueWithoutNotify(selectedInput);
-            inputDropdown.SetEnabled(deviceChoices.Count > 0);
+            inputDropdown?.SetValueWithoutNotify(selectedInput);
+            inputDropdown?.SetEnabled(deviceChoices.Count > 0);
 
             List<string> outputChoices = owner?.GetSharedAudioOutputDeviceChoices()?.ToList()
                 ?? (runtime.OutputDevices != null && runtime.OutputDevices.Length > 0
                     ? runtime.OutputDevices.ToList()
                     : new List<string> { "No output devices" });
-            outputDropdown.choices = outputChoices;
+            if (outputDropdown != null)
+                outputDropdown.choices = outputChoices;
             string selectedOutput = owner != null
                 ? owner.GetSharedAudioSelectedOutputLabel()
                 : (!string.IsNullOrWhiteSpace(settings.output_device_name) && outputChoices.Contains(settings.output_device_name)
                     ? settings.output_device_name
                     : outputChoices[0]);
-            outputDropdown.SetValueWithoutNotify(selectedOutput);
-            outputDropdown.SetEnabled(outputChoices.Count > 0);
+            outputDropdown?.SetValueWithoutNotify(selectedOutput);
+            outputDropdown?.SetEnabled(outputChoices.Count > 0);
 
             List<string> latencyChoices = runtime.MonitoringLatencyOptions != null && runtime.MonitoringLatencyOptions.Length > 0
                 ? runtime.MonitoringLatencyOptions.ToList()
                 : new List<string> { "Low (128)" };
-            latencyDropdown.choices = latencyChoices;
+            if (latencyDropdown != null)
+                latencyDropdown.choices = latencyChoices;
             string selectedLatency = owner != null
                 ? owner.GetSharedAudioSelectedLatencyLabel()
                 : (latencyChoices.Contains(runtime.CurrentMonitoringLatencyOption)
                     ? runtime.CurrentMonitoringLatencyOption
                     : latencyChoices[0]);
-            latencyDropdown.SetValueWithoutNotify(selectedLatency);
-            latencyDropdown.SetEnabled(true);
+            latencyDropdown?.SetValueWithoutNotify(selectedLatency);
+            latencyDropdown?.SetEnabled(true);
 
             float guitarVolumePercent = owner != null
                 ? owner.GetSharedAudioGuitarVolumePercent()
@@ -235,39 +644,18 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 guitarVolumeValueLabel.text = $"{guitarVolumePercent:F0}%";
 
             UnityToneLabRuntime.ToneLabPreset[] presets = runtime.CurrentPresets;
-            presetChoiceToId.Clear();
-            List<string> presetChoices = new List<string>();
-            for (int i = 0; i < presets.Length; i++)
-            {
-                UnityToneLabRuntime.ToneLabPreset preset = presets[i];
-                if (preset == null || string.IsNullOrWhiteSpace(preset.preset_id))
-                    continue;
-
-                string presetName = string.IsNullOrWhiteSpace(preset.preset_name) ? $"Preset {i + 1}" : preset.preset_name.Trim();
-                if (presetChoiceToId.ContainsKey(presetName))
-                    presetName = $"{presetName}  [{i + 1}]";
-                presetChoiceToId[presetName] = preset.preset_id;
-                presetChoices.Add(presetName);
-            }
-
-            presetDropdown.choices = presetChoices;
-            string selectedPresetChoice = presetChoices.Count > 0 ? presetChoices[0] : string.Empty;
             string currentPresetId = runtime.CurrentPresetId;
-            if (!string.IsNullOrWhiteSpace(currentPresetId))
-            {
-                foreach (KeyValuePair<string, string> entry in presetChoiceToId)
-                {
-                    if (string.Equals(entry.Value, currentPresetId, StringComparison.Ordinal))
-                    {
-                        selectedPresetChoice = entry.Key;
-                        break;
-                    }
-                }
-            }
-
-            presetDropdown.SetValueWithoutNotify(selectedPresetChoice);
-            savePresetButton?.SetEnabled(!string.IsNullOrWhiteSpace(currentPresetId));
-            deletePresetButton?.SetEnabled(!string.IsNullOrWhiteSpace(currentPresetId) && presets.Length > 1);
+            RefreshPresetList(presets, currentPresetId);
+            bool songMappingVisible = boardMode == ToneLabBoardMode.SongMapping;
+            savePresetButton?.SetEnabled(!songMappingVisible && !string.IsNullOrWhiteSpace(currentPresetId));
+            saveAsPresetButton?.SetEnabled(!songMappingVisible);
+            resetAllButton?.SetEnabled(!songMappingVisible);
+            if (savePresetButton != null)
+                savePresetButton.style.display = songMappingVisible ? DisplayStyle.None : DisplayStyle.Flex;
+            if (saveAsPresetButton != null)
+                saveAsPresetButton.style.display = songMappingVisible ? DisplayStyle.None : DisplayStyle.Flex;
+            if (resetAllButton != null)
+                resetAllButton.style.display = songMappingVisible ? DisplayStyle.None : DisplayStyle.Flex;
 
             for (int i = 0; i < sliderBindings.Count; i++)
             {
@@ -286,6 +674,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             UnityToneLabRuntime.ToneLabPedalSlot[] pedalChain = runtime.CurrentPedalChain;
             EnsureSelectedPedal(pedalChain);
             pedalBoardView?.Refresh(pedalChain, selectedPedalInstanceId);
+            RefreshBoardModeVisuals();
+            RefreshSongMappingView();
             RefreshPedalLibrary(pedalChain);
             RefreshSidePanel(pedalChain);
 
@@ -316,10 +706,11 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 : new Color(0.92f, 0.84f, 0.63f, 1f);
         }
 
-        startButton.SetEnabled(!runtime.IsMonitoring && !runtime.IsAwaitingStartup);
-        stopButton.SetEnabled(runtime.IsMonitoring || runtime.IsAwaitingStartup);
+        startButton?.SetEnabled(!runtime.IsMonitoring && !runtime.IsAwaitingStartup);
+        stopButton?.SetEnabled(runtime.IsMonitoring || runtime.IsAwaitingStartup);
         RefreshSidePanelButtonStates();
         RefreshAdvancedAudioModalStatus();
+        UpdateOpeningLoadingOverlay();
     }
 
     private void BuildUi(VisualElement root)
@@ -335,10 +726,15 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         overlayRoot.style.display = DisplayStyle.None;
         ApplyOverlayRootStyle(overlayRoot);
 
-        VisualElement backdrop = new VisualElement();
-        backdrop.AddToClassList("tone-lab-backdrop");
-        ApplyBackdropStyle(backdrop);
-        overlayRoot.Add(backdrop);
+        blurBackdrop = new VisualElement();
+        blurBackdrop.AddToClassList("tone-lab-backdrop");
+        ApplyBackdropStyle(blurBackdrop);
+        overlayRoot.Add(blurBackdrop);
+
+        backdropBlurController = gameObject.GetComponent<ToneLabBackdropBlurController>();
+        if (backdropBlurController == null)
+            backdropBlurController = gameObject.AddComponent<ToneLabBackdropBlurController>();
+        backdropBlurController.TargetElement = blurBackdrop;
 
         VisualElement window = new VisualElement();
         window.AddToClassList("tone-lab-window");
@@ -352,199 +748,99 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         mainContent.style.overflow = Overflow.Hidden;
         window.Add(mainContent);
 
-        VisualElement boardColumn = new VisualElement();
-        boardColumn.style.flexGrow = 1f;
-        boardColumn.style.minHeight = 0f;
-        boardColumn.style.marginRight = 14f;
-        mainContent.Add(boardColumn);
-
-        VisualElement header = new VisualElement();
-        header.AddToClassList("tone-lab-header");
-        header.style.flexDirection = FlexDirection.Column;
-        header.style.alignItems = Align.FlexStart;
-        header.style.marginBottom = 18f;
-        header.style.flexShrink = 0f;
-        boardColumn.Add(header);
+        sidebarRoot = new VisualElement();
+        sidebarRoot.style.width = 430f;
+        sidebarRoot.style.minWidth = 430f;
+        sidebarRoot.style.maxWidth = 430f;
+        sidebarRoot.style.flexShrink = 0f;
+        sidebarRoot.style.flexGrow = 0f;
+        sidebarRoot.style.minHeight = 0f;
+        sidebarRoot.style.marginRight = 28f;
+        sidebarRoot.style.flexDirection = FlexDirection.Column;
+        mainContent.Add(sidebarRoot);
 
         Label titleLabel = CreateLabel("Tone Lab", "tone-lab-title", toneLabTitleFontDefinition);
         titleLabel.style.color = Color.white;
         titleLabel.style.fontSize = 30f;
         titleLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
-        titleLabel.style.marginBottom = 8f;
-        header.Add(titleLabel);
+        titleLabel.style.marginBottom = 14f;
+        sidebarRoot.Add(titleLabel);
 
-        VisualElement boardToolbar = new VisualElement();
-        boardToolbar.style.flexDirection = FlexDirection.Row;
-        boardToolbar.style.justifyContent = Justify.FlexEnd;
-        boardToolbar.style.alignItems = Align.Center;
-        boardToolbar.style.marginBottom = 10f;
-        boardToolbar.style.flexShrink = 0f;
-        boardColumn.Add(boardToolbar);
+        VisualElement tabRow = new VisualElement();
+        tabRow.style.flexDirection = FlexDirection.Row;
+        tabRow.style.height = 44f;
+        tabRow.style.flexShrink = 0f;
+        tabRow.style.marginBottom = 14f;
+        tabRow.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        sidebarRoot.Add(tabRow);
 
-        VisualElement boardToolbarPresetGroup = new VisualElement();
-        boardToolbarPresetGroup.style.flexDirection = FlexDirection.Row;
-        boardToolbarPresetGroup.style.alignItems = Align.FlexEnd;
-        boardToolbarPresetGroup.style.justifyContent = Justify.FlexEnd;
-        boardToolbarPresetGroup.style.flexGrow = 1f;
-        boardToolbar.Add(boardToolbarPresetGroup);
-
-        VisualElement presetField = new VisualElement();
-        presetField.style.width = 248f;
-        presetField.style.marginRight = 10f;
-        presetField.style.alignItems = Align.FlexEnd;
-        boardToolbarPresetGroup.Add(presetField);
-
-        Label presetLabel = new Label("Preset");
-        presetLabel.style.color = new Color(0.66f, 0.69f, 0.73f, 0.95f);
-        presetLabel.style.fontSize = 12f;
-        presetLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-        presetLabel.style.unityTextAlign = TextAnchor.MiddleRight;
-        presetLabel.style.marginBottom = 4f;
-        presetField.Add(presetLabel);
-
-        presetDropdown = new DropdownField();
-        ApplyDropdownStyle(presetDropdown);
-        presetDropdown.style.width = 248f;
-        presetDropdown.style.minWidth = 248f;
-        presetDropdown.RegisterValueChangedCallback(evt =>
-        {
-            if (suppressCallbacks || runtime == null)
-                return;
-
-            if (presetChoiceToId.TryGetValue(evt.newValue, out string presetId))
-            {
-                runtime.SelectPreset(presetId);
-            }
-
-            RefreshUi(syncControls: true);
-        });
-        presetField.Add(presetDropdown);
+        presetsTabButton = CreateSidebarTabButton("PRESETS", StartupLogoColor(1), () => SetSidePanelMode(ToneLabSidePanelMode.Presets));
+        libraryTabButton = CreateSidebarTabButton("LIBRARY", StartupLogoColor(2), () => SetSidePanelMode(ToneLabSidePanelMode.Library));
+        detailsTabButton = CreateSidebarTabButton("DETAILS", StartupLogoColor(4), () => SetSidePanelMode(ToneLabSidePanelMode.Details));
+        tabRow.Add(presetsTabButton);
+        tabRow.Add(libraryTabButton);
+        tabRow.Add(detailsTabButton);
 
         createPresetButton = CreateButton("+", "tone-lab-button tone-lab-button-secondary", () => OpenPresetModal(ToneLabPresetModalMode.Create));
-        createPresetButton.style.minWidth = 42f;
-        createPresetButton.style.width = 42f;
-        createPresetButton.style.height = 42f;
-        createPresetButton.style.fontSize = 22f;
-        createPresetButton.style.paddingLeft = 0f;
-        createPresetButton.style.paddingRight = 0f;
-        createPresetButton.style.marginRight = 10f;
-        boardToolbarPresetGroup.Add(createPresetButton);
+        StyleRoundIconButton(createPresetButton, 48f, 30f);
 
-        savePresetButton = CreateButton("Save", "tone-lab-button tone-lab-button-secondary", () =>
+        presetSearchRoot = CreateSidebarSearchBlock("search...", out presetSearchField, query =>
         {
-            if (runtime == null || string.IsNullOrWhiteSpace(runtime.CurrentPresetId))
-                return;
-
-            runtime.SaveCurrentToPreset(runtime.CurrentPresetId);
-            RefreshUi(syncControls: true);
-            ShowActionToast($"Saved preset \"{GetPresetName(runtime.CurrentPresetId)}\".");
+            presetSearchQuery = query ?? string.Empty;
+            if (runtime != null)
+                RefreshPresetList(runtime.CurrentPresets, runtime.CurrentPresetId);
         });
-        savePresetButton.style.minWidth = 90f;
-        savePresetButton.style.height = 42f;
-        savePresetButton.style.fontSize = 15f;
-        savePresetButton.style.marginRight = 10f;
-        boardToolbarPresetGroup.Add(savePresetButton);
 
-        saveAsPresetButton = CreateButton("Save As", "tone-lab-button tone-lab-button-secondary", () => OpenPresetModal(ToneLabPresetModalMode.SaveAs));
-        saveAsPresetButton.style.minWidth = 112f;
-        saveAsPresetButton.style.height = 42f;
-        saveAsPresetButton.style.fontSize = 15f;
-        saveAsPresetButton.style.marginRight = 10f;
-        boardToolbarPresetGroup.Add(saveAsPresetButton);
-
-        deletePresetButton = CreateButton("Delete", "tone-lab-button tone-lab-button-danger", () =>
+        librarySearchRoot = CreateSidebarSearchBlock("search...", out librarySearchField, query =>
         {
-            if (runtime == null || string.IsNullOrWhiteSpace(runtime.CurrentPresetId))
-                return;
-
-            string deletedPresetName = GetPresetName(runtime.CurrentPresetId);
-            if (runtime.DeletePreset(runtime.CurrentPresetId))
-            {
-                RefreshUi(syncControls: true);
-                ShowActionToast($"Deleted preset \"{deletedPresetName}\".", true);
-            }
+            librarySearchQuery = query ?? string.Empty;
+            if (runtime != null)
+                RefreshPedalLibrary(runtime.CurrentPedalChain);
         });
-        deletePresetButton.style.minWidth = 102f;
-        deletePresetButton.style.height = 42f;
-        deletePresetButton.style.fontSize = 15f;
-        deletePresetButton.style.marginRight = 10f;
-        boardToolbarPresetGroup.Add(deletePresetButton);
+        libraryFilterRoot = CreateLibraryFilterBar();
 
-        resetAllButton = CreateButton("Reset All", "tone-lab-button tone-lab-button-danger", () => OpenPresetModal(ToneLabPresetModalMode.ResetAll));
-        resetAllButton.style.minWidth = 126f;
-        resetAllButton.style.height = 42f;
-        resetAllButton.style.fontSize = 15f;
-        resetAllButton.style.marginRight = 0f;
-        boardToolbarPresetGroup.Add(resetAllButton);
-
-        pedalBoardView = new ToneLabPedalBoardView();
-        pedalBoardView.AddPedalRequested += () =>
+        songMappingSearchRoot = CreateSidebarSearchBlock("search...", out songMappingSearchField, query =>
         {
-            sidePanelMode = ToneLabSidePanelMode.Library;
-            RefreshUi(syncControls: true);
-        };
-        pedalBoardView.PedalSelected += pedalInstanceId =>
-        {
-            selectedPedalInstanceId = pedalInstanceId;
-            sidePanelMode = ToneLabSidePanelMode.Pedal;
-            RefreshUi(syncControls: true);
-        };
-        pedalBoardView.PedalEnabledChanged += (pedalInstanceId, enabled) =>
-        {
-            runtime?.SetPedalEnabled(pedalInstanceId, enabled);
-            sidePanelMode = ToneLabSidePanelMode.Pedal;
-            RefreshUi(syncControls: true);
-        };
-        pedalBoardView.PedalOrderCommitted += orderedPedalIds =>
-        {
-            runtime?.SetPedalChainOrder(orderedPedalIds);
-            RefreshUi(syncControls: true);
-        };
-        pedalBoardView.Root.style.flexGrow = 1f;
-        pedalBoardView.Root.style.minHeight = 0f;
-        boardColumn.Add(pedalBoardView.Root);
+            songMappingSearchQuery = query ?? string.Empty;
+            RefreshSongMappingView();
+        });
+        songMappingFilterRoot = CreateSongMappingFilterBar();
 
-        VisualElement sidePanel = new VisualElement();
-        sidePanel.style.width = 560f;
-        sidePanel.style.minWidth = 560f;
-        sidePanel.style.maxWidth = 560f;
-        sidePanel.style.flexShrink = 0f;
-        sidePanel.style.flexGrow = 0f;
-        sidePanel.style.height = Length.Percent(100f);
-        sidePanel.style.minHeight = 0f;
-        sidePanel.style.flexDirection = FlexDirection.Column;
-        sidePanel.style.paddingLeft = 18f;
-        sidePanel.style.paddingRight = 4f;
-        sidePanel.style.paddingTop = 2f;
-        sidePanel.style.paddingBottom = 0f;
-        sidePanel.style.borderLeftWidth = 1f;
-        sidePanel.style.borderLeftColor = new Color(1f, 1f, 1f, 0.18f);
-        mainContent.Add(sidePanel);
+        presetListScroll = new ScrollView(ScrollViewMode.Vertical);
+        StyleTransparentScrollView(presetListScroll);
+        presetListHost = presetListScroll.contentContainer;
+        presetListHost.style.flexDirection = FlexDirection.Column;
+        presetListHost.style.paddingBottom = 10f;
 
-        VisualElement rigPanelHost;
-        rigPanelCard = CreateSideSectionCard(sidePanel, "Rig Setup", "Gain staging and audio control for the full rig.", out _, out _, out rigPanelHost);
-        rigPanelCard.style.flexGrow = 0f;
-        rigPanelCard.style.minHeight = 300f;
-        rigPanelCard.style.maxHeight = 360f;
-        rigPanelCard.style.flexShrink = 0f;
-        rigPanelCard.style.marginBottom = 16f;
+        pedalLibraryScroll = new ScrollView(ScrollViewMode.Vertical);
+        StyleTransparentScrollView(pedalLibraryScroll);
+        pedalLibraryHost = pedalLibraryScroll.contentContainer;
+        pedalLibraryHost.style.flexDirection = FlexDirection.Column;
+        pedalLibraryHost.style.paddingBottom = 10f;
 
-        sidePanelTitleLabel = new Label("Selected Pedal");
-        sidePanelTitleLabel.style.color = Color.white;
-        sidePanelTitleLabel.style.fontSize = 24f;
-        sidePanelTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-        sidePanelSubtitleLabel = new Label("Pedal settings and library.");
-        sidePanelSubtitleLabel.style.color = new Color(0.60f, 0.63f, 0.68f, 0.95f);
-        sidePanelSubtitleLabel.style.fontSize = 13f;
-        sidePanelSubtitleLabel.style.whiteSpace = WhiteSpace.Normal;
-        pedalSidePanelCard = CreateSideSectionCard(sidePanel, sidePanelTitleLabel, sidePanelSubtitleLabel, out sidePanelHost);
-        pedalSidePanelCard.style.flexGrow = 1f;
-        pedalSidePanelCard.style.minHeight = 0f;
+        pedalInspectorScroll = new ScrollView(ScrollViewMode.Vertical);
+        StyleTransparentScrollView(pedalInspectorScroll);
+        pedalInspectorHost = pedalInspectorScroll.contentContainer;
+        pedalInspectorHost.style.flexDirection = FlexDirection.Column;
+        pedalInspectorHost.style.paddingBottom = 10f;
+
+        sidePanelHost = new VisualElement();
+        sidePanelHost.style.flexGrow = 1f;
+        sidePanelHost.style.minHeight = 0f;
+        sidePanelHost.style.overflow = Overflow.Hidden;
+        sidebarRoot.Add(sidePanelHost);
+
+        VisualElement rightColumn = new VisualElement();
+        rightColumn.style.flexGrow = 1f;
+        rightColumn.style.minWidth = 0f;
+        rightColumn.style.minHeight = 0f;
+        rightColumn.style.flexDirection = FlexDirection.Column;
+        mainContent.Add(rightColumn);
 
         inputDropdown = new DropdownField();
         ApplyDropdownStyle(inputDropdown);
-        inputDropdown.style.minWidth = 286f;
-        inputDropdown.style.width = 286f;
+        inputDropdown.style.minWidth = 230f;
+        inputDropdown.style.width = 230f;
         inputDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -559,8 +855,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         outputDropdown = new DropdownField();
         ApplyDropdownStyle(outputDropdown);
-        outputDropdown.style.minWidth = 286f;
-        outputDropdown.style.width = 286f;
+        outputDropdown.style.minWidth = 230f;
+        outputDropdown.style.width = 230f;
         outputDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -575,8 +871,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         latencyDropdown = new DropdownField();
         ApplyDropdownStyle(latencyDropdown);
-        latencyDropdown.style.minWidth = 192f;
-        latencyDropdown.style.width = 192f;
+        latencyDropdown.style.minWidth = 172f;
+        latencyDropdown.style.width = 172f;
         latencyDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks || runtime == null)
@@ -591,17 +887,13 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         refreshDevicesButton = CreateButton("Refresh", "tone-lab-button tone-lab-button-secondary", () =>
         {
+            runtime?.RefreshExternalPedalLibrary(force: true);
             RefreshUi(syncControls: true, refreshDevices: true);
         });
-        refreshDevicesButton.style.minWidth = 120f;
-        refreshDevicesButton.style.height = 38f;
-        refreshDevicesButton.style.fontSize = 14f;
+        StyleCompactActionButton(refreshDevicesButton, 98f);
 
         advancedAudioButton = CreateButton("Advanced Audio", "tone-lab-button tone-lab-button-secondary", OpenAdvancedAudioModal);
-        advancedAudioButton.style.minWidth = 164f;
-        advancedAudioButton.style.height = 38f;
-        advancedAudioButton.style.fontSize = 14f;
-        advancedAudioButton.style.marginRight = 0f;
+        StyleCompactActionButton(advancedAudioButton, 158f);
         advancedAudioButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         advancedAudioButton.style.color = new Color(0.98f, 0.62f, 0.42f, 1f);
         advancedAudioButton.style.borderTopColor = new Color(0.98f, 0.62f, 0.42f, 1f);
@@ -614,114 +906,77 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             runtime?.TryStartMonitoring();
             RefreshUi(syncControls: false);
         });
-        startButton.style.minWidth = 140f;
-        startButton.style.height = 38f;
-        startButton.style.fontSize = 14f;
+        StyleCompactActionButton(startButton, 116f);
 
         stopButton = CreateButton("Stop Audio", "tone-lab-button tone-lab-button-secondary", () =>
         {
             runtime?.StopMonitoring();
             RefreshUi(syncControls: false);
         });
-        stopButton.style.minWidth = 128f;
-        stopButton.style.height = 38f;
-        stopButton.style.fontSize = 14f;
+        StyleCompactActionButton(stopButton, 108f);
 
-        VisualElement routingRow = new VisualElement();
-        routingRow.style.flexDirection = FlexDirection.Row;
-        routingRow.style.alignItems = Align.FlexEnd;
-        routingRow.style.justifyContent = Justify.FlexStart;
-        routingRow.style.flexWrap = Wrap.NoWrap;
-        routingRow.style.marginBottom = 6f;
-        routingRow.style.width = Length.Auto();
-        routingRow.Add(CreateToolbarField("Input", inputDropdown, 286f));
-        routingRow.Add(CreateToolbarField("Output", outputDropdown, 286f));
-        routingRow.Add(CreateToolbarField("Latency", latencyDropdown, 192f));
-        routingRow.Add(CreateToolbarField("Beta", advancedAudioButton, 176f));
-        header.Add(routingRow);
-        
-        rigSettingsScroll = new ScrollView(ScrollViewMode.Vertical);
-        rigSettingsScroll.style.flexGrow = 1f;
-        rigSettingsScroll.style.minHeight = 0f;
-        rigSettingsScroll.verticalScrollerVisibility = ScrollerVisibility.Hidden;
-        rigSettingsScroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
-        rigSettingsScroll.style.marginRight = 0f;
-        rigSettingsScroll.style.paddingRight = 0f;
-        VisualElement rigSettingsHost = rigSettingsScroll.contentContainer;
-        rigSettingsHost.style.flexDirection = FlexDirection.Column;
-        rigSettingsHost.style.paddingRight = 4f;
+        VisualElement routingBar = CreateThinDividerSection();
+        routingBar.style.height = 66f;
+        routingBar.style.flexShrink = 0f;
+        routingBar.style.marginBottom = 0f;
+        routingBar.style.borderTopWidth = 0f;
+        routingBar.style.borderBottomWidth = 0f;
+        routingBar.style.flexDirection = FlexDirection.Row;
+        routingBar.style.alignItems = Align.Center;
+        routingBar.style.justifyContent = Justify.FlexStart;
+        routingBar.Add(CreateModernToolbarField("Input", inputDropdown, 230f));
+        routingBar.Add(CreateModernToolbarField("Output", outputDropdown, 230f));
+        routingBar.Add(CreateModernToolbarField("Latency", latencyDropdown, 172f));
+        routingBar.Add(CreateModernToolbarField("Audio", advancedAudioButton, 158f));
 
-        VisualElement transportRow = new VisualElement();
-        transportRow.style.flexDirection = FlexDirection.Row;
-        transportRow.style.alignItems = Align.Center;
-        transportRow.style.flexWrap = Wrap.Wrap;
-        transportRow.style.marginTop = 8f;
-        transportRow.style.marginBottom = 14f;
-        rigSettingsHost.Add(transportRow);
-        transportRow.Add(refreshDevicesButton);
-        transportRow.Add(startButton);
-        transportRow.Add(stopButton);
+        VisualElement routingSpacer = new VisualElement();
+        routingSpacer.style.flexGrow = 1f;
+        routingSpacer.style.minWidth = 10f;
+        routingBar.Add(routingSpacer);
 
-        VisualElement statusCard = new VisualElement();
-        statusCard.style.flexDirection = FlexDirection.Column;
-        statusCard.style.marginTop = 16f;
-        statusCard.style.marginBottom = 16f;
-        statusCard.style.paddingLeft = 14f;
-        statusCard.style.paddingRight = 14f;
-        statusCard.style.paddingTop = 12f;
-        statusCard.style.paddingBottom = 12f;
-        statusCard.style.backgroundColor = new Color(0.07f, 0.08f, 0.10f, 0.72f);
-        statusCard.style.borderTopWidth = 1f;
-        statusCard.style.borderRightWidth = 1f;
-        statusCard.style.borderBottomWidth = 1f;
-        statusCard.style.borderLeftWidth = 1f;
-        statusCard.style.borderTopColor = new Color(1f, 1f, 1f, 0.12f);
-        statusCard.style.borderRightColor = new Color(1f, 1f, 1f, 0.12f);
-        statusCard.style.borderBottomColor = new Color(1f, 1f, 1f, 0.12f);
-        statusCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.12f);
-        statusCard.style.borderTopLeftRadius = 10f;
-        statusCard.style.borderTopRightRadius = 10f;
-        statusCard.style.borderBottomLeftRadius = 10f;
-        statusCard.style.borderBottomRightRadius = 10f;
-        backendLabel = new Label(string.Empty);
-        backendLabel.style.color = new Color(0.82f, 0.86f, 0.91f, 0.96f);
-        backendLabel.style.fontSize = 12f;
-        backendLabel.style.marginBottom = 6f;
-        backendLabel.style.whiteSpace = WhiteSpace.Normal;
-        statusCard.Add(backendLabel);
+        VisualElement routingActions = new VisualElement();
+        routingActions.style.flexDirection = FlexDirection.Row;
+        routingActions.style.alignItems = Align.Center;
+        routingActions.style.justifyContent = Justify.FlexEnd;
+        routingActions.style.flexShrink = 0f;
+        routingBar.Add(routingActions);
+        routingActions.Add(refreshDevicesButton);
+        routingActions.Add(startButton);
+        routingActions.Add(stopButton);
+        rightColumn.Add(routingBar);
 
-        routeLabel = new Label(string.Empty);
-        routeLabel.style.color = new Color(0.90f, 0.94f, 0.98f, 0.98f);
-        routeLabel.style.fontSize = 12f;
-        routeLabel.style.marginBottom = 6f;
-        routeLabel.style.whiteSpace = WhiteSpace.Normal;
-        statusCard.Add(routeLabel);
+        VisualElement rigSetupBar = CreateThinDividerSection();
+        rigSetupBar.style.height = 84f;
+        rigSetupBar.style.flexShrink = 0f;
+        rigSetupBar.style.marginBottom = 16f;
+        rigSetupBar.style.borderTopWidth = 0f;
+        rigSetupBar.style.borderBottomWidth = 2f;
+        rigSetupBar.style.borderBottomColor = new Color(1f, 1f, 1f, 0.32f);
+        rigSetupBar.style.flexDirection = FlexDirection.Row;
+        rigSetupBar.style.alignItems = Align.Center;
+        rigSetupBar.style.flexWrap = Wrap.NoWrap;
+        rightColumn.Add(rigSetupBar);
 
-        statusLabel = new Label(string.Empty);
-        statusLabel.style.color = new Color(0.92f, 0.84f, 0.63f, 1f);
-        statusLabel.style.fontSize = 12f;
-        statusLabel.style.whiteSpace = WhiteSpace.Normal;
-        statusCard.Add(statusLabel);
-
-        rigSettingsHost.Add(CreateCompactSliderField(
+        rigSetupBar.Add(CreateCompactSliderField(
             "Input Gain",
             -36f,
             36f,
             value => $"{value:F1} dB",
             settings => settings.input_gain_db,
             (settings, value) => settings.input_gain_db = value,
-            410f));
+            300f));
 
-        rigSettingsHost.Add(CreateCompactSliderField(
+        rigSetupBar.Add(CreateCompactSliderField(
             "Output Gain",
             -36f,
             36f,
             value => $"{value:F1} dB",
             settings => settings.output_gain_db,
             (settings, value) => settings.output_gain_db = value,
-            410f));
-        rigSettingsHost.Add(CreateSharedVolumeSliderField(
-            "Guitar Volume",
+            300f));
+
+        rigSetupBar.Add(CreateSharedVolumeSliderField(
+            "Volume",
             0f,
             100f,
             value => $"{value:F0}%",
@@ -735,37 +990,110 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             },
             out guitarVolumeSlider,
             out guitarVolumeValueLabel,
-            410f));
-        rigSettingsHost.Add(statusCard);
-        rigPanelHost.Add(rigSettingsScroll);
+            300f));
 
-        pedalInspectorScroll = new ScrollView(ScrollViewMode.Vertical);
-        pedalInspectorScroll.style.flexGrow = 1f;
-        pedalInspectorScroll.style.minHeight = 0f;
-        pedalInspectorScroll.verticalScrollerVisibility = ScrollerVisibility.Hidden;
-        pedalInspectorScroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
-        pedalInspectorHost = pedalInspectorScroll.contentContainer;
+        VisualElement boardSection = new VisualElement();
+        boardSection.style.flexGrow = 1f;
+        boardSection.style.minHeight = 0f;
+        boardSection.style.flexDirection = FlexDirection.Column;
+        rightColumn.Add(boardSection);
 
-        pedalLibraryScroll = new ScrollView(ScrollViewMode.Vertical);
-        pedalLibraryScroll.style.flexGrow = 1f;
-        pedalLibraryScroll.style.minHeight = 0f;
-        pedalLibraryScroll.verticalScrollerVisibility = ScrollerVisibility.Hidden;
-        pedalLibraryScroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
-        pedalLibraryHost = pedalLibraryScroll.contentContainer;
-        pedalLibraryHost.style.flexDirection = FlexDirection.Column;
-        pedalLibraryHost.style.paddingBottom = 8f;
+        pedalBoardView = new ToneLabPedalBoardView();
+        pedalBoardView.AddPedalRequested += () => SetSidePanelMode(ToneLabSidePanelMode.Library);
+        pedalBoardView.PedalSelected += pedalInstanceId =>
+        {
+            selectedPedalInstanceId = pedalInstanceId;
+            sidePanelMode = ToneLabSidePanelMode.Details;
+            RefreshUi(syncControls: true);
+        };
+        pedalBoardView.PedalEnabledChanged += (pedalInstanceId, enabled) =>
+        {
+            runtime?.SetPedalEnabled(pedalInstanceId, enabled);
+            selectedPedalInstanceId = pedalInstanceId;
+            sidePanelMode = ToneLabSidePanelMode.Details;
+            RefreshUi(syncControls: true);
+        };
+        pedalBoardView.PedalRemoveRequested += pedalInstanceId =>
+        {
+            runtime?.RemovePedalFromChain(pedalInstanceId);
+            RefreshUi(syncControls: true);
+        };
+        pedalBoardView.PedalOrderCommitted += orderedPedalIds =>
+        {
+            runtime?.SetPedalChainOrder(orderedPedalIds);
+            RefreshUi(syncControls: true);
+        };
+        pedalBoardRoot = pedalBoardView.Root;
+        pedalBoardRoot.style.flexGrow = 1f;
+        pedalBoardRoot.style.minHeight = 0f;
+        boardSection.Add(pedalBoardRoot);
 
-        VisualElement footerRow = new VisualElement();
-        footerRow.style.flexDirection = FlexDirection.Row;
-        footerRow.style.alignItems = Align.Center;
-        footerRow.style.justifyContent = Justify.FlexEnd;
-        footerRow.style.marginTop = 10f;
-        footerRow.style.flexShrink = 0f;
-        window.Add(footerRow);
+        songMappingRoot = CreateSongMappingView();
+        songMappingRoot.style.display = DisplayStyle.None;
+        boardSection.Add(songMappingRoot);
 
-        backButton = CreateButton("Back", "tone-lab-button tone-lab-button-secondary", () => owner?.CloseToneLabFromUi());
-        backButton.style.marginRight = 0f;
-        footerRow.Add(backButton);
+        VisualElement boardFooter = new VisualElement();
+        boardFooter.style.height = 72f;
+        boardFooter.style.flexShrink = 0f;
+        boardFooter.style.flexDirection = FlexDirection.Row;
+        boardFooter.style.alignItems = Align.Center;
+        boardFooter.style.justifyContent = Justify.SpaceBetween;
+        boardFooter.style.borderTopWidth = 1f;
+        boardFooter.style.borderTopColor = new Color(1f, 1f, 1f, 0.16f);
+        boardFooter.style.paddingTop = 10f;
+        boardSection.Add(boardFooter);
+
+        VisualElement footerLeftActions = new VisualElement();
+        footerLeftActions.style.flexDirection = FlexDirection.Row;
+        footerLeftActions.style.alignItems = Align.Center;
+        footerLeftActions.style.justifyContent = Justify.FlexStart;
+        boardFooter.Add(footerLeftActions);
+
+        backButton = CreateButton("Back", "tone-lab-button tone-lab-button-secondary", RequestCloseFromUi);
+        StyleFooterActionButton(backButton, 118f);
+        footerLeftActions.Add(backButton);
+
+        effectsFolderButton = CreateButton("Effects Folder", "tone-lab-button tone-lab-button-secondary", OpenEffectsFolder);
+        StyleFooterActionButton(effectsFolderButton, 178f);
+        footerLeftActions.Add(effectsFolderButton);
+
+        songMappingButton = CreateButton("Song Mapping", "tone-lab-button tone-lab-button-secondary", ToggleSongMappingMode);
+        StyleFooterActionButton(songMappingButton, 174f);
+        songMappingButton.style.marginRight = 0f;
+        songMappingButton.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            songMappingButton.style.backgroundColor = new Color(1f, 0.58f, 0.08f, 0.30f);
+            songMappingButton.style.color = Color.white;
+        });
+        songMappingButton.RegisterCallback<MouseLeaveEvent>(_ => ApplySongMappingButtonState(boardMode == ToneLabBoardMode.SongMapping));
+        footerLeftActions.Add(songMappingButton);
+
+        VisualElement saveActions = new VisualElement();
+        saveActions.style.flexDirection = FlexDirection.Row;
+        saveActions.style.alignItems = Align.Center;
+        saveActions.style.justifyContent = Justify.FlexEnd;
+        boardFooter.Add(saveActions);
+
+        resetAllButton = CreateButton("Reset All", "tone-lab-button tone-lab-button-danger", () => OpenPresetModal(ToneLabPresetModalMode.ResetAll));
+        StyleFooterActionButton(resetAllButton, 138f);
+        saveActions.Add(resetAllButton);
+
+        savePresetButton = CreateButton("Save", "tone-lab-button tone-lab-button-primary", () =>
+        {
+            if (runtime == null || string.IsNullOrWhiteSpace(runtime.CurrentPresetId))
+                return;
+
+            runtime.SaveCurrentToPreset(runtime.CurrentPresetId);
+            RefreshUi(syncControls: true);
+            ShowActionToast($"Saved preset \"{GetPresetName(runtime.CurrentPresetId)}\".");
+        });
+        StyleFooterActionButton(savePresetButton, 116f);
+        saveActions.Add(savePresetButton);
+
+        saveAsPresetButton = CreateButton("Save As", "tone-lab-button tone-lab-button-secondary", () => OpenPresetModal(ToneLabPresetModalMode.SaveAs));
+        StyleFooterActionButton(saveAsPresetButton, 134f);
+        saveAsPresetButton.style.marginRight = 0f;
+        saveActions.Add(saveAsPresetButton);
 
         presetModalScrim = new VisualElement();
         presetModalScrim.style.position = Position.Absolute;
@@ -1046,6 +1374,40 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedStatusCard.style.borderBottomRightRadius = 10f;
         advancedAudioHost.Add(advancedStatusCard);
 
+        Label runtimeLogsLabel = new Label("Runtime Logs");
+        runtimeLogsLabel.style.color = new Color(0.95f, 0.96f, 0.98f, 0.96f);
+        runtimeLogsLabel.style.fontSize = 13f;
+        runtimeLogsLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        runtimeLogsLabel.style.marginBottom = 8f;
+        advancedStatusCard.Add(runtimeLogsLabel);
+
+        backendLabel = new Label(string.Empty);
+        backendLabel.style.color = new Color(0.82f, 0.86f, 0.91f, 0.96f);
+        backendLabel.style.fontSize = 11f;
+        backendLabel.style.marginBottom = 4f;
+        backendLabel.style.whiteSpace = WhiteSpace.Normal;
+        advancedStatusCard.Add(backendLabel);
+
+        routeLabel = new Label(string.Empty);
+        routeLabel.style.color = new Color(0.90f, 0.94f, 0.98f, 0.98f);
+        routeLabel.style.fontSize = 11f;
+        routeLabel.style.marginBottom = 4f;
+        routeLabel.style.whiteSpace = WhiteSpace.Normal;
+        advancedStatusCard.Add(routeLabel);
+
+        statusLabel = new Label(string.Empty);
+        statusLabel.style.color = new Color(0.92f, 0.84f, 0.63f, 1f);
+        statusLabel.style.fontSize = 12f;
+        statusLabel.style.whiteSpace = WhiteSpace.Normal;
+        advancedStatusCard.Add(statusLabel);
+
+        VisualElement runtimeLogsDivider = new VisualElement();
+        runtimeLogsDivider.style.height = 1f;
+        runtimeLogsDivider.style.marginTop = 12f;
+        runtimeLogsDivider.style.marginBottom = 12f;
+        runtimeLogsDivider.style.backgroundColor = new Color(1f, 1f, 1f, 0.12f);
+        advancedStatusCard.Add(runtimeLogsDivider);
+
         advancedAudioStatusLabel = new Label(string.Empty);
         advancedAudioStatusLabel.style.color = new Color(0.90f, 0.94f, 0.98f, 0.98f);
         advancedAudioStatusLabel.style.fontSize = 12f;
@@ -1079,6 +1441,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedAudioApplyButton.style.marginRight = 0f;
         advancedAudioActions.Add(advancedAudioApplyButton);
 
+        BuildUnsavedChangesModal();
+
         actionToast = new VisualElement();
         actionToast.style.position = Position.Absolute;
         actionToast.style.right = 26f;
@@ -1109,9 +1473,168 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         actionToastLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
         actionToast.Add(actionToastLabel);
 
+        openingLoadingOverlay = ReusableLoadingOverlay.CreateStringTheoryLibraryLoadingOverlay(overlayRoot);
+        BuildOpeningLoadingContent(openingLoadingOverlay.ContentHost, toneLabTitleFontDefinition);
+
         root.Add(overlayRoot);
         root.pickingMode = PickingMode.Ignore;
         overlayRoot.pickingMode = PickingMode.Position;
+    }
+
+    private void BuildOpeningLoadingContent(VisualElement contentHost, FontDefinition titleFont)
+    {
+        if (contentHost == null)
+            return;
+
+        contentHost.style.flexDirection = FlexDirection.Column;
+        contentHost.style.alignItems = Align.Center;
+        contentHost.style.justifyContent = Justify.Center;
+
+        Label titleLabel = new Label("Tone Lab");
+        titleLabel.style.unityFontDefinition = titleFont;
+        titleLabel.style.color = Color.white;
+        titleLabel.style.fontSize = 54f;
+        titleLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+        titleLabel.style.marginBottom = 14f;
+        contentHost.Add(titleLabel);
+
+        Label subtitleLabel = new Label("Loading effects");
+        subtitleLabel.style.color = new Color(0.84f, 0.88f, 0.94f, 0.96f);
+        subtitleLabel.style.fontSize = 18f;
+        subtitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        subtitleLabel.style.letterSpacing = 0f;
+        contentHost.Add(subtitleLabel);
+    }
+
+    private void BeginOpeningRefresh()
+    {
+        boardMode = ToneLabBoardMode.Pedalboard;
+        sidePanelMode = ToneLabSidePanelMode.Presets;
+        ClearPendingToneMappingAssignment();
+        CancelOpeningRefresh();
+        openingRefreshInProgress = true;
+        SetOpeningLoadingVisible(true);
+        openRefreshRoutine = StartCoroutine(DeferredOpeningRefresh());
+    }
+
+    private IEnumerator DeferredOpeningRefresh()
+    {
+        yield return null;
+        yield return null;
+
+        runtime?.RefreshExternalPedalLibrary();
+        RefreshUi(syncControls: true, refreshDevices: false);
+        openingRefreshInProgress = false;
+        SetOpeningLoadingVisible(false);
+        openRefreshRoutine = null;
+    }
+
+    private void CancelOpeningRefresh()
+    {
+        if (openRefreshRoutine != null)
+        {
+            StopCoroutine(openRefreshRoutine);
+            openRefreshRoutine = null;
+        }
+
+        openingRefreshInProgress = false;
+        SetOpeningLoadingVisible(false);
+    }
+
+    private void SetOpeningLoadingVisible(bool visible)
+    {
+        openingLoadingOverlay?.SetVisible(visible, Time.unscaledTime);
+        if (visible)
+            openingLoadingOverlay?.RootElement.BringToFront();
+    }
+
+    private void UpdateOpeningLoadingOverlay()
+    {
+        if (openingRefreshInProgress)
+            SetOpeningLoadingVisible(true);
+    }
+
+    private void BuildUnsavedChangesModal()
+    {
+        if (overlayRoot == null)
+            return;
+
+        unsavedChangesModalScrim = new VisualElement();
+        unsavedChangesModalScrim.style.position = Position.Absolute;
+        unsavedChangesModalScrim.style.left = 0f;
+        unsavedChangesModalScrim.style.right = 0f;
+        unsavedChangesModalScrim.style.top = 0f;
+        unsavedChangesModalScrim.style.bottom = 0f;
+        unsavedChangesModalScrim.style.display = DisplayStyle.None;
+        unsavedChangesModalScrim.style.alignItems = Align.Center;
+        unsavedChangesModalScrim.style.justifyContent = Justify.Center;
+        unsavedChangesModalScrim.style.backgroundColor = new Color(0.01f, 0.02f, 0.03f, 0.80f);
+        overlayRoot.Add(unsavedChangesModalScrim);
+
+        VisualElement modalCard = new VisualElement();
+        modalCard.style.width = 500f;
+        modalCard.style.paddingLeft = 24f;
+        modalCard.style.paddingRight = 24f;
+        modalCard.style.paddingTop = 22f;
+        modalCard.style.paddingBottom = 20f;
+        modalCard.style.backgroundColor = new Color(0.06f, 0.07f, 0.09f, 1f);
+        modalCard.style.borderTopWidth = 1f;
+        modalCard.style.borderRightWidth = 1f;
+        modalCard.style.borderBottomWidth = 1f;
+        modalCard.style.borderLeftWidth = 1f;
+        modalCard.style.borderTopColor = new Color(0.32f, 0.34f, 0.38f, 1f);
+        modalCard.style.borderRightColor = new Color(0.18f, 0.20f, 0.23f, 1f);
+        modalCard.style.borderBottomColor = new Color(0.12f, 0.13f, 0.15f, 1f);
+        modalCard.style.borderLeftColor = new Color(0.18f, 0.20f, 0.23f, 1f);
+        modalCard.style.borderTopLeftRadius = 16f;
+        modalCard.style.borderTopRightRadius = 16f;
+        modalCard.style.borderBottomLeftRadius = 16f;
+        modalCard.style.borderBottomRightRadius = 16f;
+        modalCard.RegisterCallback<MouseDownEvent>(evt => evt.StopPropagation());
+        unsavedChangesModalScrim.Add(modalCard);
+
+        Label titleLabel = new Label("Unsaved Changes");
+        titleLabel.style.color = Color.white;
+        titleLabel.style.fontSize = 25f;
+        titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        titleLabel.style.marginBottom = 8f;
+        modalCard.Add(titleLabel);
+
+        unsavedChangesPresetLabel = new Label("you have unsaved changes in preset \"Preset\"");
+        unsavedChangesPresetLabel.style.color = new Color(0.90f, 0.92f, 0.96f, 0.96f);
+        unsavedChangesPresetLabel.style.fontSize = 17f;
+        unsavedChangesPresetLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        unsavedChangesPresetLabel.style.whiteSpace = WhiteSpace.Normal;
+        unsavedChangesPresetLabel.style.marginBottom = 10f;
+        modalCard.Add(unsavedChangesPresetLabel);
+
+        Label bodyLabel = new Label("Save the current pedalboard before continuing, or discard the changes and keep the saved preset as-is.");
+        bodyLabel.style.color = new Color(0.66f, 0.69f, 0.73f, 0.96f);
+        bodyLabel.style.fontSize = 13f;
+        bodyLabel.style.whiteSpace = WhiteSpace.Normal;
+        bodyLabel.style.marginBottom = 18f;
+        modalCard.Add(bodyLabel);
+
+        VisualElement separator = new VisualElement();
+        separator.style.height = 1f;
+        separator.style.backgroundColor = new Color(1f, 1f, 1f, 0.14f);
+        separator.style.marginBottom = 18f;
+        modalCard.Add(separator);
+
+        VisualElement modalActions = new VisualElement();
+        modalActions.style.flexDirection = FlexDirection.Row;
+        modalActions.style.justifyContent = Justify.FlexEnd;
+        modalActions.style.alignItems = Align.Center;
+        modalCard.Add(modalActions);
+
+        unsavedChangesDiscardButton = CreateButton("Discard", "tone-lab-button tone-lab-button-danger", DiscardUnsavedChangesAndContinue);
+        StyleUnsavedModalButton(unsavedChangesDiscardButton, 126f, isDanger: true);
+        modalActions.Add(unsavedChangesDiscardButton);
+
+        unsavedChangesSaveButton = CreateButton("Save", "tone-lab-button tone-lab-button-primary", SaveUnsavedChangesAndContinue);
+        StyleUnsavedModalButton(unsavedChangesSaveButton, 118f, isDanger: false);
+        unsavedChangesSaveButton.style.marginRight = 0f;
+        modalActions.Add(unsavedChangesSaveButton);
     }
 
     private void OpenPresetModal(ToneLabPresetModalMode mode)
@@ -1152,6 +1675,148 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         presetModalScrim.style.display = DisplayStyle.None;
+    }
+
+    private void OpenUnsavedChangesModal(ToneLabUnsavedAction action, string presetId)
+    {
+        if (unsavedChangesModalScrim == null)
+            return;
+
+        pendingUnsavedAction = action;
+        pendingUnsavedPresetId = presetId ?? string.Empty;
+        string currentPresetName = GetPresetName(runtime?.CurrentPresetId);
+        if (unsavedChangesPresetLabel != null)
+            unsavedChangesPresetLabel.text = $"you have unsaved changes in preset \"{currentPresetName}\"";
+
+        unsavedChangesModalScrim.style.display = DisplayStyle.Flex;
+        unsavedChangesModalScrim.BringToFront();
+    }
+
+    private void CloseUnsavedChangesModal()
+    {
+        if (unsavedChangesModalScrim != null)
+            unsavedChangesModalScrim.style.display = DisplayStyle.None;
+
+        pendingUnsavedAction = ToneLabUnsavedAction.None;
+        pendingUnsavedPresetId = string.Empty;
+    }
+
+    private void SaveUnsavedChangesAndContinue()
+    {
+        if (runtime != null && !string.IsNullOrWhiteSpace(runtime.CurrentPresetId))
+        {
+            string savedPresetId = runtime.CurrentPresetId;
+            runtime.SaveCurrentToPreset(savedPresetId);
+            ShowActionToast($"Saved preset \"{GetPresetName(savedPresetId)}\".");
+        }
+
+        ContinuePendingUnsavedAction();
+    }
+
+    private void DiscardUnsavedChangesAndContinue()
+    {
+        ContinuePendingUnsavedAction();
+    }
+
+    private void ContinuePendingUnsavedAction()
+    {
+        ToneLabUnsavedAction action = pendingUnsavedAction;
+        string presetId = pendingUnsavedPresetId;
+        CloseUnsavedChangesModal();
+
+        switch (action)
+        {
+            case ToneLabUnsavedAction.SelectPreset:
+                SelectPresetNow(presetId);
+                break;
+            case ToneLabUnsavedAction.CloseToneLab:
+                CloseToneLabNow();
+                break;
+        }
+    }
+
+    private void RequestSelectPreset(string presetId)
+    {
+        if (runtime == null || string.IsNullOrWhiteSpace(presetId))
+            return;
+
+        if (string.Equals(presetId, runtime.CurrentPresetId, StringComparison.Ordinal))
+        {
+            sidePanelMode = ToneLabSidePanelMode.Presets;
+            RefreshUi(syncControls: true);
+            return;
+        }
+
+        if (HasUnsavedPresetChanges())
+        {
+            OpenUnsavedChangesModal(ToneLabUnsavedAction.SelectPreset, presetId);
+            return;
+        }
+
+        SelectPresetNow(presetId);
+    }
+
+    private void SelectPresetNow(string presetId)
+    {
+        if (runtime == null || string.IsNullOrWhiteSpace(presetId))
+            return;
+
+        runtime.SelectPreset(presetId);
+        selectedPedalInstanceId = string.Empty;
+        sidePanelMode = ToneLabSidePanelMode.Presets;
+        RefreshUi(syncControls: true);
+    }
+
+    private void CloseToneLabNow()
+    {
+        if (owner != null)
+        {
+            owner.CloseToneLabFromUi();
+            return;
+        }
+
+        runtime?.RestoreSelectedPresetWorkingRig();
+        SetVisible(false);
+    }
+
+    private void OpenEffectsFolder()
+    {
+        try
+        {
+            ExternalContentBootstrap.EnsureRuntimeContentReady();
+            Directory.CreateDirectory(ExternalContentPaths.PersistentToneLabLv2Directory);
+            Directory.CreateDirectory(ExternalContentPaths.PersistentToneLabNamDirectory);
+
+            string folderPath = ExternalContentPaths.PersistentToneLabEffectsDirectory;
+            Directory.CreateDirectory(folderPath);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = folderPath,
+                UseShellExecute = true
+            });
+            ShowActionToast("Opened effects folder.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[UnityToneLabOverlay] Failed to open effects folder: {ex.Message}");
+            try
+            {
+                Application.OpenURL(new Uri(ExternalContentPaths.PersistentToneLabEffectsDirectory).AbsoluteUri);
+                ShowActionToast("Opened effects folder.");
+            }
+            catch (Exception fallbackEx)
+            {
+                Debug.LogWarning($"[UnityToneLabOverlay] Failed to open effects folder URL: {fallbackEx.Message}");
+                ShowActionToast("Could not open effects folder.", true);
+            }
+        }
+    }
+
+    private void RefreshExternalEffectsFromUi()
+    {
+        runtime?.RefreshExternalPedalLibrary(force: true);
+        RefreshUi(syncControls: true);
+        ShowActionToast("Effects library refreshed.");
     }
 
     private void CommitCreatePreset()
@@ -1373,6 +2038,842 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         selectedPedalInstanceId = pedalChain[0]?.pedal_instance_id ?? string.Empty;
     }
 
+    private VisualElement CreateSongMappingView()
+    {
+        VisualElement root = new VisualElement();
+        root.style.flexGrow = 1f;
+        root.style.minHeight = 0f;
+        root.style.flexDirection = FlexDirection.Column;
+        root.style.borderTopWidth = 0f;
+        root.style.borderBottomWidth = 1f;
+        root.style.borderBottomColor = new Color(1f, 1f, 1f, 0.16f);
+
+        VisualElement header = new VisualElement();
+        header.style.flexDirection = FlexDirection.Row;
+        header.style.alignItems = Align.Center;
+        header.style.justifyContent = Justify.SpaceBetween;
+        header.style.flexShrink = 0f;
+        header.style.height = 66f;
+        header.style.borderBottomWidth = 1f;
+        header.style.borderBottomColor = new Color(1f, 1f, 1f, 0.18f);
+        root.Add(header);
+
+        VisualElement titleColumn = new VisualElement();
+        titleColumn.style.width = 250f;
+        titleColumn.style.minWidth = 250f;
+        header.Add(titleColumn);
+
+        songMappingHeaderLabel = new Label("Tone Mapping");
+        songMappingHeaderLabel.style.color = Color.white;
+        songMappingHeaderLabel.style.fontSize = 24f;
+        songMappingHeaderLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        songMappingHeaderLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        titleColumn.Add(songMappingHeaderLabel);
+
+        songMappingSubheaderLabel = new Label("Select a song");
+        songMappingSubheaderLabel.style.flexGrow = 1f;
+        songMappingSubheaderLabel.style.minWidth = 0f;
+        songMappingSubheaderLabel.style.color = Color.white;
+        songMappingSubheaderLabel.style.fontSize = 30f;
+        songMappingSubheaderLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        songMappingSubheaderLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        songMappingSubheaderLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        songMappingSubheaderLabel.style.overflow = Overflow.Hidden;
+        songMappingSubheaderLabel.style.textOverflow = TextOverflow.Ellipsis;
+        header.Add(songMappingSubheaderLabel);
+
+        VisualElement headerSpacer = new VisualElement();
+        headerSpacer.style.width = 250f;
+        headerSpacer.style.minWidth = 250f;
+        header.Add(headerSpacer);
+
+        VisualElement body = new VisualElement();
+        body.style.flexGrow = 1f;
+        body.style.minHeight = 0f;
+        body.style.flexDirection = FlexDirection.Row;
+        root.Add(body);
+
+        VisualElement leftColumn = new VisualElement();
+        leftColumn.style.width = 360f;
+        leftColumn.style.minWidth = 360f;
+        leftColumn.style.maxWidth = 360f;
+        leftColumn.style.flexShrink = 0f;
+        leftColumn.style.paddingTop = 14f;
+        leftColumn.style.paddingRight = 20f;
+        leftColumn.style.borderRightWidth = 1f;
+        leftColumn.style.borderRightColor = new Color(1f, 1f, 1f, 0.16f);
+        body.Add(leftColumn);
+
+        songMappingSelectedArtwork = new VisualElement();
+        songMappingSelectedArtwork.style.width = Length.Percent(100f);
+        songMappingSelectedArtwork.style.height = 220f;
+        songMappingSelectedArtwork.style.minHeight = 220f;
+        songMappingSelectedArtwork.style.marginBottom = 14f;
+        songMappingSelectedArtwork.style.backgroundColor = new Color(1f, 1f, 1f, 0.06f);
+        songMappingSelectedArtwork.style.unityBackgroundScaleMode = ScaleMode.ScaleAndCrop;
+        songMappingSelectedArtwork.style.borderTopLeftRadius = 8f;
+        songMappingSelectedArtwork.style.borderTopRightRadius = 8f;
+        songMappingSelectedArtwork.style.borderBottomLeftRadius = 8f;
+        songMappingSelectedArtwork.style.borderBottomRightRadius = 8f;
+        songMappingSelectedArtwork.style.display = DisplayStyle.None;
+        leftColumn.Add(songMappingSelectedArtwork);
+
+        songMappingLeftScroll = new ScrollView(ScrollViewMode.Vertical);
+        StyleTransparentScrollView(songMappingLeftScroll);
+        songMappingLeftScroll.style.flexGrow = 1f;
+        songMappingLeftScroll.style.minHeight = 0f;
+        songMappingLeftHost = songMappingLeftScroll.contentContainer;
+        songMappingLeftHost.style.flexDirection = FlexDirection.Column;
+        leftColumn.Add(songMappingLeftScroll);
+
+        VisualElement rightColumn = new VisualElement();
+        rightColumn.style.flexGrow = 1f;
+        rightColumn.style.minWidth = 0f;
+        rightColumn.style.minHeight = 0f;
+        rightColumn.style.paddingTop = 14f;
+        rightColumn.style.paddingLeft = 22f;
+        body.Add(rightColumn);
+
+        songMappingToneScroll = new ScrollView(ScrollViewMode.Vertical);
+        StyleTransparentScrollView(songMappingToneScroll);
+        songMappingToneHost = songMappingToneScroll.contentContainer;
+        songMappingToneHost.style.flexDirection = FlexDirection.Column;
+        rightColumn.Add(songMappingToneScroll);
+
+        return root;
+    }
+
+    private void ToggleSongMappingMode()
+    {
+        boardMode = boardMode == ToneLabBoardMode.SongMapping ? ToneLabBoardMode.Pedalboard : ToneLabBoardMode.SongMapping;
+        if (boardMode == ToneLabBoardMode.SongMapping)
+        {
+            sidePanelMode = ToneLabSidePanelMode.Presets;
+            SelectCurrentSongMappingContextIfAvailable();
+        }
+        else
+        {
+            ClearPendingToneMappingAssignment();
+        }
+
+        RefreshUi(syncControls: true);
+    }
+
+    private void SelectCurrentSongMappingContextIfAvailable()
+    {
+        if (owner == null)
+            return;
+
+        if (!owner.TryGetCurrentToneLabSongMappingSelectionForUi(out string songKey, out string arrangementKey))
+            return;
+
+        if (!string.IsNullOrWhiteSpace(songKey))
+        {
+            selectedMappingSongKey = songKey;
+            songMappingBrowseMode = ToneLabSongMappingBrowseMode.All;
+            songMappingBrowseScopeKey = string.Empty;
+        }
+
+        if (!string.IsNullOrWhiteSpace(arrangementKey))
+            selectedMappingArrangementKey = arrangementKey;
+    }
+
+    private void RefreshBoardModeVisuals()
+    {
+        bool mapping = boardMode == ToneLabBoardMode.SongMapping;
+        if (pedalBoardRoot != null)
+            pedalBoardRoot.style.display = mapping ? DisplayStyle.None : DisplayStyle.Flex;
+        if (songMappingRoot != null)
+            songMappingRoot.style.display = mapping ? DisplayStyle.Flex : DisplayStyle.None;
+        ApplySongMappingButtonState(mapping);
+    }
+
+    private void ApplySongMappingButtonState(bool selected)
+    {
+        if (songMappingButton == null)
+            return;
+
+        songMappingButton.text = selected ? "Pedalboard" : "Song Mapping";
+        songMappingButton.style.backgroundColor = selected ? new Color(1f, 0.58f, 0.08f, 0.22f) : new Color(1f, 0.58f, 0.08f, 0.12f);
+        songMappingButton.style.color = selected ? Color.white : new Color(1f, 0.84f, 0.52f, 0.98f);
+        songMappingButton.style.borderTopColor = new Color(1f, 0.88f, 0.48f, selected ? 0.92f : 0.74f);
+        songMappingButton.style.borderRightColor = new Color(1f, 0.56f, 0.38f, selected ? 0.86f : 0.64f);
+        songMappingButton.style.borderBottomColor = new Color(0.82f, 0.32f, 0.22f, selected ? 0.82f : 0.58f);
+        songMappingButton.style.borderLeftColor = new Color(1f, 0.72f, 0.22f, selected ? 0.86f : 0.64f);
+    }
+
+    private void RefreshSongMappingView()
+    {
+        if (boardMode != ToneLabBoardMode.SongMapping || owner == null || songMappingLeftHost == null || songMappingToneHost == null)
+            return;
+
+        songMappingLeftHost.Clear();
+        songMappingToneHost.Clear();
+
+        List<GuitarBridgeServer.ToneLabSongMappingSongSnapshot> songs = owner.GetToneLabSongMappingSongsForUi();
+        if (songs == null || songs.Count == 0)
+        {
+            AddSongMappingEmpty(songMappingLeftHost, "No imported Rocksmith songs found.");
+            AddSongMappingEmpty(songMappingToneHost, "Import a Rocksmith song first, then reopen this screen.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedMappingSongKey) ||
+            songs.All(song => !string.Equals(song.songKey, selectedMappingSongKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            selectedMappingSongKey = string.Empty;
+            selectedMappingArrangementKey = string.Empty;
+            ClearPendingToneMappingAssignment();
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedMappingSongKey))
+        {
+            SetSongMappingHeaderSongTitle("Select a song");
+            ApplySongMappingSelectedArtwork(null);
+            songMappingFilterRoot?.RemoveFromHierarchy();
+            songMappingLeftHost.Add(songMappingFilterRoot);
+            songMappingSearchRoot?.RemoveFromHierarchy();
+            songMappingLeftHost.Add(songMappingSearchRoot);
+            RefreshSongMappingFilterButtonStates();
+
+            List<GuitarBridgeServer.ToneLabSongMappingSongSnapshot> visibleSongs = BuildVisibleSongMappingSongs(songs);
+            if (!string.IsNullOrWhiteSpace(songMappingBrowseScopeKey))
+            {
+                songMappingLeftHost.Add(CreateSongMappingBackRow(GetSongMappingBrowseModeLabel(songMappingBrowseMode), () =>
+                {
+                    songMappingBrowseScopeKey = string.Empty;
+                    RefreshUi(syncControls: true);
+                }));
+            }
+
+            if (string.IsNullOrWhiteSpace(songMappingBrowseScopeKey) && songMappingBrowseMode != ToneLabSongMappingBrowseMode.All)
+            {
+                List<IGrouping<string, GuitarBridgeServer.ToneLabSongMappingSongSnapshot>> groups = BuildSongMappingBrowseGroups(visibleSongs);
+                if (groups.Count == 0)
+                {
+                    AddSongMappingEmpty(songMappingLeftHost, "No matching groups.");
+                }
+                else
+                {
+                    for (int i = 0; i < groups.Count; i++)
+                    {
+                        IGrouping<string, GuitarBridgeServer.ToneLabSongMappingSongSnapshot> group = groups[i];
+                        GuitarBridgeServer.ToneLabSongMappingSongSnapshot first = group.FirstOrDefault();
+                        songMappingLeftHost.Add(CreateSongMappingGroupRow(group.Key, group.Count(), first?.artworkPath ?? string.Empty, () =>
+                        {
+                            songMappingBrowseScopeKey = group.Key;
+                            RefreshUi(syncControls: true);
+                        }));
+                    }
+                }
+            }
+            else
+            {
+                if (visibleSongs.Count == 0)
+                {
+                    AddSongMappingEmpty(songMappingLeftHost, "No matching songs.");
+                }
+                else
+                {
+                    for (int i = 0; i < visibleSongs.Count; i++)
+                        songMappingLeftHost.Add(CreateSongMappingSongRow(visibleSongs[i]));
+                }
+            }
+
+            AddSongMappingEmpty(songMappingToneHost, "Select a song to see arrangements.");
+            return;
+        }
+
+        GuitarBridgeServer.ToneLabSongMappingSongSnapshot selectedSong = songs.FirstOrDefault(song =>
+            string.Equals(song.songKey, selectedMappingSongKey, StringComparison.OrdinalIgnoreCase));
+        SetSongMappingHeaderSongTitle(selectedSong != null
+            ? TruncateWithEllipsis(selectedSong.displayName, 74)
+            : "Choose an arrangement");
+        ApplySongMappingSelectedArtwork(selectedSong);
+
+        songMappingLeftHost.Add(CreateSongMappingBackRow("Songs", () =>
+        {
+            selectedMappingSongKey = string.Empty;
+            selectedMappingArrangementKey = string.Empty;
+            ClearPendingToneMappingAssignment();
+            RefreshUi(syncControls: true);
+        }));
+
+        List<GuitarBridgeServer.ToneLabSongMappingArrangementSnapshot> arrangements = owner.GetToneLabSongMappingArrangementsForUi(selectedMappingSongKey);
+        if (arrangements == null || arrangements.Count == 0)
+        {
+            AddSongMappingEmpty(songMappingLeftHost, "No arrangements found.");
+            AddSongMappingEmpty(songMappingToneHost, "This song has no arrangement tone cache yet.");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(selectedMappingArrangementKey) ||
+            arrangements.All(arrangement => !string.Equals(arrangement.arrangementKey, selectedMappingArrangementKey, StringComparison.OrdinalIgnoreCase)))
+        {
+            selectedMappingArrangementKey = arrangements[0].arrangementKey;
+            ClearPendingToneMappingAssignment();
+        }
+
+        for (int i = 0; i < arrangements.Count; i++)
+            songMappingLeftHost.Add(CreateSongMappingArrangementRow(arrangements[i]));
+
+        List<GuitarBridgeServer.ToneLabSongToneMappingSnapshot> tones = owner.GetToneLabSongToneMappingsForUi(selectedMappingSongKey, selectedMappingArrangementKey);
+        if (tones == null || tones.Count == 0)
+        {
+            AddSongMappingEmpty(songMappingToneHost, "No Rocksmith tones were found for this arrangement. Re-importing the song may be needed.");
+            return;
+        }
+
+        for (int i = 0; i < tones.Count; i++)
+            songMappingToneHost.Add(CreateSongMappingToneRow(tones[i], i));
+    }
+
+    private Button CreateSongMappingSongRow(GuitarBridgeServer.ToneLabSongMappingSongSnapshot song)
+    {
+        string title = string.IsNullOrWhiteSpace(song?.displayName) ? "Untitled Song" : song.displayName.Trim();
+        string subtitle = string.Empty;
+        return CreateSongMappingListRow(title, subtitle, false, () =>
+        {
+            selectedMappingSongKey = song?.songKey ?? string.Empty;
+            selectedMappingArrangementKey = string.Empty;
+            ClearPendingToneMappingAssignment();
+            RefreshUi(syncControls: true);
+        }, song?.artworkPath ?? string.Empty);
+    }
+
+    private Button CreateSongMappingArrangementRow(GuitarBridgeServer.ToneLabSongMappingArrangementSnapshot arrangement)
+    {
+        bool selected = string.Equals(arrangement?.arrangementKey ?? string.Empty, selectedMappingArrangementKey, StringComparison.OrdinalIgnoreCase);
+        string subtitle = arrangement?.toneCount > 0
+            ? $"{arrangement.toneCount} tone{(arrangement.toneCount == 1 ? string.Empty : "s")}"
+            : "No tones";
+        if (!string.IsNullOrWhiteSpace(arrangement?.difficultySummary))
+            subtitle = $"{subtitle}  •  {arrangement.difficultySummary}";
+
+        return CreateSongMappingListRow(arrangement?.displayName ?? "Arrangement", subtitle, selected, () =>
+        {
+            selectedMappingArrangementKey = arrangement?.arrangementKey ?? string.Empty;
+            ClearPendingToneMappingAssignment();
+            RefreshUi(syncControls: true);
+        });
+    }
+
+    private void SetSongMappingHeaderSongTitle(string title)
+    {
+        if (songMappingSubheaderLabel == null)
+            return;
+
+        string text = string.IsNullOrWhiteSpace(title) ? "Select a song" : title.Trim();
+        songMappingSubheaderLabel.text = text;
+        songMappingSubheaderLabel.tooltip = text;
+    }
+
+    private void ApplySongMappingSelectedArtwork(GuitarBridgeServer.ToneLabSongMappingSongSnapshot song)
+    {
+        if (songMappingSelectedArtwork == null)
+            return;
+
+        if (song == null)
+        {
+            songMappingSelectedArtwork.style.display = DisplayStyle.None;
+            songMappingSelectedArtwork.style.backgroundImage = StyleKeyword.None;
+            return;
+        }
+
+        songMappingSelectedArtwork.style.display = DisplayStyle.Flex;
+        songMappingSelectedArtwork.style.backgroundColor = GetDeterministicAccentColor(song.displayName);
+        Texture2D texture = GetSongArtworkTexture(song.artworkPath);
+        if (texture != null)
+            songMappingSelectedArtwork.style.backgroundImage = new StyleBackground(texture);
+        else
+            songMappingSelectedArtwork.style.backgroundImage = StyleKeyword.None;
+    }
+
+    private Button CreateSongMappingBackRow(string label, Action onClick)
+    {
+        Button row = CreateSongMappingListRow($"‹ {label}", string.Empty, false, onClick);
+        row.style.height = 42f;
+        row.style.minHeight = 42f;
+        return row;
+    }
+
+    private Button CreateSongMappingGroupRow(string title, int songCount, string artworkPath, Action onClick)
+    {
+        string subtitle = songCount == 1 ? "1 song" : $"{songCount} songs";
+        return CreateSongMappingListRow(title, subtitle, false, onClick, artworkPath);
+    }
+
+    private Button CreateSongMappingListRow(string title, string subtitle, bool selected, Action onClick, string artworkPath = null)
+    {
+        Button row = new Button(onClick) { text = string.Empty };
+        bool hasArtwork = artworkPath != null;
+        row.style.height = hasArtwork ? 64f : (string.IsNullOrWhiteSpace(subtitle) ? 48f : 58f);
+        row.style.minHeight = row.style.height;
+        row.style.marginBottom = 4f;
+        row.style.paddingLeft = selected ? 16f : 10f;
+        row.style.paddingRight = 10f;
+        row.style.paddingTop = 0f;
+        row.style.paddingBottom = 0f;
+        row.style.backgroundColor = selected ? new Color(1f, 0.58f, 0.08f, 0.82f) : new Color(0f, 0f, 0f, 0f);
+        row.style.borderTopWidth = 0f;
+        row.style.borderRightWidth = 0f;
+        row.style.borderBottomWidth = 0f;
+        row.style.borderLeftWidth = selected ? 4f : 0f;
+        row.style.borderBottomColor = Color.clear;
+        row.style.borderLeftColor = selected ? new Color(1f, 0.92f, 0.42f, 1f) : Color.clear;
+        row.style.borderTopLeftRadius = 0f;
+        row.style.borderTopRightRadius = 0f;
+        row.style.borderBottomLeftRadius = 0f;
+        row.style.borderBottomRightRadius = 0f;
+        row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.Center;
+
+        if (hasArtwork)
+        {
+            VisualElement artwork = CreateSongMappingArtworkElement(artworkPath, title);
+            row.Add(artwork);
+        }
+
+        VisualElement column = new VisualElement();
+        column.style.justifyContent = Justify.Center;
+        column.style.flexGrow = 1f;
+        column.style.flexShrink = 1f;
+        column.style.minWidth = 0f;
+        row.Add(column);
+
+        Label titleLabel = new Label(title ?? string.Empty);
+        titleLabel.style.color = Color.white;
+        titleLabel.style.fontSize = selected ? 18f : 16f;
+        titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        titleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        titleLabel.style.overflow = Overflow.Hidden;
+        titleLabel.style.textOverflow = TextOverflow.Ellipsis;
+        titleLabel.style.flexShrink = 1f;
+        column.Add(titleLabel);
+
+        if (!string.IsNullOrWhiteSpace(subtitle))
+        {
+            Label subtitleLabel = new Label(subtitle);
+            subtitleLabel.style.color = selected ? new Color(1f, 1f, 1f, 0.82f) : new Color(0.78f, 0.81f, 0.86f, 0.72f);
+            subtitleLabel.style.fontSize = 12f;
+            subtitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            subtitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            column.Add(subtitleLabel);
+        }
+
+        row.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            if (!selected)
+                row.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
+        });
+        row.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            if (!selected)
+                row.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        });
+
+        return row;
+    }
+
+    private VisualElement CreateSongMappingArtworkElement(string artworkPath, string fallbackKey)
+    {
+        VisualElement artwork = new VisualElement();
+        artwork.style.width = 48f;
+        artwork.style.minWidth = 48f;
+        artwork.style.height = 48f;
+        artwork.style.marginRight = 12f;
+        artwork.style.backgroundColor = GetDeterministicAccentColor(fallbackKey);
+        artwork.style.unityBackgroundScaleMode = ScaleMode.ScaleAndCrop;
+        artwork.style.borderTopLeftRadius = 4f;
+        artwork.style.borderTopRightRadius = 4f;
+        artwork.style.borderBottomLeftRadius = 4f;
+        artwork.style.borderBottomRightRadius = 4f;
+
+        Texture2D texture = GetSongArtworkTexture(artworkPath);
+        if (texture != null)
+            artwork.style.backgroundImage = new StyleBackground(texture);
+
+        return artwork;
+    }
+
+    private static Texture2D GetSongArtworkTexture(string artworkPath)
+    {
+        if (string.IsNullOrWhiteSpace(artworkPath) || !File.Exists(artworkPath))
+            return null;
+
+        if (songArtworkTextureCache.TryGetValue(artworkPath, out Texture2D cached))
+            return cached;
+
+        try
+        {
+            byte[] bytes = File.ReadAllBytes(artworkPath);
+            Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+            {
+                name = $"ToneLabSongArtwork_{Path.GetFileNameWithoutExtension(artworkPath)}",
+                hideFlags = HideFlags.HideAndDontSave,
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+
+            if (!texture.LoadImage(bytes, false))
+            {
+                UnityEngine.Object.Destroy(texture);
+                return null;
+            }
+
+            songArtworkTextureCache[artworkPath] = texture;
+            return texture;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[UnityToneLabOverlay] Failed to load song artwork '{artworkPath}': {ex.Message}");
+            return null;
+        }
+    }
+
+    private static Color GetDeterministicAccentColor(string key)
+    {
+        int hash = string.IsNullOrWhiteSpace(key) ? 0 : StringComparer.OrdinalIgnoreCase.GetHashCode(key.Trim());
+        float hue = Mathf.Abs(hash % 360) / 360f;
+        return Color.HSVToRGB(hue, 0.58f, 0.78f);
+    }
+
+    private VisualElement CreateSongMappingToneRow(GuitarBridgeServer.ToneLabSongToneMappingSnapshot tone, int index)
+    {
+        VisualElement row = new VisualElement();
+        row.style.minHeight = 68f;
+        row.style.marginBottom = 4f;
+        row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.Center;
+        row.style.borderBottomWidth = 1f;
+        row.style.borderBottomColor = new Color(1f, 1f, 1f, 0.12f);
+        row.style.paddingLeft = 0f;
+        row.style.paddingRight = 0f;
+
+        VisualElement accent = new VisualElement();
+        accent.style.width = 4f;
+        accent.style.height = 42f;
+        accent.style.marginRight = 14f;
+        accent.style.backgroundColor = tone != null && tone.isBaseTone ? new Color(0.20f, 0.84f, 0.46f, 1f) : StartupLogoColor(index + 1);
+        row.Add(accent);
+
+        VisualElement copy = new VisualElement();
+        copy.style.flexGrow = 1f;
+        copy.style.minWidth = 0f;
+        copy.style.justifyContent = Justify.Center;
+        row.Add(copy);
+
+        Label toneLabel = new Label(tone?.toneName ?? "Tone");
+        toneLabel.style.color = Color.white;
+        toneLabel.style.fontSize = 19f;
+        toneLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        toneLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        copy.Add(toneLabel);
+
+        string timingText = tone != null && tone.isBaseTone ? "Base tone" : "Tone switch";
+        if (tone != null && tone.switchCount > 0)
+        {
+            string timeText = tone.firstSwitchTimeSeconds >= 0f
+                ? $"{tone.firstSwitchTimeSeconds:F1}s"
+                : string.Empty;
+            timingText = string.IsNullOrWhiteSpace(timeText)
+                ? $"{tone.switchCount} switch{(tone.switchCount == 1 ? string.Empty : "es")}"
+                : $"{tone.switchCount} switch{(tone.switchCount == 1 ? string.Empty : "es")}  •  first at {timeText}";
+        }
+
+        Label timingLabel = new Label(timingText);
+        timingLabel.style.color = new Color(0.78f, 0.81f, 0.86f, 0.70f);
+        timingLabel.style.fontSize = 12f;
+        timingLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        timingLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        copy.Add(timingLabel);
+
+        bool assigning = IsAssigningTone(tone);
+        string buttonText = assigning
+            ? "Choose preset..."
+            : (!string.IsNullOrWhiteSpace(tone?.assignedPresetName) ? tone.assignedPresetName : "Select preset...");
+        Button selectButton = CreateButton(buttonText, "tone-lab-button tone-lab-button-secondary", () =>
+        {
+            pendingMappingSongKey = tone?.songKey ?? selectedMappingSongKey;
+            pendingMappingArrangementKey = tone?.arrangementKey ?? selectedMappingArrangementKey;
+            pendingMappingToneName = tone?.toneName ?? string.Empty;
+            sidePanelMode = ToneLabSidePanelMode.Presets;
+            RefreshUi(syncControls: true);
+            ShowActionToast($"Select a preset for \"{pendingMappingToneName}\".");
+        });
+        StyleCompactActionButton(selectButton, 210f);
+        selectButton.style.marginRight = 0f;
+        if (assigning)
+        {
+            selectButton.style.color = Color.white;
+            selectButton.style.borderTopColor = new Color(1f, 0.88f, 0.48f, 0.92f);
+            selectButton.style.borderRightColor = new Color(1f, 0.56f, 0.38f, 0.86f);
+            selectButton.style.borderBottomColor = new Color(0.82f, 0.32f, 0.22f, 0.82f);
+            selectButton.style.borderLeftColor = new Color(1f, 0.72f, 0.22f, 0.86f);
+        }
+        row.Add(selectButton);
+
+        if (!string.IsNullOrWhiteSpace(tone?.assignedPresetId))
+        {
+            Button clearButton = new Button(() =>
+            {
+                owner?.SetToneLabSongTonePresetMappingFromUi(tone.songKey, tone.arrangementKey, tone.toneName, string.Empty);
+                ClearPendingToneMappingAssignment();
+                RefreshUi(syncControls: true);
+            })
+            {
+                text = "X"
+            };
+            StyleTextDeleteButton(clearButton);
+            clearButton.style.marginLeft = 8f;
+            row.Add(clearButton);
+        }
+
+        return row;
+    }
+
+    private void AddSongMappingEmpty(VisualElement host, string text)
+    {
+        if (host == null)
+            return;
+
+        Label empty = new Label(text ?? string.Empty);
+        empty.style.color = new Color(0.90f, 0.92f, 0.96f, 0.70f);
+        empty.style.fontSize = 16f;
+        empty.style.unityFontStyleAndWeight = FontStyle.Bold;
+        empty.style.marginTop = 18f;
+        empty.style.whiteSpace = WhiteSpace.Normal;
+        host.Add(empty);
+    }
+
+    private bool IsAssigningTone(GuitarBridgeServer.ToneLabSongToneMappingSnapshot tone)
+    {
+        return tone != null &&
+               string.Equals(pendingMappingSongKey, tone.songKey, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(pendingMappingArrangementKey, tone.arrangementKey, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(pendingMappingToneName, tone.toneName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool HasPendingToneMappingAssignment()
+    {
+        return !string.IsNullOrWhiteSpace(pendingMappingSongKey) &&
+               !string.IsNullOrWhiteSpace(pendingMappingArrangementKey) &&
+               !string.IsNullOrWhiteSpace(pendingMappingToneName);
+    }
+
+    private bool TryAssignPendingToneMapping(UnityToneLabRuntime.ToneLabPreset preset)
+    {
+        if (owner == null ||
+            preset == null ||
+            string.IsNullOrWhiteSpace(preset.preset_id) ||
+            string.IsNullOrWhiteSpace(pendingMappingSongKey) ||
+            string.IsNullOrWhiteSpace(pendingMappingArrangementKey) ||
+            string.IsNullOrWhiteSpace(pendingMappingToneName))
+        {
+            return false;
+        }
+
+        owner.SetToneLabSongTonePresetMappingFromUi(pendingMappingSongKey, pendingMappingArrangementKey, pendingMappingToneName, preset.preset_id);
+        string toneName = pendingMappingToneName;
+        string presetName = string.IsNullOrWhiteSpace(preset.preset_name) ? "Preset" : preset.preset_name.Trim();
+        ClearPendingToneMappingAssignment();
+        RefreshUi(syncControls: true);
+        ShowActionToast($"Mapped \"{toneName}\" to \"{presetName}\".");
+        return true;
+    }
+
+    private void ClearPendingToneMappingAssignment()
+    {
+        pendingMappingToneName = string.Empty;
+        pendingMappingArrangementKey = string.Empty;
+        pendingMappingSongKey = string.Empty;
+    }
+
+    private void RefreshPresetList(IReadOnlyList<UnityToneLabRuntime.ToneLabPreset> presets, string selectedPresetId)
+    {
+        if (presetListHost == null)
+            return;
+
+        presetListHost.Clear();
+        if (presets == null || presets.Count == 0)
+        {
+            Label emptyLabel = new Label("No presets yet.");
+            emptyLabel.style.color = new Color(0.90f, 0.92f, 0.96f, 0.72f);
+            emptyLabel.style.fontSize = 17f;
+            emptyLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            emptyLabel.style.marginTop = 18f;
+            presetListHost.Add(emptyLabel);
+            return;
+        }
+
+        string normalizedQuery = NormalizeSearchQuery(presetSearchQuery);
+        int visibleCount = 0;
+        for (int i = 0; i < presets.Count; i++)
+        {
+            UnityToneLabRuntime.ToneLabPreset preset = presets[i];
+            if (preset == null || string.IsNullOrWhiteSpace(preset.preset_id))
+                continue;
+
+            string presetName = string.IsNullOrWhiteSpace(preset.preset_name) ? $"Preset {i + 1}" : preset.preset_name.Trim();
+            if (!MatchesSearch(presetName, normalizedQuery))
+                continue;
+
+            bool selected = string.Equals(preset.preset_id, selectedPresetId, StringComparison.Ordinal);
+            presetListHost.Add(CreatePresetRow(preset, i, selected, presets.Count));
+            visibleCount++;
+        }
+
+        if (visibleCount == 0)
+        {
+            Label emptyLabel = new Label("No matching presets.");
+            emptyLabel.style.color = new Color(0.90f, 0.92f, 0.96f, 0.72f);
+            emptyLabel.style.fontSize = 17f;
+            emptyLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            emptyLabel.style.marginTop = 18f;
+            presetListHost.Add(emptyLabel);
+        }
+    }
+
+    private VisualElement CreatePresetRow(UnityToneLabRuntime.ToneLabPreset preset, int index, bool selected, int presetCount)
+    {
+        Button row = new Button(() =>
+        {
+            if (runtime == null || preset == null)
+                return;
+
+            if (TryAssignPendingToneMapping(preset))
+                return;
+
+            RequestSelectPreset(preset.preset_id);
+        });
+        row.text = string.Empty;
+        row.style.height = 54f;
+        row.style.minHeight = 54f;
+        row.style.marginBottom = 2f;
+        row.style.paddingLeft = 0f;
+        row.style.paddingRight = 0f;
+        row.style.paddingTop = 0f;
+        row.style.paddingBottom = 0f;
+        row.style.borderTopWidth = 0f;
+        row.style.borderRightWidth = 0f;
+        row.style.borderBottomWidth = 1f;
+        row.style.borderLeftWidth = 0f;
+        row.style.borderBottomColor = new Color(1f, 1f, 1f, selected ? 0f : 0.12f);
+        row.style.backgroundColor = selected ? new Color(1f, 0.58f, 0.08f, 0.92f) : new Color(0f, 0f, 0f, 0f);
+        if (selected)
+            row.style.backgroundImage = new StyleBackground(GetPresetSelectionGradientTexture());
+        else
+            row.style.backgroundImage = StyleKeyword.None;
+        row.style.borderTopLeftRadius = 0f;
+        row.style.borderTopRightRadius = 0f;
+        row.style.borderBottomLeftRadius = 0f;
+        row.style.borderBottomRightRadius = 0f;
+
+        VisualElement content = new VisualElement();
+        content.style.flexGrow = 1f;
+        content.style.height = Length.Percent(100f);
+        content.style.flexDirection = FlexDirection.Row;
+        content.style.alignItems = Align.Center;
+        content.style.paddingLeft = selected ? 18f : 10f;
+        content.style.paddingRight = 8f;
+        row.Add(content);
+
+        VisualElement accent = new VisualElement();
+        accent.style.width = 4f;
+        accent.style.height = 36f;
+        accent.style.marginRight = 12f;
+        accent.style.backgroundColor = GetPresetContentAccentColor(preset);
+        content.Add(accent);
+
+        Label nameLabel = new Label(string.IsNullOrWhiteSpace(preset.preset_name) ? $"Preset {index + 1}" : preset.preset_name.Trim());
+        nameLabel.style.flexGrow = 1f;
+        nameLabel.style.color = selected ? Color.white : new Color(0.96f, 0.97f, 0.99f, 0.98f);
+        nameLabel.style.fontSize = selected ? 22f : 18f;
+        nameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        nameLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        nameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        content.Add(nameLabel);
+
+        bool assigningPreset = HasPendingToneMappingAssignment();
+        Button deleteButton = new Button(() =>
+        {
+            if (assigningPreset)
+            {
+                TryAssignPendingToneMapping(preset);
+                return;
+            }
+
+            if (runtime == null || presetCount <= 1)
+                return;
+
+            string deletedPresetName = string.IsNullOrWhiteSpace(preset.preset_name) ? "Preset" : preset.preset_name.Trim();
+            if (runtime.DeletePreset(preset.preset_id))
+            {
+                RefreshUi(syncControls: true);
+                ShowActionToast($"Deleted preset \"{deletedPresetName}\".", true);
+            }
+        })
+        {
+            text = assigningPreset ? "Select" : "X"
+        };
+        if (assigningPreset)
+            StylePresetSelectButton(deleteButton);
+        else
+            StyleTextDeleteButton(deleteButton);
+        deleteButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+        deleteButton.RegisterCallback<PointerUpEvent>(evt => evt.StopPropagation());
+        content.Add(deleteButton);
+
+        row.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            if (!selected)
+            {
+                row.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
+                nameLabel.style.color = Color.white;
+            }
+        });
+        row.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            if (!selected)
+            {
+                row.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+                nameLabel.style.color = new Color(0.96f, 0.97f, 0.99f, 0.98f);
+            }
+        });
+
+        return row;
+    }
+
+    private static Color GetPresetContentAccentColor(UnityToneLabRuntime.ToneLabPreset preset)
+    {
+        bool hasLv2 = false;
+        bool hasNam = false;
+        IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> chain = preset?.pedal_chain;
+        if (chain != null)
+        {
+            for (int i = 0; i < chain.Count; i++)
+            {
+                UnityToneLabRuntime.ToneLabPedalSlot slot = chain[i];
+                if (slot == null)
+                    continue;
+
+                if (slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin)
+                    hasLv2 = true;
+                else if (slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.NamModel)
+                    hasNam = true;
+            }
+        }
+
+        if (hasLv2 && hasNam)
+            return new Color(0.68f, 0.36f, 1f, 1f);
+        if (hasNam)
+            return new Color(1f, 0.72f, 0.10f, 1f);
+        if (hasLv2)
+            return new Color(1f, 0.22f, 0.28f, 1f);
+
+        return new Color(0.20f, 0.84f, 0.46f, 1f);
+    }
+
     private void RefreshPedalLibrary(IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> pedalChain)
     {
         if (pedalLibraryHost == null)
@@ -1380,19 +2881,36 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         pedalLibraryHost.Clear();
 
+        string normalizedQuery = NormalizeSearchQuery(librarySearchQuery);
+        int visibleCount = 0;
         IReadOnlyList<IToneLabPedalDescriptor> availablePedals = ToneLabPedalRegistry.AllDescriptors;
         for (int i = 0; i < availablePedals.Count; i++)
         {
             IToneLabPedalDescriptor descriptor = availablePedals[i];
+            if (descriptor == null || !MatchesLibraryFilter(descriptor, libraryFilter) || !MatchesLibrarySearch(descriptor, normalizedQuery))
+                continue;
+
             ToneLabPedalLibraryItem libraryItem = new ToneLabPedalLibraryItem(
                 descriptor,
                 () =>
                 {
-                    selectedPedalInstanceId = runtime?.AddPedalToChain(descriptor.PedalType) ?? string.Empty;
-                    sidePanelMode = ToneLabSidePanelMode.Pedal;
+                    selectedPedalInstanceId = runtime?.AddPedalToChain(descriptor.DescriptorId) ?? string.Empty;
+                    sidePanelMode = ToneLabSidePanelMode.Details;
                     RefreshUi(syncControls: true);
                 });
+            RegisterLibraryItemDrag(libraryItem, descriptor.DescriptorId);
             pedalLibraryHost.Add(libraryItem);
+            visibleCount++;
+        }
+
+        if (visibleCount == 0)
+        {
+            Label emptyLabel = new Label("No matching effects.");
+            emptyLabel.style.color = new Color(0.90f, 0.92f, 0.96f, 0.72f);
+            emptyLabel.style.fontSize = 17f;
+            emptyLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            emptyLabel.style.marginTop = 18f;
+            pedalLibraryHost.Add(emptyLabel);
         }
     }
 
@@ -1415,19 +2933,32 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             }
         }
 
+        RefreshSidePanelButtonStates();
         sidePanelHost.Clear();
         switch (sidePanelMode)
         {
+            case ToneLabSidePanelMode.Presets:
+                sidePanelHost.Add(CreateSidebarHeader("Presets", null, createPresetButton));
+                presetSearchRoot?.RemoveFromHierarchy();
+                sidePanelHost.Add(presetSearchRoot);
+                presetListScroll?.RemoveFromHierarchy();
+                sidePanelHost.Add(presetListScroll);
+                break;
             case ToneLabSidePanelMode.Library:
-                sidePanelTitleLabel.text = "Pedal Library";
-                sidePanelSubtitleLabel.text = "Choose a pedal and add it to the board.";
+                sidePanelHost.Add(CreateSidebarHeader("Library", null, null));
+                RefreshLibraryFilterButtonStates();
+                libraryFilterRoot?.RemoveFromHierarchy();
+                sidePanelHost.Add(libraryFilterRoot);
+                librarySearchRoot?.RemoveFromHierarchy();
+                sidePanelHost.Add(librarySearchRoot);
+                pedalLibraryScroll?.RemoveFromHierarchy();
                 sidePanelHost.Add(pedalLibraryScroll);
                 break;
-            case ToneLabSidePanelMode.Pedal:
-                IToneLabPedalDescriptor descriptor = selectedSlot != null ? ToneLabPedalRegistry.GetDescriptor(selectedSlot.pedal_type) : null;
-                sidePanelTitleLabel.text = descriptor?.DisplayName ?? "Pedal";
-                sidePanelSubtitleLabel.text = descriptor?.Description ?? "Pedal settings";
+            case ToneLabSidePanelMode.Details:
+                IToneLabPedalDescriptor descriptor = selectedSlot != null ? ToneLabPedalRegistry.GetDescriptor(selectedSlot) : null;
+                sidePanelHost.Add(CreateSidebarHeader(descriptor?.DisplayName ?? "Details", descriptor?.Description ?? "Pedal settings", null));
                 RebuildPedalInspector();
+                pedalInspectorScroll?.RemoveFromHierarchy();
                 sidePanelHost.Add(pedalInspectorScroll);
                 break;
         }
@@ -1435,6 +2966,629 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
     private void RefreshSidePanelButtonStates()
     {
+        ApplySidebarTabState(presetsTabButton, sidePanelMode == ToneLabSidePanelMode.Presets, StartupLogoColor(1));
+        ApplySidebarTabState(libraryTabButton, sidePanelMode == ToneLabSidePanelMode.Library, StartupLogoColor(2));
+        ApplySidebarTabState(detailsTabButton, sidePanelMode == ToneLabSidePanelMode.Details, StartupLogoColor(4));
+    }
+
+    private void SetSidePanelMode(ToneLabSidePanelMode mode)
+    {
+        sidePanelMode = mode;
+        RefreshUi(syncControls: true);
+    }
+
+    private VisualElement CreateSidebarHeader(string title, string subtitle, VisualElement trailingElement)
+    {
+        VisualElement header = new VisualElement();
+        header.style.flexDirection = FlexDirection.Row;
+        header.style.alignItems = Align.Center;
+        header.style.justifyContent = Justify.SpaceBetween;
+        header.style.flexShrink = 0f;
+        header.style.marginBottom = 14f;
+        header.style.paddingBottom = 12f;
+        header.style.borderBottomWidth = 1f;
+        header.style.borderBottomColor = new Color(1f, 1f, 1f, 0.16f);
+
+        VisualElement copyColumn = new VisualElement();
+        copyColumn.style.flexGrow = 1f;
+        copyColumn.style.minWidth = 0f;
+        copyColumn.style.marginRight = 12f;
+        header.Add(copyColumn);
+
+        Label titleLabel = new Label(title ?? string.Empty);
+        titleLabel.style.color = Color.white;
+        titleLabel.style.fontSize = 22f;
+        titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        titleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        copyColumn.Add(titleLabel);
+
+        if (!string.IsNullOrWhiteSpace(subtitle))
+        {
+            Label subtitleLabel = new Label(subtitle);
+            subtitleLabel.style.color = new Color(0.84f, 0.86f, 0.90f, 0.72f);
+            subtitleLabel.style.fontSize = 12f;
+            subtitleLabel.style.whiteSpace = WhiteSpace.Normal;
+            subtitleLabel.style.marginTop = 2f;
+            copyColumn.Add(subtitleLabel);
+        }
+
+        if (trailingElement != null)
+        {
+            trailingElement.RemoveFromHierarchy();
+            header.Add(trailingElement);
+        }
+
+        return header;
+    }
+
+    private VisualElement CreateLibraryFilterBar()
+    {
+        VisualElement root = new VisualElement();
+        root.style.flexDirection = FlexDirection.Row;
+        root.style.alignItems = Align.Center;
+        root.style.justifyContent = Justify.SpaceBetween;
+        root.style.flexShrink = 0f;
+        root.style.marginBottom = 10f;
+
+        VisualElement filters = new VisualElement();
+        filters.style.flexDirection = FlexDirection.Row;
+        filters.style.alignItems = Align.Center;
+        filters.style.flexGrow = 1f;
+        filters.style.minWidth = 0f;
+        root.Add(filters);
+
+        libraryAllFilterButton = CreateLibraryFilterButton("All", ToneLabLibraryFilter.All);
+        libraryBuiltInFilterButton = CreateLibraryFilterButton("Built-In", ToneLabLibraryFilter.BuiltIn);
+        libraryLv2FilterButton = CreateLibraryFilterButton("LV2", ToneLabLibraryFilter.Lv2);
+        libraryNamFilterButton = CreateLibraryFilterButton("NAM", ToneLabLibraryFilter.Nam);
+        filters.Add(libraryAllFilterButton);
+        filters.Add(libraryBuiltInFilterButton);
+        filters.Add(libraryLv2FilterButton);
+        filters.Add(libraryNamFilterButton);
+
+        libraryRefreshButton = CreateButton("Refresh", "tone-lab-button tone-lab-button-secondary", RefreshExternalEffectsFromUi);
+        libraryRefreshButton.style.minWidth = 86f;
+        libraryRefreshButton.style.width = 86f;
+        libraryRefreshButton.style.height = 34f;
+        libraryRefreshButton.style.marginRight = 0f;
+        libraryRefreshButton.style.paddingLeft = 8f;
+        libraryRefreshButton.style.paddingRight = 8f;
+        libraryRefreshButton.style.fontSize = 12f;
+        root.Add(libraryRefreshButton);
+
+        RefreshLibraryFilterButtonStates();
+        return root;
+    }
+
+    private VisualElement CreateSongMappingFilterBar()
+    {
+        VisualElement root = new VisualElement();
+        root.style.flexDirection = FlexDirection.Row;
+        root.style.alignItems = Align.Center;
+        root.style.flexShrink = 0f;
+        root.style.marginBottom = 10f;
+
+        songMappingAllFilterButton = CreateSongMappingFilterButton("All", ToneLabSongMappingBrowseMode.All);
+        songMappingArtistsFilterButton = CreateSongMappingFilterButton("Artists", ToneLabSongMappingBrowseMode.Artists);
+        songMappingAlbumsFilterButton = CreateSongMappingFilterButton("Albums", ToneLabSongMappingBrowseMode.Albums);
+        root.Add(songMappingAllFilterButton);
+        root.Add(songMappingArtistsFilterButton);
+        root.Add(songMappingAlbumsFilterButton);
+
+        RefreshSongMappingFilterButtonStates();
+        return root;
+    }
+
+    private Button CreateSongMappingFilterButton(string label, ToneLabSongMappingBrowseMode mode)
+    {
+        Button button = new Button(() => SetSongMappingBrowseMode(mode)) { text = label };
+        button.style.minWidth = label.Length > 4 ? 86f : 56f;
+        button.style.height = 34f;
+        button.style.marginRight = 6f;
+        button.style.paddingLeft = 8f;
+        button.style.paddingRight = 8f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        button.style.color = new Color(0.88f, 0.91f, 0.95f, 0.86f);
+        button.style.borderTopWidth = 1f;
+        button.style.borderRightWidth = 1f;
+        button.style.borderBottomWidth = 1f;
+        button.style.borderLeftWidth = 1f;
+        button.style.borderTopColor = new Color(1f, 1f, 1f, 0.18f);
+        button.style.borderRightColor = new Color(1f, 1f, 1f, 0.14f);
+        button.style.borderBottomColor = new Color(1f, 1f, 1f, 0.10f);
+        button.style.borderLeftColor = new Color(1f, 1f, 1f, 0.14f);
+        button.style.borderTopLeftRadius = 8f;
+        button.style.borderTopRightRadius = 8f;
+        button.style.borderBottomLeftRadius = 8f;
+        button.style.borderBottomRightRadius = 8f;
+        button.style.fontSize = 12f;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            bool selected = button.userData is bool isSelected && isSelected;
+            if (!selected)
+            {
+                button.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
+                button.style.color = Color.white;
+            }
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ => ApplySongMappingFilterButtonState(button, button.userData is bool selected && selected));
+        return button;
+    }
+
+    private void SetSongMappingBrowseMode(ToneLabSongMappingBrowseMode mode)
+    {
+        if (songMappingBrowseMode == mode && string.IsNullOrWhiteSpace(songMappingBrowseScopeKey))
+            return;
+
+        songMappingBrowseMode = mode;
+        songMappingBrowseScopeKey = string.Empty;
+        RefreshSongMappingFilterButtonStates();
+        RefreshSongMappingView();
+    }
+
+    private void RefreshSongMappingFilterButtonStates()
+    {
+        ApplySongMappingFilterButtonState(songMappingAllFilterButton, songMappingBrowseMode == ToneLabSongMappingBrowseMode.All);
+        ApplySongMappingFilterButtonState(songMappingArtistsFilterButton, songMappingBrowseMode == ToneLabSongMappingBrowseMode.Artists);
+        ApplySongMappingFilterButtonState(songMappingAlbumsFilterButton, songMappingBrowseMode == ToneLabSongMappingBrowseMode.Albums);
+    }
+
+    private static void ApplySongMappingFilterButtonState(Button button, bool selected)
+    {
+        if (button == null)
+            return;
+
+        button.userData = selected;
+        if (selected)
+        {
+            button.style.backgroundColor = new Color(1f, 0.58f, 0.08f, 0.92f);
+            button.style.color = Color.white;
+            button.style.borderTopColor = new Color(1f, 0.88f, 0.48f, 0.90f);
+            button.style.borderRightColor = new Color(1f, 0.56f, 0.38f, 0.82f);
+            button.style.borderBottomColor = new Color(0.82f, 0.32f, 0.22f, 0.78f);
+            button.style.borderLeftColor = new Color(1f, 0.72f, 0.22f, 0.82f);
+        }
+        else
+        {
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            button.style.color = new Color(0.88f, 0.91f, 0.95f, 0.86f);
+            button.style.borderTopColor = new Color(1f, 1f, 1f, 0.18f);
+            button.style.borderRightColor = new Color(1f, 1f, 1f, 0.14f);
+            button.style.borderBottomColor = new Color(1f, 1f, 1f, 0.10f);
+            button.style.borderLeftColor = new Color(1f, 1f, 1f, 0.14f);
+        }
+    }
+
+    private Button CreateLibraryFilterButton(string label, ToneLabLibraryFilter filter)
+    {
+        Button button = new Button(() => SetLibraryFilter(filter)) { text = label };
+        button.style.minWidth = label.Length > 4 ? 82f : 56f;
+        button.style.height = 34f;
+        button.style.marginRight = 6f;
+        button.style.paddingLeft = 8f;
+        button.style.paddingRight = 8f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        button.style.color = new Color(0.88f, 0.91f, 0.95f, 0.86f);
+        button.style.borderTopWidth = 1f;
+        button.style.borderRightWidth = 1f;
+        button.style.borderBottomWidth = 1f;
+        button.style.borderLeftWidth = 1f;
+        button.style.borderTopColor = new Color(1f, 1f, 1f, 0.18f);
+        button.style.borderRightColor = new Color(1f, 1f, 1f, 0.14f);
+        button.style.borderBottomColor = new Color(1f, 1f, 1f, 0.10f);
+        button.style.borderLeftColor = new Color(1f, 1f, 1f, 0.14f);
+        button.style.borderTopLeftRadius = 8f;
+        button.style.borderTopRightRadius = 8f;
+        button.style.borderBottomLeftRadius = 8f;
+        button.style.borderBottomRightRadius = 8f;
+        button.style.fontSize = 12f;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            bool selected = button.userData is bool isSelected && isSelected;
+            if (!selected)
+            {
+                button.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
+                button.style.color = Color.white;
+            }
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ => ApplyLibraryFilterButtonState(button, button.userData is bool selected && selected));
+        return button;
+    }
+
+    private void SetLibraryFilter(ToneLabLibraryFilter filter)
+    {
+        if (libraryFilter == filter)
+            return;
+
+        libraryFilter = filter;
+        RefreshLibraryFilterButtonStates();
+        if (runtime != null)
+            RefreshPedalLibrary(runtime.CurrentPedalChain);
+    }
+
+    private void RefreshLibraryFilterButtonStates()
+    {
+        ApplyLibraryFilterButtonState(libraryAllFilterButton, libraryFilter == ToneLabLibraryFilter.All);
+        ApplyLibraryFilterButtonState(libraryBuiltInFilterButton, libraryFilter == ToneLabLibraryFilter.BuiltIn);
+        ApplyLibraryFilterButtonState(libraryLv2FilterButton, libraryFilter == ToneLabLibraryFilter.Lv2);
+        ApplyLibraryFilterButtonState(libraryNamFilterButton, libraryFilter == ToneLabLibraryFilter.Nam);
+    }
+
+    private static void ApplyLibraryFilterButtonState(Button button, bool selected)
+    {
+        if (button == null)
+            return;
+
+        button.userData = selected;
+        if (selected)
+        {
+            button.style.backgroundColor = new Color(1f, 0.58f, 0.08f, 0.92f);
+            button.style.color = Color.white;
+            button.style.borderTopColor = new Color(1f, 0.88f, 0.48f, 0.90f);
+            button.style.borderRightColor = new Color(1f, 0.56f, 0.38f, 0.82f);
+            button.style.borderBottomColor = new Color(0.82f, 0.32f, 0.22f, 0.78f);
+            button.style.borderLeftColor = new Color(1f, 0.72f, 0.22f, 0.82f);
+        }
+        else
+        {
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            button.style.color = new Color(0.88f, 0.91f, 0.95f, 0.86f);
+            button.style.borderTopColor = new Color(1f, 1f, 1f, 0.18f);
+            button.style.borderRightColor = new Color(1f, 1f, 1f, 0.14f);
+            button.style.borderBottomColor = new Color(1f, 1f, 1f, 0.10f);
+            button.style.borderLeftColor = new Color(1f, 1f, 1f, 0.14f);
+        }
+    }
+
+    private VisualElement CreateSidebarSearchBlock(string placeholderText, out TextField searchField, Action<string> onQueryChanged)
+    {
+        VisualElement root = new VisualElement();
+        root.style.flexShrink = 0f;
+        root.style.height = 44f;
+        root.style.marginBottom = 14f;
+        root.style.position = Position.Relative;
+        root.style.borderBottomWidth = 1f;
+        root.style.borderBottomColor = new Color(1f, 1f, 1f, 0.30f);
+
+        TextField field = new TextField();
+        searchField = field;
+        field.isDelayed = false;
+        field.style.position = Position.Absolute;
+        field.style.left = 0f;
+        field.style.right = 0f;
+        field.style.top = 0f;
+        field.style.bottom = 0f;
+        field.style.height = 44f;
+        field.style.minHeight = 44f;
+        field.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        field.style.color = Color.white;
+        field.style.borderTopWidth = 0f;
+        field.style.borderRightWidth = 0f;
+        field.style.borderBottomWidth = 0f;
+        field.style.borderLeftWidth = 0f;
+        field.style.paddingLeft = 0f;
+        field.style.paddingRight = 0f;
+        field.RegisterCallback<AttachToPanelEvent>(_ => ApplySearchFieldStyle(field));
+
+        Label placeholderLabel = new Label(placeholderText);
+        placeholderLabel.pickingMode = PickingMode.Ignore;
+        placeholderLabel.style.position = Position.Absolute;
+        placeholderLabel.style.left = 0f;
+        placeholderLabel.style.right = 0f;
+        placeholderLabel.style.top = 0f;
+        placeholderLabel.style.bottom = 0f;
+        placeholderLabel.style.color = Color.white;
+        placeholderLabel.style.fontSize = 20f;
+        placeholderLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        placeholderLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        placeholderLabel.style.opacity = 0.72f;
+
+        void RefreshPlaceholder()
+        {
+            bool hasValue = !string.IsNullOrWhiteSpace(field.value);
+            bool isFocused = IsTextFieldFocused(field);
+            placeholderLabel.style.display = hasValue || isFocused ? DisplayStyle.None : DisplayStyle.Flex;
+            root.style.borderBottomColor = isFocused
+                ? new Color(1f, 0.67f, 0.18f, 0.95f)
+                : new Color(1f, 1f, 1f, 0.30f);
+        }
+
+        field.RegisterCallback<FocusInEvent>(_ =>
+        {
+            placeholderLabel.style.display = DisplayStyle.None;
+            root.style.borderBottomColor = new Color(1f, 0.67f, 0.18f, 0.95f);
+        });
+        field.RegisterCallback<FocusOutEvent>(_ => RefreshPlaceholder());
+        field.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            if (!IsTextFieldFocused(field))
+                root.style.borderBottomColor = new Color(1f, 1f, 1f, 0.46f);
+        });
+        field.RegisterCallback<MouseLeaveEvent>(_ => RefreshPlaceholder());
+        field.RegisterValueChangedCallback(evt =>
+        {
+            RefreshPlaceholder();
+            onQueryChanged?.Invoke(evt.newValue);
+        });
+        root.Add(field);
+        root.Add(placeholderLabel);
+        root.RegisterCallback<AttachToPanelEvent>(_ => RefreshPlaceholder());
+
+        return root;
+    }
+
+    private static string NormalizeSearchQuery(string query)
+    {
+        return string.IsNullOrWhiteSpace(query) ? string.Empty : query.Trim();
+    }
+
+    private static string TruncateWithEllipsis(string value, int maxCharacters)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        string trimmed = value.Trim();
+        if (maxCharacters <= 3 || trimmed.Length <= maxCharacters)
+            return trimmed;
+
+        return trimmed.Substring(0, maxCharacters - 3).TrimEnd() + "...";
+    }
+
+    private static bool IsTextFieldFocused(TextField field)
+    {
+        if (field == null || field.panel == null)
+            return false;
+
+        Focusable focusedElement = field.panel.focusController?.focusedElement;
+        if (focusedElement == null)
+            return false;
+
+        if (ReferenceEquals(focusedElement, field))
+            return true;
+
+        return focusedElement is VisualElement focusedVisual && field.Contains(focusedVisual);
+    }
+
+    private static bool MatchesSearch(string value, string normalizedQuery)
+    {
+        return string.IsNullOrWhiteSpace(normalizedQuery)
+            || (!string.IsNullOrWhiteSpace(value) && value.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) >= 0);
+    }
+
+    private static bool MatchesLibraryFilter(IToneLabPedalDescriptor descriptor, ToneLabLibraryFilter filter)
+    {
+        if (descriptor == null)
+            return false;
+
+        switch (filter)
+        {
+            case ToneLabLibraryFilter.BuiltIn:
+                return descriptor.PedalType != UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin
+                    && descriptor.PedalType != UnityToneLabRuntime.ToneLabPedalType.NamModel;
+            case ToneLabLibraryFilter.Lv2:
+                return descriptor.PedalType == UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin;
+            case ToneLabLibraryFilter.Nam:
+                return descriptor.PedalType == UnityToneLabRuntime.ToneLabPedalType.NamModel;
+            default:
+                return true;
+        }
+    }
+
+    private static bool MatchesLibrarySearch(IToneLabPedalDescriptor descriptor, string normalizedQuery)
+    {
+        if (descriptor == null)
+            return false;
+
+        return MatchesSearch(descriptor.DisplayName, normalizedQuery)
+            || MatchesSearch(descriptor.ShortName, normalizedQuery)
+            || MatchesSearch(descriptor.Description, normalizedQuery)
+            || MatchesSearch(descriptor.DescriptorId, normalizedQuery)
+            || MatchesSearch(descriptor.PedalType.ToString(), normalizedQuery);
+    }
+
+    private List<GuitarBridgeServer.ToneLabSongMappingSongSnapshot> BuildVisibleSongMappingSongs(
+        IReadOnlyList<GuitarBridgeServer.ToneLabSongMappingSongSnapshot> songs)
+    {
+        string normalizedQuery = NormalizeSearchQuery(songMappingSearchQuery);
+        IEnumerable<GuitarBridgeServer.ToneLabSongMappingSongSnapshot> visible = songs ?? Array.Empty<GuitarBridgeServer.ToneLabSongMappingSongSnapshot>();
+
+        visible = visible.Where(song => MatchesSongMappingSearch(song, normalizedQuery));
+
+        if (songMappingBrowseMode != ToneLabSongMappingBrowseMode.All && !string.IsNullOrWhiteSpace(songMappingBrowseScopeKey))
+        {
+            visible = visible.Where(song =>
+                string.Equals(GetSongMappingBrowseValue(song, songMappingBrowseMode), songMappingBrowseScopeKey, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return visible
+            .OrderBy(song => song?.artist ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(song => song?.album ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(song => song?.displayName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool MatchesSongMappingSearch(GuitarBridgeServer.ToneLabSongMappingSongSnapshot song, string normalizedQuery)
+    {
+        if (song == null)
+            return false;
+
+        return MatchesSearch(song.displayName, normalizedQuery)
+            || MatchesSearch(song.artist, normalizedQuery)
+            || MatchesSearch(song.album, normalizedQuery)
+            || MatchesSearch(song.subtitle, normalizedQuery)
+            || MatchesSearch(song.songKey, normalizedQuery);
+    }
+
+    private List<IGrouping<string, GuitarBridgeServer.ToneLabSongMappingSongSnapshot>> BuildSongMappingBrowseGroups(
+        IReadOnlyList<GuitarBridgeServer.ToneLabSongMappingSongSnapshot> songs)
+    {
+        return (songs ?? Array.Empty<GuitarBridgeServer.ToneLabSongMappingSongSnapshot>())
+            .Where(song => song != null)
+            .GroupBy(song => GetSongMappingBrowseValue(song, songMappingBrowseMode), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static string GetSongMappingBrowseValue(
+        GuitarBridgeServer.ToneLabSongMappingSongSnapshot song,
+        ToneLabSongMappingBrowseMode browseMode)
+    {
+        if (song == null)
+            return string.Empty;
+
+        if (browseMode == ToneLabSongMappingBrowseMode.Artists)
+            return string.IsNullOrWhiteSpace(song.artist) ? "Unknown Artist" : song.artist.Trim();
+
+        if (browseMode == ToneLabSongMappingBrowseMode.Albums)
+            return string.IsNullOrWhiteSpace(song.album) ? "Unknown Album" : song.album.Trim();
+
+        return string.Empty;
+    }
+
+    private static string GetSongMappingBrowseModeLabel(ToneLabSongMappingBrowseMode browseMode)
+    {
+        switch (browseMode)
+        {
+            case ToneLabSongMappingBrowseMode.Artists:
+                return "Artists";
+            case ToneLabSongMappingBrowseMode.Albums:
+                return "Albums";
+            default:
+                return "Songs";
+        }
+    }
+
+    private static string BuildSongMappingSongSubtitle(GuitarBridgeServer.ToneLabSongMappingSongSnapshot song)
+    {
+        if (song == null)
+            return string.Empty;
+
+        List<string> parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(song.artist))
+            parts.Add(song.artist.Trim());
+        if (!string.IsNullOrWhiteSpace(song.album) &&
+            !parts.Any(part => string.Equals(part, song.album.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            parts.Add(song.album.Trim());
+        }
+        if (!string.IsNullOrWhiteSpace(song.subtitle) &&
+            !parts.Any(part => string.Equals(part, song.subtitle.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            parts.Add(song.subtitle.Trim());
+        }
+
+        return string.Join("  •  ", parts);
+    }
+
+    private void RegisterLibraryItemDrag(ToneLabPedalLibraryItem item, string descriptorId)
+    {
+        if (item == null)
+            return;
+
+        item.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (evt.button != 0 || libraryDragPointerId >= 0)
+                return;
+
+            libraryDragDescriptorId = descriptorId ?? string.Empty;
+            libraryDragPointerId = evt.pointerId;
+            libraryDragStartPosition = new Vector2(evt.position.x, evt.position.y);
+            libraryDragMoved = false;
+            item.CapturePointer(libraryDragPointerId);
+        });
+
+        item.RegisterCallback<PointerMoveEvent>(evt =>
+        {
+            if (libraryDragPointerId != evt.pointerId || !item.HasPointerCapture(libraryDragPointerId))
+                return;
+
+            Vector2 pointerPosition = new Vector2(evt.position.x, evt.position.y);
+            Vector2 delta = pointerPosition - libraryDragStartPosition;
+            if (!libraryDragMoved && delta.magnitude < 7f)
+                return;
+
+            libraryDragMoved = true;
+            EnsureLibraryDragPreview(descriptorId);
+            UpdateLibraryDragPreview(pointerPosition);
+            evt.StopPropagation();
+        });
+
+        item.RegisterCallback<PointerUpEvent>(evt =>
+        {
+            if (libraryDragPointerId != evt.pointerId)
+                return;
+
+            if (item.HasPointerCapture(libraryDragPointerId))
+                item.ReleasePointer(libraryDragPointerId);
+
+            if (libraryDragMoved)
+            {
+                item.SuppressNextClick = true;
+                TryDropLibraryPedal(new Vector2(evt.position.x, evt.position.y));
+                evt.StopPropagation();
+            }
+
+            CancelLibraryDrag();
+        });
+
+        item.RegisterCallback<PointerCaptureOutEvent>(_ => CancelLibraryDrag());
+    }
+
+    private void EnsureLibraryDragPreview(string descriptorId)
+    {
+        if (libraryDragPreview != null || overlayRoot == null)
+            return;
+
+        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(descriptorId);
+        libraryDragPreview = ToneLabPedalVisualBuilder.BuildLibraryPreview(descriptor.Appearance, descriptor.ShortName);
+        libraryDragPreview.pickingMode = PickingMode.Ignore;
+        libraryDragPreview.style.position = Position.Absolute;
+        libraryDragPreview.style.opacity = 0.92f;
+        libraryDragPreview.style.scale = new Scale(new Vector3(1.18f, 1.18f, 1f));
+        overlayRoot.Add(libraryDragPreview);
+        libraryDragPreview.BringToFront();
+    }
+
+    private void UpdateLibraryDragPreview(Vector2 panelPosition)
+    {
+        if (libraryDragPreview == null || overlayRoot == null)
+            return;
+
+        libraryDragPreview.style.left = panelPosition.x - overlayRoot.worldBound.x - 58f;
+        libraryDragPreview.style.top = panelPosition.y - overlayRoot.worldBound.y - 78f;
+    }
+
+    private void TryDropLibraryPedal(Vector2 panelPosition)
+    {
+        if (runtime == null || pedalBoardView == null)
+            return;
+
+        int insertionIndex = pedalBoardView.GetInsertionIndex(panelPosition);
+        if (insertionIndex < 0)
+            return;
+
+        selectedPedalInstanceId = runtime.AddPedalToChain(libraryDragDescriptorId, insertionIndex);
+        sidePanelMode = ToneLabSidePanelMode.Details;
+        RefreshUi(syncControls: true);
+    }
+
+    private void CancelLibraryDrag()
+    {
+        if (libraryDragPreview != null)
+        {
+            libraryDragPreview.RemoveFromHierarchy();
+            libraryDragPreview = null;
+        }
+
+        libraryDragPointerId = -1;
+        libraryDragDescriptorId = string.Empty;
+        libraryDragMoved = false;
     }
 
     private void RebuildPedalInspector()
@@ -1482,7 +3636,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
         }
 
-        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(selectedSlot.pedal_type);
+        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(selectedSlot);
         object pedalSettings = descriptor.DeserializeSettingsObject(selectedSlot.settings_json);
 
         VisualElement infoRow = new VisualElement();
@@ -1510,7 +3664,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         Button removePedalButton = CreateButton("Remove", "tone-lab-button tone-lab-button-danger", () =>
         {
             runtime?.RemovePedalFromChain(selectedSlot.pedal_instance_id);
-            sidePanelMode = ToneLabSidePanelMode.Pedal;
+            sidePanelMode = ToneLabSidePanelMode.Details;
             RefreshUi(syncControls: true);
         });
         removePedalButton.style.minWidth = 96f;
@@ -1851,6 +4005,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         VisualElement field = new VisualElement();
         field.style.width = width;
         field.style.minWidth = width;
+        field.style.flexGrow = 1f;
+        field.style.flexShrink = 1f;
         field.style.marginRight = 12f;
 
         Label label = new Label(labelText);
@@ -1896,11 +4052,13 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         VisualElement field = new VisualElement();
         field.style.width = width;
         field.style.minWidth = width;
+        field.style.flexGrow = 1f;
+        field.style.flexShrink = 1f;
         field.style.marginRight = 12f;
 
         Label titleLabel = new Label(title);
-        titleLabel.style.color = new Color(0.66f, 0.69f, 0.73f, 0.95f);
-        titleLabel.style.fontSize = 12f;
+        titleLabel.style.color = new Color(0.78f, 0.81f, 0.86f, 0.96f);
+        titleLabel.style.fontSize = 14f;
         titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
         titleLabel.style.marginBottom = 4f;
         field.Add(titleLabel);
@@ -1922,7 +4080,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         Label valueLabel = new Label(formatter(initialValue));
         valueLabel.style.color = new Color(0.84f, 0.81f, 0.74f, 0.98f);
-        valueLabel.style.fontSize = 13f;
+        valueLabel.style.fontSize = 15f;
         valueLabel.style.minWidth = 64f;
         valueLabel.style.unityTextAlign = TextAnchor.MiddleRight;
         row.Add(valueLabel);
@@ -1933,7 +4091,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 return;
 
             valueLabel.text = formatter(evt.newValue);
-            runtime.UpdateSettings(settings => setter(settings, evt.newValue), restartMonitoring: false);
+            runtime.UpdateSettings(settings => setter(settings, evt.newValue), restartMonitoring: false, rebuildPedalChain: false);
         });
 
         sliderBindings.Add(new ToneSliderBinding
@@ -1965,8 +4123,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         field.style.marginRight = 12f;
 
         Label titleLabel = new Label(title);
-        titleLabel.style.color = new Color(0.66f, 0.69f, 0.73f, 0.95f);
-        titleLabel.style.fontSize = 12f;
+        titleLabel.style.color = new Color(0.78f, 0.81f, 0.86f, 0.96f);
+        titleLabel.style.fontSize = 14f;
         titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
         titleLabel.style.marginBottom = 4f;
         field.Add(titleLabel);
@@ -1988,7 +4146,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         Label localValueLabel = new Label(formatter(initialValue));
         localValueLabel.style.color = new Color(0.84f, 0.81f, 0.74f, 0.98f);
-        localValueLabel.style.fontSize = 13f;
+        localValueLabel.style.fontSize = 15f;
         localValueLabel.style.minWidth = 64f;
         localValueLabel.style.unityTextAlign = TextAnchor.MiddleRight;
         row.Add(localValueLabel);
@@ -2115,6 +4273,385 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         return button;
     }
 
+    private static Button CreateSidebarTabButton(string text, Color accentColor, Action onClick)
+    {
+        Button button = new Button(onClick) { text = text };
+        button.style.flexGrow = 1f;
+        button.style.height = 44f;
+        button.style.minWidth = 0f;
+        button.style.marginRight = 0f;
+        button.style.paddingLeft = 8f;
+        button.style.paddingRight = 8f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        button.style.color = accentColor;
+        button.style.borderTopWidth = 0f;
+        button.style.borderRightWidth = 0f;
+        button.style.borderBottomWidth = 0f;
+        button.style.borderLeftWidth = 0f;
+        button.style.borderTopLeftRadius = 0f;
+        button.style.borderTopRightRadius = 0f;
+        button.style.borderBottomLeftRadius = 0f;
+        button.style.borderBottomRightRadius = 0f;
+        button.style.fontSize = 15f;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            bool selected = button.userData is bool isSelected && isSelected;
+            if (!selected)
+                button.style.backgroundColor = new Color(1f, 1f, 1f, 0.06f);
+            button.style.color = selected ? new Color(0.05f, 0.05f, 0.055f, 1f) : Color.Lerp(accentColor, Color.white, 0.22f);
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            bool selected = button.userData is bool isSelected && isSelected;
+            if (!selected)
+            {
+                button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+                button.style.backgroundImage = StyleKeyword.None;
+                button.style.color = accentColor;
+            }
+            else
+            {
+                button.style.color = new Color(0.05f, 0.05f, 0.055f, 1f);
+            }
+        });
+        return button;
+    }
+
+    private static void ApplySidebarTabState(Button button, bool selected, Color accentColor)
+    {
+        if (button == null)
+            return;
+
+        button.userData = selected;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        if (selected)
+            button.style.backgroundImage = new StyleBackground(GetSelectedSidebarTabTexture());
+        else
+            button.style.backgroundImage = StyleKeyword.None;
+        button.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
+        button.style.color = selected ? new Color(0.05f, 0.05f, 0.055f, 1f) : accentColor;
+        button.style.fontSize = selected ? 16f : 15f;
+    }
+
+    private static Color StartupLogoColor(int index)
+    {
+        switch (Mathf.Abs(index) % 6)
+        {
+            case 0:
+                return new Color(0.91f, 0.30f, 0.24f, 1f);
+            case 1:
+                return new Color(0.95f, 0.77f, 0.06f, 1f);
+            case 2:
+                return new Color(0.20f, 0.60f, 0.86f, 1f);
+            case 3:
+                return new Color(0.90f, 0.49f, 0.13f, 1f);
+            case 4:
+                return new Color(0.18f, 0.80f, 0.44f, 1f);
+            default:
+                return new Color(0.61f, 0.35f, 0.71f, 1f);
+        }
+    }
+
+    private static VisualElement CreateThinDividerSection()
+    {
+        VisualElement section = new VisualElement();
+        section.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        section.style.borderTopWidth = 1f;
+        section.style.borderBottomWidth = 1f;
+        section.style.borderLeftWidth = 0f;
+        section.style.borderRightWidth = 0f;
+        section.style.borderTopColor = new Color(1f, 1f, 1f, 0.16f);
+        section.style.borderBottomColor = new Color(1f, 1f, 1f, 0.12f);
+        section.style.paddingLeft = 0f;
+        section.style.paddingRight = 0f;
+        return section;
+    }
+
+    private static VisualElement CreateModernToolbarField(string labelText, VisualElement control, float width)
+    {
+        VisualElement field = new VisualElement();
+        field.style.width = width;
+        field.style.minWidth = width;
+        field.style.marginRight = 14f;
+        field.style.justifyContent = Justify.Center;
+
+        Label label = new Label(labelText);
+        label.style.color = new Color(0.88f, 0.90f, 0.94f, 0.82f);
+        label.style.fontSize = 12f;
+        label.style.unityFontStyleAndWeight = FontStyle.Bold;
+        label.style.marginBottom = 3f;
+        field.Add(label);
+
+        field.Add(control);
+        return field;
+    }
+
+    private static void StyleTransparentScrollView(ScrollView scrollView)
+    {
+        if (scrollView == null)
+            return;
+
+        scrollView.style.flexGrow = 1f;
+        scrollView.style.minHeight = 0f;
+        scrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+        scrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        scrollView.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        scrollView.style.borderTopWidth = 0f;
+        scrollView.style.borderRightWidth = 0f;
+        scrollView.style.borderBottomWidth = 0f;
+        scrollView.style.borderLeftWidth = 0f;
+        if (scrollView.contentViewport != null)
+            scrollView.contentViewport.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+    }
+
+    private static void StyleCompactActionButton(Button button, float width)
+    {
+        if (button == null)
+            return;
+
+        button.style.minWidth = width;
+        button.style.width = width;
+        button.style.height = 38f;
+        button.style.fontSize = 14f;
+        button.style.marginRight = 10f;
+        button.style.paddingLeft = 8f;
+        button.style.paddingRight = 8f;
+        button.style.borderTopLeftRadius = 8f;
+        button.style.borderTopRightRadius = 8f;
+        button.style.borderBottomLeftRadius = 8f;
+        button.style.borderBottomRightRadius = 8f;
+    }
+
+    private static void StyleFooterActionButton(Button button, float width)
+    {
+        if (button == null)
+            return;
+
+        StyleCompactActionButton(button, width);
+        button.style.height = 46f;
+        button.style.fontSize = 15f;
+        button.style.paddingLeft = 14f;
+        button.style.paddingRight = 14f;
+        button.style.borderTopLeftRadius = 10f;
+        button.style.borderTopRightRadius = 10f;
+        button.style.borderBottomLeftRadius = 10f;
+        button.style.borderBottomRightRadius = 10f;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+        bool isDanger = button.ClassListContains("tone-lab-button-danger");
+        bool isPrimary = button.ClassListContains("tone-lab-button-primary");
+        Color restTextColor = isDanger
+            ? new Color(0.95f, 0.60f, 0.60f, 1f)
+            : (isPrimary ? new Color(0.96f, 0.97f, 0.98f, 0.98f) : new Color(0.84f, 0.86f, 0.90f, 0.98f));
+        Color hoverBackground = isDanger
+            ? new Color(0.70f, 0.08f, 0.10f, 0.26f)
+            : (isPrimary ? new Color(1f, 1f, 1f, 0.18f) : new Color(1f, 1f, 1f, 0.12f));
+
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.backgroundColor = hoverBackground;
+            button.style.color = Color.white;
+            button.style.scale = new Scale(new Vector3(1.06f, 1.06f, 1f));
+            button.style.opacity = 1f;
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            button.style.color = restTextColor;
+            button.style.scale = new Scale(Vector3.one);
+            button.style.opacity = 0.96f;
+        });
+    }
+
+    private static void StyleUnsavedModalButton(Button button, float width, bool isDanger)
+    {
+        if (button == null)
+            return;
+
+        button.style.minWidth = width;
+        button.style.height = 42f;
+        button.style.fontSize = 15f;
+        button.style.paddingLeft = 18f;
+        button.style.paddingRight = 18f;
+        button.style.borderTopLeftRadius = 10f;
+        button.style.borderTopRightRadius = 10f;
+        button.style.borderBottomLeftRadius = 10f;
+        button.style.borderBottomRightRadius = 10f;
+
+        Color restText = isDanger
+            ? new Color(1f, 0.52f, 0.55f, 1f)
+            : new Color(0.96f, 0.97f, 0.98f, 0.98f);
+        Color hoverBackground = isDanger
+            ? new Color(0.72f, 0.08f, 0.10f, 0.28f)
+            : new Color(1f, 0.58f, 0.10f, 0.22f);
+
+        button.style.color = restText;
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.backgroundColor = hoverBackground;
+            button.style.color = Color.white;
+            button.style.scale = new Scale(new Vector3(1.04f, 1.04f, 1f));
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            button.style.color = restText;
+            button.style.scale = new Scale(Vector3.one);
+        });
+    }
+
+    private static void StyleRoundIconButton(Button button, float size, float fontSize)
+    {
+        if (button == null)
+            return;
+
+        button.style.width = size;
+        button.style.minWidth = size;
+        button.style.height = size;
+        button.style.marginRight = 0f;
+        button.style.paddingLeft = 0f;
+        button.style.paddingRight = 0f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 2f;
+        button.style.fontSize = fontSize;
+        button.style.borderTopLeftRadius = 999f;
+        button.style.borderTopRightRadius = 999f;
+        button.style.borderBottomLeftRadius = 999f;
+        button.style.borderBottomRightRadius = 999f;
+        button.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
+        button.style.color = Color.white;
+    }
+
+    private static void StyleTextDeleteButton(Button button)
+    {
+        if (button == null)
+            return;
+
+        button.style.width = 34f;
+        button.style.minWidth = 34f;
+        button.style.height = 34f;
+        button.style.marginRight = 0f;
+        button.style.paddingLeft = 0f;
+        button.style.paddingRight = 0f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        button.style.color = Color.white;
+        button.style.fontSize = 18f;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.borderTopWidth = 0f;
+        button.style.borderRightWidth = 0f;
+        button.style.borderBottomWidth = 0f;
+        button.style.borderLeftWidth = 0f;
+        button.RegisterCallback<MouseEnterEvent>(_ => button.style.color = new Color(1f, 0.22f, 0.28f, 1f));
+        button.RegisterCallback<MouseLeaveEvent>(_ => button.style.color = Color.white);
+    }
+
+    private static void StylePresetSelectButton(Button button)
+    {
+        if (button == null)
+            return;
+
+        button.style.width = 78f;
+        button.style.minWidth = 78f;
+        button.style.height = 34f;
+        button.style.marginRight = 0f;
+        button.style.paddingLeft = 10f;
+        button.style.paddingRight = 10f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.backgroundColor = new Color(1f, 0.58f, 0.08f, 0.20f);
+        button.style.color = Color.white;
+        button.style.fontSize = 13f;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.borderTopWidth = 1f;
+        button.style.borderRightWidth = 1f;
+        button.style.borderBottomWidth = 1f;
+        button.style.borderLeftWidth = 1f;
+        button.style.borderTopColor = new Color(1f, 0.88f, 0.48f, 0.92f);
+        button.style.borderRightColor = new Color(1f, 0.56f, 0.38f, 0.86f);
+        button.style.borderBottomColor = new Color(0.82f, 0.32f, 0.22f, 0.82f);
+        button.style.borderLeftColor = new Color(1f, 0.72f, 0.22f, 0.86f);
+        button.style.borderTopLeftRadius = 8f;
+        button.style.borderTopRightRadius = 8f;
+        button.style.borderBottomLeftRadius = 8f;
+        button.style.borderBottomRightRadius = 8f;
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.backgroundColor = new Color(1f, 0.58f, 0.08f, 0.40f);
+            button.style.scale = new Scale(new Vector3(1.04f, 1.04f, 1f));
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.backgroundColor = new Color(1f, 0.58f, 0.08f, 0.20f);
+            button.style.scale = new Scale(Vector3.one);
+        });
+    }
+
+    private static Texture2D GetPresetSelectionGradientTexture()
+    {
+        if (presetSelectionGradientTexture != null)
+            return presetSelectionGradientTexture;
+
+        const int width = 64;
+        Texture2D texture = new Texture2D(width, 1, TextureFormat.RGBA32, false)
+        {
+            name = "ToneLabPresetSelectionGradient",
+            hideFlags = HideFlags.HideAndDontSave,
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+
+        Color left = new Color(0.95f, 0.67f, 0.00f, 0.96f);
+        Color right = new Color(1.00f, 0.38f, 0.45f, 0.96f);
+        for (int x = 0; x < width; x++)
+        {
+            float t = x / (float)(width - 1);
+            texture.SetPixel(x, 0, Color.Lerp(left, right, t));
+        }
+
+        texture.Apply(false, true);
+        presetSelectionGradientTexture = texture;
+        return presetSelectionGradientTexture;
+    }
+
+    private static Texture2D GetSelectedSidebarTabTexture()
+    {
+        if (selectedSidebarTabTexture != null)
+            return selectedSidebarTabTexture;
+
+        const int width = 512;
+        const int height = 128;
+        const int slant = 88;
+        const float edgeSoftness = 2.25f;
+        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+        {
+            name = "ToneLabSelectedSidebarTab",
+            hideFlags = HideFlags.HideAndDontSave,
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+
+        Color fill = new Color(0.94f, 0.94f, 0.92f, 0.98f);
+        for (int y = 0; y < height; y++)
+        {
+            float rowSlant = (y / (float)Mathf.Max(1, height - 1)) * slant;
+            float rightEdge = width - slant + rowSlant;
+            for (int x = 0; x < width; x++)
+            {
+                float alpha = Mathf.Clamp01((rightEdge - x + edgeSoftness) / (edgeSoftness * 2f));
+                texture.SetPixel(x, y, new Color(fill.r, fill.g, fill.b, fill.a * alpha));
+            }
+        }
+
+        texture.Apply(false, true);
+        selectedSidebarTabTexture = texture;
+        return selectedSidebarTabTexture;
+    }
+
     private static void ApplyModalActionButtonStyle(Button button, bool isDanger)
     {
         if (button == null)
@@ -2198,7 +4735,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         backdrop.style.right = 0f;
         backdrop.style.top = 0f;
         backdrop.style.bottom = 0f;
-        backdrop.style.backgroundColor = new Color(0.02f, 0.03f, 0.06f, 0.52f);
+        backdrop.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
     }
 
     private static void ApplyWindowStyle(VisualElement window)
@@ -2213,7 +4750,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         window.style.paddingTop = 22f;
         window.style.paddingBottom = 18f;
         window.style.overflow = Overflow.Hidden;
-        window.style.backgroundColor = new Color(0.10f, 0.10f, 0.11f, 0.98f);
+        window.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         window.style.borderTopWidth = 0f;
         window.style.borderRightWidth = 0f;
         window.style.borderBottomWidth = 0f;
@@ -2278,35 +4815,37 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
     private static void ApplyDropdownStyle(DropdownField dropdown)
     {
-        dropdown.style.minWidth = 280f;
-        dropdown.style.minHeight = 40f;
-        dropdown.style.fontSize = 15f;
-        dropdown.style.backgroundColor = new Color(0.05f, 0.06f, 0.08f, 0.98f);
-        dropdown.style.color = new Color(0.90f, 0.91f, 0.93f, 0.98f);
-        dropdown.style.borderTopWidth = 1f;
-        dropdown.style.borderRightWidth = 1f;
+        dropdown.style.minWidth = 180f;
+        dropdown.style.minHeight = 38f;
+        dropdown.style.fontSize = 14f;
+        dropdown.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        dropdown.style.color = new Color(0.94f, 0.95f, 0.97f, 0.98f);
+        dropdown.style.borderTopWidth = 0f;
+        dropdown.style.borderRightWidth = 0f;
         dropdown.style.borderBottomWidth = 1f;
-        dropdown.style.borderLeftWidth = 1f;
-        dropdown.style.borderTopColor = new Color(0.33f, 0.35f, 0.39f, 0.90f);
-        dropdown.style.borderRightColor = new Color(0.23f, 0.24f, 0.28f, 0.98f);
-        dropdown.style.borderBottomColor = new Color(0.18f, 0.19f, 0.22f, 0.98f);
-        dropdown.style.borderLeftColor = new Color(0.23f, 0.24f, 0.28f, 0.98f);
-        dropdown.style.borderTopLeftRadius = 10f;
-        dropdown.style.borderTopRightRadius = 10f;
-        dropdown.style.borderBottomLeftRadius = 10f;
-        dropdown.style.borderBottomRightRadius = 10f;
+        dropdown.style.borderLeftWidth = 0f;
+        dropdown.style.borderBottomColor = new Color(1f, 1f, 1f, 0.34f);
+        dropdown.style.borderTopLeftRadius = 0f;
+        dropdown.style.borderTopRightRadius = 0f;
+        dropdown.style.borderBottomLeftRadius = 0f;
+        dropdown.style.borderBottomRightRadius = 0f;
         dropdown.RegisterCallback<AttachToPanelEvent>(_ =>
         {
             VisualElement inputElement = dropdown.Q(className: "unity-base-field__input");
             if (inputElement != null)
             {
-                inputElement.style.backgroundColor = new Color(0.05f, 0.06f, 0.08f, 1f);
-                inputElement.style.color = new Color(0.90f, 0.91f, 0.93f, 1f);
+                inputElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+                inputElement.style.color = new Color(0.94f, 0.95f, 0.97f, 1f);
+                inputElement.style.borderBottomWidth = 0f;
+                inputElement.style.fontSize = 14f;
             }
 
             Label textLabel = dropdown.Q<Label>(className: "unity-base-popup-field__text");
             if (textLabel != null)
+            {
                 textLabel.style.color = new Color(0.90f, 0.91f, 0.93f, 1f);
+                textLabel.style.fontSize = 14f;
+            }
 
             VisualElement arrowElement = dropdown.Q(className: "unity-base-popup-field__arrow");
             if (arrowElement != null)
@@ -2317,6 +4856,86 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private static int ParseLatencyPresetBufferSize(string label)
     {
         return UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(label);
+    }
+
+    private bool HasUnsavedPresetChanges()
+    {
+        if (runtime == null)
+            return false;
+
+        string currentPresetId = runtime.CurrentPresetId;
+        if (string.IsNullOrWhiteSpace(currentPresetId))
+            return false;
+
+        UnityToneLabRuntime.ToneLabSettings settings = runtime.CurrentSettings;
+        if (settings == null)
+            return false;
+
+        UnityToneLabRuntime.ToneLabPreset selectedPreset = runtime.CurrentPresets.FirstOrDefault(preset =>
+            preset != null && string.Equals(preset.preset_id, currentPresetId, StringComparison.Ordinal));
+        if (selectedPreset == null)
+            return false;
+
+        if (!ApproximatelyEqual(settings.input_gain_db, selectedPreset.input_gain_db))
+            return true;
+        if (!ApproximatelyEqual(settings.output_gain_db, selectedPreset.output_gain_db))
+            return true;
+
+        return !PedalChainsEquivalent(settings.pedal_chain, selectedPreset.pedal_chain);
+    }
+
+    private static bool ApproximatelyEqual(float left, float right)
+    {
+        return Mathf.Abs(left - right) <= 0.0001f;
+    }
+
+    private static bool PedalChainsEquivalent(
+        IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> left,
+        IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> right)
+    {
+        int leftCount = left?.Count ?? 0;
+        int rightCount = right?.Count ?? 0;
+        if (leftCount != rightCount)
+            return false;
+
+        for (int i = 0; i < leftCount; i++)
+        {
+            if (!PedalSlotsEquivalent(left[i], right[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool PedalSlotsEquivalent(UnityToneLabRuntime.ToneLabPedalSlot left, UnityToneLabRuntime.ToneLabPedalSlot right)
+    {
+        if (left == null || right == null)
+            return left == null && right == null;
+
+        return left.pedal_type == right.pedal_type
+            && string.Equals(left.descriptor_id ?? string.Empty, right.descriptor_id ?? string.Empty, StringComparison.Ordinal)
+            && left.enabled == right.enabled
+            && PedalSettingsEquivalent(left, right);
+    }
+
+    private static bool PedalSettingsEquivalent(UnityToneLabRuntime.ToneLabPedalSlot left, UnityToneLabRuntime.ToneLabPedalSlot right)
+    {
+        string leftJson = left?.settings_json ?? string.Empty;
+        string rightJson = right?.settings_json ?? string.Empty;
+        if (string.Equals(leftJson, rightJson, StringComparison.Ordinal))
+            return true;
+
+        try
+        {
+            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(left);
+            string normalizedLeft = descriptor.SerializeSettingsObject(descriptor.DeserializeSettingsObject(leftJson));
+            string normalizedRight = descriptor.SerializeSettingsObject(descriptor.DeserializeSettingsObject(rightJson));
+            return string.Equals(normalizedLeft, normalizedRight, StringComparison.Ordinal);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private string GetPresetName(string presetId)
@@ -2386,6 +5005,39 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         foreach (UnityEngine.UIElements.TextElement textElement in presetNameField.Query<UnityEngine.UIElements.TextElement>().ToList())
         {
             textElement.style.color = Color.white;
+            textElement.style.unityTextAlign = TextAnchor.MiddleLeft;
+            textElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        }
+    }
+
+    private static void ApplySearchFieldStyle(TextField searchField)
+    {
+        if (searchField == null)
+            return;
+
+        searchField.style.color = Color.white;
+
+        VisualElement textInputElement =
+            searchField.Q(className: TextInputBaseField<string>.textInputUssName)
+            ?? searchField.Q(className: "unity-text-field__input")
+            ?? searchField.Q(className: "unity-base-text-field__input")
+            ?? searchField.Q(className: "unity-base-field__input");
+        if (textInputElement != null)
+        {
+            textInputElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            textInputElement.style.color = Color.white;
+            textInputElement.style.fontSize = 20f;
+            textInputElement.style.unityTextAlign = TextAnchor.MiddleLeft;
+            textInputElement.style.borderTopWidth = 0f;
+            textInputElement.style.borderRightWidth = 0f;
+            textInputElement.style.borderBottomWidth = 0f;
+            textInputElement.style.borderLeftWidth = 0f;
+        }
+
+        foreach (UnityEngine.UIElements.TextElement textElement in searchField.Query<UnityEngine.UIElements.TextElement>().ToList())
+        {
+            textElement.style.color = Color.white;
+            textElement.style.fontSize = 20f;
             textElement.style.unityTextAlign = TextAnchor.MiddleLeft;
             textElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         }

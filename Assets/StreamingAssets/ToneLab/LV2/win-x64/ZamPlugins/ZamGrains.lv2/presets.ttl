@@ -1,0 +1,29 @@
+@prefix lv2:   <http://lv2plug.in/ns/lv2core#> .
+@prefix pset:  <http://lv2plug.in/ns/ext/presets#> .
+
+<urn:zamaudio:ZamGrains#preset001>
+    lv2:port [
+        lv2:symbol "gain" ;
+        pset:value 0 ;
+    ] ,
+    [
+        lv2:symbol "grains" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "gs" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "ps" ;
+        pset:value 1 ;
+    ] ,
+    [
+        lv2:symbol "time" ;
+        pset:value 1000 ;
+    ] ,
+    [
+        lv2:symbol "freeze" ;
+        pset:value 0 ;
+    ] .
+

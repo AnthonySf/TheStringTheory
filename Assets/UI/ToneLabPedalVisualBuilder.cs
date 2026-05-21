@@ -43,7 +43,6 @@ public static class ToneLabPedalVisualBuilder
         float facePadding = compact ? 7f : 12f;
         float labelStripHeight = compact ? 24f : 36f;
         float labelFontSize = compact ? 8.5f : 14f;
-        float shortTypeFontSize = compact ? 8f : 11f;
         float footswitchHousingHeight = compact ? 34f : 76f;
         float knobSize = compact ? 15f : 24f;
         float sliderHeight = compact ? 34f : 64f;
@@ -165,28 +164,9 @@ public static class ToneLabPedalVisualBuilder
             leftMeta.Add(led);
             parts.Led = led;
 
-            Label pedalTypeLabel = new Label(pedalShortType);
-            pedalTypeLabel.style.color = resolvedAppearance.SecondaryTextColor;
-            pedalTypeLabel.style.fontSize = shortTypeFontSize;
-            pedalTypeLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            pedalTypeLabel.style.letterSpacing = 1.1f;
-            leftMeta.Add(pedalTypeLabel);
-            parts.PedalTypeLabel = pedalTypeLabel;
-
             Button bypassButton = CreateBypassButton();
             metaRow.Add(bypassButton);
             parts.BypassButton = bypassButton;
-        }
-        else
-        {
-            Label pedalTypeLabel = new Label(pedalShortType);
-            pedalTypeLabel.style.color = resolvedAppearance.SecondaryTextColor;
-            pedalTypeLabel.style.fontSize = shortTypeFontSize;
-            pedalTypeLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            pedalTypeLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-            pedalTypeLabel.style.marginBottom = 6f;
-            faceSection.Add(pedalTypeLabel);
-            parts.PedalTypeLabel = pedalTypeLabel;
         }
 
         VisualElement controlsWrap = new VisualElement();

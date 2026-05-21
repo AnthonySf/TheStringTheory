@@ -1,0 +1,220 @@
+{
+  "profiles": [
+    {
+      "path": "Engl Powerball II/Engle_Powerball_II.nam",
+      "display_name": "ENGL Powerball II",
+      "short_name": "ENGL",
+      "description": "Full-rig modern high-gain ENGL Powerball II capture through an ENGL E412 cab. Use for tight rock, metal rhythm, and lead tones.",
+      "creator": "cobraska",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/engl-powerball-ii-5770"
+    },
+    {
+      "path": "pLEXI-LORE/model (1).nam",
+      "display_name": "pLEXI-LORE",
+      "short_name": "PLEXI",
+      "description": "Full-rig Marshall Plexi 100W and Nobels ODR-1 capture for classic rock crunch, punk rhythm, and blues-rock lead sounds.",
+      "creator": "greyback05",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/plexi-lore-1863"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/All 5s Traditional.nam",
+      "display_name": "Two Rock All 5s",
+      "short_name": "2ROCK",
+      "description": "Full-rig Two Rock Studio Signature clean capture through OX 2x12 cab modeling. Balanced all-5s setting for clean and edge-of-breakup tones.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/All 5s Traditional 33.5k Params.nam",
+      "display_name": "Two Rock All 5s Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy Two Rock Studio Signature all-5s clean capture. Use when quality matters more than CPU cost.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/B G3 T5M5B4 Vol6 P5 Traditional.nam",
+      "display_name": "Two Rock Bright G3 Traditional",
+      "short_name": "2ROCK",
+      "description": "Bright-switch Two Rock clean capture with lower gain and traditional input structure. Good for articulate pop, funk, and light breakup.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/B G3 T5M5B4 Vol6 P5 Traditional 33.5k Params.nam",
+      "display_name": "Two Rock Bright G3 Traditional Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy bright-switch Two Rock clean capture with lower gain and traditional input structure.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/B G3 T5M5B5 Vol7 P5 BF.nam",
+      "display_name": "Two Rock Bright G3 BF",
+      "short_name": "2ROCK",
+      "description": "Bright-switch Two Rock clean capture with BF input structure. Clear, polished clean tone for arpeggios and melodic parts.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/B G3 T5M5B5 Vol7 P5 BF 33.5k Params.nam",
+      "display_name": "Two Rock Bright G3 BF Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy bright-switch Two Rock BF clean capture for detailed clean tones at a higher CPU cost.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/B G5 T5M5B5 Vol6 P6 Traditional.nam",
+      "display_name": "Two Rock Bright G5 Traditional",
+      "short_name": "2ROCK",
+      "description": "Bright-switch Two Rock capture with more gain and traditional input structure. Strong edge-of-breakup base for blues and indie rock.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/B G5 T5M5B5 Vol6 P6 Traditional 33.5k Params.nam",
+      "display_name": "Two Rock Bright G5 Traditional Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy bright-switch Two Rock edge-of-breakup capture with traditional input structure.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BM G3 T5M5B4 Vol6 P5 Traditional.nam",
+      "display_name": "Two Rock Bright Mid G3 Traditional",
+      "short_name": "2ROCK",
+      "description": "Bright and mid switch Two Rock clean capture with traditional input structure. Focused clean tone that sits forward in a mix.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BM G3 T5M5B4 Vol6 P5 Traditional 33.5k Params.nam",
+      "display_name": "Two Rock Bright Mid G3 Traditional Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy Two Rock clean capture with bright and mid switches enabled.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BM G3 T5M5B5 Vol7 P5 BF.nam",
+      "display_name": "Two Rock Bright Mid G3 BF",
+      "short_name": "2ROCK",
+      "description": "Bright and mid switch Two Rock BF clean capture. Smooth attack with extra mid presence for expressive clean leads.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BM G3 T5M5B5 Vol7 P5 BF 33.5k Params.nam",
+      "display_name": "Two Rock Bright Mid G3 BF Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy Two Rock BF clean capture with bright and mid switches enabled.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BM G5 T5M5B5 Vol6 P6 Traditional.nam",
+      "display_name": "Two Rock Bright Mid G5 Traditional",
+      "short_name": "2ROCK",
+      "description": "Bright and mid switch Two Rock edge-of-breakup capture with traditional input structure. Useful for blues-rock and dynamic rhythm parts.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BM G5 T5M5B5 Vol6 P6 Traditional 33.5k Params.nam",
+      "display_name": "Two Rock Bright Mid G5 Traditional Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy bright and mid switch Two Rock edge-of-breakup capture.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BMD All 5s Traditional.nam",
+      "display_name": "Two Rock BMD All 5s",
+      "short_name": "2ROCK",
+      "description": "Bright, mid, and deep switch Two Rock all-5s capture. Wide clean tone with fuller lows and polished top end.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BMD All 5s Traditional 33.5k Params.nam",
+      "display_name": "Two Rock BMD All 5s Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy wide clean Two Rock all-5s capture with bright, mid, and deep switches enabled.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BMD G3 T5M5B4 Vol6 P5 Traditional.nam",
+      "display_name": "Two Rock BMD G3 Traditional",
+      "short_name": "2ROCK",
+      "description": "Bright, mid, and deep switch Two Rock clean capture with lower gain and traditional input structure. Clear but fuller than the bright-only captures.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BMD G3 T5M5B4 Vol6 P5 Traditional 33.5k Params.nam",
+      "display_name": "Two Rock BMD G3 Traditional Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy Two Rock clean capture with bright, mid, and deep switches enabled.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BMD G3 T5M5B5 Vol7 P5 BF.nam",
+      "display_name": "Two Rock BMD G3 BF",
+      "short_name": "2ROCK",
+      "description": "Bright, mid, and deep switch Two Rock BF clean capture. Full, smooth clean tone for ambient parts and melodic lead work.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BMD G3 T5M5B5 Vol7 P5 BF 33.5k Params.nam",
+      "display_name": "Two Rock BMD G3 BF Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy full clean Two Rock BF capture with bright, mid, and deep switches enabled.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BMD G5 T5M5B5 Vol7 P5 BF.nam",
+      "display_name": "Two Rock BMD G5 BF",
+      "short_name": "2ROCK",
+      "description": "Bright, mid, and deep switch Two Rock BF capture with more gain. Warm edge-of-breakup tone for expressive blues and roots rock.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    },
+    {
+      "path": "Two Rock Studio Signature + OX Box 2x12 Two Rock Cab V2/BMD G5 T5M5B5 Vol7 P5 BF 33.5k Params.nam",
+      "display_name": "Two Rock BMD G5 BF Hi-Res",
+      "short_name": "2ROCK",
+      "description": "Higher-accuracy full Two Rock BF edge-of-breakup capture with bright, mid, and deep switches enabled.",
+      "creator": "danielnguyen",
+      "license": "CC BY 4.0",
+      "source_url": "https://www.tone3000.com/tones/two-rock-studio-signature-ox-box-2x12-two-rock-cab-v2-5367"
+    }
+  ]
+}

@@ -5,18 +5,18 @@ using UnityEngine.UIElements;
 
 public sealed class ToneLabPedalBoardView
 {
-    private const float DragActivationPixels = 6f;
+    private const float DragActivationPixels = 7f;
     private const float PedalTileSpacing = 18f;
+    private static Texture2D addEffectGradientTexture;
 
     private readonly VisualElement root;
-    private readonly VisualElement lane;
-    private readonly VisualElement boardViewport;
     private readonly ScrollView chainScrollView;
-    private readonly VisualElement chainRow;
+    private readonly VisualElement chainGrid;
     private readonly Label emptyLabel;
 
     private ToneLabPedalTile draggingTile;
     private ToneLabPedalTile dragPreviewTile;
+    private VisualElement dragPlaceholder;
     private Vector2 dragStartPosition;
     private int dragPointerId = -1;
     private bool dragMoved;
@@ -26,6 +26,7 @@ public sealed class ToneLabPedalBoardView
 
     public event Action<string> PedalSelected;
     public event Action<string, bool> PedalEnabledChanged;
+    public event Action<string> PedalRemoveRequested;
     public event Action<IReadOnlyList<string>> PedalOrderCommitted;
     public event Action AddPedalRequested;
 
@@ -34,179 +35,123 @@ public sealed class ToneLabPedalBoardView
         root = new VisualElement();
         root.style.flexGrow = 1f;
         root.style.minHeight = 0f;
-        root.style.paddingTop = 0f;
-        root.style.paddingBottom = 0f;
-
-        lane = new VisualElement();
-        lane.style.flexGrow = 1f;
-        lane.style.minHeight = 0f;
-        lane.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        lane.style.borderTopWidth = 0f;
-        lane.style.borderRightWidth = 0f;
-        lane.style.borderBottomWidth = 0f;
-        lane.style.borderLeftWidth = 0f;
-        lane.style.borderTopLeftRadius = 0f;
-        lane.style.borderTopRightRadius = 0f;
-        lane.style.borderBottomLeftRadius = 0f;
-        lane.style.borderBottomRightRadius = 0f;
-        lane.style.paddingLeft = 0f;
-        lane.style.paddingRight = 0f;
-        lane.style.paddingTop = 0f;
-        lane.style.paddingBottom = 0f;
-        lane.style.justifyContent = Justify.FlexStart;
-        lane.style.alignItems = Align.Stretch;
-        lane.style.overflow = Overflow.Visible;
-        root.Add(lane);
-
-        VisualElement signalLine = new VisualElement();
-        signalLine.style.position = Position.Absolute;
-        signalLine.style.left = 24f;
-        signalLine.style.right = 24f;
-        signalLine.style.top = 90f;
-        signalLine.style.height = 3f;
-        signalLine.style.backgroundColor = new Color(0.76f, 0.62f, 0.42f, 0.12f);
-        signalLine.style.borderTopLeftRadius = 2f;
-        signalLine.style.borderTopRightRadius = 2f;
-        signalLine.style.borderBottomLeftRadius = 2f;
-        signalLine.style.borderBottomRightRadius = 2f;
-        lane.Add(signalLine);
+        root.style.flexDirection = FlexDirection.Column;
 
         VisualElement boardHeader = new VisualElement();
-        boardHeader.style.position = Position.Absolute;
-        boardHeader.style.left = 4f;
-        boardHeader.style.right = 4f;
-        boardHeader.style.top = 0f;
+        boardHeader.style.height = 58f;
+        boardHeader.style.flexShrink = 0f;
         boardHeader.style.flexDirection = FlexDirection.Row;
+        boardHeader.style.alignItems = Align.Center;
         boardHeader.style.justifyContent = Justify.SpaceBetween;
-        boardHeader.style.alignItems = Align.FlexStart;
-        lane.Add(boardHeader);
+        boardHeader.style.borderBottomWidth = 1f;
+        boardHeader.style.borderBottomColor = new Color(1f, 1f, 1f, 0.16f);
+        boardHeader.style.marginBottom = 10f;
+        root.Add(boardHeader);
 
-        VisualElement boardCopy = new VisualElement();
-        boardCopy.style.flexGrow = 1f;
-        boardCopy.style.maxWidth = 420f;
-        boardCopy.style.marginRight = 18f;
-        boardCopy.pickingMode = PickingMode.Ignore;
-        boardHeader.Add(boardCopy);
+        VisualElement copyColumn = new VisualElement();
+        copyColumn.style.flexGrow = 1f;
+        copyColumn.style.translate = new Translate(0f, -3f, 0f);
+        boardHeader.Add(copyColumn);
 
         Label boardTitle = new Label("Pedalboard");
         boardTitle.style.color = Color.white;
-        boardTitle.style.fontSize = 22f;
+        boardTitle.style.fontSize = 24f;
         boardTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
-        boardCopy.Add(boardTitle);
+        copyColumn.Add(boardTitle);
 
-        Label boardSubtitle = new Label("Select a pedal to edit settings, or drag to change order.");
-        boardSubtitle.style.color = new Color(0.68f, 0.71f, 0.76f, 0.94f);
-        boardSubtitle.style.fontSize = 13f;
-        boardSubtitle.style.marginTop = 4f;
-        boardSubtitle.style.whiteSpace = WhiteSpace.Normal;
-        boardCopy.Add(boardSubtitle);
+        Label boardSubtitle = new Label("Signal flows left to right, then wraps to the next row.");
+        boardSubtitle.style.color = new Color(0.86f, 0.88f, 0.92f, 0.66f);
+        boardSubtitle.style.fontSize = 12f;
+        boardSubtitle.style.marginTop = 0f;
+        copyColumn.Add(boardSubtitle);
 
         Button addPedalButton = new Button(() => AddPedalRequested?.Invoke())
         {
-            text = "+"
+            text = "+ ADD EFFECT"
         };
-        addPedalButton.style.width = 54f;
-        addPedalButton.style.minWidth = 54f;
-        addPedalButton.style.height = 54f;
-        addPedalButton.style.flexShrink = 0f;
-        addPedalButton.style.paddingLeft = 0f;
-        addPedalButton.style.paddingRight = 0f;
+        addPedalButton.style.width = 198f;
+        addPedalButton.style.minWidth = 198f;
+        addPedalButton.style.height = 52f;
+        addPedalButton.style.marginRight = 0f;
+        addPedalButton.style.paddingLeft = 18f;
+        addPedalButton.style.paddingRight = 18f;
         addPedalButton.style.paddingTop = 0f;
-        addPedalButton.style.paddingBottom = 2f;
-        addPedalButton.style.fontSize = 30f;
+        addPedalButton.style.paddingBottom = 0f;
+        addPedalButton.style.fontSize = 18f;
         addPedalButton.style.unityFontStyleAndWeight = FontStyle.Bold;
-        addPedalButton.style.color = new Color(0.97f, 0.98f, 1f, 0.98f);
-        addPedalButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        addPedalButton.style.backgroundColor = new Color(1f, 0.58f, 0.08f, 0.92f);
+        addPedalButton.style.backgroundImage = new StyleBackground(GetAddEffectGradientTexture());
+        addPedalButton.style.color = Color.white;
         addPedalButton.style.borderTopWidth = 1f;
         addPedalButton.style.borderRightWidth = 1f;
         addPedalButton.style.borderBottomWidth = 1f;
         addPedalButton.style.borderLeftWidth = 1f;
-        addPedalButton.style.borderTopColor = new Color(1f, 1f, 1f, 0.92f);
-        addPedalButton.style.borderRightColor = new Color(1f, 1f, 1f, 0.82f);
-        addPedalButton.style.borderBottomColor = new Color(1f, 1f, 1f, 0.72f);
-        addPedalButton.style.borderLeftColor = new Color(1f, 1f, 1f, 0.82f);
-        addPedalButton.style.borderTopLeftRadius = 14f;
-        addPedalButton.style.borderTopRightRadius = 14f;
-        addPedalButton.style.borderBottomLeftRadius = 14f;
-        addPedalButton.style.borderBottomRightRadius = 14f;
+        addPedalButton.style.borderTopColor = new Color(1f, 0.92f, 0.64f, 0.80f);
+        addPedalButton.style.borderRightColor = new Color(1f, 0.64f, 0.48f, 0.78f);
+        addPedalButton.style.borderBottomColor = new Color(0.84f, 0.34f, 0.24f, 0.74f);
+        addPedalButton.style.borderLeftColor = new Color(1f, 0.78f, 0.24f, 0.78f);
+        addPedalButton.style.borderTopLeftRadius = 10f;
+        addPedalButton.style.borderTopRightRadius = 10f;
+        addPedalButton.style.borderBottomLeftRadius = 10f;
+        addPedalButton.style.borderBottomRightRadius = 10f;
+        addPedalButton.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            addPedalButton.style.unityBackgroundImageTintColor = new Color(1.08f, 1.08f, 1.08f, 1f);
+            addPedalButton.style.scale = new Scale(new Vector3(1.05f, 1.05f, 1f));
+        });
+        addPedalButton.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            addPedalButton.style.unityBackgroundImageTintColor = Color.white;
+            addPedalButton.style.scale = new Scale(Vector3.one);
+        });
         boardHeader.Add(addPedalButton);
 
-        boardViewport = new VisualElement();
-        boardViewport.style.flexGrow = 1f;
-        boardViewport.style.minHeight = 0f;
-        boardViewport.style.marginTop = 72f;
-        boardViewport.style.justifyContent = Justify.Center;
-        boardViewport.style.alignItems = Align.Stretch;
-        lane.Add(boardViewport);
-
-        chainScrollView = new ScrollView(ScrollViewMode.Horizontal);
-        chainScrollView.horizontalScrollerVisibility = ScrollerVisibility.Auto;
+        chainScrollView = new ScrollView(ScrollViewMode.Vertical);
         chainScrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+        chainScrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
         chainScrollView.style.flexGrow = 1f;
         chainScrollView.style.minHeight = 0f;
-        chainScrollView.style.width = Length.Percent(100f);
         chainScrollView.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         chainScrollView.style.borderTopWidth = 0f;
         chainScrollView.style.borderRightWidth = 0f;
         chainScrollView.style.borderBottomWidth = 0f;
         chainScrollView.style.borderLeftWidth = 0f;
-        chainScrollView.style.paddingLeft = 0f;
-        chainScrollView.style.paddingRight = 0f;
-        chainScrollView.style.paddingTop = 0f;
-        chainScrollView.style.paddingBottom = 0f;
         chainScrollView.contentViewport.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        chainScrollView.contentViewport.style.borderTopWidth = 0f;
-        chainScrollView.contentViewport.style.borderRightWidth = 0f;
-        chainScrollView.contentViewport.style.borderBottomWidth = 0f;
-        chainScrollView.contentViewport.style.borderLeftWidth = 0f;
-        chainScrollView.contentViewport.style.paddingBottom = 10f;
         chainScrollView.contentContainer.style.flexGrow = 1f;
-        chainScrollView.contentContainer.style.minHeight = ToneLabPedalVisualBuilder.BoardTileHeight + 12f;
-        chainScrollView.contentContainer.style.justifyContent = Justify.Center;
-        chainScrollView.contentContainer.style.alignItems = Align.Center;
-        ApplyScrollViewStyle(chainScrollView);
-        boardViewport.Add(chainScrollView);
+        root.Add(chainScrollView);
 
-        chainRow = new VisualElement();
-        chainRow.style.flexDirection = FlexDirection.Row;
-        chainRow.style.alignItems = Align.FlexEnd;
-        chainRow.style.justifyContent = Justify.Center;
-        chainRow.style.alignSelf = Align.Center;
-        chainRow.style.minHeight = ToneLabPedalVisualBuilder.BoardTileHeight;
-        chainRow.style.minWidth = Length.Percent(100f);
-        chainRow.style.paddingLeft = 8f;
-        chainRow.style.paddingRight = 8f;
-        chainRow.style.paddingBottom = 4f;
-        chainScrollView.Add(chainRow);
+        chainGrid = new VisualElement();
+        chainGrid.style.flexDirection = FlexDirection.Row;
+        chainGrid.style.flexWrap = Wrap.Wrap;
+        chainGrid.style.alignItems = Align.FlexStart;
+        chainGrid.style.alignContent = Align.FlexStart;
+        chainGrid.style.justifyContent = Justify.FlexStart;
+        chainGrid.style.paddingTop = 8f;
+        chainGrid.style.paddingLeft = 2f;
+        chainGrid.style.paddingRight = 2f;
+        chainGrid.style.paddingBottom = 28f;
+        chainScrollView.Add(chainGrid);
 
-        emptyLabel = new Label("No pedals in the chain.");
-        emptyLabel.style.color = new Color(0.70f, 0.73f, 0.77f, 0.82f);
-        emptyLabel.style.fontSize = 16f;
+        emptyLabel = new Label("No pedals in the chain. Open the library or press + to add one.");
+        emptyLabel.style.display = DisplayStyle.None;
+        emptyLabel.style.color = new Color(0.92f, 0.94f, 0.98f, 0.72f);
+        emptyLabel.style.fontSize = 17f;
         emptyLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
         emptyLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        emptyLabel.style.display = DisplayStyle.None;
-        emptyLabel.style.position = Position.Absolute;
-        emptyLabel.style.left = 0f;
-        emptyLabel.style.right = 0f;
-        emptyLabel.style.top = 0f;
-        emptyLabel.style.bottom = 18f;
-        emptyLabel.style.alignSelf = Align.Center;
-        lane.Add(emptyLabel);
+        emptyLabel.style.marginTop = 90f;
+        emptyLabel.style.whiteSpace = WhiteSpace.Normal;
+        chainGrid.Add(emptyLabel);
     }
 
     public void Refresh(IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> pedalChain, string selectedPedalInstanceId)
     {
-        draggingTile = null;
-        DestroyDragPreview();
-        dragPointerId = -1;
-        dragMoved = false;
-        dragTargetIndex = -1;
-        ClearLiveGapOffsets();
+        ResetDragState();
+        chainGrid.Clear();
 
-        chainRow.Clear();
         if (pedalChain == null || pedalChain.Count == 0)
         {
             emptyLabel.style.display = DisplayStyle.Flex;
+            chainGrid.Add(emptyLabel);
             chainScrollView.scrollOffset = Vector2.zero;
             return;
         }
@@ -218,21 +163,30 @@ public sealed class ToneLabPedalBoardView
             if (slot == null)
                 continue;
 
-            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot.pedal_type);
+            IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot);
             ToneLabPedalTile tile = new ToneLabPedalTile(slot.pedal_instance_id, descriptor);
             tile.SetPedalEnabledVisual(slot.enabled);
             tile.SetSelected(string.Equals(selectedPedalInstanceId, slot.pedal_instance_id, StringComparison.Ordinal));
             AttachTileInteractions(tile);
-            chainRow.Add(tile);
+            chainGrid.Add(tile);
         }
+    }
+
+    public int GetInsertionIndex(Vector2 panelPosition)
+    {
+        if (!root.worldBound.Contains(panelPosition))
+            return -1;
+
+        return GetTargetIndex(panelPosition, null);
     }
 
     private void AttachTileInteractions(ToneLabPedalTile tile)
     {
         tile.BypassButton.clicked += () => PedalEnabledChanged?.Invoke(tile.PedalInstanceId, !tile.IsPedalEnabled);
-        tile.RegisterCallback<PointerDownEvent>(evt => OnTilePointerDown(tile, evt), TrickleDown.TrickleDown);
-        tile.RegisterCallback<PointerMoveEvent>(evt => OnTilePointerMove(tile, evt), TrickleDown.TrickleDown);
-        tile.RegisterCallback<PointerUpEvent>(evt => OnTilePointerUp(tile, evt), TrickleDown.TrickleDown);
+        tile.DeleteButton.clicked += () => PedalRemoveRequested?.Invoke(tile.PedalInstanceId);
+        tile.RegisterCallback<PointerDownEvent>(evt => OnTilePointerDown(tile, evt));
+        tile.RegisterCallback<PointerMoveEvent>(evt => OnTilePointerMove(tile, evt));
+        tile.RegisterCallback<PointerUpEvent>(evt => OnTilePointerUp(tile, evt));
         tile.RegisterCallback<PointerCaptureOutEvent>(_ => ResetDraggingTile(tile));
     }
 
@@ -244,9 +198,9 @@ public sealed class ToneLabPedalBoardView
         evt.StopPropagation();
         draggingTile = tile;
         dragPointerId = evt.pointerId;
-        dragStartPosition = evt.position;
+        dragStartPosition = new Vector2(evt.position.x, evt.position.y);
         dragMoved = false;
-        dragTargetIndex = GetTileIndex(tile);
+        dragTargetIndex = GetTileFlowIndex(tile);
         tile.CapturePointer(dragPointerId);
     }
 
@@ -256,15 +210,18 @@ public sealed class ToneLabPedalBoardView
             return;
 
         evt.StopPropagation();
-        float deltaX = evt.position.x - dragStartPosition.x;
-        if (!dragMoved && Mathf.Abs(deltaX) < DragActivationPixels)
+        Vector2 pointerPosition = new Vector2(evt.position.x, evt.position.y);
+        Vector2 delta = pointerPosition - dragStartPosition;
+        if (!dragMoved && delta.magnitude < DragActivationPixels)
             return;
 
+        if (!dragMoved)
+            BeginDrag(tile);
+
         dragMoved = true;
-        EnsureDragPreview(tile);
-        UpdateDragPreviewPosition(tile, deltaX);
-        dragTargetIndex = GetTargetIndex(evt.position.x, tile);
-        UpdateLiveGapOffsets(tile, dragTargetIndex);
+        UpdateDragPreviewPosition(pointerPosition);
+        dragTargetIndex = GetTargetIndex(pointerPosition, tile);
+        MovePlaceholderToIndex(dragTargetIndex);
     }
 
     private void OnTilePointerUp(ToneLabPedalTile tile, PointerUpEvent evt)
@@ -278,39 +235,70 @@ public sealed class ToneLabPedalBoardView
 
         bool reordered = dragMoved;
         IReadOnlyList<string> committedOrder = reordered
-            ? BuildCommittedOrder(tile.PedalInstanceId, dragTargetIndex)
+            ? BuildCommittedOrder(tile.PedalInstanceId, GetPlaceholderIndex())
             : null;
         ResetDraggingTile(tile);
+
         if (reordered && committedOrder != null && !OrdersMatch(committedOrder))
             PedalOrderCommitted?.Invoke(committedOrder);
-        else
+        else if (!reordered)
             PedalSelected?.Invoke(tile.PedalInstanceId);
+    }
+
+    private void BeginDrag(ToneLabPedalTile tile)
+    {
+        EnsureDragPreview(tile);
+        EnsureDragPlaceholder();
+        tile.style.display = DisplayStyle.None;
+        MovePlaceholderToIndex(GetTileFlowIndex(tile));
     }
 
     private void ResetDraggingTile(ToneLabPedalTile tile)
     {
-        tile.style.translate = new Translate(0f, 0f, 0f);
-        tile.SetSourceHidden(false);
-        tile.SetDragging(false);
+        if (tile != null)
+        {
+            tile.style.display = DisplayStyle.Flex;
+            tile.SetSourceHidden(false);
+            tile.SetDragging(false);
+        }
+
+        ResetDragState();
+    }
+
+    private void ResetDragState()
+    {
         DestroyDragPreview();
-        ClearLiveGapOffsets();
+        DestroyDragPlaceholder();
         draggingTile = null;
         dragPointerId = -1;
         dragMoved = false;
         dragTargetIndex = -1;
     }
 
-    private int GetTargetIndex(float pointerX, ToneLabPedalTile draggedTile)
+    private int GetTargetIndex(Vector2 panelPosition, ToneLabPedalTile draggedTile)
     {
         int insertionIndex = 0;
-        for (int i = 0; i < chainRow.childCount; i++)
+        for (int i = 0; i < chainGrid.childCount; i++)
         {
-            ToneLabPedalTile candidate = chainRow.ElementAt(i) as ToneLabPedalTile;
+            ToneLabPedalTile candidate = chainGrid.ElementAt(i) as ToneLabPedalTile;
             if (candidate == null || candidate == draggedTile)
                 continue;
 
-            if (pointerX < candidate.worldBound.center.x)
+            Rect bounds = candidate.worldBound;
+            if (bounds.width <= 1f || bounds.height <= 1f)
+                continue;
+
+            if (panelPosition.y < bounds.yMin)
                 return insertionIndex;
+
+            if (panelPosition.y <= bounds.yMax)
+            {
+                if (panelPosition.x < bounds.center.x)
+                    return insertionIndex;
+
+                insertionIndex++;
+                continue;
+            }
 
             insertionIndex++;
         }
@@ -318,50 +306,12 @@ public sealed class ToneLabPedalBoardView
         return insertionIndex;
     }
 
-    private void UpdateLiveGapOffsets(ToneLabPedalTile draggedTile, int targetIndex)
-    {
-        int originalIndex = GetTileIndex(draggedTile);
-        float gapOffset = ToneLabPedalVisualBuilder.BoardTileWidth + PedalTileSpacing;
-        for (int childIndex = 0; childIndex < chainRow.childCount; childIndex++)
-        {
-            ToneLabPedalTile candidate = chainRow.ElementAt(childIndex) as ToneLabPedalTile;
-            if (candidate == null || ReferenceEquals(candidate, draggedTile))
-                continue;
-
-            float offsetX = 0f;
-            if (targetIndex > originalIndex)
-            {
-                if (childIndex > originalIndex && childIndex <= targetIndex)
-                    offsetX = -gapOffset;
-            }
-            else if (targetIndex < originalIndex)
-            {
-                if (childIndex >= targetIndex && childIndex < originalIndex)
-                    offsetX = gapOffset;
-            }
-
-            candidate.style.translate = new Translate(offsetX, 0f, 0f);
-        }
-    }
-
-    private void ClearLiveGapOffsets()
-    {
-        for (int childIndex = 0; childIndex < chainRow.childCount; childIndex++)
-        {
-            ToneLabPedalTile candidate = chainRow.ElementAt(childIndex) as ToneLabPedalTile;
-            if (candidate == null || ReferenceEquals(candidate, draggingTile))
-                continue;
-
-            candidate.style.translate = new Translate(0f, 0f, 0f);
-        }
-    }
-
     private void EnsureDragPreview(ToneLabPedalTile tile)
     {
         if (dragPreviewTile != null)
             return;
 
-        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(tile.PedalType);
+        IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(tile.DescriptorId);
         dragPreviewTile = new ToneLabPedalTile(tile.PedalInstanceId, descriptor);
         dragPreviewTile.pickingMode = PickingMode.Ignore;
         dragPreviewTile.style.position = Position.Absolute;
@@ -371,18 +321,18 @@ public sealed class ToneLabPedalBoardView
         dragPreviewTile.SetPedalEnabledVisual(tile.IsPedalEnabled);
         dragPreviewTile.SetSelected(true);
         dragPreviewTile.SetDragging(true);
-        lane.Add(dragPreviewTile);
+        root.Add(dragPreviewTile);
         dragPreviewTile.BringToFront();
         tile.SetSourceHidden(true);
     }
 
-    private void UpdateDragPreviewPosition(ToneLabPedalTile tile, float deltaX)
+    private void UpdateDragPreviewPosition(Vector2 panelPosition)
     {
         if (dragPreviewTile == null)
             return;
 
-        dragPreviewTile.style.left = Mathf.Max(0f, (tile.worldBound.x - lane.worldBound.x) + deltaX);
-        dragPreviewTile.style.top = Mathf.Max(0f, tile.worldBound.y - lane.worldBound.y);
+        dragPreviewTile.style.left = Mathf.Max(0f, panelPosition.x - root.worldBound.x - (ToneLabPedalVisualBuilder.BoardTileWidth * 0.5f));
+        dragPreviewTile.style.top = Mathf.Max(0f, panelPosition.y - root.worldBound.y - (ToneLabPedalVisualBuilder.BoardTileHeight * 0.5f));
     }
 
     private void DestroyDragPreview()
@@ -394,23 +344,131 @@ public sealed class ToneLabPedalBoardView
         dragPreviewTile = null;
     }
 
-    private int GetTileIndex(ToneLabPedalTile tile)
+    private void EnsureDragPlaceholder()
     {
-        for (int i = 0; i < chainRow.childCount; i++)
+        if (dragPlaceholder != null)
+            return;
+
+        dragPlaceholder = new VisualElement();
+        dragPlaceholder.name = "tone-lab-pedal-placeholder";
+        dragPlaceholder.style.width = ToneLabPedalVisualBuilder.BoardTileWidth;
+        dragPlaceholder.style.minWidth = ToneLabPedalVisualBuilder.BoardTileWidth;
+        dragPlaceholder.style.height = ToneLabPedalVisualBuilder.BoardTileHeight;
+        dragPlaceholder.style.marginRight = PedalTileSpacing;
+        dragPlaceholder.style.marginTop = 4f;
+        dragPlaceholder.style.marginBottom = 22f;
+        dragPlaceholder.style.borderTopWidth = 1f;
+        dragPlaceholder.style.borderRightWidth = 1f;
+        dragPlaceholder.style.borderBottomWidth = 1f;
+        dragPlaceholder.style.borderLeftWidth = 1f;
+        dragPlaceholder.style.borderTopColor = new Color(1f, 1f, 1f, 0.36f);
+        dragPlaceholder.style.borderRightColor = new Color(1f, 1f, 1f, 0.20f);
+        dragPlaceholder.style.borderBottomColor = new Color(1f, 1f, 1f, 0.16f);
+        dragPlaceholder.style.borderLeftColor = new Color(1f, 1f, 1f, 0.20f);
+        dragPlaceholder.style.borderTopLeftRadius = 18f;
+        dragPlaceholder.style.borderTopRightRadius = 18f;
+        dragPlaceholder.style.borderBottomLeftRadius = 13f;
+        dragPlaceholder.style.borderBottomRightRadius = 13f;
+        dragPlaceholder.style.backgroundColor = new Color(1f, 1f, 1f, 0.06f);
+    }
+
+    private void MovePlaceholderToIndex(int targetIndex)
+    {
+        if (dragPlaceholder == null)
+            return;
+
+        int clampedIndex = Mathf.Clamp(targetIndex, 0, GetFlowTileCount());
+        if (dragPlaceholder.parent != null)
+            dragPlaceholder.RemoveFromHierarchy();
+
+        int childIndex = GetChildInsertionIndexForFlowIndex(clampedIndex);
+        chainGrid.Insert(childIndex, dragPlaceholder);
+    }
+
+    private void DestroyDragPlaceholder()
+    {
+        if (dragPlaceholder == null)
+            return;
+
+        dragPlaceholder.RemoveFromHierarchy();
+        dragPlaceholder = null;
+    }
+
+    private int GetPlaceholderIndex()
+    {
+        if (dragPlaceholder == null || dragPlaceholder.parent == null)
+            return dragTargetIndex;
+
+        int flowIndex = 0;
+        for (int i = 0; i < chainGrid.childCount; i++)
         {
-            if (ReferenceEquals(chainRow.ElementAt(i), tile))
-                return i;
+            VisualElement child = chainGrid.ElementAt(i);
+            if (child == dragPlaceholder)
+                return flowIndex;
+
+            if (child is ToneLabPedalTile tile && tile != draggingTile)
+                flowIndex++;
         }
 
-        return -1;
+        return flowIndex;
+    }
+
+    private int GetChildInsertionIndexForFlowIndex(int flowIndex)
+    {
+        int seen = 0;
+        for (int i = 0; i < chainGrid.childCount; i++)
+        {
+            VisualElement child = chainGrid.ElementAt(i);
+            if (child == dragPlaceholder)
+                continue;
+
+            if (child is ToneLabPedalTile tile && tile != draggingTile)
+            {
+                if (seen >= flowIndex)
+                    return i;
+                seen++;
+            }
+        }
+
+        return chainGrid.childCount;
+    }
+
+    private int GetFlowTileCount()
+    {
+        int count = 0;
+        for (int i = 0; i < chainGrid.childCount; i++)
+        {
+            if (chainGrid.ElementAt(i) is ToneLabPedalTile tile && tile != draggingTile)
+                count++;
+        }
+
+        return count;
+    }
+
+    private int GetTileFlowIndex(ToneLabPedalTile tile)
+    {
+        int index = 0;
+        for (int i = 0; i < chainGrid.childCount; i++)
+        {
+            ToneLabPedalTile candidate = chainGrid.ElementAt(i) as ToneLabPedalTile;
+            if (candidate == null)
+                continue;
+
+            if (ReferenceEquals(candidate, tile))
+                return index;
+
+            index++;
+        }
+
+        return index;
     }
 
     private List<string> GetCurrentOrder()
     {
-        List<string> ordered = new List<string>(chainRow.childCount);
-        for (int i = 0; i < chainRow.childCount; i++)
+        List<string> ordered = new List<string>(chainGrid.childCount);
+        for (int i = 0; i < chainGrid.childCount; i++)
         {
-            ToneLabPedalTile tile = chainRow.ElementAt(i) as ToneLabPedalTile;
+            ToneLabPedalTile tile = chainGrid.ElementAt(i) as ToneLabPedalTile;
             if (tile != null)
                 ordered.Add(tile.PedalInstanceId);
         }
@@ -442,88 +500,30 @@ public sealed class ToneLabPedalBoardView
         return true;
     }
 
-    private static void ApplyScrollViewStyle(ScrollView scrollView)
+    private static Texture2D GetAddEffectGradientTexture()
     {
-        scrollView.RegisterCallback<AttachToPanelEvent>(_ => StyleHorizontalScroller(scrollView));
-        StyleHorizontalScroller(scrollView);
-    }
+        if (addEffectGradientTexture != null)
+            return addEffectGradientTexture;
 
-    private static void StyleHorizontalScroller(ScrollView scrollView)
-    {
-        if (scrollView == null)
-            return;
-
-        Scroller scroller = scrollView.horizontalScroller;
-        if (scroller == null)
-            return;
-
-        scroller.style.height = 10f;
-        scroller.style.marginLeft = 34f;
-        scroller.style.marginRight = 34f;
-        scroller.style.marginTop = 10f;
-        scroller.style.marginBottom = 4f;
-        scroller.style.paddingLeft = 0f;
-        scroller.style.paddingRight = 0f;
-        scroller.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        scroller.style.borderTopWidth = 0f;
-        scroller.style.borderRightWidth = 0f;
-        scroller.style.borderBottomWidth = 0f;
-        scroller.style.borderLeftWidth = 0f;
-
-        VisualElement lowButton = scroller.Q<VisualElement>(className: "unity-scroller__low-button");
-        VisualElement highButton = scroller.Q<VisualElement>(className: "unity-scroller__high-button");
-        if (lowButton != null)
-            lowButton.style.display = DisplayStyle.None;
-        if (highButton != null)
-            highButton.style.display = DisplayStyle.None;
-
-        Slider slider = scroller.Q<Slider>();
-        if (slider == null)
-            return;
-
-        slider.style.flexGrow = 1f;
-        slider.style.height = 10f;
-        slider.style.marginLeft = 0f;
-        slider.style.marginRight = 0f;
-        slider.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-
-        VisualElement dragContainer = slider.Q<VisualElement>(className: "unity-base-slider__drag-container");
-        if (dragContainer != null)
+        const int width = 96;
+        Texture2D texture = new Texture2D(width, 1, TextureFormat.RGBA32, false)
         {
-            dragContainer.style.height = 4f;
-            dragContainer.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-            dragContainer.style.borderTopLeftRadius = 999f;
-            dragContainer.style.borderTopRightRadius = 999f;
-            dragContainer.style.borderBottomLeftRadius = 999f;
-            dragContainer.style.borderBottomRightRadius = 999f;
-            dragContainer.style.marginTop = 3f;
+            name = "ToneLabAddEffectGradient",
+            hideFlags = HideFlags.HideAndDontSave,
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+
+        Color left = new Color(0.95f, 0.67f, 0.00f, 0.98f);
+        Color right = new Color(1.00f, 0.38f, 0.45f, 0.98f);
+        for (int x = 0; x < width; x++)
+        {
+            float t = x / (float)(width - 1);
+            texture.SetPixel(x, 0, Color.Lerp(left, right, t));
         }
 
-        VisualElement tracker = slider.Q<VisualElement>(className: "unity-base-slider__tracker");
-        if (tracker != null)
-        {
-            tracker.style.height = 4f;
-            tracker.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-            tracker.style.borderTopLeftRadius = 999f;
-            tracker.style.borderTopRightRadius = 999f;
-            tracker.style.borderBottomLeftRadius = 999f;
-            tracker.style.borderBottomRightRadius = 999f;
-        }
-
-        VisualElement dragger = slider.Q<VisualElement>(className: "unity-base-slider__dragger");
-        if (dragger != null)
-        {
-            dragger.style.height = 4f;
-            dragger.style.minWidth = 72f;
-            dragger.style.backgroundColor = new Color(1f, 1f, 1f, 0.72f);
-            dragger.style.borderTopLeftRadius = 999f;
-            dragger.style.borderTopRightRadius = 999f;
-            dragger.style.borderBottomLeftRadius = 999f;
-            dragger.style.borderBottomRightRadius = 999f;
-            dragger.style.borderTopWidth = 0f;
-            dragger.style.borderRightWidth = 0f;
-            dragger.style.borderBottomWidth = 0f;
-            dragger.style.borderLeftWidth = 0f;
-        }
+        texture.Apply(false, true);
+        addEffectGradientTexture = texture;
+        return addEffectGradientTexture;
     }
 }

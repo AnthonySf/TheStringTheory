@@ -1,0 +1,391 @@
+lilv (0.26.5) unstable; urgency=medium
+
+  * Always create state files with O_CLOEXEC on glibc >= 2.7
+  * Fix build with dynmanifest support
+  * Fix crash when loading plugin classes on Windows
+  * Fix potential file loss when saving state with no link directory
+  * Fix potential iterator leaks and resulting log message flood
+  * Fix replacing links when saving over state
+  * Fix test build when no C++ compiler is available
+
+ -- David Robillard <d@drobilla.net>  Fri, 08 May 2026 02:57:16 +0000
+
+lilv (0.26.4) stable; urgency=medium
+
+  * Add clang nullability annotations
+  * Address new warnings in clang and clang-tidy 21
+  * Fix default LV2 path on cross-compiled Windows builds
+  * Fix loading of duplicate bundles with equivalent versions
+  * Fix potential crash when UIs have multiple types or binaries
+  * Use consistent quoting and punctuation in log messages
+
+ -- David Robillard <d@drobilla.net>  Tue, 10 Feb 2026 18:47:11 +0000
+
+lilv (0.26.2) stable; urgency=medium
+
+  * Actually reload files if bundles are unloaded then reloaded
+  * Add support for loading xsd:float literals, "INF", and "NaN"
+  * Avoid warning about non-existent entries in LV2_PATH
+  * Fix crash when duplicate plugins are discovered
+  * Fix lilv_node_is_literal() with booleans
+  * Refine command line tool interfaces and documentation
+  * lv2bench: Add support for common features and options
+  * lv2bench: Use more realistic real-time scheduling
+
+ -- David Robillard <d@drobilla.net>  Tue, 25 Nov 2025 19:49:02 +0000
+
+lilv (0.26.0) stable; urgency=medium
+
+  * Add header warnings test
+  * Add option to control indexing overhead for subject queries
+  * Avoid over-use of yielding meson options
+  * Cache LANG value and add option to override it
+  * Fix Python tests
+  * Fix build with dynmanifest support
+  * Fix loading plugins that haven't been loaded yet as state
+  * Fix loading plugins with invalid lv2:appliesTo properties as state
+  * Fix potential memory leak in lilv_world_load_plugin_classes()
+  * Fix potential memory leak in lilv_world_set_option()
+  * Gracefully ignore and warn about non-directories in LV2_PATH
+  * Improve loading performance when many plugin versions are found
+  * Improve performance when loading and deleting state
+  * Only consider manifest data when discovering related presets/etc
+  * Print a warning when a property unexpectedly has several values
+  * Reduce temporary node allocations during query operations
+
+ -- David Robillard <d@drobilla.net>  Wed, 12 Nov 2025 19:15:00 +0000
+
+lilv (0.24.26) stable; urgency=medium
+
+  * Add lint option with project metadata and code quality tests
+  * Avoid use of VLAs in lv2apply
+  * Clean up and isolate platform-specific code
+  * Fix C++ test build on MacOS
+  * Fix library current_version on MacOS
+  * Fix test suite when TMPDIR has no trailing slash
+  * Fully separate library code from programs
+  * Improve const correctness
+  * Replace more platform-specific code with use of zix
+
+ -- David Robillard <d@drobilla.net>  Sun, 19 Jan 2025 13:53:31 +0000
+
+lilv (0.24.24) stable; urgency=medium
+
+  * Avoid overriding state features passed by the host
+  * Fix null dereference when trying to load state from a missing file
+  * Fix potential null dereferences and conversion warnings
+
+ -- David Robillard <d@drobilla.net>  Tue, 23 Jan 2024 19:39:29 +0000
+
+lilv (0.24.22) stable; urgency=medium
+
+  * Allow LILV_API to be defined by the user
+  * Clean up code
+  * Clean up inconsistent tool command line interfaces
+  * Convert man pages to mdoc
+  * Fix crash when plugins pass NULL to the LV2_State_Retrieve_Function
+  * Fix dependencies in pkg-config file
+  * Fix potential crash when writing state files fails
+  * Order plugin classes by URI
+  * Override pkg-config dependency within meson
+  * Remove junk files from documentation install
+  * Replace duplicated dox_to_sphinx script with sphinxygen dependency
+  * Switch to external zix dependency
+
+ -- David Robillard <d@drobilla.net>  Sun, 22 Oct 2023 20:14:02 +0000
+
+lilv (0.24.20) stable; urgency=medium
+
+  * Adopt REUSE machine-readable licensing standard
+  * Update project metadata
+
+ -- David Robillard <d@drobilla.net>  Fri, 09 Sep 2022 17:28:30 +0000
+
+lilv (0.24.18) stable; urgency=medium
+
+  * Allow programs to be used from subproject
+  * Fix default LV2_PATH
+
+ -- David Robillard <d@drobilla.net>  Fri, 12 Aug 2022 22:15:29 +0000
+
+lilv (0.24.16) stable; urgency=medium
+
+  * Fix fallback flock() detection on MacOS
+  * Switch to meson build system
+
+ -- David Robillard <d@drobilla.net>  Tue, 19 Jul 2022 01:16:26 +0000
+
+lilv (0.24.14) stable; urgency=medium
+
+  * Fix build issues with newer toolchains
+  * Fix unused parameter warnings
+  * Update zix tree
+
+ -- David Robillard <d@drobilla.net>  Fri, 27 May 2022 01:38:26 +0000
+
+lilv (0.24.12) stable; urgency=medium
+
+  * Allow connecting ports to structures in Python
+  * Fix potential memory error when joining filesystem paths
+  * Fix saving state with files on Windows
+  * Fix unlikely undefined behavior when saving state
+  * Fix writing state manifests on Windows
+  * Remove the need for a generated configuration header
+
+ -- David Robillard <d@drobilla.net>  Thu, 07 Jan 2021 21:46:06 +0000
+
+lilv (0.24.10) stable; urgency=medium
+
+  * Fix memory leaks in lv2bench
+  * Fix various minor warnings and other code quality issues
+  * Make lilv_world_get() use translations
+  * Split and clean up test suite
+
+ -- David Robillard <d@drobilla.net>  Sun, 27 Sep 2020 12:17:02 +0000
+
+lilv (0.24.8) stable; urgency=medium
+
+  * Allow passing strings for URIs in Python API when unambiguous
+  * Fix cases where incorrect translation is used
+  * Fix deleting state bundles loaded from the model
+  * Fix memory leak when dyn-manifest has no plugins (thanks Michael Fisher)
+  * Implement state:freePath feature
+
+ -- David Robillard <d@drobilla.net>  Sun, 26 Apr 2020 15:55:26 +0000
+
+lilv (0.24.6) stable; urgency=medium
+
+  * Add more strict error detection when storing plugin state properties
+  * Add option to override LV2_PATH in applications
+  * Don't print errors when saving state if correct links already exist
+  * Fix GCC8 warnings
+  * Fix creating directories across drives on Windows
+  * Fix issues with loading state with saved files from the model
+  * Fix memory errors and Python 3.4+ compatibility in Python bindings
+  * Fix unit tests on Windows
+  * Make Python bindings more Pythonic
+
+ -- David Robillard <d@drobilla.net>  Sun, 10 Nov 2019 21:39:37 +0000
+
+lilv (0.24.4) stable; urgency=medium
+
+  * Don't attempt to load remote or non-Turtle files
+  * Fix saving state when broken links are encountered
+  * Gracefully handle plugins with missing binary URIs
+  * Install Python bindings when configured without tests (thanks Clement
+    Skau)
+  * Remove use of deprecated readdir_r
+  * lv2apply: Activate plugin before running
+  * lv2apply: Use default values when they are not nan
+  * lv2bench: Improve support for plugins with sequence ports
+  * lv2bench: Support running a single plugin given on the command line
+
+ -- David Robillard <d@drobilla.net>  Sun, 22 Jul 2018 18:42:00 +0000
+
+lilv (0.24.2) stable; urgency=medium
+
+  * Fix comparison of restored states with paths
+  * Fix saving state to paths that contain URI delimiters (#, ?, etc)
+
+ -- David Robillard <d@drobilla.net>  Wed, 04 Jan 2017 16:48:08 +0000
+
+lilv (0.24.0) stable; urgency=medium
+
+  * Add LILV_URI_ATOM_PORT and LILV_URI_CV_PORT defines
+  * Add lilv_state_set_metadata() for adding state banks/comments/etc (based
+    on patch from Hanspeter Portner)
+  * Add lilv_world_get_symbol()
+  * Add lv2apply utility for applying plugins to audio files
+  * Add new hand-crafted Pythonic bindings with full test coverage
+  * Check lv2:binary predicate for UIs
+  * Do not instantiate plugin when data fails to parse
+  * Fix crash when NULL predicate is passed to lilv_world_find_nodes()
+  * Fix crash when state contains non-POD properties
+  * Fix documentation installation
+  * Fix loading dyn-manifest from bundles with spaces in their path
+  * Fix outdated comment references to lilv_uri_to_path()
+  * Fix state file versioning
+  * Replace bundles if bundle with newer plugin version is loaded (based on
+    patch from Robin Gareus)
+  * Support re-loading plugins
+  * Unload contained resources when bundle is unloaded
+
+ -- David Robillard <d@drobilla.net>  Tue, 20 Sep 2016 02:24:57 +0000
+
+lilv (0.22.0) stable; urgency=medium
+
+  * Add lilv_file_uri_parse() for correct URI to path conversion
+  * Add lilv_free() for systems picky about such things
+  * Add lilv_node_get_path() for convenient file URI path access
+  * Add lilv_state_delete() for deleting user saved presets
+  * Add lilv_state_emit_port_values() for special port value handling
+  * Add lilv_state_get_uri()
+  * Configure based on compiler target OS for cross-compilation
+  * Expose lilv_world_load_specifications() and
+    lilv_world_load_plugin_classes()
+  * Fix a few minor/unlikely memory errors
+  * Fix bindings for Python 3
+  * Fix creation of duplicate manifest entries when saving state
+  * Fix directory walking on some systems (thanks Matt Fischer)
+  * Fix lilv_realpath() on pre-POSIX-2008 systems
+  * Fix lilv_world_ask() to work with wildcards
+  * Fix loading files with spaces in their path
+  * Load discovered owl ontologies as specifications
+  * Minor documentation improvements
+  * Preserve absolute paths in state if no link directory is given
+  * Tolerate passing NULL to lilv_state_restore()
+  * Upgrade to waf 1.8.14
+  * Windows fixes (thanks John Emmas)
+
+ -- David Robillard <d@drobilla.net>  Thu, 08 Oct 2015 19:39:29 +0000
+
+lilv (0.20.0) stable; urgency=medium
+
+  * Add convenient lilv_new_file_uri for creating file URIs
+  * Add lilv_world_unload_bundle() and lilv_world_unload_resource()
+  * Call lv2_lib_descriptor separately for different bundle paths (fix loading
+    several dynamic plugins like Ingen at once)
+  * Don't load files multiple times if they are listed as rdfs:seeAlso for
+    several plugins
+  * Fix issues with lilv_plugin_get_author_name and friends (thanks Filipe
+    Coelho)
+  * Fix several minor memory leaks
+  * Fix use of lv2info -m and -p options to write plugin data (useful for
+    porting plugins bridges with NASPRO)
+  * Improve test coverage
+  * Improved/working lv2_apply.py to apply plugin to a .wav (thanks Joe
+    Button)
+  * Tolerate calling lilv_node_as_uri or lilv_node_as_blank on NULL
+  * Upgrade to waf 1.7.16
+
+ -- David Robillard <d@drobilla.net>  Fri, 08 Aug 2014 22:21:32 +0000
+
+lilv (0.18.0) stable; urgency=medium
+
+  * Add lilv_port_get_node() for using world query functions with ports
+  * Add support for running plugins from Python by Kaspar Emanuel
+  * Allow lilv_state_restore() to be used without passing an instance, for
+    restoring port values via a callback only
+  * Allow passing NULL port_class to lilv_plugin_get_port_by_designation
+  * Call GetProcAddress with correct calling convention on Windows
+  * Clean up after test suite so multiple runs are successful
+  * Fix unlikely memory leak in lilv_plugin_instantiate()
+  * Support denoting latency ports with lv2:designation lv2:latency
+  * lilvmm.hpp: Add wrappers for UI API
+  * lv2info: Don't display invalid control maxes and defaults (patch from
+    Robin Gareus)
+
+ -- David Robillard <d@drobilla.net>  Sat, 04 Jan 2014 21:06:42 +0000
+
+lilv (0.16.0) stable; urgency=medium
+
+  * Add lilv_nodes_merge()
+  * Add lilv_world_ask() for easily checking if a statement exists
+  * Add lilv_world_get() and lilv_port_get() for easily getting one value
+  * Add va_list variant of lilv_plugin_get_num_ports_of_class()
+  * Correctly depend on serd at build time (fix compilation in odd cases)
+  * Disable timestamps in HTML documentation for reproducible build
+  * Fail gracefully when lilv_state_new_from_string() is called on NULL
+  * Fix several plugin functions that failed to load data if called first
+  * Ignore state ports with no value instead of printing an error
+  * Make lilv_plugin_get_port_by_designation() return a const pointer
+  * Make state loading functions fall back to lv2:default for port values, so
+    a plugin description can be loaded as default state
+  * Require a URI for lilv_state_to_string() and fail gracefully otherwise
+  * Support atom:supports in lilv_port_supports_event()
+  * Update to waf 1.7.8 and autowaf r90 (install docs to versioned directory)
+  * lilvmm.hpp: Add several missing methods
+  * lilvmm.hpp: Support varargs for Plugin::get_num_ports_of_class()
+
+ -- David Robillard <d@drobilla.net>  Mon, 18 Feb 2013 21:43:10 +0000
+
+lilv (0.14.4) stable; urgency=medium
+
+  * Add lv2bench utility
+  * Add option to build utilities as static binaries
+  * Deprecate old flawed Lilv::Instance constructors
+  * Do not require a C++ compiler to build
+  * Fix crash when lv2info is run with an invalid URI argument
+  * Fix documentation for ui_type parameter of lilv_ui_is_supported()
+  * Fix various hyper-strict warnings
+  * Gracefully handle failure to save plugin state and print error message
+  * Make all 'zix' symbols private to avoid symbol clashes in static builds
+  * Reduce memory usage (per node)
+  * Simpler node implementation always backed by a SordNode
+  * Upgrade to waf 1.7.2
+  * lilvmm.hpp: Add Lilv::Instance::get_extension_data()
+  * lilvmm.hpp: Add Lilv::Instance::get_handle()
+  * lilvmm.hpp: Make Lilv::Instance handle features and failed instantiations
+
+ -- David Robillard <d@drobilla.net>  Thu, 23 Aug 2012 05:38:29 +0000
+
+lilv (0.14.2) stable; urgency=medium
+
+  * Fix dynmanifest support
+
+ -- David Robillard <d@drobilla.net>  Thu, 19 Apr 2012 20:11:31 +0000
+
+lilv (0.14.0) stable; urgency=medium
+
+  * Add LilvState API for handling plugin state.  This makes it simple to save
+    and restore plugin state both in memory and on disk, as well as save
+    presets in a host-sharable way since the disk format is identical to the
+    LV2 presets format.
+  * Add lilv_plugin_get_extension_data
+  * Add lilv_plugin_get_port_by_designation() and lilv_port_get_index() as an
+    improved generic alternative to lilv_plugin_get_latency_port_index().
+  * Add lilv_plugin_get_project() and get author information from project if
+    it is not given directly on the plugin.
+  * Add lilv_plugin_get_related to get resources related to plugins that are
+    not directly rdfs:seeAlso linked (e.g. presets)
+  * Add lilv_world_load_resource for related resources (e.g. presets)
+  * Fix compilation on BSD
+  * Fix lilv_world_find_nodes to work with wildcard subjects
+  * Install man page to DATADIR (e.g. PREFIX/share/man, not PREFIX/man)
+  * Make Lilv::uri_to_path static inline (fix linking errors)
+  * Only load dynmanifest libraries once per bundle, not once per plugin
+  * Print presets in lv2info
+  * Remove locale smashing kludges and use new serd functions for converting
+    nodes to/from numbers.
+  * Remove use of wordexp.
+  * Support compilation as C++ under MSVC++.
+  * Update old references to lv2_list (now lv2ls)
+  * Use correct URI for dcterms:replaces (for hiding old plugins):
+    "http://purl.org/dc/terms/replaces"
+  * Use path variables in pkgconfig files
+
+ -- David Robillard <d@drobilla.net>  Thu, 19 Apr 2012 00:06:28 +0000
+
+lilv (0.5.0) stable; urgency=medium
+
+  * Add ability to build static library
+  * Add lv2core as a pkg-config dependency (for lv2.h header include)
+  * Obey prefix when installing bash completion script
+  * Remove glib dependency
+  * Support integer minimum, maximum, and default port values in
+    lilv_plugin_get_port_ranges_float
+
+ -- David Robillard <d@drobilla.net>  Thu, 29 Sep 2011 04:00:00 +0000
+
+lilv (0.4.4) stable; urgency=medium
+
+  * Fix building python bindings
+  * Fix lilv_ui_is_supported when Lilv is built independently
+  * Fix parsing extra plugin data files in other bundles
+  * Make free methods tolerate being called on NULL
+  * Remove lv2jack (replaced by jalv)
+
+ -- David Robillard <d@drobilla.net>  Sat, 11 Jun 2011 15:20:11 +0000
+
+lilv (0.4.2) stable; urgency=medium
+
+  * Fix build system Python 3 compatibility
+  * Fix compilation issues on some systems
+
+ -- David Robillard <d@drobilla.net>  Wed, 25 May 2011 23:00:00 +0000
+
+lilv (0.4.0) stable; urgency=medium
+
+  * Initial version (forked from SLV2)
+
+ -- David Robillard <d@drobilla.net>  Wed, 25 May 2011 03:00:00 +0000
