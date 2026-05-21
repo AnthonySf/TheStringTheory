@@ -205,9 +205,35 @@ public sealed class NativeNotesDetectorBridge
         {
             ApplyWorkingSettingsToNative();
             ApplyPreferredResamplerModeToNative();
-            bool ok = NativeDetector_Start(inputDeviceIndex) != 0;
-            RefreshNativeStatus();
-            return ok;
+            RefreshDevices();
+
+            List<int> candidates = BuildInputDeviceStartCandidates(inputDeviceIndex);
+            List<string> attemptErrors = new List<string>();
+            int firstCandidate = candidates.Count > 0 ? candidates[0] : inputDeviceIndex;
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                int candidate = candidates[i];
+                bool ok = NativeDetector_Start(candidate) != 0;
+                RefreshNativeStatus();
+                if (ok)
+                {
+                    if (i > 0)
+                    {
+                        Debug.LogWarning($"[NativeNotesDetector] Detector input '{DescribeInputDevice(firstCandidate)}' failed. Fell back to '{DescribeInputDevice(candidate)}'.");
+                    }
+
+                    return true;
+                }
+
+                string detail = string.IsNullOrWhiteSpace(lastError) ? lastStatus : lastError;
+                attemptErrors.Add($"{DescribeInputDevice(candidate)} -> {detail}");
+            }
+
+            lastError = BuildStartFailureMessage(inputDeviceIndex, attemptErrors);
+            lastStatus = lastError;
+            Debug.LogWarning($"[NativeNotesDetector] {lastError}");
+            return false;
         }
         catch (Exception ex)
         {
@@ -215,6 +241,159 @@ public sealed class NativeNotesDetectorBridge
             lastStatus = lastError;
             return false;
         }
+    }
+
+    private List<int> BuildInputDeviceStartCandidates(int requestedInputDeviceIndex)
+    {
+        List<int> candidates = new List<int>();
+
+        if (requestedInputDeviceIndex >= 0)
+            AddInputDeviceCandidate(candidates, requestedInputDeviceIndex);
+
+        AddInputDeviceCandidate(candidates, PreferredInputDeviceIndex);
+
+        NativeDetectorInputDevice[] devices = InputDevices;
+        AddInputDeviceCandidatesByHost(candidates, devices, "WASAPI");
+        AddInputDeviceCandidatesByHost(candidates, devices, "DirectSound");
+        AddInputDeviceCandidatesByHost(candidates, devices, "MME");
+        AddInputDeviceCandidatesByHost(candidates, devices, "Windows");
+        AddInputDeviceCandidatesByHost(candidates, devices, string.Empty);
+
+        if (candidates.Count == 0)
+            candidates.Add(requestedInputDeviceIndex);
+
+        return candidates;
+    }
+
+    private void AddInputDeviceCandidatesByHost(List<int> candidates, NativeDetectorInputDevice[] devices, string hostName)
+    {
+        if (devices == null)
+            return;
+
+        for (int i = 0; i < devices.Length; i++)
+        {
+            NativeDetectorInputDevice device = devices[i];
+            if (device == null)
+                continue;
+
+            string deviceHost = device.hostApiName ?? string.Empty;
+            bool matches = string.IsNullOrEmpty(hostName)
+                ? true
+                : deviceHost.IndexOf(hostName, StringComparison.OrdinalIgnoreCase) >= 0;
+            if (matches)
+                AddInputDeviceCandidate(candidates, device.index);
+        }
+    }
+
+    private void AddInputDeviceCandidate(List<int> candidates, int deviceIndex)
+    {
+        if (deviceIndex < 0 || candidates == null || candidates.Contains(deviceIndex))
+            return;
+
+        if (!HasInputDevice(deviceIndex))
+            return;
+
+        candidates.Add(deviceIndex);
+    }
+
+    private bool HasInputDevice(int deviceIndex)
+    {
+        NativeDetectorInputDevice[] devices = InputDevices;
+        for (int i = 0; i < devices.Length; i++)
+        {
+            NativeDetectorInputDevice device = devices[i];
+            if (device != null && device.index == deviceIndex)
+                return true;
+        }
+
+        return false;
+    }
+
+    private string BuildStartFailureMessage(int requestedInputDeviceIndex, List<string> attemptErrors)
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.Append("Unable to open detector input stream on any available input.");
+        builder.Append(" Requested: ");
+        builder.Append(DescribeInputDevice(requestedInputDeviceIndex));
+
+        if (attemptErrors != null && attemptErrors.Count > 0)
+        {
+            builder.Append(". Attempts: ");
+            int limit = Math.Min(attemptErrors.Count, 4);
+            for (int i = 0; i < limit; i++)
+            {
+                if (i > 0)
+                    builder.Append(" | ");
+                builder.Append(attemptErrors[i]);
+            }
+
+            if (attemptErrors.Count > limit)
+            {
+                builder.Append(" | ");
+                builder.Append(attemptErrors.Count - limit);
+                builder.Append(" more input(s) failed.");
+            }
+        }
+
+        builder.Append(". Available inputs: ");
+        builder.Append(BuildAvailableInputDeviceSummary());
+        return builder.ToString();
+    }
+
+    private string BuildAvailableInputDeviceSummary()
+    {
+        NativeDetectorInputDevice[] devices = InputDevices;
+        if (devices == null || devices.Length == 0)
+            return "none";
+
+        StringBuilder builder = new StringBuilder();
+        int limit = Math.Min(devices.Length, 8);
+        for (int i = 0; i < limit; i++)
+        {
+            if (i > 0)
+                builder.Append(" | ");
+            builder.Append(DescribeInputDevice(devices[i]));
+        }
+
+        if (devices.Length > limit)
+        {
+            builder.Append(" | ");
+            builder.Append(devices.Length - limit);
+            builder.Append(" more");
+        }
+
+        return builder.ToString();
+    }
+
+    private string DescribeInputDevice(int deviceIndex)
+    {
+        if (deviceIndex < 0)
+            return "Automatic";
+
+        NativeDetectorInputDevice[] devices = InputDevices;
+        for (int i = 0; i < devices.Length; i++)
+        {
+            NativeDetectorInputDevice device = devices[i];
+            if (device != null && device.index == deviceIndex)
+                return DescribeInputDevice(device);
+        }
+
+        return $"Device {deviceIndex}";
+    }
+
+    private static string DescribeInputDevice(NativeDetectorInputDevice device)
+    {
+        if (device == null)
+            return "Unknown";
+
+        string label = string.IsNullOrWhiteSpace(device.displayName) ? device.name : device.displayName;
+        if (string.IsNullOrWhiteSpace(label))
+            label = $"Device {device.index}";
+
+        if (!string.IsNullOrWhiteSpace(device.hostApiName))
+            return $"{label} ({device.hostApiName})";
+
+        return label;
     }
 
     public void Stop()

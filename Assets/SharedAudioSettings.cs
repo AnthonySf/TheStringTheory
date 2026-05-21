@@ -6,7 +6,7 @@ using UnityEngine;
 [Serializable]
 public sealed class SharedAudioSettings
 {
-    public int version = 5;
+    public int version = 6;
     public string inputDeviceName = string.Empty;
     public string outputDeviceName = string.Empty;
     public int monitoringBufferSize = 128;
@@ -27,6 +27,7 @@ public sealed class SharedAudioAdvancedSettings
     public int sampleRate;
     public int bufferSize;
     public bool unifiedOutputEnabled;
+    public bool unityRecorderCaptureEnabled;
 }
 
 public static class SharedAudioBackendModes
@@ -173,7 +174,8 @@ public static class SharedAudioSettingsUtility
             outputDeviceName = NormalizeStoredDeviceName(source.outputDeviceName),
             sampleRate = SharedAudioSampleRateOptions.Normalize(source.sampleRate),
             bufferSize = source.bufferSize,
-            unifiedOutputEnabled = source.unifiedOutputEnabled
+            unifiedOutputEnabled = source.unifiedOutputEnabled,
+            unityRecorderCaptureEnabled = source.unityRecorderCaptureEnabled
         };
     }
 }
