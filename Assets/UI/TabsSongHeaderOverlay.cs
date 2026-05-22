@@ -1898,6 +1898,12 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Label selectionSubtitleLabel;
 
+    private readonly VisualElement selectionLibrarySearchRoot;
+
+    private readonly TextField selectionLibrarySearchField;
+
+    private readonly Label selectionLibrarySearchPlaceholderLabel;
+
     private readonly Button selectionBrowseAllButton;
 
     private readonly Button selectionBrowseArtistsButton;
@@ -8011,6 +8017,8 @@ public sealed class TabsSongHeaderOverlay
         selectionSubtitleLabel.style.marginBottom = 0f;
 
         selectionSubtitleLabel.style.flexGrow = 1f;
+        selectionSubtitleLabel.style.flexShrink = 1f;
+        selectionSubtitleLabel.style.minWidth = 0f;
 
         VisualElement selectionLibraryToolbarRow = new VisualElement();
 
@@ -8028,13 +8036,18 @@ public sealed class TabsSongHeaderOverlay
 
         selectionBrowseButtonsRow.style.alignItems = Align.Center;
 
-        selectionBrowseButtonsRow.style.flexShrink = 0f;
+        selectionBrowseButtonsRow.style.flexShrink = 1f;
+        selectionBrowseButtonsRow.style.minWidth = 0f;
 
         selectionBrowseAllButton = CreateLibraryBrowseModeButton("All", 0);
 
         selectionBrowseArtistsButton = CreateLibraryBrowseModeButton("Artists", 1);
 
         selectionBrowseAlbumsButton = CreateLibraryBrowseModeButton("Albums", 2);
+
+        selectionLibrarySearchRoot = CreateLibrarySearchField("search...", out selectionLibrarySearchField, out selectionLibrarySearchPlaceholderLabel);
+
+        selectionBrowseButtonsRow.Add(selectionLibrarySearchRoot);
 
         selectionBrowseButtonsRow.Add(selectionBrowseArtistsButton);
 
@@ -12111,6 +12124,149 @@ public sealed class TabsSongHeaderOverlay
         return string.Empty;
     }
 
+    private VisualElement CreateLibrarySearchField(string placeholderText, out TextField searchField, out Label placeholderLabel)
+    {
+        VisualElement root = new VisualElement();
+        root.style.position = Position.Relative;
+        root.style.height = 66f;
+        root.style.width = 260f;
+        root.style.minWidth = 190f;
+        root.style.flexShrink = 1f;
+        root.style.marginRight = 12f;
+        root.style.borderBottomWidth = 2f;
+        root.style.borderBottomColor = new Color(1f, 1f, 1f, 0.30f);
+
+        TextField field = new TextField();
+        searchField = field;
+        field.isDelayed = false;
+        field.style.position = Position.Absolute;
+        field.style.left = 0f;
+        field.style.right = 0f;
+        field.style.top = 0f;
+        field.style.bottom = 0f;
+        field.style.height = 66f;
+        field.style.minHeight = 66f;
+        field.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        field.style.color = Color.white;
+        field.style.borderTopWidth = 0f;
+        field.style.borderRightWidth = 0f;
+        field.style.borderBottomWidth = 0f;
+        field.style.borderLeftWidth = 0f;
+        field.style.paddingLeft = 0f;
+        field.style.paddingRight = 0f;
+        field.style.unityFontDefinition = modernUiFontDefinition;
+        field.RegisterCallback<AttachToPanelEvent>(_ => ApplyLibrarySearchFieldStyle(field, 32f));
+
+        placeholderLabel = new Label(placeholderText);
+        placeholderLabel.pickingMode = PickingMode.Ignore;
+        placeholderLabel.style.position = Position.Absolute;
+        placeholderLabel.style.left = 0f;
+        placeholderLabel.style.right = 0f;
+        placeholderLabel.style.top = 0f;
+        placeholderLabel.style.bottom = 0f;
+        placeholderLabel.style.color = Color.white;
+        placeholderLabel.style.fontSize = 32f;
+        placeholderLabel.style.unityFontDefinition = modernUiFontDefinition;
+        placeholderLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        placeholderLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        placeholderLabel.style.opacity = 0.62f;
+
+        field.RegisterCallback<FocusInEvent>(_ =>
+        {
+            owner?.SetSongLibrarySearchInputFocusedFromUi(true);
+            RefreshLibrarySearchVisualState();
+        });
+
+        field.RegisterCallback<FocusOutEvent>(_ =>
+        {
+            owner?.SetSongLibrarySearchInputFocusedFromUi(false);
+            RefreshLibrarySearchVisualState();
+        });
+
+        field.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            if (!IsTextFieldFocused(field))
+                root.style.borderBottomColor = new Color(1f, 1f, 1f, 0.46f);
+        });
+
+        field.RegisterCallback<MouseLeaveEvent>(_ => RefreshLibrarySearchVisualState());
+        field.RegisterCallback<KeyDownEvent>(evt => evt.StopPropagation());
+        field.RegisterCallback<KeyUpEvent>(evt => evt.StopPropagation());
+        field.RegisterValueChangedCallback(evt =>
+        {
+            RefreshLibrarySearchVisualState();
+            owner?.SetSongLibrarySearchQueryFromUi(evt.newValue);
+        });
+
+        root.Add(field);
+        root.Add(placeholderLabel);
+        root.RegisterCallback<AttachToPanelEvent>(_ => RefreshLibrarySearchVisualState());
+
+        return root;
+    }
+
+    private void RefreshLibrarySearchVisualState()
+    {
+        if (selectionLibrarySearchRoot == null || selectionLibrarySearchField == null || selectionLibrarySearchPlaceholderLabel == null)
+            return;
+
+        bool hasValue = !string.IsNullOrWhiteSpace(selectionLibrarySearchField.value);
+        bool isFocused = IsTextFieldFocused(selectionLibrarySearchField);
+        selectionLibrarySearchPlaceholderLabel.style.display = hasValue || isFocused ? DisplayStyle.None : DisplayStyle.Flex;
+        selectionLibrarySearchRoot.style.borderBottomColor = isFocused
+            ? new Color(1f, 0.67f, 0.18f, 0.95f)
+            : new Color(1f, 1f, 1f, 0.30f);
+    }
+
+    private static void ApplyLibrarySearchFieldStyle(TextField searchField, float fontSize)
+    {
+        if (searchField == null)
+            return;
+
+        searchField.style.color = Color.white;
+        searchField.style.fontSize = fontSize;
+
+        VisualElement textInputElement =
+            searchField.Q(className: TextInputBaseField<string>.textInputUssName)
+            ?? searchField.Q(className: "unity-text-field__input")
+            ?? searchField.Q(className: "unity-base-text-field__input")
+            ?? searchField.Q(className: "unity-base-field__input");
+        if (textInputElement != null)
+        {
+            textInputElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            textInputElement.style.color = Color.white;
+            textInputElement.style.fontSize = fontSize;
+            textInputElement.style.unityTextAlign = TextAnchor.MiddleLeft;
+            textInputElement.style.borderTopWidth = 0f;
+            textInputElement.style.borderRightWidth = 0f;
+            textInputElement.style.borderBottomWidth = 0f;
+            textInputElement.style.borderLeftWidth = 0f;
+        }
+
+        foreach (UnityEngine.UIElements.TextElement textElement in searchField.Query<UnityEngine.UIElements.TextElement>().ToList())
+        {
+            textElement.style.color = Color.white;
+            textElement.style.fontSize = fontSize;
+            textElement.style.unityTextAlign = TextAnchor.MiddleLeft;
+            textElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        }
+    }
+
+    private static bool IsTextFieldFocused(TextField field)
+    {
+        if (field == null || field.panel == null)
+            return false;
+
+        Focusable focusedElement = field.panel.focusController?.focusedElement;
+        if (focusedElement == null)
+            return false;
+
+        if (ReferenceEquals(focusedElement, field))
+            return true;
+
+        return focusedElement is VisualElement focusedVisual && field.Contains(focusedVisual);
+    }
+
     private Button CreateLibraryBrowseModeButton(string text, int modeIndex)
 
     {
@@ -12603,6 +12759,14 @@ public sealed class TabsSongHeaderOverlay
 
         if (selectionSongsListTitleLabel != null)
             selectionSongsListTitleLabel.text = string.IsNullOrWhiteSpace(snapshot.songLibraryListTitle) ? "Songs" : snapshot.songLibraryListTitle;
+
+        if (selectionLibrarySearchField != null)
+        {
+            string searchQuery = snapshot.songLibrarySearchQuery ?? string.Empty;
+            if (!string.Equals(selectionLibrarySearchField.value, searchQuery, StringComparison.Ordinal))
+                selectionLibrarySearchField.SetValueWithoutNotify(searchQuery);
+            RefreshLibrarySearchVisualState();
+        }
 
         UpdateLibraryTypeButtons(snapshot.selectedSongLibraryTypeIndex);
 
@@ -25471,6 +25635,25 @@ public sealed class TabsSongHeaderOverlay
 
             button.style.minWidth = Mathf.Clamp(156f * menuLayoutScale, 118f, 190f);
 
+        }
+
+        if (selectionLibrarySearchRoot != null && selectionLibrarySearchField != null)
+        {
+            float librarySearchFontSize = selectionSubtitleLabel.resolvedStyle.fontSize > 0f
+                ? selectionSubtitleLabel.resolvedStyle.fontSize
+                : Mathf.Clamp((currentCompactSelectionLayout ? 46f : 52f) * menuLayoutScale, 28f, 58f);
+            float librarySearchHeight = Mathf.Clamp(68f * menuLayoutScale, 54f, 84f);
+            selectionLibrarySearchRoot.style.height = librarySearchHeight;
+            selectionLibrarySearchRoot.style.width = Mathf.Clamp((currentCompactSelectionLayout ? 220f : 260f) * menuLayoutScale, 176f, 280f);
+            selectionLibrarySearchRoot.style.minWidth = Mathf.Clamp((currentCompactSelectionLayout ? 180f : 210f) * menuLayoutScale, 148f, 230f);
+            selectionLibrarySearchRoot.style.marginRight = Mathf.Clamp(12f * menuLayoutScale, 8f, 14f);
+            selectionLibrarySearchField.style.height = librarySearchHeight;
+            selectionLibrarySearchField.style.minHeight = librarySearchHeight;
+            selectionLibrarySearchField.style.fontSize = librarySearchFontSize;
+            if (selectionLibrarySearchPlaceholderLabel != null)
+                selectionLibrarySearchPlaceholderLabel.style.fontSize = librarySearchFontSize;
+            ApplyLibrarySearchFieldStyle(selectionLibrarySearchField, librarySearchFontSize);
+            RefreshLibrarySearchVisualState();
         }
 
 

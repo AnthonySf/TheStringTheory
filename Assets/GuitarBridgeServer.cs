@@ -928,6 +928,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private readonly List<SongLibraryBrowseEntry> displayedSongLibraryEntries = new List<SongLibraryBrowseEntry>();
     private SongLibraryBrowseMode songLibraryBrowseMode = SongLibraryBrowseMode.All;
     private string songLibraryBrowseScopeKey = string.Empty;
+    private string songLibrarySearchQuery = string.Empty;
+    private bool songLibrarySearchInputFocused;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> pendingTrackSelectionParts = new List<MusicXmlLoader.MusicXmlPartSummary>();
 
     public HighwayCharacterChoice SelectedHighwayCharacterChoice => selectedHighwayCharacter;
@@ -4070,6 +4072,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleSongSelectionControls()
     {
+        if (songLibrarySearchInputFocused)
+            return;
+
         if (IsUiBackPressed() || Input.GetKeyDown(KeyCode.L))
         {
             CloseSongSelectionFromUi();
@@ -5261,6 +5266,45 @@ public class GuitarBridgeServer : MonoBehaviour
         return extension;
     }
 
+    private IEnumerable<SongLibraryEntry> GetSearchFilteredSongLibraryEntries()
+    {
+        string normalizedQuery = NormalizeSongLibrarySearchQuery(songLibrarySearchQuery);
+        if (string.IsNullOrEmpty(normalizedQuery))
+            return availableSongs.Where(song => song != null);
+
+        return availableSongs.Where(song => song != null && MatchesSongLibrarySearch(song, normalizedQuery));
+    }
+
+    private static string NormalizeSongLibrarySearchQuery(string query)
+    {
+        return string.IsNullOrWhiteSpace(query) ? string.Empty : query.Trim().ToLowerInvariant();
+    }
+
+    private static bool MatchesSongLibrarySearch(SongLibraryEntry song, string normalizedQuery)
+    {
+        if (song == null)
+            return false;
+
+        if (string.IsNullOrEmpty(normalizedQuery))
+            return true;
+
+        return MatchesSongLibrarySearchText(song.DisplayName, normalizedQuery)
+               || MatchesSongLibrarySearchText(song.Artist, normalizedQuery)
+               || MatchesSongLibrarySearchText(song.Album, normalizedQuery)
+               || MatchesSongLibrarySearchText(song.Subtitle, normalizedQuery)
+               || MatchesSongLibrarySearchText(song.SongId, normalizedQuery)
+               || MatchesSongLibrarySearchText(song.DifficultyDisplayLabel, normalizedQuery)
+               || MatchesSongLibrarySearchText(song.ArcadeDifficultySummary, normalizedQuery)
+               || MatchesSongLibrarySearchText(GetSongLibraryNotationLabel(song), normalizedQuery)
+               || MatchesSongLibrarySearchText(BuildSongLibraryAudioSummary(song), normalizedQuery);
+    }
+
+    private static bool MatchesSongLibrarySearchText(string value, string normalizedQuery)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               value.IndexOf(normalizedQuery, StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     private bool IsSongFavorited(SongLibraryEntry entry)
     {
         if (entry == null)
@@ -5298,12 +5342,12 @@ public class GuitarBridgeServer : MonoBehaviour
         string previousGroupKey = previousEntry != null && !previousEntry.IsSong ? previousEntry.GroupKey : string.Empty;
 
         displayedSongLibraryEntries.Clear();
+        IEnumerable<SongLibraryEntry> visibleSongs = GetSearchFilteredSongLibraryEntries();
 
         if (songLibraryBrowseMode == SongLibraryBrowseMode.All)
         {
-            for (int i = 0; i < availableSongs.Count; i++)
+            foreach (SongLibraryEntry song in visibleSongs)
             {
-                SongLibraryEntry song = availableSongs[i];
                 if (song == null)
                     continue;
 
@@ -5322,7 +5366,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
         else if (IsSongLibraryScopeActive())
         {
-            IEnumerable<SongLibraryEntry> scopedSongs = availableSongs.Where(song =>
+            IEnumerable<SongLibraryEntry> scopedSongs = visibleSongs.Where(song =>
             {
                 if (song == null)
                     return false;
@@ -5348,7 +5392,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
         else if (songLibraryBrowseMode == SongLibraryBrowseMode.Artists)
         {
-            IEnumerable<IGrouping<string, SongLibraryEntry>> groups = availableSongs
+            IEnumerable<IGrouping<string, SongLibraryEntry>> groups = visibleSongs
                 .Where(song => song != null)
                 .GroupBy(song => GetSongLibraryBrowseValue(song, SongLibraryBrowseMode.Artists), StringComparer.OrdinalIgnoreCase)
                 .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
@@ -5372,7 +5416,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
         else
         {
-            IEnumerable<IGrouping<string, SongLibraryEntry>> groups = availableSongs
+            IEnumerable<IGrouping<string, SongLibraryEntry>> groups = visibleSongs
                 .Where(song => song != null)
                 .GroupBy(song => GetSongLibraryBrowseValue(song, SongLibraryBrowseMode.Albums), StringComparer.OrdinalIgnoreCase)
                 .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase);
@@ -5395,7 +5439,7 @@ public class GuitarBridgeServer : MonoBehaviour
             }
         }
 
-        if (IsSongLibraryScopeActive() && displayedSongLibraryEntries.Count == 0)
+        if (IsSongLibraryScopeActive() && displayedSongLibraryEntries.Count == 0 && string.IsNullOrWhiteSpace(songLibrarySearchQuery))
             songLibraryBrowseScopeKey = string.Empty;
 
         int restoredIndex = -1;
@@ -9302,6 +9346,23 @@ public class GuitarBridgeServer : MonoBehaviour
         SetSongLibraryBrowseMode(requestedMode);
     }
 
+    public void SetSongLibrarySearchQueryFromUi(string query)
+    {
+        string normalizedQuery = query ?? string.Empty;
+        if (string.Equals(songLibrarySearchQuery, normalizedQuery, StringComparison.Ordinal))
+            return;
+
+        songLibrarySearchQuery = normalizedQuery;
+        selectedSongListIndex = 0;
+        songSelectionSongConfirmed = false;
+        RebuildDisplayedSongLibraryEntries();
+    }
+
+    public void SetSongLibrarySearchInputFocusedFromUi(bool focused)
+    {
+        songLibrarySearchInputFocused = focused;
+    }
+
     public void SetSongLibraryTypeFromUi(int typeIndex)
     {
         if (pendingMultiplayerRhythmSongSelection || multiplayerRhythmModeActive || showMultiplayerRhythmSetup)
@@ -9370,6 +9431,7 @@ public class GuitarBridgeServer : MonoBehaviour
         HideToneLabUi();
         showSongSelection = false;
         songSelectionSongConfirmed = false;
+        songLibrarySearchInputFocused = false;
         showTrackSelection = false;
         showGameModes = false;
         showHeroModeSettings = false;
@@ -16706,6 +16768,7 @@ private void ParseDetectorPacket(string detectorPacket)
             selectedNotesDetectorCatalogIndex = selectedNotesDetectorCatalogIndex,
             songLibraryListTitle = GetSongLibraryListTitle(),
             songLibraryListStatusText = GetSongLibraryStatusText(),
+            songLibrarySearchQuery = songLibrarySearchQuery,
             songLibraryBrowseModeIndex = (int)songLibraryBrowseMode,
             availableSongNames = displayedSongLibraryEntries.Select(entry => entry?.DisplayName ?? string.Empty).ToList(),
             availableSongSubtitles = displayedSongLibraryEntries.Select(entry => entry?.Subtitle ?? string.Empty).ToList(),

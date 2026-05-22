@@ -502,6 +502,7 @@ public sealed class GuitarGameplaySnapshot
     public int selectedSongSettingsIndex;
     public string songLibraryListTitle;
     public string songLibraryListStatusText;
+    public string songLibrarySearchQuery;
     public int songLibraryBrowseModeIndex;
     public List<string> availableSongNames;
     public List<string> availableSongSubtitles;
