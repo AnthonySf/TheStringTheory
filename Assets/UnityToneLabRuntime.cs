@@ -805,7 +805,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             return 0;
         if (string.Equals(normalized, SharedAudioBackendModes.Wasapi, StringComparison.Ordinal))
             return 1;
-        return int.MaxValue;
+        return 2;
     }
 
     private static bool MatchesBackendMode(string hostApiName, string backendMode)
