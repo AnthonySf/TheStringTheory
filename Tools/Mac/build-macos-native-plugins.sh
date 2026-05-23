@@ -144,6 +144,7 @@ build_portaudio() {
 
   cmake -S "${source_dir}" -B "${build_dir}" \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
     -DCMAKE_OSX_ARCHITECTURES="${MACOS_ARCHS}" \
     -DCMAKE_OSX_DEPLOYMENT_TARGET="${MACOS_DEPLOYMENT_TARGET}" \
     -DPA_BUILD_SHARED=ON \
