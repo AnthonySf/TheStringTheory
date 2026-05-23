@@ -273,6 +273,7 @@ build_gxplugin_bundle() {
       -D_FORTIFY_SOURCE=2 \
       -I. \
       -I./dsp \
+      -I./dsp/zita-resampler-1.1.0 \
       -I./plugin \
       -fPIC \
       -DPIC \
