@@ -19,6 +19,7 @@ public static class ExternalContentPaths
     public const string ToneLabDistAppFolderName = "ToneLab";
     public const string AlphaTabRenderHelperFolderName = "AlphaTabRenderHelper";
     public const string AlphaTabRenderHelperExeFileName = "AlphaTabRenderHelper.exe";
+    public const string RocksmithImportFolderName = "RocksmithImport";
     public const string AlphaTabRenderCacheFolderName = "AlphaTabRenderCache";
     public const string StemCacheFolderName = "StemCache";
     public const string StemSeparatorFolderName = "StemSeparator";
@@ -78,6 +79,7 @@ public static class ExternalContentPaths
     public static string PersistentLicensesDirectory => Path.Combine(PersistentRoot, LicensesFolderName);
     public static string StreamingToneLabDirectory => Path.Combine(StreamingRoot, ToneLabFolderName);
     public static string StreamingAlphaTabRenderHelperDirectory => Path.Combine(StreamingRoot, AlphaTabRenderHelperFolderName);
+    public static string StreamingRocksmithImportDirectory => Path.Combine(StreamingRoot, RocksmithImportFolderName);
     public static string StreamingStemSeparatorDirectory => Path.Combine(StreamingRoot, StemSeparatorFolderName);
     public static string StreamingStemSeparatorRuntimeDirectory => Path.Combine(StreamingStemSeparatorDirectory, StemSeparatorRuntimeFolderName);
     public static string StreamingStemSeparatorPackagePath => Path.Combine(StreamingStemSeparatorDirectory, StemSeparatorRuntimePackageFileName);
@@ -105,6 +107,9 @@ public static class ExternalContentPaths
     public static string StreamingAlphaTabRenderHelperExePath => GetStreamingPlatformToolPath(
         StreamingAlphaTabRenderHelperDirectory,
         StringTheoryPlatform.AlphaTabRenderHelperFileName);
+    public static string StreamingRocksmithImportToolPath => GetStreamingPlatformToolPath(
+        StreamingRocksmithImportDirectory,
+        StringTheoryPlatform.RocksmithImportToolFileName);
     public static string PersistentStemSeparatorExePath => Path.Combine(PersistentStemSeparatorRuntimeDirectory, StringTheoryPlatform.StemSeparatorCommandFileName);
     public static string PersistentStemSeparatorPythonExePath => StringTheoryPlatform.GetStemSeparatorPythonPath(PersistentStemSeparatorRuntimeDirectory, StemSeparatorPythonFolderName);
     public static string PersistentStemSeparatorInstallManifestPath => Path.Combine(PersistentStemSeparatorRuntimeDirectory, StemSeparatorInstallManifestFileName);

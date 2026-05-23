@@ -9,7 +9,6 @@ using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 
 public static class RocksmithImportService
 {
-    private const string ImportToolFolderName = "RocksmithImport";
     private const string ImportLogPrefix = "[PsarcImport]";
     private const string ImportFailureLogFolderName = "RocksmithImportLogs";
     private static bool missingToolLogged;
@@ -60,7 +59,7 @@ public static class RocksmithImportService
                     stagingDirectory: null,
                     reason: "Import tool not found",
                     details: $"Expected importer executable at '{importToolPath}'.");
-                Debug.LogWarning($"{ImportLogPrefix} Import tool not found at '{importToolPath}'. Drop '{StringTheoryPlatform.RocksmithImportToolFileName}' into that folder to enable PSARC song import. Failure log: {logPath}");
+                Debug.LogWarning($"{ImportLogPrefix} Import tool not found at '{importToolPath}'. Bundle the {StringTheoryPlatform.DotNetRuntimeIdentifier} Rocksmith import helper under '{ExternalContentPaths.StreamingRocksmithImportDirectory}' to enable PSARC song import. Failure log: {logPath}");
                 missingToolLogged = true;
             }
 
@@ -144,7 +143,7 @@ public static class RocksmithImportService
 
     public static string GetImportToolPath()
     {
-        return Path.Combine(ExternalContentPaths.StreamingRoot, ImportToolFolderName, StringTheoryPlatform.RocksmithImportToolFileName);
+        return ExternalContentPaths.StreamingRocksmithImportToolPath;
     }
 
     private static void RefreshImportForFile(string psarcPath, string songsDirectory, string importToolPath)

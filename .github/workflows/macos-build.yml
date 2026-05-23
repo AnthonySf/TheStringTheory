@@ -103,6 +103,20 @@ jobs:
             chmod +x "Assets/StreamingAssets/AlphaTabRenderHelper/${rid}/AlphaTabRenderHelper"
           done
 
+          if [[ ! -d External/Rocksmith2014.NET ]]; then
+            git clone https://github.com/iminashi/Rocksmith2014.NET External/Rocksmith2014.NET
+            git -C External/Rocksmith2014.NET checkout b87c9a3afd31c40ade9685a9244e718e7581c0cb
+          fi
+
+          for rid in osx-arm64 osx-x64; do
+            dotnet publish External/RocksmithImportTool/RocksmithImportTool.csproj \
+              -c Release \
+              -r "${rid}" \
+              --self-contained true \
+              -o "Assets/StreamingAssets/RocksmithImport/${rid}"
+            chmod +x "Assets/StreamingAssets/RocksmithImport/${rid}/RocksmithImportTool"
+          done
+
       - name: Build Unity player
         uses: game-ci/unity-builder@v4
         env:
