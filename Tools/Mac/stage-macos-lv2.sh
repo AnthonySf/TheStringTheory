@@ -297,7 +297,7 @@ build_gxplugin_bundle() {
   for verify_arch in "${requested_archs[@]}"; do
     verify_arch="$(echo "${verify_arch}" | xargs)"
     if [[ -n "${verify_arch}" ]]; then
-      lipo -verify_arch "${verify_arch}" "${target_bundle}/${plugin_name}.dylib"
+      lipo "${target_bundle}/${plugin_name}.dylib" -verify_arch "${verify_arch}"
     fi
   done
 }
