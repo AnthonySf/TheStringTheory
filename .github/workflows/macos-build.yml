@@ -313,6 +313,7 @@ jobs:
           projectPath: .
           unityVersion: 6000.2.9f1
           targetPlatform: StandaloneOSX
+          versioning: None
           buildsPath: build
           buildName: StringTheory
           buildMethod: StringTheoryBuildAutomation.BuildMacOS
