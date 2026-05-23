@@ -2,12 +2,21 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
+using UnityEditor.Callbacks;
 
 public static class StringTheoryBuildAutomation
 {
+    [PostProcessBuild(1000)]
+    public static void OnPostprocessBuild(BuildTarget target, string pathToBuiltProject)
+    {
+        if (target == BuildTarget.StandaloneOSX)
+            PatchMacInfoPlist(NormalizeMacAppOutputPath(pathToBuiltProject));
+    }
+
     public static void BuildMacOS()
     {
         string outputPath = GetArgument("-buildOutput");
@@ -57,6 +66,52 @@ public static class StringTheoryBuildAutomation
             throw new InvalidOperationException(
                 $"macOS build failed with result {report.summary.result} and {report.summary.totalErrors} errors.");
         }
+
+        PatchMacInfoPlist(outputPath);
+    }
+
+    private static void PatchMacInfoPlist(string appBundlePath)
+    {
+        string plistPath = Path.Combine(appBundlePath, "Contents", "Info.plist");
+        if (!File.Exists(plistPath))
+            throw new FileNotFoundException("macOS build completed but Info.plist was not found.", plistPath);
+
+        XDocument document = XDocument.Load(plistPath, LoadOptions.PreserveWhitespace);
+        XElement dict = document.Root?
+            .Element("dict");
+        if (dict == null)
+            throw new InvalidOperationException($"macOS Info.plist has no root dict: {plistPath}");
+
+        SetPlistString(
+            dict,
+            "NSMicrophoneUsageDescription",
+            "String Theory uses microphone input for live guitar note detection and Tone Lab monitoring.");
+
+        document.Save(plistPath);
+    }
+
+    private static void SetPlistString(XElement dict, string key, string value)
+    {
+        XElement existingKey = dict
+            .Elements("key")
+            .FirstOrDefault(element => string.Equals(element.Value, key, StringComparison.Ordinal));
+        if (existingKey != null)
+        {
+            XElement existingValue = existingKey.ElementsAfterSelf().FirstOrDefault();
+            if (existingValue == null || existingValue.Name.LocalName != "string")
+            {
+                existingKey.AddAfterSelf(new XElement("string", value));
+            }
+            else
+            {
+                existingValue.Value = value;
+            }
+
+            return;
+        }
+
+        dict.Add(new XElement("key", key));
+        dict.Add(new XElement("string", value));
     }
 
     private static string NormalizeMacAppOutputPath(string outputPath)
