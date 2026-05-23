@@ -86,9 +86,9 @@ jobs:
         shell: bash
         run: |
           python3 -m pip install --no-deps --target Temp/basic-pitch-model basic-pitch==0.4.0
-          MODEL_PATH="$(find Temp/basic-pitch-model -name 'basic_pitch_nmp.onnx' -type f | head -n 1)"
+          MODEL_PATH="$(find Temp/basic-pitch-model \( -name 'basic_pitch_nmp.onnx' -o -name 'nmp.onnx' \) -type f | head -n 1)"
           if [[ -z "${MODEL_PATH}" ]]; then
-            echo "basic_pitch_nmp.onnx was not found in the basic-pitch package." >&2
+            echo "The Basic Pitch ONNX model was not found in the basic-pitch package." >&2
             exit 1
           fi
           mkdir -p Assets/StreamingAssets/NotesReader/Models
