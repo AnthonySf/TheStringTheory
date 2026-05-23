@@ -16,4 +16,8 @@
     <ProjectReference Include="..\\Rocksmith2014.NET\\src\\Rocksmith2014.XML.Processing\\Rocksmith2014.XML.Processing.fsproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Pfim" Version="0.11.4" />
+  </ItemGroup>
+
 </Project>

@@ -960,16 +960,18 @@ public static class StemSeparationService
     {
         runtimeRoot = string.Empty;
         string persistentRoot = ExternalContentPaths.PersistentStemSeparatorRuntimeDirectory;
-        if (HasRuntimeCommandAtRoot(persistentRoot))
+        string resolvedPersistentRoot = ResolveRuntimeRoot(persistentRoot);
+        if (!string.IsNullOrWhiteSpace(resolvedPersistentRoot))
         {
-            runtimeRoot = persistentRoot;
+            runtimeRoot = resolvedPersistentRoot;
             return true;
         }
 
         string streamingRoot = ExternalContentPaths.StreamingStemSeparatorRuntimeDirectory;
-        if (HasRuntimeCommandAtRoot(streamingRoot))
+        string resolvedStreamingRoot = ResolveRuntimeRoot(streamingRoot);
+        if (!string.IsNullOrWhiteSpace(resolvedStreamingRoot))
         {
-            runtimeRoot = streamingRoot;
+            runtimeRoot = resolvedStreamingRoot;
             return true;
         }
 
@@ -994,10 +996,10 @@ public static class StemSeparationService
             return true;
         }
 
-        string streamingRuntime = ExternalContentPaths.StreamingStemSeparatorRuntimeDirectory;
-        if (HasRuntimeCommandAtRoot(streamingRuntime))
+        string streamingRuntimeRoot = ResolveRuntimeRoot(ExternalContentPaths.StreamingStemSeparatorRuntimeDirectory);
+        if (!string.IsNullOrWhiteSpace(streamingRuntimeRoot))
         {
-            sourcePath = streamingRuntime;
+            sourcePath = streamingRuntimeRoot;
             sourceKind = RuntimeInstallSourceKind.Directory;
             return true;
         }
@@ -1019,6 +1021,10 @@ public static class StemSeparationService
 
         if (!Directory.Exists(directory))
             return string.Empty;
+
+        string platformRuntime = Path.Combine(directory, StringTheoryPlatform.DotNetRuntimeIdentifier);
+        if (HasRuntimeCommandAtRoot(platformRuntime))
+            return platformRuntime;
 
         foreach (string child in Directory.GetDirectories(directory, "*", SearchOption.AllDirectories)
                      .OrderBy(path => path.Length)

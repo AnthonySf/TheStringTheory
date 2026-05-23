@@ -623,7 +623,7 @@ public static class ToneLabExternalPedalCatalog
                     continue;
 
                 string descriptorId = BuildLv2DescriptorId(pluginUri);
-                if (!descriptorIds.Add(descriptorId))
+                if (descriptorIds.Contains(descriptorId))
                     continue;
 
                 string pluginBlock = ExtractPluginSubjectBlocks(ttl, pluginUri);
@@ -640,6 +640,9 @@ public static class ToneLabExternalPedalCatalog
                 string binaryPath = ResolveLv2BinaryPath(bundlePath, ttl);
                 if (string.IsNullOrWhiteSpace(binaryPath))
                     continue;
+                if (!descriptorIds.Add(descriptorId))
+                    continue;
+
                 string shortName = BuildShortName(displayName, "LV2");
                 descriptors.Add(new ToneLabExternalPedalDescriptor(
                     ToneLabExternalPedalKind.Lv2,

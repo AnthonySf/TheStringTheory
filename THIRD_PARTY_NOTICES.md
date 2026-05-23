@@ -32,28 +32,53 @@ If you restore those pieces locally or ship them in a release, keep their upstre
 - License: Apache-2.0
 - Local license text: [licenses/BASIC_PITCH-APACHE-2.0.txt](licenses/BASIC_PITCH-APACHE-2.0.txt)
 
+### Pfim
+
+- Upstream: https://github.com/nickbabcock/Pfim
+- License: MIT
+- Purpose: managed DDS cover-art decoding for Rocksmith import
+
+### Stem Separation Runtime
+
+- Bundled package: optional macOS stem-separator runtime for Demucs-based local stem generation
+- Includes: CPython, PyTorch, torchaudio, Demucs, SoundFile, and transitive Python runtime packages
+- License: varies by component; keep upstream package license metadata with shipped runtime builds
+
+### FFmpeg
+
+- Upstream: https://ffmpeg.org/
+- Bundled package: macOS command-line ffmpeg for Rocksmith WEM audio import
+- License: FFmpeg license terms vary by build configuration; the current macOS workflow downloads GPL-enabled static builds
+
+### vgmstream
+
+- Upstream: https://github.com/vgmstream/vgmstream
+- Bundled package: macOS vgmstream-cli for Rocksmith WEM audio import
+- License: ISC-style terms with third-party portions as declared in upstream COPYING
+
 ### GxPlugins.lv2
 
 - Upstream: https://github.com/brummer10/GxPlugins.lv2
-- Bundled package: GxPlugins v1.0 Windows x64
+- Bundled package: GxPlugins v1.0 Windows x64 and source-built macOS LV2 DSP bundles
+- macOS note: upstream does not currently publish official macOS LV2 binaries; the macOS workflow builds the DSP bundles from tag v1.0 and ad-hoc signs the resulting dylibs
 - License: GPL-compatible Guitarix/LV2 plugin licenses as declared in each LV2 bundle metadata
 
 ### Dragonfly Reverb
 
 - Upstream: https://github.com/michaelwillis/dragonfly-reverb
-- Bundled package: Dragonfly Reverb 3.2.10 Windows x64 LV2 bundles
+- Bundled package: Dragonfly Reverb 3.2.10 Windows x64 and macOS universal LV2 bundles
 - License: GPL-3.0 as declared in the LV2 bundle metadata
 
 ### Zam Plugins
 
 - Upstream: https://github.com/zamaudio/zam-plugins
-- Bundled package: Zam Plugins 4.5 Windows x64 LV2 bundles
+- Bundled package: Zam Plugins 4.5 Windows x64 and macOS universal LV2 bundles
 - License: GPL-2.0-or-later as declared in the LV2 bundle metadata
 
 ### DPF Plugins
 
 - Upstream: https://github.com/DISTRHO/DPF-Plugins
-- Bundled package: DPF Plugins 1.7 Windows x64 LV2 audio-effect subset
+- Bundled package: DPF Plugins 1.7 Windows x64 and macOS universal LV2 audio-effect subset
 - License: per-plugin licenses as declared in the LV2 bundle metadata
 
 ### LV2 / lilv

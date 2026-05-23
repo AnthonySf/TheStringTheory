@@ -32,25 +32,26 @@ If you restore those runtimes locally or ship them in a build, include their ups
 ### GxPlugins.lv2
 
 - Upstream: https://github.com/brummer10/GxPlugins.lv2
-- Bundled package: GxPlugins v1.0 Windows x64
+- Bundled package: GxPlugins v1.0 Windows x64 and source-built macOS LV2 DSP bundles
+- macOS note: upstream does not currently publish official macOS LV2 binaries; the macOS workflow builds the DSP bundles from tag v1.0 and ad-hoc signs the resulting dylibs
 - License: GPL-compatible Guitarix/LV2 plugin licenses as declared in each LV2 bundle metadata
 
 ### Dragonfly Reverb
 
 - Upstream: https://github.com/michaelwillis/dragonfly-reverb
-- Bundled package: Dragonfly Reverb 3.2.10 Windows x64 LV2 bundles
+- Bundled package: Dragonfly Reverb 3.2.10 Windows x64 and macOS universal LV2 bundles
 - License: GPL-3.0 as declared in the LV2 bundle metadata
 
 ### Zam Plugins
 
 - Upstream: https://github.com/zamaudio/zam-plugins
-- Bundled package: Zam Plugins 4.5 Windows x64 LV2 bundles
+- Bundled package: Zam Plugins 4.5 Windows x64 and macOS universal LV2 bundles
 - License: GPL-2.0-or-later as declared in the LV2 bundle metadata
 
 ### DPF Plugins
 
 - Upstream: https://github.com/DISTRHO/DPF-Plugins
-- Bundled package: DPF Plugins 1.7 Windows x64 LV2 audio-effect subset
+- Bundled package: DPF Plugins 1.7 Windows x64 and macOS universal LV2 audio-effect subset
 - License: per-plugin licenses as declared in the LV2 bundle metadata
 
 ### LV2 / lilv

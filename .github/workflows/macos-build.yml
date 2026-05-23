@@ -52,11 +52,46 @@ jobs:
           path: macos-native-plugins.tgz
           if-no-files-found: error
 
+  stem-runtime:
+    name: Stem runtime (${{ matrix.rid }})
+    if: ${{ inputs.build_unity_player }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: osx-arm64
+            runner: macos-14
+          - rid: osx-x64
+            runner: macos-15-intel
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Build stem runtime
+        shell: bash
+        run: bash Tools/Mac/build-macos-stem-runtime.sh "${{ matrix.rid }}" Temp/stem-runtime
+
+      - name: Pack stem runtime
+        shell: bash
+        run: tar -czf "stem-runtime-${{ matrix.rid }}.tgz" -C Temp/stem-runtime "${{ matrix.rid }}"
+
+      - name: Upload stem runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-stem-runtime-${{ matrix.rid }}
+          path: stem-runtime-${{ matrix.rid }}.tgz
+          if-no-files-found: error
+
   unity-player:
     name: Unity macOS player
     if: ${{ inputs.build_unity_player }}
     runs-on: macos-14
-    needs: native-plugins
+    needs:
+      - native-plugins
+      - stem-runtime
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -77,6 +112,13 @@ jobs:
           chmod +x Assets/Plugins/macOS/*.dylib
           ls -lh Assets/Plugins/macOS
 
+      - name: Download stem runtime
+        uses: actions/download-artifact@v4
+        with:
+          pattern: macos-stem-runtime-*
+          path: Temp/macos-stem-runtime-artifacts
+          merge-multiple: true
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -85,6 +127,117 @@ jobs:
       - name: Prepare macOS streaming assets
         shell: bash
         run: |
+          mkdir -p Assets/StreamingAssets/StemSeparator Temp/macos-stem-runtime-universal
+          rm -f Assets/StreamingAssets/StemSeparator/stem-separator-runtime-macos-universal.zip
+          for archive in Temp/macos-stem-runtime-artifacts/stem-runtime-*.tgz; do
+            tar -xzf "${archive}" -C Temp/macos-stem-runtime-universal
+          done
+          test -x Temp/macos-stem-runtime-universal/osx-arm64/python/bin/python3
+          test -x Temp/macos-stem-runtime-universal/osx-x64/python/bin/python3
+          (
+            cd Temp/macos-stem-runtime-universal
+            zip -qry "$GITHUB_WORKSPACE/Assets/StreamingAssets/StemSeparator/stem-separator-runtime-macos-universal.zip" osx-arm64 osx-x64
+          )
+          ls -lh Assets/StreamingAssets/StemSeparator/stem-separator-runtime-macos-universal.zip
+
+          install_macos_import_decoder_tools() {
+            local rid="$1"
+            local target_dir="$2"
+            local tools_dir="${target_dir}/Tools"
+            local ffmpeg_url=""
+            local ffmpeg_sha=""
+            local rid_arch=""
+
+            case "${rid}" in
+              osx-arm64)
+                rid_arch="arm64"
+                ffmpeg_url="https://www.osxexperts.net/ffmpeg81arm.zip"
+                ffmpeg_sha="ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085bb9e8f6fe709598ad"
+                ;;
+              osx-x64)
+                rid_arch="x86_64"
+                ffmpeg_url="https://evermeet.cx/ffmpeg/ffmpeg-8.1.1.zip"
+                ffmpeg_sha="4610988e2f54c243c50da73a09e4e2c36d9bb77546f9aa6c84cb328dcb1a98c1"
+                ;;
+              *)
+                echo "Unsupported Rocksmith import RID: ${rid}" >&2
+                exit 1
+                ;;
+            esac
+
+            mkdir -p "${tools_dir}"
+
+            local download_dir="Temp/macos-import-tools/${rid}"
+            rm -rf "${download_dir}"
+            mkdir -p "${download_dir}"
+
+            local ffmpeg_zip="${download_dir}/ffmpeg.zip"
+            curl -sL --fail --retry 5 --retry-delay 5 --retry-all-errors "${ffmpeg_url}" -o "${ffmpeg_zip}"
+            local actual_sha
+            actual_sha="$(shasum -a 256 "${ffmpeg_zip}" | awk '{print $1}')"
+            if [[ "${actual_sha}" != "${ffmpeg_sha}" ]]; then
+              echo "ffmpeg SHA256 mismatch for ${rid}" >&2
+              echo "expected: ${ffmpeg_sha}" >&2
+              echo "actual:   ${actual_sha}" >&2
+              exit 1
+            fi
+
+            local ffmpeg_extract="${download_dir}/ffmpeg"
+            mkdir -p "${ffmpeg_extract}"
+            unzip -q "${ffmpeg_zip}" -d "${ffmpeg_extract}"
+            local ffmpeg_bin
+            ffmpeg_bin="$(find "${ffmpeg_extract}" -type f -name ffmpeg -not -path '*/__MACOSX/*' | head -n 1)"
+            if [[ -z "${ffmpeg_bin}" ]]; then
+              echo "ffmpeg binary not found in ${ffmpeg_url}" >&2
+              exit 1
+            fi
+            cp "${ffmpeg_bin}" "${tools_dir}/ffmpeg"
+
+            local vgmstream_zip="${download_dir}/vgmstream.zip"
+            local vgmstream_url="https://github.com/vgmstream/vgmstream/releases/download/r2117/vgmstream-mac.zip"
+            local vgmstream_sha="cdabf633231a4556feb0048a71990c768e862f3695dd9458ae28e4d94aa50a99"
+            curl -sL --fail --retry 5 --retry-delay 5 --retry-all-errors \
+              "${vgmstream_url}" \
+              -o "${vgmstream_zip}"
+            actual_sha="$(shasum -a 256 "${vgmstream_zip}" | awk '{print $1}')"
+            if [[ "${actual_sha}" != "${vgmstream_sha}" ]]; then
+              echo "vgmstream SHA256 mismatch" >&2
+              echo "expected: ${vgmstream_sha}" >&2
+              echo "actual:   ${actual_sha}" >&2
+              exit 1
+            fi
+
+            local vgmstream_extract="${download_dir}/vgmstream"
+            mkdir -p "${vgmstream_extract}"
+            unzip -q "${vgmstream_zip}" -d "${vgmstream_extract}"
+            local vgmstream_bin
+            vgmstream_bin="$(find "${vgmstream_extract}" -type f -name vgmstream-cli -not -path '*/__MACOSX/*' | head -n 1)"
+            if [[ -z "${vgmstream_bin}" ]]; then
+              echo "vgmstream-cli binary not found in vgmstream-mac.zip" >&2
+              exit 1
+            fi
+            cp "${vgmstream_bin}" "${tools_dir}/vgmstream-cli"
+
+            chmod +x "${tools_dir}/ffmpeg" "${tools_dir}/vgmstream-cli"
+            xattr -d com.apple.quarantine "${tools_dir}/ffmpeg" 2>/dev/null || true
+            xattr -d com.apple.quarantine "${tools_dir}/vgmstream-cli" 2>/dev/null || true
+            codesign --force --sign - "${tools_dir}/ffmpeg" "${tools_dir}/vgmstream-cli"
+
+            local host_arch
+            host_arch="$(uname -m)"
+            if [[ "${host_arch}" == "${rid_arch}" ]]; then
+              "${tools_dir}/ffmpeg" -hide_banner -encoders 2>/dev/null | grep -wq libvorbis
+              if ! "${tools_dir}/vgmstream-cli" --help >"${download_dir}/vgmstream-help.txt" 2>&1; then
+                if ! grep -iq vgmstream "${download_dir}/vgmstream-help.txt"; then
+                  cat "${download_dir}/vgmstream-help.txt"
+                  exit 1
+                fi
+              fi
+            else
+              echo "Skipping ${rid} decoder smoke test on ${host_arch} runner."
+            fi
+          }
+
           python3 -m pip install --no-deps --target Temp/basic-pitch-model basic-pitch==0.4.0
           MODEL_PATH="$(find Temp/basic-pitch-model \( -name 'basic_pitch_nmp.onnx' -o -name 'nmp.onnx' \) -type f | head -n 1)"
           if [[ -z "${MODEL_PATH}" ]]; then
@@ -115,7 +268,34 @@ jobs:
               --self-contained true \
               -o "Assets/StreamingAssets/RocksmithImport/${rid}"
             chmod +x "Assets/StreamingAssets/RocksmithImport/${rid}/RocksmithImportTool"
+            install_macos_import_decoder_tools "${rid}" "Assets/StreamingAssets/RocksmithImport/${rid}"
           done
+
+      - name: Stage macOS LV2 plugins
+        shell: bash
+        env:
+          MACOS_ARCHS: ${{ inputs.macos_archs }}
+        run: bash Tools/Mac/stage-macos-lv2.sh
+
+      - name: Resolve Unity macOS architecture
+        id: macos-unity-arch
+        shell: bash
+        run: |
+          case "${{ inputs.macos_archs }}" in
+            "x86_64;arm64")
+              echo "value=x64ARM64" >> "$GITHUB_OUTPUT"
+              ;;
+            "arm64")
+              echo "value=ARM64" >> "$GITHUB_OUTPUT"
+              ;;
+            "x86_64")
+              echo "value=x64" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "Unsupported macOS architecture selection: ${{ inputs.macos_archs }}" >&2
+              exit 1
+              ;;
+          esac
 
       - name: Build Unity player
         uses: game-ci/unity-builder@v4
@@ -123,7 +303,7 @@ jobs:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          MACOS_UNITY_ARCHITECTURE: x64ARM64
+          MACOS_UNITY_ARCHITECTURE: ${{ steps.macos-unity-arch.outputs.value }}
         with:
           projectPath: .
           unityVersion: 6000.2.9f1
@@ -131,11 +311,18 @@ jobs:
           buildsPath: build
           buildName: StringTheory
           buildMethod: StringTheoryBuildAutomation.BuildMacOS
-          customParameters: -macOSArchitecture x64ARM64 -buildOutput build/StringTheory-macOS/StringTheory.app
+          customParameters: -macOSArchitecture ${{ steps.macos-unity-arch.outputs.value }} -buildOutput build/StringTheory-macOS/StringTheory.app
 
       - name: Upload Unity player
         uses: actions/upload-artifact@v4
         with:
           name: StringTheory-macOS
           path: build
+          if-no-files-found: error
+
+      - name: Upload stem runtime package
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-stem-runtime-package
+          path: Assets/StreamingAssets/StemSeparator/stem-separator-runtime-macos-universal.zip
           if-no-files-found: error
