@@ -44,6 +44,8 @@ node_modules/
 .env
 *.pem
 *.key
+*.alf
+*.ulf
 serviceAccount*.json
 
 # Python / packaged app output
