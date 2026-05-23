@@ -8,6 +8,7 @@
 #include <Windows.h>
 #else
 #include <dlfcn.h>
+#include <strings.h>
 #ifndef __cdecl
 #define __cdecl
 #endif
@@ -27,9 +28,11 @@
 #include <complex>
 #include <condition_variable>
 #include <codecvt>
+#include <cstdio>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -1065,13 +1068,22 @@ std::string JoinMidiNotes(const TValue& notes)
     return first ? std::string("--") : builder.str();
 }
 
+int CompareIgnoreCase(const std::string& left, const std::string& right)
+{
+#ifdef _WIN32
+    return _stricmp(left.c_str(), right.c_str());
+#else
+    return strcasecmp(left.c_str(), right.c_str());
+#endif
+}
+
 std::string MergeEventSourceTags(const std::string& left, const std::string& right)
 {
     if (left.empty())
         return right;
     if (right.empty())
         return left;
-    if (_stricmp(left.c_str(), right.c_str()) == 0)
+    if (CompareIgnoreCase(left, right) == 0)
         return left;
     return left + "+" + right;
 }
@@ -1079,7 +1091,7 @@ std::string MergeEventSourceTags(const std::string& left, const std::string& rig
 template <typename T>
 void EraseAt(std::deque<T>& items, size_t index)
 {
-    items.erase(items.begin() + static_cast<std::deque<T>::difference_type>(index));
+    items.erase(items.begin() + static_cast<typename std::deque<T>::difference_type>(index));
 }
 
 void FFT(std::vector<std::complex<float>>& data)
@@ -1128,7 +1140,11 @@ std::string BuildDebugLogTimestamp()
     const auto now = SystemClock::now();
     const std::time_t tt = SystemClock::to_time_t(now);
     std::tm localTime{};
+#ifdef _WIN32
     localtime_s(&localTime, &tt);
+#else
+    localtime_r(&tt, &localTime);
+#endif
     const auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
 
     char buffer[64];
