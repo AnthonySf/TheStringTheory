@@ -192,9 +192,9 @@ public static class ArrangementCacheSongLoader
 
 public static class ArrangementCacheImportService
 {
-    public static void RefreshImports()
+    public static void RefreshImports(Action<int, int, string> progress = null)
     {
-        RocksmithImportService.RefreshImports();
+        RocksmithImportService.RefreshImports(progress);
     }
 }
 

@@ -1736,6 +1736,11 @@ public sealed class TabsSongHeaderOverlay
     private readonly MultiplayerRhythmHudPanel[] multiplayerRhythmHudPanels = new MultiplayerRhythmHudPanel[2];
 
     private readonly ReusableLoadingOverlay libraryLoadingOverlay;
+    private readonly VisualElement libraryLoadingLogoHost;
+    private readonly Label libraryLoadingStatusLabel;
+    private readonly VisualElement libraryLoadingProgressTrack;
+    private readonly VisualElement libraryLoadingProgressFill;
+    private readonly Label libraryLoadingProgressLabel;
 
     private readonly Label gameplayShortcutLabel;
 
@@ -6162,6 +6167,63 @@ public sealed class TabsSongHeaderOverlay
         multiplayerRhythmSetupOverlay.Add(multiplayerRhythmSetupShell);
 
         libraryLoadingOverlay = ReusableLoadingOverlay.CreateStringTheoryLibraryLoadingOverlay(root);
+        VisualElement libraryLoadingContent = new VisualElement();
+        libraryLoadingContent.style.flexDirection = FlexDirection.Column;
+        libraryLoadingContent.style.alignItems = Align.Center;
+        libraryLoadingContent.style.justifyContent = Justify.Center;
+        libraryLoadingContent.style.maxWidth = 1080f;
+        libraryLoadingContent.pickingMode = PickingMode.Ignore;
+
+        libraryLoadingLogoHost = new VisualElement();
+        libraryLoadingLogoHost.style.alignItems = Align.Center;
+        libraryLoadingLogoHost.style.justifyContent = Justify.Center;
+        libraryLoadingLogoHost.style.marginBottom = 28f;
+        libraryLoadingLogoHost.pickingMode = PickingMode.Ignore;
+
+        libraryLoadingStatusLabel = CreateLabel("Loading library...", 34f, new Color(0.84f, 0.92f, 0.98f, 0.96f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        libraryLoadingStatusLabel.style.unityFontDefinition = modernUiFontDefinition;
+        libraryLoadingStatusLabel.style.whiteSpace = WhiteSpace.Normal;
+        libraryLoadingStatusLabel.style.maxWidth = 1040f;
+        libraryLoadingStatusLabel.style.marginBottom = 18f;
+
+        libraryLoadingProgressLabel = CreateLabel("0%", 26f, new Color(0.62f, 0.78f, 0.94f, 0.96f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        libraryLoadingProgressLabel.style.unityFontDefinition = modernUiFontDefinition;
+        libraryLoadingProgressLabel.style.marginBottom = 10f;
+        libraryLoadingProgressLabel.style.display = DisplayStyle.None;
+
+        libraryLoadingProgressTrack = new VisualElement();
+        libraryLoadingProgressTrack.style.width = 680f;
+        libraryLoadingProgressTrack.style.maxWidth = 680f;
+        libraryLoadingProgressTrack.style.height = 18f;
+        libraryLoadingProgressTrack.style.backgroundColor = new Color(0.07f, 0.11f, 0.17f, 0.94f);
+        libraryLoadingProgressTrack.style.borderTopWidth = 2f;
+        libraryLoadingProgressTrack.style.borderRightWidth = 2f;
+        libraryLoadingProgressTrack.style.borderBottomWidth = 2f;
+        libraryLoadingProgressTrack.style.borderLeftWidth = 2f;
+        libraryLoadingProgressTrack.style.borderTopColor = new Color(0.24f, 0.44f, 0.56f, 0.96f);
+        libraryLoadingProgressTrack.style.borderRightColor = new Color(0.24f, 0.44f, 0.56f, 0.96f);
+        libraryLoadingProgressTrack.style.borderBottomColor = new Color(0.24f, 0.44f, 0.56f, 0.96f);
+        libraryLoadingProgressTrack.style.borderLeftColor = new Color(0.24f, 0.44f, 0.56f, 0.96f);
+        libraryLoadingProgressTrack.style.borderTopLeftRadius = 9f;
+        libraryLoadingProgressTrack.style.borderTopRightRadius = 9f;
+        libraryLoadingProgressTrack.style.borderBottomLeftRadius = 9f;
+        libraryLoadingProgressTrack.style.borderBottomRightRadius = 9f;
+        libraryLoadingProgressTrack.style.overflow = Overflow.Hidden;
+        libraryLoadingProgressTrack.style.display = DisplayStyle.None;
+        libraryLoadingProgressTrack.pickingMode = PickingMode.Ignore;
+
+        libraryLoadingProgressFill = new VisualElement();
+        libraryLoadingProgressFill.style.width = 0f;
+        libraryLoadingProgressFill.style.height = Length.Percent(100f);
+        libraryLoadingProgressFill.style.backgroundColor = new Color(0.95f, 0.48f, 0.22f, 0.96f);
+        libraryLoadingProgressFill.pickingMode = PickingMode.Ignore;
+        libraryLoadingProgressTrack.Add(libraryLoadingProgressFill);
+
+        libraryLoadingContent.Add(libraryLoadingLogoHost);
+        libraryLoadingContent.Add(libraryLoadingStatusLabel);
+        libraryLoadingContent.Add(libraryLoadingProgressLabel);
+        libraryLoadingContent.Add(libraryLoadingProgressTrack);
+        libraryLoadingOverlay.ContentHost.Add(libraryLoadingContent);
 
         multiplayerRhythmHudLayer = new VisualElement();
         multiplayerRhythmHudLayer.style.position = Position.Absolute;
@@ -10267,6 +10329,25 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsOverlay.style.backgroundColor = new Color(0.08f, 0.08f, 0.09f, snapshot.globalSettingsTransparentBackground ? 0f : 0.992f);
 
         libraryLoadingOverlay.SetVisible(showLibraryLoading, Time.unscaledTime);
+        if (libraryLoadingStatusLabel != null)
+            libraryLoadingStatusLabel.text = string.IsNullOrWhiteSpace(snapshot.libraryLoadingStatusText)
+                ? "Loading library..."
+                : snapshot.libraryLoadingStatusText;
+        bool showLibraryLoadingProgress = showLibraryLoading && snapshot.libraryLoadingShowsProgress;
+        if (libraryLoadingProgressLabel != null)
+        {
+            libraryLoadingProgressLabel.style.display = showLibraryLoadingProgress ? DisplayStyle.Flex : DisplayStyle.None;
+            libraryLoadingProgressLabel.text = $"{Mathf.Clamp(snapshot.libraryLoadingProgressPercent, 0f, 100f):F0}%";
+        }
+
+        if (libraryLoadingProgressTrack != null)
+        {
+            libraryLoadingProgressTrack.style.display = showLibraryLoadingProgress ? DisplayStyle.Flex : DisplayStyle.None;
+            float libraryLoadingProgressWidth = libraryLoadingProgressTrack.resolvedStyle.width > 1f
+                ? libraryLoadingProgressTrack.resolvedStyle.width
+                : 680f;
+            libraryLoadingProgressFill.style.width = libraryLoadingProgressWidth * Mathf.Clamp01(snapshot.libraryLoadingProgressPercent / 100f);
+        }
 
         if (showStartupTuningReminder)
         {
@@ -12192,6 +12273,7 @@ public sealed class TabsSongHeaderOverlay
         field.RegisterCallback<MouseLeaveEvent>(_ => RefreshLibrarySearchVisualState());
         field.RegisterCallback<KeyDownEvent>(evt => evt.StopPropagation());
         field.RegisterCallback<KeyUpEvent>(evt => evt.StopPropagation());
+
         field.RegisterValueChangedCallback(evt =>
         {
             RefreshLibrarySearchVisualState();
@@ -12231,6 +12313,7 @@ public sealed class TabsSongHeaderOverlay
             ?? searchField.Q(className: "unity-text-field__input")
             ?? searchField.Q(className: "unity-base-text-field__input")
             ?? searchField.Q(className: "unity-base-field__input");
+
         if (textInputElement != null)
         {
             textInputElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
@@ -19377,7 +19460,7 @@ public sealed class TabsSongHeaderOverlay
             return;
 
         VisualElement targetParent = showLibraryLoading
-            ? libraryLoadingOverlay.ContentHost
+            ? libraryLoadingLogoHost
             : mainMenuBrandWrap;
 
         if (sharedMainMenuWordmarkLogo.parent == targetParent)

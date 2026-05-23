@@ -16,7 +16,7 @@ public static class RocksmithImportService
     private static bool missingToolLogged;
     private static bool unsupportedPlatformLogged;
 
-    public static void RefreshImports()
+    public static void RefreshImports(Action<int, int, string> progress = null)
     {
         if (!IsSupportedRuntimePlatform())
         {
@@ -44,7 +44,10 @@ public static class RocksmithImportService
         CleanupOrphanedImports(songsDirectory, psarcFiles);
 
         if (psarcFiles.Length == 0)
+        {
+            progress?.Invoke(0, 0, string.Empty);
             return;
+        }
 
         string importToolPath = GetImportToolPath();
         if (!File.Exists(importToolPath))
@@ -67,7 +70,12 @@ public static class RocksmithImportService
 
         missingToolLogged = false;
         for (int i = 0; i < psarcFiles.Length; i++)
+        {
+            progress?.Invoke(i, psarcFiles.Length, Path.GetFileName(psarcFiles[i]));
             RefreshImportForFile(psarcFiles[i], songsDirectory, importToolPath);
+        }
+
+        progress?.Invoke(psarcFiles.Length, psarcFiles.Length, string.Empty);
     }
 
     public static bool RefreshImportForPsarc(string psarcPath, out string error)

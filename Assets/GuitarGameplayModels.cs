@@ -480,6 +480,9 @@ public sealed class GuitarGameplaySnapshot
     public int selectedCharacterSelectionIndex;
     public int selectedHighwayCharacterIndex;
     public bool showLibraryLoadingOverlay;
+    public string libraryLoadingStatusText;
+    public float libraryLoadingProgressPercent;
+    public bool libraryLoadingShowsProgress;
     public int selectedStartMenuStepIndex;
     public int selectedStartMenuModeIndex;
     public int selectedStartMenuArcadeSetupIndex;

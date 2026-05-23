@@ -187,7 +187,10 @@ public static class SongLibraryService
         return normalized;
     }
 
-    public static List<SongLibraryEntry> GetAvailableSongs(bool forceRefresh = false)
+    public static List<SongLibraryEntry> GetAvailableSongs(
+        bool forceRefresh = false,
+        bool refreshImports = false,
+        Action<float, string> progress = null)
     {
         if (!forceRefresh)
         {
@@ -201,7 +204,7 @@ public static class SongLibraryService
             }
         }
 
-        List<SongLibraryEntry> rebuiltEntries = ScanSongsDirectory();
+        List<SongLibraryEntry> rebuiltEntries = ScanSongsDirectory(refreshImports, progress);
         ReplaceSessionCache(rebuiltEntries);
         SaveCacheManifest(sessionCachedEntries);
 
@@ -252,7 +255,7 @@ public static class SongLibraryService
         return clones;
     }
 
-    private static List<SongLibraryEntry> ScanSongsDirectory()
+    private static List<SongLibraryEntry> ScanSongsDirectory(bool refreshImports, Action<float, string> progress)
     {
         List<SongLibraryEntry> entries = new List<SongLibraryEntry>();
 
@@ -262,11 +265,29 @@ public static class SongLibraryService
             return entries;
         }
 
-        ArrangementCacheImportService.RefreshImports();
+        if (refreshImports)
+        {
+            ArrangementCacheImportService.RefreshImports((completed, total, currentFileName) =>
+            {
+                float ratio = total > 0 ? Mathf.Clamp01((float)completed / total) : 1f;
+                string status = total > 0
+                    ? $"Refreshing Rocksmith songs... {completed}/{total}"
+                    : "Refreshing Rocksmith songs...";
+                if (!string.IsNullOrWhiteSpace(currentFileName))
+                    status += $"  {currentFileName}";
+                progress?.Invoke(ratio * 85f, status);
+            });
+        }
 
         string[] songDirectories = Directory.GetDirectories(ExternalContentPaths.PersistentSongsDirectory)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        if (songDirectories.Length == 0)
+        {
+            progress?.Invoke(100f, "Library refresh complete.");
+            return entries;
+        }
 
         for (int i = 0; i < songDirectories.Length; i++)
         {
@@ -276,8 +297,16 @@ public static class SongLibraryService
                 PopulateCachedLibrarySummary(discovered);
                 entries.Add(discovered);
             }
+
+            float scanRatio = (i + 1) / (float)songDirectories.Length;
+            float baseProgress = refreshImports ? 85f : 0f;
+            float remainingProgress = refreshImports ? 15f : 100f;
+            progress?.Invoke(
+                baseProgress + (scanRatio * remainingProgress),
+                $"Scanning songs... {i + 1}/{songDirectories.Length}");
         }
 
+        progress?.Invoke(100f, "Library refresh complete.");
         return entries;
     }
 

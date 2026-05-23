@@ -902,6 +902,11 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool pendingMultiplayerRhythmSongSelection;
     private bool returnToMultiplayerRhythmSetupFromSongSelection;
     private bool showLibraryLoadingOverlay;
+    private readonly object libraryRefreshStateLock = new object();
+    private bool libraryRefreshInProgress;
+    private float libraryRefreshProgressPercent;
+    private string libraryRefreshStatusText = string.Empty;
+    private bool libraryRefreshShowsProgress;
     private bool firstStartCompleted;
     private StartMenuStep startMenuStep = StartMenuStep.SelectMode;
     private int selectedStartMenuModeIndex;
@@ -1024,6 +1029,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool songEndedAsGameOver;
     private Coroutine openSongSelectionRoutine;
     private int openSongSelectionRequestId;
+    private Coroutine songLibraryRefreshRoutine;
+    private int songLibraryRefreshRequestId;
     private bool songSelectionOpenedFromSongEnd;
     private bool songSelectionOpenedFromMainMenu;
     private bool showStartupTuningReminder;
@@ -4987,7 +4994,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (requestId != openSongSelectionRequestId)
             yield break;
 
-        Task<List<SongLibraryEntry>> loadTask = Task.Run(() => SongLibraryService.GetAvailableSongs(forceRefresh: false));
+        Task<List<SongLibraryEntry>> loadTask = Task.Run(() => SongLibraryService.GetAvailableSongs(forceRefresh: false, refreshImports: false));
         while (!loadTask.IsCompleted)
             yield return null;
 
@@ -5048,7 +5055,100 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void RefreshAvailableSongs(bool forceRefresh = false)
     {
-        ApplyAvailableSongsSnapshot(SongLibraryService.GetAvailableSongs(forceRefresh));
+        ApplyAvailableSongsSnapshot(SongLibraryService.GetAvailableSongs(forceRefresh, refreshImports: false));
+    }
+
+    private void RefreshAvailableSongs(bool forceRefresh, bool refreshImports)
+    {
+        ApplyAvailableSongsSnapshot(SongLibraryService.GetAvailableSongs(forceRefresh, refreshImports));
+    }
+
+    private void BeginSongLibraryRefresh(bool refreshImports)
+    {
+        if (songLibraryRefreshRoutine != null)
+            return;
+
+        songLibraryRefreshRequestId++;
+        showLibraryLoadingOverlay = true;
+        SetSongLibraryRefreshOverlayState(
+            inProgress: true,
+            progressPercent: 0f,
+            statusText: refreshImports ? "Preparing library refresh..." : "Loading library...",
+            showProgress: refreshImports);
+        songLibraryRefreshRoutine = StartCoroutine(RefreshSongsDeferred(songLibraryRefreshRequestId, refreshImports));
+    }
+
+    private System.Collections.IEnumerator RefreshSongsDeferred(int requestId, bool refreshImports)
+    {
+        yield return null;
+
+        Task<List<SongLibraryEntry>> loadTask = Task.Run(() =>
+            SongLibraryService.GetAvailableSongs(
+                forceRefresh: true,
+                refreshImports: refreshImports,
+                progress: refreshImports ? (Action<float, string>)UpdateSongLibraryRefreshProgress : null));
+
+        while (!loadTask.IsCompleted)
+            yield return null;
+
+        if (requestId != songLibraryRefreshRequestId)
+            yield break;
+
+        try
+        {
+            if (loadTask.IsFaulted || loadTask.IsCanceled)
+            {
+                Exception exception = loadTask.Exception?.GetBaseException();
+                if (exception != null)
+                    Debug.LogWarning($"[SongLibrary] Library refresh failed: {exception.Message}");
+                RefreshAvailableSongs(forceRefresh: false, refreshImports: false);
+            }
+            else
+            {
+                ApplyAvailableSongsSnapshot(loadTask.Result);
+            }
+
+            songSelectionSongConfirmed = false;
+            EnsureSongSelectionVisible();
+        }
+        finally
+        {
+            showLibraryLoadingOverlay = false;
+            SetSongLibraryRefreshOverlayState(false, 0f, string.Empty, false);
+            songLibraryRefreshRoutine = null;
+            runtimeSettingsSnapshotDirty = true;
+        }
+    }
+
+    private void UpdateSongLibraryRefreshProgress(float progressPercent, string statusText)
+    {
+        SetSongLibraryRefreshOverlayState(
+            inProgress: true,
+            progressPercent: progressPercent,
+            statusText: statusText,
+            showProgress: true);
+    }
+
+    private void SetSongLibraryRefreshOverlayState(bool inProgress, float progressPercent, string statusText, bool showProgress)
+    {
+        lock (libraryRefreshStateLock)
+        {
+            libraryRefreshInProgress = inProgress;
+            libraryRefreshProgressPercent = Mathf.Clamp(progressPercent, 0f, 100f);
+            libraryRefreshStatusText = statusText ?? string.Empty;
+            libraryRefreshShowsProgress = showProgress;
+        }
+    }
+
+    private void GetSongLibraryRefreshOverlayState(out bool inProgress, out float progressPercent, out string statusText, out bool showProgress)
+    {
+        lock (libraryRefreshStateLock)
+        {
+            inProgress = libraryRefreshInProgress;
+            progressPercent = libraryRefreshProgressPercent;
+            statusText = libraryRefreshStatusText ?? string.Empty;
+            showProgress = libraryRefreshShowsProgress;
+        }
     }
 
     private void ApplyAvailableSongsSnapshot(IEnumerable<SongLibraryEntry> songs)
@@ -9271,12 +9371,14 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void RefreshSongsFromUi()
     {
+        if (songLibraryRefreshRoutine != null)
+            return;
+
         ClearSongSelectionCaches();
         SongLibraryService.ClearCache();
-        RefreshAvailableSongs(forceRefresh: true);
+        BeginSongLibraryRefresh(refreshImports: true);
 
         songSelectionSongConfirmed = false;
-        EnsureSongSelectionVisible();
     }
 
     public void MoveSongSelectionFromUi(int delta)
@@ -11923,6 +12025,70 @@ private void OpenOrFocusToneLab()
         return string.IsNullOrWhiteSpace(value) || string.Equals(value, SharedAudioAutomaticLabel, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static string StripAdvancedAudioDeviceDecorations(string value)
+    {
+        string normalized = NormalizeSharedAudioStoredSelection(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+            return string.Empty;
+
+        int suffixIndex = normalized.LastIndexOf(" (#", StringComparison.Ordinal);
+        if (suffixIndex >= 0 && normalized.EndsWith(")", StringComparison.Ordinal))
+            normalized = normalized.Substring(0, suffixIndex);
+
+        int hostIndex = normalized.LastIndexOf(" [", StringComparison.Ordinal);
+        if (hostIndex >= 0 && normalized.EndsWith("]", StringComparison.Ordinal))
+            normalized = normalized.Substring(0, hostIndex);
+
+        return normalized.Trim();
+    }
+
+    private static string ResolveChoiceByNormalizedName(IReadOnlyList<string> choices, string candidate)
+    {
+        if (choices == null || choices.Count == 0 || string.IsNullOrWhiteSpace(candidate))
+            return string.Empty;
+
+        string normalizedCandidate = SharedAudioSettingsUtility.NormalizeDeviceKey(candidate);
+        for (int i = 0; i < choices.Count; i++)
+        {
+            string choice = choices[i];
+            if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(choice), normalizedCandidate, StringComparison.Ordinal))
+                return choice;
+        }
+
+        return string.Empty;
+    }
+
+    private string ResolveToneLabDisplayNameFromAdvancedSelection(string advancedSelection, IReadOnlyList<string> toneLabDevices)
+    {
+        return ResolveChoiceByNormalizedName(toneLabDevices, StripAdvancedAudioDeviceDecorations(advancedSelection));
+    }
+
+    private string ResolveAdvancedChoiceFromToneLabDisplayName(string toneLabDisplayName, bool input)
+    {
+        if (unityToneLabRuntime == null || sharedAudioSettings?.advanced == null)
+            return string.Empty;
+
+        string backendMode = SharedAudioBackendModes.Normalize(sharedAudioSettings.advanced.backendMode);
+        if (string.Equals(backendMode, SharedAudioBackendModes.Auto, StringComparison.Ordinal))
+            return string.Empty;
+
+        IReadOnlyList<string> choices = input
+            ? unityToneLabRuntime.GetAdvancedInputDeviceChoices(backendMode)
+            : unityToneLabRuntime.GetAdvancedOutputDeviceChoices(backendMode);
+
+        for (int i = 0; i < choices.Count; i++)
+        {
+            string choice = choices[i];
+            if (string.Equals(choice, SharedAudioAutomaticLabel, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(ResolveChoiceByNormalizedName(new[] { toneLabDisplayName }, StripAdvancedAudioDeviceDecorations(choice))))
+                return choice;
+        }
+
+        return string.Empty;
+    }
+
     private static SharedAudioAdvancedSettings NormalizeSharedAudioAdvancedSettings(SharedAudioAdvancedSettings source, int fallbackBufferSize, out bool changed)
     {
         SharedAudioAdvancedSettings normalized = SharedAudioSettingsUtility.CloneAdvancedSettings(source);
@@ -12060,9 +12226,21 @@ private void OpenOrFocusToneLab()
 
         if (unityToneLabRuntime != null)
         {
+            SharedAudioAdvancedSettings advancedSettings = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, monitoringBufferSize, out _);
             string resolvedToneLabInput = ResolveToneLabSharedDeviceName(sharedAudioSettings.inputDeviceName, unityToneLabRuntime.InputDevices);
             string resolvedToneLabOutput = ResolveToneLabSharedDeviceName(sharedAudioSettings.outputDeviceName, unityToneLabRuntime.OutputDevices);
-            SharedAudioAdvancedSettings advancedSettings = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, monitoringBufferSize, out _);
+            if (advancedSettings.betaEnabled)
+            {
+                string advancedInputDisplay = ResolveToneLabDisplayNameFromAdvancedSelection(advancedSettings.inputDeviceName, unityToneLabRuntime.InputDevices);
+                string advancedOutputDisplay = ResolveToneLabDisplayNameFromAdvancedSelection(advancedSettings.outputDeviceName, unityToneLabRuntime.OutputDevices);
+                if (!string.IsNullOrWhiteSpace(advancedInputDisplay))
+                    resolvedToneLabInput = advancedInputDisplay;
+                if (!string.IsNullOrWhiteSpace(advancedOutputDisplay))
+                    resolvedToneLabOutput = advancedOutputDisplay;
+                monitoringBufferSize = NormalizeSharedMonitoringBufferSize(advancedSettings.bufferSize);
+                sharedAudioSettings.monitoringBufferSize = monitoringBufferSize;
+            }
+
             unityToneLabRuntime.SetAdvancedRoutingOptions(new UnityToneLabRuntime.AdvancedRoutingOptions
             {
                 betaEnabled = advancedSettings.betaEnabled,
@@ -12119,16 +12297,37 @@ private void OpenOrFocusToneLab()
 
     public string GetSharedAudioSelectedInputLabel()
     {
+        if (sharedAudioSettings?.advanced?.betaEnabled == true)
+        {
+            string advancedChoice = ResolveChoiceByNormalizedName(
+                sharedAudioInputDeviceChoices,
+                StripAdvancedAudioDeviceDecorations(sharedAudioSettings.advanced.inputDeviceName));
+            if (!string.IsNullOrWhiteSpace(advancedChoice))
+                return advancedChoice;
+        }
+
         return ResolveChoiceLabel(sharedAudioInputDeviceChoices, sharedAudioSettings?.inputDeviceName);
     }
 
     public string GetSharedAudioSelectedOutputLabel()
     {
+        if (sharedAudioSettings?.advanced?.betaEnabled == true)
+        {
+            string advancedChoice = ResolveChoiceByNormalizedName(
+                sharedAudioOutputDeviceChoices,
+                StripAdvancedAudioDeviceDecorations(sharedAudioSettings.advanced.outputDeviceName));
+            if (!string.IsNullOrWhiteSpace(advancedChoice))
+                return advancedChoice;
+        }
+
         return ResolveChoiceLabel(sharedAudioOutputDeviceChoices, sharedAudioSettings?.outputDeviceName);
     }
 
     public string GetSharedAudioSelectedLatencyLabel()
     {
+        if (sharedAudioSettings?.advanced?.betaEnabled == true)
+            return UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(sharedAudioSettings.advanced.bufferSize);
+
         return UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(sharedAudioSettings?.monitoringBufferSize ?? 128);
     }
 
@@ -12198,6 +12397,7 @@ private void OpenOrFocusToneLab()
             updated,
             NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize),
             out _);
+        sharedAudioSettings.monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.advanced.bufferSize);
         SaveSharedAudioSettingsToDisk();
         ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: true, refreshCatalogs: true);
         runtimeSettingsSnapshotDirty = true;
@@ -12552,7 +12752,7 @@ private void OpenOrFocusToneLab()
         ExternalContentBootstrap.EnsureSongsDirectoryReady();
         ClearSongSelectionCaches();
         SongLibraryService.ClearCache();
-        RefreshAvailableSongs(forceRefresh: true);
+        BeginSongLibraryRefresh(refreshImports: true);
         songSelectionSongConfirmed = false;
         runtimeSettingsSnapshotDirty = true;
     }
@@ -12606,6 +12806,13 @@ private void OpenOrFocusToneLab()
             return;
 
         sharedAudioSettings.inputDeviceName = normalized;
+        if (sharedAudioSettings.advanced != null)
+        {
+            string resolvedToneLabInput = unityToneLabRuntime != null
+                ? ResolveToneLabSharedDeviceName(normalized, unityToneLabRuntime.InputDevices)
+                : string.Empty;
+            sharedAudioSettings.advanced.inputDeviceName = ResolveAdvancedChoiceFromToneLabDisplayName(resolvedToneLabInput, input: true);
+        }
         sharedAudioRefreshActionLabel = "REFRESH";
         sharedAudioRefreshActionResetAt = -1f;
         SaveSharedAudioSettingsToDisk();
@@ -12622,6 +12829,13 @@ private void OpenOrFocusToneLab()
             return;
 
         sharedAudioSettings.outputDeviceName = normalized;
+        if (sharedAudioSettings.advanced != null)
+        {
+            string resolvedToneLabOutput = unityToneLabRuntime != null
+                ? ResolveToneLabSharedDeviceName(normalized, unityToneLabRuntime.OutputDevices)
+                : string.Empty;
+            sharedAudioSettings.advanced.outputDeviceName = ResolveAdvancedChoiceFromToneLabDisplayName(resolvedToneLabOutput, input: false);
+        }
         sharedAudioRefreshActionLabel = "REFRESH";
         sharedAudioRefreshActionResetAt = -1f;
         SaveSharedAudioSettingsToDisk();
@@ -12636,6 +12850,8 @@ private void OpenOrFocusToneLab()
             return;
 
         sharedAudioSettings.monitoringBufferSize = nextBufferSize;
+        if (sharedAudioSettings.advanced != null)
+            sharedAudioSettings.advanced.bufferSize = nextBufferSize;
         sharedAudioRefreshActionLabel = "REFRESH";
         sharedAudioRefreshActionResetAt = -1f;
         SaveSharedAudioSettingsToDisk();
@@ -16626,6 +16842,11 @@ private void ParseDetectorPacket(string detectorPacket)
         bool multiplayerRhythmUiMode = multiplayerRhythmModeActive || pendingMultiplayerRhythmSongSelection || showMultiplayerRhythmSetup;
         StemRuntimeInstallStatus stemRuntimeInstallStatus = StemSeparationService.GetRuntimeInstallStatus();
         bool stemGeneratorReady = StemSeparationService.IsManagedRuntimeReady();
+        GetSongLibraryRefreshOverlayState(
+            out bool libraryRefreshInProgressSnapshot,
+            out float libraryRefreshProgressPercentSnapshot,
+            out string libraryRefreshStatusTextSnapshot,
+            out bool libraryRefreshShowsProgressSnapshot);
 
         return new GuitarGameplaySnapshot
         {
@@ -16735,7 +16956,12 @@ private void ParseDetectorPacket(string detectorPacket)
             characterSelectionOpenedFromStartup = characterSelectionOpenedFromStartup,
             selectedCharacterSelectionIndex = selectedCharacterSelectionIndex,
             selectedHighwayCharacterIndex = GetCurrentCharacterSelectionIndex(),
-            showLibraryLoadingOverlay = showLibraryLoadingOverlay,
+            showLibraryLoadingOverlay = showLibraryLoadingOverlay || libraryRefreshInProgressSnapshot,
+            libraryLoadingStatusText = libraryRefreshInProgressSnapshot
+                ? libraryRefreshStatusTextSnapshot
+                : "Loading library...",
+            libraryLoadingProgressPercent = libraryRefreshProgressPercentSnapshot,
+            libraryLoadingShowsProgress = libraryRefreshInProgressSnapshot && libraryRefreshShowsProgressSnapshot,
             selectedStartMenuStepIndex = (int)startMenuStep,
             selectedStartMenuModeIndex = selectedStartMenuModeIndex,
             selectedStartMenuArcadeSetupIndex = selectedStartMenuArcadeSetupIndex,

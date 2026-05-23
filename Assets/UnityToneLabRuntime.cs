@@ -691,6 +691,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public static string GetSharedMonitoringLatencyLabel(int bufferSize) => GetLatencyPresetLabel(bufferSize);
     public static int ParseSharedMonitoringLatencyBufferSize(string label)
     {
+        if (string.Equals(label, "Driver", StringComparison.Ordinal))
+            return PreferredDspBufferSize;
         if (string.Equals(label, LatencyPresetLabels[0], StringComparison.Ordinal))
             return UltraLowDspBufferSize;
         if (string.Equals(label, LatencyPresetLabels[2], StringComparison.Ordinal))
@@ -1055,9 +1057,12 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return rates;
     }
 
-    private static List<int> BuildBufferSizeCandidates(int requestedBufferSize, bool allowFallback)
+    private static List<int> BuildBufferSizeCandidates(int requestedBufferSize, bool allowFallback, ToneLabPortAudio.DeviceDescriptor inputDevice, ToneLabPortAudio.DeviceDescriptor outputDevice)
     {
         List<int> buffers = new List<int>();
+        bool asioRoute =
+            string.Equals(GetNormalizedHostApiLabel(inputDevice?.HostApiName), SharedAudioBackendModes.Asio, StringComparison.Ordinal) ||
+            string.Equals(GetNormalizedHostApiLabel(outputDevice?.HostApiName), SharedAudioBackendModes.Asio, StringComparison.Ordinal);
 
         void AddBuffer(int value)
         {
@@ -1066,13 +1071,26 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 buffers.Add(resolved);
         }
 
+        void AddRawBuffer(int value)
+        {
+            if (value < 0 || buffers.Contains(value))
+                return;
+
+            buffers.Add(value);
+        }
+
         AddBuffer(requestedBufferSize);
+        if (asioRoute)
+            AddRawBuffer(0);
         if (allowFallback)
         {
             AddBuffer(PreferredDspBufferSize);
             AddBuffer(SafeDspBufferSize);
             AddBuffer(UltraLowDspBufferSize);
         }
+
+        if (buffers.Count == 0)
+            AddBuffer(PreferredDspBufferSize);
 
         return buffers;
     }
@@ -1099,6 +1117,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         ToneLabPortAudio.DeviceDescriptor selectedOutput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredOutputDeviceName, outputCandidates, input: false)
             ?? ResolvePortAudioDevice(settings.output_device_name, outputCandidates.ToArray());
 
+        bool selectedInputExplicit = !IsAutomaticDeviceChoice(advancedRoutingOptions.preferredInputDeviceName) && selectedInput != null;
+        bool selectedOutputExplicit = !IsAutomaticDeviceChoice(advancedRoutingOptions.preferredOutputDeviceName) && selectedOutput != null;
         List<(ToneLabPortAudio.DeviceDescriptor input, ToneLabPortAudio.DeviceDescriptor output, int rank)> rankedPairs = new List<(ToneLabPortAudio.DeviceDescriptor, ToneLabPortAudio.DeviceDescriptor, int)>();
         for (int i = 0; i < inputCandidates.Count; i++)
         {
@@ -1119,6 +1139,11 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             }
         }
 
+        if (selectedInputExplicit)
+            rankedPairs = rankedPairs.Where(pair => pair.input.Index == selectedInput.Index).ToList();
+        if (selectedOutputExplicit)
+            rankedPairs = rankedPairs.Where(pair => pair.output.Index == selectedOutput.Index).ToList();
+
         if (rankedPairs.Count == 0)
             return new List<PortAudioRoutePlan>();
 
@@ -1136,7 +1161,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             (ToneLabPortAudio.DeviceDescriptor inputDevice, ToneLabPortAudio.DeviceDescriptor outputDevice, int rank) = rankedPairs[i];
             List<int> sampleRates = BuildSampleRateCandidates(advancedRoutingOptions.sampleRate, inputDevice, outputDevice, allowFallback, forcedUnifiedSampleRate);
-            List<int> bufferSizes = BuildBufferSizeCandidates(advancedRoutingOptions.bufferSize, allowFallback);
+            List<int> bufferSizes = BuildBufferSizeCandidates(advancedRoutingOptions.bufferSize, allowFallback, inputDevice, outputDevice);
             for (int sampleIndex = 0; sampleIndex < sampleRates.Count; sampleIndex++)
             {
                 for (int bufferIndex = 0; bufferIndex < bufferSizes.Count; bufferIndex++)
@@ -1200,7 +1225,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         foreach ((ToneLabPortAudio.DeviceDescriptor inputDevice, ToneLabPortAudio.DeviceDescriptor outputDevice, int rank) in rankedPairs.OrderBy(pair => pair.rank))
         {
             List<int> sampleRates = BuildSampleRateCandidates(0, inputDevice, outputDevice, allowFallback: true, forcedSampleRate: 0);
-            List<int> bufferSizes = BuildBufferSizeCandidates(settings != null ? settings.monitoring_buffer_size : PreferredDspBufferSize, allowFallback: true);
+            List<int> bufferSizes = BuildBufferSizeCandidates(settings != null ? settings.monitoring_buffer_size : PreferredDspBufferSize, allowFallback: true, inputDevice, outputDevice);
             for (int sampleIndex = 0; sampleIndex < sampleRates.Count; sampleIndex++)
             {
                 for (int bufferIndex = 0; bufferIndex < bufferSizes.Count; bufferIndex++)
@@ -1978,7 +2003,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         int inputChannels = ResolveRequestedChannelCount(inputDevice, input: true);
         int outputChannels = ResolveRequestedChannelCount(outputDevice, input: false);
-        uint framesPerBuffer = (uint)ResolveMonitoringBufferSize(monitoringBufferSize);
+        bool driverManagedBuffer = monitoringBufferSize <= 0;
+        uint framesPerBuffer = driverManagedBuffer ? 0u : (uint)ResolveMonitoringBufferSize(monitoringBufferSize);
         string routeDescription =
             $"{BuildAdvancedDeviceChoiceLabel(inputDevice)} [{inputChannels}ch] -> " +
             $"{BuildAdvancedDeviceChoiceLabel(outputDevice)} [{outputChannels}ch]";
@@ -2007,7 +2033,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         usingPortAudioBackend = true;
         awaitingMicrophoneStart = false;
         activeSampleRate = sampleRate;
-        activeDspBufferSize = ResolveMonitoringBufferSize(monitoringBufferSize);
+        activeDspBufferSize = driverManagedBuffer ? 0 : ResolveMonitoringBufferSize(monitoringBufferSize);
         activeHostApiName = outputDevice.HostApiName;
         pendingDeviceName = inputDevice.DisplayName;
         inputRouteLabel = BuildAdvancedDeviceChoiceLabel(inputDevice);
@@ -2040,7 +2066,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             }
         }
 
-        statusMessage = $"Live  {inputRouteLabel}  \u2022  {sampleRate} Hz  \u2022  Buffer {activeDspBufferSize}  \u2022  PortAudio  {GetNormalizedHostApiLabel(outputDevice.HostApiName)}";
+        statusMessage = $"Live  {inputRouteLabel}  \u2022  {sampleRate} Hz  \u2022  Buffer {FormatActiveBufferLabel(activeDspBufferSize)}  \u2022  PortAudio  {GetNormalizedHostApiLabel(outputDevice.HostApiName)}";
         if (!string.IsNullOrWhiteSpace(captureNotice))
             statusMessage = $"{statusMessage}  \u2022  {captureNotice}";
         if (enableUnityRecorderCapture)
@@ -5772,6 +5798,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     private static string GetLatencyPresetLabel(int bufferSize)
     {
+        if (bufferSize <= 0)
+            return "Driver";
+
         switch (ResolveMonitoringBufferSize(bufferSize))
         {
             case UltraLowDspBufferSize:
@@ -5781,5 +5810,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             default:
                 return LatencyPresetLabels[1];
         }
+    }
+
+    private static string FormatActiveBufferLabel(int bufferSize)
+    {
+        return bufferSize <= 0 ? "Driver" : bufferSize.ToString();
     }
 }
