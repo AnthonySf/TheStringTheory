@@ -117,6 +117,7 @@ target_compile_definitions(StringTheoryToneHost PRIVATE
 )
 
 if(APPLE)
+    target_compile_definitions(StringTheoryToneHost PRIVATE HAVE_POSIX_FADVISE=0)
     set_target_properties(StringTheoryToneHost PROPERTIES
         OUTPUT_NAME "StringTheoryToneHost"
         PREFIX "lib"
