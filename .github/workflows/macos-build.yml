@@ -1,0 +1,127 @@
+name: macOS build
+
+on:
+  workflow_dispatch:
+    inputs:
+      macos_archs:
+        description: macOS architectures to build.
+        required: true
+        type: choice
+        default: "x86_64;arm64"
+        options:
+          - "x86_64;arm64"
+          - "arm64"
+          - "x86_64"
+      build_unity_player:
+        description: Build the Unity macOS player. Requires Unity license secrets.
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  native-plugins:
+    name: Native plugins
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Ensure CMake is available
+        shell: bash
+        run: |
+          if ! command -v cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+
+      - name: Build macOS native plugins
+        shell: bash
+        env:
+          MACOS_ARCHS: ${{ inputs.macos_archs }}
+        run: bash Tools/Mac/build-macos-native-plugins.sh
+
+      - name: Pack native plugins
+        shell: bash
+        run: tar -czf macos-native-plugins.tgz -C Assets/Plugins/macOS .
+
+      - name: Upload native plugins
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-native-plugins
+          path: macos-native-plugins.tgz
+          if-no-files-found: error
+
+  unity-player:
+    name: Unity macOS player
+    if: ${{ inputs.build_unity_player }}
+    runs-on: macos-14
+    needs: native-plugins
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Download native plugins
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-native-plugins
+          path: Temp/macos-native-plugins
+
+      - name: Install native plugins
+        shell: bash
+        run: |
+          mkdir -p Assets/Plugins/macOS
+          tar -xzf Temp/macos-native-plugins/macos-native-plugins.tgz -C Assets/Plugins/macOS
+          chmod +x Assets/Plugins/macOS/*.dylib
+          ls -lh Assets/Plugins/macOS
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Prepare macOS streaming assets
+        shell: bash
+        run: |
+          python3 -m pip install --no-deps --target Temp/basic-pitch-model basic-pitch==0.4.0
+          MODEL_PATH="$(find Temp/basic-pitch-model -name 'basic_pitch_nmp.onnx' -type f | head -n 1)"
+          if [[ -z "${MODEL_PATH}" ]]; then
+            echo "basic_pitch_nmp.onnx was not found in the basic-pitch package." >&2
+            exit 1
+          fi
+          mkdir -p Assets/StreamingAssets/NotesReader/Models
+          cp "${MODEL_PATH}" Assets/StreamingAssets/NotesReader/Models/basic_pitch_nmp.onnx
+
+          for rid in osx-arm64 osx-x64; do
+            dotnet publish Tools/AlphaTabRenderHelper/AlphaTabRenderHelper.csproj \
+              -c Release \
+              -r "${rid}" \
+              --self-contained true \
+              -o "Assets/StreamingAssets/AlphaTabRenderHelper/${rid}"
+            chmod +x "Assets/StreamingAssets/AlphaTabRenderHelper/${rid}/AlphaTabRenderHelper"
+          done
+
+      - name: Build Unity player
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          MACOS_UNITY_ARCHITECTURE: x64ARM64
+        with:
+          projectPath: .
+          unityVersion: 6000.2.9f1
+          targetPlatform: StandaloneOSX
+          buildsPath: build
+          buildName: StringTheory
+          buildMethod: StringTheoryBuildAutomation.BuildMacOS
+          customParameters: -macOSArchitecture x64ARM64 -buildOutput build/StringTheory-macOS/StringTheory.app
+
+      - name: Upload Unity player
+        uses: actions/upload-artifact@v4
+        with:
+          name: StringTheory-macOS
+          path: build
+          if-no-files-found: error

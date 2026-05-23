@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
 using UnityEngine;
@@ -35,6 +36,7 @@ public static class SharedAudioBackendModes
     public const string Auto = "Auto";
     public const string Wasapi = "WASAPI";
     public const string Asio = "ASIO";
+    public const string CoreAudio = "CoreAudio";
 
     public static string Normalize(string value)
     {
@@ -42,7 +44,71 @@ public static class SharedAudioBackendModes
             return Wasapi;
         if (string.Equals(value, Asio, StringComparison.OrdinalIgnoreCase))
             return Asio;
+        if (string.Equals(value, CoreAudio, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "Core Audio", StringComparison.OrdinalIgnoreCase))
+        {
+            return CoreAudio;
+        }
+
         return Auto;
+    }
+
+    public static List<string> GetChoicesForCurrentPlatform()
+    {
+        if (StringTheoryPlatform.IsMacOS)
+            return new List<string> { Auto, CoreAudio };
+
+        return new List<string> { Auto, Wasapi, Asio };
+    }
+
+    public static string NormalizeForCurrentPlatform(string value)
+    {
+        string normalized = Normalize(value);
+        return IsSupportedOnCurrentPlatform(normalized) ? normalized : Auto;
+    }
+
+    public static bool IsSupportedOnCurrentPlatform(string normalizedValue)
+    {
+        normalizedValue = Normalize(normalizedValue);
+        if (string.Equals(normalizedValue, Auto, StringComparison.Ordinal))
+            return true;
+        if (StringTheoryPlatform.IsMacOS)
+            return string.Equals(normalizedValue, CoreAudio, StringComparison.Ordinal);
+
+        return string.Equals(normalizedValue, Wasapi, StringComparison.Ordinal) ||
+               string.Equals(normalizedValue, Asio, StringComparison.Ordinal);
+    }
+
+    public static string NormalizeHostApiLabel(string hostApiName)
+    {
+        if (string.IsNullOrWhiteSpace(hostApiName))
+            return "Unknown";
+
+        if (hostApiName.IndexOf("ASIO", StringComparison.OrdinalIgnoreCase) >= 0)
+            return Asio;
+
+        if (hostApiName.IndexOf("WASAPI", StringComparison.OrdinalIgnoreCase) >= 0)
+            return Wasapi;
+
+        if (hostApiName.IndexOf("Core Audio", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            hostApiName.IndexOf("CoreAudio", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return CoreAudio;
+        }
+
+        return hostApiName.Trim();
+    }
+
+    public static int GetHostPriority(string hostApiName)
+    {
+        string normalized = NormalizeHostApiLabel(hostApiName);
+        if (string.Equals(normalized, Asio, StringComparison.Ordinal))
+            return 0;
+        if (string.Equals(normalized, CoreAudio, StringComparison.Ordinal))
+            return 0;
+        if (string.Equals(normalized, Wasapi, StringComparison.Ordinal))
+            return 1;
+        return 2;
     }
 }
 
@@ -168,7 +234,7 @@ public static class SharedAudioSettingsUtility
         return new SharedAudioAdvancedSettings
         {
             betaEnabled = source.betaEnabled,
-            backendMode = SharedAudioBackendModes.Normalize(source.backendMode),
+            backendMode = SharedAudioBackendModes.NormalizeForCurrentPlatform(source.backendMode),
             allowFallback = source.allowFallback,
             inputDeviceName = NormalizeStoredDeviceName(source.inputDeviceName),
             outputDeviceName = NormalizeStoredDeviceName(source.outputDeviceName),

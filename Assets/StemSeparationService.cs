@@ -86,7 +86,7 @@ public static class StemSeparationService
 
     private static readonly object Gate = new object();
     private static readonly object RuntimeInstallLogGate = new object();
-    private static readonly Dictionary<string, StemGenerationStatus> StatusByKey = new Dictionary<string, StemGenerationStatus>(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, StemGenerationStatus> StatusByKey = new Dictionary<string, StemGenerationStatus>(StringTheoryPlatform.PathComparer);
     private static StemRuntimeInstallStatus RuntimeInstallStatus = new StemRuntimeInstallStatus();
     private static readonly string[] PreferredStemOrder = { "guitar", "bass", "drums", "vocals", "piano", "other" };
     private const int CopyBufferSize = 1024 * 1024;
@@ -365,7 +365,7 @@ public static class StemSeparationService
             else
             {
                 if (!CanInstallRuntimeOnline())
-                    throw new FileNotFoundException($"Stem generator package not found. Add '{ExternalContentPaths.StemSeparatorPackageFileName}' to '{ExternalContentPaths.StreamingStemSeparatorDirectory}'.");
+                    throw new FileNotFoundException($"Stem generator package not found. Add '{ExternalContentPaths.StemSeparatorRuntimePackageFileName}' to '{ExternalContentPaths.StreamingStemSeparatorDirectory}'.");
 
                 sourcePath = "online";
                 WriteRuntimeInstallLog("No local package found. Starting online install.");
@@ -376,7 +376,9 @@ public static class StemSeparationService
             UpdateRuntimeInstallStatus(StemRuntimeInstallState.Running, "Finalizing stem generator install... 98%", string.Empty, 98f);
             string runtimeRoot = ResolveRuntimeRoot(tempDirectory);
             if (string.IsNullOrWhiteSpace(runtimeRoot))
-                throw new InvalidOperationException("Installed stem generator package did not contain StemSeparator.exe or python.exe.");
+                throw new InvalidOperationException($"Installed stem generator package did not contain {StringTheoryPlatform.StemSeparatorCommandFileName} or {StringTheoryPlatform.StemSeparatorPythonFileName}.");
+
+            PrepareRuntimeExecutables(runtimeRoot);
 
             WriteRuntimeInstallLog($"Resolved runtime root: {runtimeRoot}");
             WriteRuntimeInstallManifest(runtimeRoot, sourcePath);
@@ -387,7 +389,7 @@ public static class StemSeparationService
                 Directory.Delete(runtimeDirectory, true);
             }
 
-            if (string.Equals(Path.GetFullPath(runtimeRoot), Path.GetFullPath(tempDirectory), StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(Path.GetFullPath(runtimeRoot), Path.GetFullPath(tempDirectory), StringTheoryPlatform.PathComparison))
             {
                 Directory.Move(tempDirectory, runtimeDirectory);
             }
@@ -453,7 +455,7 @@ public static class StemSeparationService
             foreach (ZipArchiveEntry entry in archive.Entries)
             {
                 string targetPath = Path.GetFullPath(Path.Combine(destinationDirectory, entry.FullName.Replace('/', Path.DirectorySeparatorChar)));
-                if (!targetPath.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase))
+                if (!targetPath.StartsWith(destinationRoot, StringTheoryPlatform.PathComparison))
                     throw new InvalidOperationException($"Unsafe path in stem generator package: {entry.FullName}");
 
                 if (IsZipDirectory(entry))
@@ -533,7 +535,7 @@ public static class StemSeparationService
         DownloadFileWithProgress(PipZipAppUrl, pipZipAppPath, 20f, 28f, "Downloading package installer");
         WriteRuntimeInstallLog("Package installer download finished.");
 
-        string pythonExe = Path.Combine(pythonDirectory, ExternalContentPaths.StemSeparatorPythonExeFileName);
+        string pythonExe = Path.Combine(pythonDirectory, StringTheoryPlatform.StemSeparatorPythonFileName);
         RunInstallerProcess(
             pythonExe,
             $"{Quote(pipZipAppPath)} install --no-warn-script-location --disable-pip-version-check --no-input --no-cache-dir --prefer-binary --upgrade {StemRuntimePackageTools}",
@@ -929,9 +931,10 @@ public static class StemSeparationService
         if (!TryResolveManagedRuntimeRoot(out string runtimeRoot))
             return false;
 
-        string separatorExe = Path.Combine(runtimeRoot, ExternalContentPaths.StemSeparatorExeFileName);
+        string separatorExe = Path.Combine(runtimeRoot, StringTheoryPlatform.StemSeparatorCommandFileName);
         if (File.Exists(separatorExe))
         {
+            StringTheoryPlatform.TryEnsureExecutable(separatorExe);
             command = new DemucsCommand(
                 separatorExe,
                 $"-n {Quote(DefaultDemucsModel)} -o {Quote(demucsOutputDirectory)} {Quote(sourceAudioPath)}",
@@ -942,6 +945,7 @@ public static class StemSeparationService
         string pythonExe = ResolvePythonExecutable(runtimeRoot);
         if (File.Exists(pythonExe))
         {
+            StringTheoryPlatform.TryEnsureExecutable(pythonExe);
             command = new DemucsCommand(
                 pythonExe,
                 $"-m demucs -n {Quote(DefaultDemucsModel)} -o {Quote(demucsOutputDirectory)} {Quote(sourceAudioPath)}",
@@ -1032,19 +1036,28 @@ public static class StemSeparationService
         if (string.IsNullOrWhiteSpace(runtimeRoot) || !Directory.Exists(runtimeRoot))
             return false;
 
-        if (File.Exists(Path.Combine(runtimeRoot, ExternalContentPaths.StemSeparatorExeFileName)))
+        if (File.Exists(Path.Combine(runtimeRoot, StringTheoryPlatform.StemSeparatorCommandFileName)))
             return true;
 
         return File.Exists(ResolvePythonExecutable(runtimeRoot));
     }
 
+    private static void PrepareRuntimeExecutables(string runtimeRoot)
+    {
+        if (string.IsNullOrWhiteSpace(runtimeRoot))
+            return;
+
+        StringTheoryPlatform.TryEnsureExecutable(Path.Combine(runtimeRoot, StringTheoryPlatform.StemSeparatorCommandFileName));
+        StringTheoryPlatform.TryEnsureExecutable(ResolvePythonExecutable(runtimeRoot));
+    }
+
     private static string ResolvePythonExecutable(string runtimeRoot)
     {
-        string nestedPython = Path.Combine(runtimeRoot, ExternalContentPaths.StemSeparatorPythonFolderName, ExternalContentPaths.StemSeparatorPythonExeFileName);
+        string nestedPython = StringTheoryPlatform.GetStemSeparatorPythonPath(runtimeRoot, ExternalContentPaths.StemSeparatorPythonFolderName);
         if (File.Exists(nestedPython))
             return nestedPython;
 
-        return Path.Combine(runtimeRoot, ExternalContentPaths.StemSeparatorPythonExeFileName);
+        return Path.Combine(runtimeRoot, StringTheoryPlatform.StemSeparatorPythonFileName);
     }
 
     private static string RunDemucs(string sourceAudioPath, string demucsOutputDirectory, string key)
@@ -1334,7 +1347,7 @@ public static class StemSeparationService
             return false;
 
         FileInfo info = new FileInfo(sourceAudioPath);
-        return string.Equals(NormalizePath(sourceAudioPath), NormalizePath(manifest.sourceAudioPath), StringComparison.OrdinalIgnoreCase) &&
+        return string.Equals(NormalizePath(sourceAudioPath), NormalizePath(manifest.sourceAudioPath), StringTheoryPlatform.PathComparison) &&
                manifest.sourceAudioLastWriteUtcTicks == info.LastWriteTimeUtc.Ticks &&
                manifest.sourceAudioSizeBytes == info.Length;
     }
@@ -1395,7 +1408,7 @@ public static class StemSeparationService
         string root = Path.GetFullPath(rootDirectory)
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         string path = Path.GetFullPath(filePath);
-        if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+        if (!path.StartsWith(root, StringTheoryPlatform.PathComparison))
             return Path.GetFileName(filePath);
 
         string relative = path.Substring(root.Length)

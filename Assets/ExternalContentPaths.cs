@@ -80,7 +80,7 @@ public static class ExternalContentPaths
     public static string StreamingAlphaTabRenderHelperDirectory => Path.Combine(StreamingRoot, AlphaTabRenderHelperFolderName);
     public static string StreamingStemSeparatorDirectory => Path.Combine(StreamingRoot, StemSeparatorFolderName);
     public static string StreamingStemSeparatorRuntimeDirectory => Path.Combine(StreamingStemSeparatorDirectory, StemSeparatorRuntimeFolderName);
-    public static string StreamingStemSeparatorPackagePath => Path.Combine(StreamingStemSeparatorDirectory, StemSeparatorPackageFileName);
+    public static string StreamingStemSeparatorPackagePath => Path.Combine(StreamingStemSeparatorDirectory, StemSeparatorRuntimePackageFileName);
     public static string PersistentToneLabDirectory => Path.Combine(PersistentRoot, ToneLabFolderName);
     public static string PersistentToneLabPresetDirectory => Path.Combine(PersistentToneLabDirectory, ToneLabPresetsFolderName);
     public static string DefaultPersistentToneLabEffectsDirectory => PersistentToneLabDirectory;
@@ -92,7 +92,7 @@ public static class ExternalContentPaths
     public static string PersistentStemCacheDirectory => Path.Combine(PersistentRoot, StemCacheFolderName);
     public static string PersistentStemSeparatorDirectory => Path.Combine(PersistentRoot, StemSeparatorFolderName);
     public static string PersistentStemSeparatorRuntimeDirectory => Path.Combine(PersistentStemSeparatorDirectory, StemSeparatorRuntimeFolderName);
-    public static string PersistentStemSeparatorPackagePath => Path.Combine(PersistentStemSeparatorDirectory, StemSeparatorPackageFileName);
+    public static string PersistentStemSeparatorPackagePath => Path.Combine(PersistentStemSeparatorDirectory, StemSeparatorRuntimePackageFileName);
     public static string PersistentStemSeparatorModelCacheDirectory => Path.Combine(PersistentStemSeparatorDirectory, StemSeparatorModelCacheFolderName);
     public static string StreamingSongsDirectory => Path.Combine(StreamingRoot, SongsFolderName);
     public static string DefaultPersistentSongsDirectory => Path.Combine(PersistentRoot, SongsFolderName);
@@ -100,10 +100,13 @@ public static class ExternalContentPaths
     public static string PersistentSongLibraryCachePath => Path.Combine(PersistentSongsDirectory, SongLibraryCacheFileName);
 
     public static string PersistentToneLabScriptPath => Path.Combine(PersistentToneLabDirectory, ToneLabScriptFileName);
-    public static string PersistentToneLabExePath => Path.Combine(PersistentToneLabDistDirectory, ToneLabExeFileName);
-    public static string StreamingAlphaTabRenderHelperExePath => Path.Combine(StreamingAlphaTabRenderHelperDirectory, AlphaTabRenderHelperExeFileName);
-    public static string PersistentStemSeparatorExePath => Path.Combine(PersistentStemSeparatorRuntimeDirectory, StemSeparatorExeFileName);
-    public static string PersistentStemSeparatorPythonExePath => Path.Combine(PersistentStemSeparatorRuntimeDirectory, StemSeparatorPythonFolderName, StemSeparatorPythonExeFileName);
+    public static string PersistentToneLabExePath => StringTheoryPlatform.GetToneLabExecutablePath(PersistentToneLabDirectory, ToneLabDistFolderName, ToneLabDistAppFolderName);
+    public static string PersistentToneLabAppBundlePath => Path.Combine(PersistentToneLabDirectory, ToneLabDistFolderName, StringTheoryPlatform.ToneLabMacAppBundleName);
+    public static string StreamingAlphaTabRenderHelperExePath => GetStreamingPlatformToolPath(
+        StreamingAlphaTabRenderHelperDirectory,
+        StringTheoryPlatform.AlphaTabRenderHelperFileName);
+    public static string PersistentStemSeparatorExePath => Path.Combine(PersistentStemSeparatorRuntimeDirectory, StringTheoryPlatform.StemSeparatorCommandFileName);
+    public static string PersistentStemSeparatorPythonExePath => StringTheoryPlatform.GetStemSeparatorPythonPath(PersistentStemSeparatorRuntimeDirectory, StemSeparatorPythonFolderName);
     public static string PersistentStemSeparatorInstallManifestPath => Path.Combine(PersistentStemSeparatorRuntimeDirectory, StemSeparatorInstallManifestFileName);
     public static string PersistentToneLabConfigPath => Path.Combine(PersistentToneLabDirectory, ToneLabConfigFileName);
     public static string PersistentAudioSettingsPath => Path.Combine(PersistentRoot, AudioSettingsFileName);
@@ -216,7 +219,7 @@ public static class ExternalContentPaths
             string normalized = Path.GetFullPath(directoryPath.Trim())
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             string defaultDirectory = DefaultPersistentSongsDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            return string.Equals(normalized, defaultDirectory, StringComparison.OrdinalIgnoreCase)
+            return string.Equals(normalized, defaultDirectory, StringTheoryPlatform.PathComparison)
                 ? string.Empty
                 : normalized;
         }
@@ -236,7 +239,7 @@ public static class ExternalContentPaths
             string normalized = Path.GetFullPath(directoryPath.Trim())
                 .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             string defaultDirectory = DefaultPersistentToneLabEffectsDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            return string.Equals(normalized, defaultDirectory, StringComparison.OrdinalIgnoreCase)
+            return string.Equals(normalized, defaultDirectory, StringTheoryPlatform.PathComparison)
                 ? string.Empty
                 : normalized;
         }
@@ -244,5 +247,19 @@ public static class ExternalContentPaths
         {
             return string.Empty;
         }
+    }
+
+    public static string StemSeparatorRuntimePackageFileName => StringTheoryPlatform.StemRuntimePackageFileName;
+
+    private static string GetStreamingPlatformToolPath(string directory, string fileName)
+    {
+        if (!StringTheoryPlatform.IsWindows)
+        {
+            string architectureCandidate = Path.Combine(directory, StringTheoryPlatform.DotNetRuntimeIdentifier, fileName);
+            if (File.Exists(architectureCandidate))
+                return architectureCandidate;
+        }
+
+        return Path.Combine(directory, fileName);
     }
 }

@@ -6,7 +6,11 @@ using System.Text;
 
 internal static class ToneLabPortAudio
 {
+#if UNITY_STANDALONE_OSX || UNITY_EDITOR_OSX || UNITY_STANDALONE_LINUX || UNITY_EDITOR_LINUX
+    private const string DllName = "portaudio";
+#else
     private const string DllName = "libportaudio64bit-asio";
+#endif
     private const int PaNoError = 0;
     private const int PaNoDevice = -1;
     private const ulong PaFloat32 = 0x00000001;
@@ -513,12 +517,7 @@ internal static class ToneLabPortAudio
         if (string.IsNullOrWhiteSpace(hostApiName))
             return int.MaxValue;
 
-        if (hostApiName.IndexOf("ASIO", StringComparison.OrdinalIgnoreCase) >= 0)
-            return 0;
-
-        if (hostApiName.IndexOf("WASAPI", StringComparison.OrdinalIgnoreCase) >= 0)
-            return 1;
-
-        return int.MaxValue;
+        int priority = SharedAudioBackendModes.GetHostPriority(hostApiName);
+        return priority >= 2 ? int.MaxValue : priority;
     }
 }

@@ -32,6 +32,7 @@ public static class AlphaTabRenderClient
         string helperPath = ExternalContentPaths.StreamingAlphaTabRenderHelperExePath;
         if (!File.Exists(helperPath))
             throw new FileNotFoundException("AlphaTab render helper executable was not found.", helperPath);
+        StringTheoryPlatform.TryEnsureExecutable(helperPath);
         long helperLastWriteTicks = File.GetLastWriteTimeUtc(helperPath).Ticks;
 
         AlphaTabRenderRequestData normalizedRequest = new AlphaTabRenderRequestData

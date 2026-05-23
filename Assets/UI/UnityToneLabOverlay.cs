@@ -1282,13 +1282,13 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         ApplyDropdownStyle(advancedBackendDropdown);
         advancedBackendDropdown.style.minWidth = 300f;
         advancedBackendDropdown.style.width = 300f;
-        advancedBackendDropdown.choices = new List<string> { SharedAudioBackendModes.Auto, SharedAudioBackendModes.Wasapi, SharedAudioBackendModes.Asio };
+        advancedBackendDropdown.choices = SharedAudioBackendModes.GetChoicesForCurrentPlatform();
         advancedBackendDropdown.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks)
                 return;
 
-            advancedAudioDraft.backendMode = SharedAudioBackendModes.Normalize(evt.newValue);
+            advancedAudioDraft.backendMode = SharedAudioBackendModes.NormalizeForCurrentPlatform(evt.newValue);
             RefreshAdvancedAudioDeviceChoices();
         });
 
@@ -1793,26 +1793,18 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
             string folderPath = ExternalContentPaths.PersistentToneLabEffectsDirectory;
             Directory.CreateDirectory(folderPath);
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            if (StringTheoryPlatform.TryOpenFolder(folderPath, out string openError))
             {
-                FileName = folderPath,
-                UseShellExecute = true
-            });
-            ShowActionToast("Opened effects folder.");
+                ShowActionToast("Opened effects folder.");
+                return;
+            }
+
+            throw new InvalidOperationException(openError);
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"[UnityToneLabOverlay] Failed to open effects folder: {ex.Message}");
-            try
-            {
-                Application.OpenURL(new Uri(ExternalContentPaths.PersistentToneLabEffectsDirectory).AbsoluteUri);
-                ShowActionToast("Opened effects folder.");
-            }
-            catch (Exception fallbackEx)
-            {
-                Debug.LogWarning($"[UnityToneLabOverlay] Failed to open effects folder URL: {fallbackEx.Message}");
-                ShowActionToast("Could not open effects folder.", true);
-            }
+            ShowActionToast("Could not open effects folder.", true);
         }
     }
 
@@ -1860,7 +1852,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedAudioDraft = owner != null
             ? owner.GetSharedAdvancedAudioSettingsForUi()
             : new SharedAudioAdvancedSettings();
-        advancedAudioDraft.backendMode = SharedAudioBackendModes.Normalize(advancedAudioDraft.backendMode);
+        advancedAudioDraft.backendMode = SharedAudioBackendModes.NormalizeForCurrentPlatform(advancedAudioDraft.backendMode);
         if (advancedAudioDraft.bufferSize <= 0)
             advancedAudioDraft.bufferSize = UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(advancedAudioDraft.bufferSize));
 
@@ -1906,7 +1898,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         suppressCallbacks = true;
-        advancedBackendDropdown?.SetValueWithoutNotify(SharedAudioBackendModes.Normalize(advancedAudioDraft.backendMode));
+        advancedBackendDropdown?.SetValueWithoutNotify(SharedAudioBackendModes.NormalizeForCurrentPlatform(advancedAudioDraft.backendMode));
         advancedSampleRateDropdown?.SetValueWithoutNotify(FormatAdvancedSampleRateLabel(advancedAudioDraft.sampleRate));
         advancedBufferDropdown?.SetValueWithoutNotify(FormatAdvancedBufferLabel(advancedAudioDraft.bufferSize));
         suppressCallbacks = false;

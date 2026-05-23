@@ -638,6 +638,8 @@ public static class ToneLabExternalPedalCatalog
                     continue;
 
                 string binaryPath = ResolveLv2BinaryPath(bundlePath, ttl);
+                if (string.IsNullOrWhiteSpace(binaryPath))
+                    continue;
                 string shortName = BuildShortName(displayName, "LV2");
                 descriptors.Add(new ToneLabExternalPedalDescriptor(
                     ToneLabExternalPedalKind.Lv2,
@@ -755,7 +757,7 @@ public static class ToneLabExternalPedalCatalog
         string fullRoot = Path.GetFullPath(rootPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         string fullPath = Path.GetFullPath(filePath);
         string rootWithSeparator = fullRoot + Path.DirectorySeparatorChar;
-        if (fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+        if (fullPath.StartsWith(rootWithSeparator, StringTheoryPlatform.PathComparison))
             return fullPath.Substring(rootWithSeparator.Length);
 
         return Path.GetFileName(filePath) ?? string.Empty;
@@ -771,7 +773,7 @@ public static class ToneLabExternalPedalCatalog
         if (!string.IsNullOrWhiteSpace(namRoot))
         {
             string rootWithSeparator = namRoot.TrimEnd('/') + "/";
-            if (normalizedDescriptorPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+            if (normalizedDescriptorPath.StartsWith(rootWithSeparator, StringTheoryPlatform.PathComparison))
                 return normalizedDescriptorPath.Substring(rootWithSeparator.Length);
         }
 
@@ -899,15 +901,39 @@ public static class ToneLabExternalPedalCatalog
                 return candidate;
         }
 
-        string[] dlls = Directory.GetFiles(bundlePath, "*.dll", SearchOption.TopDirectoryOnly);
-        for (int i = 0; i < dlls.Length; i++)
+        foreach (string extension in GetNativePluginBinaryPatterns())
         {
-            string fileName = Path.GetFileName(dlls[i]);
-            if (!fileName.EndsWith("_ui.dll", StringComparison.OrdinalIgnoreCase))
-                return dlls[i];
+            string[] binaries = Directory.GetFiles(bundlePath, extension, SearchOption.TopDirectoryOnly);
+            for (int i = 0; i < binaries.Length; i++)
+            {
+                string fileName = Path.GetFileName(binaries[i]);
+                if (!IsLv2UiBinary(fileName))
+                    return binaries[i];
+            }
         }
 
         return string.Empty;
+    }
+
+    private static string[] GetNativePluginBinaryPatterns()
+    {
+        if (StringTheoryPlatform.IsMacOS)
+            return new[] { "*.dylib", "*.so" };
+        if (StringTheoryPlatform.IsLinux)
+            return new[] { "*.so" };
+        return new[] { "*.dll" };
+    }
+
+    private static bool IsLv2UiBinary(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+            return false;
+
+        string name = fileName.Replace('\\', '/');
+        return name.EndsWith("_ui.dll", StringComparison.OrdinalIgnoreCase) ||
+               name.EndsWith("_ui.dylib", StringComparison.OrdinalIgnoreCase) ||
+               name.EndsWith("_ui.so", StringComparison.OrdinalIgnoreCase) ||
+               name.IndexOf("ui.", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static IReadOnlyList<ToneLabExternalParameterSpec> CreateNamParameterSpecs()
@@ -1097,6 +1123,9 @@ public sealed class ToneLabManagedLv2Instance : IDisposable
         int sampleRate,
         int channels)
     {
+        if (!StringTheoryPlatform.IsWindows)
+            return null;
+
         if (pedalDescriptor == null || settings == null)
             return null;
         if (string.IsNullOrWhiteSpace(pedalDescriptor.Lv2BinaryPath) || !File.Exists(pedalDescriptor.Lv2BinaryPath))

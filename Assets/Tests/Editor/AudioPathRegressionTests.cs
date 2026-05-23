@@ -24,9 +24,11 @@ public sealed class AudioPathRegressionTests
     {
         Assert.AreEqual(SharedAudioBackendModes.Auto, SharedAudioBackendModes.Normalize(null));
         Assert.AreEqual(SharedAudioBackendModes.Auto, SharedAudioBackendModes.Normalize(""));
-        Assert.AreEqual(SharedAudioBackendModes.Auto, SharedAudioBackendModes.Normalize("CoreAudio"));
+        Assert.AreEqual(SharedAudioBackendModes.CoreAudio, SharedAudioBackendModes.Normalize("CoreAudio"));
         Assert.AreEqual(SharedAudioBackendModes.Asio, SharedAudioBackendModes.Normalize("asio"));
         Assert.AreEqual(SharedAudioBackendModes.Wasapi, SharedAudioBackendModes.Normalize("wasapi"));
+        Assert.AreEqual(SharedAudioBackendModes.CoreAudio, SharedAudioBackendModes.NormalizeHostApiLabel("Core Audio"));
+        Assert.AreEqual(0, SharedAudioBackendModes.GetHostPriority("Core Audio"));
 
         Assert.AreEqual(0, SharedAudioSampleRateOptions.Normalize(-1));
         Assert.AreEqual(0, SharedAudioSampleRateOptions.Normalize(12345));
@@ -182,6 +184,7 @@ public sealed class AudioPathRegressionTests
 
         Assert.IsTrue(InvokeRuntimeStatic<bool>("MatchesBackendMode", "Steinberg ASIO", SharedAudioBackendModes.Asio));
         Assert.IsTrue(InvokeRuntimeStatic<bool>("MatchesBackendMode", "Windows WASAPI", SharedAudioBackendModes.Wasapi));
+        Assert.IsTrue(InvokeRuntimeStatic<bool>("MatchesBackendMode", "Core Audio", SharedAudioBackendModes.CoreAudio));
         Assert.IsTrue(InvokeRuntimeStatic<bool>("MatchesBackendMode", "Windows WASAPI", SharedAudioBackendModes.Auto));
         Assert.IsFalse(InvokeRuntimeStatic<bool>("MatchesBackendMode", "Windows WASAPI", SharedAudioBackendModes.Asio));
 
@@ -351,6 +354,27 @@ public sealed class AudioPathRegressionTests
         string summary = (string)InvokeInstance(bridge, "BuildAvailableInputDeviceSummary");
         StringAssert.Contains("Preferred WASAPI", summary);
         StringAssert.Contains("ASIO Instrument", summary);
+    }
+
+    [Test]
+    public void NativeDetectorInputCandidates_IncludeCoreAudioBeforeGenericFallback()
+    {
+        NativeNotesDetectorBridge bridge = new NativeNotesDetectorBridge();
+        NativeDetectorDeviceListPayload payload = new NativeDetectorDeviceListPayload
+        {
+            preferredDeviceIndex = -1,
+            devices = new[]
+            {
+                DetectorDevice(4, "Built-in Microphone", "Core Audio"),
+                DetectorDevice(5, "Generic USB Input", "")
+            }
+        };
+
+        SetField(bridge, "cachedDevices", payload);
+
+        CollectionAssert.AreEqual(
+            new[] { 4, 5 },
+            InvokeIntListInstance(bridge, "BuildInputDeviceStartCandidates", -1));
     }
 
     [Test]

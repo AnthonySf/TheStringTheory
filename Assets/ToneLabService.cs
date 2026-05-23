@@ -15,6 +15,8 @@ public static class ToneLabService
 
         if (!hasExe)
             Debug.LogWarning($"[ToneLabService] Tone Lab executable not found at runtime path: {ExternalContentPaths.PersistentToneLabExePath}");
+        else
+            StringTheoryPlatform.TryEnsureExecutable(ExternalContentPaths.PersistentToneLabExePath);
 
         return hasScript && hasExe;
     }

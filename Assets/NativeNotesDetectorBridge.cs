@@ -253,6 +253,8 @@ public sealed class NativeNotesDetectorBridge
         AddInputDeviceCandidate(candidates, PreferredInputDeviceIndex);
 
         NativeDetectorInputDevice[] devices = InputDevices;
+        AddInputDeviceCandidatesByHost(candidates, devices, "Core Audio");
+        AddInputDeviceCandidatesByHost(candidates, devices, "CoreAudio");
         AddInputDeviceCandidatesByHost(candidates, devices, "WASAPI");
         AddInputDeviceCandidatesByHost(candidates, devices, "DirectSound");
         AddInputDeviceCandidatesByHost(candidates, devices, "MME");

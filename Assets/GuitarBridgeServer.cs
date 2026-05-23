@@ -9355,17 +9355,13 @@ public class GuitarBridgeServer : MonoBehaviour
         try
         {
             Directory.CreateDirectory(songsDirectory);
-
-#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
-            System.Diagnostics.Process.Start("explorer.exe", songsDirectory.Replace('/', '\\'));
-#else
-            Application.OpenURL($"file://{songsDirectory}");
-#endif
+            if (!StringTheoryPlatform.TryOpenFolder(songsDirectory, out string openError))
+                Debug.LogWarning($"Failed to open songs folder: {openError}");
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"Failed to open songs folder: {ex.Message}");
-            Application.OpenURL($"file://{songsDirectory}");
+            StringTheoryPlatform.TryOpenFolder(songsDirectory, out _);
         }
     }
 
@@ -10614,7 +10610,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
             return StemSeparationService.IsManagedRuntimeInstallAvailable()
                 ? "Install the stem generator to enable local separation."
-                : $"Stem generator package missing. Add {ExternalContentPaths.StemSeparatorPackageFileName} to StreamingAssets/{ExternalContentPaths.StemSeparatorFolderName}.";
+                : $"Stem generator package missing. Add {ExternalContentPaths.StemSeparatorRuntimePackageFileName} to StreamingAssets/{ExternalContentPaths.StemSeparatorFolderName}.";
         }
 
         return string.IsNullOrWhiteSpace(currentStemStatusMessage)
@@ -10964,7 +10960,44 @@ private void OpenOrFocusToneLab()
         Debug.LogWarning($"Failed to launch Tone Lab: {ex}");
     }
 #else
-    Debug.LogWarning("Tone Lab launcher is currently implemented for Windows builds only.");
+    if (!ToneLabService.EnsureToneLabRuntimeFiles())
+        return;
+
+    string toneLabPath = ToneLabService.GetToneLabExecutablePath();
+    string toneLabWorkingDirectory = Path.GetDirectoryName(toneLabPath);
+    try
+    {
+        if (StringTheoryPlatform.IsMacOS && Directory.Exists(ExternalContentPaths.PersistentToneLabAppBundlePath))
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "open",
+                Arguments = StringTheoryPlatform.QuoteArgument(ExternalContentPaths.PersistentToneLabAppBundlePath),
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+            return;
+        }
+
+        if (!File.Exists(toneLabPath))
+        {
+            Debug.LogWarning($"Tone Lab executable not found at runtime path '{toneLabPath}'.");
+            return;
+        }
+
+        StringTheoryPlatform.TryEnsureExecutable(toneLabPath);
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        {
+            FileName = toneLabPath,
+            WorkingDirectory = string.IsNullOrWhiteSpace(toneLabWorkingDirectory) ? null : toneLabWorkingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = false
+        });
+    }
+    catch (Exception ex)
+    {
+        Debug.LogWarning($"Failed to launch Tone Lab: {ex}");
+    }
 #endif
 }
 
@@ -12068,7 +12101,7 @@ private void OpenOrFocusToneLab()
         if (unityToneLabRuntime == null || sharedAudioSettings?.advanced == null)
             return string.Empty;
 
-        string backendMode = SharedAudioBackendModes.Normalize(sharedAudioSettings.advanced.backendMode);
+        string backendMode = SharedAudioBackendModes.NormalizeForCurrentPlatform(sharedAudioSettings.advanced.backendMode);
         if (string.Equals(backendMode, SharedAudioBackendModes.Auto, StringComparison.Ordinal))
             return string.Empty;
 
@@ -12094,9 +12127,9 @@ private void OpenOrFocusToneLab()
         SharedAudioAdvancedSettings normalized = SharedAudioSettingsUtility.CloneAdvancedSettings(source);
         changed = source == null;
 
-        if (!string.Equals(normalized.backendMode, SharedAudioBackendModes.Normalize(normalized.backendMode), StringComparison.Ordinal))
+        if (!string.Equals(normalized.backendMode, SharedAudioBackendModes.NormalizeForCurrentPlatform(normalized.backendMode), StringComparison.Ordinal))
         {
-            normalized.backendMode = SharedAudioBackendModes.Normalize(normalized.backendMode);
+            normalized.backendMode = SharedAudioBackendModes.NormalizeForCurrentPlatform(normalized.backendMode);
             changed = true;
         }
 
@@ -12540,7 +12573,7 @@ private void OpenOrFocusToneLab()
                     return;
                 }
 
-                if (WindowsFolderPicker.TryPickFolder("Select Songs Folder", ExternalContentPaths.PersistentSongsDirectory, out string selectedPath) &&
+                if (StringTheoryPlatform.TryPickFolder("Select Songs Folder", ExternalContentPaths.PersistentSongsDirectory, out string selectedPath) &&
                     !string.IsNullOrWhiteSpace(selectedPath))
                 {
                     SetSongsFolderOverrideFromUi(selectedPath);
@@ -12559,7 +12592,7 @@ private void OpenOrFocusToneLab()
                     return;
                 }
 
-                if (WindowsFolderPicker.TryPickFolder("Select Effects Folder", ExternalContentPaths.PersistentToneLabEffectsDirectory, out string selectedPath) &&
+                if (StringTheoryPlatform.TryPickFolder("Select Effects Folder", ExternalContentPaths.PersistentToneLabEffectsDirectory, out string selectedPath) &&
                     !string.IsNullOrWhiteSpace(selectedPath))
                 {
                     SetEffectsFolderOverrideFromUi(selectedPath);

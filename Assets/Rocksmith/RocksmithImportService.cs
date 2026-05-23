@@ -10,7 +10,6 @@ using ProcessStartInfo = System.Diagnostics.ProcessStartInfo;
 public static class RocksmithImportService
 {
     private const string ImportToolFolderName = "RocksmithImport";
-    private const string ImportToolExecutableName = "RocksmithImportTool.exe";
     private const string ImportLogPrefix = "[PsarcImport]";
     private const string ImportFailureLogFolderName = "RocksmithImportLogs";
     private static bool missingToolLogged;
@@ -22,7 +21,7 @@ public static class RocksmithImportService
         {
             if (!unsupportedPlatformLogged)
             {
-                Debug.LogWarning($"{ImportLogPrefix} PSARC import is only available on Windows because it depends on a local Windows importer executable.");
+                Debug.LogWarning($"{ImportLogPrefix} PSARC import requires a bundled importer executable for this platform.");
                 unsupportedPlatformLogged = true;
             }
 
@@ -61,7 +60,7 @@ public static class RocksmithImportService
                     stagingDirectory: null,
                     reason: "Import tool not found",
                     details: $"Expected importer executable at '{importToolPath}'.");
-                Debug.LogWarning($"{ImportLogPrefix} Import tool not found at '{importToolPath}'. Drop 'RocksmithImportTool.exe' into that folder to enable PSARC song import. Failure log: {logPath}");
+                Debug.LogWarning($"{ImportLogPrefix} Import tool not found at '{importToolPath}'. Drop '{StringTheoryPlatform.RocksmithImportToolFileName}' into that folder to enable PSARC song import. Failure log: {logPath}");
                 missingToolLogged = true;
             }
 
@@ -89,7 +88,7 @@ public static class RocksmithImportService
 
         if (!IsSupportedRuntimePlatform())
         {
-            error = "PSARC import refresh is only available on Windows.";
+            error = "PSARC import refresh is not available because this platform's importer executable is not enabled.";
             return false;
         }
 
@@ -137,12 +136,15 @@ public static class RocksmithImportService
     private static bool IsSupportedRuntimePlatform()
     {
         RuntimePlatform platform = Application.platform;
-        return platform == RuntimePlatform.WindowsEditor || platform == RuntimePlatform.WindowsPlayer;
+        return platform == RuntimePlatform.WindowsEditor ||
+               platform == RuntimePlatform.WindowsPlayer ||
+               platform == RuntimePlatform.OSXEditor ||
+               platform == RuntimePlatform.OSXPlayer;
     }
 
     public static string GetImportToolPath()
     {
-        return Path.Combine(ExternalContentPaths.StreamingRoot, ImportToolFolderName, ImportToolExecutableName);
+        return Path.Combine(ExternalContentPaths.StreamingRoot, ImportToolFolderName, StringTheoryPlatform.RocksmithImportToolFileName);
     }
 
     private static void RefreshImportForFile(string psarcPath, string songsDirectory, string importToolPath)
@@ -265,6 +267,7 @@ public static class RocksmithImportService
     {
         try
         {
+            StringTheoryPlatform.TryEnsureExecutable(importToolPath);
             ProcessStartInfo startInfo = new ProcessStartInfo
             {
                 FileName = importToolPath,

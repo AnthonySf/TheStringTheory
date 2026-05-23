@@ -49,7 +49,7 @@ public static class ExternalContentBootstrap
     {
         string toneLabPath = ExternalContentPaths.PersistentToneLabDirectory;
         if (toneLabContentReady &&
-            string.Equals(toneLabContentReadyPath, toneLabPath, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(toneLabContentReadyPath, toneLabPath, StringTheoryPlatform.PathComparison) &&
             Directory.Exists(toneLabPath))
         {
             return;
@@ -66,7 +66,7 @@ public static class ExternalContentBootstrap
     {
         string songsPath = ExternalContentPaths.PersistentSongsDirectory;
         if (songsDirectoryReady &&
-            string.Equals(songsDirectoryReadyPath, songsPath, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(songsDirectoryReadyPath, songsPath, StringTheoryPlatform.PathComparison) &&
             Directory.Exists(songsPath))
         {
             return;
@@ -82,7 +82,7 @@ public static class ExternalContentBootstrap
     {
         string effectsPath = ExternalContentPaths.PersistentToneLabEffectsDirectory;
         if (toneLabEffectsDirectoryReady &&
-            string.Equals(toneLabEffectsDirectoryReadyPath, effectsPath, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(toneLabEffectsDirectoryReadyPath, effectsPath, StringTheoryPlatform.PathComparison) &&
             Directory.Exists(ExternalContentPaths.PersistentToneLabLv2Directory) &&
             Directory.Exists(ExternalContentPaths.PersistentToneLabNamDirectory))
         {
@@ -124,6 +124,9 @@ public static class ExternalContentBootstrap
         foreach (string sourceFilePath in Directory.GetFiles(sourceDirectory))
         {
             string fileName = Path.GetFileName(sourceFilePath);
+            if (ShouldSkipRuntimeContentFile(fileName))
+                continue;
+
             string destinationFilePath = Path.Combine(destinationDirectory, fileName);
 
             if (!File.Exists(destinationFilePath))
@@ -172,6 +175,12 @@ public static class ExternalContentBootstrap
             string destinationSubDirectory = Path.Combine(destinationDirectory, folderName);
             SyncRecursive(sourceSubDirectory, destinationSubDirectory);
         }
+    }
+
+    private static bool ShouldSkipRuntimeContentFile(string fileName)
+    {
+        return !string.IsNullOrWhiteSpace(fileName) &&
+               fileName.EndsWith(".meta", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void SyncSongContentRecursive(string sourceDirectory, string destinationDirectory)

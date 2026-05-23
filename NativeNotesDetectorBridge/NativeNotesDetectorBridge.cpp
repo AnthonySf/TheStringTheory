@@ -4,7 +4,20 @@
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
 #endif
+#ifdef _WIN32
 #include <Windows.h>
+#else
+#include <dlfcn.h>
+#ifndef __cdecl
+#define __cdecl
+#endif
+#endif
+
+#ifdef _WIN32
+#define ST_NATIVE_EXPORT __declspec(dllexport)
+#else
+#define ST_NATIVE_EXPORT __attribute__((visibility("default")))
+#endif
 
 #include <algorithm>
 #include <array>
@@ -13,6 +26,7 @@
 #include <cmath>
 #include <complex>
 #include <condition_variable>
+#include <codecvt>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -20,6 +34,7 @@
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <locale>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -388,6 +403,7 @@ std::wstring Utf8ToWide(const char* text)
     if (text == nullptr || *text == '\0')
         return std::wstring();
 
+#ifdef _WIN32
     const int required = MultiByteToWideChar(CP_UTF8, 0, text, -1, nullptr, 0);
     if (required <= 0)
         return std::wstring(); 
@@ -395,6 +411,18 @@ std::wstring Utf8ToWide(const char* text)
     std::wstring result(static_cast<size_t>(required) - 1, L'\0');
     MultiByteToWideChar(CP_UTF8, 0, text, -1, result.data(), required);
     return result;
+#else
+    try
+    {
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+        return converter.from_bytes(text);
+    }
+    catch (...)
+    {
+        std::string narrow(text);
+        return std::wstring(narrow.begin(), narrow.end());
+    }
+#endif
 }
 
 std::string WideToUtf8(const std::wstring& text)
@@ -402,6 +430,7 @@ std::string WideToUtf8(const std::wstring& text)
     if (text.empty())
         return std::string();
 
+#ifdef _WIN32
     const int required = WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, nullptr, 0, nullptr, nullptr);
     if (required <= 0)
         return std::string();
@@ -409,6 +438,17 @@ std::string WideToUtf8(const std::wstring& text)
     std::string result(static_cast<size_t>(required) - 1, '\0');
     WideCharToMultiByte(CP_UTF8, 0, text.c_str(), -1, result.data(), required, nullptr, nullptr);
     return result;
+#else
+    try
+    {
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+        return converter.to_bytes(text);
+    }
+    catch (...)
+    {
+        return std::string(text.begin(), text.end());
+    }
+#endif
 }
 
 bool CopyUtf8String(const std::string& source, char* destination, int capacity)
@@ -425,6 +465,7 @@ bool CopyUtf8String(const std::string& source, char* destination, int capacity)
 
 std::wstring GetCurrentModuleDirectory()
 {
+#ifdef _WIN32
     HMODULE module = nullptr;
     if (!GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
         reinterpret_cast<LPCWSTR>(&GetCurrentModuleDirectory), &module))
@@ -439,6 +480,74 @@ std::wstring GetCurrentModuleDirectory()
 
     path.resize(length);
     return std::filesystem::path(path).parent_path().wstring();
+#else
+    Dl_info info{};
+    if (dladdr(reinterpret_cast<void*>(&GetCurrentModuleDirectory), &info) == 0 || info.dli_fname == nullptr)
+        return std::wstring();
+
+    std::filesystem::path path(info.dli_fname);
+    return Utf8ToWide(path.parent_path().string().c_str());
+#endif
+}
+
+#ifdef _WIN32
+using DynamicLibraryHandle = HMODULE;
+#else
+using DynamicLibraryHandle = void*;
+#endif
+
+DynamicLibraryHandle LoadDynamicLibrary(const std::filesystem::path& path, std::wstring& error)
+{
+#ifdef _WIN32
+    DynamicLibraryHandle handle = LoadLibraryW(path.wstring().c_str());
+    if (handle == nullptr)
+        error = L"Failed to load " + path.filename().wstring() + L" from the project plugins folder.";
+    return handle;
+#else
+    dlerror();
+    DynamicLibraryHandle handle = dlopen(path.string().c_str(), RTLD_NOW | RTLD_LOCAL);
+    if (handle == nullptr)
+    {
+        const char* loadError = dlerror();
+        error = L"Failed to load " + Utf8ToWide(path.filename().string().c_str()) + L" from the project plugins folder";
+        if (loadError != nullptr && *loadError != '\0')
+            error += L": " + Utf8ToWide(loadError);
+        error += L".";
+    }
+    return handle;
+#endif
+}
+
+void* GetDynamicLibrarySymbol(DynamicLibraryHandle handle, const char* name)
+{
+#ifdef _WIN32
+    return reinterpret_cast<void*>(GetProcAddress(handle, name));
+#else
+    return dlsym(handle, name);
+#endif
+}
+
+void CloseDynamicLibrary(DynamicLibraryHandle handle)
+{
+    if (handle == nullptr)
+        return;
+
+#ifdef _WIN32
+    FreeLibrary(handle);
+#else
+    dlclose(handle);
+#endif
+}
+
+std::filesystem::path PluginLibraryPath(const std::wstring& pluginDirectory, const wchar_t* windowsName, const char* macName, const char* linuxName)
+{
+#ifdef _WIN32
+    return std::filesystem::path(pluginDirectory) / windowsName;
+#elif defined(__APPLE__)
+    return std::filesystem::path(WideToUtf8(pluginDirectory)) / macName;
+#else
+    return std::filesystem::path(WideToUtf8(pluginDirectory)) / linuxName;
+#endif
 }
 
 std::string JsonEscape(const std::string& value)
@@ -511,6 +620,9 @@ float ComputeRms(const float* data, int count)
 int HostPriority(const std::string& hostApiName)
 {
     if (hostApiName.find("ASIO") != std::string::npos || hostApiName.find("asio") != std::string::npos)
+        return 0;
+    if (hostApiName.find("Core Audio") != std::string::npos || hostApiName.find("CoreAudio") != std::string::npos ||
+        hostApiName.find("core audio") != std::string::npos || hostApiName.find("coreaudio") != std::string::npos)
         return 0;
     if (hostApiName.find("WASAPI") != std::string::npos || hostApiName.find("Wasapi") != std::string::npos || hostApiName.find("wasapi") != std::string::npos)
         return 1;
@@ -1876,10 +1988,10 @@ private:
     template <typename TFunction>
     void load_(TFunction& target, const char* name)
     {
-        target = reinterpret_cast<TFunction>(GetProcAddress(dll_, name));
+        target = reinterpret_cast<TFunction>(GetDynamicLibrarySymbol(dll_, name));
     }
 
-    HMODULE dll_ = nullptr;
+    DynamicLibraryHandle dll_ = nullptr;
 
     int(__cdecl* Pa_Initialize)() = nullptr;
     int(__cdecl* Pa_Terminate)() = nullptr;
@@ -1902,11 +2014,12 @@ bool PortAudioRuntime::Initialize(const std::wstring& pluginDirectory, std::wstr
         return true;
     }
 
-    std::filesystem::path dllPath = std::filesystem::path(pluginDirectory) / L"libportaudio64bit-asio.dll";
-    dll_ = LoadLibraryW(dllPath.c_str());
+    std::wstring loadError;
+    std::filesystem::path dllPath = PluginLibraryPath(pluginDirectory, L"libportaudio64bit-asio.dll", "libportaudio.dylib", "libportaudio.so");
+    dll_ = LoadDynamicLibrary(dllPath, loadError);
     if (dll_ == nullptr)
     {
-        error = L"Failed to load libportaudio64bit-asio.dll from the project plugins folder.";
+        error = loadError;
         return false;
     }
 
@@ -1950,7 +2063,7 @@ void PortAudioRuntime::Shutdown()
     if (Pa_Terminate)
         Pa_Terminate();
 
-    FreeLibrary(dll_);
+    CloseDynamicLibrary(dll_);
     dll_ = nullptr;
 }
 
@@ -2087,7 +2200,7 @@ private:
     bool check_(OrtStatus* status, std::wstring& error, const wchar_t* context);
     void releaseValue_(OrtValue* value);
 
-    HMODULE dll_ = nullptr;
+    DynamicLibraryHandle dll_ = nullptr;
     const OrtApi* api_ = nullptr;
     OrtEnv* env_ = nullptr;
     OrtSessionOptions* sessionOptions_ = nullptr;
@@ -2104,16 +2217,17 @@ bool OrtRuntime::Initialize(const std::wstring& pluginDirectory, const std::wstr
         return true;
     }
 
-    const std::filesystem::path ortDllPath = std::filesystem::path(pluginDirectory) / L"onnxruntime.dll";
-    dll_ = LoadLibraryW(ortDllPath.c_str());
+    std::wstring loadError;
+    const std::filesystem::path ortDllPath = PluginLibraryPath(pluginDirectory, L"onnxruntime.dll", "libonnxruntime.dylib", "libonnxruntime.so");
+    dll_ = LoadDynamicLibrary(ortDllPath, loadError);
     if (dll_ == nullptr)
     {
-        error = L"Failed to load onnxruntime.dll from the project plugins folder.";
+        error = loadError;
         return false;
     }
 
-    const auto getApiBase = reinterpret_cast<const OrtApiBase* (ORT_API_CALL*)(void)>(GetProcAddress(dll_, "OrtGetApiBase"));
-    appendCpuProvider_ = reinterpret_cast<OrtStatus* (ORT_API_CALL*)(OrtSessionOptions*, int)>(GetProcAddress(dll_, "OrtSessionOptionsAppendExecutionProvider_CPU"));
+    const auto getApiBase = reinterpret_cast<const OrtApiBase* (ORT_API_CALL*)(void)>(GetDynamicLibrarySymbol(dll_, "OrtGetApiBase"));
+    appendCpuProvider_ = reinterpret_cast<OrtStatus* (ORT_API_CALL*)(OrtSessionOptions*, int)>(GetDynamicLibrarySymbol(dll_, "OrtSessionOptionsAppendExecutionProvider_CPU"));
     if (getApiBase == nullptr)
     {
         error = L"onnxruntime.dll is missing OrtGetApiBase.";
@@ -2145,7 +2259,14 @@ bool OrtRuntime::Initialize(const std::wstring& pluginDirectory, const std::wstr
             api_->ReleaseStatus(providerStatus);
     }
 
-    if (!check_(api_->CreateSession(env_, modelPath.c_str(), sessionOptions_, &session_), error, L"CreateSession"))
+#ifdef _WIN32
+    const ORTCHAR_T* modelPathForOrt = modelPath.c_str();
+#else
+    const std::string modelPathUtf8 = WideToUtf8(modelPath);
+    const ORTCHAR_T* modelPathForOrt = modelPathUtf8.c_str();
+#endif
+
+    if (!check_(api_->CreateSession(env_, modelPathForOrt, sessionOptions_, &session_), error, L"CreateSession"))
         return false;
     if (!check_(api_->CreateCpuMemoryInfo(OrtArenaAllocator, OrtMemTypeDefault, &cpuMemoryInfo_), error, L"CreateCpuMemoryInfo"))
         return false;
@@ -2176,7 +2297,7 @@ void OrtRuntime::Shutdown()
 
     if (dll_ != nullptr)
     {
-        FreeLibrary(dll_);
+        CloseDynamicLibrary(dll_);
         dll_ = nullptr;
     }
 }
@@ -4897,7 +5018,7 @@ std::unique_ptr<NativeDetectorEngine> g_detector;
 
 extern "C"
 {
-__declspec(dllexport) int NativeDetector_Initialize(const char* modelPathUtf8, const char* dataDirectoryUtf8, const char*)
+ST_NATIVE_EXPORT int NativeDetector_Initialize(const char* modelPathUtf8, const char* dataDirectoryUtf8, const char*)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4907,7 +5028,7 @@ __declspec(dllexport) int NativeDetector_Initialize(const char* modelPathUtf8, c
     return g_detector->Initialize(Utf8ToWide(modelPathUtf8), Utf8ToWide(dataDirectoryUtf8), error) ? 1 : 0;
 }
 
-__declspec(dllexport) int NativeDetector_Start(int inputDeviceIndex)
+ST_NATIVE_EXPORT int NativeDetector_Start(int inputDeviceIndex)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4917,7 +5038,7 @@ __declspec(dllexport) int NativeDetector_Start(int inputDeviceIndex)
     return g_detector->Start(inputDeviceIndex, error) ? 1 : 0;
 }
 
-__declspec(dllexport) int NativeDetector_Stop()
+ST_NATIVE_EXPORT int NativeDetector_Stop()
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4926,7 +5047,7 @@ __declspec(dllexport) int NativeDetector_Stop()
     return 1;
 }
 
-__declspec(dllexport) int NativeDetector_SetHintPayload(const char* payloadUtf8)
+ST_NATIVE_EXPORT int NativeDetector_SetHintPayload(const char* payloadUtf8)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4935,7 +5056,7 @@ __declspec(dllexport) int NativeDetector_SetHintPayload(const char* payloadUtf8)
     return 1;
 }
 
-__declspec(dllexport) int NativeDetector_SetSettingsJson(const char* settingsJsonUtf8)
+ST_NATIVE_EXPORT int NativeDetector_SetSettingsJson(const char* settingsJsonUtf8)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4944,7 +5065,7 @@ __declspec(dllexport) int NativeDetector_SetSettingsJson(const char* settingsJso
     return 1;
 }
 
-__declspec(dllexport) int NativeDetector_SetResamplerMode(int mode)
+ST_NATIVE_EXPORT int NativeDetector_SetResamplerMode(int mode)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4953,14 +5074,14 @@ __declspec(dllexport) int NativeDetector_SetResamplerMode(int mode)
     return 1;
 }
 
-__declspec(dllexport) int NativeDetector_SetDebugLogPath(const char* debugLogPathUtf8)
+ST_NATIVE_EXPORT int NativeDetector_SetDebugLogPath(const char* debugLogPathUtf8)
 {
     SetDebugLogPathInternal(Utf8ToWide(debugLogPathUtf8 != nullptr ? debugLogPathUtf8 : ""));
     AppendDebugLogLine("DEBUG_LOG_PATH_SET");
     return 1;
 }
 
-__declspec(dllexport) int NativeDetector_PollLatestPacket(char* destination, int capacity)
+ST_NATIVE_EXPORT int NativeDetector_PollLatestPacket(char* destination, int capacity)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4968,7 +5089,7 @@ __declspec(dllexport) int NativeDetector_PollLatestPacket(char* destination, int
     return CopyUtf8String(g_detector->PollLatestPacket(), destination, capacity) ? 1 : 0;
 }
 
-__declspec(dllexport) int NativeDetector_GetStatus(char* destination, int capacity)
+ST_NATIVE_EXPORT int NativeDetector_GetStatus(char* destination, int capacity)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4976,7 +5097,7 @@ __declspec(dllexport) int NativeDetector_GetStatus(char* destination, int capaci
     return CopyUtf8String(g_detector->GetStatusLine(), destination, capacity) ? 1 : 0;
 }
 
-__declspec(dllexport) int NativeDetector_GetLastError(char* destination, int capacity)
+ST_NATIVE_EXPORT int NativeDetector_GetLastError(char* destination, int capacity)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4984,13 +5105,13 @@ __declspec(dllexport) int NativeDetector_GetLastError(char* destination, int cap
     return CopyUtf8String(WideToUtf8(g_detector->GetLastError()), destination, capacity) ? 1 : 0;
 }
 
-__declspec(dllexport) int NativeDetector_IsRunning()
+ST_NATIVE_EXPORT int NativeDetector_IsRunning()
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     return (g_detector && g_detector->IsRunning()) ? 1 : 0;
 }
 
-__declspec(dllexport) int NativeDetector_ListInputDevicesJson(char* destination, int capacity)
+ST_NATIVE_EXPORT int NativeDetector_ListInputDevicesJson(char* destination, int capacity)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -4998,7 +5119,7 @@ __declspec(dllexport) int NativeDetector_ListInputDevicesJson(char* destination,
     return CopyUtf8String(g_detector->ListInputDevicesJson(), destination, capacity) ? 1 : 0;
 }
 
-__declspec(dllexport) int NativeDetector_GetRuntimeInfoJson(char* destination, int capacity)
+ST_NATIVE_EXPORT int NativeDetector_GetRuntimeInfoJson(char* destination, int capacity)
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
@@ -5006,7 +5127,7 @@ __declspec(dllexport) int NativeDetector_GetRuntimeInfoJson(char* destination, i
     return CopyUtf8String(g_detector->GetRuntimeInfoJson(), destination, capacity) ? 1 : 0;
 }
 
-__declspec(dllexport) int NativeDetector_DebugEvaluatePcmFloat(
+ST_NATIVE_EXPORT int NativeDetector_DebugEvaluatePcmFloat(
     const float* samples,
     int sampleCount,
     const char* expectedNoteSpecsUtf8,
@@ -5230,7 +5351,7 @@ __declspec(dllexport) int NativeDetector_DebugEvaluatePcmFloat(
     return CopyUtf8String(json.str(), destination, capacity) ? 1 : 0;
 }
 
-__declspec(dllexport) void NativeDetector_Shutdown()
+ST_NATIVE_EXPORT void NativeDetector_Shutdown()
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)

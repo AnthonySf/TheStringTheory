@@ -786,26 +786,12 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     private static string GetNormalizedHostApiLabel(string hostApiName)
     {
-        if (string.IsNullOrWhiteSpace(hostApiName))
-            return "Unknown";
-
-        if (hostApiName.IndexOf("ASIO", StringComparison.OrdinalIgnoreCase) >= 0)
-            return SharedAudioBackendModes.Asio;
-
-        if (hostApiName.IndexOf("WASAPI", StringComparison.OrdinalIgnoreCase) >= 0)
-            return SharedAudioBackendModes.Wasapi;
-
-        return hostApiName.Trim();
+        return SharedAudioBackendModes.NormalizeHostApiLabel(hostApiName);
     }
 
     private static int GetAdvancedHostPriority(string hostApiName)
     {
-        string normalized = GetNormalizedHostApiLabel(hostApiName);
-        if (string.Equals(normalized, SharedAudioBackendModes.Asio, StringComparison.Ordinal))
-            return 0;
-        if (string.Equals(normalized, SharedAudioBackendModes.Wasapi, StringComparison.Ordinal))
-            return 1;
-        return 2;
+        return SharedAudioBackendModes.GetHostPriority(hostApiName);
     }
 
     private static bool MatchesBackendMode(string hostApiName, string backendMode)
