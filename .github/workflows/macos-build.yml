@@ -392,11 +392,20 @@ jobs:
           buildMethod: StringTheoryBuildAutomation.BuildMacOS
           customParameters: -macOSArchitecture ${{ steps.macos-unity-arch.outputs.value }} -buildOutput build/StringTheory-macOS/StringTheory.app
 
+      - name: Pack Unity player for distribution
+        shell: bash
+        run: |
+          test -d build/StringTheory-macOS/StringTheory.app
+          ditto -c -k --sequesterRsrc --keepParent \
+            build/StringTheory-macOS/StringTheory.app \
+            StringTheory-macOS.zip
+          ls -lh StringTheory-macOS.zip
+
       - name: Upload Unity player
         uses: actions/upload-artifact@v4
         with:
           name: StringTheory-macOS
-          path: build
+          path: StringTheory-macOS.zip
           if-no-files-found: error
 
       - name: Upload stem runtime package
