@@ -249,6 +249,28 @@ jobs:
           mkdir -p Assets/StreamingAssets/NotesReader/Models
           cp "${MODEL_PATH}" Assets/StreamingAssets/NotesReader/Models/basic_pitch_nmp.onnx
 
+          mkdir -p Temp/UnityManagedDeps
+          cat > Temp/UnityManagedDeps/UnityManagedDeps.csproj <<'EOF'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>netstandard2.0</TargetFramework>
+            </PropertyGroup>
+            <ItemGroup>
+              <PackageReference Include="AlphaTab" Version="1.6.0-alpha.1444" />
+              <PackageReference Include="AlphaSkia" Version="3.3.135" />
+              <PackageReference Include="System.Drawing.Common" Version="9.0.5" />
+              <PackageReference Include="Microsoft.Win32.SystemEvents" Version="9.0.5" />
+            </ItemGroup>
+          </Project>
+          EOF
+          dotnet restore Temp/UnityManagedDeps/UnityManagedDeps.csproj /p:NuGetAudit=false
+          mkdir -p Assets/Plugins/Managed
+          cp "$HOME/.nuget/packages/alphatab/1.6.0-alpha.1444/lib/netstandard2.0/AlphaTab.dll" Assets/Plugins/Managed/AlphaTab.dll
+          cp "$HOME/.nuget/packages/alphaskia/3.3.135/lib/netstandard2.0/AlphaSkia.dll" Assets/Plugins/Managed/AlphaSkia.dll
+          cp "$HOME/.nuget/packages/system.drawing.common/9.0.5/lib/netstandard2.0/System.Drawing.Common.dll" Assets/Plugins/Managed/System.Drawing.Common.dll
+          cp "$HOME/.nuget/packages/microsoft.win32.systemevents/9.0.5/lib/netstandard2.0/Microsoft.Win32.SystemEvents.dll" Assets/Plugins/Managed/Microsoft.Win32.SystemEvents.dll
+          ls -lh Assets/Plugins/Managed/*.dll
+
           for rid in osx-arm64 osx-x64; do
             dotnet publish Tools/AlphaTabRenderHelper/AlphaTabRenderHelper.csproj \
               -c Release \
