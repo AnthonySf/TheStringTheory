@@ -98,6 +98,56 @@ jobs:
         with:
           lfs: true
 
+      - name: Install private Unity assets
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PRIVATE_ASSET_TAG: ci-private-assets
+          MIDIPLAYER_SHA256: b75288fdfbc2dbb1ca199ed033ebbfad79fa979f830cd02f4f4873e03706f6d6
+        run: |
+          mkdir -p Temp/private-unity-assets
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import urllib.request
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GITHUB_TOKEN"]
+          tag = os.environ["PRIVATE_ASSET_TAG"]
+          expected_sha = os.environ["MIDIPLAYER_SHA256"].lower()
+          out_path = pathlib.Path("Temp/private-unity-assets/MidiPlayer.zip")
+
+          def github_request(url, accept="application/vnd.github+json"):
+              request = urllib.request.Request(url)
+              request.add_header("Authorization", f"Bearer {token}")
+              request.add_header("Accept", accept)
+              request.add_header("X-GitHub-Api-Version", "2022-11-28")
+              request.add_header("User-Agent", "StringTheoryMacOSBuild")
+              return urllib.request.urlopen(request, timeout=120)
+
+          with github_request(f"https://api.github.com/repos/{repo}/releases/tags/{tag}") as response:
+              release = json.load(response)
+
+          asset = next((item for item in release.get("assets", []) if item.get("name") == "MidiPlayer.zip"), None)
+          if asset is None:
+              raise SystemExit("Private release asset MidiPlayer.zip was not found.")
+
+          with github_request(asset["url"], accept="application/octet-stream") as response:
+              data = response.read()
+
+          actual_sha = hashlib.sha256(data).hexdigest()
+          if actual_sha != expected_sha:
+              raise SystemExit(f"MidiPlayer.zip SHA256 mismatch: expected {expected_sha}, got {actual_sha}")
+
+          out_path.write_bytes(data)
+          print(f"Downloaded MidiPlayer.zip ({len(data)} bytes, sha256 {actual_sha})")
+          PY
+          rm -rf Assets/MidiPlayer
+          unzip -q Temp/private-unity-assets/MidiPlayer.zip -d Assets
+          test -f Assets/MidiPlayer/Scripts/MidiPlayer.Run.asmdef
+
       - name: Download native plugins
         uses: actions/download-artifact@v4
         with:
