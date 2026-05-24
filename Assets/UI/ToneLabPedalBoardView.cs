@@ -172,6 +172,34 @@ public sealed class ToneLabPedalBoardView
         }
     }
 
+    public int GetEstimatedColumns()
+    {
+        float availableWidth = chainScrollView?.contentViewport?.resolvedStyle.width ?? root.resolvedStyle.width;
+        if (!float.IsFinite(availableWidth) || availableWidth <= 1f)
+            availableWidth = root.resolvedStyle.width;
+        if (!float.IsFinite(availableWidth) || availableWidth <= 1f)
+            availableWidth = Screen.width;
+
+        float tileStride = ToneLabPedalVisualBuilder.BoardTileWidth + PedalTileSpacing;
+        return Mathf.Max(1, Mathf.FloorToInt((availableWidth + PedalTileSpacing) / tileStride));
+    }
+
+    public void ScrollPedalIntoView(string pedalInstanceId)
+    {
+        if (string.IsNullOrWhiteSpace(pedalInstanceId) || chainScrollView == null)
+            return;
+
+        for (int i = 0; i < chainGrid.childCount; i++)
+        {
+            if (chainGrid.ElementAt(i) is ToneLabPedalTile tile &&
+                string.Equals(tile.PedalInstanceId, pedalInstanceId, StringComparison.Ordinal))
+            {
+                chainScrollView.ScrollTo(tile);
+                return;
+            }
+        }
+    }
+
     public int GetInsertionIndex(Vector2 panelPosition)
     {
         if (!root.worldBound.Contains(panelPosition))

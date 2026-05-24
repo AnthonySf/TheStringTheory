@@ -578,7 +578,8 @@ PlayerSettings:
   enableCrashReportAPI: 0
   cameraUsageDescription: 
   locationUsageDescription: 
-  microphoneUsageDescription: String Theory uses the microphone or audio interface input for guitar note detection and Tone Lab monitoring.
+  microphoneUsageDescription: String Theory uses the microphone or audio interface
+    input for guitar note detection and Tone Lab monitoring.
   bluetoothUsageDescription: 
   macOSTargetOSVersion: 11.0
   switchNMETAOverride: 

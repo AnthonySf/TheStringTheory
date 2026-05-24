@@ -3260,7 +3260,7 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (IsUiSubmitPressed())
+        if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
         {
             ActivateSelectedMainMenuFromUi();
             return;
@@ -4115,12 +4115,19 @@ public class GuitarBridgeServer : MonoBehaviour
 
             if (IsUiRightPressed())
             {
+                SongLibraryBrowseEntry selectedEntry = GetSelectedSongLibraryBrowseEntry();
+                if (selectedEntry != null && selectedEntry.IsSong)
+                {
+                    ActivateSelectedSongLibraryEntry();
+                    return;
+                }
+
                 if (!IsSongLibraryScopeActive() && songLibraryBrowseMode < SongLibraryBrowseMode.Albums)
                     SetSongLibraryBrowseMode((SongLibraryBrowseMode)((int)songLibraryBrowseMode + 1));
                 return;
             }
 
-            if (IsUiSubmitPressed())
+            if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
                 ActivateSelectedSongLibraryEntry();
 
             return;
@@ -4130,14 +4137,15 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             if (pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
                 MoveArcadeDifficultySelection(1);
-            else
-                songSelectionSongConfirmed = false;
             return;
         }
 
-        if (IsUiLeftPressed() && pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
+        if (IsUiLeftPressed())
         {
-            MoveArcadeDifficultySelection(-1);
+            if (pendingTrackSelectionSong != null && pendingTrackSelectionSong.LibraryType == SongLibraryType.Arcade)
+                MoveArcadeDifficultySelection(-1);
+            else
+                songSelectionSongConfirmed = false;
             return;
         }
 
@@ -4146,7 +4154,7 @@ public class GuitarBridgeServer : MonoBehaviour
         else if (IsUiDownPressed())
             MoveTrackSelectionInMenu(1);
 
-        if (IsUiSubmitPressed())
+        if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
             ConfirmTrackSelection();
     }
 
@@ -4158,15 +4166,26 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (pendingTrackSelectionParts.Count == 0)
+        if (GetPendingTrackSelectionDisplayCount() == 0)
             return;
+
+        if (IsUiLeftPressed())
+        {
+            CloseTrackSelection();
+            return;
+        }
+
+        if (IsUiRightPressed())
+        {
+            return;
+        }
 
         if (IsUiUpPressed())
             MoveTrackSelectionInMenu(-1);
         else if (IsUiDownPressed())
             MoveTrackSelectionInMenu(1);
 
-        if (IsUiSubmitPressed())
+        if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
             ConfirmTrackSelection();
     }
 
@@ -6996,10 +7015,10 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: false);
     }
 
-    private bool IsUiSubmitPressed()
+    private bool IsUiSubmitPressed(bool allowControllerPointerSubmit = false)
     {
         bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
-        bool suppressControllerSubmit = ShouldUseControllerPointerUiMode();
+        bool suppressControllerSubmit = ShouldUseControllerPointerUiMode() && !allowControllerPointerSubmit;
         return Input.GetKeyDown(KeyCode.Return) ||
                Input.GetKeyDown(KeyCode.KeypadEnter) ||
                Input.GetKeyDown(KeyCode.Space) ||

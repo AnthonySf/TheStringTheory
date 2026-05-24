@@ -4,6 +4,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 #if UNITY_RENDER_PIPELINE_UNIVERSAL
 using UnityEngine.Rendering.Universal;
 #endif
@@ -52,6 +55,32 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         BuiltIn,
         Lv2,
         Nam
+    }
+
+    private enum ToneLabNavigationZone
+    {
+        Sidebar,
+        PedalBoard,
+        SongMappingLeft,
+        SongMappingTones,
+        Footer
+    }
+
+    private enum ToneLabNavigationDirection
+    {
+        None,
+        Up,
+        Down,
+        Left,
+        Right
+    }
+
+    private sealed class ToneLabNavigationItem
+    {
+        public VisualElement element;
+        public ScrollView scrollView;
+        public Action activate;
+        public Action<bool> setHovered;
     }
 
     private sealed class ToneSliderBinding
@@ -487,9 +516,32 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private ToneLabLibraryFilter libraryFilter = ToneLabLibraryFilter.All;
     private Coroutine openRefreshRoutine;
     private bool openingRefreshInProgress;
+    private ToneLabNavigationZone navigationZone = ToneLabNavigationZone.Sidebar;
+    private int navigationIndex;
+    private ToneLabNavigationItem navigationHighlightedItem;
+    private ToneLabNavigationDirection heldNavigationDirection = ToneLabNavigationDirection.None;
+    private float nextNavigationRepeatTime = -1f;
+    private VisualElement controllerCursor;
+    private VisualElement controllerCursorInner;
+    private VisualElement lastControllerCursorTarget;
+    private Vector2 controllerCursorPanelPosition;
+    private Vector3 lastPhysicalMousePosition;
+    private bool controllerCursorActive;
+    private bool controllerCursorInitialized;
+    private bool controllerCursorPointerMode;
+    private const float NavigationAxisThreshold = 0.55f;
+    private const float NavigationInitialRepeatDelay = 0.34f;
+    private const float NavigationRepeatDelay = 0.10f;
 
     private readonly List<ToneSliderBinding> sliderBindings = new List<ToneSliderBinding>();
     private readonly List<ToneToggleBinding> toggleBindings = new List<ToneToggleBinding>();
+    private readonly List<ToneLabNavigationItem> presetNavigationItems = new List<ToneLabNavigationItem>();
+    private readonly List<ToneLabNavigationItem> libraryNavigationItems = new List<ToneLabNavigationItem>();
+    private readonly List<ToneLabNavigationItem> inspectorNavigationItems = new List<ToneLabNavigationItem>();
+    private readonly List<ToneLabNavigationItem> songMappingLeftNavigationItems = new List<ToneLabNavigationItem>();
+    private readonly List<ToneLabNavigationItem> songMappingToneNavigationItems = new List<ToneLabNavigationItem>();
+    private readonly List<ToneLabNavigationItem> footerNavigationItems = new List<ToneLabNavigationItem>();
+    private readonly List<ToneLabNavigationItem> visibleFooterNavigationItems = new List<ToneLabNavigationItem>();
     private static Texture2D presetSelectionGradientTexture;
     private static Texture2D selectedSidebarTabTexture;
     private static readonly Dictionary<string, Texture2D> songArtworkTextureCache = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
@@ -562,6 +614,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         overlayRoot.style.display = targetDisplay;
         if (visible)
         {
+            ResetNavigation(ToneLabNavigationZone.Sidebar);
+            overlayRoot.Focus();
             BeginOpeningRefresh();
         }
         else
@@ -573,7 +627,18 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             CancelLibraryDrag();
             ClearPendingToneMappingAssignment();
             HideActionToast();
+            HideControllerCursor();
+            ClearNavigationHighlight();
         }
+    }
+
+    private void Update()
+    {
+        if (!isBuilt || !isVisible)
+            return;
+
+        bool controllerSubmitConsumed = UpdateControllerCursor();
+        HandleNavigationInput(controllerSubmitConsumed);
     }
 
     public void RefreshUi(bool syncControls, bool refreshDevices = false)
@@ -712,6 +777,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         RefreshSidePanelButtonStates();
         RefreshAdvancedAudioModalStatus();
         UpdateOpeningLoadingOverlay();
+        if (refreshInteractiveState)
+            RefreshNavigationHighlight();
     }
 
     private void BuildUi(VisualElement root)
@@ -724,6 +791,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         overlayRoot = new VisualElement();
         overlayRoot.AddToClassList("tone-lab-overlay");
         overlayRoot.pickingMode = PickingMode.Position;
+        overlayRoot.focusable = true;
         overlayRoot.style.display = DisplayStyle.None;
         ApplyOverlayRootStyle(overlayRoot);
 
@@ -1000,10 +1068,16 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         rightColumn.Add(boardSection);
 
         pedalBoardView = new ToneLabPedalBoardView();
-        pedalBoardView.AddPedalRequested += () => SetSidePanelMode(ToneLabSidePanelMode.Library);
+        pedalBoardView.AddPedalRequested += () =>
+        {
+            sidePanelMode = ToneLabSidePanelMode.Library;
+            ResetNavigation(ToneLabNavigationZone.Sidebar);
+            RefreshUi(syncControls: true);
+        };
         pedalBoardView.PedalSelected += pedalInstanceId =>
         {
             selectedPedalInstanceId = pedalInstanceId;
+            ResetNavigation(ToneLabNavigationZone.PedalBoard);
             sidePanelMode = ToneLabSidePanelMode.Details;
             RefreshUi(syncControls: true);
         };
@@ -1011,6 +1085,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         {
             runtime?.SetPedalEnabled(pedalInstanceId, enabled);
             selectedPedalInstanceId = pedalInstanceId;
+            ResetNavigation(ToneLabNavigationZone.PedalBoard);
             sidePanelMode = ToneLabSidePanelMode.Details;
             RefreshUi(syncControls: true);
         };
@@ -1095,6 +1170,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         StyleFooterActionButton(saveAsPresetButton, 134f);
         saveAsPresetButton.style.marginRight = 0f;
         saveActions.Add(saveAsPresetButton);
+        RegisterFooterNavigationItems();
 
         presetModalScrim = new VisualElement();
         presetModalScrim.style.position = Position.Absolute;
@@ -1479,6 +1555,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         openingLoadingOverlay = ReusableLoadingOverlay.CreateStringTheoryLibraryLoadingOverlay(overlayRoot);
         BuildOpeningLoadingContent(openingLoadingOverlay.ContentHost, toneLabTitleFontDefinition);
+        BuildControllerCursor(overlayRoot);
 
         root.Add(overlayRoot);
         root.pickingMode = PickingMode.Ignore;
@@ -1510,10 +1587,393 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         contentHost.Add(subtitleLabel);
     }
 
+    private void BuildControllerCursor(VisualElement root)
+    {
+        if (root == null)
+            return;
+
+        controllerCursor = new VisualElement();
+        controllerCursor.style.position = Position.Absolute;
+        controllerCursor.style.width = 40f;
+        controllerCursor.style.height = 40f;
+        controllerCursor.style.borderTopWidth = 3f;
+        controllerCursor.style.borderRightWidth = 3f;
+        controllerCursor.style.borderBottomWidth = 3f;
+        controllerCursor.style.borderLeftWidth = 3f;
+        controllerCursor.style.borderTopColor = new Color(1f, 1f, 1f, 0.96f);
+        controllerCursor.style.borderRightColor = new Color(1f, 1f, 1f, 0.96f);
+        controllerCursor.style.borderBottomColor = new Color(1f, 1f, 1f, 0.96f);
+        controllerCursor.style.borderLeftColor = new Color(1f, 1f, 1f, 0.96f);
+        controllerCursor.style.borderTopLeftRadius = 999f;
+        controllerCursor.style.borderTopRightRadius = 999f;
+        controllerCursor.style.borderBottomLeftRadius = 999f;
+        controllerCursor.style.borderBottomRightRadius = 999f;
+        controllerCursor.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
+        controllerCursor.style.opacity = 0f;
+        controllerCursor.style.display = DisplayStyle.None;
+        controllerCursor.style.translate = new Translate(-20f, -20f, 0f);
+        controllerCursor.pickingMode = PickingMode.Ignore;
+
+        controllerCursorInner = new VisualElement();
+        controllerCursorInner.style.position = Position.Absolute;
+        controllerCursorInner.style.left = new Length(50f, LengthUnit.Percent);
+        controllerCursorInner.style.top = new Length(50f, LengthUnit.Percent);
+        controllerCursorInner.style.width = 12f;
+        controllerCursorInner.style.height = 12f;
+        controllerCursorInner.style.translate = new Translate(-6f, -6f, 0f);
+        controllerCursorInner.style.borderTopLeftRadius = 999f;
+        controllerCursorInner.style.borderTopRightRadius = 999f;
+        controllerCursorInner.style.borderBottomLeftRadius = 999f;
+        controllerCursorInner.style.borderBottomRightRadius = 999f;
+        controllerCursorInner.style.backgroundColor = new Color(1f, 1f, 1f, 0.98f);
+        controllerCursorInner.pickingMode = PickingMode.Ignore;
+        controllerCursor.Add(controllerCursorInner);
+
+        root.Add(controllerCursor);
+    }
+
+    private bool UpdateControllerCursor()
+    {
+        if (controllerCursor == null || overlayRoot?.panel == null)
+            return false;
+        if (openingRefreshInProgress)
+            return false;
+
+        Vector2 panelSize = ResolveControllerCursorPanelSize();
+        if (!controllerCursorInitialized || !IsFiniteVector2(controllerCursorPanelPosition))
+        {
+            controllerCursorPanelPosition = panelSize * 0.5f;
+            lastPhysicalMousePosition = Input.mousePosition;
+            controllerCursorInitialized = true;
+        }
+        else
+        {
+            controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+        }
+
+        Vector3 currentMousePosition = Input.mousePosition;
+        bool mouseMoved = (currentMousePosition - lastPhysicalMousePosition).sqrMagnitude > 1f;
+        bool mouseClicked = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1) || Input.GetMouseButtonDown(2);
+        lastPhysicalMousePosition = currentMousePosition;
+        if (mouseMoved || mouseClicked)
+        {
+            controllerCursorActive = false;
+            controllerCursorPointerMode = false;
+        }
+
+        float axisX = ReadControllerCursorHorizontalAxis();
+        float axisY = ReadControllerCursorVerticalAxis();
+        Vector2 movement = new Vector2(axisX, -axisY);
+        bool controllerMovementDetected = movement.sqrMagnitude >= 0.04f;
+        bool controllerButtonPressed = WasAnyControllerUiButtonPressedThisFrame();
+        bool primaryPressed = WasControllerPrimaryActionPressedThisFrame();
+
+        if (!controllerCursorActive && (controllerMovementDetected || controllerButtonPressed))
+        {
+            controllerCursorActive = true;
+            ClearNativeUiFocusForControllerCursor();
+            controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+        }
+
+        if (!controllerCursorActive)
+        {
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+            return false;
+        }
+
+        controllerCursor.style.display = DisplayStyle.Flex;
+        controllerCursor.style.opacity = 1f;
+        controllerCursor.BringToFront();
+
+        if (movement.sqrMagnitude > 0.0001f)
+        {
+            controllerCursorPointerMode = true;
+            float speed = 2200f;
+            if (movement.sqrMagnitude > 1f)
+                movement.Normalize();
+            controllerCursorPanelPosition += movement * speed * Time.unscaledDeltaTime;
+        }
+
+        controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+        PositionControllerCursorVisual();
+
+        VisualElement pickedTarget = PickControllerCursorTarget();
+        if (pickedTarget != null && pickedTarget != lastControllerCursorTarget && movement.sqrMagnitude > 0.0001f)
+            DispatchControllerCursorMove(pickedTarget);
+        lastControllerCursorTarget = pickedTarget;
+
+        if (!primaryPressed)
+            return false;
+
+        ClearNativeUiFocusForControllerCursor();
+        if (controllerCursorPointerMode &&
+            TryFindControllerCursorActionTarget(pickedTarget, out VisualElement actionTarget))
+        {
+            DispatchControllerCursorClick(actionTarget);
+            return true;
+        }
+
+        if (IsCapturingKeyboardInput)
+            return true;
+
+        ActivateCurrentNavigationItem();
+        return true;
+    }
+
+    private void HideControllerCursor()
+    {
+        controllerCursorActive = false;
+        controllerCursorPointerMode = false;
+        lastControllerCursorTarget = null;
+        if (controllerCursor != null)
+        {
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+        }
+    }
+
+    private void PositionControllerCursorVisual()
+    {
+        controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, ResolveControllerCursorPanelSize());
+        controllerCursor.style.left = controllerCursorPanelPosition.x;
+        controllerCursor.style.top = controllerCursorPanelPosition.y;
+    }
+
+    private void ClearNativeUiFocusForControllerCursor()
+    {
+        FocusController focusController = overlayRoot?.panel?.focusController;
+        if (focusController?.focusedElement is Focusable focusedElement)
+            focusedElement.Blur();
+    }
+
+    private Vector2 ResolveControllerCursorPanelSize()
+    {
+        float panelWidth = overlayRoot?.resolvedStyle.width ?? float.NaN;
+        float panelHeight = overlayRoot?.resolvedStyle.height ?? float.NaN;
+        if (!IsFiniteFloat(panelWidth) || panelWidth < 8f)
+            panelWidth = Screen.width;
+        if (!IsFiniteFloat(panelHeight) || panelHeight < 8f)
+            panelHeight = Screen.height;
+        if (!IsFiniteFloat(panelWidth) || panelWidth < 8f)
+            panelWidth = 1920f;
+        if (!IsFiniteFloat(panelHeight) || panelHeight < 8f)
+            panelHeight = 1080f;
+
+        return new Vector2(Mathf.Max(1f, panelWidth), Mathf.Max(1f, panelHeight));
+    }
+
+    private static Vector2 SanitizeControllerCursorPosition(Vector2 position, Vector2 panelSize)
+    {
+        Vector2 fallback = panelSize * 0.5f;
+        if (!IsFiniteVector2(position))
+            return fallback;
+
+        float minX = 8f;
+        float minY = 8f;
+        float maxX = Mathf.Max(minX, panelSize.x - 8f);
+        float maxY = Mathf.Max(minY, panelSize.y - 8f);
+        position.x = Mathf.Clamp(position.x, minX, maxX);
+        position.y = Mathf.Clamp(position.y, minY, maxY);
+
+        return IsFiniteVector2(position) ? position : fallback;
+    }
+
+    private static bool IsFiniteVector2(Vector2 value)
+    {
+        return IsFiniteFloat(value.x) && IsFiniteFloat(value.y);
+    }
+
+    private static bool IsFiniteFloat(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    private VisualElement PickControllerCursorTarget()
+    {
+        IPanel panel = overlayRoot?.panel;
+        if (panel == null)
+            return null;
+
+        VisualElement picked = panel.Pick(controllerCursorPanelPosition);
+        if (picked == controllerCursor || picked == controllerCursorInner)
+            return null;
+
+        return picked;
+    }
+
+    private bool TryFindControllerCursorActionTarget(VisualElement target, out VisualElement actionTarget)
+    {
+        actionTarget = null;
+        for (VisualElement current = target; current != null && current != overlayRoot; current = current.parent)
+        {
+            if (current == controllerCursor || current == controllerCursorInner || current == blurBackdrop)
+                continue;
+
+            if (current is Button ||
+                current is DropdownField ||
+                current is Slider ||
+                current is TextField ||
+                current is Toggle ||
+                current is ToneLabPedalLibraryItem ||
+                current is ToneLabPedalTile)
+            {
+                actionTarget = current;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void DispatchControllerCursorMove(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        Event systemEvent = CreateControllerCursorMouseEvent(EventType.MouseMove, 0, 0);
+        using (PointerMoveEvent pointerMove = PointerMoveEvent.GetPooled(systemEvent))
+        {
+            target.SendEvent(pointerMove);
+        }
+    }
+
+    private void DispatchControllerCursorClick(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        DispatchControllerCursorMove(target);
+
+        Event downEvent = CreateControllerCursorMouseEvent(EventType.MouseDown, 0, 1);
+        using (PointerDownEvent pointerDown = PointerDownEvent.GetPooled(downEvent))
+        {
+            target.SendEvent(pointerDown);
+        }
+
+        Event upEvent = CreateControllerCursorMouseEvent(EventType.MouseUp, 0, 1);
+        using (PointerUpEvent pointerUp = PointerUpEvent.GetPooled(upEvent))
+        {
+            target.SendEvent(pointerUp);
+        }
+    }
+
+    private Event CreateControllerCursorMouseEvent(EventType eventType, int button, int clickCount)
+    {
+        return new Event
+        {
+            type = eventType,
+            mousePosition = controllerCursorPanelPosition,
+            button = button,
+            clickCount = clickCount
+        };
+    }
+
+    private static float ReadControllerCursorHorizontalAxis()
+    {
+        float axis = ReadControllerCursorInputSystemAxis().x;
+        if (Mathf.Abs(axis) < 0.001f)
+            axis = TryGetAxisRaw("JoystickHorizontal");
+
+        return Mathf.Abs(axis) < 0.18f ? 0f : Mathf.Clamp(axis, -1f, 1f);
+    }
+
+    private static float ReadControllerCursorVerticalAxis()
+    {
+        float axis = ReadControllerCursorInputSystemAxis().y;
+        if (Mathf.Abs(axis) < 0.001f)
+            axis = TryGetAxisRaw("JoystickVertical");
+
+        return Mathf.Abs(axis) < 0.18f ? 0f : Mathf.Clamp(axis, -1f, 1f);
+    }
+
+    private static bool WasAnyControllerUiButtonPressedThisFrame()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad == null)
+                continue;
+
+            if (gamepad.buttonSouth.wasPressedThisFrame ||
+                gamepad.buttonEast.wasPressedThisFrame ||
+                gamepad.buttonNorth.wasPressedThisFrame ||
+                gamepad.buttonWest.wasPressedThisFrame ||
+                gamepad.startButton.wasPressedThisFrame ||
+                gamepad.selectButton.wasPressedThisFrame ||
+                gamepad.dpad.up.wasPressedThisFrame ||
+                gamepad.dpad.down.wasPressedThisFrame ||
+                gamepad.dpad.left.wasPressedThisFrame ||
+                gamepad.dpad.right.wasPressedThisFrame)
+            {
+                return true;
+            }
+        }
+#endif
+
+        if (HasInputSystemGamepadConnected())
+            return false;
+
+        for (int buttonIndex = 0; buttonIndex <= 19; buttonIndex++)
+        {
+            KeyCode key = (KeyCode)((int)KeyCode.JoystickButton0 + buttonIndex);
+            if (Input.GetKeyDown(key))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool WasControllerPrimaryActionPressedThisFrame()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad?.buttonSouth.wasPressedThisFrame == true)
+                return true;
+        }
+#endif
+        if (HasInputSystemGamepadConnected())
+            return false;
+
+        return TryGetButtonDown("Submit") || Input.GetKeyDown(KeyCode.JoystickButton0);
+    }
+
+    private static Vector2 ReadControllerCursorInputSystemAxis()
+    {
+#if ENABLE_INPUT_SYSTEM
+        Vector2 strongest = Vector2.zero;
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad == null)
+                continue;
+
+            Vector2 candidate = gamepad.leftStick.ReadValue();
+            if (candidate.sqrMagnitude > strongest.sqrMagnitude)
+                strongest = candidate;
+        }
+
+        foreach (Joystick joystick in Joystick.all)
+        {
+            if (joystick == null)
+                continue;
+
+            Vector2 candidate = joystick.stick.ReadValue();
+            if (candidate.sqrMagnitude > strongest.sqrMagnitude)
+                strongest = candidate;
+        }
+
+        return Vector2.ClampMagnitude(strongest, 1f);
+#else
+        return Vector2.zero;
+#endif
+    }
+
     private void BeginOpeningRefresh()
     {
         boardMode = ToneLabBoardMode.Pedalboard;
         sidePanelMode = ToneLabSidePanelMode.Presets;
+        ResetNavigation(ToneLabNavigationZone.Sidebar);
         ClearPendingToneMappingAssignment();
         CancelOpeningRefresh();
         openingRefreshInProgress = true;
@@ -2155,11 +2615,13 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         if (boardMode == ToneLabBoardMode.SongMapping)
         {
             sidePanelMode = ToneLabSidePanelMode.Presets;
+            ResetNavigation(ToneLabNavigationZone.SongMappingLeft);
             SelectCurrentSongMappingContextIfAvailable();
         }
         else
         {
             ClearPendingToneMappingAssignment();
+            ResetNavigation(ToneLabNavigationZone.PedalBoard);
         }
 
         RefreshUi(syncControls: true);
@@ -2215,6 +2677,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         songMappingLeftHost.Clear();
         songMappingToneHost.Clear();
+        songMappingLeftNavigationItems.Clear();
+        songMappingToneNavigationItems.Clear();
 
         List<GuitarBridgeServer.ToneLabSongMappingSongSnapshot> songs = owner.GetToneLabSongMappingSongsForUi();
         if (songs == null || songs.Count == 0)
@@ -2338,13 +2802,17 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     {
         string title = string.IsNullOrWhiteSpace(song?.displayName) ? "Untitled Song" : song.displayName.Trim();
         string subtitle = string.Empty;
-        return CreateSongMappingListRow(title, subtitle, false, () =>
+        Action action = () =>
         {
             selectedMappingSongKey = song?.songKey ?? string.Empty;
             selectedMappingArrangementKey = string.Empty;
             ClearPendingToneMappingAssignment();
+            ResetNavigation(ToneLabNavigationZone.SongMappingLeft);
             RefreshUi(syncControls: true);
-        }, song?.artworkPath ?? string.Empty);
+        };
+        Button row = CreateSongMappingListRow(title, subtitle, false, action, song?.artworkPath ?? string.Empty);
+        RegisterNavigationItem(songMappingLeftNavigationItems, row, songMappingLeftScroll, action, GetNavigationHoverSetter(row));
+        return row;
     }
 
     private Button CreateSongMappingArrangementRow(GuitarBridgeServer.ToneLabSongMappingArrangementSnapshot arrangement)
@@ -2356,12 +2824,16 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(arrangement?.difficultySummary))
             subtitle = $"{subtitle}  •  {arrangement.difficultySummary}";
 
-        return CreateSongMappingListRow(arrangement?.displayName ?? "Arrangement", subtitle, selected, () =>
+        Action action = () =>
         {
             selectedMappingArrangementKey = arrangement?.arrangementKey ?? string.Empty;
             ClearPendingToneMappingAssignment();
+            ResetNavigation(ToneLabNavigationZone.SongMappingLeft);
             RefreshUi(syncControls: true);
-        });
+        };
+        Button row = CreateSongMappingListRow(arrangement?.displayName ?? "Arrangement", subtitle, selected, action);
+        RegisterNavigationItem(songMappingLeftNavigationItems, row, songMappingLeftScroll, action, GetNavigationHoverSetter(row));
+        return row;
     }
 
     private void SetSongMappingHeaderSongTitle(string title)
@@ -2397,16 +2869,29 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
     private Button CreateSongMappingBackRow(string label, Action onClick)
     {
-        Button row = CreateSongMappingListRow($"‹ {label}", string.Empty, false, onClick);
+        Action action = () =>
+        {
+            ResetNavigation(ToneLabNavigationZone.SongMappingLeft);
+            onClick?.Invoke();
+        };
+        Button row = CreateSongMappingListRow($"‹ {label}", string.Empty, false, action);
         row.style.height = 42f;
         row.style.minHeight = 42f;
+        RegisterNavigationItem(songMappingLeftNavigationItems, row, songMappingLeftScroll, action, GetNavigationHoverSetter(row));
         return row;
     }
 
     private Button CreateSongMappingGroupRow(string title, int songCount, string artworkPath, Action onClick)
     {
         string subtitle = songCount == 1 ? "1 song" : $"{songCount} songs";
-        return CreateSongMappingListRow(title, subtitle, false, onClick, artworkPath);
+        Action action = () =>
+        {
+            ResetNavigation(ToneLabNavigationZone.SongMappingLeft);
+            onClick?.Invoke();
+        };
+        Button row = CreateSongMappingListRow(title, subtitle, false, action, artworkPath);
+        RegisterNavigationItem(songMappingLeftNavigationItems, row, songMappingLeftScroll, action, GetNavigationHoverSetter(row));
+        return row;
     }
 
     private Button CreateSongMappingListRow(string title, string subtitle, bool selected, Action onClick, string artworkPath = null)
@@ -2467,16 +2952,14 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             column.Add(subtitleLabel);
         }
 
-        row.RegisterCallback<MouseEnterEvent>(_ =>
+        Action<bool> applyHover = hovered =>
         {
             if (!selected)
-                row.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
-        });
-        row.RegisterCallback<MouseLeaveEvent>(_ =>
-        {
-            if (!selected)
-                row.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        });
+                row.style.backgroundColor = hovered ? new Color(1f, 1f, 1f, 0.08f) : new Color(0f, 0f, 0f, 0f);
+        };
+        row.userData = applyHover;
+        row.RegisterCallback<MouseEnterEvent>(_ => applyHover(true));
+        row.RegisterCallback<MouseLeaveEvent>(_ => applyHover(false));
 
         return row;
     }
@@ -2555,6 +3038,12 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         row.style.borderBottomColor = new Color(1f, 1f, 1f, 0.12f);
         row.style.paddingLeft = 0f;
         row.style.paddingRight = 0f;
+        Action<bool> applyToneHover = hovered =>
+        {
+            row.style.backgroundColor = hovered ? new Color(1f, 1f, 1f, 0.06f) : new Color(0f, 0f, 0f, 0f);
+        };
+        row.RegisterCallback<MouseEnterEvent>(_ => applyToneHover(true));
+        row.RegisterCallback<MouseLeaveEvent>(_ => applyToneHover(false));
 
         VisualElement accent = new VisualElement();
         accent.style.width = 4f;
@@ -2598,15 +3087,17 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         string buttonText = assigning
             ? "Choose preset..."
             : (!string.IsNullOrWhiteSpace(tone?.assignedPresetName) ? tone.assignedPresetName : "Select preset...");
-        Button selectButton = CreateButton(buttonText, "tone-lab-button tone-lab-button-secondary", () =>
+        Action selectAction = () =>
         {
             pendingMappingSongKey = tone?.songKey ?? selectedMappingSongKey;
             pendingMappingArrangementKey = tone?.arrangementKey ?? selectedMappingArrangementKey;
             pendingMappingToneName = tone?.toneName ?? string.Empty;
             sidePanelMode = ToneLabSidePanelMode.Presets;
+            ResetNavigation(ToneLabNavigationZone.Sidebar);
             RefreshUi(syncControls: true);
             ShowActionToast($"Select a preset for \"{pendingMappingToneName}\".");
-        });
+        };
+        Button selectButton = CreateButton(buttonText, "tone-lab-button tone-lab-button-secondary", selectAction);
         StyleCompactActionButton(selectButton, 210f);
         selectButton.style.marginRight = 0f;
         if (assigning)
@@ -2635,6 +3126,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             row.Add(clearButton);
         }
 
+        RegisterNavigationItem(songMappingToneNavigationItems, row, songMappingToneScroll, selectAction, applyToneHover);
         return row;
     }
 
@@ -2701,6 +3193,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         presetListHost.Clear();
+        presetNavigationItems.Clear();
         if (presets == null || presets.Count == 0)
         {
             Label emptyLabel = new Label("No presets yet.");
@@ -2742,7 +3235,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
     private VisualElement CreatePresetRow(UnityToneLabRuntime.ToneLabPreset preset, int index, bool selected, int presetCount)
     {
-        Button row = new Button(() =>
+        Action rowAction = () =>
         {
             if (runtime == null || preset == null)
                 return;
@@ -2751,7 +3244,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 return;
 
             RequestSelectPreset(preset.preset_id);
-        });
+        };
+        Button row = new Button(rowAction);
         row.text = string.Empty;
         row.style.height = 54f;
         row.style.minHeight = 54f;
@@ -2830,23 +3324,18 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         deleteButton.RegisterCallback<PointerUpEvent>(evt => evt.StopPropagation());
         content.Add(deleteButton);
 
-        row.RegisterCallback<MouseEnterEvent>(_ =>
+        Action<bool> applyPresetHover = hovered =>
         {
             if (!selected)
             {
-                row.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
-                nameLabel.style.color = Color.white;
+                row.style.backgroundColor = hovered ? new Color(1f, 1f, 1f, 0.08f) : new Color(0f, 0f, 0f, 0f);
+                nameLabel.style.color = hovered ? Color.white : new Color(0.96f, 0.97f, 0.99f, 0.98f);
             }
-        });
-        row.RegisterCallback<MouseLeaveEvent>(_ =>
-        {
-            if (!selected)
-            {
-                row.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-                nameLabel.style.color = new Color(0.96f, 0.97f, 0.99f, 0.98f);
-            }
-        });
+        };
+        row.RegisterCallback<MouseEnterEvent>(_ => applyPresetHover(true));
+        row.RegisterCallback<MouseLeaveEvent>(_ => applyPresetHover(false));
 
+        RegisterNavigationItem(presetNavigationItems, row, presetListScroll, rowAction, applyPresetHover);
         return row;
     }
 
@@ -2886,6 +3375,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         pedalLibraryHost.Clear();
+        libraryNavigationItems.Clear();
 
         string normalizedQuery = NormalizeSearchQuery(librarySearchQuery);
         int visibleCount = 0;
@@ -2896,16 +3386,19 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             if (descriptor == null || !MatchesLibraryFilter(descriptor, libraryFilter) || !MatchesLibrarySearch(descriptor, normalizedQuery))
                 continue;
 
+            Action addPedalAction = () =>
+            {
+                selectedPedalInstanceId = runtime?.AddPedalToChain(descriptor.DescriptorId) ?? string.Empty;
+                sidePanelMode = ToneLabSidePanelMode.Details;
+                ResetNavigation(ToneLabNavigationZone.PedalBoard);
+                RefreshUi(syncControls: true);
+            };
             ToneLabPedalLibraryItem libraryItem = new ToneLabPedalLibraryItem(
                 descriptor,
-                () =>
-                {
-                    selectedPedalInstanceId = runtime?.AddPedalToChain(descriptor.DescriptorId) ?? string.Empty;
-                    sidePanelMode = ToneLabSidePanelMode.Details;
-                    RefreshUi(syncControls: true);
-                });
+                addPedalAction);
             RegisterLibraryItemDrag(libraryItem, descriptor.DescriptorId);
             pedalLibraryHost.Add(libraryItem);
+            RegisterNavigationItem(libraryNavigationItems, libraryItem, pedalLibraryScroll, addPedalAction, libraryItem.SetControllerHovered);
             visibleCount++;
         }
 
@@ -2980,7 +3473,638 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private void SetSidePanelMode(ToneLabSidePanelMode mode)
     {
         sidePanelMode = mode;
+        ResetNavigation(ToneLabNavigationZone.Sidebar);
         RefreshUi(syncControls: true);
+    }
+
+    private void RegisterFooterNavigationItems()
+    {
+        footerNavigationItems.Clear();
+        RegisterNavigationItem(footerNavigationItems, backButton, null, RequestCloseFromUi, CreateButtonNavigationHover(backButton));
+        RegisterNavigationItem(footerNavigationItems, effectsFolderButton, null, OpenEffectsFolder, CreateButtonNavigationHover(effectsFolderButton));
+        RegisterNavigationItem(footerNavigationItems, songMappingButton, null, ToggleSongMappingMode, CreateButtonNavigationHover(songMappingButton));
+        RegisterNavigationItem(footerNavigationItems, resetAllButton, null, () => OpenPresetModal(ToneLabPresetModalMode.ResetAll), CreateButtonNavigationHover(resetAllButton));
+        RegisterNavigationItem(footerNavigationItems, savePresetButton, null, () =>
+        {
+            if (runtime == null || string.IsNullOrWhiteSpace(runtime.CurrentPresetId))
+                return;
+
+            runtime.SaveCurrentToPreset(runtime.CurrentPresetId);
+            RefreshUi(syncControls: true);
+            ShowActionToast($"Saved preset \"{GetPresetName(runtime.CurrentPresetId)}\".");
+        }, CreateButtonNavigationHover(savePresetButton));
+        RegisterNavigationItem(footerNavigationItems, saveAsPresetButton, null, () => OpenPresetModal(ToneLabPresetModalMode.SaveAs), CreateButtonNavigationHover(saveAsPresetButton));
+    }
+
+    private static void RegisterNavigationItem(
+        List<ToneLabNavigationItem> items,
+        VisualElement element,
+        ScrollView scrollView,
+        Action activate,
+        Action<bool> setHovered = null)
+    {
+        if (items == null || element == null)
+            return;
+
+        items.Add(new ToneLabNavigationItem
+        {
+            element = element,
+            scrollView = scrollView,
+            activate = activate,
+            setHovered = setHovered
+        });
+    }
+
+    private static Action<bool> GetNavigationHoverSetter(VisualElement element)
+    {
+        return element?.userData as Action<bool>;
+    }
+
+    private static Action<bool> CreateButtonNavigationHover(Button button)
+    {
+        if (button == null)
+            return null;
+
+        return hovered =>
+        {
+            if (button == null)
+                return;
+
+            button.style.scale = hovered ? new Scale(new Vector3(1.04f, 1.04f, 1f)) : new Scale(Vector3.one);
+            button.style.opacity = hovered ? 1f : 0.96f;
+        };
+    }
+
+    private void ResetNavigation(ToneLabNavigationZone zone)
+    {
+        navigationZone = zone;
+        navigationIndex = 0;
+        heldNavigationDirection = ToneLabNavigationDirection.None;
+        nextNavigationRepeatTime = -1f;
+        RefreshNavigationHighlight();
+    }
+
+    private void HandleNavigationInput(bool suppressSubmit)
+    {
+        if (openingRefreshInProgress || IsCapturingKeyboardInput)
+            return;
+
+        if (TryConsumeNavigationDirection(out ToneLabNavigationDirection direction))
+        {
+            if (direction != ToneLabNavigationDirection.None)
+                controllerCursorPointerMode = false;
+            MoveNavigation(direction);
+        }
+
+        if (!suppressSubmit && IsNavigationSubmitPressed())
+            ActivateCurrentNavigationItem();
+    }
+
+    private bool TryConsumeNavigationDirection(out ToneLabNavigationDirection direction)
+    {
+        direction = ReadNavigationPressedThisFrame();
+        if (direction != ToneLabNavigationDirection.None)
+        {
+            heldNavigationDirection = direction;
+            nextNavigationRepeatTime = Time.unscaledTime + NavigationInitialRepeatDelay;
+            return true;
+        }
+
+        direction = ReadHeldNavigationDirection();
+        if (direction == ToneLabNavigationDirection.None)
+        {
+            heldNavigationDirection = ToneLabNavigationDirection.None;
+            nextNavigationRepeatTime = -1f;
+            return false;
+        }
+
+        if (direction != heldNavigationDirection)
+        {
+            heldNavigationDirection = direction;
+            nextNavigationRepeatTime = Time.unscaledTime + NavigationInitialRepeatDelay;
+            return true;
+        }
+
+        if (nextNavigationRepeatTime > 0f && Time.unscaledTime >= nextNavigationRepeatTime)
+        {
+            nextNavigationRepeatTime = Time.unscaledTime + NavigationRepeatDelay;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static ToneLabNavigationDirection ReadNavigationPressedThisFrame()
+    {
+        if (Input.GetKeyDown(KeyCode.UpArrow))
+            return ToneLabNavigationDirection.Up;
+        if (Input.GetKeyDown(KeyCode.DownArrow))
+            return ToneLabNavigationDirection.Down;
+        if (Input.GetKeyDown(KeyCode.LeftArrow))
+            return ToneLabNavigationDirection.Left;
+        if (Input.GetKeyDown(KeyCode.RightArrow))
+            return ToneLabNavigationDirection.Right;
+
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad == null)
+                continue;
+
+            if (gamepad.dpad.up.wasPressedThisFrame)
+                return ToneLabNavigationDirection.Up;
+            if (gamepad.dpad.down.wasPressedThisFrame)
+                return ToneLabNavigationDirection.Down;
+            if (gamepad.dpad.left.wasPressedThisFrame)
+                return ToneLabNavigationDirection.Left;
+            if (gamepad.dpad.right.wasPressedThisFrame)
+                return ToneLabNavigationDirection.Right;
+        }
+#endif
+
+        if (!HasInputSystemGamepadConnected())
+        {
+            if (Input.GetKeyDown(KeyCode.JoystickButton13))
+                return ToneLabNavigationDirection.Up;
+            if (Input.GetKeyDown(KeyCode.JoystickButton14))
+                return ToneLabNavigationDirection.Down;
+            if (Input.GetKeyDown(KeyCode.JoystickButton15))
+                return ToneLabNavigationDirection.Left;
+            if (Input.GetKeyDown(KeyCode.JoystickButton16))
+                return ToneLabNavigationDirection.Right;
+        }
+
+        return ToneLabNavigationDirection.None;
+    }
+
+    private static ToneLabNavigationDirection ReadHeldNavigationDirection()
+    {
+        Vector2 axis = Vector2.zero;
+        if (Input.GetKey(KeyCode.LeftArrow))
+            axis.x -= 1f;
+        if (Input.GetKey(KeyCode.RightArrow))
+            axis.x += 1f;
+        if (Input.GetKey(KeyCode.UpArrow))
+            axis.y += 1f;
+        if (Input.GetKey(KeyCode.DownArrow))
+            axis.y -= 1f;
+
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad == null)
+                continue;
+
+            Vector2 dpad = gamepad.dpad.ReadValue();
+            if (dpad.sqrMagnitude > axis.sqrMagnitude)
+                axis = dpad;
+        }
+#endif
+
+        if (!HasInputSystemGamepadConnected())
+        {
+            Vector2 dpadAxis = new Vector2(
+                ReadStrongestAxis("DPadX", "DPad Horizontal"),
+                ReadStrongestAxis("DPadY", "DPad Vertical"));
+            if (dpadAxis.sqrMagnitude > axis.sqrMagnitude)
+                axis = dpadAxis;
+
+            if (Input.GetKey(KeyCode.JoystickButton15))
+                axis.x = -1f;
+            else if (Input.GetKey(KeyCode.JoystickButton16))
+                axis.x = 1f;
+
+            if (Input.GetKey(KeyCode.JoystickButton13))
+                axis.y = 1f;
+            else if (Input.GetKey(KeyCode.JoystickButton14))
+                axis.y = -1f;
+        }
+
+        if (Mathf.Abs(axis.x) < NavigationAxisThreshold && Mathf.Abs(axis.y) < NavigationAxisThreshold)
+            return ToneLabNavigationDirection.None;
+
+        if (Mathf.Abs(axis.x) > Mathf.Abs(axis.y))
+            return axis.x < 0f ? ToneLabNavigationDirection.Left : ToneLabNavigationDirection.Right;
+
+        return axis.y < 0f ? ToneLabNavigationDirection.Down : ToneLabNavigationDirection.Up;
+    }
+
+    private static bool IsNavigationSubmitPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter) || Input.GetKeyDown(KeyCode.Space))
+            return true;
+
+        return false;
+    }
+
+    private void MoveNavigation(ToneLabNavigationDirection direction)
+    {
+        if (direction == ToneLabNavigationDirection.None)
+            return;
+
+        CoerceNavigationZone();
+        switch (navigationZone)
+        {
+            case ToneLabNavigationZone.Sidebar:
+                MoveSidebarNavigation(direction);
+                break;
+            case ToneLabNavigationZone.PedalBoard:
+                MovePedalBoardNavigation(direction);
+                break;
+            case ToneLabNavigationZone.SongMappingLeft:
+                MoveSongMappingLeftNavigation(direction);
+                break;
+            case ToneLabNavigationZone.SongMappingTones:
+                MoveSongMappingToneNavigation(direction);
+                break;
+            case ToneLabNavigationZone.Footer:
+                MoveFooterNavigation(direction);
+                break;
+        }
+
+        RefreshNavigationHighlight();
+    }
+
+    private void MoveSidebarNavigation(ToneLabNavigationDirection direction)
+    {
+        List<ToneLabNavigationItem> items = GetActiveSidebarNavigationItems();
+        if (direction == ToneLabNavigationDirection.Up || direction == ToneLabNavigationDirection.Down)
+        {
+            if (items.Count == 0 && direction == ToneLabNavigationDirection.Down)
+            {
+                SetNavigationZone(ToneLabNavigationZone.Footer);
+                return;
+            }
+
+            MoveNavigationIndex(items, direction == ToneLabNavigationDirection.Down ? 1 : -1);
+            return;
+        }
+
+        if (direction == ToneLabNavigationDirection.Right)
+        {
+            if (boardMode == ToneLabBoardMode.SongMapping)
+                SetNavigationZone(songMappingLeftNavigationItems.Count > 0 ? ToneLabNavigationZone.SongMappingLeft : ToneLabNavigationZone.SongMappingTones);
+            else
+                SetNavigationZone(ToneLabNavigationZone.PedalBoard);
+            return;
+        }
+    }
+
+    private void MovePedalBoardNavigation(ToneLabNavigationDirection direction)
+    {
+        IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> chain = runtime?.CurrentPedalChain;
+        int count = chain?.Count ?? 0;
+        if (count == 0)
+        {
+            if (direction == ToneLabNavigationDirection.Left)
+                SetNavigationZone(ToneLabNavigationZone.Sidebar);
+            else if (direction == ToneLabNavigationDirection.Down)
+                SetNavigationZone(ToneLabNavigationZone.Footer);
+            return;
+        }
+
+        int currentIndex = GetSelectedPedalIndex(chain);
+        int columns = Mathf.Max(1, pedalBoardView?.GetEstimatedColumns() ?? 1);
+        int nextIndex = currentIndex;
+        switch (direction)
+        {
+            case ToneLabNavigationDirection.Left:
+                if (currentIndex % columns == 0)
+                {
+                    SetNavigationZone(ToneLabNavigationZone.Sidebar);
+                    return;
+                }
+                nextIndex = currentIndex - 1;
+                break;
+            case ToneLabNavigationDirection.Right:
+                nextIndex = Mathf.Min(count - 1, currentIndex + 1);
+                break;
+            case ToneLabNavigationDirection.Up:
+                nextIndex = Mathf.Max(0, currentIndex - columns);
+                break;
+            case ToneLabNavigationDirection.Down:
+                if (currentIndex + columns >= count)
+                {
+                    SetNavigationZone(ToneLabNavigationZone.Footer);
+                    return;
+                }
+                nextIndex = currentIndex + columns;
+                break;
+        }
+
+        SelectPedalByIndex(nextIndex, openDetails: false);
+    }
+
+    private void MoveSongMappingLeftNavigation(ToneLabNavigationDirection direction)
+    {
+        if (direction == ToneLabNavigationDirection.Up || direction == ToneLabNavigationDirection.Down)
+        {
+            MoveNavigationIndex(songMappingLeftNavigationItems, direction == ToneLabNavigationDirection.Down ? 1 : -1);
+            return;
+        }
+
+        if (direction == ToneLabNavigationDirection.Left)
+        {
+            SetNavigationZone(ToneLabNavigationZone.Sidebar);
+            return;
+        }
+
+        if (direction == ToneLabNavigationDirection.Right && songMappingToneNavigationItems.Count > 0)
+            SetNavigationZone(ToneLabNavigationZone.SongMappingTones);
+    }
+
+    private void MoveSongMappingToneNavigation(ToneLabNavigationDirection direction)
+    {
+        if (direction == ToneLabNavigationDirection.Up || direction == ToneLabNavigationDirection.Down)
+        {
+            if (direction == ToneLabNavigationDirection.Down && navigationIndex >= songMappingToneNavigationItems.Count - 1)
+            {
+                SetNavigationZone(ToneLabNavigationZone.Footer);
+                return;
+            }
+
+            MoveNavigationIndex(songMappingToneNavigationItems, direction == ToneLabNavigationDirection.Down ? 1 : -1);
+            return;
+        }
+
+        if (direction == ToneLabNavigationDirection.Left)
+            SetNavigationZone(ToneLabNavigationZone.SongMappingLeft);
+    }
+
+    private void MoveFooterNavigation(ToneLabNavigationDirection direction)
+    {
+        List<ToneLabNavigationItem> items = GetVisibleFooterNavigationItems();
+        if (direction == ToneLabNavigationDirection.Left || direction == ToneLabNavigationDirection.Right)
+        {
+            MoveNavigationIndex(items, direction == ToneLabNavigationDirection.Right ? 1 : -1);
+            return;
+        }
+
+        if (direction == ToneLabNavigationDirection.Up)
+        {
+            if (boardMode == ToneLabBoardMode.SongMapping)
+                SetNavigationZone(songMappingToneNavigationItems.Count > 0 ? ToneLabNavigationZone.SongMappingTones : ToneLabNavigationZone.SongMappingLeft);
+            else
+                SetNavigationZone(HasPedalBoardItems() ? ToneLabNavigationZone.PedalBoard : ToneLabNavigationZone.Sidebar);
+        }
+    }
+
+    private void MoveNavigationIndex(List<ToneLabNavigationItem> items, int delta)
+    {
+        if (items == null || items.Count == 0)
+        {
+            navigationIndex = 0;
+            return;
+        }
+
+        navigationIndex = (navigationIndex + delta + items.Count) % items.Count;
+    }
+
+    private void SetNavigationZone(ToneLabNavigationZone zone)
+    {
+        navigationZone = zone;
+        navigationIndex = 0;
+        CoerceNavigationZone();
+    }
+
+    private void CoerceNavigationZone()
+    {
+        if (boardMode == ToneLabBoardMode.Pedalboard &&
+            (navigationZone == ToneLabNavigationZone.SongMappingLeft || navigationZone == ToneLabNavigationZone.SongMappingTones))
+        {
+            navigationZone = ToneLabNavigationZone.PedalBoard;
+            navigationIndex = 0;
+        }
+        else if (boardMode == ToneLabBoardMode.SongMapping && navigationZone == ToneLabNavigationZone.PedalBoard)
+        {
+            navigationZone = ToneLabNavigationZone.SongMappingLeft;
+            navigationIndex = 0;
+        }
+
+        List<ToneLabNavigationItem> items = GetNavigationItemsForZone(navigationZone);
+        if (navigationZone != ToneLabNavigationZone.PedalBoard)
+            navigationIndex = Mathf.Clamp(navigationIndex, 0, Mathf.Max(0, (items?.Count ?? 0) - 1));
+
+        if (navigationZone == ToneLabNavigationZone.SongMappingLeft && (items?.Count ?? 0) == 0 && songMappingToneNavigationItems.Count > 0)
+        {
+            navigationZone = ToneLabNavigationZone.SongMappingTones;
+            navigationIndex = Mathf.Clamp(navigationIndex, 0, Mathf.Max(0, songMappingToneNavigationItems.Count - 1));
+        }
+    }
+
+    private void ActivateCurrentNavigationItem()
+    {
+        CoerceNavigationZone();
+        if (navigationZone == ToneLabNavigationZone.PedalBoard)
+        {
+            if (!HasPedalBoardItems())
+            {
+                SetSidePanelMode(ToneLabSidePanelMode.Library);
+                return;
+            }
+
+            OpenSelectedPedalDetailsFromNavigation();
+            return;
+        }
+
+        List<ToneLabNavigationItem> items = GetNavigationItemsForZone(navigationZone);
+        if (items == null || items.Count == 0)
+            return;
+
+        ToneLabNavigationItem item = items[Mathf.Clamp(navigationIndex, 0, items.Count - 1)];
+        item.activate?.Invoke();
+    }
+
+    private List<ToneLabNavigationItem> GetNavigationItemsForZone(ToneLabNavigationZone zone)
+    {
+        switch (zone)
+        {
+            case ToneLabNavigationZone.Sidebar:
+                return GetActiveSidebarNavigationItems();
+            case ToneLabNavigationZone.SongMappingLeft:
+                return songMappingLeftNavigationItems;
+            case ToneLabNavigationZone.SongMappingTones:
+                return songMappingToneNavigationItems;
+            case ToneLabNavigationZone.Footer:
+                return GetVisibleFooterNavigationItems();
+            default:
+                return null;
+        }
+    }
+
+    private List<ToneLabNavigationItem> GetActiveSidebarNavigationItems()
+    {
+        switch (sidePanelMode)
+        {
+            case ToneLabSidePanelMode.Library:
+                return libraryNavigationItems;
+            case ToneLabSidePanelMode.Details:
+                return inspectorNavigationItems;
+            default:
+                return presetNavigationItems;
+        }
+    }
+
+    private List<ToneLabNavigationItem> GetVisibleFooterNavigationItems()
+    {
+        visibleFooterNavigationItems.Clear();
+        for (int i = 0; i < footerNavigationItems.Count; i++)
+        {
+            ToneLabNavigationItem item = footerNavigationItems[i];
+            if (IsNavigationElementVisible(item?.element))
+                visibleFooterNavigationItems.Add(item);
+        }
+
+        return visibleFooterNavigationItems;
+    }
+
+    private static bool IsNavigationElementVisible(VisualElement element)
+    {
+        return element != null &&
+               element.style.display != DisplayStyle.None &&
+               element.enabledInHierarchy;
+    }
+
+    private bool HasPedalBoardItems()
+    {
+        return runtime?.CurrentPedalChain != null && runtime.CurrentPedalChain.Length > 0;
+    }
+
+    private int GetSelectedPedalIndex(IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> chain)
+    {
+        if (chain == null || chain.Count == 0)
+            return 0;
+
+        for (int i = 0; i < chain.Count; i++)
+        {
+            UnityToneLabRuntime.ToneLabPedalSlot slot = chain[i];
+            if (slot != null && string.Equals(slot.pedal_instance_id, selectedPedalInstanceId, StringComparison.Ordinal))
+                return i;
+        }
+
+        selectedPedalInstanceId = chain[0]?.pedal_instance_id ?? string.Empty;
+        return 0;
+    }
+
+    private void SelectPedalByIndex(int index, bool openDetails)
+    {
+        IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> chain = runtime?.CurrentPedalChain;
+        if (chain == null || chain.Count == 0)
+            return;
+
+        int clampedIndex = Mathf.Clamp(index, 0, chain.Count - 1);
+        selectedPedalInstanceId = chain[clampedIndex]?.pedal_instance_id ?? string.Empty;
+        if (openDetails)
+        {
+            sidePanelMode = ToneLabSidePanelMode.Details;
+            RefreshUi(syncControls: true);
+            return;
+        }
+
+        pedalBoardView?.Refresh(chain, selectedPedalInstanceId);
+        pedalBoardView?.ScrollPedalIntoView(selectedPedalInstanceId);
+    }
+
+    private void OpenSelectedPedalDetailsFromNavigation()
+    {
+        IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> chain = runtime?.CurrentPedalChain;
+        if (chain == null || chain.Count == 0)
+            return;
+
+        SelectPedalByIndex(GetSelectedPedalIndex(chain), openDetails: true);
+    }
+
+    private void RefreshNavigationHighlight()
+    {
+        ClearNavigationHighlight();
+        if (!isVisible)
+            return;
+
+        CoerceNavigationZone();
+        if (navigationZone == ToneLabNavigationZone.PedalBoard)
+        {
+            pedalBoardView?.ScrollPedalIntoView(selectedPedalInstanceId);
+            return;
+        }
+
+        List<ToneLabNavigationItem> items = GetNavigationItemsForZone(navigationZone);
+        if (items == null || items.Count == 0)
+            return;
+
+        ToneLabNavigationItem item = items[Mathf.Clamp(navigationIndex, 0, items.Count - 1)];
+        if (item == null || item.element == null)
+            return;
+
+        navigationHighlightedItem = item;
+        item.setHovered?.Invoke(true);
+        item.scrollView?.ScrollTo(item.element);
+    }
+
+    private void ClearNavigationHighlight()
+    {
+        if (navigationHighlightedItem == null)
+            return;
+
+        navigationHighlightedItem.setHovered?.Invoke(false);
+        navigationHighlightedItem = null;
+    }
+
+    private static float ReadStrongestAxis(params string[] axisNames)
+    {
+        float strongest = 0f;
+        if (axisNames == null)
+            return strongest;
+
+        for (int i = 0; i < axisNames.Length; i++)
+        {
+            float value = TryGetAxisRaw(axisNames[i]);
+            if (Mathf.Abs(value) > Mathf.Abs(strongest))
+                strongest = value;
+        }
+
+        return Mathf.Clamp(strongest, -1f, 1f);
+    }
+
+    private static float TryGetAxisRaw(string axisName)
+    {
+        if (string.IsNullOrWhiteSpace(axisName))
+            return 0f;
+
+        try
+        {
+            return Input.GetAxisRaw(axisName);
+        }
+        catch (ArgumentException)
+        {
+            return 0f;
+        }
+    }
+
+    private static bool TryGetButtonDown(string buttonName)
+    {
+        if (string.IsNullOrWhiteSpace(buttonName))
+            return false;
+
+        try
+        {
+            return Input.GetButtonDown(buttonName);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static bool HasInputSystemGamepadConnected()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad != null)
+                return true;
+        }
+#endif
+        return false;
     }
 
     private VisualElement CreateSidebarHeader(string title, string subtitle, VisualElement trailingElement)
@@ -3581,6 +4705,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         selectedPedalInstanceId = runtime.AddPedalToChain(libraryDragDescriptorId, insertionIndex);
         sidePanelMode = ToneLabSidePanelMode.Details;
+        ResetNavigation(ToneLabNavigationZone.PedalBoard);
         RefreshUi(syncControls: true);
     }
 
@@ -3603,6 +4728,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         pedalInspectorHost.Clear();
+        inspectorNavigationItems.Clear();
         UnityToneLabRuntime.ToneLabPedalSlot[] pedalChain = runtime.CurrentPedalChain;
         UnityToneLabRuntime.ToneLabPedalSlot selectedSlot = null;
         for (int i = 0; i < pedalChain.Length; i++)
@@ -3631,14 +4757,17 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             emptySubtitleLabel.style.marginBottom = 14f;
             pedalInspectorHost.Add(emptySubtitleLabel);
 
-            Button openLibraryButton = CreateButton("Open Library", "tone-lab-button tone-lab-button-secondary", () =>
+            Action openLibraryAction = () =>
             {
                 sidePanelMode = ToneLabSidePanelMode.Library;
+                ResetNavigation(ToneLabNavigationZone.Sidebar);
                 RefreshUi(syncControls: true);
-            });
+            };
+            Button openLibraryButton = CreateButton("Open Library", "tone-lab-button tone-lab-button-secondary", openLibraryAction);
             openLibraryButton.style.minWidth = 200f;
             openLibraryButton.style.marginRight = 0f;
             pedalInspectorHost.Add(openLibraryButton);
+            RegisterNavigationItem(inspectorNavigationItems, openLibraryButton, pedalInspectorScroll, openLibraryAction, CreateButtonNavigationHover(openLibraryButton));
             return;
         }
 
@@ -3652,7 +4781,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         infoRow.style.marginBottom = 12f;
         pedalInspectorHost.Add(infoRow);
 
-        Button pedalToggleButton = CreateButton("ON", "tone-lab-button tone-lab-button-secondary", () =>
+        Action toggleAction = () =>
         {
             if (runtime == null)
                 return;
@@ -3660,23 +4789,27 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             bool nextEnabled = !selectedSlot.enabled;
             runtime.SetPedalEnabled(selectedSlot.pedal_instance_id, nextEnabled);
             RefreshUi(syncControls: true);
-        });
+        };
+        Button pedalToggleButton = CreateButton("ON", "tone-lab-button tone-lab-button-secondary", toggleAction);
         pedalToggleButton.style.minWidth = 96f;
         pedalToggleButton.style.height = 36f;
         pedalToggleButton.style.marginRight = 10f;
         ApplyInspectorToggleStyle(pedalToggleButton, selectedSlot.enabled);
         infoRow.Add(pedalToggleButton);
+        RegisterNavigationItem(inspectorNavigationItems, pedalToggleButton, pedalInspectorScroll, toggleAction, CreateButtonNavigationHover(pedalToggleButton));
 
-        Button removePedalButton = CreateButton("Remove", "tone-lab-button tone-lab-button-danger", () =>
+        Action removeAction = () =>
         {
             runtime?.RemovePedalFromChain(selectedSlot.pedal_instance_id);
             sidePanelMode = ToneLabSidePanelMode.Details;
             RefreshUi(syncControls: true);
-        });
+        };
+        Button removePedalButton = CreateButton("Remove", "tone-lab-button tone-lab-button-danger", removeAction);
         removePedalButton.style.minWidth = 96f;
         removePedalButton.style.height = 36f;
         removePedalButton.style.marginRight = 0f;
         infoRow.Add(removePedalButton);
+        RegisterNavigationItem(inspectorNavigationItems, removePedalButton, pedalInspectorScroll, removeAction, CreateButtonNavigationHover(removePedalButton));
 
         VisualElement divider = new VisualElement();
         divider.style.height = 1f;

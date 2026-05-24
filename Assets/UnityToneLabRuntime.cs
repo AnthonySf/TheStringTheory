@@ -1762,6 +1762,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         RefreshInputDevices();
         lastRoutingDiagnostics = string.Empty;
         lastRoutingAttemptSummary = string.Empty;
+        LogAudioRouteEvent("Start requested", BuildDeviceCatalogLog());
 
         if (advancedRoutingOptions != null && advancedRoutingOptions.betaEnabled)
             return TryStartMonitoringAdvancedPath();
@@ -1782,6 +1783,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     private void StopMonitoringInternal(bool restoreAudioConfiguration)
     {
+        if (monitoring || awaitingMicrophoneStart || usingPortAudioBackend)
+            LogAudioRouteEvent("Stopping monitoring", $"restoreAudioConfiguration={restoreAudioConfiguration}");
+
         usingPortAudioBackend = false;
         StopUnityOutputCapture();
         StopUnityRecorderCapture();
@@ -1837,6 +1841,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             if (plans.Count == 0)
             {
                 statusMessage = "No PortAudio duplex route available.";
+                LogAudioRouteEvent("Legacy PortAudio unavailable", BuildDeviceCatalogLog(), warning: true);
             }
             else
             {
@@ -1862,6 +1867,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                             attempts.AppendLine($"  Note: {captureNotice}");
                         attempts.AppendLine("  Result: success");
                         lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
+                        LogAudioRouteEvent("Legacy PortAudio monitoring live", lastRoutingAttemptSummary);
                         return true;
                     }
 
@@ -1870,11 +1876,13 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 }
 
                 lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
+                LogAudioRouteEvent("Legacy PortAudio attempts failed", lastRoutingAttemptSummary, warning: true);
             }
         }
 
         inputDevices = Microphone.devices ?? Array.Empty<string>();
         outputDevices = new[] { "System Default" };
+        LogAudioRouteEvent("Falling back to Unity microphone monitoring", BuildDeviceCatalogLog(), warning: true);
         return TryStartUnityMicrophoneMonitoring();
     }
 
@@ -1925,6 +1933,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                     attempts.AppendLine("  Result: success");
                     lastRoutingDiagnostics = diagnostics.ToString().TrimEnd();
                     lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
+                    LogAudioRouteEvent("Advanced PortAudio monitoring live", $"{lastRoutingDiagnostics}\n{lastRoutingAttemptSummary}");
                     return true;
                 }
 
@@ -1943,6 +1952,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 statusMessage = $"{statusMessage}  (advanced fallback)";
                 lastRoutingDiagnostics = diagnostics.ToString().TrimEnd();
                 lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
+                LogAudioRouteEvent("Advanced audio fell back to legacy monitoring", $"{lastRoutingDiagnostics}\n{lastRoutingAttemptSummary}", warning: true);
                 return true;
             }
 
@@ -1958,6 +1968,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         lastRoutingDiagnostics = diagnostics.ToString().TrimEnd();
         lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
+        LogAudioRouteEvent("Advanced audio failed to start", $"{lastRoutingDiagnostics}\n{lastRoutingAttemptSummary}", warning: true);
         return false;
     }
 
@@ -2057,6 +2068,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             statusMessage = $"{statusMessage}  \u2022  {captureNotice}";
         if (enableUnityRecorderCapture)
             statusMessage = $"{statusMessage}  \u2022  Unity Recorder guitar capture";
+        LogAudioRouteEvent(
+            "PortAudio route opened",
+            $"route={routeDescription}, sampleRate={sampleRate}, framesPerBuffer={framesPerBuffer}, inputLatency={inputDevice.DefaultLowInputLatency:0.####}, outputLatency={outputDevice.DefaultLowOutputLatency:0.####}, unityOutputCapture={enableUnityOutputCapture}, recorderCapture={enableUnityRecorderCapture}");
         return true;
     }
 
@@ -2065,6 +2079,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (inputDevices.Length == 0)
         {
             statusMessage = "No microphone inputs found.";
+            LogAudioRouteEvent("Unity microphone monitoring unavailable", BuildDeviceCatalogLog(), warning: true);
             return false;
         }
 
@@ -2085,6 +2100,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             statusMessage = awaitingMicrophoneStart
                 ? $"Starting live monitoring on {pendingDeviceName}..."
                 : "Failed to allocate microphone clip.";
+            LogAudioRouteEvent(
+                awaitingMicrophoneStart ? "Unity microphone startup requested" : "Unity microphone allocation failed",
+                BuildDeviceCatalogLog(),
+                warning: !awaitingMicrophoneStart);
             return awaitingMicrophoneStart;
         }
         catch (Exception ex)
@@ -2093,6 +2112,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             pendingMicrophoneClip = null;
             statusMessage = $"Microphone start failed: {ex.Message}";
             Debug.LogWarning($"[UnityToneLabRuntime] Failed to start microphone '{pendingDeviceName}': {ex.Message}");
+            LogAudioRouteEvent("Unity microphone start failed", ex.ToString(), warning: true);
             return false;
         }
     }
@@ -2140,6 +2160,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         float latencyMs = 1000f * bufferLength * Mathf.Max(1, numBuffers) / Mathf.Max(1f, activeSampleRate);
         float startupLeadMs = 1000f * requiredLeadSamples / Mathf.Max(1f, activeSampleRate);
         statusMessage = $"Live  {pendingDeviceName}  \u2022  {activeSampleRate} Hz  \u2022  Buffer {bufferLength} x {numBuffers}  \u2022  Startup {startupLeadMs:F1} ms  \u2022  ~{latencyMs:F1} ms";
+        LogAudioRouteEvent(
+            "Unity microphone monitoring live",
+            $"requiredLeadSamples={requiredLeadSamples}, startupLeadMs={startupLeadMs:F1}, dspBufferLength={bufferLength}, dspBufferCount={numBuffers}, estimatedDspLatencyMs={latencyMs:F1}");
     }
 
     private void PrepareMicrophoneCaptureBuffers(AudioClip microphoneClip, int requiredLeadSamples)
@@ -5749,6 +5772,99 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                     data[frame + channel] = sample;
             }
         }
+    }
+
+    private string BuildDeviceCatalogLog()
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.Append("inputChoices=");
+        builder.Append(FormatDeviceList(inputDevices));
+        builder.Append("\noutputChoices=");
+        builder.Append(FormatDeviceList(outputDevices));
+        builder.Append("\nportAudioDeviceCount=");
+        builder.Append(portAudioAllDevices != null ? portAudioAllDevices.Length : 0);
+        builder.Append(", preferredInputs=");
+        builder.Append(portAudioInputDevices != null ? portAudioInputDevices.Length : 0);
+        builder.Append(", preferredOutputs=");
+        builder.Append(portAudioOutputDevices != null ? portAudioOutputDevices.Length : 0);
+        return builder.ToString();
+    }
+
+    private static string FormatDeviceList(IReadOnlyList<string> devices)
+    {
+        if (devices == null || devices.Count == 0)
+            return "(none)";
+
+        return string.Join("; ", devices.Where(device => !string.IsNullOrWhiteSpace(device)).Select(device => device.Trim()));
+    }
+
+    private void LogAudioRouteEvent(string eventName, string details = null, bool warning = false)
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.Append("[ToneLabAudio] ");
+        builder.Append(string.IsNullOrWhiteSpace(eventName) ? "Event" : eventName.Trim());
+        builder.Append(" | backend=");
+        builder.Append(ActiveAudioBackendLabel);
+        builder.Append(" | hostApi=");
+        builder.Append(ActiveHostApiLabel);
+        builder.Append(" | input=");
+        builder.Append(string.IsNullOrWhiteSpace(inputRouteLabel) ? "-" : inputRouteLabel);
+        builder.Append(" | output=");
+        builder.Append(string.IsNullOrWhiteSpace(outputRouteLabel) ? "-" : outputRouteLabel);
+        builder.Append(" | activeSampleRate=");
+        builder.Append(activeSampleRate);
+        builder.Append(" | activeBuffer=");
+        builder.Append(FormatActiveBufferLabel(activeDspBufferSize));
+        builder.Append(" | monitoring=");
+        builder.Append(monitoring);
+        builder.Append(" | awaitingStartup=");
+        builder.Append(awaitingMicrophoneStart);
+        builder.Append(" | status=");
+        builder.Append(string.IsNullOrWhiteSpace(statusMessage) ? "-" : statusMessage);
+
+        if (settings != null)
+        {
+            builder.Append(" | settingsInput=");
+            builder.Append(string.IsNullOrWhiteSpace(settings.input_device_name) ? "Automatic" : settings.input_device_name);
+            builder.Append(" | settingsOutput=");
+            builder.Append(string.IsNullOrWhiteSpace(settings.output_device_name) ? "Automatic" : settings.output_device_name);
+            builder.Append(" | settingsBuffer=");
+            builder.Append(FormatActiveBufferLabel(settings.monitoring_buffer_size));
+        }
+
+        if (advancedRoutingOptions != null)
+        {
+            builder.Append(" | advancedBeta=");
+            builder.Append(advancedRoutingOptions.betaEnabled);
+            builder.Append(" | advancedBackend=");
+            builder.Append(SharedAudioBackendModes.Normalize(advancedRoutingOptions.backendMode));
+            builder.Append(" | allowFallback=");
+            builder.Append(advancedRoutingOptions.allowFallback);
+            builder.Append(" | advancedInput=");
+            builder.Append(string.IsNullOrWhiteSpace(advancedRoutingOptions.preferredInputDeviceName) ? "Automatic" : advancedRoutingOptions.preferredInputDeviceName);
+            builder.Append(" | advancedOutput=");
+            builder.Append(string.IsNullOrWhiteSpace(advancedRoutingOptions.preferredOutputDeviceName) ? "Automatic" : advancedRoutingOptions.preferredOutputDeviceName);
+            builder.Append(" | advancedSampleRate=");
+            builder.Append(SharedAudioSampleRateOptions.ToLabel(advancedRoutingOptions.sampleRate));
+            builder.Append(" | advancedBuffer=");
+            builder.Append(FormatActiveBufferLabel(advancedRoutingOptions.bufferSize));
+            builder.Append(" | unifiedOutput=");
+            builder.Append(advancedRoutingOptions.unifiedOutputEnabled);
+            builder.Append(" | recorderCapture=");
+            builder.Append(advancedRoutingOptions.unityRecorderCaptureEnabled);
+        }
+
+        if (!string.IsNullOrWhiteSpace(details))
+        {
+            builder.Append('\n');
+            builder.Append(details.Trim());
+        }
+
+        string message = builder.ToString();
+        if (warning)
+            Debug.LogWarning(message);
+        else
+            Debug.Log(message);
     }
 
     private AudioClip CreateMonitorDriverClip(int sampleRate)

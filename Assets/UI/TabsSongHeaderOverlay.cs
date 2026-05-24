@@ -2233,6 +2233,7 @@ public sealed class TabsSongHeaderOverlay
     private float lastLoopPauseCountdownProgress = -1f;
     private bool controllerCursorActive;
     private bool controllerCursorInitialized;
+    private bool controllerCursorPointerMode;
     private Vector2 controllerCursorPanelPosition;
     private Vector3 lastPhysicalMousePosition;
     private VisualElement lastControllerCursorTarget;
@@ -11428,7 +11429,10 @@ public sealed class TabsSongHeaderOverlay
         lastPhysicalMousePosition = currentMousePosition;
 
         if (mouseMoved || mouseClicked)
+        {
             controllerCursorActive = false;
+            controllerCursorPointerMode = false;
+        }
 
         float axisX = ReadControllerCursorHorizontalAxis();
         float axisY = ReadControllerCursorVerticalAxis();
@@ -11458,6 +11462,7 @@ public sealed class TabsSongHeaderOverlay
         Vector2 movement = new Vector2(axisX, -axisY);
         if (movement.sqrMagnitude > 0.0001f)
         {
+            controllerCursorPointerMode = true;
             float speed = 2200f;
             if (movement.sqrMagnitude > 1f)
                 movement.Normalize();
@@ -11475,7 +11480,8 @@ public sealed class TabsSongHeaderOverlay
         if (WasControllerPrimaryActionPressedThisFrame())
         {
             ClearNativeUiFocusForControllerCursor();
-            DispatchControllerCursorClick(pickedTarget);
+            if (controllerCursorPointerMode)
+                DispatchControllerCursorClick(pickedTarget);
         }
     }
 
@@ -11495,7 +11501,6 @@ public sealed class TabsSongHeaderOverlay
                snapshot.showGameModes ||
                snapshot.showHeroModeSettings ||
                snapshot.showNotesDetectorTestMenu ||
-               snapshot.showToneLab ||
                snapshot.showGeneratedAudioTrackSelectionPopup ||
                snapshot.showSongSettingsTrackSelectionPopup ||
                snapshot.showStartupTuningReminder ||
@@ -11509,6 +11514,7 @@ public sealed class TabsSongHeaderOverlay
     private void HideControllerCursor()
     {
         controllerCursorActive = false;
+        controllerCursorPointerMode = false;
         lastControllerCursorTarget = null;
         if (controllerCursor != null)
         {

@@ -124,16 +124,14 @@ public sealed class ToneLabPedalLibraryItem : VisualElement
             onAdd?.Invoke();
         });
 
-        RegisterCallback<MouseEnterEvent>(_ =>
-        {
-            style.backgroundColor = new Color(1f, 1f, 1f, 0.06f);
-            style.borderBottomColor = new Color(1f, 1f, 1f, 0.24f);
-        });
-        RegisterCallback<MouseLeaveEvent>(_ =>
-        {
-            style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-            style.borderBottomColor = new Color(1f, 1f, 1f, 0.13f);
-        });
+        RegisterCallback<MouseEnterEvent>(_ => SetControllerHovered(true));
+        RegisterCallback<MouseLeaveEvent>(_ => SetControllerHovered(false));
+    }
+
+    public void SetControllerHovered(bool hovered)
+    {
+        style.backgroundColor = hovered ? new Color(1f, 1f, 1f, 0.06f) : new Color(0f, 0f, 0f, 0f);
+        style.borderBottomColor = hovered ? new Color(1f, 1f, 1f, 0.24f) : new Color(1f, 1f, 1f, 0.13f);
     }
 
     private static string GetCategoryLabel(UnityToneLabRuntime.ToneLabPedalType pedalType)

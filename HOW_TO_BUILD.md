@@ -55,12 +55,12 @@ $packages = @(
     @{
         Url = "https://www.nuget.org/api/v2/package/System.Drawing.Common/9.0.5"
         Zip = "System.Drawing.Common.zip"
-        Dll = "lib/net9.0/System.Drawing.Common.dll"
+        Dll = "lib/netstandard2.0/System.Drawing.Common.dll"
     },
     @{
         Url = "https://www.nuget.org/api/v2/package/Microsoft.Win32.SystemEvents/9.0.5"
         Zip = "Microsoft.Win32.SystemEvents.zip"
-        Dll = "runtimes/win/lib/net9.0/Microsoft.Win32.SystemEvents.dll"
+        Dll = "lib/netstandard2.0/Microsoft.Win32.SystemEvents.dll"
     }
 )
 
@@ -104,6 +104,8 @@ Install it like this:
 After import, this folder should exist:
 
 - `Assets/MidiPlayer/`
+
+Private CI restores this package from a private release asset. Public source builders must install it from the Asset Store because the package contents are not redistributed in this repo.
 
 ## 4. Open the project in Unity
 
