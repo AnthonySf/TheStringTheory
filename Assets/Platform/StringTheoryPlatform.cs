@@ -189,7 +189,7 @@ public static class StringTheoryPlatform
         if (IsMacOS)
             return TryPickMacFolder(title, initialDirectory, out selectedPath);
 
-        Debug.LogWarning("[Platform] Native folder picker is not implemented for this player platform yet.");
+        UnityEngine.Debug.LogWarning("[Platform] Native folder picker is not implemented for this player platform yet.");
         return false;
 #endif
     }
