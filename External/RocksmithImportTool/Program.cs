@@ -13,7 +13,7 @@ using Rocksmith2014.XML.Processing;
 
 internal static class Program
 {
-    private const int SchemaVersion = 16;
+    private const int SchemaVersion = 19;
     private const string ManifestFileName = "song.rs2song.json";
     private const string ContentDirectoryName = "psarc_content";
     private const float RocksmithVibratoCyclesPerSecond = 5f;
@@ -64,7 +64,7 @@ internal static class Program
         Console.WriteLine($"[RocksmithImportTool] Importing {psarcPath}");
         FSharpFunc<Unit, Unit> progress = new ConsoleProgressFunc();
 
-        await Rocksmith2014.DLCProject.PsarcImporter.import(
+        var importResult = await Rocksmith2014.DLCProject.PsarcImporter.import(
             progress,
             psarcPath,
             contentDirectory);
@@ -87,8 +87,10 @@ internal static class Program
         List<string> manifestJsonPaths = Directory.GetFiles(contentDirectory, "*.json", SearchOption.AllDirectories)
             .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToList();
+        List<CachedToneDefinitionData> projectToneDefinitions = ExtractProjectToneDefinitions(importResult.ProjectPath);
 
         List<CachedArrangementSummary> arrangementSummaries = new List<CachedArrangementSummary>();
+        HashSet<string> toneDefinitionKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         int maxDifficultyRating = 0;
         float maxDurationSeconds = 0f;
         InstrumentalArrangement firstArrangement = null;
@@ -100,7 +102,8 @@ internal static class Program
             firstArrangement ??= arrangement;
             ImproveArrangementForImport(arrangement);
             ArrangementContext context = ArrangementContext.From(arrangement, xmlPath, i);
-            context.Tones = ExtractArrangementTones(manifestJsonPaths, xmlPath, context.Route);
+            context.Tones = ExtractArrangementTones(manifestJsonPaths, xmlPath, context.Route, projectToneDefinitions);
+            AddToneDefinitionKeys(context.Tones.definitions, toneDefinitionKeys);
 
             List<ArrangementVariantBuildResult> variants = BuildVariants(context);
             for (int variantIndex = 0; variantIndex < variants.Count; variantIndex++)
@@ -157,6 +160,8 @@ internal static class Program
             previewAudioPath = BuildStoredPath(targetDirectory, previewAudioPath),
             durationSeconds = maxDurationSeconds,
             difficultyRating = maxDifficultyRating,
+            toneDefinitionScanVersion = 1,
+            toneDefinitionCount = toneDefinitionKeys.Count,
             arrangements = arrangementSummaries
         };
 
@@ -190,7 +195,11 @@ internal static class Program
         }
     }
 
-    private static CachedArrangementToneData ExtractArrangementTones(IReadOnlyList<string> manifestJsonPaths, string xmlPath, string arrangementName)
+    private static CachedArrangementToneData ExtractArrangementTones(
+        IReadOnlyList<string> manifestJsonPaths,
+        string xmlPath,
+        string arrangementName,
+        IReadOnlyList<CachedToneDefinitionData> projectToneDefinitions)
     {
         ManifestToneData manifestToneData = FindManifestToneData(manifestJsonPaths, arrangementName);
         CachedArrangementToneData tones = ParseXmlToneData(xmlPath, manifestToneData.IdNameMap);
@@ -201,8 +210,35 @@ internal static class Program
             tones.baseToneName = fallbackBaseTone.Trim();
         }
 
-        tones.definitions = manifestToneData.Definitions;
+        tones.definitions = manifestToneData.Definitions.Count > 0
+            ? manifestToneData.Definitions
+            : CloneToneDefinitions(projectToneDefinitions);
         return NormalizeToneData(tones);
+    }
+
+    private static List<CachedToneDefinitionData> ExtractProjectToneDefinitions(string projectPath)
+    {
+        if (string.IsNullOrWhiteSpace(projectPath) || !File.Exists(projectPath))
+            return new List<CachedToneDefinitionData>();
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(projectPath));
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("Tones", out JsonElement tonesElement) ||
+                tonesElement.ValueKind != JsonValueKind.Array)
+            {
+                return new List<CachedToneDefinitionData>();
+            }
+
+            return ExtractToneDefinitionsFromArray(tonesElement);
+        }
+        catch (Exception ex) when (ex is JsonException || ex is IOException || ex is UnauthorizedAccessException)
+        {
+            Console.WriteLine($"[RocksmithImportTool] Skipping project tone definitions from '{Path.GetFileName(projectPath)}': {ex.Message}");
+            return new List<CachedToneDefinitionData>();
+        }
     }
 
     private static ManifestToneData FindManifestToneData(IReadOnlyList<string> manifestJsonPaths, string arrangementName)
@@ -257,12 +293,20 @@ internal static class Program
 
     private static List<CachedToneDefinitionData> ExtractToneDefinitions(JsonElement attributes)
     {
-        List<CachedToneDefinitionData> definitions = new List<CachedToneDefinitionData>();
         if (!attributes.TryGetProperty("Tones", out JsonElement tonesElement) ||
             tonesElement.ValueKind != JsonValueKind.Array)
         {
-            return definitions;
+            return new List<CachedToneDefinitionData>();
         }
+
+        return ExtractToneDefinitionsFromArray(tonesElement);
+    }
+
+    private static List<CachedToneDefinitionData> ExtractToneDefinitionsFromArray(JsonElement tonesElement)
+    {
+        List<CachedToneDefinitionData> definitions = new List<CachedToneDefinitionData>();
+        if (tonesElement.ValueKind != JsonValueKind.Array)
+            return definitions;
 
         HashSet<string> seenKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (JsonElement toneElement in tonesElement.EnumerateArray())
@@ -284,6 +328,51 @@ internal static class Program
         }
 
         return definitions;
+    }
+
+    private static List<CachedToneDefinitionData> CloneToneDefinitions(IReadOnlyList<CachedToneDefinitionData> definitions)
+    {
+        if (definitions == null || definitions.Count == 0)
+            return new List<CachedToneDefinitionData>();
+
+        List<CachedToneDefinitionData> clones = new List<CachedToneDefinitionData>(definitions.Count);
+        for (int i = 0; i < definitions.Count; i++)
+        {
+            CachedToneDefinitionData definition = definitions[i];
+            if (definition == null)
+                continue;
+
+            clones.Add(new CachedToneDefinitionData
+            {
+                name = definition.name ?? string.Empty,
+                key = definition.key ?? string.Empty,
+                rawJson = definition.rawJson ?? string.Empty
+            });
+        }
+
+        return clones;
+    }
+
+    private static void AddToneDefinitionKeys(IReadOnlyList<CachedToneDefinitionData> definitions, HashSet<string> keys)
+    {
+        if (definitions == null || keys == null)
+            return;
+
+        for (int i = 0; i < definitions.Count; i++)
+        {
+            CachedToneDefinitionData definition = definitions[i];
+            if (definition == null)
+                continue;
+
+            string key = !string.IsNullOrWhiteSpace(definition.key)
+                ? definition.key.Trim()
+                : !string.IsNullOrWhiteSpace(definition.name)
+                    ? definition.name.Trim()
+                    : definition.rawJson ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(key))
+                keys.Add(key);
+        }
     }
 
     private static Dictionary<int, string> ExtractToneIdNameMap(JsonElement attributes)
@@ -1770,6 +1859,8 @@ internal static class Program
         public string previewAudioPath = string.Empty;
         public float durationSeconds;
         public int difficultyRating;
+        public int toneDefinitionScanVersion;
+        public int toneDefinitionCount;
         public List<CachedArrangementSummary> arrangements = new List<CachedArrangementSummary>();
     }
 

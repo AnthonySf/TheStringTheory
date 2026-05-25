@@ -7,7 +7,7 @@ using UnityEngine;
 [Serializable]
 public sealed class SharedAudioSettings
 {
-    public int version = 6;
+    public int version = 8;
     public string inputDeviceName = string.Empty;
     public string outputDeviceName = string.Empty;
     public int monitoringBufferSize = 128;
@@ -21,6 +21,7 @@ public sealed class SharedAudioSettings
 public sealed class SharedAudioAdvancedSettings
 {
     public bool betaEnabled;
+    public string inputChannelMode = SharedAudioInputChannelModes.Input1;
     public string backendMode = SharedAudioBackendModes.Auto;
     public bool allowFallback = true;
     public string inputDeviceName = string.Empty;
@@ -29,6 +30,56 @@ public sealed class SharedAudioAdvancedSettings
     public int bufferSize;
     public bool unifiedOutputEnabled;
     public bool unityRecorderCaptureEnabled;
+}
+
+public static class SharedAudioInputChannelModes
+{
+    public const string Auto = "Auto";
+    public const string Input1 = "Input 1";
+    public const string Input2 = "Input 2";
+    public const string MonoMix = "Mono Mix";
+    public const string Stereo = "Stereo";
+
+    public static readonly string[] Choices =
+    {
+        Input1,
+        Input2,
+        MonoMix
+    };
+
+    public static string Normalize(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return Input1;
+
+        string trimmed = value.Trim();
+        string compact = Regex.Replace(trimmed, @"[\s_\-]+", string.Empty).ToLowerInvariant();
+        switch (compact)
+        {
+            case "auto":
+            case "input1":
+            case "channel1":
+            case "ch1":
+            case "left":
+            case "l":
+                return Input1;
+            case "input2":
+            case "channel2":
+            case "ch2":
+            case "right":
+            case "r":
+                return Input2;
+            case "monomix":
+            case "mono":
+            case "mix":
+            case "both":
+                return MonoMix;
+            case "stereo":
+                return MonoMix;
+            default:
+                return Input1;
+        }
+    }
 }
 
 public static class SharedAudioBackendModes
@@ -164,6 +215,9 @@ public static class SharedAudioDetectorResamplerModes
 public static class SharedAudioSettingsUtility
 {
     private static readonly Regex LeadingIndexRegex = new Regex(@"^\d+\s*:\s*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex AdvancedDeviceIndexSuffixRegex = new Regex(@"\s+\(#\d+\)\s*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex HostDecorationSuffixRegex = new Regex(@"\s+\[[^\]]+\](?:\s+\(#\d+\))?\s*$", RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private static readonly Regex WindowsDuplicateDevicePrefixRegex = new Regex(@"\(\s*\d+\s*-\s*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex WhitespaceRegex = new Regex(@"\s+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     public static SharedAudioSettings Load(string path)
@@ -218,6 +272,20 @@ public static class SharedAudioSettingsUtility
         return normalized.Trim().ToLowerInvariant();
     }
 
+    public static string NormalizePhysicalDeviceKey(string deviceName)
+    {
+        if (string.IsNullOrWhiteSpace(deviceName))
+            return string.Empty;
+
+        string normalized = NormalizeStoredDeviceName(deviceName);
+        normalized = LeadingIndexRegex.Replace(normalized, string.Empty);
+        normalized = HostDecorationSuffixRegex.Replace(normalized, string.Empty);
+        normalized = AdvancedDeviceIndexSuffixRegex.Replace(normalized, string.Empty);
+        normalized = WindowsDuplicateDevicePrefixRegex.Replace(normalized, "(");
+        normalized = WhitespaceRegex.Replace(normalized, " ");
+        return normalized.Trim().ToLowerInvariant();
+    }
+
     public static string NormalizeStoredDeviceName(string deviceName)
     {
         if (string.IsNullOrWhiteSpace(deviceName))
@@ -234,6 +302,7 @@ public static class SharedAudioSettingsUtility
         return new SharedAudioAdvancedSettings
         {
             betaEnabled = source.betaEnabled,
+            inputChannelMode = SharedAudioInputChannelModes.Normalize(source.inputChannelMode),
             backendMode = SharedAudioBackendModes.NormalizeForCurrentPlatform(source.backendMode),
             allowFallback = source.allowFallback,
             inputDeviceName = NormalizeStoredDeviceName(source.inputDeviceName),

@@ -156,14 +156,20 @@ internal static class ToneLabPortAudio
         }
     }
 
-    internal static void Shutdown()
+    internal static void Shutdown(bool drainNativeInitialization = false)
     {
-        if (!initialized)
+        if (!initialized && !drainNativeInitialization)
             return;
 
         try
         {
-            Pa_Terminate();
+            int terminateAttempts = drainNativeInitialization ? 8 : 1;
+            for (int i = 0; i < terminateAttempts; i++)
+            {
+                int result = Pa_Terminate();
+                if (result != PaNoError)
+                    break;
+            }
         }
         catch
         {

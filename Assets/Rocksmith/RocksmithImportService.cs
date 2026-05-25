@@ -257,9 +257,40 @@ public static class RocksmithImportService
             {
                 return false;
             }
+
+            if (manifest.schemaVersion >= 19 &&
+                manifest.toneDefinitionScanVersion < 1)
+            {
+                return false;
+            }
+
+            if (manifest.schemaVersion >= 19 &&
+                manifest.toneDefinitionCount > 0 &&
+                !HasUsableToneDefinitions(loadedPart))
+            {
+                return false;
+            }
         }
 
         return true;
+    }
+
+    private static bool HasUsableToneDefinitions(RocksmithCachedArrangementPart part)
+    {
+        if (part?.tones?.definitions == null || part.tones.definitions.Count == 0)
+            return false;
+
+        for (int i = 0; i < part.tones.definitions.Count; i++)
+        {
+            string rawJson = part.tones.definitions[i]?.rawJson;
+            if (!string.IsNullOrWhiteSpace(rawJson) &&
+                rawJson.IndexOf("\"GearList\"", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool RunImporter(string importToolPath, string psarcPath, string targetDirectory, out string processOutput)

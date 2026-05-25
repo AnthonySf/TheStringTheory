@@ -39,6 +39,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     {
         Create,
         SaveAs,
+        SaveGeneratedTone,
         ResetAll
     }
 
@@ -475,6 +476,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private Label presetModalTitleLabel;
     private Label presetModalSubtitleLabel;
     private VisualElement presetNameSection;
+    private DropdownField advancedInputChannelDropdown;
     private DropdownField advancedBackendDropdown;
     private DropdownField advancedInputDropdown;
     private DropdownField advancedOutputDropdown;
@@ -499,6 +501,10 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private string pendingMappingToneName = string.Empty;
     private string pendingMappingArrangementKey = string.Empty;
     private string pendingMappingSongKey = string.Empty;
+    private string pendingGeneratedToneName = string.Empty;
+    private string pendingGeneratedArrangementKey = string.Empty;
+    private string pendingGeneratedSongKey = string.Empty;
+    private string pendingGeneratedPresetDefaultName = string.Empty;
     private string songMappingSearchQuery = string.Empty;
     private string songMappingBrowseScopeKey = string.Empty;
     private ToneLabSongMappingBrowseMode songMappingBrowseMode = ToneLabSongMappingBrowseMode.All;
@@ -654,7 +660,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
                 if (owner != null)
                     owner.RefreshSharedAudioDevicesFromUi();
                 else
-                    runtime.RefreshInputDevices();
+                    runtime.RefreshInputDevices(forcePortAudioRescan: true);
             }
 
             UnityToneLabRuntime.ToneLabSettings settings = runtime.CurrentSettings;
@@ -1014,38 +1020,31 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         routingActions.Add(stopButton);
         rightColumn.Add(routingBar);
 
-        VisualElement rigSetupBar = CreateThinDividerSection();
-        rigSetupBar.style.height = 84f;
-        rigSetupBar.style.flexShrink = 0f;
-        rigSetupBar.style.marginBottom = 16f;
-        rigSetupBar.style.borderTopWidth = 0f;
-        rigSetupBar.style.borderBottomWidth = 2f;
-        rigSetupBar.style.borderBottomColor = new Color(1f, 1f, 1f, 0.32f);
-        rigSetupBar.style.flexDirection = FlexDirection.Row;
-        rigSetupBar.style.alignItems = Align.Center;
-        rigSetupBar.style.flexWrap = Wrap.NoWrap;
-        rightColumn.Add(rigSetupBar);
+        VisualElement globalSettingsBar = CreateThinDividerSection();
+        globalSettingsBar.style.height = 72f;
+        globalSettingsBar.style.flexShrink = 0f;
+        globalSettingsBar.style.marginBottom = 12f;
+        globalSettingsBar.style.borderTopWidth = 0f;
+        globalSettingsBar.style.borderBottomWidth = 2f;
+        globalSettingsBar.style.borderBottomColor = new Color(1f, 1f, 1f, 0.32f);
+        globalSettingsBar.style.flexDirection = FlexDirection.Row;
+        globalSettingsBar.style.alignItems = Align.Center;
+        globalSettingsBar.style.flexWrap = Wrap.NoWrap;
+        rightColumn.Add(globalSettingsBar);
 
-        rigSetupBar.Add(CreateCompactSliderField(
+        globalSettingsBar.Add(CreateGainSectionLabel("Global", 78f));
+
+        globalSettingsBar.Add(CreateCompactSliderField(
             "Input Gain",
             -36f,
-            36f,
+            12f,
             value => $"{value:F1} dB",
-            settings => settings.input_gain_db,
-            (settings, value) => settings.input_gain_db = value,
-            300f));
+            settings => settings.global_input_trim_db,
+            (settings, value) => settings.global_input_trim_db = value,
+            280f));
 
-        rigSetupBar.Add(CreateCompactSliderField(
-            "Output Gain",
-            -36f,
-            36f,
-            value => $"{value:F1} dB",
-            settings => settings.output_gain_db,
-            (settings, value) => settings.output_gain_db = value,
-            300f));
-
-        rigSetupBar.Add(CreateSharedVolumeSliderField(
-            "Volume",
+        VisualElement volumeField = CreateSharedVolumeSliderField(
+            "Guitar Volume",
             0f,
             100f,
             value => $"{value:F0}%",
@@ -1059,7 +1058,9 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             },
             out guitarVolumeSlider,
             out guitarVolumeValueLabel,
-            300f));
+            280f);
+        volumeField.style.marginRight = 0f;
+        globalSettingsBar.Add(volumeField);
 
         VisualElement boardSection = new VisualElement();
         boardSection.style.flexGrow = 1f;
@@ -1068,6 +1069,26 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         rightColumn.Add(boardSection);
 
         pedalBoardView = new ToneLabPedalBoardView();
+        VisualElement presetGainControls = pedalBoardView.HeaderControls;
+        presetGainControls.Add(CreateGainSectionLabel("Preset", 70f));
+        presetGainControls.Add(CreateCompactSliderField(
+            "Input Gain",
+            -36f,
+            36f,
+            value => $"{value:F1} dB",
+            settings => settings.input_gain_db,
+            (settings, value) => settings.input_gain_db = value,
+            236f));
+        VisualElement outputGainField = CreateCompactSliderField(
+            "Output Gain",
+            -36f,
+            36f,
+            value => $"{value:F1} dB",
+            settings => settings.output_gain_db,
+            (settings, value) => settings.output_gain_db = value,
+            236f);
+        outputGainField.style.marginRight = 0f;
+        presetGainControls.Add(outputGainField);
         pedalBoardView.AddPedalRequested += () =>
         {
             sidePanelMode = ToneLabSidePanelMode.Library;
@@ -1324,14 +1345,14 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedAudioCard.RegisterCallback<MouseDownEvent>(evt => evt.StopPropagation());
         advancedAudioModalScrim.Add(advancedAudioCard);
 
-        Label advancedAudioTitle = new Label("Advanced Audio (Beta)");
+        Label advancedAudioTitle = new Label("Advanced Audio");
         advancedAudioTitle.style.color = Color.white;
         advancedAudioTitle.style.fontSize = 24f;
         advancedAudioTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
         advancedAudioTitle.style.marginBottom = 6f;
         advancedAudioCard.Add(advancedAudioTitle);
 
-        Label advancedAudioSubtitle = new Label("Beta Mode controls routing. Unity Recorder Capture only mirrors processed guitar into Unity audio for recording. Applying these settings restarts monitoring.");
+        Label advancedAudioSubtitle = new Label("Input Channel is shared by Tone Lab and Notes Detector. Beta Mode unlocks backend routing. Applying these settings restarts affected audio paths.");
         advancedAudioSubtitle.style.color = new Color(0.66f, 0.69f, 0.73f, 0.96f);
         advancedAudioSubtitle.style.fontSize = 13f;
         advancedAudioSubtitle.style.whiteSpace = WhiteSpace.Normal;
@@ -1353,6 +1374,19 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedFallbackToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedFallbackDraft);
         advancedUnifiedToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedUnifiedDraft);
         advancedRecorderCaptureToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedRecorderCaptureDraft);
+
+        advancedInputChannelDropdown = new DropdownField();
+        ApplyDropdownStyle(advancedInputChannelDropdown);
+        advancedInputChannelDropdown.style.minWidth = 220f;
+        advancedInputChannelDropdown.style.width = 220f;
+        advancedInputChannelDropdown.choices = SharedAudioInputChannelModes.Choices.ToList();
+        advancedInputChannelDropdown.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressCallbacks)
+                return;
+
+            advancedAudioDraft.inputChannelMode = SharedAudioInputChannelModes.Normalize(evt.newValue);
+        });
 
         advancedBackendDropdown = new DropdownField();
         ApplyDropdownStyle(advancedBackendDropdown);
@@ -1414,6 +1448,11 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             advancedAudioDraft.bufferSize = ParseAdvancedBufferLabel(evt.newValue);
         });
 
+        advancedAudioHost.Add(CreateSettingRow("Input Channel", out VisualElement advancedInputChannelHost));
+        advancedInputChannelHost.Add(advancedInputChannelDropdown);
+        advancedAudioHost.Add(CreateSettingRow("Unity Recorder Capture", out VisualElement advancedRecorderCaptureHost));
+        advancedRecorderCaptureHost.Add(advancedRecorderCaptureToggleButton);
+        advancedAudioHost.Add(CreateSectionDivider());
         advancedAudioHost.Add(CreateSettingRow("Beta Mode", out VisualElement advancedBetaHost));
         advancedBetaHost.Add(advancedBetaToggleButton);
         advancedAudioHost.Add(CreateSettingRow("Backend", out VisualElement advancedBackendHost));
@@ -1430,9 +1469,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedFallbackHost.Add(advancedFallbackToggleButton);
         advancedAudioHost.Add(CreateSettingRow("Unified Output", out VisualElement advancedUnifiedHost));
         advancedUnifiedHost.Add(advancedUnifiedToggleButton);
-        advancedAudioHost.Add(CreateSettingRow("Unity Recorder Capture", out VisualElement advancedRecorderCaptureHost));
-        advancedRecorderCaptureHost.Add(advancedRecorderCaptureToggleButton);
-
         VisualElement advancedStatusCard = new VisualElement();
         advancedStatusCard.style.marginTop = 14f;
         advancedStatusCard.style.paddingLeft = 14f;
@@ -2108,25 +2144,28 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         presetModalMode = mode;
         bool isSaveAs = mode == ToneLabPresetModalMode.SaveAs;
+        bool isSaveGeneratedTone = mode == ToneLabPresetModalMode.SaveGeneratedTone;
         bool isResetAll = mode == ToneLabPresetModalMode.ResetAll;
         if (presetModalTitleLabel != null)
             presetModalTitleLabel.text = isResetAll
                 ? "Reset All"
-                : (isSaveAs ? "Save Preset As" : "Create Preset");
+                : (isSaveGeneratedTone ? "Save Generated Tone" : (isSaveAs ? "Save Preset As" : "Create Preset"));
         if (presetModalSubtitleLabel != null)
             presetModalSubtitleLabel.text = isResetAll
                 ? "Restore the factory preset library and the active rig. Audio device routing and latency stay as they are."
-                : (isSaveAs
+                : (isSaveGeneratedTone
+                    ? "Save this automatic song tone as a reusable preset and assign it to the selected Rocksmith tone."
+                    : (isSaveAs
                     ? "Save the current pedalboard as a new custom preset without overwriting the active one."
-                    : "Save the current pedalboard and gain staging as a reusable preset.");
+                    : "Save the current pedalboard and gain staging as a reusable preset."));
         if (presetCreateButton != null)
         {
-            presetCreateButton.text = isResetAll ? "Reset All" : (isSaveAs ? "Save As" : "Create");
+            presetCreateButton.text = isResetAll ? "Reset All" : (isSaveGeneratedTone ? "Save" : (isSaveAs ? "Save As" : "Create"));
             ApplyModalActionButtonStyle(presetCreateButton, isResetAll);
         }
         if (presetNameSection != null)
             presetNameSection.style.display = isResetAll ? DisplayStyle.None : DisplayStyle.Flex;
-        presetNameField?.SetValueWithoutNotify(string.Empty);
+        presetNameField?.SetValueWithoutNotify(isSaveGeneratedTone ? pendingGeneratedPresetDefaultName : string.Empty);
         presetModalScrim.style.display = DisplayStyle.Flex;
         ApplyPresetNameFieldStyle();
         if (!isResetAll)
@@ -2139,6 +2178,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         presetModalScrim.style.display = DisplayStyle.None;
+        ClearPendingGeneratedTonePresetSave();
     }
 
     private void OpenUnsavedChangesModal(ToneLabUnsavedAction action, string presetId)
@@ -2290,6 +2330,25 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         }
 
         string requestedName = presetNameField?.value ?? string.Empty;
+        if (presetModalMode == ToneLabPresetModalMode.SaveGeneratedTone)
+        {
+            string createdPresetId = owner?.SaveAutoGeneratedTonePresetFromUi(
+                pendingGeneratedSongKey,
+                pendingGeneratedArrangementKey,
+                pendingGeneratedToneName,
+                string.IsNullOrWhiteSpace(requestedName) ? pendingGeneratedPresetDefaultName : requestedName) ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(createdPresetId))
+            {
+                ShowActionToast("Could not save generated tone.", true);
+                return;
+            }
+
+            ShowActionToast($"Saved preset \"{GetPresetName(createdPresetId)}\".");
+            CloseCreatePresetModal();
+            RefreshUi(syncControls: true);
+            return;
+        }
+
         if (presetModalMode == ToneLabPresetModalMode.SaveAs)
         {
             runtime.SaveCurrentAsNewPreset(requestedName);
@@ -2312,6 +2371,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedAudioDraft = owner != null
             ? owner.GetSharedAdvancedAudioSettingsForUi()
             : new SharedAudioAdvancedSettings();
+        advancedAudioDraft.inputChannelMode = SharedAudioInputChannelModes.Normalize(advancedAudioDraft.inputChannelMode);
         advancedAudioDraft.backendMode = SharedAudioBackendModes.NormalizeForCurrentPlatform(advancedAudioDraft.backendMode);
         if (advancedAudioDraft.bufferSize <= 0)
             advancedAudioDraft.bufferSize = UnityToneLabRuntime.ParseSharedMonitoringLatencyBufferSize(UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(advancedAudioDraft.bufferSize));
@@ -2358,6 +2418,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         suppressCallbacks = true;
+        advancedInputChannelDropdown?.SetValueWithoutNotify(SharedAudioInputChannelModes.Normalize(advancedAudioDraft.inputChannelMode));
         advancedBackendDropdown?.SetValueWithoutNotify(SharedAudioBackendModes.NormalizeForCurrentPlatform(advancedAudioDraft.backendMode));
         advancedSampleRateDropdown?.SetValueWithoutNotify(FormatAdvancedSampleRateLabel(advancedAudioDraft.sampleRate));
         advancedBufferDropdown?.SetValueWithoutNotify(FormatAdvancedBufferLabel(advancedAudioDraft.bufferSize));
@@ -2374,6 +2435,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         ApplyToggleButtonState(advancedFallbackToggleButton, advancedAudioDraft.allowFallback);
         ApplyToggleButtonState(advancedUnifiedToggleButton, advancedAudioDraft.unifiedOutputEnabled);
         ApplyToggleButtonState(advancedRecorderCaptureToggleButton, advancedAudioDraft.unityRecorderCaptureEnabled);
+        advancedInputChannelDropdown?.SetEnabled(true);
         advancedBackendDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedInputDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedOutputDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
@@ -2411,7 +2473,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         if (advancedAudioStatusLabel == null || runtime == null)
             return;
 
-        string summary = $"{runtime.ActiveAudioBackendLabel}  \u2022  {runtime.ActiveHostApiLabel}  \u2022  In {runtime.InputRouteLabel}  \u2022  Out {runtime.OutputRouteLabel}";
+        string inputChannelMode = advancedAudioDraft != null ? SharedAudioInputChannelModes.Normalize(advancedAudioDraft.inputChannelMode) : SharedAudioInputChannelModes.Input1;
+        string summary = $"{runtime.ActiveAudioBackendLabel}  \u2022  {runtime.ActiveHostApiLabel}  \u2022  In {runtime.InputRouteLabel}  \u2022  Out {runtime.OutputRouteLabel}  \u2022  Channel {inputChannelMode}";
         if (advancedAudioDraft != null && advancedAudioDraft.betaEnabled && advancedAudioDraft.unifiedOutputEnabled)
             summary = $"{summary}\nUnified output locks sample rate to Unity output.";
         if (advancedAudioDraft != null && advancedAudioDraft.unityRecorderCaptureEnabled)
@@ -3110,7 +3173,19 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         }
         row.Add(selectButton);
 
-        if (!string.IsNullOrWhiteSpace(tone?.assignedPresetId))
+        if (!string.IsNullOrWhiteSpace(tone?.assignedPresetId) && tone.isAutomaticPresetMapping)
+        {
+            Button saveGeneratedButton = CreateButton("Save as Preset", "tone-lab-button tone-lab-button-secondary", () =>
+            {
+                OpenSaveGeneratedTonePresetModal(tone);
+            });
+            StyleCompactActionButton(saveGeneratedButton, 154f);
+            saveGeneratedButton.style.marginLeft = 8f;
+            saveGeneratedButton.style.marginRight = 0f;
+            row.Add(saveGeneratedButton);
+        }
+
+        if (!string.IsNullOrWhiteSpace(tone?.assignedPresetId) && !tone.isAutomaticPresetMapping)
         {
             Button clearButton = new Button(() =>
             {
@@ -3128,6 +3203,28 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         RegisterNavigationItem(songMappingToneNavigationItems, row, songMappingToneScroll, selectAction, applyToneHover);
         return row;
+    }
+
+    private void OpenSaveGeneratedTonePresetModal(GuitarBridgeServer.ToneLabSongToneMappingSnapshot tone)
+    {
+        if (tone == null || string.IsNullOrWhiteSpace(tone.assignedPresetId) || !tone.isAutomaticPresetMapping)
+            return;
+
+        pendingGeneratedSongKey = tone.songKey ?? selectedMappingSongKey;
+        pendingGeneratedArrangementKey = tone.arrangementKey ?? selectedMappingArrangementKey;
+        pendingGeneratedToneName = tone.toneName ?? string.Empty;
+        pendingGeneratedPresetDefaultName = !string.IsNullOrWhiteSpace(tone.saveAsPresetDefaultName)
+            ? tone.saveAsPresetDefaultName.Trim()
+            : $"{(string.IsNullOrWhiteSpace(pendingGeneratedToneName) ? "Song Tone" : pendingGeneratedToneName.Trim())} - Auto";
+        OpenPresetModal(ToneLabPresetModalMode.SaveGeneratedTone);
+    }
+
+    private void ClearPendingGeneratedTonePresetSave()
+    {
+        pendingGeneratedToneName = string.Empty;
+        pendingGeneratedArrangementKey = string.Empty;
+        pendingGeneratedSongKey = string.Empty;
+        pendingGeneratedPresetDefaultName = string.Empty;
     }
 
     private void AddSongMappingEmpty(VisualElement host, string text)
@@ -5144,8 +5241,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         VisualElement field = new VisualElement();
         field.style.width = width;
         field.style.minWidth = width;
-        field.style.flexGrow = 1f;
-        field.style.flexShrink = 1f;
+        field.style.flexGrow = 0f;
+        field.style.flexShrink = 0f;
         field.style.marginRight = 12f;
 
         Label label = new Label(labelText);
@@ -5179,6 +5276,19 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         return field;
     }
 
+    private static Label CreateGainSectionLabel(string text, float width)
+    {
+        Label label = new Label(text);
+        label.style.width = width;
+        label.style.minWidth = width;
+        label.style.marginRight = 12f;
+        label.style.color = new Color(0.88f, 0.90f, 0.94f, 0.88f);
+        label.style.fontSize = 13f;
+        label.style.unityFontStyleAndWeight = FontStyle.Bold;
+        label.style.unityTextAlign = TextAnchor.MiddleLeft;
+        return label;
+    }
+
     private VisualElement CreateCompactSliderField(
         string title,
         float min,
@@ -5191,8 +5301,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         VisualElement field = new VisualElement();
         field.style.width = width;
         field.style.minWidth = width;
-        field.style.flexGrow = 1f;
-        field.style.flexShrink = 1f;
+        field.style.flexGrow = 0f;
+        field.style.flexShrink = 0f;
         field.style.marginRight = 12f;
 
         Label titleLabel = new Label(title);
@@ -5259,6 +5369,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         VisualElement field = new VisualElement();
         field.style.width = width;
         field.style.minWidth = width;
+        field.style.flexGrow = 0f;
+        field.style.flexShrink = 0f;
         field.style.marginRight = 12f;
 
         Label titleLabel = new Label(title);
@@ -5325,6 +5437,16 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         valueHost.style.alignItems = Align.FlexEnd;
         row.Add(valueHost);
         return row;
+    }
+
+    private static VisualElement CreateSectionDivider()
+    {
+        VisualElement divider = new VisualElement();
+        divider.style.height = 1f;
+        divider.style.marginTop = 6f;
+        divider.style.marginBottom = 18f;
+        divider.style.backgroundColor = new Color(1f, 1f, 1f, 0.16f);
+        return divider;
     }
 
     private static Button CreateButton(string text, string classNames, Action onClick)

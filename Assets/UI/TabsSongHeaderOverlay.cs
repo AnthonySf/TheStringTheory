@@ -1580,6 +1580,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label notesDetectorTestFastNotesLabel;
     private readonly Label notesDetectorTestAiNotesLabel;
     private readonly DropdownField notesDetectorTestInputDeviceDropdown;
+    private readonly DropdownField notesDetectorInputChannelDropdown;
     private readonly DropdownField notesDetectorPresetDropdown;
     private readonly Button notesDetectorRestartButton;
     private readonly Button notesDetectorRunTestButton;
@@ -4376,6 +4377,28 @@ public sealed class TabsSongHeaderOverlay
         });
         notesDetectorDeviceRow.Add(notesDetectorTestInputDeviceDropdown);
 
+        Label notesDetectorInputChannelLabel = CreateLabel("Input Channel", 24f, new Color(0.73f, 0.78f, 0.84f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        notesDetectorInputChannelLabel.style.unityFontDefinition = modernUiFontDefinition;
+        notesDetectorInputChannelLabel.style.marginRight = 8f;
+        notesDetectorInputChannelLabel.style.marginLeft = 2f;
+        notesDetectorDeviceRow.Add(notesDetectorInputChannelLabel);
+
+        notesDetectorInputChannelDropdown = new DropdownField();
+        notesDetectorInputChannelDropdown.choices = SharedAudioInputChannelModes.Choices.ToList();
+        notesDetectorInputChannelDropdown.value = owner != null
+            ? owner.GetSharedAudioInputChannelModeLabel()
+            : SharedAudioInputChannelModes.Input1;
+        StyleNotesDetectorDropdown(notesDetectorInputChannelDropdown, 210f);
+        notesDetectorInputChannelDropdown.style.marginRight = 10f;
+        notesDetectorInputChannelDropdown.RegisterValueChangedCallback(evt =>
+        {
+            if (suppressNotesDetectorDropdownCallbacks)
+                return;
+
+            owner?.SetSharedAudioInputChannelModeFromUi(evt.newValue);
+        });
+        notesDetectorDeviceRow.Add(notesDetectorInputChannelDropdown);
+
         notesDetectorRefreshDevicesButton = new Button(() => owner?.RefreshNativeNotesDetectorDevicesFromUi())
         {
             text = "Refresh Devices"
@@ -4612,6 +4635,9 @@ public sealed class TabsSongHeaderOverlay
         StyleNotesDetectorDropdown(notesDetectorTestInputDeviceDropdown, 500f);
         notesDetectorTestInputDeviceDropdown.style.marginRight = 12f;
         notesDetectorTestInputDeviceDropdown.style.marginBottom = 12f;
+
+        notesDetectorInputChannelDropdown.style.marginRight = 12f;
+        notesDetectorInputChannelDropdown.style.marginBottom = 12f;
 
         notesDetectorRefreshDevicesButton.style.height = 72f;
         notesDetectorRefreshDevicesButton.style.minWidth = 220f;
@@ -10579,6 +10605,21 @@ public sealed class TabsSongHeaderOverlay
                 if (!string.Equals(notesDetectorTestInputDeviceDropdown.value, selectedDeviceLabel, StringComparison.Ordinal))
                     notesDetectorTestInputDeviceDropdown.SetValueWithoutNotify(selectedDeviceLabel);
                 notesDetectorTestInputDeviceDropdown.SetEnabled(deviceChoices.Count > 0);
+                suppressNotesDetectorDropdownCallbacks = false;
+            }
+            if (notesDetectorInputChannelDropdown != null)
+            {
+                List<string> channelChoices = SharedAudioInputChannelModes.Choices.ToList();
+                suppressNotesDetectorDropdownCallbacks = true;
+                if (!DropdownChoicesMatch(notesDetectorInputChannelDropdown, channelChoices))
+                    notesDetectorInputChannelDropdown.choices = channelChoices;
+                string selectedChannel = owner != null
+                    ? owner.GetSharedAudioInputChannelModeLabel()
+                    : SharedAudioInputChannelModes.Input1;
+                selectedChannel = SharedAudioInputChannelModes.Normalize(selectedChannel);
+                if (!string.Equals(notesDetectorInputChannelDropdown.value, selectedChannel, StringComparison.Ordinal))
+                    notesDetectorInputChannelDropdown.SetValueWithoutNotify(selectedChannel);
+                notesDetectorInputChannelDropdown.SetEnabled(channelChoices.Count > 0);
                 suppressNotesDetectorDropdownCallbacks = false;
             }
             if (notesDetectorPresetDropdown != null)

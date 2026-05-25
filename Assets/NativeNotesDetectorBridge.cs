@@ -32,6 +32,7 @@ public sealed class NativeDetectorRuntimeInfo
     public int selectedInputDeviceIndex = -1;
     public string selectedInputDeviceDisplayName = string.Empty;
     public string selectedHostApiName = string.Empty;
+    public string inputChannelMode = SharedAudioInputChannelModes.Input1;
     public int sampleRate = 22050;
     public int captureSampleRate;
     public int internalSampleRate = 22050;
@@ -56,6 +57,9 @@ public sealed class NativeNotesDetectorBridge
 {
     private const string NativeLibraryName = "NativeNotesDetectorBridgeNative_v6";
     private const int NativeBufferSize = 65536;
+    private const int NativeInputChannelInput1 = 0;
+    private const int NativeInputChannelInput2 = 1;
+    private const int NativeInputChannelMonoMix = 2;
 
     private bool initialized;
     private bool presetStoreLoaded;
@@ -66,6 +70,7 @@ public sealed class NativeNotesDetectorBridge
     private NativeDetectorPresetStore presetStore = new NativeDetectorPresetStore();
     private NativeDetectorSettingsData workingSettings = NativeDetectorSettingCatalog.CreateLevel2();
     private NativeDetectorResamplerMode preferredResamplerMode = NativeDetectorResamplerMode.Filtered;
+    private string preferredInputChannelMode = SharedAudioInputChannelModes.Input1;
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_Initialize(
@@ -75,6 +80,9 @@ public sealed class NativeNotesDetectorBridge
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_Start(int inputDeviceIndex);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_StartWithInputChannel(int inputDeviceIndex, int inputChannelMode);
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_Stop();
@@ -198,11 +206,17 @@ public sealed class NativeNotesDetectorBridge
 
     public bool Start(int inputDeviceIndex = -1)
     {
+        return Start(inputDeviceIndex, preferredInputChannelMode);
+    }
+
+    public bool Start(int inputDeviceIndex, string inputChannelMode)
+    {
         if (!Initialize())
             return false;
 
         try
         {
+            preferredInputChannelMode = SharedAudioInputChannelModes.Normalize(inputChannelMode);
             ApplyWorkingSettingsToNative();
             ApplyPreferredResamplerModeToNative();
             RefreshDevices();
@@ -210,11 +224,12 @@ public sealed class NativeNotesDetectorBridge
             List<int> candidates = BuildInputDeviceStartCandidates(inputDeviceIndex);
             List<string> attemptErrors = new List<string>();
             int firstCandidate = candidates.Count > 0 ? candidates[0] : inputDeviceIndex;
+            int nativeInputChannelMode = ToNativeInputChannelMode(preferredInputChannelMode);
 
             for (int i = 0; i < candidates.Count; i++)
             {
                 int candidate = candidates[i];
-                bool ok = NativeDetector_Start(candidate) != 0;
+                bool ok = StartNative(candidate, nativeInputChannelMode);
                 RefreshNativeStatus();
                 if (ok)
                 {
@@ -243,16 +258,53 @@ public sealed class NativeNotesDetectorBridge
         }
     }
 
+    public void SetInputChannelMode(string inputChannelMode)
+    {
+        preferredInputChannelMode = SharedAudioInputChannelModes.Normalize(inputChannelMode);
+    }
+
+    private bool StartNative(int inputDeviceIndex, int inputChannelMode)
+    {
+        try
+        {
+            return NativeDetector_StartWithInputChannel(inputDeviceIndex, inputChannelMode) != 0;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            if (inputChannelMode == NativeInputChannelInput1)
+                return NativeDetector_Start(inputDeviceIndex) != 0;
+
+            lastError = "Native detector DLL does not support input channel selection.";
+            lastStatus = lastError;
+            return false;
+        }
+    }
+
+    private static int ToNativeInputChannelMode(string inputChannelMode)
+    {
+        switch (SharedAudioInputChannelModes.Normalize(inputChannelMode))
+        {
+            case SharedAudioInputChannelModes.Input2:
+                return NativeInputChannelInput2;
+            case SharedAudioInputChannelModes.MonoMix:
+                return NativeInputChannelMonoMix;
+            case SharedAudioInputChannelModes.Input1:
+            default:
+                return NativeInputChannelInput1;
+        }
+    }
+
     private List<int> BuildInputDeviceStartCandidates(int requestedInputDeviceIndex)
     {
         List<int> candidates = new List<int>();
+        NativeDetectorInputDevice[] devices = InputDevices;
 
         if (requestedInputDeviceIndex >= 0)
             AddInputDeviceCandidate(candidates, requestedInputDeviceIndex);
 
-        AddInputDeviceCandidate(candidates, PreferredInputDeviceIndex);
+        if (PreferredInputDeviceIndex == requestedInputDeviceIndex || IsLowLatencyInputHost(PreferredInputDeviceIndex))
+            AddInputDeviceCandidate(candidates, PreferredInputDeviceIndex);
 
-        NativeDetectorInputDevice[] devices = InputDevices;
         AddInputDeviceCandidatesByHost(candidates, devices, "Core Audio");
         AddInputDeviceCandidatesByHost(candidates, devices, "CoreAudio");
         AddInputDeviceCandidatesByHost(candidates, devices, "WASAPI");
@@ -265,6 +317,25 @@ public sealed class NativeNotesDetectorBridge
             candidates.Add(requestedInputDeviceIndex);
 
         return candidates;
+    }
+
+    private bool IsLowLatencyInputHost(int deviceIndex)
+    {
+        NativeDetectorInputDevice[] devices = InputDevices;
+        for (int i = 0; i < devices.Length; i++)
+        {
+            NativeDetectorInputDevice device = devices[i];
+            if (device == null || device.index != deviceIndex)
+                continue;
+
+            string host = device.hostApiName ?? string.Empty;
+            return host.IndexOf("ASIO", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   host.IndexOf("Core Audio", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   host.IndexOf("CoreAudio", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   host.IndexOf("WASAPI", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        return false;
     }
 
     private void AddInputDeviceCandidatesByHost(List<int> candidates, NativeDetectorInputDevice[] devices, string hostName)
@@ -415,9 +486,9 @@ public sealed class NativeNotesDetectorBridge
         }
     }
 
-    public void Shutdown()
+    public void Shutdown(bool forceNativeShutdown = false)
     {
-        if (!initialized)
+        if (!initialized && !forceNativeShutdown)
             return;
 
         try
@@ -547,8 +618,16 @@ public sealed class NativeNotesDetectorBridge
         }
     }
 
-    public NativeDetectorDeviceListPayload RefreshDevices()
+    public NativeDetectorDeviceListPayload RefreshDevices(bool forcePortAudioRescan = false)
     {
+        bool restartAfterRescan = forcePortAudioRescan && IsRunning();
+        int restartDeviceIndex = cachedRuntimeInfo?.selectedInputDeviceIndex ?? -1;
+        string restartChannelMode = preferredInputChannelMode;
+        if (forcePortAudioRescan)
+        {
+            Shutdown(forceNativeShutdown: true);
+        }
+
         if (!Initialize())
             return cachedDevices;
 
@@ -571,6 +650,9 @@ public sealed class NativeNotesDetectorBridge
 
         if (cachedDevices == null)
             cachedDevices = new NativeDetectorDeviceListPayload();
+
+        if (restartAfterRescan)
+            Start(restartDeviceIndex, restartChannelMode);
 
         return cachedDevices;
     }

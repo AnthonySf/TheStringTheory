@@ -43,13 +43,28 @@ public sealed class AudioPathRegressionTests
         Assert.AreEqual(SharedAudioDetectorResamplerModes.Linear, SharedAudioDetectorResamplerModes.Toggle(SharedAudioDetectorResamplerModes.Filtered));
         Assert.AreEqual(SharedAudioDetectorResamplerModes.Filtered, SharedAudioDetectorResamplerModes.Toggle(SharedAudioDetectorResamplerModes.Linear));
 
+        CollectionAssert.AreEqual(
+            new[] { SharedAudioInputChannelModes.Input1, SharedAudioInputChannelModes.Input2, SharedAudioInputChannelModes.MonoMix },
+            SharedAudioInputChannelModes.Choices);
+        Assert.AreEqual(SharedAudioInputChannelModes.Input1, SharedAudioInputChannelModes.Normalize(null));
+        Assert.AreEqual(SharedAudioInputChannelModes.Input1, SharedAudioInputChannelModes.Normalize("junk"));
+        Assert.AreEqual(SharedAudioInputChannelModes.Input1, SharedAudioInputChannelModes.Normalize("auto"));
+        Assert.AreEqual(SharedAudioInputChannelModes.Input1, SharedAudioInputChannelModes.Normalize("left"));
+        Assert.AreEqual(SharedAudioInputChannelModes.Input2, SharedAudioInputChannelModes.Normalize("right"));
+        Assert.AreEqual(SharedAudioInputChannelModes.MonoMix, SharedAudioInputChannelModes.Normalize("both"));
+        Assert.AreEqual(SharedAudioInputChannelModes.MonoMix, SharedAudioInputChannelModes.Normalize("stereo"));
+
         Assert.AreEqual("focusrite usb asio", SharedAudioSettingsUtility.NormalizeDeviceKey("003:  Focusrite   USB  ASIO "));
         Assert.AreEqual("realtek speakers", SharedAudioSettingsUtility.NormalizeDeviceKey("Realtek   Speakers"));
+        Assert.AreEqual("microphone (rocksmith usb guitar adapter)", SharedAudioSettingsUtility.NormalizePhysicalDeviceKey("17: Microphone (3- Rocksmith USB Guitar Adapter) [WASAPI] (#17)"));
+        Assert.AreEqual("microphone (rocksmith usb guitar adapter)", SharedAudioSettingsUtility.NormalizePhysicalDeviceKey("25: Microphone (Rocksmith USB Guitar Adapter)"));
+        Assert.AreEqual("focusrite usb", SharedAudioSettingsUtility.NormalizePhysicalDeviceKey("Focusrite USB [ASIO] (#7)"));
         Assert.AreEqual("Focusrite USB ASIO", SharedAudioSettingsUtility.NormalizeStoredDeviceName("  Focusrite   USB   ASIO  "));
 
         SharedAudioAdvancedSettings clone = SharedAudioSettingsUtility.CloneAdvancedSettings(new SharedAudioAdvancedSettings
         {
             betaEnabled = true,
+            inputChannelMode = "right",
             backendMode = "asio",
             allowFallback = false,
             inputDeviceName = "  2: Focusrite   Instrument  ",
@@ -61,6 +76,7 @@ public sealed class AudioPathRegressionTests
         });
 
         Assert.IsTrue(clone.betaEnabled);
+        Assert.AreEqual(SharedAudioInputChannelModes.Input2, clone.inputChannelMode);
         Assert.AreEqual(SharedAudioBackendModes.Asio, clone.backendMode);
         Assert.IsFalse(clone.allowFallback);
         Assert.AreEqual("2: Focusrite Instrument", clone.inputDeviceName);
@@ -105,6 +121,7 @@ public sealed class AudioPathRegressionTests
         SharedAudioAdvancedSettings weird = new SharedAudioAdvancedSettings
         {
             betaEnabled = true,
+            inputChannelMode = "bad channel",
             backendMode = "bad backend",
             allowFallback = false,
             inputDeviceName = "Automatic Input",
@@ -118,6 +135,7 @@ public sealed class AudioPathRegressionTests
         SharedAudioAdvancedSettings normalized = NormalizeAdvancedSettings(weird, fallbackBufferSize: 256, out bool changed);
         Assert.IsTrue(changed);
         Assert.IsTrue(normalized.betaEnabled);
+        Assert.AreEqual(SharedAudioInputChannelModes.Input1, normalized.inputChannelMode);
         Assert.AreEqual(SharedAudioBackendModes.Auto, normalized.backendMode);
         Assert.IsFalse(normalized.allowFallback);
         Assert.AreEqual(string.Empty, normalized.inputDeviceName);
@@ -130,6 +148,7 @@ public sealed class AudioPathRegressionTests
         SharedAudioAdvancedSettings driverManaged = new SharedAudioAdvancedSettings
         {
             backendMode = SharedAudioBackendModes.Asio,
+            inputChannelMode = SharedAudioInputChannelModes.Stereo,
             inputDeviceName = "Focusrite USB [ASIO] (#7)",
             outputDeviceName = "Focusrite USB [ASIO] (#8)",
             sampleRate = 48000,
@@ -137,13 +156,123 @@ public sealed class AudioPathRegressionTests
         };
         SharedAudioAdvancedSettings normalizedDriver = NormalizeAdvancedSettings(driverManaged, fallbackBufferSize: 64, out _);
         Assert.AreEqual(64, normalizedDriver.bufferSize, "Shared settings intentionally normalize Driver/0 to the current fallback latency. ASIO route candidates still add raw 0 separately.");
+        Assert.AreEqual(SharedAudioInputChannelModes.MonoMix, normalizedDriver.inputChannelMode);
         Assert.AreEqual("Focusrite USB [ASIO] (#7)", normalizedDriver.inputDeviceName);
         Assert.AreEqual("Focusrite USB [ASIO] (#8)", normalizedDriver.outputDeviceName);
 
         SharedAudioAdvancedSettings nullNormalized = NormalizeAdvancedSettings(null, fallbackBufferSize: 999, out bool nullChanged);
         Assert.IsTrue(nullChanged);
         Assert.AreEqual(128, nullNormalized.bufferSize);
+        Assert.AreEqual(SharedAudioInputChannelModes.Input1, nullNormalized.inputChannelMode);
         Assert.AreEqual(SharedAudioBackendModes.Auto, nullNormalized.backendMode);
+    }
+
+    [Test]
+    public void NativeDetectorInputChannelMapping_IsDeterministic()
+    {
+        Assert.AreEqual(0, InvokeNativeDetectorBridgeStatic<int>("ToNativeInputChannelMode", SharedAudioInputChannelModes.Input1));
+        Assert.AreEqual(1, InvokeNativeDetectorBridgeStatic<int>("ToNativeInputChannelMode", SharedAudioInputChannelModes.Input2));
+        Assert.AreEqual(2, InvokeNativeDetectorBridgeStatic<int>("ToNativeInputChannelMode", SharedAudioInputChannelModes.MonoMix));
+        Assert.AreEqual(2, InvokeNativeDetectorBridgeStatic<int>("ToNativeInputChannelMode", SharedAudioInputChannelModes.Stereo));
+        Assert.AreEqual(0, InvokeNativeDetectorBridgeStatic<int>("ToNativeInputChannelMode", "bad channel"));
+    }
+
+    [Test]
+    public void LegatoDestination_AcceptsExplicitDetectedPitchEvenWhenLinkedSourceWasMissed()
+    {
+        GameObject gameObject = new GameObject("AudioPathRegressionTests_LegatoBridge");
+        gameObject.SetActive(false);
+        try
+        {
+            GuitarBridgeServer bridge = gameObject.AddComponent<GuitarBridgeServer>();
+            GameplayNoteState source = CreateGameplayNoteState(
+                id: 68,
+                time: 40.664f,
+                stringIndex: 1,
+                fret: 0,
+                noteName: "A",
+                chordId: 30,
+                technique: NoteTechnique.None,
+                requiresPluck: true,
+                linkedFrom: -1,
+                result: GameplayNoteResult.Missed);
+            GameplayNoteState destination = CreateGameplayNoteState(
+                id: 71,
+                time: 42.061f,
+                stringIndex: 1,
+                fret: 3,
+                noteName: "C",
+                chordId: 31,
+                technique: NoteTechnique.Slide,
+                requiresPluck: false,
+                linkedFrom: 68,
+                result: GameplayNoteResult.Pending);
+
+            List<GameplayNoteState> states = (List<GameplayNoteState>)GetField(bridge, "noteStates");
+            states.Clear();
+            states.Add(source);
+            states.Add(destination);
+            AddRecentNoteEvent(bridge, eventId: 1, time: 42.061f, midiPitches: 48);
+
+            object[] args = { destination, -999f, string.Empty };
+            Assert.IsTrue((bool)InvokeInstance(bridge, "TryFindLegatoMatch", args));
+            Assert.AreEqual(42.061f, (float)args[1], 0.0001f);
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
+    }
+
+    [Test]
+    public void LegatoDestination_StillRequiresLinkedSourceForContinuousPitchMatch()
+    {
+        GameObject gameObject = new GameObject("AudioPathRegressionTests_LegatoContinuousBridge");
+        gameObject.SetActive(false);
+        try
+        {
+            GuitarBridgeServer bridge = gameObject.AddComponent<GuitarBridgeServer>();
+            GameplayNoteState source = CreateGameplayNoteState(
+                id: 68,
+                time: 40.664f,
+                stringIndex: 1,
+                fret: 0,
+                noteName: "A",
+                chordId: 30,
+                technique: NoteTechnique.None,
+                requiresPluck: true,
+                linkedFrom: -1,
+                result: GameplayNoteResult.Missed);
+            GameplayNoteState destination = CreateGameplayNoteState(
+                id: 71,
+                time: 42.061f,
+                stringIndex: 1,
+                fret: 3,
+                noteName: "C",
+                chordId: 31,
+                technique: NoteTechnique.Slide,
+                requiresPluck: false,
+                linkedFrom: 68,
+                result: GameplayNoteResult.Pending);
+
+            List<GameplayNoteState> states = (List<GameplayNoteState>)GetField(bridge, "noteStates");
+            states.Clear();
+            states.Add(source);
+            states.Add(destination);
+            ((HashSet<int>)GetField(bridge, "latestDetectedPitches")).Add(48);
+            SetField(bridge, "songTimer", 42.061f);
+
+            object[] args = { destination, -999f, string.Empty };
+            Assert.IsFalse((bool)InvokeInstance(bridge, "TryFindLegatoMatch", args));
+
+            source.result = GameplayNoteResult.Hit;
+            args = new object[] { destination, -999f, string.Empty };
+            Assert.IsTrue((bool)InvokeInstance(bridge, "TryFindLegatoMatch", args));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
     }
 
     [Test]
@@ -162,6 +291,37 @@ public sealed class AudioPathRegressionTests
         Assert.AreEqual("Realtek HD Audio", InvokeGuitarBridgeStatic<string>("ResolveChoiceByNormalizedName", choices, "000: Realtek   HD Audio"));
         Assert.AreEqual("4: Duplicate Name", InvokeGuitarBridgeStatic<string>("ResolveChoiceByNormalizedName", choices, "Duplicate Name"));
         Assert.AreEqual(string.Empty, InvokeGuitarBridgeStatic<string>("ResolveChoiceByNormalizedName", choices, "Missing"));
+
+        IReadOnlyList<string> physicalChoices = new[] { "Automatic", "17: Microphone (3- Rocksmith USB Guitar Adapter)" };
+        Assert.AreEqual(
+            "17: Microphone (3- Rocksmith USB Guitar Adapter)",
+            InvokeGuitarBridgeStatic<string>("ResolveChoiceByNormalizedName", physicalChoices, "25: Microphone (Rocksmith USB Guitar Adapter)"));
+    }
+
+    [Test]
+    public void SharedAudioNativeDetectorResolution_PrefersStableHostForSamePhysicalInput()
+    {
+        GameObject gameObject = new GameObject("AudioPathRegressionTests_Bridge");
+        gameObject.SetActive(false);
+        try
+        {
+            GuitarBridgeServer bridge = gameObject.AddComponent<GuitarBridgeServer>();
+            var devices = (List<NativeDetectorInputDevice>)GetField(bridge, "nativeNotesDetectorInputDevices");
+            devices.Add(DetectorDevice(25, "25: Microphone (Rocksmith USB Guitar Adapter)", "Windows WDM-KS"));
+            devices.Add(DetectorDevice(8, "8: Microphone (3- Rocksmith USB Guitar Adapter)", "Windows DirectSound"));
+            devices.Add(DetectorDevice(17, "17: Microphone (3- Rocksmith USB Guitar Adapter)", "Windows WASAPI"));
+
+            Assert.AreEqual(
+                17,
+                InvokeInstance(bridge, "ResolveNativeDetectorSharedDeviceIndex", "25: Microphone (Rocksmith USB Guitar Adapter)"));
+            Assert.AreEqual(
+                17,
+                InvokeInstance(bridge, "ResolveNativeDetectorSharedDeviceIndex", "17: Microphone (3- Rocksmith USB Guitar Adapter)"));
+        }
+        finally
+        {
+            UnityEngine.Object.DestroyImmediate(gameObject);
+        }
     }
 
     [Test]
@@ -295,16 +455,38 @@ public sealed class AudioPathRegressionTests
     {
         float[] monoInput = { 0.25f, -0.5f, 0.75f };
         float[] stereoProcess = Enumerable.Repeat(99f, 6).ToArray();
-        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", monoInput, 1, 2, 3, stereoProcess, stereoProcess.Length);
+        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", monoInput, 1, 2, 3, stereoProcess, stereoProcess.Length, SharedAudioInputChannelModes.Auto);
         CollectionAssert.AreEqual(new[] { 0.25f, 0.25f, -0.5f, -0.5f, 0.75f, 0.75f }, stereoProcess);
 
-        float[] stereoInput = { 0.1f, 0.2f, 0.3f };
+        float[] stereoInput = { 0f, 0.2f, 0f, -0.3f };
         float[] quadProcess = Enumerable.Repeat(9f, 8).ToArray();
-        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", stereoInput, 2, 4, 2, quadProcess, quadProcess.Length);
-        CollectionAssert.AreEqual(new[] { 0.1f, 0.2f, 0.2f, 0.2f, 0.3f, 0.3f, 0.3f, 0.3f }, quadProcess);
+        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", stereoInput, 2, 4, 2, quadProcess, quadProcess.Length, SharedAudioInputChannelModes.Auto);
+        CollectionAssert.AreEqual(new[] { 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f }, quadProcess);
+
+        float[] manualStereoInput = { 0.25f, 0.75f, -0.5f, 0.25f };
+        float[] input1Process = Enumerable.Repeat(3f, 4).ToArray();
+        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", manualStereoInput, 2, 2, 2, input1Process, input1Process.Length, SharedAudioInputChannelModes.Input1);
+        CollectionAssert.AreEqual(new[] { 0.25f, 0.25f, -0.5f, -0.5f }, input1Process);
+
+        float[] input2Process = Enumerable.Repeat(3f, 4).ToArray();
+        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", manualStereoInput, 2, 2, 2, input2Process, input2Process.Length, SharedAudioInputChannelModes.Input2);
+        CollectionAssert.AreEqual(new[] { 0.75f, 0.75f, 0.25f, 0.25f }, input2Process);
+
+        float[] monoMixProcess = Enumerable.Repeat(3f, 4).ToArray();
+        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", manualStereoInput, 2, 2, 2, monoMixProcess, monoMixProcess.Length, SharedAudioInputChannelModes.MonoMix);
+        CollectionAssert.AreEqual(new[] { 0.5f, 0.5f, -0.125f, -0.125f }, monoMixProcess);
+
+        float[] legacyStereoProcess = Enumerable.Repeat(3f, 4).ToArray();
+        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", manualStereoInput, 2, 2, 2, legacyStereoProcess, legacyStereoProcess.Length, SharedAudioInputChannelModes.Stereo);
+        CollectionAssert.AreEqual(new[] { 0.5f, 0.5f, -0.125f, -0.125f }, legacyStereoProcess);
+
+        float[] truncatedStereoInput = { 0.1f, 0.2f, 0.3f };
+        float[] truncatedProcess = Enumerable.Repeat(7f, 8).ToArray();
+        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", truncatedStereoInput, 2, 4, 2, truncatedProcess, truncatedProcess.Length, SharedAudioInputChannelModes.Auto);
+        CollectionAssert.AreEqual(new[] { 0.1f, 0.1f, 0.1f, 0.1f, 0.3f, 0.3f, 0.3f, 0.3f }, truncatedProcess);
 
         float[] cleared = { 1f, 2f, 3f, 4f };
-        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", null, 2, 2, 2, cleared, cleared.Length);
+        InvokeRuntimeStatic("FillProcessBufferFromPortAudioInput", null, 2, 2, 2, cleared, cleared.Length, SharedAudioInputChannelModes.Input2);
         CollectionAssert.AreEqual(new[] { 0f, 0f, 0f, 0f }, cleared);
 
         float[] monoProcessed = { -0.1f, 0.5f, 0.9f };
@@ -316,6 +498,78 @@ public sealed class AudioPathRegressionTests
         float[] quadOutput = Enumerable.Repeat(8f, 8).ToArray();
         InvokeRuntimeStatic("FillPortAudioOutputBufferFromProcessedAudio", stereoProcessed, 2, 2, quadOutput, 4);
         CollectionAssert.AreEqual(new[] { 0.1f, 0.2f, 0.1f, 0.2f, 0.3f, 0.4f, 0.3f, 0.4f }, quadOutput);
+    }
+
+    [Test]
+    public void RocksmithAutomaticTonePresetMapping_MapsCommonToneFamilies()
+    {
+        Assert.AreEqual("Bass Grind", InvokeGuitarBridgeStatic<string>("ResolveAutomaticTonePresetName", "Finger Bass", "Bass", ""));
+        Assert.AreEqual("Drop Modern", InvokeGuitarBridgeStatic<string>("ResolveAutomaticTonePresetName", "Drop Metal", "Lead", "{\"Amp\":\"5150\"}"));
+        Assert.AreEqual("Ambient Clean", InvokeGuitarBridgeStatic<string>("ResolveAutomaticTonePresetName", "Shimmer Delay", "Rhythm", ""));
+        Assert.AreEqual("Clean Pop", InvokeGuitarBridgeStatic<string>("ResolveAutomaticTonePresetName", "", "Rhythm", ""));
+    }
+
+    [Test]
+    public void RocksmithTonePresetBuilder_BuildsStructuredGearToneWithoutTreatingBassKnobAsBassRoute()
+    {
+        string rawToneJson =
+            @"{
+                ""Name"": ""Clean Verse"",
+                ""Key"": ""Tone_A"",
+                ""GearList"": {
+                    ""Amp"": {
+                        ""Type"": ""Amps"",
+                        ""Key"": ""Amp_MarshallPlexi"",
+                        ""KnobValues"": { ""Gain"": 4, ""Bass"": 8, ""Mid"": 5, ""Treble"": 6, ""Presence"": 5 }
+                    },
+                    ""Cabinet"": {
+                        ""Type"": ""Cabinets"",
+                        ""Key"": ""Cab_Marshall1960TV"",
+                        ""KnobValues"": {}
+                    },
+                    ""PrePedal1"": {
+                        ""Type"": ""Pedals"",
+                        ""Category"": ""Distortion"",
+                        ""Key"": ""Pedal_TubeScreamer"",
+                        ""KnobValues"": { ""Drive"": 3, ""Tone"": 5, ""Level"": 7 }
+                    },
+                    ""PostPedal1"": {
+                        ""Type"": ""Pedals"",
+                        ""Category"": ""Delay"",
+                        ""Key"": ""Pedal_Echo"",
+                        ""KnobValues"": { ""Time"": 320, ""Feedback"": 35, ""Mix"": 18 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Clean Verse", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(RocksmithTonePresetBuilder.IsGeneratedPresetId(preset.preset_id));
+        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Distortion);
+        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Amp);
+        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.CabSim);
+        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Delay);
+
+        UnityToneLabRuntime.ToneLabPedalSlot cabSlot = preset.pedal_chain.First(slot => slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.CabSim);
+        CabSimPedalSettings cabSettings = (CabSimPedalSettings)ToneLabPedalRegistry
+            .GetDescriptor(UnityToneLabRuntime.ToneLabPedalType.CabSim)
+            .DeserializeSettingsObject(cabSlot.settings_json);
+        Assert.Less(cabSettings.thump, 0.78f, "A guitar route with a Bass EQ knob should not be treated as a bass arrangement.");
+    }
+
+    [Test]
+    public void ToneLabSettingsNormalization_ClampsGlobalInputTrim()
+    {
+        UnityToneLabRuntime.ToneLabSettings settings = new UnityToneLabRuntime.ToneLabSettings
+        {
+            global_input_trim_db = -99f
+        };
+
+        InvokeRuntimeStatic("ClampSettings", settings);
+        Assert.AreEqual(-36f, settings.global_input_trim_db);
+
+        settings.global_input_trim_db = 99f;
+        InvokeRuntimeStatic("ClampSettings", settings);
+        Assert.AreEqual(12f, settings.global_input_trim_db);
     }
 
     [Test]
@@ -374,6 +628,28 @@ public sealed class AudioPathRegressionTests
 
         CollectionAssert.AreEqual(
             new[] { 4, 5 },
+            InvokeIntListInstance(bridge, "BuildInputDeviceStartCandidates", -1));
+    }
+
+    [Test]
+    public void NativeDetectorInputCandidates_AutomaticDoesNotPreferWdmKsOverWasapi()
+    {
+        NativeNotesDetectorBridge bridge = new NativeNotesDetectorBridge();
+        NativeDetectorDeviceListPayload payload = new NativeDetectorDeviceListPayload
+        {
+            preferredDeviceIndex = 25,
+            devices = new[]
+            {
+                DetectorDevice(25, "25: Microphone (Rocksmith USB Guitar Adapter)", "Windows WDM-KS"),
+                DetectorDevice(1, "1: Microphone (3- Rocksmith USB Gu", "MME"),
+                DetectorDevice(17, "17: Microphone (3- Rocksmith USB Guitar Adapter)", "Windows WASAPI")
+            }
+        };
+
+        SetField(bridge, "cachedDevices", payload);
+
+        CollectionAssert.AreEqual(
+            new[] { 17, 1, 25 },
             InvokeIntListInstance(bridge, "BuildInputDeviceStartCandidates", -1));
     }
 
@@ -590,6 +866,55 @@ public sealed class AudioPathRegressionTests
         return array;
     }
 
+    private static GameplayNoteState CreateGameplayNoteState(
+        int id,
+        float time,
+        int stringIndex,
+        int fret,
+        string noteName,
+        int chordId,
+        NoteTechnique technique,
+        bool requiresPluck,
+        int linkedFrom,
+        GameplayNoteResult result)
+    {
+        NoteData note = new NoteData(
+            id,
+            time,
+            0f,
+            stringIndex,
+            fret,
+            noteName,
+            chordId,
+            technique,
+            slideTo: technique == NoteTechnique.Slide ? fret : -1,
+            bend: 0f,
+            legato: !requiresPluck,
+            pluckRequired: requiresPluck,
+            linkedFrom: linkedFrom);
+
+        return new GameplayNoteState(note)
+        {
+            result = result
+        };
+    }
+
+    private static void AddRecentNoteEvent(GuitarBridgeServer bridge, int eventId, float time, params int[] midiPitches)
+    {
+        Type eventType = typeof(GuitarBridgeServer).GetNestedType("NoteEvent", BindingFlags.NonPublic);
+        Assert.IsNotNull(eventType);
+        object noteEvent = Activator.CreateInstance(eventType, true);
+        SetField(noteEvent, "id", eventId);
+        SetField(noteEvent, "time", time);
+        SetField(noteEvent, "observedAtUnscaled", time);
+        SetField(noteEvent, "source", "test");
+        SetField(noteEvent, "pitches", new HashSet<int>(midiPitches ?? Array.Empty<int>()));
+        SetField(noteEvent, "consumedKeys", new HashSet<int>());
+
+        IList recentEvents = (IList)GetField(bridge, "recentNoteEvents");
+        recentEvents.Add(noteEvent);
+    }
+
     private static Type DeviceDescriptorType
     {
         get
@@ -624,6 +949,11 @@ public sealed class AudioPathRegressionTests
     private static T InvokeGuitarBridgeStatic<T>(string methodName, params object[] args)
     {
         return (T)InvokeGuitarBridgeStatic(methodName, args);
+    }
+
+    private static T InvokeNativeDetectorBridgeStatic<T>(string methodName, params object[] args)
+    {
+        return (T)InvokeStatic(typeof(NativeNotesDetectorBridge), methodName, args);
     }
 
     private static object InvokeStatic(Type ownerType, string methodName, params object[] args)

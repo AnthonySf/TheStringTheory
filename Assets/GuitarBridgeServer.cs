@@ -713,6 +713,8 @@ public class GuitarBridgeServer : MonoBehaviour
         public string toneName;
         public string assignedPresetId;
         public string assignedPresetName;
+        public string saveAsPresetDefaultName;
+        public bool isAutomaticPresetMapping;
         public bool isBaseTone;
         public int switchCount;
         public float firstSwitchTimeSeconds;
@@ -999,6 +1001,19 @@ public class GuitarBridgeServer : MonoBehaviour
     private string activeSongToneMappingArrangementKey = string.Empty;
     private string activeSongToneMappingToneName = string.Empty;
     private string activeSongToneMappingPresetId = string.Empty;
+    private readonly Dictionary<string, UnityToneLabRuntime.ToneLabPreset> generatedRocksmithTonePresetCache = new Dictionary<string, UnityToneLabRuntime.ToneLabPreset>(StringComparer.Ordinal);
+    private string cachedSongToneMappingSongKey = string.Empty;
+    private string cachedSongToneMappingArrangementKey = string.Empty;
+    private string cachedSongToneMappingPartId = string.Empty;
+    private string cachedSongToneMappingNotationPath = string.Empty;
+    private string cachedSongToneMappingArrangementRoute = string.Empty;
+    private RocksmithCachedArrangementToneData cachedSongToneMappingToneData;
+    private List<RocksmithCachedToneChangeData> cachedSongToneMappingChanges = new List<RocksmithCachedToneChangeData>();
+    private bool cachedSongToneMappingLoaded;
+    private string cachedSongToneMappingToneName = string.Empty;
+    private string cachedSongToneMappingPresetId = string.Empty;
+    private float cachedSongToneMappingToneStartTimeSeconds = float.NegativeInfinity;
+    private float cachedSongToneMappingNextSwitchTimeSeconds = float.PositiveInfinity;
     private bool isLoadingBackingTrack;
     private string backingTrackLoadError = string.Empty;
     private StemCacheManifest currentStemManifest;
@@ -1383,12 +1398,11 @@ public class GuitarBridgeServer : MonoBehaviour
         LoadHeroModePreferences();
         EnsureToneLabRuntimeComponent();
         LoadSharedAudioSettingsFromDisk();
-        RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true);
+        RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true, forcePortAudioRescan: true);
         ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: false, refreshCatalogs: false);
         LoadSongLibraryTypePreference();
         InitializeMultiplayerRhythmPlayers();
         RefreshMultiplayerRhythmAvailableDevices();
-        StartConfiguredNotesDetectorBackend();
         bool startInMainMenu = true;
         showMainMenu = startInMainMenu;
         mainMenuFlowActive = startInMainMenu;
@@ -1396,6 +1410,7 @@ public class GuitarBridgeServer : MonoBehaviour
         LoadTestSong();
         isPaused = startInMainMenu;
         unityToneLabRuntime?.StartBackgroundMonitoring();
+        StartConfiguredNotesDetectorBackend();
         EnsureRenderer();
         SyncAudioToSongTimer(playImmediately: false);
     }
@@ -2155,6 +2170,7 @@ public class GuitarBridgeServer : MonoBehaviour
             string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) ||
             songMetadata == null)
         {
+            ResetToneLabSongTonePlaybackCache();
             ClearToneLabSongTonePlaybackOverride();
             return;
         }
@@ -2163,31 +2179,30 @@ public class GuitarBridgeServer : MonoBehaviour
         string arrangementKey = GetArrangementGroupId(activeSummary);
         if (string.IsNullOrWhiteSpace(arrangementKey))
         {
+            ResetToneLabSongTonePlaybackCache();
             ClearToneLabSongTonePlaybackOverride();
             return;
         }
 
-        RocksmithCachedArrangementPart part = null;
-        if (!string.IsNullOrWhiteSpace(activeSummary?.PartId))
-            ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(currentSongEntry.PrimaryNotationPath, activeSummary.PartId, out _, out part);
-        if (part == null)
-            ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(currentSongEntry.PrimaryNotationPath, arrangementKey, out _, out part);
+        string songKey = BuildToneLabSongMappingSongKey(currentSongEntry);
+        string toneName = string.Empty;
+        string presetId = string.Empty;
+        float toneTimeSeconds = audioSongTimer + (audioOffsetMs / 1000f);
+        if (EnsureToneLabSongTonePlaybackCache(songKey, arrangementKey, activeSummary))
+            ResolveCachedToneLabSongToneMapping(toneTimeSeconds, out toneName, out presetId);
 
-        string toneName = ResolveToneNameAtTime(part?.tones, audioSongTimer + (audioOffsetMs / 1000f));
         if (string.IsNullOrWhiteSpace(toneName))
         {
             ClearToneLabSongTonePlaybackOverride();
             return;
         }
 
-        string presetId = GetTonePresetMapping(songMetadata, arrangementKey, toneName);
         if (string.IsNullOrWhiteSpace(presetId))
         {
             ClearToneLabSongTonePlaybackOverride();
             return;
         }
 
-        string songKey = BuildToneLabSongMappingSongKey(currentSongEntry);
         if (string.Equals(activeSongToneMappingSongKey, songKey, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(activeSongToneMappingArrangementKey, arrangementKey, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(activeSongToneMappingToneName, toneName, StringComparison.OrdinalIgnoreCase) &&
@@ -2197,7 +2212,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         EnsureToneLabRuntimeComponent();
-        if (unityToneLabRuntime != null && unityToneLabRuntime.SetPlaybackPresetOverride(presetId))
+        if (TryApplyToneLabPlaybackPresetOverride(presetId))
         {
             activeSongToneMappingSongKey = songKey;
             activeSongToneMappingArrangementKey = arrangementKey;
@@ -2206,8 +2221,139 @@ public class GuitarBridgeServer : MonoBehaviour
         }
         else
         {
+            ResetToneLabSongTonePlaybackCache();
             ClearToneLabSongTonePlaybackOverride();
         }
+    }
+
+    private void RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(bool applyIfEligible)
+    {
+        ResetToneLabSongTonePlaybackCache();
+        ClearToneLabSongTonePlaybackOverride();
+        if (applyIfEligible)
+            UpdateToneLabSongTonePlaybackOverride();
+    }
+
+    private bool TryApplyToneLabPlaybackPresetOverride(string presetId)
+    {
+        if (string.IsNullOrWhiteSpace(presetId) || unityToneLabRuntime == null)
+            return false;
+
+        if (RocksmithTonePresetBuilder.IsGeneratedPresetId(presetId))
+        {
+            return generatedRocksmithTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset) &&
+                   unityToneLabRuntime.SetPlaybackPresetOverride(generatedPreset);
+        }
+
+        return unityToneLabRuntime.SetPlaybackPresetOverride(presetId);
+    }
+
+    private bool EnsureToneLabSongTonePlaybackCache(
+        string songKey,
+        string arrangementKey,
+        MusicXmlLoader.MusicXmlPartSummary activeSummary)
+    {
+        string notationPath = NormalizePathKey(currentSongEntry?.PrimaryNotationPath);
+        string partId = activeSummary?.PartId ?? string.Empty;
+        if (cachedSongToneMappingLoaded &&
+            string.Equals(cachedSongToneMappingSongKey, songKey ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(cachedSongToneMappingArrangementKey, arrangementKey ?? string.Empty, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(cachedSongToneMappingPartId, partId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(cachedSongToneMappingNotationPath, notationPath, StringComparison.OrdinalIgnoreCase))
+        {
+            return cachedSongToneMappingToneData != null;
+        }
+
+        ResetToneLabSongTonePlaybackCache();
+        cachedSongToneMappingSongKey = songKey ?? string.Empty;
+        cachedSongToneMappingArrangementKey = arrangementKey ?? string.Empty;
+        cachedSongToneMappingPartId = partId;
+        cachedSongToneMappingNotationPath = notationPath;
+
+        RocksmithCachedArrangementPart part = null;
+        if (!string.IsNullOrWhiteSpace(partId))
+            ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(currentSongEntry.PrimaryNotationPath, partId, out _, out part);
+        if (part == null)
+            ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(currentSongEntry.PrimaryNotationPath, arrangementKey, out _, out part);
+
+        cachedSongToneMappingLoaded = true;
+        if (part?.tones == null)
+            return false;
+
+        cachedSongToneMappingToneData = part.tones;
+        cachedSongToneMappingArrangementRoute = part.route ?? activeSummary?.Name ?? activeSummary?.GroupDisplayName ?? string.Empty;
+        cachedSongToneMappingChanges = BuildSortedToneChanges(part.tones);
+        return true;
+    }
+
+    private void ResolveCachedToneLabSongToneMapping(float timeSeconds, out string toneName, out string presetId)
+    {
+        toneName = string.Empty;
+        presetId = string.Empty;
+        if (cachedSongToneMappingToneData == null)
+            return;
+
+        float clampedTime = Mathf.Max(0f, timeSeconds);
+        if (IsCachedToneWindowCurrent(clampedTime))
+        {
+            toneName = cachedSongToneMappingToneName;
+            presetId = cachedSongToneMappingPresetId;
+            return;
+        }
+
+        if (!TryResolveToneWindowAtTime(
+                cachedSongToneMappingToneData,
+                cachedSongToneMappingChanges,
+                clampedTime,
+                out toneName,
+                out float toneStartTimeSeconds,
+                out float nextSwitchTimeSeconds))
+        {
+            cachedSongToneMappingToneName = string.Empty;
+            cachedSongToneMappingPresetId = string.Empty;
+            cachedSongToneMappingToneStartTimeSeconds = float.NegativeInfinity;
+            cachedSongToneMappingNextSwitchTimeSeconds = float.PositiveInfinity;
+            return;
+        }
+
+        presetId = ResolveTonePresetMapping(
+            songMetadata,
+            cachedSongToneMappingArrangementKey,
+            toneName,
+            cachedSongToneMappingToneData,
+            cachedSongToneMappingArrangementRoute);
+        cachedSongToneMappingToneName = toneName;
+        cachedSongToneMappingPresetId = presetId ?? string.Empty;
+        cachedSongToneMappingToneStartTimeSeconds = toneStartTimeSeconds;
+        cachedSongToneMappingNextSwitchTimeSeconds = nextSwitchTimeSeconds;
+    }
+
+    private bool IsCachedToneWindowCurrent(float clampedTimeSeconds)
+    {
+        if (string.IsNullOrWhiteSpace(cachedSongToneMappingToneName))
+            return false;
+
+        const float epsilonSeconds = 0.0001f;
+        bool afterStart = clampedTimeSeconds + epsilonSeconds >= cachedSongToneMappingToneStartTimeSeconds;
+        bool beforeNext = float.IsPositiveInfinity(cachedSongToneMappingNextSwitchTimeSeconds) ||
+                          clampedTimeSeconds + epsilonSeconds < cachedSongToneMappingNextSwitchTimeSeconds;
+        return afterStart && beforeNext;
+    }
+
+    private void ResetToneLabSongTonePlaybackCache()
+    {
+        cachedSongToneMappingSongKey = string.Empty;
+        cachedSongToneMappingArrangementKey = string.Empty;
+        cachedSongToneMappingPartId = string.Empty;
+        cachedSongToneMappingNotationPath = string.Empty;
+        cachedSongToneMappingArrangementRoute = string.Empty;
+        cachedSongToneMappingToneData = null;
+        cachedSongToneMappingChanges?.Clear();
+        cachedSongToneMappingLoaded = false;
+        cachedSongToneMappingToneName = string.Empty;
+        cachedSongToneMappingPresetId = string.Empty;
+        cachedSongToneMappingToneStartTimeSeconds = float.NegativeInfinity;
+        cachedSongToneMappingNextSwitchTimeSeconds = float.PositiveInfinity;
     }
 
     private void ClearToneLabSongTonePlaybackOverride()
@@ -8404,7 +8550,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 {
                     ShutdownNativeNotesDetectorIfRunning();
                     EnsureNativeNotesDetectorBridge();
-                    nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex);
+                    nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel());
                     RefreshNativeNotesDetectorUiState();
                 }
                 else
@@ -9306,6 +9452,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         toneLabReturnContext = ToneLabReturnContext.Pause;
+        RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(applyIfEligible: true);
     }
 
     private void HideToneLabUi()
@@ -11825,8 +11972,11 @@ private void OpenOrFocusToneLab()
         if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
         {
             EnsureNativeNotesDetectorBridge();
-            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex);
             RefreshNativeNotesDetectorUiState();
+            RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
+            bool started = nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel()) == true;
+            RefreshNativeNotesDetectorUiState();
+            Debug.Log($"[NativeNotesDetector] Configured start {(started ? "succeeded" : "failed")} on {selectedNativeNotesDetectorInputDeviceIndex}: {GetNotesDetectorStatusText()}");
             MarkDetectorHintDirty();
             return;
         }
@@ -11851,13 +12001,13 @@ private void OpenOrFocusToneLab()
             nativeNotesDetectorBridge.SetDebugLogPath(notesDetectorEditorLogPath);
     }
 
-    private void RefreshNativeNotesDetectorDeviceList()
+    private void RefreshNativeNotesDetectorDeviceList(bool forcePortAudioRescan = false)
     {
         EnsureNativeNotesDetectorBridge();
         if (nativeNotesDetectorBridge == null)
             return;
 
-        NativeDetectorDeviceListPayload payload = nativeNotesDetectorBridge.RefreshDevices();
+        NativeDetectorDeviceListPayload payload = nativeNotesDetectorBridge.RefreshDevices(forcePortAudioRescan);
         nativeNotesDetectorInputDevices.Clear();
 
         if (payload?.devices == null)
@@ -11871,13 +12021,13 @@ private void OpenOrFocusToneLab()
         }
     }
 
-    private void RefreshNativeNotesDetectorUiState()
+    private void RefreshNativeNotesDetectorUiState(bool forcePortAudioRescan = false)
     {
         EnsureNativeNotesDetectorBridge();
         if (nativeNotesDetectorBridge == null)
             return;
 
-        RefreshNativeNotesDetectorDeviceList();
+        RefreshNativeNotesDetectorDeviceList(forcePortAudioRescan);
         nativeNotesDetectorBridge.RefreshNativeStatus();
         nativeNotesDetectorRuntimeInfo = nativeNotesDetectorBridge.RuntimeInfo ?? new NativeDetectorRuntimeInfo();
     }
@@ -11974,7 +12124,7 @@ private void OpenOrFocusToneLab()
         if (sharedAudioSettings == null)
             sharedAudioSettings = new SharedAudioSettings();
 
-        sharedAudioSettings.version = 6;
+        sharedAudioSettings.version = 8;
         sharedAudioSettings.inputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.inputDeviceName);
         sharedAudioSettings.outputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.outputDeviceName);
         sharedAudioSettings.monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize);
@@ -11985,13 +12135,28 @@ private void OpenOrFocusToneLab()
         SharedAudioSettingsUtility.Save(ExternalContentPaths.PersistentAudioSettingsPath, sharedAudioSettings);
     }
 
-    private void RefreshSharedAudioRoutingCatalogs(bool refreshToneLabDevices, bool refreshDetectorDevices)
+    private void RefreshSharedAudioRoutingCatalogs(bool refreshToneLabDevices, bool refreshDetectorDevices, bool forcePortAudioRescan = false)
     {
         EnsureToneLabRuntimeComponent();
+        bool restartDetectorAfterForcedRescan = false;
+        if (forcePortAudioRescan && refreshDetectorDevices)
+        {
+            EnsureNativeNotesDetectorBridge();
+            restartDetectorAfterForcedRescan = nativeNotesDetectorBridge?.IsRunning() == true;
+            nativeNotesDetectorBridge?.Shutdown(forceNativeShutdown: true);
+        }
+
         if (refreshToneLabDevices)
-            unityToneLabRuntime?.RefreshInputDevices();
+            unityToneLabRuntime?.RefreshInputDevices(forcePortAudioRescan);
         if (refreshDetectorDevices)
-            RefreshNativeNotesDetectorUiState();
+        {
+            RefreshNativeNotesDetectorUiState(forcePortAudioRescan: false);
+            if (restartDetectorAfterForcedRescan && notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
+            {
+                RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
+                nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel());
+            }
+        }
 
         sharedAudioInputDeviceChoices.Clear();
         sharedAudioInputDeviceChoices.Add(SharedAudioAutomaticLabel);
@@ -12024,6 +12189,7 @@ private void OpenOrFocusToneLab()
             return;
 
         string normalizedCandidate = SharedAudioSettingsUtility.NormalizeDeviceKey(candidate);
+        string physicalCandidate = SharedAudioSettingsUtility.NormalizePhysicalDeviceKey(candidate);
         if (string.IsNullOrWhiteSpace(normalizedCandidate))
             return;
 
@@ -12031,6 +12197,11 @@ private void OpenOrFocusToneLab()
         {
             if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(choices[i]), normalizedCandidate, StringComparison.Ordinal))
                 return;
+            if (!string.IsNullOrWhiteSpace(physicalCandidate) &&
+                string.Equals(SharedAudioSettingsUtility.NormalizePhysicalDeviceKey(choices[i]), physicalCandidate, StringComparison.Ordinal))
+            {
+                return;
+            }
         }
 
         choices.Add(candidate.Trim());
@@ -12039,6 +12210,7 @@ private void OpenOrFocusToneLab()
     private void UpdateSharedAudioRuntimeSettingOptions()
     {
         UpdateRuntimeEnumOptions("audio.inputDevice", sharedAudioInputDeviceChoices);
+        UpdateRuntimeEnumOptions("audio.inputChannelMode", SharedAudioInputChannelModes.Choices);
         UpdateRuntimeEnumOptions("audio.outputDevice", sharedAudioOutputDeviceChoices);
         UpdateRuntimeEnumOptions("audio.monitoringLatency", UnityToneLabRuntime.SharedMonitoringLatencyOptions);
     }
@@ -12107,6 +12279,17 @@ private void OpenOrFocusToneLab()
                 return choice;
         }
 
+        string physicalCandidate = SharedAudioSettingsUtility.NormalizePhysicalDeviceKey(candidate);
+        if (!string.IsNullOrWhiteSpace(physicalCandidate))
+        {
+            for (int i = 0; i < choices.Count; i++)
+            {
+                string choice = choices[i];
+                if (string.Equals(SharedAudioSettingsUtility.NormalizePhysicalDeviceKey(choice), physicalCandidate, StringComparison.Ordinal))
+                    return choice;
+            }
+        }
+
         return string.Empty;
     }
 
@@ -12145,6 +12328,14 @@ private void OpenOrFocusToneLab()
     {
         SharedAudioAdvancedSettings normalized = SharedAudioSettingsUtility.CloneAdvancedSettings(source);
         changed = source == null;
+
+        string normalizedInputChannelMode = SharedAudioInputChannelModes.Normalize(normalized.inputChannelMode);
+        if (!string.Equals(normalized.inputChannelMode, normalizedInputChannelMode, StringComparison.Ordinal) ||
+            (source != null && !string.Equals(source.inputChannelMode ?? string.Empty, normalizedInputChannelMode, StringComparison.Ordinal)))
+        {
+            normalized.inputChannelMode = normalizedInputChannelMode;
+            changed = true;
+        }
 
         if (!string.Equals(normalized.backendMode, SharedAudioBackendModes.NormalizeForCurrentPlatform(normalized.backendMode), StringComparison.Ordinal))
         {
@@ -12191,16 +12382,9 @@ private void OpenOrFocusToneLab()
         if (IsSharedAudioAutomaticValue(storedValue))
             return SharedAudioAutomaticLabel;
 
-        string normalizedStored = SharedAudioSettingsUtility.NormalizeDeviceKey(storedValue);
-        if (choices != null)
-        {
-            for (int i = 0; i < choices.Count; i++)
-            {
-                string choice = choices[i];
-                if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(choice), normalizedStored, StringComparison.Ordinal))
-                    return choice;
-            }
-        }
+        string resolvedChoice = ResolveChoiceByNormalizedName(choices, storedValue);
+        if (!string.IsNullOrWhiteSpace(resolvedChoice))
+            return resolvedChoice;
 
         return SharedAudioSettingsUtility.NormalizeStoredDeviceName(storedValue);
     }
@@ -12230,16 +12414,9 @@ private void OpenOrFocusToneLab()
         if (IsSharedAudioAutomaticValue(storedValue))
             return string.Empty;
 
-        string normalizedStored = SharedAudioSettingsUtility.NormalizeDeviceKey(storedValue);
-        if (availableDevices != null)
-        {
-            for (int i = 0; i < availableDevices.Count; i++)
-            {
-                string deviceName = availableDevices[i];
-                if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(deviceName), normalizedStored, StringComparison.Ordinal))
-                    return deviceName;
-            }
-        }
+        string resolvedDevice = ResolveChoiceByNormalizedName(availableDevices, storedValue);
+        if (!string.IsNullOrWhiteSpace(resolvedDevice))
+            return resolvedDevice;
 
         return SharedAudioSettingsUtility.NormalizeStoredDeviceName(storedValue);
     }
@@ -12250,15 +12427,69 @@ private void OpenOrFocusToneLab()
             return -1;
 
         string normalizedStored = SharedAudioSettingsUtility.NormalizeDeviceKey(storedValue);
+        string physicalStored = SharedAudioSettingsUtility.NormalizePhysicalDeviceKey(storedValue);
+        int bestIndex = -1;
+        int bestRank = int.MaxValue;
+        int bestExactPenalty = int.MaxValue;
         for (int i = 0; i < nativeNotesDetectorInputDevices.Count; i++)
         {
             NativeDetectorInputDevice device = nativeNotesDetectorInputDevices[i];
             string displayName = ResolveNativeDetectorInputDeviceDisplayLabel(device);
-            if (string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(displayName), normalizedStored, StringComparison.Ordinal))
-                return device?.index ?? -1;
+            bool exactMatch = string.Equals(SharedAudioSettingsUtility.NormalizeDeviceKey(displayName), normalizedStored, StringComparison.Ordinal);
+            bool physicalMatch = !string.IsNullOrWhiteSpace(physicalStored) &&
+                string.Equals(SharedAudioSettingsUtility.NormalizePhysicalDeviceKey(displayName), physicalStored, StringComparison.Ordinal);
+            if (!exactMatch && !physicalMatch)
+                continue;
+
+            int rank = GetNativeDetectorSharedDeviceHostRank(device);
+            int exactPenalty = exactMatch ? 0 : 1;
+            int deviceIndex = device?.index ?? -1;
+            if (rank < bestRank ||
+                (rank == bestRank && exactPenalty < bestExactPenalty) ||
+                (rank == bestRank && exactPenalty == bestExactPenalty && deviceIndex >= 0 && (bestIndex < 0 || deviceIndex < bestIndex)))
+            {
+                bestIndex = deviceIndex;
+                bestRank = rank;
+                bestExactPenalty = exactPenalty;
+            }
         }
 
-        return -1;
+        return bestIndex;
+    }
+
+    private static int GetNativeDetectorSharedDeviceHostRank(NativeDetectorInputDevice device)
+    {
+        string host = device?.hostApiName ?? string.Empty;
+        if (host.IndexOf("ASIO", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            host.IndexOf("Core Audio", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            host.IndexOf("CoreAudio", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return 0;
+        }
+
+        if (host.IndexOf("WASAPI", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 1;
+        if (host.IndexOf("DirectSound", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 2;
+        if (host.IndexOf("MME", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 3;
+        if (host.IndexOf("WDM", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            host.IndexOf("Kernel", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return 5;
+        }
+        if (host.IndexOf("Windows", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 4;
+
+        return 6;
+    }
+
+    private int RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(bool savePreference)
+    {
+        selectedNativeNotesDetectorInputDeviceIndex = ResolveNativeDetectorSharedDeviceIndex(sharedAudioSettings?.inputDeviceName);
+        if (savePreference)
+            SaveNativeDetectorPreferences();
+        return selectedNativeNotesDetectorInputDeviceIndex;
     }
 
     private void ApplySharedAudioSettingsToSubsystems(bool restartDetector, bool restartToneLab, bool refreshCatalogs)
@@ -12275,10 +12506,11 @@ private void OpenOrFocusToneLab()
         sharedAudioSettings.songVolumePercent = Mathf.Clamp(sharedAudioSettings.songVolumePercent, 0f, 100f);
         sharedAudioSettings.guitarVolumePercent = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, 100f);
         sharedAudioSettings.detectorResamplerMode = SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings.detectorResamplerMode);
+        SharedAudioAdvancedSettings advancedSettings = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, monitoringBufferSize, out _);
+        sharedAudioSettings.advanced = advancedSettings;
 
         if (unityToneLabRuntime != null)
         {
-            SharedAudioAdvancedSettings advancedSettings = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, monitoringBufferSize, out _);
             string resolvedToneLabInput = ResolveToneLabSharedDeviceName(sharedAudioSettings.inputDeviceName, unityToneLabRuntime.InputDevices);
             string resolvedToneLabOutput = ResolveToneLabSharedDeviceName(sharedAudioSettings.outputDeviceName, unityToneLabRuntime.OutputDevices);
             if (advancedSettings.betaEnabled)
@@ -12296,6 +12528,7 @@ private void OpenOrFocusToneLab()
             unityToneLabRuntime.SetAdvancedRoutingOptions(new UnityToneLabRuntime.AdvancedRoutingOptions
             {
                 betaEnabled = advancedSettings.betaEnabled,
+                inputChannelMode = advancedSettings.inputChannelMode,
                 backendMode = advancedSettings.backendMode,
                 allowFallback = advancedSettings.allowFallback,
                 preferredInputDeviceName = advancedSettings.inputDeviceName,
@@ -12305,7 +12538,6 @@ private void OpenOrFocusToneLab()
                 unifiedOutputEnabled = advancedSettings.unifiedOutputEnabled,
                 unityRecorderCaptureEnabled = advancedSettings.unityRecorderCaptureEnabled
             });
-            bool toneLabWasMonitoring = unityToneLabRuntime.IsMonitoring || unityToneLabRuntime.IsAwaitingStartup;
             unityToneLabRuntime.UpdateSettings(settings =>
             {
                 settings.input_device_name = resolvedToneLabInput;
@@ -12313,23 +12545,24 @@ private void OpenOrFocusToneLab()
                 settings.monitoring_buffer_size = monitoringBufferSize;
             }, restartMonitoring: restartToneLab);
             unityToneLabRuntime.SetMonitorVolumePercent(sharedAudioSettings.guitarVolumePercent);
-            if (!toneLabWasMonitoring)
-                unityToneLabRuntime.RefreshInputDevices();
         }
 
         if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
         {
             EnsureNativeNotesDetectorBridge();
+            nativeNotesDetectorBridge?.SetInputChannelMode(advancedSettings.inputChannelMode);
             nativeNotesDetectorBridge?.SetResamplerMode(ParseSharedDetectorResamplerMode(sharedAudioSettings.detectorResamplerMode));
         }
 
-        selectedNativeNotesDetectorInputDeviceIndex = ResolveNativeDetectorSharedDeviceIndex(sharedAudioSettings.inputDeviceName);
-        SaveNativeDetectorPreferences();
+        int previousNativeDetectorInputDeviceIndex = selectedNativeNotesDetectorInputDeviceIndex;
+        RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
+        bool nativeDetectorInputDeviceChanged = previousNativeDetectorInputDeviceIndex != selectedNativeNotesDetectorInputDeviceIndex;
 
-        if (restartDetector && notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
+        bool shouldRestartDetectorForDeviceChange = nativeDetectorInputDeviceChanged && nativeNotesDetectorBridge?.IsRunning() == true;
+        if ((restartDetector || shouldRestartDetectorForDeviceChange) && notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
         {
             EnsureNativeNotesDetectorBridge();
-            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex);
+            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, advancedSettings.inputChannelMode);
         }
 
         RefreshNativeNotesDetectorUiState();
@@ -12381,6 +12614,11 @@ private void OpenOrFocusToneLab()
             return UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(sharedAudioSettings.advanced.bufferSize);
 
         return UnityToneLabRuntime.GetSharedMonitoringLatencyLabel(sharedAudioSettings?.monitoringBufferSize ?? 128);
+    }
+
+    public string GetSharedAudioInputChannelModeLabel()
+    {
+        return SharedAudioInputChannelModes.Normalize(sharedAudioSettings?.advanced?.inputChannelMode);
     }
 
     public float GetSharedAudioGuitarVolumePercent()
@@ -12445,13 +12683,16 @@ private void OpenOrFocusToneLab()
         if (sharedAudioSettings == null)
             sharedAudioSettings = new SharedAudioSettings();
 
+        string previousInputChannelMode = GetSharedAudioInputChannelModeLabel();
         sharedAudioSettings.advanced = NormalizeSharedAudioAdvancedSettings(
             updated,
             NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize),
             out _);
-        sharedAudioSettings.monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.advanced.bufferSize);
+        if (sharedAudioSettings.advanced.betaEnabled)
+            sharedAudioSettings.monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.advanced.bufferSize);
         SaveSharedAudioSettingsToDisk();
-        ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: true, refreshCatalogs: true);
+        bool inputChannelChanged = !string.Equals(previousInputChannelMode, GetSharedAudioInputChannelModeLabel(), StringComparison.Ordinal);
+        ApplySharedAudioSettingsToSubsystems(restartDetector: inputChannelChanged, restartToneLab: true, refreshCatalogs: true);
         runtimeSettingsSnapshotDirty = true;
     }
 
@@ -12498,6 +12739,23 @@ private void OpenOrFocusToneLab()
         SaveSharedAudioSettingsToDisk();
         EnsureToneLabRuntimeComponent();
         unityToneLabRuntime?.SetMonitorVolumePercent(clampedPercent);
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void SetSharedAudioInputChannelModeFromUi(string selectedLabel)
+    {
+        if (sharedAudioSettings == null)
+            sharedAudioSettings = new SharedAudioSettings();
+        if (sharedAudioSettings.advanced == null)
+            sharedAudioSettings.advanced = new SharedAudioAdvancedSettings();
+
+        string normalized = SharedAudioInputChannelModes.Normalize(selectedLabel);
+        if (string.Equals(SharedAudioInputChannelModes.Normalize(sharedAudioSettings.advanced.inputChannelMode), normalized, StringComparison.Ordinal))
+            return;
+
+        sharedAudioSettings.advanced.inputChannelMode = normalized;
+        SaveSharedAudioSettingsToDisk();
+        ApplySharedAudioSettingsToSubsystems(restartDetector: true, restartToneLab: true, refreshCatalogs: false);
         runtimeSettingsSnapshotDirty = true;
     }
 
@@ -12841,7 +13099,7 @@ private void OpenOrFocusToneLab()
 
     public void RefreshSharedAudioDevicesFromUi()
     {
-        RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true);
+        RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true, forcePortAudioRescan: true);
         ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: false, refreshCatalogs: false);
         SaveSharedAudioSettingsToDisk();
         sharedAudioRefreshActionLabel = "DONE";
@@ -13121,7 +13379,8 @@ private void OpenOrFocusToneLab()
             if (backend == NotesDetectorBackendMode.NativeEmbeddedBridge)
             {
                 EnsureNativeNotesDetectorBridge();
-                nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex);
+                RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
+                nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel());
                 RefreshNativeNotesDetectorUiState();
             }
             else
@@ -13138,7 +13397,8 @@ private void OpenOrFocusToneLab()
             logNotes = string.Empty;
             EnsureNativeNotesDetectorBridge();
             notesDetectorBackendMode = NotesDetectorBackendMode.NativeEmbeddedBridge;
-            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex);
+            RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
+            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel());
             RefreshNativeNotesDetectorUiState();
         }
         else
@@ -15584,17 +15844,17 @@ private void OpenOrFocusToneLab()
         matchedTime = -999f;
         matchedSourceLabel = string.Empty;
 
+        bool linkedSourceWasHit = true;
         if (note.data.linkedFromNoteId >= 0)
         {
             GameplayNoteState sourceState;
-            if (!TryGetNoteStateById(note.data.linkedFromNoteId, out sourceState) || !sourceState.IsHit)
-                return false;
+            linkedSourceWasHit = TryGetNoteStateById(note.data.linkedFromNoteId, out sourceState) && sourceState.IsHit;
         }
 
         float windowStart = note.data.time - eventMatchEarly - eventTimeSlack;
         float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + 0.1f;
 
-        if (songTimer >= windowStart && songTimer <= windowEnd)
+        if (linkedSourceWasHit && songTimer >= windowStart && songTimer <= windowEnd)
         {
             if (ContainsAcceptedPitch(note, latestDetectedPitches))
             {
@@ -17284,6 +17544,7 @@ private void ParseDetectorPacket(string detectorPacket)
     // =========================================================
     private void LoadTestSong(bool preservePauseUiState = false)
     {
+        ResetToneLabSongTonePlaybackCache();
         currentLoadedTrackIndex = midiTrackIndex;
         latestDetectedPitches.Clear();
         recentNoteEvents.Clear();
@@ -19342,13 +19603,27 @@ private void ParseDetectorPacket(string detectorPacket)
         {
             string toneName = toneNames[i];
             string presetId = GetTonePresetMapping(metadata, arrangementKey, toneName);
+            bool automaticMapping = false;
+            if (string.IsNullOrWhiteSpace(presetId))
+            {
+                presetId = ResolveAutomaticTonePresetId(toneName, part?.route ?? arrangementKey, toneData);
+                automaticMapping = !string.IsNullOrWhiteSpace(presetId);
+            }
+
+            string sourcePresetName = GetToneLabPresetNameForUi(presetId);
             snapshots.Add(new ToneLabSongToneMappingSnapshot
             {
                 songKey = BuildToneLabSongMappingSongKey(entry),
                 arrangementKey = arrangementKey,
                 toneName = toneName,
                 assignedPresetId = presetId,
-                assignedPresetName = GetToneLabPresetNameForUi(presetId),
+                assignedPresetName = automaticMapping
+                    ? GetToneLabPresetNameForUi(presetId, automaticMapping)
+                    : sourcePresetName,
+                saveAsPresetDefaultName = automaticMapping
+                    ? BuildAutoGeneratedTonePresetDefaultName(toneName, sourcePresetName)
+                    : string.Empty,
+                isAutomaticPresetMapping = automaticMapping,
                 isBaseTone = string.Equals(toneData?.baseToneName ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase),
                 switchCount = CountToneSwitches(toneData, toneName),
                 firstSwitchTimeSeconds = GetFirstToneSwitchTime(toneData, toneName)
@@ -19390,8 +19665,40 @@ private void ParseDetectorPacket(string detectorPacket)
             string.Equals(BuildToneLabSongMappingSongKey(currentSongEntry), BuildToneLabSongMappingSongKey(entry), StringComparison.OrdinalIgnoreCase))
         {
             songMetadata = CloneSongMetadata(metadata);
-            activeSongToneMappingPresetId = string.Empty;
+            RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(applyIfEligible: !showToneLab);
         }
+    }
+
+    public string SaveAutoGeneratedTonePresetFromUi(string songKey, string arrangementKey, string toneName, string presetName)
+    {
+        SongLibraryEntry entry = FindToneLabMappingSongEntry(songKey);
+        if (entry == null || string.IsNullOrWhiteSpace(arrangementKey) || string.IsNullOrWhiteSpace(toneName))
+            return string.Empty;
+
+        RocksmithCachedArrangementPart part = LoadToneMappingArrangementPart(entry, arrangementKey);
+        RocksmithCachedArrangementToneData toneData = part?.tones;
+        string automaticPresetId = ResolveAutomaticTonePresetId(toneName, part?.route ?? arrangementKey, toneData);
+        if (string.IsNullOrWhiteSpace(automaticPresetId))
+            return string.Empty;
+
+        EnsureToneLabRuntimeComponent();
+        if (unityToneLabRuntime == null)
+            return string.Empty;
+
+        string sourcePresetName = GetToneLabPresetNameForUi(automaticPresetId);
+        string resolvedPresetName = string.IsNullOrWhiteSpace(presetName)
+            ? BuildAutoGeneratedTonePresetDefaultName(toneName, sourcePresetName)
+            : presetName.Trim();
+
+        string createdPresetId = RocksmithTonePresetBuilder.IsGeneratedPresetId(automaticPresetId) &&
+                                 generatedRocksmithTonePresetCache.TryGetValue(automaticPresetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset)
+            ? unityToneLabRuntime.CreatePresetCopy(generatedPreset, resolvedPresetName)
+            : unityToneLabRuntime.CreatePresetCopy(automaticPresetId, resolvedPresetName);
+        if (string.IsNullOrWhiteSpace(createdPresetId))
+            return string.Empty;
+
+        SetToneLabSongTonePresetMappingFromUi(songKey, arrangementKey, toneName, createdPresetId);
+        return createdPresetId;
     }
 
     private static string BuildToneLabSongMappingSongKey(SongLibraryEntry entry)
@@ -19486,26 +19793,68 @@ private void ParseDetectorPacket(string detectorPacket)
 
     private static string ResolveToneNameAtTime(RocksmithCachedArrangementToneData toneData, float timeSeconds)
     {
+        return TryResolveToneWindowAtTime(
+                toneData,
+                BuildSortedToneChanges(toneData),
+                timeSeconds,
+                out string toneName,
+                out _,
+                out _)
+            ? toneName
+            : string.Empty;
+    }
+
+    private static List<RocksmithCachedToneChangeData> BuildSortedToneChanges(RocksmithCachedArrangementToneData toneData)
+    {
+        if (toneData?.changes == null || toneData.changes.Count == 0)
+            return new List<RocksmithCachedToneChangeData>();
+
+        return toneData.changes
+            .Where(change => change != null && !string.IsNullOrWhiteSpace(change.toneName))
+            .OrderBy(change => change.timeSeconds)
+            .ToList();
+    }
+
+    private static bool TryResolveToneWindowAtTime(
+        RocksmithCachedArrangementToneData toneData,
+        IReadOnlyList<RocksmithCachedToneChangeData> sortedChanges,
+        float timeSeconds,
+        out string toneName,
+        out float toneStartTimeSeconds,
+        out float nextSwitchTimeSeconds)
+    {
+        toneName = string.Empty;
+        toneStartTimeSeconds = 0f;
+        nextSwitchTimeSeconds = float.PositiveInfinity;
         if (toneData == null)
-            return string.Empty;
+            return false;
 
         string current = toneData.baseToneName ?? string.Empty;
-        if (toneData.changes == null)
-            return current;
-
         float clampedTime = Mathf.Max(0f, timeSeconds);
-        foreach (RocksmithCachedToneChangeData change in toneData.changes.OrderBy(change => change?.timeSeconds ?? 0f))
+        if (sortedChanges != null)
         {
-            if (change == null || string.IsNullOrWhiteSpace(change.toneName))
-                continue;
+            const float epsilonSeconds = 0.0001f;
+            for (int i = 0; i < sortedChanges.Count; i++)
+            {
+                RocksmithCachedToneChangeData change = sortedChanges[i];
+                if (change == null || string.IsNullOrWhiteSpace(change.toneName))
+                    continue;
 
-            if (change.timeSeconds <= clampedTime + 0.0001f)
-                current = change.toneName;
-            else
-                break;
+                if (change.timeSeconds <= clampedTime + epsilonSeconds)
+                {
+                    current = change.toneName;
+                    toneStartTimeSeconds = Mathf.Max(0f, change.timeSeconds);
+                }
+                else
+                {
+                    nextSwitchTimeSeconds = Mathf.Max(toneStartTimeSeconds, change.timeSeconds);
+                    break;
+                }
+            }
         }
 
-        return current?.Trim() ?? string.Empty;
+        toneName = current?.Trim() ?? string.Empty;
+        return !string.IsNullOrWhiteSpace(toneName);
     }
 
     private static int CountToneSwitches(RocksmithCachedArrangementToneData toneData, string toneName)
@@ -19528,6 +19877,19 @@ private void ParseDetectorPacket(string detectorPacket)
         return first != null ? first.timeSeconds : -1f;
     }
 
+    private string ResolveTonePresetMapping(
+        SongMetadata metadata,
+        string arrangementKey,
+        string toneName,
+        RocksmithCachedArrangementToneData toneData,
+        string arrangementRoute)
+    {
+        string manualPresetId = GetTonePresetMapping(metadata, arrangementKey, toneName);
+        return !string.IsNullOrWhiteSpace(manualPresetId)
+            ? manualPresetId
+            : ResolveAutomaticTonePresetId(toneName, arrangementRoute, toneData);
+    }
+
     private static string GetTonePresetMapping(SongMetadata metadata, string arrangementKey, string toneName)
     {
         if (metadata?.tonePresetMappings == null || string.IsNullOrWhiteSpace(arrangementKey) || string.IsNullOrWhiteSpace(toneName))
@@ -19538,6 +19900,128 @@ private void ParseDetectorPacket(string detectorPacket)
             string.Equals(entry.arrangementId ?? string.Empty, arrangementKey, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(entry.toneName ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase));
         return mapping?.presetId?.Trim() ?? string.Empty;
+    }
+
+    private string ResolveAutomaticTonePresetId(string toneName, string arrangementRoute, RocksmithCachedArrangementToneData toneData)
+    {
+        string rawToneJson = GetToneDefinitionRawJson(toneData, toneName);
+        if (TryResolveGeneratedRocksmithTonePresetId(toneName, arrangementRoute, rawToneJson, out string generatedPresetId))
+            return generatedPresetId;
+
+        string presetName = ResolveAutomaticTonePresetName(toneName, arrangementRoute, rawToneJson);
+        if (string.IsNullOrWhiteSpace(presetName))
+            return string.Empty;
+
+        EnsureToneLabRuntimeComponent();
+        if (unityToneLabRuntime == null)
+            return string.Empty;
+
+        return unityToneLabRuntime.FindPresetIdByName(presetName);
+    }
+
+    private bool TryResolveGeneratedRocksmithTonePresetId(
+        string toneName,
+        string arrangementRoute,
+        string rawToneJson,
+        out string presetId)
+    {
+        presetId = string.Empty;
+        if (!RocksmithTonePresetBuilder.TryBuildPreset(toneName, arrangementRoute, rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset) ||
+            preset == null ||
+            string.IsNullOrWhiteSpace(preset.preset_id))
+        {
+            return false;
+        }
+
+        generatedRocksmithTonePresetCache[preset.preset_id] = preset;
+        presetId = preset.preset_id;
+        return true;
+    }
+
+    private static string GetToneDefinitionRawJson(RocksmithCachedArrangementToneData toneData, string toneName)
+    {
+        if (toneData?.definitions == null || string.IsNullOrWhiteSpace(toneName))
+            return string.Empty;
+
+        RocksmithCachedToneDefinitionData definition = toneData.definitions.FirstOrDefault(candidate =>
+            candidate != null &&
+            (string.Equals(candidate.name ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(candidate.key ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase)));
+        return definition?.rawJson ?? string.Empty;
+    }
+
+    private static string ResolveAutomaticTonePresetName(string toneName, string arrangementRoute, string rawToneJson)
+    {
+        string toneText = NormalizeToneSearchText(toneName);
+        string routeText = NormalizeToneSearchText(arrangementRoute);
+        string rawText = NormalizeToneSearchText(rawToneJson);
+        string toneAndGearText = $"{toneText} {rawText}";
+        string toneAndRouteText = $"{toneText} {routeText}";
+        string allText = $"{toneAndGearText} {routeText}";
+
+        if (ContainsAny(toneAndRouteText, "bass"))
+            return "Bass Grind";
+        if (ContainsAny(toneAndGearText, "octave", "pitch", "pitchshift", "whammy"))
+            return "Octave Fuzz";
+        if (ContainsAny(toneAndGearText, "surf", "spring", "tremolo"))
+            return "Surf Plate";
+        if (ContainsAny(toneAndGearText, "shoegaze", "wall", "swell", "reverse", "big muff", "muff"))
+            return "Shoegaze Wall";
+        if (ContainsAny(toneText, "ambient", "shimmer", "space", "delay", "echo", "reverb", "hall", "pad"))
+            return "Ambient Clean";
+        if (ContainsAny(allText, "drop", "djent", "7 string", "seven string", "low tuning", "modern") &&
+            ContainsAny(toneAndGearText, "metal", "dist", "drive", "gain", "rect", "mesa", "5150", "engl", "powerball", "high gain", "heavy"))
+        {
+            return "Drop Modern";
+        }
+
+        if (ContainsAny(toneAndGearText, "metal", "rectifier", "mesa", "5150", "engl", "powerball", "high gain", "heavy"))
+            return "Metal Tight";
+        if (ContainsAny(toneAndGearText, "punk", "rat", "distortion", "ds1", "ds-1", "sd1", "sd-1"))
+            return "Punk Rhythm";
+        if (ContainsAny(toneAndGearText, "lead", "solo", "sustain"))
+            return "Alt Lead";
+        if (ContainsAny(toneAndGearText, "crunch", "plexi", "marshall", "british", "jcm", "classic"))
+            return "Classic Crunch";
+        if (ContainsAny(toneAndGearText, "blues", "breakup", "tube screamer", "screamer", "overdrive", "timmy", "timray", "drive", "boost"))
+            return "Blues Breakup";
+        if (ContainsAny(toneAndGearText, "country", "twang", "tele", "slapback"))
+            return "Country Twang";
+        if (ContainsAny(toneAndGearText, "funk", "quack", "wah", "auto wah", "envelope", "snap"))
+            return "Funk Snap";
+        if (ContainsAny(toneAndGearText, "indie", "jangle", "chorus", "chime", "12 string"))
+            return "Indie Jangle";
+        if (ContainsAny(toneAndGearText, "clean", "acoustic", "neck", "warm"))
+            return "Clean Pop";
+        if (ContainsAny(routeText, "lead"))
+            return "Alt Lead";
+
+        return "Clean Pop";
+    }
+
+    private static string NormalizeToneSearchText(string text)
+    {
+        return string.IsNullOrWhiteSpace(text)
+            ? string.Empty
+            : text.Replace('_', ' ').Replace('-', ' ').ToLowerInvariant();
+    }
+
+    private static bool ContainsAny(string haystack, params string[] needles)
+    {
+        if (string.IsNullOrWhiteSpace(haystack) || needles == null)
+            return false;
+
+        for (int i = 0; i < needles.Length; i++)
+        {
+            string needle = needles[i];
+            if (!string.IsNullOrWhiteSpace(needle) &&
+                haystack.IndexOf(needle, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void NormalizeSongTonePresetMappings(SongMetadata metadata)
@@ -19576,16 +20060,41 @@ private void ParseDetectorPacket(string detectorPacket)
             .ToList();
     }
 
-    private string GetToneLabPresetNameForUi(string presetId)
+    private string GetToneLabPresetNameForUi(string presetId, bool automaticMapping = false)
     {
-        if (string.IsNullOrWhiteSpace(presetId) || unityToneLabRuntime == null)
+        if (string.IsNullOrWhiteSpace(presetId))
+            return string.Empty;
+
+        if (RocksmithTonePresetBuilder.IsGeneratedPresetId(presetId) &&
+            generatedRocksmithTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset))
+        {
+            string generatedName = generatedPreset != null && !string.IsNullOrWhiteSpace(generatedPreset.preset_name)
+                ? generatedPreset.preset_name.Trim()
+                : "Rocksmith Tone";
+            return automaticMapping
+                ? $"Auto Generated: {generatedName}"
+                : generatedName;
+        }
+
+        if (unityToneLabRuntime == null)
             return string.Empty;
 
         UnityToneLabRuntime.ToneLabPreset preset = unityToneLabRuntime.CurrentPresets?
             .FirstOrDefault(candidate => candidate != null && string.Equals(candidate.preset_id, presetId, StringComparison.Ordinal));
-        return preset != null && !string.IsNullOrWhiteSpace(preset.preset_name)
+        string presetName = preset != null && !string.IsNullOrWhiteSpace(preset.preset_name)
             ? preset.preset_name.Trim()
             : string.Empty;
+        return automaticMapping && !string.IsNullOrWhiteSpace(presetName)
+            ? $"Suggested Preset: {presetName}"
+            : presetName;
+    }
+
+    private static string BuildAutoGeneratedTonePresetDefaultName(string toneName, string sourcePresetName)
+    {
+        string baseName = !string.IsNullOrWhiteSpace(toneName)
+            ? toneName.Trim()
+            : (!string.IsNullOrWhiteSpace(sourcePresetName) ? sourcePresetName.Trim() : "Song Tone");
+        return $"{baseName} - Auto";
     }
 
     private static int GetDefaultRoutePriorityForTrack(MusicXmlLoader.MusicXmlPartSummary summary)
@@ -20495,6 +21004,7 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
         RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "When ON, pitch validation uses E Standard so you can play songs that are not in E Standard without retuning your guitar. When OFF, tune your guitar to the song's required tuning.", () => forceStandardTuning, v => { forceStandardTuning = v; RefreshActiveTrackTuning(); });
         RegisterEnumSetting("audio.inputDevice", "Audio", "Input Device", string.Empty, new List<string>(sharedAudioInputDeviceChoices), () => GetSharedAudioSelectedInputLabel(), SetSharedAudioInputDeviceFromUi);
+        RegisterEnumSetting("audio.inputChannelMode", "Audio", "Input Channel", "Selects the raw instrument channel used by Tone Lab monitoring and Notes Detector.", SharedAudioInputChannelModes.Choices, () => GetSharedAudioInputChannelModeLabel(), SetSharedAudioInputChannelModeFromUi);
         RegisterEnumSetting("audio.outputDevice", "Audio", "Output Device", string.Empty, new List<string>(sharedAudioOutputDeviceChoices), () => GetSharedAudioSelectedOutputLabel(), SetSharedAudioOutputDeviceFromUi);
         RegisterFloatSetting("audio.songVolume", "Audio", "Song Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioSongVolumePercent(), SetSongVolumePercentFromUi);
         RegisterFloatSetting("audio.guitarVolume", "Audio", "Guitar Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioGuitarVolumePercent(), SetSharedAudioGuitarVolumeFromUi);
@@ -20502,6 +21012,7 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterBoolSetting("tonelab.useSongToneMappings", "Audio", "Use Song Tone Mappings", "When ON, Rocksmith tone names can switch Tone Lab presets during a song. Unmapped tones use the normally selected Tone Lab preset.", () => useSongToneMappings, v =>
         {
             useSongToneMappings = v;
+            ResetToneLabSongTonePlaybackCache();
             if (!useSongToneMappings)
                 ClearToneLabSongTonePlaybackOverride();
         });

@@ -22,6 +22,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private const int MaxChorusMilliseconds = 64;
     private const float MinRigGainDb = -36f;
     private const float MaxRigGainDb = 36f;
+    private const float MinGlobalInputTrimDb = -36f;
+    private const float MaxGlobalInputTrimDb = 12f;
+    private const float DefaultGlobalInputTrimDb = 0f;
     private const float DefaultRigInputGainDb = 14f;
     private const float DefaultRigOutputGainDb = 10f;
 
@@ -34,6 +37,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         public string selected_preset_id = string.Empty;
         public List<ToneLabPreset> presets = new List<ToneLabPreset>();
         public List<ToneLabPedalSlot> pedal_chain = new List<ToneLabPedalSlot>();
+        public float global_input_trim_db = DefaultGlobalInputTrimDb;
         public float input_gain_db = DefaultRigInputGainDb;
         public float output_gain_db = DefaultRigOutputGainDb;
         public bool dist_enabled;
@@ -661,6 +665,28 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             return settings.selected_preset_id ?? string.Empty;
         }
     }
+    public string FindPresetIdByName(string presetName)
+    {
+        if (string.IsNullOrWhiteSpace(presetName))
+            return string.Empty;
+
+        EnsureSettingsLoaded();
+        EnsurePresetLibrary(settings);
+        if (settings?.presets == null)
+            return string.Empty;
+
+        for (int i = 0; i < settings.presets.Count; i++)
+        {
+            ToneLabPreset preset = settings.presets[i];
+            if (preset != null &&
+                string.Equals(preset.preset_name ?? string.Empty, presetName, StringComparison.OrdinalIgnoreCase))
+            {
+                return preset.preset_id?.Trim() ?? string.Empty;
+            }
+        }
+
+        return string.Empty;
+    }
     public ToneLabPedalSlot[] CurrentPedalChain
     {
         get
@@ -703,6 +729,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public sealed class AdvancedRoutingOptions
     {
         public bool betaEnabled;
+        public string inputChannelMode = SharedAudioInputChannelModes.Input1;
         public string backendMode = SharedAudioBackendModes.Auto;
         public bool allowFallback = true;
         public string preferredInputDeviceName = string.Empty;
@@ -750,6 +777,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public void SetAdvancedRoutingOptions(AdvancedRoutingOptions options)
     {
         advancedRoutingOptions = options ?? new AdvancedRoutingOptions();
+        advancedRoutingOptions.inputChannelMode = SharedAudioInputChannelModes.Normalize(advancedRoutingOptions.inputChannelMode);
         advancedRoutingOptions.backendMode = SharedAudioBackendModes.Normalize(advancedRoutingOptions.backendMode);
         advancedRoutingOptions.bufferSize = ResolveMonitoringBufferSize(advancedRoutingOptions.bufferSize);
         advancedRoutingOptions.sampleRate = SharedAudioSampleRateOptions.Normalize(advancedRoutingOptions.sampleRate);
@@ -1328,7 +1356,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         EnsureSettingsLoaded();
         RestoreWorkingRigFromSelectedPreset();
-        RefreshInputDevices();
+        RefreshInputDevices(forcePortAudioRescan: false);
         if (!monitoring && !awaitingMicrophoneStart)
             TryStartMonitoring();
     }
@@ -1337,7 +1365,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     {
         EnsureSettingsLoaded();
         RestoreWorkingRigFromSelectedPreset();
-        RefreshInputDevices();
+        RefreshInputDevices(forcePortAudioRescan: false);
         if (!monitoring && !awaitingMicrophoneStart)
             TryStartMonitoring();
     }
@@ -1358,9 +1386,18 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         RebuildCompiledPedalChain();
     }
 
-    public void RefreshInputDevices()
+    public void RefreshInputDevices(bool forcePortAudioRescan = false)
     {
         EnsureSettingsLoaded();
+        bool restartMonitoringAfterRescan = forcePortAudioRescan && (monitoring || awaitingMicrophoneStart || usingPortAudioBackend);
+        if (forcePortAudioRescan)
+        {
+            if (restartMonitoringAfterRescan)
+                StopMonitoringInternal(restoreAudioConfiguration: true);
+
+            ToneLabPortAudio.Shutdown(drainNativeInitialization: true);
+        }
+
         if (ToneLabPortAudio.TryEnsureInitialized(out string portAudioError))
         {
             ToneLabPortAudio.DeviceDescriptor[] allDevices = ToneLabPortAudio.EnumerateDevices().ToArray();
@@ -1369,6 +1406,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             portAudioOutputDevices = ToneLabPortAudio.GetPreferredOutputDevices(allDevices).ToArray();
             inputDevices = portAudioInputDevices.Select(device => device.DisplayName).ToArray();
             outputDevices = portAudioOutputDevices.Select(device => device.DisplayName).ToArray();
+            if (forcePortAudioRescan)
+                LogAudioRouteEvent("PortAudio device rescan", BuildDeviceCatalogLog(includeAllPortAudioInputs: true));
 
             if (inputDevices.Length == 0)
             {
@@ -1403,6 +1442,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             }
 
             outputRouteLabel = string.IsNullOrWhiteSpace(resolvedOutput) ? "System Default Output" : resolvedOutput;
+            if (restartMonitoringAfterRescan)
+                TryStartMonitoring();
             return;
         }
 
@@ -1436,6 +1477,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         inputRouteLabel = string.IsNullOrWhiteSpace(settings.input_device_name) ? "Automatic Input" : settings.input_device_name;
         outputRouteLabel = "System Default Output";
+        if (restartMonitoringAfterRescan)
+            TryStartMonitoring();
     }
 
     public void RefreshExternalPedalLibrary(bool force = false)
@@ -1633,6 +1676,26 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return true;
     }
 
+    public bool SetPlaybackPresetOverride(ToneLabPreset preset)
+    {
+        if (preset == null || preset.pedal_chain == null || preset.pedal_chain.Count == 0)
+            return false;
+
+        string presetId = preset.preset_id ?? string.Empty;
+        if (playbackPresetOverrideActive &&
+            string.Equals(playbackPresetOverrideId, presetId, StringComparison.Ordinal) &&
+            playbackPresetOverride != null)
+        {
+            return true;
+        }
+
+        playbackPresetOverride = ClonePreset(preset);
+        playbackPresetOverrideId = playbackPresetOverride?.preset_id ?? string.Empty;
+        playbackPresetOverrideActive = true;
+        RebuildCompiledPedalChain();
+        return true;
+    }
+
     public void ClearPlaybackPresetOverride()
     {
         if (!playbackPresetOverrideActive && playbackPresetOverride == null && string.IsNullOrWhiteSpace(playbackPresetOverrideId))
@@ -1664,6 +1727,58 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public string SaveCurrentAsNewPreset(string presetName)
     {
         return CreatePresetFromCurrent(presetName);
+    }
+
+    public string CreatePresetCopy(string sourcePresetId, string presetName)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePresetId))
+            return string.Empty;
+
+        string createdPresetId = string.Empty;
+        bool created = false;
+        UpdateSettings(toneSettings =>
+        {
+            EnsurePresetLibrary(toneSettings);
+            ToneLabPreset sourcePreset = FindPreset(toneSettings, sourcePresetId);
+            if (sourcePreset == null)
+                return;
+
+            ToneLabPreset preset = ClonePreset(sourcePreset);
+            preset.preset_id = CreatePresetId();
+            preset.preset_name = MakeUniquePresetName(toneSettings, presetName);
+            toneSettings.presets.Add(preset);
+            createdPresetId = preset.preset_id;
+            created = true;
+        }, restartMonitoring: false, rebuildPedalChain: false);
+
+        if (created)
+            SavePresetLibraryToDisk(settings?.presets);
+
+        return createdPresetId;
+    }
+
+    public string CreatePresetCopy(ToneLabPreset sourcePreset, string presetName)
+    {
+        if (sourcePreset == null || sourcePreset.pedal_chain == null || sourcePreset.pedal_chain.Count == 0)
+            return string.Empty;
+
+        string createdPresetId = string.Empty;
+        bool created = false;
+        UpdateSettings(toneSettings =>
+        {
+            EnsurePresetLibrary(toneSettings);
+            ToneLabPreset preset = ClonePreset(sourcePreset);
+            preset.preset_id = CreatePresetId();
+            preset.preset_name = MakeUniquePresetName(toneSettings, presetName);
+            toneSettings.presets.Add(preset);
+            createdPresetId = preset.preset_id;
+            created = true;
+        }, restartMonitoring: false, rebuildPedalChain: false);
+
+        if (created)
+            SavePresetLibraryToDisk(settings?.presets);
+
+        return createdPresetId;
     }
 
     public void SaveCurrentToPreset(string presetId)
@@ -1734,6 +1849,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             toneSettings.input_device_name = inputDeviceName;
             toneSettings.output_device_name = outputDeviceName;
             toneSettings.monitoring_buffer_size = monitoringBufferSize;
+            toneSettings.global_input_trim_db = DefaultGlobalInputTrimDb;
             toneSettings.presets = CreateDefaultPresets();
 
             ToneLabPreset defaultPreset = GetDefaultPreset(toneSettings);
@@ -1745,6 +1861,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             {
                 toneSettings.selected_preset_id = string.Empty;
                 toneSettings.pedal_chain = new List<ToneLabPedalSlot>();
+                toneSettings.global_input_trim_db = DefaultGlobalInputTrimDb;
                 toneSettings.input_gain_db = DefaultRigInputGainDb;
                 toneSettings.output_gain_db = DefaultRigOutputGainDb;
                 EnsurePedalChain(toneSettings);
@@ -1894,6 +2011,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         bool allowFallback = advancedRoutingOptions.allowFallback;
 
         diagnostics.AppendLine($"Beta enabled: {advancedRoutingOptions.betaEnabled}");
+        diagnostics.AppendLine($"Input channel mode: {SharedAudioInputChannelModes.Normalize(advancedRoutingOptions.inputChannelMode)}");
         diagnostics.AppendLine($"Backend mode: {backendMode}");
         diagnostics.AppendLine($"Allow fallback: {allowFallback}");
         diagnostics.AppendLine($"Unified output beta: {advancedRoutingOptions.unifiedOutputEnabled}");
@@ -3050,7 +3168,14 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         int processingChannels = safeOutputChannels > 1 ? 2 : 1;
         int processingSampleCount = frameCount * processingChannels;
         EnsurePortAudioProcessBufferCapacity(processingSampleCount);
-        FillProcessBufferFromPortAudioInput(input, inputChannels, processingChannels, frameCount, portAudioProcessBuffer, processingSampleCount);
+        FillProcessBufferFromPortAudioInput(
+            input,
+            inputChannels,
+            processingChannels,
+            frameCount,
+            portAudioProcessBuffer,
+            processingSampleCount,
+            advancedRoutingOptions?.inputChannelMode);
 
         int sampleRate = activeSampleRate > 0 ? activeSampleRate : PreferredSampleRate;
         ProcessToneBuffer(portAudioProcessBuffer, processingChannels, sampleRate);
@@ -3109,6 +3234,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         toneSettings.monitoring_buffer_size = ResolveMonitoringBufferSize(toneSettings.monitoring_buffer_size);
         EnsurePresetLibrary(toneSettings);
         EnsurePedalChain(toneSettings);
+        toneSettings.global_input_trim_db = Mathf.Clamp(toneSettings.global_input_trim_db, MinGlobalInputTrimDb, MaxGlobalInputTrimDb);
         toneSettings.input_gain_db = Mathf.Clamp(toneSettings.input_gain_db, MinRigGainDb, MaxRigGainDb);
         toneSettings.output_gain_db = Mathf.Clamp(toneSettings.output_gain_db, MinRigGainDb, MaxRigGainDb);
         toneSettings.dist_drive_db = Mathf.Clamp(toneSettings.dist_drive_db, 0f, 36f);
@@ -5573,6 +5699,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             selected_preset_id = persistedPreset?.preset_id ?? source.selected_preset_id ?? string.Empty,
             presets = new List<ToneLabPreset>(),
             pedal_chain = ClonePedalChain(persistedPreset?.pedal_chain ?? source.pedal_chain),
+            global_input_trim_db = Mathf.Clamp(source.global_input_trim_db, MinGlobalInputTrimDb, MaxGlobalInputTrimDb),
             input_gain_db = persistedPreset != null ? persistedPreset.input_gain_db : source.input_gain_db,
             output_gain_db = persistedPreset != null ? persistedPreset.output_gain_db : source.output_gain_db
         };
@@ -5623,7 +5750,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         PrepareCompiledPedalChainIfNeeded(sampleRate, channels);
 
         ToneLabPreset overridePreset = playbackPresetOverrideActive ? playbackPresetOverride : null;
-        float inputGainDb = overridePreset != null ? overridePreset.input_gain_db : settings.input_gain_db;
+        float inputGainDb = Mathf.Clamp(
+            (overridePreset != null ? overridePreset.input_gain_db : settings.input_gain_db) + settings.global_input_trim_db,
+            MinRigGainDb,
+            MaxRigGainDb);
         float outputGainDb = overridePreset != null ? overridePreset.output_gain_db : settings.output_gain_db;
 
         float inputGain = ToneLabPedalUtility.DbToLinear(inputGainDb);
@@ -5681,11 +5811,25 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     private static void FillProcessBufferFromPortAudioInput(float[] input, int inputChannels, int outputChannels, int frameCount, float[] destination, int sampleCount)
     {
+        FillProcessBufferFromPortAudioInput(input, inputChannels, outputChannels, frameCount, destination, sampleCount, SharedAudioInputChannelModes.Input1);
+    }
+
+    private static void FillProcessBufferFromPortAudioInput(float[] input, int inputChannels, int outputChannels, int frameCount, float[] destination, int sampleCount, string inputChannelMode)
+    {
+        if (destination == null)
+            return;
+
+        sampleCount = Mathf.Clamp(sampleCount, 0, destination.Length);
         Array.Clear(destination, 0, sampleCount);
         if (input == null || input.Length == 0)
             return;
 
         int safeInputChannels = Mathf.Max(1, inputChannels);
+        string normalizedChannelMode = SharedAudioInputChannelModes.Normalize(inputChannelMode);
+        bool monoMix = string.Equals(normalizedChannelMode, SharedAudioInputChannelModes.MonoMix, StringComparison.Ordinal);
+        int sourceChannel = string.Equals(normalizedChannelMode, SharedAudioInputChannelModes.Input2, StringComparison.Ordinal) && safeInputChannels > 1
+            ? 1
+            : 0;
         for (int frame = 0; frame < frameCount; frame++)
         {
             int destinationFrameStart = frame * outputChannels;
@@ -5694,6 +5838,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
             int inputFrameStart = frame * safeInputChannels;
             float monoFallback = inputFrameStart < input.Length ? input[inputFrameStart] : 0f;
+            float sample = monoMix
+                ? MixPortAudioInputFrameToMono(input, inputFrameStart, safeInputChannels)
+                : ReadPortAudioInputChannel(input, inputFrameStart, sourceChannel, monoFallback);
 
             for (int channel = 0; channel < outputChannels; channel++)
             {
@@ -5701,11 +5848,39 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 if (destinationIndex >= sampleCount)
                     break;
 
-                int sourceIndex = inputFrameStart + Mathf.Min(channel, safeInputChannels - 1);
-                float sample = sourceIndex < input.Length ? input[sourceIndex] : monoFallback;
                 destination[destinationIndex] = sample;
             }
         }
+    }
+
+    private static float ReadPortAudioInputChannel(float[] input, int frameStart, int sourceChannel, float fallback)
+    {
+        if (input == null || input.Length == 0)
+            return 0f;
+
+        int sourceIndex = frameStart + Mathf.Max(0, sourceChannel);
+        return sourceIndex < input.Length ? input[sourceIndex] : fallback;
+    }
+
+    private static float MixPortAudioInputFrameToMono(float[] input, int frameStart, int inputChannels)
+    {
+        if (input == null || input.Length == 0)
+            return 0f;
+
+        int mixChannels = Mathf.Min(Mathf.Max(1, inputChannels), 2);
+        float sum = 0f;
+        int count = 0;
+        for (int channel = 0; channel < mixChannels; channel++)
+        {
+            int index = frameStart + channel;
+            if (index >= input.Length)
+                break;
+
+            sum += input[index];
+            count++;
+        }
+
+        return count > 0 ? sum / count : 0f;
     }
 
     private static void FillPortAudioOutputBufferFromProcessedAudio(float[] processed, int processedChannels, int frameCount, float[] output, int outputChannels)
@@ -5774,7 +5949,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         }
     }
 
-    private string BuildDeviceCatalogLog()
+    private string BuildDeviceCatalogLog(bool includeAllPortAudioInputs = false)
     {
         StringBuilder builder = new StringBuilder();
         builder.Append("inputChoices=");
@@ -5787,6 +5962,12 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         builder.Append(portAudioInputDevices != null ? portAudioInputDevices.Length : 0);
         builder.Append(", preferredOutputs=");
         builder.Append(portAudioOutputDevices != null ? portAudioOutputDevices.Length : 0);
+        if (includeAllPortAudioInputs)
+        {
+            builder.Append("\nallPortAudioInputs=");
+            builder.Append(FormatPortAudioDeviceList(portAudioAllDevices, input: true));
+        }
+
         return builder.ToString();
     }
 
@@ -5796,6 +5977,23 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             return "(none)";
 
         return string.Join("; ", devices.Where(device => !string.IsNullOrWhiteSpace(device)).Select(device => device.Trim()));
+    }
+
+    private static string FormatPortAudioDeviceList(IReadOnlyList<ToneLabPortAudio.DeviceDescriptor> devices, bool input)
+    {
+        if (devices == null || devices.Count == 0)
+            return "(none)";
+
+        IEnumerable<ToneLabPortAudio.DeviceDescriptor> filtered = devices.Where(device =>
+            device != null && (input ? device.MaxInputChannels > 0 : device.MaxOutputChannels > 0));
+        string[] labels = filtered
+            .Select(device =>
+            {
+                int channels = input ? device.MaxInputChannels : device.MaxOutputChannels;
+                return $"{device.Index}: {device.Name} [{GetNormalizedHostApiLabel(device.HostApiName)}] ({channels}ch)";
+            })
+            .ToArray();
+        return labels.Length == 0 ? "(none)" : string.Join("; ", labels);
     }
 
     private void LogAudioRouteEvent(string eventName, string details = null, bool warning = false)
@@ -5836,6 +6034,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             builder.Append(" | advancedBeta=");
             builder.Append(advancedRoutingOptions.betaEnabled);
+            builder.Append(" | inputChannelMode=");
+            builder.Append(SharedAudioInputChannelModes.Normalize(advancedRoutingOptions.inputChannelMode));
             builder.Append(" | advancedBackend=");
             builder.Append(SharedAudioBackendModes.Normalize(advancedRoutingOptions.backendMode));
             builder.Append(" | allowFallback=");

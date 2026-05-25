@@ -10,6 +10,7 @@ public sealed class ToneLabPedalBoardView
     private static Texture2D addEffectGradientTexture;
 
     private readonly VisualElement root;
+    private readonly VisualElement headerControls;
     private readonly ScrollView chainScrollView;
     private readonly VisualElement chainGrid;
     private readonly Label emptyLabel;
@@ -23,6 +24,7 @@ public sealed class ToneLabPedalBoardView
     private int dragTargetIndex = -1;
 
     public VisualElement Root => root;
+    public VisualElement HeaderControls => headerControls;
 
     public event Action<string> PedalSelected;
     public event Action<string, bool> PedalEnabledChanged;
@@ -38,7 +40,7 @@ public sealed class ToneLabPedalBoardView
         root.style.flexDirection = FlexDirection.Column;
 
         VisualElement boardHeader = new VisualElement();
-        boardHeader.style.height = 58f;
+        boardHeader.style.height = 78f;
         boardHeader.style.flexShrink = 0f;
         boardHeader.style.flexDirection = FlexDirection.Row;
         boardHeader.style.alignItems = Align.Center;
@@ -50,6 +52,8 @@ public sealed class ToneLabPedalBoardView
 
         VisualElement copyColumn = new VisualElement();
         copyColumn.style.flexGrow = 1f;
+        copyColumn.style.flexShrink = 1f;
+        copyColumn.style.minWidth = 170f;
         copyColumn.style.translate = new Translate(0f, -3f, 0f);
         boardHeader.Add(copyColumn);
 
@@ -64,6 +68,17 @@ public sealed class ToneLabPedalBoardView
         boardSubtitle.style.fontSize = 12f;
         boardSubtitle.style.marginTop = 0f;
         copyColumn.Add(boardSubtitle);
+
+        headerControls = new VisualElement();
+        headerControls.style.flexDirection = FlexDirection.Row;
+        headerControls.style.alignItems = Align.Center;
+        headerControls.style.justifyContent = Justify.FlexEnd;
+        headerControls.style.flexGrow = 1f;
+        headerControls.style.flexShrink = 1f;
+        headerControls.style.minWidth = 0f;
+        headerControls.style.marginLeft = 18f;
+        headerControls.style.marginRight = 18f;
+        boardHeader.Add(headerControls);
 
         Button addPedalButton = new Button(() => AddPedalRequested?.Invoke())
         {

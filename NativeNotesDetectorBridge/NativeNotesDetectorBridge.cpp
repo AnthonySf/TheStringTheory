@@ -118,6 +118,9 @@ constexpr float kFastChordNeighborRatioThreshold = 1.22f;
 constexpr float kFastChordLowNeighborRatioThreshold = 1.12f;
 constexpr float kPi = 3.14159265358979323846f;
 constexpr float kYinThreshold = 0.18f;
+constexpr int kDetectorInputChannelInput1 = 0;
+constexpr int kDetectorInputChannelInput2 = 1;
+constexpr int kDetectorInputChannelMonoMix = 2;
 
 constexpr unsigned long kPaFloat32 = 0x00000001UL;
 constexpr unsigned long kPaNoFlag = 0UL;
@@ -173,6 +176,72 @@ const char* GetActiveDetectorResamplerModeLabel(DetectorResamplerMode mode, int 
         return "Direct";
 
     return GetDetectorResamplerModeLabel(mode);
+}
+
+int NormalizeDetectorInputChannelMode(int rawValue)
+{
+    switch (rawValue)
+    {
+    case kDetectorInputChannelInput2:
+        return kDetectorInputChannelInput2;
+    case kDetectorInputChannelMonoMix:
+        return kDetectorInputChannelMonoMix;
+    case kDetectorInputChannelInput1:
+    default:
+        return kDetectorInputChannelInput1;
+    }
+}
+
+const char* GetDetectorInputChannelModeLabel(int mode)
+{
+    switch (NormalizeDetectorInputChannelMode(mode))
+    {
+    case kDetectorInputChannelInput2:
+        return "Input 2";
+    case kDetectorInputChannelMonoMix:
+        return "Mono Mix";
+    case kDetectorInputChannelInput1:
+    default:
+        return "Input 1";
+    }
+}
+
+int RequiredDetectorInputChannels(int mode, int availableChannels)
+{
+    const int safeAvailable = std::max(1, availableChannels);
+    const int normalized = NormalizeDetectorInputChannelMode(mode);
+    if ((normalized == kDetectorInputChannelInput2 || normalized == kDetectorInputChannelMonoMix) && safeAvailable > 1)
+        return 2;
+
+    return 1;
+}
+
+float ReadDetectorInputSample(const float* input, int frame, int inputChannels, int sourceChannel)
+{
+    if (input == nullptr || frame < 0)
+        return 0.0f;
+
+    const int safeChannels = std::max(1, inputChannels);
+    const int clampedChannel = std::clamp(sourceChannel, 0, safeChannels - 1);
+    return input[(frame * safeChannels) + clampedChannel];
+}
+
+float SelectDetectorMonoSample(const float* input, int frame, int inputChannels, int mode)
+{
+    const int safeChannels = std::max(1, inputChannels);
+    switch (NormalizeDetectorInputChannelMode(mode))
+    {
+    case kDetectorInputChannelInput2:
+        return ReadDetectorInputSample(input, frame, safeChannels, safeChannels > 1 ? 1 : 0);
+    case kDetectorInputChannelMonoMix:
+        if (safeChannels <= 1)
+            return ReadDetectorInputSample(input, frame, safeChannels, 0);
+        return (ReadDetectorInputSample(input, frame, safeChannels, 0) +
+                ReadDetectorInputSample(input, frame, safeChannels, 1)) * 0.5f;
+    case kDetectorInputChannelInput1:
+    default:
+        return ReadDetectorInputSample(input, frame, safeChannels, 0);
+    }
 }
 
 enum ExpectedHintNoteFlags : uint32_t
@@ -1997,7 +2066,7 @@ public:
     void Shutdown();
     std::vector<NativeDeviceDescriptor> EnumerateInputDevices() const;
     int GetPreferredInputDeviceIndex(const std::vector<NativeDeviceDescriptor>& devices) const;
-    bool OpenInputStream(int deviceIndex, int sampleRate, unsigned long framesPerBuffer, double suggestedLatency, PaStreamCallback callback, void* userData, PaStream*& stream, std::wstring& error) const;
+    bool OpenInputStream(int deviceIndex, int sampleRate, int inputChannelCount, unsigned long framesPerBuffer, double suggestedLatency, PaStreamCallback callback, void* userData, PaStream*& stream, std::wstring& error) const;
     void CloseStream(PaStream*& stream) const;
 
 private:
@@ -2144,6 +2213,7 @@ int PortAudioRuntime::GetPreferredInputDeviceIndex(const std::vector<NativeDevic
 bool PortAudioRuntime::OpenInputStream(
     int deviceIndex,
     int sampleRate,
+    int inputChannelCount,
     unsigned long framesPerBuffer,
     double suggestedLatency,
     PaStreamCallback callback,
@@ -2155,7 +2225,7 @@ bool PortAudioRuntime::OpenInputStream(
 
     PaStreamParameters inputParameters{};
     inputParameters.device = deviceIndex;
-    inputParameters.channelCount = 1;
+    inputParameters.channelCount = std::max(1, inputChannelCount);
     inputParameters.sampleFormat = kPaFloat32;
     inputParameters.suggestedLatency = suggestedLatency;
     inputParameters.hostApiSpecificStreamInfo = nullptr;
@@ -2867,7 +2937,7 @@ public:
     ~NativeDetectorEngine();
 
     bool Initialize(const std::wstring& modelPath, const std::wstring& dataDirectory, std::wstring& error);
-    bool Start(int inputDeviceIndex, std::wstring& error);
+    bool Start(int inputDeviceIndex, int inputChannelMode, std::wstring& error);
     void Stop();
     void Shutdown();
     void SetHintPayload(const std::string& payload);
@@ -2943,6 +3013,8 @@ private:
     int selectedDeviceIndex_ = -1;
     std::string selectedDeviceDisplayName_;
     std::string selectedHostApiName_;
+    int selectedInputChannelMode_ = kDetectorInputChannelInput1;
+    int activeInputChannelCount_ = 1;
     int activeInputSampleRate_ = kSampleRate;
     double resampleSourceCursor_ = 0.0;
     DetectorResamplerMode configuredResamplerMode_ = DetectorResamplerMode::Filtered;
@@ -2950,6 +3022,7 @@ private:
     SRC_STATE* filteredResamplerState_ = nullptr;
     std::vector<float> filteredResamplerOutputScratch_;
     std::vector<float> filteredResamplerSilentInputScratch_;
+    std::vector<float> inputMonoScratch_;
 
     PaStream* stream_ = nullptr;
     std::atomic<bool> running_{ false };
@@ -3094,7 +3167,7 @@ void NativeDetectorEngine::shutdownAubio_()
     aubioHopInput_ = nullptr;
 }
 
-bool NativeDetectorEngine::Start(int inputDeviceIndex, std::wstring& error)
+bool NativeDetectorEngine::Start(int inputDeviceIndex, int inputChannelMode, std::wstring& error)
 {
     std::lock_guard<std::mutex> lock(controlMutex_);
     if (!initialized_)
@@ -3122,6 +3195,12 @@ bool NativeDetectorEngine::Start(int inputDeviceIndex, std::wstring& error)
     const NativeDeviceDescriptor* selected = findDevice_(selectedDeviceIndex_);
     selectedDeviceDisplayName_ = selected != nullptr ? selected->displayName : "Default input";
     selectedHostApiName_ = selected != nullptr ? selected->hostApiName : std::string();
+    selectedInputChannelMode_ = NormalizeDetectorInputChannelMode(inputChannelMode);
+    activeInputChannelCount_ = RequiredDetectorInputChannels(
+        selectedInputChannelMode_,
+        selected != nullptr ? selected->maxInputChannels : 1);
+    if (inputMonoScratch_.size() < static_cast<size_t>(kHopSize))
+        inputMonoScratch_.assign(static_cast<size_t>(kHopSize), 0.0f);
 
     running_.store(true, std::memory_order_release);
     fastThread_ = std::thread(&NativeDetectorEngine::FastLoop_, this);
@@ -3139,6 +3218,7 @@ bool NativeDetectorEngine::Start(int inputDeviceIndex, std::wstring& error)
         if (portAudio_.OpenInputStream(
             selectedDeviceIndex_,
             sampleRateCandidate,
+            activeInputChannelCount_,
             static_cast<unsigned long>(kHopSize),
             suggestedLatency,
             &NativeDetectorEngine::PortAudioCallback_,
@@ -3281,6 +3361,7 @@ std::string NativeDetectorEngine::GetRuntimeInfoJson() const
         << ",\"selectedInputDeviceIndex\":" << selectedDeviceIndex_
         << ",\"selectedInputDeviceDisplayName\":\"" << JsonEscape(selectedDeviceDisplayName_)
         << "\",\"selectedHostApiName\":\"" << JsonEscape(selectedHostApiName_)
+        << "\",\"inputChannelMode\":\"" << GetDetectorInputChannelModeLabel(selectedInputChannelMode_)
         << "\",\"sampleRate\":" << kSampleRate
         << ",\"captureSampleRate\":" << (running ? activeInputSampleRate_ : 0)
         << ",\"internalSampleRate\":" << kSampleRate
@@ -3326,13 +3407,25 @@ int NativeDetectorEngine::onAudio_(const float* input, int frameCount)
     if (!running_.load(std::memory_order_acquire) || frameCount <= 0)
         return 0;
 
+    const float* monoInput = input;
+    if (activeInputChannelCount_ > 1)
+    {
+        if (inputMonoScratch_.size() < static_cast<size_t>(frameCount))
+            inputMonoScratch_.resize(static_cast<size_t>(frameCount));
+
+        float* scratch = inputMonoScratch_.data();
+        for (int i = 0; i < frameCount; ++i)
+            scratch[i] = SelectDetectorMonoSample(input, i, activeInputChannelCount_, selectedInputChannelMode_);
+        monoInput = scratch;
+    }
+
     const uint64_t startFrame = totalFramesWritten_.load(std::memory_order_relaxed);
     uint64_t framesWritten = 0;
     if (activeInputSampleRate_ == kSampleRate)
     {
         for (int i = 0; i < frameCount; ++i)
         {
-            const float sample = input != nullptr ? input[i] : 0.0f;
+            const float sample = monoInput != nullptr ? monoInput[i] : 0.0f;
             ringBuffer_[static_cast<size_t>((startFrame + static_cast<uint64_t>(i)) % ringBuffer_.size())] = sample;
         }
 
@@ -3340,14 +3433,14 @@ int NativeDetectorEngine::onAudio_(const float* input, int frameCount)
     }
     else if (activeResamplerMode_ == DetectorResamplerMode::Linear)
     {
-        framesWritten = writeLinearResampledFrames_(input, frameCount, startFrame);
+        framesWritten = writeLinearResampledFrames_(monoInput, frameCount, startFrame);
     }
     else
     {
-        framesWritten = writeFilteredResampledFrames_(input, frameCount, startFrame);
+        framesWritten = writeFilteredResampledFrames_(monoInput, frameCount, startFrame);
     }
 
-    const float rms = input != nullptr ? ComputeRms(input, frameCount) : 0.0f;
+    const float rms = monoInput != nullptr ? ComputeRms(monoInput, frameCount) : 0.0f;
     const float previousLevel = smoothedInputLevel_.load(std::memory_order_relaxed);
     const float smoothed = std::clamp(previousLevel * 0.85f + rms * 7.5f * 0.15f, 0.0f, 1.0f);
     smoothedInputLevel_.store(smoothed, std::memory_order_relaxed);
@@ -3439,6 +3532,7 @@ void NativeDetectorEngine::resetStateLocked_()
     totalFramesWritten_.store(0, std::memory_order_release);
     smoothedInputLevel_.store(0.0f, std::memory_order_relaxed);
     activeInputSampleRate_ = kSampleRate;
+    activeInputChannelCount_ = 1;
     resampleSourceCursor_ = 0.0;
     activeResamplerMode_ = configuredResamplerMode_;
     resetResamplerState_();
@@ -3643,6 +3737,7 @@ void NativeDetectorEngine::updateStatusLocked_()
     if (running_.load(std::memory_order_acquire))
     {
         builder << "Running on " << (selectedDeviceDisplayName_.empty() ? "default input" : selectedDeviceDisplayName_)
+            << "  •  " << GetDetectorInputChannelModeLabel(selectedInputChannelMode_)
             << "  •  " << kSampleRate << " Hz"
             << "  •  Hop " << kHopSize
             << "  •  HFC onset"
@@ -5051,7 +5146,17 @@ ST_NATIVE_EXPORT int NativeDetector_Start(int inputDeviceIndex)
         return 0;
 
     std::wstring error;
-    return g_detector->Start(inputDeviceIndex, error) ? 1 : 0;
+    return g_detector->Start(inputDeviceIndex, kDetectorInputChannelInput1, error) ? 1 : 0;
+}
+
+ST_NATIVE_EXPORT int NativeDetector_StartWithInputChannel(int inputDeviceIndex, int inputChannelMode)
+{
+    std::lock_guard<std::mutex> lock(g_bridgeMutex);
+    if (!g_detector)
+        return 0;
+
+    std::wstring error;
+    return g_detector->Start(inputDeviceIndex, NormalizeDetectorInputChannelMode(inputChannelMode), error) ? 1 : 0;
 }
 
 ST_NATIVE_EXPORT int NativeDetector_Stop()
@@ -5139,7 +5244,7 @@ ST_NATIVE_EXPORT int NativeDetector_GetRuntimeInfoJson(char* destination, int ca
 {
     std::lock_guard<std::mutex> lock(g_bridgeMutex);
     if (!g_detector)
-        return CopyUtf8String("{\"running\":false,\"backendLabel\":\"Native C++ Detector\",\"selectedInputDeviceIndex\":-1,\"selectedInputDeviceDisplayName\":\"\",\"selectedHostApiName\":\"\",\"sampleRate\":22050,\"captureSampleRate\":0,\"internalSampleRate\":22050,\"configuredResamplerMode\":\"Filtered\",\"activeResamplerMode\":\"Direct\",\"resamplerToggleAvailable\":false,\"hopSize\":512,\"captureSeconds\":0.3,\"inputLevelNormalized\":0,\"latestPacket\":\"--\",\"statusText\":\"Native detector idle.\",\"errorText\":\"\"}", destination, capacity) ? 1 : 0;
+        return CopyUtf8String("{\"running\":false,\"backendLabel\":\"Native C++ Detector\",\"selectedInputDeviceIndex\":-1,\"selectedInputDeviceDisplayName\":\"\",\"selectedHostApiName\":\"\",\"inputChannelMode\":\"Input 1\",\"sampleRate\":22050,\"captureSampleRate\":0,\"internalSampleRate\":22050,\"configuredResamplerMode\":\"Filtered\",\"activeResamplerMode\":\"Direct\",\"resamplerToggleAvailable\":false,\"hopSize\":512,\"captureSeconds\":0.3,\"inputLevelNormalized\":0,\"latestPacket\":\"--\",\"statusText\":\"Native detector idle.\",\"errorText\":\"\"}", destination, capacity) ? 1 : 0;
     return CopyUtf8String(g_detector->GetRuntimeInfoJson(), destination, capacity) ? 1 : 0;
 }
 
