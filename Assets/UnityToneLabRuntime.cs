@@ -14,6 +14,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private const int PreferredDspBufferSize = 128;
     private const int UltraLowDspBufferSize = 64;
     private const int SafeDspBufferSize = 256;
+    private const int DriverManagedPortAudioMaxBlockFrames = 8192;
     private const float SettingsSaveDelaySeconds = 0.18f;
     private const int MicrophoneClipLengthSeconds = 1;
     private const float MicrophoneStartupTimeoutSeconds = 2f;
@@ -582,6 +583,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private ToneLabPortAudio.DeviceDescriptor[] portAudioInputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private ToneLabPortAudio.DeviceDescriptor[] portAudioOutputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private bool usingPortAudioBackend;
+    private volatile bool sharedInputRouteActive;
+    private volatile bool sharedInputSubmitDisabled;
+    private volatile bool sharedInputSubmitFailurePending;
+    private SharedInputRouteInfo activeSharedInputRoute;
     private float monitorVolumePercent = 100f;
     private AdvancedRoutingOptions advancedRoutingOptions = new AdvancedRoutingOptions();
     private string lastRoutingDiagnostics = string.Empty;
@@ -713,6 +718,14 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public string LastRoutingAttemptSummary => lastRoutingAttemptSummary;
     public string LastExternalPedalRefreshSummary => ToneLabPedalRegistry.LastExternalRefreshSummary;
     public bool IsAdvancedRoutingBetaEnabled => advancedRoutingOptions != null && advancedRoutingOptions.betaEnabled;
+    public bool IsSharedInputRouteActive => sharedInputRouteActive && usingPortAudioBackend;
+    public Func<SharedInputRouteInfo, bool> SharedInputRouteStarting { get; set; }
+    public Action SharedInputRouteStopped { get; set; }
+    public Func<float[], int, int, int, string, bool> SharedInputBlockReceived { get; set; }
+    public SharedInputRouteInfo GetActiveSharedInputRouteInfo()
+    {
+        return IsSharedInputRouteActive ? activeSharedInputRoute?.Clone() : null;
+    }
     public static string[] SharedMonitoringLatencyOptions => (string[])LatencyPresetLabels.Clone();
     public static string GetSharedMonitoringLatencyLabel(int bufferSize) => GetLatencyPresetLabel(bufferSize);
     public static int ParseSharedMonitoringLatencyBufferSize(string label)
@@ -738,6 +751,31 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         public int bufferSize = PreferredDspBufferSize;
         public bool unifiedOutputEnabled;
         public bool unityRecorderCaptureEnabled;
+    }
+
+    public sealed class SharedInputRouteInfo
+    {
+        public int InputDeviceIndex;
+        public string InputDeviceDisplayName = string.Empty;
+        public string HostApiName = string.Empty;
+        public int SampleRate;
+        public int InputChannelCount;
+        public int MaxBlockFrames;
+        public string InputChannelMode = SharedAudioInputChannelModes.Input1;
+
+        public SharedInputRouteInfo Clone()
+        {
+            return new SharedInputRouteInfo
+            {
+                InputDeviceIndex = InputDeviceIndex,
+                InputDeviceDisplayName = InputDeviceDisplayName,
+                HostApiName = HostApiName,
+                SampleRate = SampleRate,
+                InputChannelCount = InputChannelCount,
+                MaxBlockFrames = MaxBlockFrames,
+                InputChannelMode = InputChannelMode
+            };
+        }
     }
 
     private sealed class PortAudioRoutePlan
@@ -1270,6 +1308,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         if (usingPortAudioBackend)
         {
+            if (sharedInputSubmitFailurePending)
+                HandleSharedInputSubmitFailureOnMainThread();
+
             if (advancedRoutingOptions.betaEnabled && advancedRoutingOptions.unifiedOutputEnabled)
             {
                 if (Time.unscaledTime >= nextUnifiedSongSourceRefreshTime)
@@ -1340,13 +1381,13 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     private void OnDisable()
     {
-        StopMonitoring();
+        StopMonitoringInternal(restoreAudioConfiguration: true, notifySharedInputStopped: false);
         FlushSettingsToDisk();
     }
 
     private void OnDestroy()
     {
-        StopMonitoring();
+        StopMonitoringInternal(restoreAudioConfiguration: true, notifySharedInputStopped: false);
         FlushSettingsToDisk();
         portAudioStream?.Dispose();
         ToneLabPortAudio.Shutdown();
@@ -1393,9 +1434,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (forcePortAudioRescan)
         {
             if (restartMonitoringAfterRescan)
-                StopMonitoringInternal(restoreAudioConfiguration: true);
+                StopMonitoringInternal(restoreAudioConfiguration: true, notifySharedInputStopped: false);
 
-            ToneLabPortAudio.Shutdown(drainNativeInitialization: true);
+            ToneLabPortAudio.Shutdown();
         }
 
         if (ToneLabPortAudio.TryEnsureInitialized(out string portAudioError))
@@ -1898,7 +1939,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         StopMonitoringInternal(restoreAudioConfiguration: true);
     }
 
-    private void StopMonitoringInternal(bool restoreAudioConfiguration)
+    private void StopMonitoringInternal(bool restoreAudioConfiguration, bool notifySharedInputStopped = true)
     {
         if (monitoring || awaitingMicrophoneStart || usingPortAudioBackend)
             LogAudioRouteEvent("Stopping monitoring", $"restoreAudioConfiguration={restoreAudioConfiguration}");
@@ -1908,6 +1949,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         StopUnityRecorderCapture();
         if (portAudioStream != null && portAudioStream.IsRunning)
             portAudioStream.Stop();
+        StopSharedInputRoute(notifySharedInputStopped);
         StopUnifiedSongSourceTaps();
 
         if (monitorSource != null && monitorSource.isPlaying)
@@ -2090,6 +2132,70 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return false;
     }
 
+    private bool TryStartSharedInputRoute(SharedInputRouteInfo route)
+    {
+        sharedInputRouteActive = false;
+        sharedInputSubmitDisabled = false;
+        sharedInputSubmitFailurePending = false;
+        activeSharedInputRoute = route?.Clone();
+        Func<SharedInputRouteInfo, bool> callback = SharedInputRouteStarting;
+        if (callback == null || route == null)
+            return false;
+
+        try
+        {
+            bool started = callback(route.Clone());
+            sharedInputRouteActive = started;
+            return started;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[UnityToneLabRuntime] Shared detector input start failed: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void StopSharedInputRoute(bool notifyStopped = true)
+    {
+        bool wasActive = sharedInputRouteActive;
+        sharedInputRouteActive = false;
+        sharedInputSubmitDisabled = true;
+        sharedInputSubmitFailurePending = false;
+        activeSharedInputRoute = null;
+        if (!wasActive || !notifyStopped)
+            return;
+
+        try
+        {
+            SharedInputRouteStopped?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[UnityToneLabRuntime] Shared detector input stop handler failed: {ex.Message}");
+        }
+    }
+
+    private void HandleSharedInputSubmitFailureOnMainThread()
+    {
+        if (!sharedInputSubmitFailurePending)
+            return;
+
+        sharedInputSubmitFailurePending = false;
+        if (!sharedInputRouteActive)
+            return;
+
+        Debug.LogWarning("[UnityToneLabRuntime] Shared detector input stopped accepting Tone Lab audio; restoring independent detector input.");
+        StopSharedInputRoute();
+    }
+
+    private static int ResolvePortAudioCallbackFrameCapacity(uint framesPerBuffer)
+    {
+        if (framesPerBuffer > 0 && framesPerBuffer <= int.MaxValue)
+            return Mathf.Max((int)framesPerBuffer, SafeDspBufferSize);
+
+        return DriverManagedPortAudioMaxBlockFrames;
+    }
+
     private bool TryStartPortAudioRoute(
         ToneLabPortAudio.DeviceDescriptor inputDevice,
         ToneLabPortAudio.DeviceDescriptor outputDevice,
@@ -2120,9 +2226,27 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         int outputChannels = ResolveRequestedChannelCount(outputDevice, input: false);
         bool driverManagedBuffer = monitoringBufferSize <= 0;
         uint framesPerBuffer = driverManagedBuffer ? 0u : (uint)ResolveMonitoringBufferSize(monitoringBufferSize);
+        int callbackFrameCapacity = ResolvePortAudioCallbackFrameCapacity(framesPerBuffer);
         string routeDescription =
             $"{BuildAdvancedDeviceChoiceLabel(inputDevice)} [{inputChannels}ch] -> " +
             $"{BuildAdvancedDeviceChoiceLabel(outputDevice)} [{outputChannels}ch]";
+
+        SharedInputRouteInfo sharedRoute = new SharedInputRouteInfo
+        {
+            InputDeviceIndex = inputDevice.Index,
+            InputDeviceDisplayName = BuildAdvancedDeviceChoiceLabel(inputDevice),
+            HostApiName = inputDevice.HostApiName,
+            SampleRate = sampleRate,
+            InputChannelCount = inputChannels,
+            MaxBlockFrames = callbackFrameCapacity,
+            InputChannelMode = SharedAudioInputChannelModes.Normalize(advancedRoutingOptions?.inputChannelMode)
+        };
+
+        bool sharedInputStarted = TryStartSharedInputRoute(sharedRoute);
+        activeSampleRate = sampleRate;
+        activeDspBufferSize = driverManagedBuffer ? 0 : ResolveMonitoringBufferSize(monitoringBufferSize);
+        EnsurePortAudioProcessBufferCapacity(callbackFrameCapacity * (outputChannels > 1 ? 2 : 1));
+        EnsureUnityOutputMixBufferCapacity(callbackFrameCapacity * Mathf.Max(inputChannels, outputChannels));
 
         string portAudioStartError = string.Empty;
         bool started = portAudioStream != null && portAudioStream.Start(
@@ -2139,6 +2263,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         if (!started)
         {
+            if (sharedInputStarted)
+                StopSharedInputRoute();
             error = portAudioStartError;
             statusMessage = portAudioStartError;
             return false;
@@ -2147,8 +2273,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         monitoring = true;
         usingPortAudioBackend = true;
         awaitingMicrophoneStart = false;
-        activeSampleRate = sampleRate;
-        activeDspBufferSize = driverManagedBuffer ? 0 : ResolveMonitoringBufferSize(monitoringBufferSize);
+        sharedInputRouteActive = sharedInputStarted;
+        activeSharedInputRoute = sharedRoute;
         activeHostApiName = outputDevice.HostApiName;
         pendingDeviceName = inputDevice.DisplayName;
         inputRouteLabel = BuildAdvancedDeviceChoiceLabel(inputDevice);
@@ -3164,6 +3290,25 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (input == null || output == null)
             return;
 
+        int sampleRate = activeSampleRate > 0 ? activeSampleRate : PreferredSampleRate;
+        Func<float[], int, int, int, string, bool> sharedInputBlockReceived = SharedInputBlockReceived;
+        if (sharedInputRouteActive && !sharedInputSubmitDisabled && sharedInputBlockReceived != null)
+        {
+            try
+            {
+                if (!sharedInputBlockReceived(input, inputChannels, frameCount, sampleRate, activeSharedInputRoute?.InputChannelMode ?? advancedRoutingOptions?.inputChannelMode))
+                {
+                    sharedInputSubmitDisabled = true;
+                    sharedInputSubmitFailurePending = true;
+                }
+            }
+            catch
+            {
+                sharedInputSubmitDisabled = true;
+                sharedInputSubmitFailurePending = true;
+            }
+        }
+
         int safeOutputChannels = Mathf.Max(1, outputChannels);
         int processingChannels = safeOutputChannels > 1 ? 2 : 1;
         int processingSampleCount = frameCount * processingChannels;
@@ -3177,7 +3322,6 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             processingSampleCount,
             advancedRoutingOptions?.inputChannelMode);
 
-        int sampleRate = activeSampleRate > 0 ? activeSampleRate : PreferredSampleRate;
         ProcessToneBuffer(portAudioProcessBuffer, processingChannels, sampleRate);
         ApplyMonitorVolumeToBuffer(portAudioProcessBuffer);
         MixUnifiedSongSourceTapAudio(portAudioProcessBuffer, processingChannels, frameCount);
@@ -5799,7 +5943,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     private void EnsurePortAudioProcessBufferCapacity(int sampleCount)
     {
-        if (portAudioProcessBuffer == null || portAudioProcessBuffer.Length != sampleCount)
+        if (portAudioProcessBuffer == null || portAudioProcessBuffer.Length < sampleCount)
             portAudioProcessBuffer = new float[sampleCount];
     }
 

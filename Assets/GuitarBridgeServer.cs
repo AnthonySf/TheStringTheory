@@ -587,9 +587,13 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool latestPacketHadEvent;
     private long lastUdpPacketUtcTicks;
     private const float DetectorConnectionTimeoutSeconds = 1.5f;
+    private const float DetectorTimelineResetEventFloorGraceSeconds = 0.025f;
+    private const float DetectorTimelineResetEventFloorDurationSeconds = 0.35f;
     private string latestEventNotesText = "--";
     private string latestNotesDetectorAcceptanceSourceText = "--";
     private float latestParsedInputLevel = -1f;
+    private float detectorTimelineResetMinimumEventTime = float.NegativeInfinity;
+    private float detectorTimelineResetMinimumEventTimeExpiresAt = -1f;
     private float smoothedInputLevel;
 
     public int midiTrackIndex = -1;
@@ -1403,6 +1407,7 @@ public class GuitarBridgeServer : MonoBehaviour
         LoadSongLibraryTypePreference();
         InitializeMultiplayerRhythmPlayers();
         RefreshMultiplayerRhythmAvailableDevices();
+        StartConfiguredNotesDetectorBackend();
         bool startInMainMenu = true;
         showMainMenu = startInMainMenu;
         mainMenuFlowActive = startInMainMenu;
@@ -1410,7 +1415,6 @@ public class GuitarBridgeServer : MonoBehaviour
         LoadTestSong();
         isPaused = startInMainMenu;
         unityToneLabRuntime?.StartBackgroundMonitoring();
-        StartConfiguredNotesDetectorBackend();
         EnsureRenderer();
         SyncAudioToSongTimer(playImmediately: false);
     }
@@ -8550,8 +8554,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 {
                     ShutdownNativeNotesDetectorIfRunning();
                     EnsureNativeNotesDetectorBridge();
-                    nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel());
-                    RefreshNativeNotesDetectorUiState();
+                    StartConfiguredNotesDetectorBackend();
                 }
                 else
                 {
@@ -9470,7 +9473,10 @@ public class GuitarBridgeServer : MonoBehaviour
     private void EnsureToneLabRuntimeComponent()
     {
         if (unityToneLabRuntime != null)
+        {
+            WireToneLabRuntimeCallbacks();
             return;
+        }
 
         Transform existingRuntime = transform.Find("UnityToneLabRuntime");
         GameObject runtimeHost = existingRuntime != null ? existingRuntime.gameObject : new GameObject("UnityToneLabRuntime");
@@ -9478,6 +9484,17 @@ public class GuitarBridgeServer : MonoBehaviour
         unityToneLabRuntime = runtimeHost.GetComponent<UnityToneLabRuntime>();
         if (unityToneLabRuntime == null)
             unityToneLabRuntime = runtimeHost.AddComponent<UnityToneLabRuntime>();
+        WireToneLabRuntimeCallbacks();
+    }
+
+    private void WireToneLabRuntimeCallbacks()
+    {
+        if (unityToneLabRuntime == null)
+            return;
+
+        unityToneLabRuntime.SharedInputRouteStarting = StartNativeDetectorFromToneLabSharedInput;
+        unityToneLabRuntime.SharedInputRouteStopped = RestoreNativeDetectorIndependentInput;
+        unityToneLabRuntime.SharedInputBlockReceived = SubmitToneLabSharedInputToNativeDetector;
     }
 
     private void EnsureToneLabOverlayComponent()
@@ -11052,6 +11069,15 @@ public class GuitarBridgeServer : MonoBehaviour
         loopRestartPauseRemainingSeconds = 0f;
         loopSettingsPreviewPlaying = false;
         SnapSongTimeIntoLoopWindowIfNeeded();
+        recentNoteEvents.Clear();
+        latestDetectedPitches.Clear();
+        latestEventNotesText = "--";
+        latestNoteEventId = 0;
+        latestPacketHadEvent = false;
+        latestParsedInputLevel = -1f;
+        Interlocked.Exchange(ref lastUdpPacketUtcTicks, 0L);
+        ArmDetectorTimelineResetEventFloor(songTimer);
+        MarkDetectorHintDirty();
         isPaused = false;
         showSongSettings = false;
         showMainMenu = false;
@@ -11500,6 +11526,7 @@ private void OpenOrFocusToneLab()
         latestNoteEventId = 0;
         latestPacketHadEvent = false;
         Interlocked.Exchange(ref lastUdpPacketUtcTicks, 0L);
+        ArmDetectorTimelineResetEventFloor(clampedTime);
         MarkDetectorHintDirty();
         if (syncAudioAfterSeek)
             SyncAudioToSongTimer(playImmediately: playImmediatelyAfterSeek);
@@ -11974,7 +12001,10 @@ private void OpenOrFocusToneLab()
             EnsureNativeNotesDetectorBridge();
             RefreshNativeNotesDetectorUiState();
             RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
-            bool started = nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel()) == true;
+            UnityToneLabRuntime.SharedInputRouteInfo sharedRoute = unityToneLabRuntime?.GetActiveSharedInputRouteInfo();
+            bool started = sharedRoute != null
+                ? StartNativeDetectorFromToneLabSharedInput(sharedRoute)
+                : nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel()) == true;
             RefreshNativeNotesDetectorUiState();
             Debug.Log($"[NativeNotesDetector] Configured start {(started ? "succeeded" : "failed")} on {selectedNativeNotesDetectorInputDeviceIndex}: {GetNotesDetectorStatusText()}");
             MarkDetectorHintDirty();
@@ -11983,6 +12013,60 @@ private void OpenOrFocusToneLab()
 
         if (autoLaunchNotesDetector)
             TryLaunchNotesDetector();
+    }
+
+    private bool StartNativeDetectorFromToneLabSharedInput(UnityToneLabRuntime.SharedInputRouteInfo route)
+    {
+        if (route == null || notesDetectorBackendMode != NotesDetectorBackendMode.NativeEmbeddedBridge)
+            return false;
+
+        EnsureNativeNotesDetectorBridge();
+        RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
+        if (nativeNotesDetectorBridge == null)
+            return false;
+
+        NativeDetectorSharedInputRoute nativeRoute = new NativeDetectorSharedInputRoute
+        {
+            inputDeviceIndex = route.InputDeviceIndex,
+            inputDeviceDisplayName = route.InputDeviceDisplayName,
+            hostApiName = route.HostApiName,
+            sampleRate = route.SampleRate,
+            inputChannelCount = route.InputChannelCount,
+            maxBlockFrames = route.MaxBlockFrames,
+            inputChannelMode = SharedAudioInputChannelModes.Normalize(route.InputChannelMode)
+        };
+
+        bool started = nativeNotesDetectorBridge.StartSharedInput(nativeRoute);
+        RefreshNativeNotesDetectorUiState();
+        Debug.Log($"[NativeNotesDetector] Shared Tone Lab input {(started ? "enabled" : "failed")} on {nativeRoute.inputDeviceIndex}: {GetNotesDetectorStatusText()}");
+        MarkDetectorHintDirty();
+        return started;
+    }
+
+    private void RestoreNativeDetectorIndependentInput()
+    {
+        if (notesDetectorBackendMode != NotesDetectorBackendMode.NativeEmbeddedBridge)
+            return;
+
+        EnsureNativeNotesDetectorBridge();
+        RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
+        bool started = nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel()) == true;
+        RefreshNativeNotesDetectorUiState();
+        Debug.Log($"[NativeNotesDetector] Independent input restore {(started ? "succeeded" : "failed")} on {selectedNativeNotesDetectorInputDeviceIndex}: {GetNotesDetectorStatusText()}");
+        MarkDetectorHintDirty();
+    }
+
+    private bool SubmitToneLabSharedInputToNativeDetector(float[] input, int inputChannels, int frameCount, int sampleRate, string inputChannelMode)
+    {
+        if (notesDetectorBackendMode != NotesDetectorBackendMode.NativeEmbeddedBridge || nativeNotesDetectorBridge == null)
+            return false;
+
+        return nativeNotesDetectorBridge.SubmitSharedInput(
+            input,
+            frameCount,
+            inputChannels,
+            sampleRate,
+            SharedAudioInputChannelModes.Normalize(inputChannelMode));
     }
 
     private void EnsureNativeNotesDetectorBridge()
@@ -12154,7 +12238,7 @@ private void OpenOrFocusToneLab()
             if (restartDetectorAfterForcedRescan && notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
             {
                 RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
-                nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel());
+                StartConfiguredNotesDetectorBackend();
             }
         }
 
@@ -12562,7 +12646,7 @@ private void OpenOrFocusToneLab()
         if ((restartDetector || shouldRestartDetectorForDeviceChange) && notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
         {
             EnsureNativeNotesDetectorBridge();
-            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, advancedSettings.inputChannelMode);
+            StartConfiguredNotesDetectorBackend();
         }
 
         RefreshNativeNotesDetectorUiState();
@@ -13380,8 +13464,7 @@ private void OpenOrFocusToneLab()
             {
                 EnsureNativeNotesDetectorBridge();
                 RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
-                nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel());
-                RefreshNativeNotesDetectorUiState();
+                StartConfiguredNotesDetectorBackend();
             }
             else
                 TryLaunchNotesDetector(forceLaunch: true);
@@ -13398,8 +13481,7 @@ private void OpenOrFocusToneLab()
             EnsureNativeNotesDetectorBridge();
             notesDetectorBackendMode = NotesDetectorBackendMode.NativeEmbeddedBridge;
             RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
-            nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel());
-            RefreshNativeNotesDetectorUiState();
+            StartConfiguredNotesDetectorBackend();
         }
         else
         {
@@ -16659,6 +16741,13 @@ private void ParseDetectorPacket(string detectorPacket)
             if (eventId <= 0 || string.IsNullOrWhiteSpace(eventCsv) || eventCsv == "--") return;
 
             float estimatedEventTime = GetEstimatedNoteEventSongTime(eventAge);
+            if (IsDetectorEventBeforeTimelineResetFloor(estimatedEventTime))
+            {
+                latestEventNotesText = "--";
+                if (Application.isEditor && notesDetectorGameplayTestActive)
+                    LogNotesDetectorEditor($"EVENT_REJECTED_AFTER_TIMELINE_RESET id={eventId} eventAge={eventAge.ToString("F3", CultureInfo.InvariantCulture)} estimatedTime={estimatedEventTime.ToString("F3", CultureInfo.InvariantCulture)} floor={detectorTimelineResetMinimumEventTime.ToString("F3", CultureInfo.InvariantCulture)}");
+                return;
+            }
             
             // Log exactly what timestamp Unity is assigning this event on the timeline
             if (TryStoreNoteEvent(eventId, estimatedEventTime, eventCsv, eventSource, out NoteEvent ev))
@@ -16732,6 +16821,27 @@ private void ParseDetectorPacket(string detectorPacket)
 
         float eventAgeInSongTime = Mathf.Max(0f, eventAge) * GetPlaybackSpeedScale();
         return Mathf.Max(0f, songTimer - eventAgeInSongTime);
+    }
+
+    private void ArmDetectorTimelineResetEventFloor(float songTime)
+    {
+        detectorTimelineResetMinimumEventTime = Mathf.Max(0f, songTime - DetectorTimelineResetEventFloorGraceSeconds);
+        detectorTimelineResetMinimumEventTimeExpiresAt = Time.unscaledTime + DetectorTimelineResetEventFloorDurationSeconds;
+    }
+
+    private bool IsDetectorEventBeforeTimelineResetFloor(float estimatedEventTime)
+    {
+        if (detectorTimelineResetMinimumEventTimeExpiresAt <= 0f)
+            return false;
+
+        if (Time.unscaledTime > detectorTimelineResetMinimumEventTimeExpiresAt)
+        {
+            detectorTimelineResetMinimumEventTime = float.NegativeInfinity;
+            detectorTimelineResetMinimumEventTimeExpiresAt = -1f;
+            return false;
+        }
+
+        return estimatedEventTime + 0.0001f < detectorTimelineResetMinimumEventTime;
     }
 
     private void ParseNoteCsvIntoSet(string csv, HashSet<int> targetSet)

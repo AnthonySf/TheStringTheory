@@ -573,7 +573,35 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void NativeDetectorInputCandidates_PrioritizeRequestedPreferredAndWindowsFallbackHosts()
+    public void NativeDetectorInputCandidates_SelectedDeviceOnlyFallsBackToSamePhysicalInput()
+    {
+        NativeNotesDetectorBridge bridge = new NativeNotesDetectorBridge();
+        NativeDetectorDeviceListPayload payload = new NativeDetectorDeviceListPayload
+        {
+            preferredDeviceIndex = 7,
+            devices = new[]
+            {
+                DetectorDevice(1, "Instrument Input", "ASIO"),
+                DetectorDevice(8, "8: Instrument Input", "Windows WASAPI"),
+                DetectorDevice(9, "9: Instrument Input", "DirectSound"),
+                DetectorDevice(10, "10: Hi-Fi Cable Output", "Windows WASAPI"),
+                DetectorDevice(11, "11: Webcam Microphone", "MME"),
+            }
+        };
+
+        SetField(bridge, "cachedDevices", payload);
+
+        CollectionAssert.AreEqual(
+            new[] { 8, 9, 1 },
+            InvokeIntListInstance(bridge, "BuildInputDeviceStartCandidates", 8));
+
+        CollectionAssert.AreEqual(
+            new[] { 99 },
+            InvokeIntListInstance(bridge, "BuildInputDeviceStartCandidates", 99));
+    }
+
+    [Test]
+    public void NativeDetectorInputCandidates_AutomaticPrioritizesPreferredAndFallbackHosts()
     {
         NativeNotesDetectorBridge bridge = new NativeNotesDetectorBridge();
         NativeDetectorDeviceListPayload payload = new NativeDetectorDeviceListPayload
@@ -594,16 +622,8 @@ public sealed class AudioPathRegressionTests
         SetField(bridge, "cachedDevices", payload);
 
         CollectionAssert.AreEqual(
-            new[] { 1, 7, 2, 3, 4, 5, 6 },
-            InvokeIntListInstance(bridge, "BuildInputDeviceStartCandidates", 1));
-
-        CollectionAssert.AreEqual(
             new[] { 7, 2, 3, 4, 5, 1, 6 },
             InvokeIntListInstance(bridge, "BuildInputDeviceStartCandidates", -1));
-
-        CollectionAssert.AreEqual(
-            new[] { 7, 2, 3, 4, 5, 1, 6 },
-            InvokeIntListInstance(bridge, "BuildInputDeviceStartCandidates", 99));
 
         string summary = (string)InvokeInstance(bridge, "BuildAvailableInputDeviceSummary");
         StringAssert.Contains("Preferred WASAPI", summary);

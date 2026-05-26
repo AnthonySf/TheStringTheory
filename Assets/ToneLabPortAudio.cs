@@ -156,20 +156,14 @@ internal static class ToneLabPortAudio
         }
     }
 
-    internal static void Shutdown(bool drainNativeInitialization = false)
+    internal static void Shutdown()
     {
-        if (!initialized && !drainNativeInitialization)
+        if (!initialized)
             return;
 
         try
         {
-            int terminateAttempts = drainNativeInitialization ? 8 : 1;
-            for (int i = 0; i < terminateAttempts; i++)
-            {
-                int result = Pa_Terminate();
-                if (result != PaNoError)
-                    break;
-            }
+            Pa_Terminate();
         }
         catch
         {
@@ -269,6 +263,7 @@ internal static class ToneLabPortAudio
 
     internal sealed class DuplexStream : IDisposable
     {
+        private const int DriverManagedCallbackFrameCapacity = 8192;
         private readonly StreamCallback callback;
         private readonly Action<float[], int, int, int, float[]> processBlock;
         private IntPtr stream = IntPtr.Zero;
@@ -305,6 +300,11 @@ internal static class ToneLabPortAudio
 
             inputChannels = Math.Max(1, requestedInputChannels);
             outputChannels = Math.Max(1, requestedOutputChannels);
+            int callbackFrameCapacity = framesPerBuffer > 0 && framesPerBuffer <= int.MaxValue
+                ? Math.Max((int)framesPerBuffer, 256)
+                : DriverManagedCallbackFrameCapacity;
+            EnsureBufferCapacity(ref inputBuffer, callbackFrameCapacity * inputChannels);
+            EnsureBufferCapacity(ref outputBuffer, callbackFrameCapacity * outputChannels);
 
             StreamParameters inputParameters = new StreamParameters
             {
@@ -425,23 +425,68 @@ internal static class ToneLabPortAudio
 
         private int StreamCallbackInternal(IntPtr input, IntPtr output, uint frameCount, IntPtr timeInfo, uint statusFlags, IntPtr userData)
         {
-            int inputSampleCount = checked((int)(frameCount * (uint)inputChannels));
-            int outputSampleCount = checked((int)(frameCount * (uint)outputChannels));
-            EnsureBufferCapacity(ref inputBuffer, inputSampleCount);
-            EnsureBufferCapacity(ref outputBuffer, outputSampleCount);
-
-            if (input != IntPtr.Zero)
+            try
             {
-                Marshal.Copy(input, inputBuffer, 0, inputSampleCount);
+                int totalFrames = checked((int)frameCount);
+                int inputFrameCapacity = inputBuffer.Length / Math.Max(1, inputChannels);
+                int outputFrameCapacity = outputBuffer.Length / Math.Max(1, outputChannels);
+                int callbackFrameCapacity = Math.Max(1, Math.Min(inputFrameCapacity, outputFrameCapacity));
+                int processedFrames = 0;
+
+                while (processedFrames < totalFrames)
+                {
+                    int chunkFrames = Math.Min(callbackFrameCapacity, totalFrames - processedFrames);
+                    int inputSampleCount = checked(chunkFrames * inputChannels);
+                    int outputSampleCount = checked(chunkFrames * outputChannels);
+                    int inputOffsetSamples = checked(processedFrames * inputChannels);
+                    int outputOffsetSamples = checked(processedFrames * outputChannels);
+
+                    if (input != IntPtr.Zero)
+                    {
+                        IntPtr inputChunk = IntPtr.Add(input, inputOffsetSamples * sizeof(float));
+                        Marshal.Copy(inputChunk, inputBuffer, 0, inputSampleCount);
+                    }
+                    else
+                    {
+                        Array.Clear(inputBuffer, 0, inputSampleCount);
+                    }
+
+                    Array.Clear(outputBuffer, 0, outputSampleCount);
+                    processBlock?.Invoke(inputBuffer, inputChannels, outputChannels, chunkFrames, outputBuffer);
+                    if (output != IntPtr.Zero)
+                    {
+                        IntPtr outputChunk = IntPtr.Add(output, outputOffsetSamples * sizeof(float));
+                        Marshal.Copy(outputBuffer, 0, outputChunk, outputSampleCount);
+                    }
+
+                    processedFrames += chunkFrames;
+                }
             }
-            else
+            catch
             {
-                Array.Clear(inputBuffer, 0, inputSampleCount);
+                if (output != IntPtr.Zero)
+                {
+                    try
+                    {
+                        int totalOutputSamples = checked((int)frameCount * outputChannels);
+                        int outputSampleCapacity = outputBuffer.Length;
+                        int writtenSamples = 0;
+                        while (writtenSamples < totalOutputSamples && outputSampleCapacity > 0)
+                        {
+                            int sampleCount = Math.Min(outputSampleCapacity, totalOutputSamples - writtenSamples);
+                            Array.Clear(outputBuffer, 0, sampleCount);
+                            IntPtr outputChunk = IntPtr.Add(output, writtenSamples * sizeof(float));
+                            Marshal.Copy(outputBuffer, 0, outputChunk, sampleCount);
+                            writtenSamples += sampleCount;
+                        }
+                    }
+                    catch
+                    {
+                        // Keep the PortAudio callback alive even if emergency silence fails.
+                    }
+                }
             }
 
-            Array.Clear(outputBuffer, 0, outputSampleCount);
-            processBlock?.Invoke(inputBuffer, inputChannels, outputChannels, checked((int)frameCount), outputBuffer);
-            Marshal.Copy(outputBuffer, 0, output, outputSampleCount);
             return 0;
         }
 
