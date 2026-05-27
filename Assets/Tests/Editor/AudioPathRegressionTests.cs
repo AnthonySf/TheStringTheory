@@ -20,6 +20,47 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void GuitarTunerPitchDetector_DetectsStandardOpenStrings()
+    {
+        const int sampleRate = 48000;
+        const int sampleCount = 4096;
+        float[] samples = new float[sampleCount];
+        float[] scratch = new float[sampleCount + 2];
+
+        FillSine(samples, sampleRate, 110f, 0.42f);
+        Assert.IsTrue(GuitarTunerPitchDetector.TryDetectPitch(samples, sampleCount, sampleRate, scratch, out GuitarTunerPitchDetection a2));
+        Assert.AreEqual(110f, a2.frequencyHz, 0.75f);
+        Assert.AreEqual(45, a2.nearestMidi);
+
+        FillSine(samples, sampleRate, GuitarTunerPitchDetector.MidiToFrequency(64), 0.38f);
+        Assert.IsTrue(GuitarTunerPitchDetector.TryDetectPitch(samples, sampleCount, sampleRate, scratch, out GuitarTunerPitchDetection e4));
+        Assert.AreEqual(64, e4.nearestMidi);
+        Assert.AreEqual(GuitarTunerPitchDetector.MidiToFrequency(64), e4.frequencyHz, 1.25f);
+    }
+
+    [Test]
+    public void GuitarTunerService_ConfirmsStableStringAndAdvancesAutomatically()
+    {
+        const int sampleRate = 48000;
+        const int sampleCount = 4096;
+        float[] samples = new float[sampleCount];
+        GuitarTunerService service = new GuitarTunerService();
+
+        for (int i = 0; i < 24; i++)
+        {
+            FillSine(samples, sampleRate, GuitarTunerPitchDetector.MidiToFrequency(40), 0.42f);
+            service.SubmitAudioBlock(samples, 1, samples.Length, sampleRate, SharedAudioInputChannelModes.Input1);
+            service.Update(1f / 30f);
+        }
+
+        GuitarTunerSnapshot snapshot = service.GetSnapshot();
+        Assert.IsNotNull(snapshot.tunedTargets);
+        Assert.GreaterOrEqual(snapshot.tunedTargets.Length, 1);
+        Assert.IsTrue(snapshot.tunedTargets[0], "Stable E2 should be confirmed as tuned.");
+        Assert.AreEqual("A2", snapshot.targetNoteName, "Automatic tuning should advance to the next string.");
+    }
+
+    [Test]
     public void SharedAudioSettingsNormalization_CoversBackendRatesResamplerAndDeviceKeys()
     {
         Assert.AreEqual(SharedAudioBackendModes.Auto, SharedAudioBackendModes.Normalize(null));
@@ -501,6 +542,37 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void PortAudioProcessing_UsesExactCallbackBufferLength()
+    {
+        using (RuntimeFixture fixture = RuntimeFixture.Create())
+        {
+            SetField(fixture.Runtime, "settings", new UnityToneLabRuntime.ToneLabSettings
+            {
+                input_gain_db = 0f,
+                output_gain_db = 0f,
+                global_input_trim_db = 0f,
+                global_output_gain_db = 0f,
+                pedal_chain = new List<UnityToneLabRuntime.ToneLabPedalSlot>()
+            });
+            SetField(fixture.Runtime, "settingsLoaded", true);
+            SetField(fixture.Runtime, "activeSampleRate", 48000);
+            SetField(fixture.Runtime, "advancedRoutingOptions", new UnityToneLabRuntime.AdvancedRoutingOptions
+            {
+                inputChannelMode = SharedAudioInputChannelModes.Input1
+            });
+            SetField(fixture.Runtime, "portAudioProcessBuffer", Enumerable.Repeat(0.75f, 8).ToArray());
+
+            float[] input = { 0.1f, -0.2f };
+            float[] output = new float[4];
+            InvokeRuntimeInstance(fixture.Runtime, "ProcessPortAudioBlock", input, 1, 2, 2, output);
+
+            float[] processBuffer = (float[])GetField(fixture.Runtime, "portAudioProcessBuffer");
+            CollectionAssert.AreEqual(new[] { 0.1f, 0.1f, -0.2f, -0.2f }, processBuffer);
+            CollectionAssert.AreEqual(new[] { 0.1f, 0.1f, -0.2f, -0.2f }, output);
+        }
+    }
+
+    [Test]
     public void RocksmithAutomaticTonePresetMapping_MapsCommonToneFamilies()
     {
         Assert.AreEqual("Bass Grind", InvokeGuitarBridgeStatic<string>("ResolveAutomaticTonePresetName", "Finger Bass", "Bass", ""));
@@ -557,19 +629,90 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void RocksmithTonePresetBuilder_AppliesRootToneVolumeAsOutputCalibration()
+    {
+        string loudToneJson =
+            @"{
+                ""Name"": ""Volume Loud"",
+                ""Key"": ""Tone_Loud"",
+                ""Volume"": ""-24.000"",
+                ""GearList"": {
+                    ""Amp"": {
+                        ""Type"": ""Amps"",
+                        ""Key"": ""Amp_MarshallPlexi"",
+                        ""KnobValues"": { ""Gain"": 4, ""Bass"": 5, ""Mid"": 5, ""Treble"": 5 }
+                    },
+                    ""Cabinet"": {
+                        ""Type"": ""Cabinets"",
+                        ""Key"": ""Cab_Marshall1960TV"",
+                        ""KnobValues"": {}
+                    }
+                }
+            }";
+        string softToneJson = loudToneJson
+            .Replace(@"""Name"": ""Volume Loud""", @"""Name"": ""Volume Soft""")
+            .Replace(@"""Key"": ""Tone_Loud""", @"""Key"": ""Tone_Soft""")
+            .Replace(@"""Volume"": ""-24.000""", @"""Volume"": ""-16.000""");
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Volume Loud", "Lead", loudToneJson, out UnityToneLabRuntime.ToneLabPreset loudPreset));
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Volume Soft", "Lead", softToneJson, out UnityToneLabRuntime.ToneLabPreset softPreset));
+
+        Assert.Greater(loudPreset.output_gain_db, softPreset.output_gain_db);
+        Assert.AreEqual(8f, loudPreset.output_gain_db - softPreset.output_gain_db, 0.05f);
+    }
+
+    [Test]
     public void ToneLabSettingsNormalization_ClampsGlobalInputTrim()
     {
         UnityToneLabRuntime.ToneLabSettings settings = new UnityToneLabRuntime.ToneLabSettings
         {
-            global_input_trim_db = -99f
+            global_input_trim_db = -99f,
+            global_output_gain_db = -99f
         };
 
         InvokeRuntimeStatic("ClampSettings", settings);
         Assert.AreEqual(-36f, settings.global_input_trim_db);
+        Assert.AreEqual(-12f, settings.global_output_gain_db);
 
         settings.global_input_trim_db = 99f;
+        settings.global_output_gain_db = 99f;
         InvokeRuntimeStatic("ClampSettings", settings);
         Assert.AreEqual(12f, settings.global_input_trim_db);
+        Assert.AreEqual(12f, settings.global_output_gain_db);
+    }
+
+    [Test]
+    public void ToneLabGlobalOutputGain_IsPersistedAndAppliedAfterPresetOutput()
+    {
+        UnityToneLabRuntime.ToneLabSettings source = new UnityToneLabRuntime.ToneLabSettings
+        {
+            global_output_gain_db = 7f,
+            input_gain_db = 0f,
+            output_gain_db = 0f,
+            pedal_chain = new List<UnityToneLabRuntime.ToneLabPedalSlot>()
+        };
+        UnityToneLabRuntime.ToneLabSettings snapshot = (UnityToneLabRuntime.ToneLabSettings)InvokeRuntimeStatic("CreateSettingsStorageSnapshot", source);
+        Assert.AreEqual(7f, snapshot.global_output_gain_db);
+
+        using (RuntimeFixture fixture = RuntimeFixture.Create())
+        {
+            UnityToneLabRuntime.ToneLabSettings runtimeSettings = new UnityToneLabRuntime.ToneLabSettings
+            {
+                global_input_trim_db = 0f,
+                global_output_gain_db = 6f,
+                input_gain_db = 0f,
+                output_gain_db = 0f,
+                pedal_chain = new List<UnityToneLabRuntime.ToneLabPedalSlot>()
+            };
+            SetField(fixture.Runtime, "settings", runtimeSettings);
+
+            float[] data = { 0.25f, -0.125f };
+            InvokeInstance(fixture.Runtime, "ProcessToneBuffer", data, 1, 48000);
+
+            float expectedGain = ToneLabPedalUtility.DbToLinear(6f);
+            Assert.AreEqual(0.25f * expectedGain, data[0], 0.0001f);
+            Assert.AreEqual(-0.125f * expectedGain, data[1], 0.0001f);
+        }
     }
 
     [Test]
@@ -969,6 +1112,14 @@ public sealed class AudioPathRegressionTests
     private static T InvokeGuitarBridgeStatic<T>(string methodName, params object[] args)
     {
         return (T)InvokeGuitarBridgeStatic(methodName, args);
+    }
+
+    private static void FillSine(float[] samples, int sampleRate, float frequencyHz, float amplitude)
+    {
+        Assert.IsNotNull(samples);
+        double phaseStep = (Math.PI * 2d * frequencyHz) / sampleRate;
+        for (int i = 0; i < samples.Length; i++)
+            samples[i] = (float)(Math.Sin(i * phaseStep) * amplitude);
     }
 
     private static T InvokeNativeDetectorBridgeStatic<T>(string methodName, params object[] args)

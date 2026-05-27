@@ -1041,7 +1041,16 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             value => $"{value:F1} dB",
             settings => settings.global_input_trim_db,
             (settings, value) => settings.global_input_trim_db = value,
-            280f));
+            260f));
+
+        globalSettingsBar.Add(CreateCompactSliderField(
+            "Output Gain",
+            -12f,
+            12f,
+            value => $"{value:F1} dB",
+            settings => settings.global_output_gain_db,
+            (settings, value) => settings.global_output_gain_db = value,
+            260f));
 
         VisualElement volumeField = CreateSharedVolumeSliderField(
             "Guitar Volume",
@@ -1058,7 +1067,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             },
             out guitarVolumeSlider,
             out guitarVolumeValueLabel,
-            280f);
+            260f);
         volumeField.style.marginRight = 0f;
         globalSettingsBar.Add(volumeField);
 

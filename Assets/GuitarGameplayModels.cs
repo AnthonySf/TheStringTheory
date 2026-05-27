@@ -492,6 +492,7 @@ public sealed class GuitarGameplaySnapshot
     public bool songSelectionSongConfirmed;
     public bool showTrackSelection;
     public bool showToneLab;
+    public bool showTuner;
     public bool showNotesDetectorTestMenu;
     public bool notesDetectorGameplayTestActive;
     public bool showNotesDetectorTestSelectionPopup;

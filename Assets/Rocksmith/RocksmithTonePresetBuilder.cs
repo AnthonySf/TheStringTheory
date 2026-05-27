@@ -11,6 +11,11 @@ public static class RocksmithTonePresetBuilder
     public const string GeneratedPresetIdPrefix = "rsgen_";
 
     private const float DefaultKnobValue = 0.5f;
+    private const float RocksmithReferenceToneVolumeDb = -20f;
+    private const float MinRocksmithToneVolumeDb = -45f;
+    private const float MaxRocksmithToneVolumeDb = 45f;
+    private const float MinGeneratedOutputGainDb = -12f;
+    private const float MaxGeneratedOutputGainDb = 18f;
 
     public static bool IsGeneratedPresetId(string presetId)
     {
@@ -39,7 +44,8 @@ public static class RocksmithTonePresetBuilder
         if (gears.Count == 0)
             return false;
 
-        ToneBuildContext context = BuildContext(toneName, arrangementRoute, gears);
+        float? rootToneVolumeDb = TryGetRootToneVolumeDb(root);
+        ToneBuildContext context = BuildContext(toneName, arrangementRoute, gears, rootToneVolumeDb);
         List<UnityToneLabRuntime.ToneLabPedalSlot> chain = BuildPedalChain(context, gears);
         if (chain.Count == 0)
             return false;
@@ -176,7 +182,8 @@ public static class RocksmithTonePresetBuilder
     private static ToneBuildContext BuildContext(
         string toneName,
         string arrangementRoute,
-        IReadOnlyList<RocksmithGear> gears)
+        IReadOnlyList<RocksmithGear> gears,
+        float? rootToneVolumeDb)
     {
         string arrangementText = NormalizeText($"{toneName} {arrangementRoute}");
         string gearText = BuildGearSearchText(gears);
@@ -217,6 +224,8 @@ public static class RocksmithTonePresetBuilder
             outputGain = Mathf.Max(outputGain, 7.4f);
         }
 
+        outputGain = ApplyRocksmithToneVolume(outputGain, rootToneVolumeDb);
+
         return new ToneBuildContext
         {
             SearchText = searchText,
@@ -231,6 +240,30 @@ public static class RocksmithTonePresetBuilder
             InputGainDb = inputGain,
             OutputGainDb = outputGain
         };
+    }
+
+    private static float? TryGetRootToneVolumeDb(Dictionary<string, object> root)
+    {
+        if (root == null ||
+            !TryGetValue(root, "Volume", out object rawVolume) ||
+            !TryGetFloat(rawVolume, out float volumeDb) ||
+            float.IsNaN(volumeDb) ||
+            float.IsInfinity(volumeDb))
+        {
+            return null;
+        }
+
+        return Mathf.Clamp(volumeDb, MinRocksmithToneVolumeDb, MaxRocksmithToneVolumeDb);
+    }
+
+    private static float ApplyRocksmithToneVolume(float outputGainDb, float? rocksmithToneVolumeDb)
+    {
+        if (!rocksmithToneVolumeDb.HasValue)
+            return outputGainDb;
+
+        // Rocksmith tone volume is inverted in Toolkit/exported tones: 0 is soft, -20 is normal, -30 is loud.
+        float correctionDb = RocksmithReferenceToneVolumeDb - rocksmithToneVolumeDb.Value;
+        return Mathf.Clamp(outputGainDb + correctionDb, MinGeneratedOutputGainDb, MaxGeneratedOutputGainDb);
     }
 
     private static string BuildGearSearchText(IReadOnlyList<RocksmithGear> gears)

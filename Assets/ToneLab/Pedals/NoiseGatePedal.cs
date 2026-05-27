@@ -31,7 +31,7 @@ public sealed class NoiseGatePedalProcessor : IToneLabPedalProcessor
     public void Reset()
     {
         envelope = 0f;
-        gateGain = 1f;
+        gateGain = GetFloorGain();
         holdSamplesRemaining = 0;
     }
 
@@ -43,6 +43,7 @@ public sealed class NoiseGatePedalProcessor : IToneLabPedalProcessor
         settings.hold_ms = Mathf.Clamp(settings.hold_ms, 0f, 220f);
         settings.release_ms = Mathf.Clamp(settings.release_ms, 20f, 600f);
         settings.range_db = Mathf.Clamp(settings.range_db, -80f, 0f);
+        gateGain = Mathf.Clamp(gateGain, GetFloorGain(), 1f);
     }
 
     public void Process(float[] data, int channels, int sampleRate)
@@ -85,6 +86,11 @@ public sealed class NoiseGatePedalProcessor : IToneLabPedalProcessor
             for (int channel = 0; channel < channels; channel++)
                 data[frame + channel] *= gateGain;
         }
+    }
+
+    private float GetFloorGain()
+    {
+        return ToneLabPedalUtility.DbToLinear(settings != null ? settings.range_db : -80f);
     }
 }
 

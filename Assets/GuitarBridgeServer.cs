@@ -1000,6 +1000,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private const string GameSaveStateFileName = "game_save.json";
     private UnityToneLabRuntime unityToneLabRuntime;
     private UnityToneLabOverlay unityToneLabOverlay;
+    private GuitarTunerService guitarTunerService;
+    private GuitarTunerOverlay guitarTunerOverlay;
+    private bool showTuner;
     private bool useSongToneMappings = true;
     private string activeSongToneMappingSongKey = string.Empty;
     private string activeSongToneMappingArrangementKey = string.Empty;
@@ -1105,7 +1108,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private const float ArrowDoubleTapThreshold = 0.35f;
     private const float UiControllerAxisThreshold = 0.55f;
     private const float NoteByNoteTimeEpsilon = 0.0001f;
-    private const int MainMenuOptionCount = 7;
+    private const int MainMenuOptionCount = 8;
     private const int StartMenuModeOptionCount = 2;
     private const int StartMenuGuitarSetupRowCount = 2;
     private const int StartMenuArcadeSetupRowCount = 3;
@@ -1401,6 +1404,8 @@ public class GuitarBridgeServer : MonoBehaviour
         LoadGameSaveState();
         LoadHeroModePreferences();
         EnsureToneLabRuntimeComponent();
+        EnsureGuitarTunerService();
+        WireToneLabRuntimeCallbacks();
         LoadSharedAudioSettingsFromDisk();
         RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true, forcePortAudioRescan: true);
         ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: false, refreshCatalogs: false);
@@ -1463,6 +1468,8 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         HandlePauseControls();
+        if (showTuner)
+            guitarTunerService?.Update(Time.unscaledDeltaTime);
         if (shouldLogLoopCountdownFrame)
         {
             long afterHandlePauseControlsTicks = GetLoopCountdownTimestamp();
@@ -1679,6 +1686,8 @@ public class GuitarBridgeServer : MonoBehaviour
             if (showToneLab)
                 unityToneLabOverlay.RefreshUi(syncControls: false);
         }
+        if (guitarTunerOverlay != null)
+            guitarTunerOverlay.SetVisible(showTuner);
         if (shouldLogLoopCountdownFrame)
         {
             long afterToneLabTicks = GetLoopCountdownTimestamp();
@@ -1757,6 +1766,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (showGameplayAudioPopup)
         {
             HandleGameplayAudioPopupControls();
+            return;
+        }
+
+        if (showTuner)
+        {
+            HandleTunerControls();
             return;
         }
 
@@ -2362,6 +2377,8 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void ClearToneLabSongTonePlaybackOverride()
     {
+        unityToneLabRuntime?.ClearPlaybackPresetOverride();
+
         if (string.IsNullOrWhiteSpace(activeSongToneMappingPresetId) &&
             string.IsNullOrWhiteSpace(activeSongToneMappingToneName) &&
             string.IsNullOrWhiteSpace(activeSongToneMappingArrangementKey) &&
@@ -2374,7 +2391,6 @@ public class GuitarBridgeServer : MonoBehaviour
         activeSongToneMappingArrangementKey = string.Empty;
         activeSongToneMappingToneName = string.Empty;
         activeSongToneMappingPresetId = string.Empty;
-        unityToneLabRuntime?.ClearPlaybackPresetOverride();
     }
 
     private void HandleLoopPausePopupControls()
@@ -3446,14 +3462,21 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.T))
         {
-            SetMainMenuSelectionFromUi(5);
+            SetMainMenuSelectionFromUi(6);
             OpenToneLabFromUi();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.U))
+        {
+            SetMainMenuSelectionFromUi(5);
+            OpenTunerFromUi();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.X))
         {
-            SetMainMenuSelectionFromUi(6);
+            SetMainMenuSelectionFromUi(7);
             ExitGameFromUi();
             return;
         }
@@ -4223,6 +4246,45 @@ public class GuitarBridgeServer : MonoBehaviour
                 unityToneLabOverlay.RequestCloseFromUi();
             else
                 CloseToneLabFromUi();
+            return;
+        }
+    }
+
+    private void HandleTunerControls()
+    {
+        if (IsUiBackPressed() || Input.GetKeyDown(KeyCode.U))
+        {
+            CloseTunerFromUi();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.A))
+        {
+            SetTunerModeFromUi(0);
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.M))
+        {
+            SetTunerModeFromUi(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed())
+        {
+            guitarTunerService?.ToggleMode();
+            return;
+        }
+
+        if (IsUiLeftPressed())
+        {
+            MoveTunerManualTargetFromUi(-1);
+            return;
+        }
+
+        if (IsUiRightPressed())
+        {
+            MoveTunerManualTargetFromUi(1);
             return;
         }
     }
@@ -7415,6 +7477,7 @@ public class GuitarBridgeServer : MonoBehaviour
                showGameModes ||
                showHeroModeSettings ||
                showNotesDetectorTestMenu ||
+               showTuner ||
                showToneLab ||
                showGeneratedAudioTrackSelectionPopup ||
                showSongSettingsTrackSelectionPopup ||
@@ -7423,7 +7486,7 @@ public class GuitarBridgeServer : MonoBehaviour
                showOffsetHelper ||
                showMultiplayerRhythmSetup ||
                songHasEnded ||
-               (isPaused && !showToneLab);
+               (isPaused && !showToneLab && !showTuner);
     }
 
     private static bool HasInputSystemGamepadConnected()
@@ -7835,6 +7898,8 @@ public class GuitarBridgeServer : MonoBehaviour
         CancelDeferredSongSelectionOpen();
         showToneLab = false;
         HideToneLabUi();
+        showTuner = false;
+        guitarTunerOverlay?.SetVisible(false);
         SetSongEndState(false);
         showStartMenu = false;
         showMainMenu = false;
@@ -8455,9 +8520,12 @@ public class GuitarBridgeServer : MonoBehaviour
                 OpenNotesDetectorTestFromUi();
                 break;
             case 5:
-                OpenToneLabFromUi();
+                OpenTunerFromUi();
                 break;
             case 6:
+                OpenToneLabFromUi();
+                break;
+            case 7:
                 ExitGameFromUi();
                 break;
         }
@@ -8469,6 +8537,8 @@ public class GuitarBridgeServer : MonoBehaviour
         StartNotesDetectorEditorLogSession("open-detector-menu");
         notesDetectorGameplayTestActive = false;
         CancelDeferredSongSelectionOpen();
+        showTuner = false;
+        guitarTunerOverlay?.SetVisible(false);
         showToneLab = false;
         HideToneLabUi();
         showMainMenu = false;
@@ -9154,6 +9224,8 @@ public class GuitarBridgeServer : MonoBehaviour
         returnToMultiplayerRhythmSetupFromSongSelection = false;
         songSelectionOpenedFromSongEnd = false;
         songSelectionOpenedFromMainMenu = showMainMenu || mainMenuFlowActive;
+        showTuner = false;
+        guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         if (!showMainMenu)
             mainMenuFlowActive = false;
@@ -9195,6 +9267,8 @@ public class GuitarBridgeServer : MonoBehaviour
         showCharacterSelection = false;
         showNotesDetectorTestMenu = false;
         showNotesDetectorRoutinePopup = false;
+        showTuner = false;
+        guitarTunerOverlay?.SetVisible(false);
         loopSettingsOpenedFromGameModes = false;
         selectedNotesDetectorTestIndex = 0;
         selectedGlobalSettingsTopIndex = 0;
@@ -9359,6 +9433,8 @@ public class GuitarBridgeServer : MonoBehaviour
         CancelDeferredSongSelectionOpen();
         showToneLab = false;
         HideToneLabUi();
+        showTuner = false;
+        guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         gameplayHudPreviewInMenus = false;
         if (!showMainMenu)
@@ -9369,6 +9445,7 @@ public class GuitarBridgeServer : MonoBehaviour
         globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
         selectedGlobalSettingsSelectionPopupIndex = 0;
         globalSettingsTransparentBackground = false;
+        runtimeSettingsSnapshotDirty = true;
         selectedGlobalSettingsTopIndex = 0;
         selectedGlobalSettingsItemIndex = 0;
         activeGlobalSettingsCategory = string.Empty;
@@ -9394,6 +9471,68 @@ public class GuitarBridgeServer : MonoBehaviour
             OpenOffsetHelperFromUi();
     }
 
+    public void OpenTunerFromUi()
+    {
+        CancelDeferredSongSelectionOpen();
+        EnsureToneLabRuntimeComponent();
+        EnsureGuitarTunerOverlayComponent();
+        guitarTunerService?.Reset();
+        showTuner = true;
+        showToneLab = false;
+        HideToneLabUi();
+        showNotesDetectorTestMenu = false;
+        showNotesDetectorTestSelectionPopup = false;
+        showNotesDetectorRoutinePopup = false;
+        showSongSettings = false;
+        showSongSelection = false;
+        songSelectionSongConfirmed = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        showGlobalSettingsSelectionPopup = false;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
+        showGameModes = false;
+        showHeroModeSettings = false;
+        showLoopSettings = false;
+        showLoopPausePopup = false;
+        showOffsetHelper = false;
+        showStartupTuningReminder = false;
+        resumeGameplayAfterStartupTuningReminder = false;
+        showMainMenu = false;
+        mainMenuFlowActive = true;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+        unityToneLabRuntime?.StartBackgroundMonitoring();
+        guitarTunerOverlay?.SetVisible(true);
+    }
+
+    public void CloseTunerFromUi()
+    {
+        showTuner = false;
+        guitarTunerOverlay?.SetVisible(false);
+        showMainMenu = true;
+        mainMenuFlowActive = true;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void SetTunerModeFromUi(int modeIndex)
+    {
+        EnsureGuitarTunerService();
+        guitarTunerService.SetMode(modeIndex == 1 ? GuitarTunerMode.Manual : GuitarTunerMode.Automatic);
+    }
+
+    public void SetTunerManualTargetFromUi(int targetIndex)
+    {
+        EnsureGuitarTunerService();
+        guitarTunerService.SetManualTargetIndex(targetIndex);
+    }
+
+    public void MoveTunerManualTargetFromUi(int delta)
+    {
+        EnsureGuitarTunerService();
+        guitarTunerService.MoveManualTarget(delta);
+    }
+
     public void OpenToneLabFromUi()
     {
         CancelDeferredSongSelectionOpen();
@@ -9407,6 +9546,8 @@ public class GuitarBridgeServer : MonoBehaviour
                 ? ToneLabReturnContext.Gameplay
                 : ToneLabReturnContext.Pause;
         showToneLab = true;
+        showTuner = false;
+        guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         showSongSettings = false;
         showSongSelection = false;
@@ -9495,6 +9636,37 @@ public class GuitarBridgeServer : MonoBehaviour
         unityToneLabRuntime.SharedInputRouteStarting = StartNativeDetectorFromToneLabSharedInput;
         unityToneLabRuntime.SharedInputRouteStopped = RestoreNativeDetectorIndependentInput;
         unityToneLabRuntime.SharedInputBlockReceived = SubmitToneLabSharedInputToNativeDetector;
+        unityToneLabRuntime.RawInputBlockReceived = SubmitToneLabRawInputToTuner;
+    }
+
+    private void EnsureGuitarTunerService()
+    {
+        if (guitarTunerService == null)
+            guitarTunerService = new GuitarTunerService();
+    }
+
+    private void EnsureGuitarTunerOverlayComponent()
+    {
+        EnsureGuitarTunerService();
+
+        if (guitarTunerOverlay != null)
+            return;
+
+        Transform existingOverlay = transform.Find("GuitarTunerUI");
+        GameObject overlayHost = existingOverlay != null ? existingOverlay.gameObject : new GameObject("GuitarTunerUI");
+        overlayHost.transform.SetParent(transform, false);
+        guitarTunerOverlay = overlayHost.GetComponent<GuitarTunerOverlay>();
+        if (guitarTunerOverlay == null)
+            guitarTunerOverlay = overlayHost.AddComponent<GuitarTunerOverlay>();
+        guitarTunerOverlay.Initialize(this, guitarTunerService);
+    }
+
+    private void SubmitToneLabRawInputToTuner(float[] input, int inputChannels, int frameCount, int sampleRate, string inputChannelMode)
+    {
+        if (!showTuner || guitarTunerService == null)
+            return;
+
+        guitarTunerService.SubmitAudioBlock(input, inputChannels, frameCount, sampleRate, inputChannelMode);
     }
 
     private void EnsureToneLabOverlayComponent()
@@ -12710,6 +12882,18 @@ private void OpenOrFocusToneLab()
         return Mathf.Clamp(sharedAudioSettings?.guitarVolumePercent ?? 100f, 0f, 100f);
     }
 
+    public float GetToneLabGlobalInputGainDb()
+    {
+        EnsureToneLabRuntimeComponent();
+        return Mathf.Clamp(unityToneLabRuntime?.CurrentSettings?.global_input_trim_db ?? 0f, -36f, 12f);
+    }
+
+    public float GetToneLabGlobalOutputGainDb()
+    {
+        EnsureToneLabRuntimeComponent();
+        return Mathf.Clamp(unityToneLabRuntime?.CurrentSettings?.global_output_gain_db ?? 0f, -12f, 12f);
+    }
+
     private bool IsLoopBookmarksTogglePressed()
     {
         return Input.GetKeyDown(KeyCode.B) ||
@@ -12823,6 +13007,34 @@ private void OpenOrFocusToneLab()
         SaveSharedAudioSettingsToDisk();
         EnsureToneLabRuntimeComponent();
         unityToneLabRuntime?.SetMonitorVolumePercent(clampedPercent);
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void SetToneLabGlobalInputGainFromUi(float gainDb)
+    {
+        EnsureToneLabRuntimeComponent();
+        if (unityToneLabRuntime == null)
+            return;
+
+        float clampedGainDb = Mathf.Clamp(gainDb, -36f, 12f);
+        if (Mathf.Approximately(unityToneLabRuntime.CurrentSettings.global_input_trim_db, clampedGainDb))
+            return;
+
+        unityToneLabRuntime.UpdateSettings(settings => settings.global_input_trim_db = clampedGainDb, restartMonitoring: false, rebuildPedalChain: false);
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    public void SetToneLabGlobalOutputGainFromUi(float gainDb)
+    {
+        EnsureToneLabRuntimeComponent();
+        if (unityToneLabRuntime == null)
+            return;
+
+        float clampedGainDb = Mathf.Clamp(gainDb, -12f, 12f);
+        if (Mathf.Approximately(unityToneLabRuntime.CurrentSettings.global_output_gain_db, clampedGainDb))
+            return;
+
+        unityToneLabRuntime.UpdateSettings(settings => settings.global_output_gain_db = clampedGainDb, restartMonitoring: false, rebuildPedalChain: false);
         runtimeSettingsSnapshotDirty = true;
     }
 
@@ -17393,6 +17605,7 @@ private void ParseDetectorPacket(string detectorPacket)
             songSelectionSongConfirmed = songSelectionSongConfirmed,
             showTrackSelection = showTrackSelection,
             showToneLab = showToneLab,
+            showTuner = showTuner,
             showNotesDetectorTestMenu = showNotesDetectorTestMenu,
             notesDetectorGameplayTestActive = notesDetectorGameplayTestActive,
             showNotesDetectorTestSelectionPopup = showNotesDetectorTestSelectionPopup,
@@ -21116,6 +21329,8 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterEnumSetting("audio.inputDevice", "Audio", "Input Device", string.Empty, new List<string>(sharedAudioInputDeviceChoices), () => GetSharedAudioSelectedInputLabel(), SetSharedAudioInputDeviceFromUi);
         RegisterEnumSetting("audio.inputChannelMode", "Audio", "Input Channel", "Selects the raw instrument channel used by Tone Lab monitoring and Notes Detector.", SharedAudioInputChannelModes.Choices, () => GetSharedAudioInputChannelModeLabel(), SetSharedAudioInputChannelModeFromUi);
         RegisterEnumSetting("audio.outputDevice", "Audio", "Output Device", string.Empty, new List<string>(sharedAudioOutputDeviceChoices), () => GetSharedAudioSelectedOutputLabel(), SetSharedAudioOutputDeviceFromUi);
+        RegisterFloatSetting("audio.globalInputGain", "Audio", "Global Input Gain", string.Empty, -36f, 12f, 0.5f, () => GetToneLabGlobalInputGainDb(), SetToneLabGlobalInputGainFromUi);
+        RegisterFloatSetting("audio.globalOutputGain", "Audio", "Global Output Gain", string.Empty, -12f, 12f, 0.5f, () => GetToneLabGlobalOutputGainDb(), SetToneLabGlobalOutputGainFromUi);
         RegisterFloatSetting("audio.songVolume", "Audio", "Song Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioSongVolumePercent(), SetSongVolumePercentFromUi);
         RegisterFloatSetting("audio.guitarVolume", "Audio", "Guitar Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioGuitarVolumePercent(), SetSharedAudioGuitarVolumeFromUi);
         RegisterEnumSetting("audio.monitoringLatency", "Audio", "Monitoring Latency", string.Empty, UnityToneLabRuntime.SharedMonitoringLatencyOptions, () => GetSharedAudioSelectedLatencyLabel(), SetSharedAudioMonitoringLatencyFromUi);

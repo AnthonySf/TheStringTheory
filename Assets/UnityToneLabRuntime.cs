@@ -26,8 +26,12 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private const float MinGlobalInputTrimDb = -36f;
     private const float MaxGlobalInputTrimDb = 12f;
     private const float DefaultGlobalInputTrimDb = 0f;
+    private const float MinGlobalOutputGainDb = -12f;
+    private const float MaxGlobalOutputGainDb = 12f;
+    private const float DefaultGlobalOutputGainDb = 0f;
     private const float DefaultRigInputGainDb = 14f;
     private const float DefaultRigOutputGainDb = 10f;
+    private const float LiveAudioDiagnosticsIntervalSeconds = 1f;
 
     [Serializable]
     public sealed class ToneLabSettings
@@ -39,6 +43,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         public List<ToneLabPreset> presets = new List<ToneLabPreset>();
         public List<ToneLabPedalSlot> pedal_chain = new List<ToneLabPedalSlot>();
         public float global_input_trim_db = DefaultGlobalInputTrimDb;
+        public float global_output_gain_db = DefaultGlobalOutputGainDb;
         public float input_gain_db = DefaultRigInputGainDb;
         public float output_gain_db = DefaultRigOutputGainDb;
         public bool dist_enabled;
@@ -551,6 +556,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private string[] inputDevices = Array.Empty<string>();
     private string[] outputDevices = Array.Empty<string>();
     private float[] portAudioProcessBuffer = Array.Empty<float>();
+    private readonly Dictionary<int, float[]> portAudioProcessBuffersBySampleCount = new Dictionary<int, float[]>();
     private float[] unityOutputMixBuffer = Array.Empty<float>();
     private string statusMessage = "Stopped";
     private bool settingsLoaded;
@@ -571,6 +577,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private int microphoneClipReadFramePosition;
     private float[] microphoneSnapshotBuffer = Array.Empty<float>();
     private float[] microphoneInputRingBuffer = Array.Empty<float>();
+    private float[] microphoneRawInputCallbackBuffer = Array.Empty<float>();
     private int microphoneInputRingWriteIndex;
     private int microphoneInputRingReadIndex;
     private int microphoneInputRingCount;
@@ -603,6 +610,19 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private int unityOutputCapturePeakQueuedSamples;
     private float unityOutputLimiterGain = 1f;
     private readonly object unityOutputCaptureLock = new object();
+    private float latestRawInputPeak;
+    private float latestRawInputRms;
+    private float latestRawInputDc;
+    private float latestProcessedPeak;
+    private float latestProcessedRms;
+    private float latestProcessedDc;
+    private int latestAudioDiagnosticsSampleRate;
+    private int latestAudioDiagnosticsInputChannels;
+    private int latestAudioDiagnosticsOutputChannels;
+    private int latestAudioDiagnosticsFrameCount;
+    private string latestAudioDiagnosticsInputChannelMode = SharedAudioInputChannelModes.Input1;
+    private int liveAudioDiagnosticsBurstLogsRemaining;
+    private float nextLiveAudioDiagnosticsLogTime = -1f;
     private volatile bool unityRecorderCaptureActive;
     private int unityRecorderCaptureChannels = 2;
     private int unityRecorderCaptureSampleRate = PreferredSampleRate;
@@ -722,6 +742,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public Func<SharedInputRouteInfo, bool> SharedInputRouteStarting { get; set; }
     public Action SharedInputRouteStopped { get; set; }
     public Func<float[], int, int, int, string, bool> SharedInputBlockReceived { get; set; }
+    public Action<float[], int, int, int, string> RawInputBlockReceived { get; set; }
     public SharedInputRouteInfo GetActiveSharedInputRouteInfo()
     {
         return IsSharedInputRouteActive ? activeSharedInputRoute?.Clone() : null;
@@ -1332,6 +1353,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
             if (unityOutputCaptureActive)
                 PumpUnityOutputCapture();
+            LogLiveAudioDiagnosticsIfDue();
             return;
         }
 
@@ -1343,7 +1365,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         }
 
         if (!awaitingMicrophoneStart)
+        {
+            LogLiveAudioDiagnosticsIfDue();
             return;
+        }
 
         if (string.IsNullOrWhiteSpace(pendingDeviceName))
         {
@@ -1396,7 +1421,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public void OpenForSession()
     {
         EnsureSettingsLoaded();
-        RestoreWorkingRigFromSelectedPreset();
+        RestoreSelectedPresetWorkingRig();
         RefreshInputDevices(forcePortAudioRescan: false);
         if (!monitoring && !awaitingMicrophoneStart)
             TryStartMonitoring();
@@ -1405,7 +1430,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public void StartBackgroundMonitoring()
     {
         EnsureSettingsLoaded();
-        RestoreWorkingRigFromSelectedPreset();
+        RestoreSelectedPresetWorkingRig();
         RefreshInputDevices(forcePortAudioRescan: false);
         if (!monitoring && !awaitingMicrophoneStart)
             TryStartMonitoring();
@@ -1891,6 +1916,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             toneSettings.output_device_name = outputDeviceName;
             toneSettings.monitoring_buffer_size = monitoringBufferSize;
             toneSettings.global_input_trim_db = DefaultGlobalInputTrimDb;
+            toneSettings.global_output_gain_db = DefaultGlobalOutputGainDb;
             toneSettings.presets = CreateDefaultPresets();
 
             ToneLabPreset defaultPreset = GetDefaultPreset(toneSettings);
@@ -1903,6 +1929,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 toneSettings.selected_preset_id = string.Empty;
                 toneSettings.pedal_chain = new List<ToneLabPedalSlot>();
                 toneSettings.global_input_trim_db = DefaultGlobalInputTrimDb;
+                toneSettings.global_output_gain_db = DefaultGlobalOutputGainDb;
                 toneSettings.input_gain_db = DefaultRigInputGainDb;
                 toneSettings.output_gain_db = DefaultRigOutputGainDb;
                 EnsurePedalChain(toneSettings);
@@ -1984,9 +2011,12 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         microphoneClipReadFramePosition = 0;
         microphoneSnapshotBuffer = Array.Empty<float>();
         microphoneInputRingBuffer = Array.Empty<float>();
+        microphoneRawInputCallbackBuffer = Array.Empty<float>();
         microphoneInputRingWriteIndex = 0;
         microphoneInputRingReadIndex = 0;
         microphoneInputRingCount = 0;
+        portAudioProcessBuffer = Array.Empty<float>();
+        portAudioProcessBuffersBySampleCount.Clear();
 
         inputRouteLabel = string.IsNullOrWhiteSpace(settings?.input_device_name) ? "Automatic Input" : settings.input_device_name;
         statusMessage = "Stopped";
@@ -2245,7 +2275,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         bool sharedInputStarted = TryStartSharedInputRoute(sharedRoute);
         activeSampleRate = sampleRate;
         activeDspBufferSize = driverManagedBuffer ? 0 : ResolveMonitoringBufferSize(monitoringBufferSize);
-        EnsurePortAudioProcessBufferCapacity(callbackFrameCapacity * (outputChannels > 1 ? 2 : 1));
+        if (!driverManagedBuffer)
+            GetPortAudioProcessBuffer(callbackFrameCapacity * (outputChannels > 1 ? 2 : 1));
         EnsureUnityOutputMixBufferCapacity(callbackFrameCapacity * Mathf.Max(inputChannels, outputChannels));
 
         string portAudioStartError = string.Empty;
@@ -2282,6 +2313,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         preparedCompiledPedalSampleRate = -1;
         preparedCompiledPedalChannelCount = -1;
         SetUnityRecorderCaptureActive(enableUnityRecorderCapture, outputChannels > 1 ? 2 : 1, sampleRate);
+        ResetLiveAudioDiagnosticsBurst();
 
         if (enableUnityOutputCapture)
         {
@@ -2397,6 +2429,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         PrepareCompiledPedalChainIfNeeded(activeSampleRate, Mathf.Max(1, AudioSettings.speakerMode == AudioSpeakerMode.Mono ? 1 : 2));
         monitorSource.timeSamples = 0;
         monitorSource.Play();
+        ResetLiveAudioDiagnosticsBurst();
 
         int bufferLength;
         int numBuffers;
@@ -2447,6 +2480,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (framesToCopy <= 0)
             return;
 
+        if (microphoneRawInputCallbackBuffer == null || microphoneRawInputCallbackBuffer.Length < framesToCopy)
+            microphoneRawInputCallbackBuffer = new float[Mathf.NextPowerOfTwo(Mathf.Max(1, framesToCopy))];
+
         lock (microphoneBufferLock)
         {
             for (int i = 0; i < framesToCopy; i++)
@@ -2457,6 +2493,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
                 int sampleIndex = frameIndex * microphoneClipChannelCount;
                 float monoSample = microphoneSnapshotBuffer[sampleIndex];
+                microphoneRawInputCallbackBuffer[i] = monoSample;
                 microphoneInputRingBuffer[microphoneInputRingWriteIndex] = monoSample;
                 microphoneInputRingWriteIndex = (microphoneInputRingWriteIndex + 1) % microphoneInputRingBuffer.Length;
 
@@ -2479,7 +2516,41 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             }
         }
 
+        CaptureRawInputMetrics(
+            microphoneRawInputCallbackBuffer,
+            1,
+            framesToCopy,
+            pendingMicrophoneClip != null && pendingMicrophoneClip.frequency > 0 ? pendingMicrophoneClip.frequency : activeSampleRate,
+            SharedAudioInputChannelModes.Input1);
+        NotifyRawInputBlockReceived(
+            microphoneRawInputCallbackBuffer,
+            1,
+            framesToCopy,
+            pendingMicrophoneClip != null && pendingMicrophoneClip.frequency > 0 ? pendingMicrophoneClip.frequency : activeSampleRate,
+            SharedAudioInputChannelModes.Input1);
+
         microphoneClipReadFramePosition = micPosition;
+    }
+
+    private void NotifyRawInputBlockReceived(float[] input, int inputChannels, int frameCount, int sampleRate, string inputChannelMode)
+    {
+        Action<float[], int, int, int, string> rawInputBlockReceived = RawInputBlockReceived;
+        if (rawInputBlockReceived == null || input == null || frameCount <= 0)
+            return;
+
+        try
+        {
+            rawInputBlockReceived(
+                input,
+                Mathf.Max(1, inputChannels),
+                frameCount,
+                Mathf.Clamp(sampleRate, 8000, 192000),
+                SharedAudioInputChannelModes.Normalize(inputChannelMode));
+        }
+        catch
+        {
+            // Raw input observers must never interrupt audio capture or monitoring.
+        }
     }
 
     private void ApplyLowLatencyAudioConfiguration()
@@ -3287,16 +3358,36 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     private void ProcessPortAudioBlock(float[] input, int inputChannels, int outputChannels, int frameCount, float[] output)
     {
+        if (output != null)
+            Array.Clear(output, 0, output.Length);
+
         if (input == null || output == null)
             return;
 
         int sampleRate = activeSampleRate > 0 ? activeSampleRate : PreferredSampleRate;
+        string inputChannelMode = activeSharedInputRoute?.InputChannelMode ?? advancedRoutingOptions?.inputChannelMode ?? SharedAudioInputChannelModes.Input1;
+        int safeOutputChannels = Mathf.Max(1, outputChannels);
+        int processingChannels = safeOutputChannels > 1 ? 2 : 1;
+        int processingSampleCount = frameCount * processingChannels;
+        float[] processBuffer = GetPortAudioProcessBuffer(processingSampleCount);
+        FillProcessBufferFromPortAudioInput(
+            input,
+            inputChannels,
+            processingChannels,
+            frameCount,
+            processBuffer,
+            processingSampleCount,
+            inputChannelMode);
+
+        CaptureRawInputMetrics(input, inputChannels, frameCount, sampleRate, inputChannelMode);
+        NotifyRawInputBlockReceived(input, inputChannels, frameCount, sampleRate, inputChannelMode);
+
         Func<float[], int, int, int, string, bool> sharedInputBlockReceived = SharedInputBlockReceived;
         if (sharedInputRouteActive && !sharedInputSubmitDisabled && sharedInputBlockReceived != null)
         {
             try
             {
-                if (!sharedInputBlockReceived(input, inputChannels, frameCount, sampleRate, activeSharedInputRoute?.InputChannelMode ?? advancedRoutingOptions?.inputChannelMode))
+                if (!sharedInputBlockReceived(input, inputChannels, frameCount, sampleRate, inputChannelMode))
                 {
                     sharedInputSubmitDisabled = true;
                     sharedInputSubmitFailurePending = true;
@@ -3309,26 +3400,210 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             }
         }
 
-        int safeOutputChannels = Mathf.Max(1, outputChannels);
-        int processingChannels = safeOutputChannels > 1 ? 2 : 1;
-        int processingSampleCount = frameCount * processingChannels;
-        EnsurePortAudioProcessBufferCapacity(processingSampleCount);
-        FillProcessBufferFromPortAudioInput(
+        ProcessToneBuffer(processBuffer, processingChannels, sampleRate);
+        ApplyMonitorVolumeToBuffer(processBuffer);
+        MixUnifiedSongSourceTapAudio(processBuffer, processingChannels, frameCount);
+        MixUnityOutputCapturedAudio(processBuffer, processingChannels, frameCount);
+        ApplyUnifiedOutputLimiter(processBuffer, sampleRate, frameCount);
+        CaptureProcessedAudioMetrics(processBuffer, processingChannels, frameCount, sampleRate, safeOutputChannels);
+        AppendUnityRecorderCaptureSamples(processBuffer, processingSampleCount);
+        FillPortAudioOutputBufferFromProcessedAudio(processBuffer, processingChannels, frameCount, output, safeOutputChannels);
+    }
+
+    private void ResetLiveAudioDiagnosticsBurst()
+    {
+        liveAudioDiagnosticsBurstLogsRemaining = 6;
+        nextLiveAudioDiagnosticsLogTime = -1f;
+        latestRawInputPeak = 0f;
+        latestRawInputRms = 0f;
+        latestRawInputDc = 0f;
+        latestProcessedPeak = 0f;
+        latestProcessedRms = 0f;
+        latestProcessedDc = 0f;
+    }
+
+    private void CaptureRawInputMetrics(float[] input, int inputChannels, int frameCount, int sampleRate, string inputChannelMode)
+    {
+        ComputeSelectedInputMetrics(
             input,
             inputChannels,
-            processingChannels,
             frameCount,
-            portAudioProcessBuffer,
-            processingSampleCount,
-            advancedRoutingOptions?.inputChannelMode);
+            inputChannelMode,
+            out latestRawInputPeak,
+            out latestRawInputRms,
+            out latestRawInputDc);
+        latestAudioDiagnosticsSampleRate = sampleRate;
+        latestAudioDiagnosticsInputChannels = Mathf.Max(1, inputChannels);
+        latestAudioDiagnosticsFrameCount = Mathf.Max(0, frameCount);
+        latestAudioDiagnosticsInputChannelMode = SharedAudioInputChannelModes.Normalize(inputChannelMode);
+    }
 
-        ProcessToneBuffer(portAudioProcessBuffer, processingChannels, sampleRate);
-        ApplyMonitorVolumeToBuffer(portAudioProcessBuffer);
-        MixUnifiedSongSourceTapAudio(portAudioProcessBuffer, processingChannels, frameCount);
-        MixUnityOutputCapturedAudio(portAudioProcessBuffer, processingChannels, frameCount);
-        ApplyUnifiedOutputLimiter(portAudioProcessBuffer, sampleRate, frameCount);
-        AppendUnityRecorderCaptureSamples(portAudioProcessBuffer, processingSampleCount);
-        FillPortAudioOutputBufferFromProcessedAudio(portAudioProcessBuffer, processingChannels, frameCount, output, safeOutputChannels);
+    private void CaptureProcessedAudioMetrics(float[] data, int channels, int frameCount, int sampleRate, int outputChannels)
+    {
+        ComputeInterleavedMetrics(
+            data,
+            channels,
+            frameCount,
+            out latestProcessedPeak,
+            out latestProcessedRms,
+            out latestProcessedDc);
+        latestAudioDiagnosticsSampleRate = sampleRate;
+        latestAudioDiagnosticsOutputChannels = Mathf.Max(1, outputChannels);
+        latestAudioDiagnosticsFrameCount = Mathf.Max(0, frameCount);
+    }
+
+    private void LogLiveAudioDiagnosticsIfDue()
+    {
+        if (!monitoring && !awaitingMicrophoneStart)
+            return;
+        if (Time.unscaledTime < nextLiveAudioDiagnosticsLogTime)
+            return;
+
+        nextLiveAudioDiagnosticsLogTime = Time.unscaledTime + LiveAudioDiagnosticsIntervalSeconds;
+        bool rawInputLooksBad =
+            latestRawInputPeak >= 0.999f ||
+            latestRawInputRms >= 0.35f ||
+            Mathf.Abs(latestRawInputDc) >= 0.08f;
+        bool processedLooksBad =
+            latestProcessedPeak >= 0.999f ||
+            latestProcessedRms >= 0.35f ||
+            Mathf.Abs(latestProcessedDc) >= 0.08f;
+        bool quietInput = latestRawInputPeak < 0.05f && latestRawInputRms < 0.01f;
+        bool suspicious = rawInputLooksBad || (processedLooksBad && quietInput);
+
+        if (liveAudioDiagnosticsBurstLogsRemaining <= 0 && !suspicious)
+            return;
+
+        if (liveAudioDiagnosticsBurstLogsRemaining > 0)
+            liveAudioDiagnosticsBurstLogsRemaining--;
+
+        string presetName = GetCurrentDiagnosticPresetName();
+        string chainSummary = GetCurrentDiagnosticChainSummary();
+        Debug.Log(
+            $"[ToneLabAudio] Live levels | rawPeak={latestRawInputPeak:0.0000}, rawRms={latestRawInputRms:0.0000}, rawDc={latestRawInputDc:0.0000} | " +
+            $"processedPeak={latestProcessedPeak:0.0000}, processedRms={latestProcessedRms:0.0000}, processedDc={latestProcessedDc:0.0000} | " +
+            $"sampleRate={latestAudioDiagnosticsSampleRate}, frames={latestAudioDiagnosticsFrameCount}, inputChannels={latestAudioDiagnosticsInputChannels}, outputChannels={latestAudioDiagnosticsOutputChannels}, inputMode={latestAudioDiagnosticsInputChannelMode} | " +
+            $"preset={presetName}, monitor={monitorVolumePercent:0.#}%, globalIn={(settings?.global_input_trim_db ?? 0f):0.#} dB, globalOut={(settings?.global_output_gain_db ?? 0f):0.#} dB, chain={chainSummary}");
+    }
+
+    private string GetCurrentDiagnosticPresetName()
+    {
+        if (playbackPresetOverrideActive && playbackPresetOverride != null)
+            return string.IsNullOrWhiteSpace(playbackPresetOverride.preset_name) ? "Playback override" : playbackPresetOverride.preset_name;
+
+        ToneLabPreset preset = FindPreset(settings, settings?.selected_preset_id);
+        if (preset != null && !string.IsNullOrWhiteSpace(preset.preset_name))
+            return preset.preset_name;
+
+        return string.IsNullOrWhiteSpace(settings?.selected_preset_id) ? "None" : settings.selected_preset_id;
+    }
+
+    private string GetCurrentDiagnosticChainSummary()
+    {
+        ToneLabPedalSlot[] chain = playbackPresetOverrideActive && playbackPresetOverride?.pedal_chain != null
+            ? playbackPresetOverride.pedal_chain.ToArray()
+            : settings?.pedal_chain?.ToArray();
+        if (chain == null || chain.Length == 0)
+            return "empty";
+
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < chain.Length; i++)
+        {
+            ToneLabPedalSlot slot = chain[i];
+            if (slot == null || !slot.enabled)
+                continue;
+
+            if (builder.Length > 0)
+                builder.Append(">");
+            builder.Append(string.IsNullOrWhiteSpace(slot.descriptor_id) ? slot.pedal_type.ToString() : slot.descriptor_id);
+        }
+
+        return builder.Length == 0 ? "all disabled" : builder.ToString();
+    }
+
+    private static void ComputeSelectedInputMetrics(
+        float[] input,
+        int inputChannels,
+        int frameCount,
+        string inputChannelMode,
+        out float peak,
+        out float rms,
+        out float dc)
+    {
+        peak = 0f;
+        rms = 0f;
+        dc = 0f;
+        if (input == null || input.Length == 0 || frameCount <= 0)
+            return;
+
+        int safeInputChannels = Mathf.Max(1, inputChannels);
+        string normalizedChannelMode = SharedAudioInputChannelModes.Normalize(inputChannelMode);
+        bool monoMix = string.Equals(normalizedChannelMode, SharedAudioInputChannelModes.MonoMix, StringComparison.Ordinal);
+        int sourceChannel = string.Equals(normalizedChannelMode, SharedAudioInputChannelModes.Input2, StringComparison.Ordinal) && safeInputChannels > 1
+            ? 1
+            : 0;
+        double sum = 0d;
+        double energy = 0d;
+        int count = 0;
+
+        for (int frame = 0; frame < frameCount; frame++)
+        {
+            int inputFrameStart = frame * safeInputChannels;
+            if (inputFrameStart >= input.Length)
+                break;
+
+            float monoFallback = input[inputFrameStart];
+            float sample = monoMix
+                ? MixPortAudioInputFrameToMono(input, inputFrameStart, safeInputChannels)
+                : ReadPortAudioInputChannel(input, inputFrameStart, sourceChannel, monoFallback);
+            sample = SanitizeAudioSample(sample);
+            float absolute = Mathf.Abs(sample);
+            if (absolute > peak)
+                peak = absolute;
+            sum += sample;
+            energy += sample * sample;
+            count++;
+        }
+
+        if (count <= 0)
+            return;
+
+        rms = Mathf.Sqrt((float)(energy / count));
+        dc = (float)(sum / count);
+    }
+
+    private static void ComputeInterleavedMetrics(
+        float[] data,
+        int channels,
+        int frameCount,
+        out float peak,
+        out float rms,
+        out float dc)
+    {
+        peak = 0f;
+        rms = 0f;
+        dc = 0f;
+        if (data == null || data.Length == 0 || frameCount <= 0)
+            return;
+
+        int sampleCount = Mathf.Min(data.Length, frameCount * Mathf.Max(1, channels));
+        double sum = 0d;
+        double energy = 0d;
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float sample = SanitizeAudioSample(data[i]);
+            float absolute = Mathf.Abs(sample);
+            if (absolute > peak)
+                peak = absolute;
+            sum += sample;
+            energy += sample * sample;
+        }
+
+        if (sampleCount <= 0)
+            return;
+
+        rms = Mathf.Sqrt((float)(energy / sampleCount));
+        dc = (float)(sum / sampleCount);
     }
 
     private void ApplyUnifiedOutputLimiter(float[] data, int sampleRate, int frameCount)
@@ -3379,6 +3654,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         EnsurePresetLibrary(toneSettings);
         EnsurePedalChain(toneSettings);
         toneSettings.global_input_trim_db = Mathf.Clamp(toneSettings.global_input_trim_db, MinGlobalInputTrimDb, MaxGlobalInputTrimDb);
+        toneSettings.global_output_gain_db = Mathf.Clamp(toneSettings.global_output_gain_db, MinGlobalOutputGainDb, MaxGlobalOutputGainDb);
         toneSettings.input_gain_db = Mathf.Clamp(toneSettings.input_gain_db, MinRigGainDb, MaxRigGainDb);
         toneSettings.output_gain_db = Mathf.Clamp(toneSettings.output_gain_db, MinRigGainDb, MaxRigGainDb);
         toneSettings.dist_drive_db = Mathf.Clamp(toneSettings.dist_drive_db, 0f, 36f);
@@ -3943,7 +4219,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         for (int i = 0; i < toneSettings.presets.Count; i++)
         {
             ToneLabPreset preset = toneSettings.presets[i];
-            if (preset != null && string.Equals(preset.preset_name, "Blues", StringComparison.OrdinalIgnoreCase))
+            if (preset != null && string.Equals(preset.preset_name, "Clean", StringComparison.OrdinalIgnoreCase))
                 return preset;
         }
 
@@ -4077,8 +4353,12 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             case "CLEAN":
             {
+                NoiseGatePedalSettings gate = TryGetPedalSettings<NoiseGatePedalSettings>(preset, ToneLabPedalType.NoiseGate);
                 AmpPedalSettings amp = TryGetPedalSettings<AmpPedalSettings>(preset, ToneLabPedalType.Amp);
                 ChorusPedalSettings chorus = TryGetPedalSettings<ChorusPedalSettings>(preset, ToneLabPedalType.Chorus);
+                if (gate != null && gate.threshold_db < -60f)
+                    return true;
+
                 return MatchesApproximateFactoryValues(preset, 8f, 7.5f)
                     && amp != null
                     && chorus != null
@@ -4255,11 +4535,11 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             outputGainDb: 11f,
             CreatePresetSlot(ToneLabPedalType.NoiseGate, true, new NoiseGatePedalSettings
             {
-                threshold_db = -66f,
-                attack_ms = 1.4f,
-                hold_ms = 18f,
-                release_ms = 95f,
-                range_db = -76f
+                threshold_db = -56f,
+                attack_ms = 2f,
+                hold_ms = 28f,
+                release_ms = 110f,
+                range_db = -80f
             }),
             CreatePresetSlot(ToneLabPedalType.Compressor, true, new CompressorPedalSettings
             {
@@ -5834,6 +6114,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (source == null)
             return new ToneLabSettings();
 
+        EnsurePresetLibrary(source);
         ToneLabPreset persistedPreset = FindPreset(source, source.selected_preset_id) ?? GetDefaultPreset(source);
         ToneLabSettings snapshot = new ToneLabSettings
         {
@@ -5844,6 +6125,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             presets = new List<ToneLabPreset>(),
             pedal_chain = ClonePedalChain(persistedPreset?.pedal_chain ?? source.pedal_chain),
             global_input_trim_db = Mathf.Clamp(source.global_input_trim_db, MinGlobalInputTrimDb, MaxGlobalInputTrimDb),
+            global_output_gain_db = Mathf.Clamp(source.global_output_gain_db, MinGlobalOutputGainDb, MaxGlobalOutputGainDb),
             input_gain_db = persistedPreset != null ? persistedPreset.input_gain_db : source.input_gain_db,
             output_gain_db = persistedPreset != null ? persistedPreset.output_gain_db : source.output_gain_db
         };
@@ -5884,6 +6166,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         FillOutputBufferFromMicrophoneRing(data, channels);
         ProcessToneBuffer(data, channels, sampleRate);
         ApplyMonitorVolumeToBuffer(data);
+        CaptureProcessedAudioMetrics(data, channels, data.Length / Mathf.Max(1, channels), sampleRate, channels);
     }
 
     private void ProcessToneBuffer(float[] data, int channels, int sampleRate)
@@ -5924,8 +6207,15 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 data[i] *= outputGain;
         }
 
+        float globalOutputGain = ToneLabPedalUtility.DbToLinear(settings.global_output_gain_db);
+        if (!Mathf.Approximately(globalOutputGain, 1f))
+        {
+            for (int i = 0; i < data.Length; i++)
+                data[i] *= globalOutputGain;
+        }
+
         for (int i = 0; i < data.Length; i++)
-            data[i] = Mathf.Clamp(data[i], -1f, 1f);
+            data[i] = SanitizeAudioSample(data[i]);
     }
 
     private void ApplyMonitorVolumeToBuffer(float[] data)
@@ -5941,10 +6231,23 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             data[i] *= monitorGain;
     }
 
-    private void EnsurePortAudioProcessBufferCapacity(int sampleCount)
+    private float[] GetPortAudioProcessBuffer(int sampleCount)
     {
-        if (portAudioProcessBuffer == null || portAudioProcessBuffer.Length < sampleCount)
-            portAudioProcessBuffer = new float[sampleCount];
+        int safeSampleCount = Mathf.Max(0, sampleCount);
+        if (safeSampleCount == 0)
+        {
+            portAudioProcessBuffer = Array.Empty<float>();
+            return portAudioProcessBuffer;
+        }
+
+        if (!portAudioProcessBuffersBySampleCount.TryGetValue(safeSampleCount, out float[] buffer) || buffer == null)
+        {
+            buffer = new float[safeSampleCount];
+            portAudioProcessBuffersBySampleCount[safeSampleCount] = buffer;
+        }
+
+        portAudioProcessBuffer = buffer;
+        return buffer;
     }
 
     private void EnsureUnityOutputMixBufferCapacity(int sampleCount)
@@ -5985,6 +6288,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             float sample = monoMix
                 ? MixPortAudioInputFrameToMono(input, inputFrameStart, safeInputChannels)
                 : ReadPortAudioInputChannel(input, inputFrameStart, sourceChannel, monoFallback);
+            sample = SanitizeAudioSample(sample);
 
             for (int channel = 0; channel < outputChannels; channel++)
             {
@@ -6068,9 +6372,17 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                     sample = processedIndex < processed.Length ? processed[processedIndex] : monoFallback;
                 }
 
-                output[outputIndex] = sample;
+                output[outputIndex] = SanitizeAudioSample(sample);
             }
         }
+    }
+
+    private static float SanitizeAudioSample(float sample)
+    {
+        if (float.IsNaN(sample) || float.IsInfinity(sample))
+            return 0f;
+
+        return Mathf.Clamp(sample, -1f, 1f);
     }
 
     private void FillOutputBufferFromMicrophoneRing(float[] data, int channels)
