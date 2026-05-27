@@ -416,8 +416,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 phaseStartTicks = renderStartTicks;
             }
 
-            bool useMenuBackgroundMode = snapshot.mainMenuFlowActive || snapshot.showToneLab;
-            bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded || snapshot.showToneLab;
+            bool useMenuBackgroundMode = snapshot.mainMenuFlowActive || snapshot.showToneLab || snapshot.showTuner;
+            bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded || snapshot.showToneLab || snapshot.showTuner;
             EnsureBackgroundMode(useMenuBackgroundMode);
             ConfigureCamera();
             if (logLoopCountdownDetail)
@@ -427,7 +427,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 phaseStartTicks = afterSetupTicks;
             }
 
-            bool showHighwayCharacter = snapshot.showHighwayCharacter;
+            bool showHighwayCharacter = snapshot.showHighwayCharacter && !snapshot.showTuner;
             if (characterRoot != null && characterRoot.activeSelf != showHighwayCharacter)
                 characterRoot.SetActive(showHighwayCharacter);
 

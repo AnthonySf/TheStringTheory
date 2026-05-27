@@ -1003,6 +1003,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private GuitarTunerService guitarTunerService;
     private GuitarTunerOverlay guitarTunerOverlay;
     private bool showTuner;
+    private bool tunerResumeGameplayAfterSkip;
+    private GuitarTunerInstrument menuTunerInstrument = GuitarTunerInstrument.Guitar;
+    private string menuTunerPresetLabel = string.Empty;
     private bool useSongToneMappings = true;
     private string activeSongToneMappingSongKey = string.Empty;
     private string activeSongToneMappingArrangementKey = string.Empty;
@@ -2206,7 +2209,7 @@ public class GuitarBridgeServer : MonoBehaviour
         string songKey = BuildToneLabSongMappingSongKey(currentSongEntry);
         string toneName = string.Empty;
         string presetId = string.Empty;
-        float toneTimeSeconds = audioSongTimer + (audioOffsetMs / 1000f);
+        float toneTimeSeconds = IsSongStartTunerActive() ? 0f : audioSongTimer + (audioOffsetMs / 1000f);
         if (EnsureToneLabSongTonePlaybackCache(songKey, arrangementKey, activeSummary))
             ResolveCachedToneLabSongToneMapping(toneTimeSeconds, out toneName, out presetId);
 
@@ -4270,20 +4273,41 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (IsUiSubmitPressed())
+        if (IsUiUpPressed())
         {
+            guitarTunerOverlay?.MoveNavigationSelection(-1);
+            return;
+        }
+
+        if (IsUiDownPressed())
+        {
+            guitarTunerOverlay?.MoveNavigationSelection(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
+        {
+            if (guitarTunerOverlay != null && guitarTunerOverlay.ActivateNavigationSelection())
+                return;
+
             guitarTunerService?.ToggleMode();
             return;
         }
 
         if (IsUiLeftPressed())
         {
+            if (guitarTunerOverlay != null && guitarTunerOverlay.AdjustNavigationSelection(-1))
+                return;
+
             MoveTunerManualTargetFromUi(-1);
             return;
         }
 
         if (IsUiRightPressed())
         {
+            if (guitarTunerOverlay != null && guitarTunerOverlay.AdjustNavigationSelection(1))
+                return;
+
             MoveTunerManualTargetFromUi(1);
             return;
         }
@@ -4894,6 +4918,68 @@ public class GuitarBridgeServer : MonoBehaviour
         activeStringBasePitch = forceStandardTuning
             ? GetPreferredStandardTuningForTrack(activeTrack)
             : StringTuningUtils.CloneOrDefault(activeTrack?.StringTuningPitches, IsBassLikeTrackSummary(activeTrack));
+        RefreshTunerTargetsForCurrentContext();
+    }
+
+    private void RefreshTunerTargetsFromActiveTrack()
+    {
+        if (guitarTunerService == null)
+            return;
+
+        guitarTunerService.SetTuningPitches(GetActiveTrackTunerTargetPitches());
+    }
+
+    private void RefreshTunerTargetsForCurrentContext()
+    {
+        if (guitarTunerService == null)
+            return;
+
+        guitarTunerService.SetTuningPitches(GetVisibleTunerTargetPitches());
+    }
+
+    private bool IsStandaloneTunerActive()
+    {
+        return showTuner && !tunerResumeGameplayAfterSkip;
+    }
+
+    private bool IsSongStartTunerActive()
+    {
+        return showTuner && tunerResumeGameplayAfterSkip;
+    }
+
+    private int[] GetVisibleTunerTargetPitches()
+    {
+        return IsStandaloneTunerActive()
+            ? GetMenuTunerTargetPitches()
+            : GetActiveTrackTunerTargetPitches();
+    }
+
+    private int[] GetMenuTunerTargetPitches()
+    {
+        bool bass = menuTunerInstrument == GuitarTunerInstrument.Bass;
+        if (StringTuningUtils.TryGetCommonTuningPresetPitches(bass, GetResolvedMenuTunerPresetLabel(), out int[] pitches))
+            return pitches;
+
+        return bass
+            ? (int[])StringTuningUtils.StandardBassTuning.Clone()
+            : (int[])StringTuningUtils.StandardGuitarTuning.Clone();
+    }
+
+    private string GetResolvedMenuTunerPresetLabel()
+    {
+        bool bass = menuTunerInstrument == GuitarTunerInstrument.Bass;
+        if (StringTuningUtils.TryGetCommonTuningPresetPitches(bass, menuTunerPresetLabel, out _))
+            return menuTunerPresetLabel;
+
+        return StringTuningUtils.GetDefaultCommonTuningPresetLabel(bass);
+    }
+
+    private int[] GetActiveTrackTunerTargetPitches()
+    {
+        if (activeStringBasePitch == null || activeStringBasePitch.Length == 0)
+            activeStringBasePitch = GetPreferredStandardTuningForTrack(GetResolvedActiveTrackSummary());
+
+        return (int[])activeStringBasePitch.Clone();
     }
 
     private static bool IsBassLikeTrackSummary(MusicXmlLoader.MusicXmlPartSummary summary)
@@ -6161,7 +6247,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (autoplayFromMainMenuFlow && !multiplayerRhythmModeActive)
             ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
         SeekSongTime(-songStartDelaySeconds, false);
-        SyncAudioToSongTimer(playImmediately: autoplay && !showStartupTuningReminder);
+        SyncAudioToSongTimer(playImmediately: autoplay && !showStartupTuningReminder && !showTuner);
     }
 
     private void SelectArcadeSongAndArrangement(SongLibraryEntry songEntry, string arrangementId, ArcadeDifficulty difficulty)
@@ -7899,6 +7985,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showToneLab = false;
         HideToneLabUi();
         showTuner = false;
+        tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         SetSongEndState(false);
         showStartMenu = false;
@@ -8050,8 +8137,23 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         selectedStartMenuArcadeSetupIndex = 0;
-        forceStandardTuning = !forceStandardTuning;
+        SetForceStandardTuningFromUi(!forceStandardTuning);
+    }
+
+    public void ToggleTunerForceStandardFromUi()
+    {
+        SetForceStandardTuningFromUi(!forceStandardTuning);
+    }
+
+    private void SetForceStandardTuningFromUi(bool enabled)
+    {
+        if (forceStandardTuning == enabled)
+            return;
+
+        forceStandardTuning = enabled;
         RefreshActiveTrackTuning();
+        MarkDetectorHintDirty();
+        runtimeSettingsSnapshotDirty = true;
         SaveGlobalRuntimeSettingsMetadata();
     }
 
@@ -8538,6 +8640,7 @@ public class GuitarBridgeServer : MonoBehaviour
         notesDetectorGameplayTestActive = false;
         CancelDeferredSongSelectionOpen();
         showTuner = false;
+        tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         showToneLab = false;
         HideToneLabUi();
@@ -9150,6 +9253,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         noteStates = chartNotes.Select(note => new GameplayNoteState(note)).ToList();
         activeStringBasePitch = (int[])StringTuningUtils.StandardGuitarTuning.Clone();
+        RefreshTunerTargetsFromActiveTrack();
         GenerateTabSections();
         ResetActiveRendererContent();
 
@@ -9225,6 +9329,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionOpenedFromSongEnd = false;
         songSelectionOpenedFromMainMenu = showMainMenu || mainMenuFlowActive;
         showTuner = false;
+        tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         if (!showMainMenu)
@@ -9268,6 +9373,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showNotesDetectorTestMenu = false;
         showNotesDetectorRoutinePopup = false;
         showTuner = false;
+        tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         loopSettingsOpenedFromGameModes = false;
         selectedNotesDetectorTestIndex = 0;
@@ -9289,6 +9395,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void ShowStartupTuningReminder(bool resumePlaybackAfterDismiss)
     {
+        if (gameplayMode == GuitarGameplayMode.Guitar)
+        {
+            OpenTunerBeforeSongStart(resumePlaybackAfterDismiss);
+            return;
+        }
+
         showStartupTuningReminder = true;
         resumeGameplayAfterStartupTuningReminder = resumePlaybackAfterDismiss;
         startupTuningReminderShownFrame = Time.frameCount;
@@ -9434,6 +9546,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showToneLab = false;
         HideToneLabUi();
         showTuner = false;
+        tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         gameplayHudPreviewInMenus = false;
@@ -9476,8 +9589,10 @@ public class GuitarBridgeServer : MonoBehaviour
         CancelDeferredSongSelectionOpen();
         EnsureToneLabRuntimeComponent();
         EnsureGuitarTunerOverlayComponent();
-        guitarTunerService?.Reset();
+        tunerResumeGameplayAfterSkip = false;
         showTuner = true;
+        RefreshTunerTargetsForCurrentContext();
+        guitarTunerService?.Reset();
         showToneLab = false;
         HideToneLabUi();
         showNotesDetectorTestMenu = false;
@@ -9502,6 +9617,45 @@ public class GuitarBridgeServer : MonoBehaviour
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
         unityToneLabRuntime?.StartBackgroundMonitoring();
+        RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(applyIfEligible: true);
+        guitarTunerOverlay?.SetVisible(true);
+    }
+
+    private void OpenTunerBeforeSongStart(bool resumePlaybackAfterDismiss)
+    {
+        CancelDeferredSongSelectionOpen();
+        EnsureToneLabRuntimeComponent();
+        EnsureGuitarTunerOverlayComponent();
+        tunerResumeGameplayAfterSkip = resumePlaybackAfterDismiss;
+        showTuner = true;
+        RefreshTunerTargetsFromActiveTrack();
+        guitarTunerService?.Reset();
+        showToneLab = false;
+        HideToneLabUi();
+        showNotesDetectorTestMenu = false;
+        showNotesDetectorTestSelectionPopup = false;
+        showNotesDetectorRoutinePopup = false;
+        showSongSettings = false;
+        showSongSelection = false;
+        songSelectionSongConfirmed = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        showGlobalSettingsSelectionPopup = false;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
+        showGameModes = false;
+        showHeroModeSettings = false;
+        showLoopSettings = false;
+        showLoopPausePopup = false;
+        showOffsetHelper = false;
+        showStartupTuningReminder = false;
+        resumeGameplayAfterStartupTuningReminder = false;
+        startupTuningReminderShownFrame = -1;
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+        unityToneLabRuntime?.StartBackgroundMonitoring();
+        RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(applyIfEligible: true);
         guitarTunerOverlay?.SetVisible(true);
     }
 
@@ -9509,6 +9663,17 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showTuner = false;
         guitarTunerOverlay?.SetVisible(false);
+        if (tunerResumeGameplayAfterSkip)
+        {
+            tunerResumeGameplayAfterSkip = false;
+            showMainMenu = false;
+            mainMenuFlowActive = false;
+            isPaused = false;
+            SyncAudioToSongTimer(playImmediately: true);
+            return;
+        }
+
+        tunerResumeGameplayAfterSkip = false;
         showMainMenu = true;
         mainMenuFlowActive = true;
         isPaused = true;
@@ -9533,6 +9698,136 @@ public class GuitarBridgeServer : MonoBehaviour
         guitarTunerService.MoveManualTarget(delta);
     }
 
+    public bool IsStandaloneTunerInstrumentSwitchVisibleForUi()
+    {
+        return IsStandaloneTunerActive();
+    }
+
+    public GuitarTunerInstrument GetTunerInstrumentForUi()
+    {
+        if (IsStandaloneTunerActive())
+            return menuTunerInstrument;
+
+        int[] pitches = GetActiveTrackTunerTargetPitches();
+        return pitches != null && pitches.Length > 0 && pitches.Length <= 4
+            ? GuitarTunerInstrument.Bass
+            : GuitarTunerInstrument.Guitar;
+    }
+
+    public void SetTunerMenuInstrumentFromUi(GuitarTunerInstrument instrument)
+    {
+        if (!IsStandaloneTunerActive())
+            return;
+
+        GuitarTunerInstrument normalized = instrument == GuitarTunerInstrument.Bass
+            ? GuitarTunerInstrument.Bass
+            : GuitarTunerInstrument.Guitar;
+        if (menuTunerInstrument == normalized)
+            return;
+
+        menuTunerInstrument = normalized;
+        menuTunerPresetLabel = StringTuningUtils.GetDefaultCommonTuningPresetLabel(normalized == GuitarTunerInstrument.Bass);
+        RefreshTunerTargetsForCurrentContext();
+        guitarTunerService?.Reset();
+    }
+
+    public bool IsStandaloneTunerTuningPresetVisibleForUi()
+    {
+        return IsStandaloneTunerActive();
+    }
+
+    public IReadOnlyList<string> GetStandaloneTunerTuningPresetChoicesForUi()
+    {
+        return StringTuningUtils.GetCommonTuningPresetLabels(menuTunerInstrument == GuitarTunerInstrument.Bass);
+    }
+
+    public string GetStandaloneTunerSelectedTuningPresetForUi()
+    {
+        return GetResolvedMenuTunerPresetLabel();
+    }
+
+    public void SetStandaloneTunerTuningPresetFromUi(string label)
+    {
+        if (!IsStandaloneTunerActive())
+            return;
+
+        bool bass = menuTunerInstrument == GuitarTunerInstrument.Bass;
+        if (!StringTuningUtils.TryGetCommonTuningPresetPitches(bass, label, out _))
+            return;
+        if (string.Equals(menuTunerPresetLabel, label, StringComparison.Ordinal))
+            return;
+
+        menuTunerPresetLabel = label;
+        RefreshTunerTargetsForCurrentContext();
+        guitarTunerService?.Reset();
+    }
+
+    public bool GetForceStandardTuningForUi()
+    {
+        return forceStandardTuning;
+    }
+
+    public bool GetTunerUseSongToneMappingsForUi()
+    {
+        return useSongToneMappings;
+    }
+
+    public void ToggleTunerUseSongToneMappingsFromUi()
+    {
+        SetUseSongToneMappingsFromUi(!useSongToneMappings);
+    }
+
+    private void SetUseSongToneMappingsFromUi(bool enabled)
+    {
+        SetUseSongToneMappings(enabled, saveMetadata: true);
+    }
+
+    private void SetUseSongToneMappings(bool enabled, bool saveMetadata)
+    {
+        bool changed = useSongToneMappings != enabled;
+        useSongToneMappings = enabled;
+        ResetToneLabSongTonePlaybackCache();
+        RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(applyIfEligible: true);
+        runtimeSettingsSnapshotDirty = true;
+        if (changed && saveMetadata)
+            SaveGlobalRuntimeSettingsMetadata();
+    }
+
+    public string GetTunerTuningDisplayNameForUi()
+    {
+        return StringTuningUtils.FormatTuningDisplayName(GetVisibleTunerTargetPitches());
+    }
+
+    public string GetTunerTargetNotesForUi()
+    {
+        int[] pitches = GetVisibleTunerTargetPitches();
+        if (pitches == null || pitches.Length == 0)
+            return string.Empty;
+
+        return string.Join("  ", pitches.Select(GuitarTunerPitchDetector.FormatNoteName));
+    }
+
+    public string GetTunerTuningExplanationForUi()
+    {
+        if (IsStandaloneTunerActive())
+            return "Choose the tuning you want to tune against. This only affects the standalone tuner.";
+
+        string selectedSongTuning = GetResolvedActiveTrackTuningLabel();
+        if (string.IsNullOrWhiteSpace(selectedSongTuning))
+            selectedSongTuning = "E Standard";
+
+        return forceStandardTuning
+            ? "Force Standard makes note detection use standard tuning instead of the song's charted tuning."
+            : $"Force Standard is off, so note detection uses the song tuning: {selectedSongTuning}.";
+    }
+
+    public string GetTunerSongToneMappingsExplanationForUi()
+    {
+        return useSongToneMappings
+            ? "Songs use auto-generated tones when available and switch at tone-change points. You can override any generated tone in Tone Lab's Song Tone Mapping screen."
+            : "Songs use the currently selected Tone Lab preset.";
+    }
+
     public void OpenToneLabFromUi()
     {
         CancelDeferredSongSelectionOpen();
@@ -9547,6 +9842,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 : ToneLabReturnContext.Pause;
         showToneLab = true;
         showTuner = false;
+        tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         showSongSettings = false;
@@ -21325,7 +21621,16 @@ private void ParseDetectorPacket(string detectorPacket)
 
         RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line. This also controls the visible distance between notes.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
-        RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "When ON, pitch validation uses E Standard so you can play songs that are not in E Standard without retuning your guitar. When OFF, tune your guitar to the song's required tuning.", () => forceStandardTuning, v => { forceStandardTuning = v; RefreshActiveTrackTuning(); });
+        RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "When ON, pitch validation uses E Standard so you can play songs that are not in E Standard without retuning your guitar. When OFF, tune your guitar to the song's required tuning.", () => forceStandardTuning, v =>
+        {
+            if (forceStandardTuning == v)
+                return;
+
+            forceStandardTuning = v;
+            RefreshActiveTrackTuning();
+            MarkDetectorHintDirty();
+            runtimeSettingsSnapshotDirty = true;
+        });
         RegisterEnumSetting("audio.inputDevice", "Audio", "Input Device", string.Empty, new List<string>(sharedAudioInputDeviceChoices), () => GetSharedAudioSelectedInputLabel(), SetSharedAudioInputDeviceFromUi);
         RegisterEnumSetting("audio.inputChannelMode", "Audio", "Input Channel", "Selects the raw instrument channel used by Tone Lab monitoring and Notes Detector.", SharedAudioInputChannelModes.Choices, () => GetSharedAudioInputChannelModeLabel(), SetSharedAudioInputChannelModeFromUi);
         RegisterEnumSetting("audio.outputDevice", "Audio", "Output Device", string.Empty, new List<string>(sharedAudioOutputDeviceChoices), () => GetSharedAudioSelectedOutputLabel(), SetSharedAudioOutputDeviceFromUi);
@@ -21334,12 +21639,9 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("audio.songVolume", "Audio", "Song Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioSongVolumePercent(), SetSongVolumePercentFromUi);
         RegisterFloatSetting("audio.guitarVolume", "Audio", "Guitar Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioGuitarVolumePercent(), SetSharedAudioGuitarVolumeFromUi);
         RegisterEnumSetting("audio.monitoringLatency", "Audio", "Monitoring Latency", string.Empty, UnityToneLabRuntime.SharedMonitoringLatencyOptions, () => GetSharedAudioSelectedLatencyLabel(), SetSharedAudioMonitoringLatencyFromUi);
-        RegisterBoolSetting("tonelab.useSongToneMappings", "Audio", "Use Song Tone Mappings", "When ON, Rocksmith tone names can switch Tone Lab presets during a song. Unmapped tones use the normally selected Tone Lab preset.", () => useSongToneMappings, v =>
+        RegisterBoolSetting("tonelab.useSongToneMappings", "Audio", "Use Song Tone Mappings", "When ON, songs use auto-generated Tone Lab mappings when available and switch tones at the song's tone-change points. You can override generated tones in Tone Lab's Song Tone Mapping screen. When OFF, the currently selected Tone Lab preset is used.", () => useSongToneMappings, v =>
         {
-            useSongToneMappings = v;
-            ResetToneLabSongTonePlaybackCache();
-            if (!useSongToneMappings)
-                ClearToneLabSongTonePlaybackOverride();
+            SetUseSongToneMappings(v, saveMetadata: false);
         });
         RegisterSetting(new RuntimeSettingDefinition
         {

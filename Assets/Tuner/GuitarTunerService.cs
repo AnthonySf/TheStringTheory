@@ -37,7 +37,8 @@ public sealed class GuitarTunerService
     private GuitarTunerMode mode = GuitarTunerMode.Automatic;
     private int selectedTargetIndex;
     private int activeTargetIndex;
-    private readonly bool[] tunedTargets = new bool[StandardGuitarTargets.Length];
+    private GuitarTunerTarget[] targets = CloneDefaultTargets();
+    private bool[] tunedTargets = new bool[StandardGuitarTargets.Length];
     private int confirmingTargetIndex = -1;
     private float confirmingSeconds;
     private bool hasSmoothedDetection;
@@ -56,6 +57,22 @@ public sealed class GuitarTunerService
 
     public GuitarTunerMode Mode => mode;
     public int SelectedTargetIndex => selectedTargetIndex;
+
+    public void SetTuningPitches(int[] tuningPitches)
+    {
+        GuitarTunerTarget[] nextTargets = BuildTargetsFromPitches(tuningPitches);
+        if (TargetsMatch(targets, nextTargets))
+            return;
+
+        targets = nextTargets;
+        tunedTargets = new bool[targets.Length];
+        selectedTargetIndex = Mathf.Clamp(selectedTargetIndex, 0, Mathf.Max(0, targets.Length - 1));
+        activeTargetIndex = Mathf.Clamp(activeTargetIndex, 0, Mathf.Max(0, targets.Length - 1));
+        confirmingTargetIndex = -1;
+        confirmingSeconds = 0f;
+        ResetSmoothing();
+        latestSnapshot = BuildSnapshot(hasSignal: false, inputLevelOverride: latestInputLevel);
+    }
 
     public void Reset()
     {
@@ -148,7 +165,7 @@ public sealed class GuitarTunerService
 
     public void SetManualTargetIndex(int index)
     {
-        selectedTargetIndex = Mathf.Clamp(index, 0, StandardGuitarTargets.Length - 1);
+        selectedTargetIndex = Mathf.Clamp(index, 0, Mathf.Max(0, targets.Length - 1));
         activeTargetIndex = selectedTargetIndex;
         if (mode != GuitarTunerMode.Manual)
             mode = GuitarTunerMode.Manual;
@@ -162,7 +179,7 @@ public sealed class GuitarTunerService
         if (delta == 0)
             return;
 
-        int count = StandardGuitarTargets.Length;
+        int count = Mathf.Max(1, targets.Length);
         int next = (selectedTargetIndex + delta) % count;
         if (next < 0)
             next += count;
@@ -259,7 +276,7 @@ public sealed class GuitarTunerService
 
     private GuitarTunerSnapshot BuildSnapshot(bool hasSignal, float inputLevelOverride = -1f)
     {
-        GuitarTunerTarget target = StandardGuitarTargets[Mathf.Clamp(activeTargetIndex, 0, StandardGuitarTargets.Length - 1)];
+        GuitarTunerTarget target = targets[Mathf.Clamp(activeTargetIndex, 0, Mathf.Max(0, targets.Length - 1))];
         float cents = hasSignal && hasSmoothedDetection ? Mathf.Clamp(smoothedCents, -99.9f, 99.9f) : 0f;
         bool inTune = hasSignal && Mathf.Abs(cents) <= InTuneCentsThreshold;
         float inputLevel = inputLevelOverride >= 0f ? inputLevelOverride : latestInputLevel;
@@ -303,13 +320,13 @@ public sealed class GuitarTunerService
     private int ResolveDetectedTargetIndex(GuitarTunerPitchDetection detection)
     {
         if (!detection.detected || detection.frequencyHz <= 0f)
-            return Mathf.Clamp(activeTargetIndex, 0, StandardGuitarTargets.Length - 1);
+            return Mathf.Clamp(activeTargetIndex, 0, Mathf.Max(0, targets.Length - 1));
 
         int bestIndex = 0;
         float bestDistance = float.PositiveInfinity;
-        for (int i = 0; i < StandardGuitarTargets.Length; i++)
+        for (int i = 0; i < targets.Length; i++)
         {
-            float distance = Mathf.Abs(1200f * Mathf.Log(detection.frequencyHz / StandardGuitarTargets[i].frequencyHz, 2f));
+            float distance = Mathf.Abs(1200f * Mathf.Log(detection.frequencyHz / targets[i].frequencyHz, 2f));
             if (distance < bestDistance)
             {
                 bestDistance = distance;
@@ -323,9 +340,9 @@ public sealed class GuitarTunerService
     private int ResolveActiveTargetIndex(int detectedTargetIndex, GuitarTunerPitchDetection detection)
     {
         if (mode == GuitarTunerMode.Manual)
-            return Mathf.Clamp(selectedTargetIndex, 0, StandardGuitarTargets.Length - 1);
+            return Mathf.Clamp(selectedTargetIndex, 0, Mathf.Max(0, targets.Length - 1));
 
-        int safeDetectedTargetIndex = Mathf.Clamp(detectedTargetIndex, 0, StandardGuitarTargets.Length - 1);
+        int safeDetectedTargetIndex = Mathf.Clamp(detectedTargetIndex, 0, Mathf.Max(0, targets.Length - 1));
         if (AllTargetsTuned())
             return safeDetectedTargetIndex;
 
@@ -381,10 +398,10 @@ public sealed class GuitarTunerService
         return false;
     }
 
-    private static float CentsFromTarget(float frequencyHz, int targetIndex)
+    private float CentsFromTarget(float frequencyHz, int targetIndex)
     {
-        int safeTargetIndex = Mathf.Clamp(targetIndex, 0, StandardGuitarTargets.Length - 1);
-        return 1200f * Mathf.Log(frequencyHz / Mathf.Max(1e-6f, StandardGuitarTargets[safeTargetIndex].frequencyHz), 2f);
+        int safeTargetIndex = Mathf.Clamp(targetIndex, 0, Mathf.Max(0, targets.Length - 1));
+        return 1200f * Mathf.Log(frequencyHz / Mathf.Max(1e-6f, targets[safeTargetIndex].frequencyHz), 2f);
     }
 
     private int FindNextUntunedTargetAfter(int targetIndex)
@@ -468,12 +485,53 @@ public sealed class GuitarTunerService
         }
     }
 
-    private static GuitarTunerTarget[] CloneTargets()
+    private GuitarTunerTarget[] CloneTargets()
+    {
+        GuitarTunerTarget[] result = new GuitarTunerTarget[targets.Length];
+        for (int i = 0; i < targets.Length; i++)
+            result[i] = targets[i].Clone();
+        return result;
+    }
+
+    private static GuitarTunerTarget[] CloneDefaultTargets()
     {
         GuitarTunerTarget[] result = new GuitarTunerTarget[StandardGuitarTargets.Length];
         for (int i = 0; i < StandardGuitarTargets.Length; i++)
             result[i] = StandardGuitarTargets[i].Clone();
         return result;
+    }
+
+    private static GuitarTunerTarget[] BuildTargetsFromPitches(int[] tuningPitches)
+    {
+        int[] resolved = StringTuningUtils.CloneOrDefault(tuningPitches, tuningPitches != null && tuningPitches.Length > 0 && tuningPitches.Length <= 4);
+        GuitarTunerTarget[] result = new GuitarTunerTarget[resolved.Length];
+        for (int i = 0; i < resolved.Length; i++)
+        {
+            int midi = resolved[i];
+            string noteName = GuitarTunerPitchDetector.FormatNoteName(midi);
+            result[i] = CreateTarget(
+                noteName.ToLowerInvariant(),
+                $"String {resolved.Length - i}",
+                noteName,
+                midi,
+                i);
+        }
+
+        return result.Length > 0 ? result : CloneDefaultTargets();
+    }
+
+    private static bool TargetsMatch(GuitarTunerTarget[] left, GuitarTunerTarget[] right)
+    {
+        if (left == null || right == null || left.Length != right.Length)
+            return false;
+
+        for (int i = 0; i < left.Length; i++)
+        {
+            if (left[i] == null || right[i] == null || left[i].midi != right[i].midi || left[i].stringIndex != right[i].stringIndex)
+                return false;
+        }
+
+        return true;
     }
 
     private bool[] CloneTunedTargets()

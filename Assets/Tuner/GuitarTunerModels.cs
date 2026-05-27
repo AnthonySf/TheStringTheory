@@ -7,6 +7,12 @@ public enum GuitarTunerMode
     Manual
 }
 
+public enum GuitarTunerInstrument
+{
+    Guitar,
+    Bass
+}
+
 [Serializable]
 public sealed class GuitarTunerTarget
 {
