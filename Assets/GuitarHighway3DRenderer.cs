@@ -56,6 +56,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private readonly List<HighwayCharacterBopEvent> highwayCharacterBopEvents = new List<HighwayCharacterBopEvent>();
     private readonly List<int> activeFretLightIndices = new List<int>();
     private bool[] stringHasIncomingNotesBuffer = Array.Empty<bool>();
+    private float[] laneSurfaceHitFeedback = Array.Empty<float>();
+    private float[] laneSurfaceMissFeedback = Array.Empty<float>();
+    private float[] fretBoundaryHitFeedback = Array.Empty<float>();
+    private float[] fretBoundaryMissFeedback = Array.Empty<float>();
+    private float[] fretBoundaryHitExpansionFeedback = Array.Empty<float>();
+    private float[] fretBoundaryMissExpansionFeedback = Array.Empty<float>();
     private Mesh techniqueRibbonMesh;
     private Material sharedTechniqueRibbonMaterial;
     private Material sharedBendArrowMaterial;
@@ -178,6 +184,24 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly Color HighwayCharacterMissAuraParticleColor = WithAlpha(HighwayCharacterPortalRimColor, 0.68f); // [CHARACTER MISS] : particles - secondary flare body synced to portal rim
     private static readonly Color HighwayCharacterMissAuraParticleEdgeColor = WithAlpha(HighwayCharacterPortalRimColor, 0.9f); // [CHARACTER MISS] : particles - secondary flare edge synced to portal rim
     private const float HighwayCharacterMissAuraParticleGlow = 1.1f; // [CHARACTER MISS] : particles - brightness of the secondary flare
+    private const float HighwayResolvedFretFeedbackDurationSeconds = 0.52f;
+    private const float HighwayResolvedFretFeedbackAttackSeconds = 0.045f;
+    private const float HighwayHitFretLightEmissionMultiplier = 12f;
+    private const float HighwayMissFretLightEmissionMultiplier = 5.5f;
+    private static readonly Color HighwayHitFretBoundaryColor = new Color(0.12f, 0.70f, 1f, 1f);
+    private static readonly Color HighwayHitFretBoundaryEdgeColor = new Color(0.72f, 0.96f, 1f, 1f);
+    private static readonly Color HighwayMissFretBoundaryColor = new Color(1f, 0.08f, 0.06f, 1f);
+    private static readonly Color HighwayHitNoteFeedbackColor = new Color(0.14f, 0.72f, 1f, 0.98f);
+    private static readonly Color HighwayHitNoteFeedbackSheenColor = new Color(0.78f, 0.96f, 1f, 0.96f);
+    private static readonly Color HighwayMissNoteFeedbackColor = new Color(1f, 0.08f, 0.06f, 0.98f);
+    private static readonly Color HighwayHitLaneSurfaceColor = new Color(0.10f, 0.62f, 1f, 0.64f);
+    private static readonly Color HighwayHitFretLightColor = new Color(0.22f, 0.76f, 1f, 1f);
+    private static readonly Color HighwayMissLaneSurfaceColor = new Color(1f, 0.06f, 0.04f, 0.64f);
+    private static readonly Color HighwayMissFretLightColor = new Color(1f, 0.08f, 0.06f, 1f);
+    private const float HighwayNutBoundaryBaseWidth = 0.5f;
+    private const float HighwayNutBoundaryBaseDepth = 0.3f;
+    private const float HighwayFretBoundaryBaseWidth = 0.15f;
+    private const float HighwayFretBoundaryBaseDepth = 0.15f;
     private const float HighwayCharacterPortalLocalYInCharacterHeights = -0.34f;
     private const float HighwayCharacterPortalWidthInCharacterWidths = 0.96f;
     private const float HighwayCharacterPortalHeightInCharacterHeights = 0.34f;
@@ -257,6 +281,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly int CharacterPortalSwirlSpeedShaderId = Shader.PropertyToID("_SwirlSpeed");
     private static readonly int CharacterPortalSwirlSharpnessShaderId = Shader.PropertyToID("_SwirlSharpness");
     private static readonly int CharacterPortalRingThicknessShaderId = Shader.PropertyToID("_RingThickness");
+    private static readonly int FretBoundaryFlashColorShaderId = Shader.PropertyToID("_FlashColor");
+    private static readonly int FretBoundaryFlashProgressShaderId = Shader.PropertyToID("_FlashProgress");
+    private static readonly int FretBoundaryFlashStrengthShaderId = Shader.PropertyToID("_FlashStrength");
+    private static readonly int FretBoundaryFlashSoftnessShaderId = Shader.PropertyToID("_FlashSoftness");
+    private static readonly int FretBoundaryGlowWidthShaderId = Shader.PropertyToID("_GlowWidth");
     private static readonly int CharacterPortalSoftnessShaderId = Shader.PropertyToID("_Softness");
     private static readonly int CharacterPortalRimSoftnessShaderId = Shader.PropertyToID("_RimSoftness");
     private static readonly int CharacterPortalAlphaFloorShaderId = Shader.PropertyToID("_AlphaFloor");
@@ -501,7 +530,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                         phaseStartTicks = afterLaneGuidesTicks;
                     }
 
-                    UpdateFretboardLights(snapshot.latestDetectedPitches);
+                    UpdateFretboardLights(snapshot);
                     if (logLoopCountdownDetail)
                     {
                         long afterFretboardLightsTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -2005,10 +2034,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         GameObject nut = GameObject.CreatePrimitive(PrimitiveType.Cube);
         nut.transform.SetParent(gameplayRoot.transform, false);
         nut.transform.position = new Vector3(0f, fretLineCenterY, owner.StrikeLineZ + 0.05f);
-        nut.transform.localScale = new Vector3(0.5f, fretLineHeight, 0.3f);
+        nut.transform.localScale = new Vector3(HighwayNutBoundaryBaseWidth, fretLineHeight, HighwayNutBoundaryBaseDepth);
         Renderer nutRenderer = nut.GetComponent<Renderer>();
-        Material nutMat = owner.CreateSharedTransparentMaterial(new Color(0.22f, 0.23f, 0.27f, 0.28f), 0f);
-        ConfigureOverlayMaterial(nutMat, 120, true);
+        Material nutMat = CreateFretBoundaryMaterial(new Color(0.22f, 0.23f, 0.27f, 0.28f));
         nutRenderer.material = nutMat;
         fretBoundaryMats[0] = nutMat;
         fretBoundaryRenderers[0] = nutRenderer;
@@ -2020,10 +2048,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             GameObject wire = GameObject.CreatePrimitive(PrimitiveType.Cube);
             wire.transform.SetParent(gameplayRoot.transform, false);
             wire.transform.position = new Vector3(wireX, fretLineCenterY, owner.StrikeLineZ + 0.05f);
-            wire.transform.localScale = new Vector3(0.15f, fretLineHeight, 0.15f);
+            wire.transform.localScale = new Vector3(HighwayFretBoundaryBaseWidth, fretLineHeight, HighwayFretBoundaryBaseDepth);
             Renderer wireRenderer = wire.GetComponent<Renderer>();
-            Material wireMat = owner.CreateSharedTransparentMaterial(new Color(0.22f, 0.23f, 0.27f, 0.28f), 0f);
-            ConfigureOverlayMaterial(wireMat, 120, true);
+            Material wireMat = CreateFretBoundaryMaterial(new Color(0.22f, 0.23f, 0.27f, 0.28f));
             wireRenderer.material = wireMat;
             fretBoundaryMats[fret] = wireMat;
             fretBoundaryRenderers[fret] = wireRenderer;
@@ -2036,6 +2063,21 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (!owner.hideOpenFretNumber)
             CreateFretNumberLabel(0, GetOpenFretNumberX());
+    }
+
+    private Material CreateFretBoundaryMaterial(Color initialColor)
+    {
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayFretBoundaryGlow");
+        Material material = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(initialColor, 0f);
+        ConfigureOverlayMaterial(material, 120, true);
+        ApplyFretBoundaryMaterialState(material, initialColor, Color.black, Color.clear, 0f, 0f);
+        if (material.HasProperty(FretBoundaryFlashSoftnessShaderId))
+            material.SetFloat(FretBoundaryFlashSoftnessShaderId, 0.22f);
+        if (material.HasProperty(FretBoundaryGlowWidthShaderId))
+            material.SetFloat(FretBoundaryGlowWidthShaderId, 0.62f);
+        return material;
     }
 
     private void GenerateLaneSurfaces()
@@ -2302,6 +2344,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         using (UpdateFretBoundariesProfilerMarker.Auto())
         {
             bool[] boundaryActive = BuildFretBoundaryActivityFlags(snapshot);
+            float renderSongTime = GetRenderSongTime(snapshot);
+            EnsureFretBoundaryFeedbackBuffers(fretBoundaryMats.Length);
+            BuildResolvedFretBoundaryFeedback(snapshot, renderSongTime, fretBoundaryMats.Length);
 
             Color activeColor = new Color(0.46f, 0.50f, 0.56f, 0.92f);
             Color idleColor = new Color(0.20f, 0.22f, 0.25f, 0.18f);
@@ -2313,19 +2358,146 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 if (mat == null || renderer == null)
                     continue;
 
-            Color color = boundaryActive[i] ? activeColor : idleColor;
-            float emission = boundaryActive[i]
-                ? (owner.highwayHighlightFretBoundaries ? 0.18f : 0.04f)
-                : 0f;
-            mat.color = color;
-            mat.SetColor("_Color", color);
-            mat.SetColor("_BaseColor", color);
-            mat.EnableKeyword("_EMISSION");
-            mat.SetColor("_EmissionColor", boundaryActive[i] ? color * Mathf.Pow(2f, emission) : Color.black);
+                float hitPulse = i < fretBoundaryHitFeedback.Length ? fretBoundaryHitFeedback[i] : 0f;
+                float missPulse = i < fretBoundaryMissFeedback.Length ? fretBoundaryMissFeedback[i] : 0f;
+                float feedbackPulse = Mathf.Max(hitPulse, missPulse);
+                bool feedbackIsMiss = missPulse > hitPulse;
+                float shapedPulse = feedbackPulse > 0f
+                    ? Mathf.Sin(Mathf.Clamp01(feedbackPulse) * Mathf.PI * 0.5f)
+                    : 0f;
+                float flashExpansion = feedbackIsMiss
+                    ? (i < fretBoundaryMissExpansionFeedback.Length ? fretBoundaryMissExpansionFeedback[i] : 0f)
+                    : (i < fretBoundaryHitExpansionFeedback.Length ? fretBoundaryHitExpansionFeedback[i] : 0f);
+
+                Color color = boundaryActive[i] ? activeColor : idleColor;
+                float emission = boundaryActive[i]
+                    ? (owner.highwayHighlightFretBoundaries ? 0.18f : 0.04f)
+                    : 0f;
+                Color emissionColor = emission > 0f ? color * Mathf.Pow(2f, emission) : Color.black;
+                Color flashColor = feedbackIsMiss ? HighwayMissFretBoundaryColor : HighwayHitFretBoundaryColor;
+                float flashHdrIntensity = feedbackIsMiss ? 4.8f : 4.2f;
+                flashColor = new Color(
+                    flashColor.r * flashHdrIntensity,
+                    flashColor.g * flashHdrIntensity,
+                    flashColor.b * flashHdrIntensity,
+                    1f);
+                bool fretLineFeedbackEnabled = IsFretLineFeedbackEnabled(feedbackIsMiss, feedbackPulse);
+                float flashStrength = fretLineFeedbackEnabled ? shapedPulse : 0f;
+                float flashProgress = fretLineFeedbackEnabled ? Mathf.Clamp01(flashExpansion) : 0f;
+
+                ApplyFretBoundaryMaterialState(mat, color, emissionColor, flashColor, flashProgress, flashStrength);
+                ApplyFretBoundaryTransform(renderer, i, fretLineFeedbackEnabled && owner.highwayShowFretLineScaleFeedback ? shapedPulse : 0f);
                 renderer.enabled = true;
             }
 
             UpdateFretNumberLabels(boundaryActive);
+        }
+    }
+
+    private void ApplyFretBoundaryTransform(Renderer renderer, int boundaryIndex, float pulse)
+    {
+        if (renderer == null)
+            return;
+
+        Transform boundaryTransform = renderer.transform;
+        if (boundaryTransform == null)
+            return;
+
+        float fretLineHeight = GetFretLineHeight();
+        float widthBase = boundaryIndex == 0 ? HighwayNutBoundaryBaseWidth : HighwayFretBoundaryBaseWidth;
+        float depthBase = boundaryIndex == 0 ? HighwayNutBoundaryBaseDepth : HighwayFretBoundaryBaseDepth;
+        float width = widthBase * (1f + (pulse * (boundaryIndex == 0 ? 0.42f : 1.85f)));
+        float height = fretLineHeight * (1f + (pulse * 0.16f));
+        float depth = depthBase * (1f + (pulse * 1.45f));
+        boundaryTransform.localScale = new Vector3(width, height, depth);
+
+        Vector3 position = boundaryTransform.position;
+        position.y = GetFretLineCenterY();
+        position.z = owner.StrikeLineZ + 0.05f - (pulse * 0.015f);
+        boundaryTransform.position = position;
+    }
+
+    private void ApplyFretBoundaryMaterialState(Material material, Color baseColor, Color emissionColor, Color flashColor, float flashProgress, float flashStrength)
+    {
+        if (material == null)
+            return;
+
+        material.color = baseColor;
+        material.SetColor("_Color", baseColor);
+        material.SetColor("_BaseColor", baseColor);
+        material.EnableKeyword("_EMISSION");
+        material.SetColor("_EmissionColor", emissionColor);
+        if (material.HasProperty(FretBoundaryFlashColorShaderId))
+            material.SetColor(FretBoundaryFlashColorShaderId, flashColor);
+        if (material.HasProperty(FretBoundaryFlashProgressShaderId))
+            material.SetFloat(FretBoundaryFlashProgressShaderId, Mathf.Clamp01(flashProgress));
+        if (material.HasProperty(FretBoundaryFlashStrengthShaderId))
+            material.SetFloat(FretBoundaryFlashStrengthShaderId, Mathf.Clamp01(flashStrength));
+    }
+
+    private void EnsureFretBoundaryFeedbackBuffers(int boundaryCount)
+    {
+        if (boundaryCount <= 0)
+            return;
+
+        if (fretBoundaryHitFeedback.Length != boundaryCount)
+            fretBoundaryHitFeedback = new float[boundaryCount];
+        else
+            Array.Clear(fretBoundaryHitFeedback, 0, fretBoundaryHitFeedback.Length);
+
+        if (fretBoundaryMissFeedback.Length != boundaryCount)
+            fretBoundaryMissFeedback = new float[boundaryCount];
+        else
+            Array.Clear(fretBoundaryMissFeedback, 0, fretBoundaryMissFeedback.Length);
+
+        if (fretBoundaryHitExpansionFeedback.Length != boundaryCount)
+            fretBoundaryHitExpansionFeedback = new float[boundaryCount];
+        else
+            Array.Clear(fretBoundaryHitExpansionFeedback, 0, fretBoundaryHitExpansionFeedback.Length);
+
+        if (fretBoundaryMissExpansionFeedback.Length != boundaryCount)
+            fretBoundaryMissExpansionFeedback = new float[boundaryCount];
+        else
+            Array.Clear(fretBoundaryMissExpansionFeedback, 0, fretBoundaryMissExpansionFeedback.Length);
+    }
+
+    private void BuildResolvedFretBoundaryFeedback(GuitarGameplaySnapshot snapshot, float renderSongTime, int boundaryCount)
+    {
+        if (snapshot?.noteStates == null || boundaryCount <= 0)
+            return;
+
+        GetResolvedFeedbackScanWindow(renderSongTime, out float earliestNoteTime, out float latestNoteTime);
+        int startIndex = FindFirstNoteStateIndexAtOrAfter(snapshot.noteStates, earliestNoteTime);
+        for (int i = startIndex; i < snapshot.noteStates.Count; i++)
+        {
+            GameplayNoteState state = snapshot.noteStates[i];
+            if (state == null)
+                continue;
+
+            if (state.data.time > latestNoteTime)
+                break;
+            if (!IsResolvedFretLineFeedbackEnabled(state))
+                continue;
+            if (!TryGetResolvedFeedbackPulse(state, renderSongTime, out float pulse))
+                continue;
+
+            float[] buffer = state.IsMissed ? fretBoundaryMissFeedback : fretBoundaryHitFeedback;
+            float[] expansionBuffer = state.IsMissed ? fretBoundaryMissExpansionFeedback : fretBoundaryHitExpansionFeedback;
+            float progress = Mathf.Clamp01((renderSongTime - state.resolvedAt) / HighwayResolvedFretFeedbackDurationSeconds);
+            float expansion = Mathf.SmoothStep(0.08f, 1f, Mathf.Clamp01(progress / 0.38f));
+            if (state.data.fret <= 0)
+            {
+                ApplyMaxFeedback(buffer, 0, pulse);
+                ApplyMaxFeedback(expansionBuffer, 0, expansion);
+                continue;
+            }
+
+            int lowerBoundary = Mathf.Clamp(state.data.fret - 1, 0, boundaryCount - 1);
+            int upperBoundary = Mathf.Clamp(state.data.fret, 0, boundaryCount - 1);
+            ApplyMaxFeedback(buffer, lowerBoundary, pulse * 0.58f);
+            ApplyMaxFeedback(buffer, upperBoundary, pulse);
+            ApplyMaxFeedback(expansionBuffer, lowerBoundary, expansion);
+            ApplyMaxFeedback(expansionBuffer, upperBoundary, expansion);
         }
     }
 
@@ -2610,6 +2782,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         using (UpdateLaneSurfacesProfilerMarker.Auto())
         {
             bool[] activeLanes = BuildLaneSurfaceActivityFlags(snapshot);
+            float renderSongTime = GetRenderSongTime(snapshot);
+            EnsureLaneSurfaceFeedbackBuffers(laneSurfaceMats.Length);
+            BuildResolvedLaneSurfaceFeedback(snapshot, renderSongTime, laneSurfaceMats.Length);
 
             for (int lane = 0; lane < laneSurfaceMats.Length; lane++)
             {
@@ -2618,27 +2793,85 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 if (mat == null || renderer == null)
                     continue;
 
-            bool isActive = activeLanes[lane];
-            bool hasLeftNeighbor = lane > 0 && activeLanes[lane - 1];
-            bool hasRightNeighbor = lane + 1 < activeLanes.Length && activeLanes[lane + 1];
-            Color laneColor = isActive
-                ? new Color(0.08f, 0.10f, 0.14f, 1f)
-                : new Color(0.025f, 0.03f, 0.045f, 0.14f);
+                bool isActive = activeLanes[lane];
+                bool hasLeftNeighbor = lane > 0 && activeLanes[lane - 1];
+                bool hasRightNeighbor = lane + 1 < activeLanes.Length && activeLanes[lane + 1];
+                float hitPulse = lane < laneSurfaceHitFeedback.Length ? laneSurfaceHitFeedback[lane] : 0f;
+                float missPulse = lane < laneSurfaceMissFeedback.Length ? laneSurfaceMissFeedback[lane] : 0f;
+                float feedbackPulse = Mathf.Max(hitPulse, missPulse);
+                bool feedbackIsMiss = missPulse > hitPulse;
+                bool hasFeedback = feedbackPulse > 0f;
 
-            mat.color = laneColor;
-            mat.SetColor("_Color", laneColor);
-            mat.SetColor("_BaseColor", laneColor);
-            mat.SetColor("_TintColor", laneColor);
-            mat.EnableKeyword("_EMISSION");
-            mat.SetColor("_EmissionColor", isActive ? new Color(0.18f, 0.32f, 0.46f, 1f) * Mathf.Pow(2f, 0.15f) : Color.black);
-            if (mat.HasProperty("_EdgeFadeLeft"))
-                mat.SetFloat("_EdgeFadeLeft", isActive && !hasLeftNeighbor ? 0.12f : 0.008f);
-            if (mat.HasProperty("_EdgeFadeRight"))
-                mat.SetFloat("_EdgeFadeRight", isActive && !hasRightNeighbor ? 0.12f : 0.008f);
-            if (mat.HasProperty("_FrontBackFade"))
-                mat.SetFloat("_FrontBackFade", 0.1f);
+                Color baseColor = isActive
+                    ? new Color(0.08f, 0.10f, 0.14f, 1f)
+                    : new Color(0.025f, 0.03f, 0.045f, 0.14f);
+                Color feedbackColor = feedbackIsMiss ? HighwayMissLaneSurfaceColor : HighwayHitLaneSurfaceColor;
+                if (!feedbackIsMiss && feedbackPulse > 0.58f)
+                    feedbackColor = Color.Lerp(feedbackColor, HighwayHitFretBoundaryEdgeColor, Mathf.Clamp01((feedbackPulse - 0.58f) / 0.42f) * 0.24f);
+                Color laneColor = hasFeedback
+                    ? Color.Lerp(baseColor, feedbackColor, Mathf.Clamp01(feedbackPulse * (feedbackIsMiss ? 0.82f : 0.86f)))
+                    : baseColor;
+                float emission = isActive ? 0.15f : 0f;
+                emission += feedbackIsMiss ? feedbackPulse * 1.25f : feedbackPulse * 1.90f;
+
+                mat.color = laneColor;
+                mat.SetColor("_Color", laneColor);
+                mat.SetColor("_BaseColor", laneColor);
+                mat.SetColor("_TintColor", laneColor);
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", emission > 0f ? laneColor * Mathf.Pow(2f, emission) : Color.black);
+                if (mat.HasProperty("_EdgeFadeLeft"))
+                    mat.SetFloat("_EdgeFadeLeft", hasFeedback ? 0.20f : (isActive && !hasLeftNeighbor ? 0.12f : 0.008f));
+                if (mat.HasProperty("_EdgeFadeRight"))
+                    mat.SetFloat("_EdgeFadeRight", hasFeedback ? 0.20f : (isActive && !hasRightNeighbor ? 0.12f : 0.008f));
+                if (mat.HasProperty("_FrontBackFade"))
+                    mat.SetFloat("_FrontBackFade", hasFeedback ? 0.26f : 0.1f);
                 renderer.enabled = true;
             }
+        }
+    }
+
+    private void EnsureLaneSurfaceFeedbackBuffers(int laneCount)
+    {
+        if (laneCount <= 0)
+            return;
+
+        if (laneSurfaceHitFeedback.Length != laneCount)
+            laneSurfaceHitFeedback = new float[laneCount];
+        else
+            Array.Clear(laneSurfaceHitFeedback, 0, laneSurfaceHitFeedback.Length);
+
+        if (laneSurfaceMissFeedback.Length != laneCount)
+            laneSurfaceMissFeedback = new float[laneCount];
+        else
+            Array.Clear(laneSurfaceMissFeedback, 0, laneSurfaceMissFeedback.Length);
+    }
+
+    private void BuildResolvedLaneSurfaceFeedback(GuitarGameplaySnapshot snapshot, float renderSongTime, int laneCount)
+    {
+        if (snapshot?.noteStates == null || laneCount <= 0 || owner == null || !owner.highwayShowLaneFlashFeedback)
+            return;
+
+        GetResolvedFeedbackScanWindow(renderSongTime, out float earliestNoteTime, out float latestNoteTime);
+        int startIndex = FindFirstNoteStateIndexAtOrAfter(snapshot.noteStates, earliestNoteTime);
+        for (int i = startIndex; i < snapshot.noteStates.Count; i++)
+        {
+            GameplayNoteState state = snapshot.noteStates[i];
+            if (state == null)
+                continue;
+
+            if (state.data.time > latestNoteTime)
+                break;
+            if (!IsResolvedFretFeedbackEnabled(state))
+                continue;
+            if (!TryGetResolvedFeedbackPulse(state, renderSongTime, out float pulse))
+                continue;
+
+            float[] buffer = state.IsMissed ? laneSurfaceMissFeedback : laneSurfaceHitFeedback;
+            int laneIndex = GetFeedbackFretLightIndex(state.data, laneCount);
+            ApplyMaxFeedback(buffer, laneIndex, pulse);
+            if (state.data.fret > 0)
+                ApplyMaxFeedback(buffer, Mathf.Clamp(laneIndex - 1, 0, laneCount - 1), pulse * 0.28f);
         }
     }
 
@@ -3207,7 +3440,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             songTime >= state.resolvedAt &&
             songTime - state.resolvedAt > GetResolvedFadeTime() &&
             ShouldKeepTechniqueAliveAfterResolution(state.data, songTime);
-        bool noteRendererEnabled = !hideResolvedCoreVisuals && (!isStuckOnString || keepNoteBoxVisibleOnString) && !hideTravelingNoteBox;
+        bool resolvedNoteFeedbackBoxEnabled = IsResolvedNoteFeedbackBoxEnabled(state);
+        bool noteRendererEnabled = resolvedNoteFeedbackBoxEnabled && !hideResolvedCoreVisuals && (!isStuckOnString || keepNoteBoxVisibleOnString) && !hideTravelingNoteBox;
         if (view.noteRenderer != null)
         {
             if (!view.hasCachedNoteRendererEnabled || view.cachedNoteRendererEnabled != noteRendererEnabled)
@@ -3228,7 +3462,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             SetGameObjectActive(view.outlineRoot, showOutline);
         }
         if (view.label != null)
-            SetGameObjectActive(view.label.gameObject, !hideResolvedCoreVisuals);
+            SetGameObjectActive(view.label.gameObject, resolvedNoteFeedbackBoxEnabled && !hideResolvedCoreVisuals);
 
         float tailLength = Mathf.Max(0f, z - owner.StrikeLineZ);
         if (view.tail != null)
@@ -3273,11 +3507,20 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (state.IsHit || state.IsMissed)
         {
             float fade = Mathf.Clamp01((songTime - state.resolvedAt) / Mathf.Max(0.01f, GetResolvedFadeTime()));
-            Color resolvedColor = state.IsHit ? Color.white : owner.highwayMissColor;
+            float hitPulse = 0f;
+            bool hasHitPulse = state.IsHit && TryGetResolvedFeedbackPulse(state, songTime, out hitPulse);
+            Color resolvedColor = state.IsHit
+                ? HighwayHitNoteFeedbackColor
+                : HighwayMissNoteFeedbackColor;
+            if (hasHitPulse)
+                resolvedColor = Color.Lerp(resolvedColor, HighwayHitNoteFeedbackSheenColor, Mathf.Clamp01(hitPulse * 0.32f));
             finalColor = Color.Lerp(resolvedColor, owner.highwayBackgroundColor, fade);
-            emission = Mathf.Lerp(state.IsHit ? 1.8f : 0.45f, 0f, fade);
+            emission = Mathf.Lerp(state.IsHit ? 2.35f : 0.45f, 0f, fade);
             if (state.IsHit)
-                targetScale = view.baseScale * Mathf.Lerp(1.18f, 1f, fade);
+            {
+                float scalePulse = hasHitPulse ? hitPulse * 0.08f : 0f;
+                targetScale = view.baseScale * (Mathf.Lerp(1.14f, 1f, fade) + scalePulse);
+            }
         }
         else if (state.isJudgeable)
         {
@@ -3324,7 +3567,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             SetGameObjectActive(view.marker, showMarker);
             if (showMarker && view.markerMaterial != null)
             {
-                Color markerColor = state.IsHit ? owner.highwayHitColor : (state.IsMissed ? owner.highwayMissColor : view.baseColor);
+                Color markerColor = state.IsHit ? HighwayHitFretLightColor : (state.IsMissed ? HighwayMissFretLightColor : view.baseColor);
                 if (!view.hasCachedMarkerColor || view.cachedMarkerColor != markerColor || !Mathf.Approximately(view.cachedMarkerEmissionMultiplier, state.IsHit ? 2f : 0.8f))
                 {
                     float markerEmissionMultiplier = state.IsHit ? 2f : 0.8f;
@@ -5305,7 +5548,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
     }
 
-    private void UpdateFretboardLights(HashSet<int> pitchesToLight)
+    private void UpdateFretboardLights(GuitarGameplaySnapshot snapshot)
     {
         using (UpdateFretboardLightsProfilerMarker.Auto())
         {
@@ -5331,27 +5574,204 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             activeFretLightIndices.Clear();
 
-            if (pitchesToLight == null || pitchesToLight.Count == 0)
-                return;
+            HashSet<int> pitchesToLight = snapshot?.latestDetectedPitches;
 
-            for (int s = 0; s < activeStringCount; s++)
+            if (pitchesToLight != null && pitchesToLight.Count > 0)
             {
-                Color stringColor = owner.GetStringColor(s) * 8f;
-                int stringBasePitch = owner.GetStringBasePitch(s);
-                for (int f = 0; f < fretLightColumns; f++)
+                for (int s = 0; s < activeStringCount; s++)
                 {
-                    int exactFretPitch = stringBasePitch + f;
-                    int genericFretPitch = exactFretPitch % 12;
-                    if (!pitchesToLight.Contains(exactFretPitch) && !pitchesToLight.Contains(genericFretPitch))
-                        continue;
+                    Color stringColor = owner.GetStringColor(s);
+                    int stringBasePitch = owner.GetStringBasePitch(s);
+                    for (int f = 0; f < fretLightColumns; f++)
+                    {
+                        int exactFretPitch = stringBasePitch + f;
+                        int genericFretPitch = exactFretPitch % 12;
+                        if (!pitchesToLight.Contains(exactFretPitch) && !pitchesToLight.Contains(genericFretPitch))
+                            continue;
 
-                    fretLightMats[s, f].SetColor("_EmissionColor", stringColor);
-                    if (fretLightRenderers[s, f] != null)
-                        fretLightRenderers[s, f].enabled = true;
-                    activeFretLightIndices.Add((s * fretLightColumns) + f);
+                        ApplyFretLightState(s, f, stringColor, stringColor * 8f, fretLightColumns);
+                    }
                 }
             }
+
+            ApplyResolvedFretLightFeedback(snapshot, fretLightColumns, activeStringCount);
         }
+    }
+
+    private void ApplyResolvedFretLightFeedback(GuitarGameplaySnapshot snapshot, int fretLightColumns, int activeStringCount)
+    {
+        if (snapshot?.noteStates == null || fretLightColumns <= 0 || activeStringCount <= 0)
+            return;
+
+        float renderSongTime = GetRenderSongTime(snapshot);
+        GetResolvedFeedbackScanWindow(renderSongTime, out float earliestNoteTime, out float latestNoteTime);
+
+        int startIndex = FindFirstNoteStateIndexAtOrAfter(snapshot.noteStates, earliestNoteTime);
+        for (int i = startIndex; i < snapshot.noteStates.Count; i++)
+        {
+            GameplayNoteState state = snapshot.noteStates[i];
+            if (state == null)
+                continue;
+
+            if (state.data.time > latestNoteTime)
+                break;
+            if (!IsResolvedFretFeedbackEnabled(state))
+                continue;
+            if (!TryGetResolvedFeedbackPulse(state, renderSongTime, out float pulse))
+                continue;
+
+            int stringIndex = state.data.stringIdx;
+            if (stringIndex < 0 || stringIndex >= activeStringCount)
+                continue;
+
+            int fretIndex = GetFeedbackFretLightIndex(state.data, fretLightColumns);
+            Color baseColor = state.IsMissed ? HighwayMissFretLightColor : HighwayHitFretLightColor;
+            float emissionMultiplier = state.IsMissed ? HighwayMissFretLightEmissionMultiplier : HighwayHitFretLightEmissionMultiplier;
+            ApplyFretLightState(stringIndex, fretIndex, baseColor, baseColor * (emissionMultiplier * pulse), fretLightColumns);
+        }
+    }
+
+    private void ApplyFretLightState(int stringIndex, int fretIndex, Color baseColor, Color emissionColor, int fretLightColumns)
+    {
+        if (stringIndex < 0 || fretIndex < 0 ||
+            stringIndex >= fretLightMats.GetLength(0) ||
+            fretIndex >= fretLightColumns ||
+            fretIndex >= fretLightMats.GetLength(1))
+        {
+            return;
+        }
+
+        Material mat = fretLightMats[stringIndex, fretIndex];
+        Renderer renderer = fretLightRenderers[stringIndex, fretIndex];
+        if (mat == null || renderer == null)
+            return;
+
+        Color appliedBase = new Color(baseColor.r, baseColor.g, baseColor.b, 0.92f);
+        mat.color = appliedBase;
+        mat.SetColor("_Color", appliedBase);
+        mat.SetColor("_BaseColor", appliedBase);
+        mat.EnableKeyword("_EMISSION");
+        mat.SetColor("_EmissionColor", emissionColor);
+        renderer.enabled = true;
+        activeFretLightIndices.Add((stringIndex * fretLightColumns) + fretIndex);
+    }
+
+    private void GetResolvedFeedbackScanWindow(float renderSongTime, out float earliestNoteTime, out float latestNoteTime)
+    {
+        float earlyWindow = owner != null ? Mathf.Max(0f, owner.hitWindowEarly) : 0.3f;
+        float lateWindow = owner != null ? Mathf.Max(0f, owner.hitWindowLate) : 0.5f;
+        float graceWindow = owner != null ? Mathf.Max(0f, owner.judgmentGrace) : 0.75f;
+        earliestNoteTime = renderSongTime - lateWindow - graceWindow - HighwayResolvedFretFeedbackDurationSeconds - 0.12f;
+        latestNoteTime = renderSongTime + earlyWindow + 0.12f;
+    }
+
+    private static bool TryGetResolvedFeedbackPulse(GameplayNoteState state, float renderSongTime, out float pulse)
+    {
+        pulse = 0f;
+        if (state == null || !state.IsResolved || state.resolvedAt < 0f)
+            return false;
+
+        float age = renderSongTime - state.resolvedAt;
+        if (age < 0f || age > HighwayResolvedFretFeedbackDurationSeconds)
+            return false;
+
+        float attack = Mathf.Clamp01(age / HighwayResolvedFretFeedbackAttackSeconds);
+        float release = 1f - Mathf.Clamp01(age / HighwayResolvedFretFeedbackDurationSeconds);
+        pulse = attack * release * release;
+        return pulse > 0.001f;
+    }
+
+    private bool IsResolvedNoteFeedbackBoxEnabled(GameplayNoteState state)
+    {
+        if (state == null || !state.IsResolved || owner == null)
+            return true;
+
+        if (state.IsHit)
+            return owner.highwayShowHitNoteFeedbackBox;
+
+        if (state.IsMissed)
+            return owner.highwayShowMissNoteFeedbackBox;
+
+        return true;
+    }
+
+    private bool IsResolvedFretFeedbackEnabled(GameplayNoteState state)
+    {
+        if (state == null || !state.IsResolved || owner == null)
+            return true;
+
+        if (state.IsHit)
+            return owner.highwayShowHitFretFeedback;
+
+        if (state.IsMissed)
+            return owner.highwayShowMissFretFeedback;
+
+        return true;
+    }
+
+    private bool IsResolvedFretLineFeedbackEnabled(GameplayNoteState state)
+    {
+        if (state == null || !state.IsResolved || owner == null)
+            return true;
+
+        if (state.IsHit)
+            return owner.highwayShowHitFretLineFlashFeedback;
+
+        if (state.IsMissed)
+            return owner.highwayShowMissFretLineFlashFeedback;
+
+        return true;
+    }
+
+    private bool IsFretLineFeedbackEnabled(bool isMiss, float feedbackPulse)
+    {
+        if (owner == null || feedbackPulse <= 0.001f)
+            return false;
+
+        return isMiss
+            ? owner.highwayShowMissFretLineFlashFeedback
+            : owner.highwayShowHitFretLineFlashFeedback;
+    }
+
+    private static void ApplyMaxFeedback(float[] buffer, int index, float value)
+    {
+        if (buffer == null || index < 0 || index >= buffer.Length)
+            return;
+
+        if (value > buffer[index])
+            buffer[index] = value;
+    }
+
+    private static int GetFeedbackFretLightIndex(NoteData data, int fretLightColumns)
+    {
+        if (fretLightColumns <= 0)
+            return 0;
+
+        if (data.fret <= 0)
+            return 0;
+
+        return Mathf.Clamp(data.fret, 0, fretLightColumns - 1);
+    }
+
+    private static int FindFirstNoteStateIndexAtOrAfter(IReadOnlyList<GameplayNoteState> states, float thresholdTime)
+    {
+        if (states == null || states.Count == 0)
+            return 0;
+
+        int low = 0;
+        int high = states.Count;
+        while (low < high)
+        {
+            int mid = low + ((high - low) / 2);
+            GameplayNoteState state = states[mid];
+            float noteTime = state != null ? state.data.time : float.PositiveInfinity;
+            if (noteTime < thresholdTime)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+
+        return low;
     }
 
     private void UpdateFretLightLayoutIfNeeded(int fretLightColumns, int activeStringCount)

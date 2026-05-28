@@ -75,6 +75,9 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
     private readonly List<Button> targetButtons = new List<Button>();
     private readonly List<Label> debugIslandLabels = new List<Label>();
     private readonly List<TunerNavigationEntry> navigationEntries = new List<TunerNavigationEntry>();
+    private readonly Dictionary<VisualElement, TunerInteractionState> interactiveElementStates = new Dictionary<VisualElement, TunerInteractionState>();
+    private readonly HashSet<VisualElement> hoveredInteractiveElements = new HashSet<VisualElement>();
+    private readonly HashSet<VisualElement> pressedInteractiveElements = new HashSet<VisualElement>();
     private bool suppressTunerSettingsCallbacks;
     private bool navigationActive;
     private int navigationIndex;
@@ -100,6 +103,12 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         public VisualElement Element;
         public TunerNavigationKind Kind;
         public int TargetIndex;
+    }
+
+    private struct TunerInteractionState
+    {
+        public float HoverScale;
+        public float PressedScale;
     }
 
     public void Initialize(GuitarBridgeServer owner, GuitarTunerService tunerService)
@@ -1197,20 +1206,20 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         ApplyNavigationVisual(navigationEntries[navigationIndex].Element);
     }
 
-    private static void ResetNavigationVisual(VisualElement element)
+    private void ResetNavigationVisual(VisualElement element)
     {
         if (element == null)
             return;
 
-        element.style.scale = new Scale(Vector3.one);
+        ApplyInteractiveVisual(element, navigationHighlighted: false);
     }
 
-    private static void ApplyNavigationVisual(VisualElement element)
+    private void ApplyNavigationVisual(VisualElement element)
     {
         if (element == null)
             return;
 
-        element.style.scale = new Scale(new Vector3(1.045f, 1.045f, 1f));
+        ApplyInteractiveVisual(element, navigationHighlighted: true);
     }
 
     private void CycleStandaloneTuningPreset(int delta)
@@ -1392,32 +1401,80 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         button.style.borderBottomRightRadius = 8f;
     }
 
-    private static void EnableButtonInteraction(Button button, float hoverScale = 1.045f, float pressedScale = 0.955f)
+    private void EnableButtonInteraction(Button button, float hoverScale = 1.045f, float pressedScale = 0.955f)
     {
         if (button == null)
             return;
 
         button.focusable = false;
-        bool pointerInside = false;
+        button.style.transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(50f), 0f);
 
-        void ApplyScale(float scale)
+        interactiveElementStates[button] = new TunerInteractionState
         {
-            button.style.scale = new Scale(new Vector3(scale, scale, 1f));
-        }
+            HoverScale = hoverScale,
+            PressedScale = pressedScale
+        };
 
         button.RegisterCallback<PointerEnterEvent>(_ =>
         {
-            pointerInside = true;
-            ApplyScale(hoverScale);
+            hoveredInteractiveElements.Add(button);
+            ApplyInteractiveVisual(button, IsNavigationHighlighted(button));
         });
         button.RegisterCallback<PointerLeaveEvent>(_ =>
         {
-            pointerInside = false;
-            ApplyScale(1f);
+            hoveredInteractiveElements.Remove(button);
+            pressedInteractiveElements.Remove(button);
+            ApplyInteractiveVisual(button, IsNavigationHighlighted(button));
         });
-        button.RegisterCallback<PointerDownEvent>(_ => ApplyScale(pressedScale));
-        button.RegisterCallback<PointerUpEvent>(_ => ApplyScale(pointerInside ? hoverScale : 1f));
-        button.RegisterCallback<BlurEvent>(_ => ApplyScale(1f));
+        button.RegisterCallback<PointerDownEvent>(_ =>
+        {
+            pressedInteractiveElements.Add(button);
+            ApplyInteractiveVisual(button, IsNavigationHighlighted(button));
+        });
+        button.RegisterCallback<PointerUpEvent>(_ =>
+        {
+            pressedInteractiveElements.Remove(button);
+            ApplyInteractiveVisual(button, IsNavigationHighlighted(button));
+        });
+        button.RegisterCallback<BlurEvent>(_ =>
+        {
+            pressedInteractiveElements.Remove(button);
+            ApplyInteractiveVisual(button, IsNavigationHighlighted(button));
+        });
+        button.RegisterCallback<DetachFromPanelEvent>(_ =>
+        {
+            hoveredInteractiveElements.Remove(button);
+            pressedInteractiveElements.Remove(button);
+            interactiveElementStates.Remove(button);
+        });
+
+        ApplyInteractiveVisual(button, navigationHighlighted: false);
+    }
+
+    private void ApplyInteractiveVisual(VisualElement element, bool navigationHighlighted)
+    {
+        if (element == null)
+            return;
+
+        TunerInteractionState state = interactiveElementStates.TryGetValue(element, out TunerInteractionState storedState)
+            ? storedState
+            : new TunerInteractionState { HoverScale = 1.045f, PressedScale = 0.955f };
+        bool pressed = pressedInteractiveElements.Contains(element);
+        bool hovered = hoveredInteractiveElements.Contains(element);
+        float scale = pressed
+            ? state.PressedScale
+            : (hovered || navigationHighlighted ? state.HoverScale : 1f);
+        element.style.scale = new Scale(new Vector3(scale, scale, 1f));
+        element.style.opacity = pressed ? 0.90f : 1f;
+    }
+
+    private bool IsNavigationHighlighted(VisualElement element)
+    {
+        if (element == null || !navigationActive || navigationEntries.Count == 0)
+            return false;
+
+        int index = Mathf.Clamp(navigationIndex, 0, navigationEntries.Count - 1);
+        return navigationEntries[index].Element == element;
     }
 
     private void StyleTuningToggleButton(Button button, bool enabled)

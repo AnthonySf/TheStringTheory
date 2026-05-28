@@ -629,6 +629,45 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void RocksmithTonePresetBuilder_DoesNotTreatSmallDelayMixAsFullyWet()
+    {
+        string rawToneJson =
+            @"{
+                ""Name"": ""Delay Transition"",
+                ""Key"": ""Tone_Delay"",
+                ""GearList"": {
+                    ""Amp"": {
+                        ""Type"": ""Amps"",
+                        ""Key"": ""Amp_MarshallPlexi"",
+                        ""KnobValues"": { ""Gain"": 7, ""Bass"": 7, ""Mid"": 7, ""Treble"": 7 }
+                    },
+                    ""Cabinet"": {
+                        ""Type"": ""Cabinets"",
+                        ""Key"": ""Cab_Marshall1960TV"",
+                        ""KnobValues"": {}
+                    },
+                    ""PostPedal1"": {
+                        ""Type"": ""Pedals"",
+                        ""Category"": ""Delay"",
+                        ""Key"": ""Pedal_AnalogueDelay"",
+                        ""KnobValues"": { ""Time"": 340, ""Feedback"": 4, ""Mix"": 10 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Delay Transition", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+
+        UnityToneLabRuntime.ToneLabPedalSlot delaySlot = preset.pedal_chain.First(slot => slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.Delay);
+        DelayPedalSettings delaySettings = (DelayPedalSettings)ToneLabPedalRegistry
+            .GetDescriptor(UnityToneLabRuntime.ToneLabPedalType.Delay)
+            .DeserializeSettingsObject(delaySlot.settings_json);
+
+        Assert.AreEqual(0.34f, delaySettings.delay_seconds, 0.02f);
+        Assert.AreEqual(0.04f, delaySettings.feedback, 0.001f);
+        Assert.AreEqual(0.10f, delaySettings.mix, 0.001f);
+    }
+
+    [Test]
     public void RocksmithTonePresetBuilder_AppliesRootToneVolumeAsOutputCalibration()
     {
         string loudToneJson =

@@ -218,6 +218,14 @@ public class GuitarBridgeServer : MonoBehaviour
     public bool highwayHighlightFretBoundaries = false;
     public bool highwayShowApproachLine = false;
     public bool highwayShowLandingDot = false;
+    public bool highwayShowHitNoteFeedbackBox = false;
+    public bool highwayShowMissNoteFeedbackBox = false;
+    public bool highwayShowHitFretFeedback = true;
+    public bool highwayShowMissFretFeedback = true;
+    public bool highwayShowLaneFlashFeedback = false;
+    public bool highwayShowFretLineScaleFeedback = false;
+    public bool highwayShowHitFretLineFlashFeedback = true;
+    public bool highwayShowMissFretLineFlashFeedback = true;
 
     [Header("Tabs Dimensions")]
     public float tabPanelWidth = 22f;
@@ -342,7 +350,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabSkyMidnightCloudTopTint = new Color(0.22f, 0.24f, 0.34f, 1f);
     public Color tabSkyMidnightCloudBottomTint = new Color(0.035f, 0.042f, 0.085f, 1f);
     public bool tabSkyStarsEnabled = true;
-    [Range(8, 1200)] public int tabSkyStarCount = 320;
+    [Range(8, 1200)] public int tabSkyStarCount = 500;
     [Min(0.001f)] public float tabSkyStarSizeMin = 0.015f;
     [Min(0.001f)] public float tabSkyStarSizeMax = 0.065f;
     [Range(0f, 1f)] public float tabSkyStarAlpha = 0.78f;
@@ -832,6 +840,7 @@ public class GuitarBridgeServer : MonoBehaviour
     [Serializable]
     private class GlobalRuntimeSettingsMetadata
     {
+        public int settingsVersion;
         public string selectedHighwayCharacterId;
         public List<RuntimeSettingValueEntry> values = new List<RuntimeSettingValueEntry>();
     }
@@ -1293,6 +1302,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private List<RuntimeSettingSectionSnapshot> cachedRuntimeSettingsSnapshot = new List<RuntimeSettingSectionSnapshot>();
     private bool runtimeSettingsSnapshotDirty = true;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
+    private const int CurrentGlobalRuntimeSettingsVersion = 1;
+    private int loadedGlobalRuntimeSettingsVersion = CurrentGlobalRuntimeSettingsVersion;
     private const int ArcadeControllerSlotCount = 8;
     private const int GlobalSettingsTopLevelCount = 13;
     private const int GlobalSettingsSongsFolderTopIndex = 2;
@@ -21768,6 +21779,14 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("highway.outlineDepth", "Highway 3D - Notes", "Stuck Outline Depth", "Depth of the stuck-note outline frame.", 0.005f, 0.2f, 0.005f, () => highwayStuckOutlineDepth, v => highwayStuckOutlineDepth = v);
         RegisterBoolSetting("highway.showApproachLine", "Highway 3D - Notes", "Show Approach Line", "Shows the line connecting notes to the strike line.", () => highwayShowApproachLine, v => highwayShowApproachLine = v);
         RegisterBoolSetting("highway.showLandingDot", "Highway 3D - Notes", "Show Landing Dot", "Shows the landing dot for fretted notes.", () => highwayShowLandingDot, v => highwayShowLandingDot = v);
+        RegisterBoolSetting("highway.showHitNoteFeedbackBox", "Highway 3D - Notes", "Show Hit Boxes", "Keeps hit note boxes visible briefly after they are detected.", () => highwayShowHitNoteFeedbackBox, v => highwayShowHitNoteFeedbackBox = v);
+        RegisterBoolSetting("highway.showMissNoteFeedbackBox", "Highway 3D - Notes", "Show Miss Boxes", "Keeps missed note boxes visible briefly after they are judged.", () => highwayShowMissNoteFeedbackBox, v => highwayShowMissNoteFeedbackBox = v);
+        RegisterBoolSetting("highway.showHitFretFeedback", "Highway 3D - Notes", "Show Hit Fret Dots", "Shows the short fret-position glow when notes are hit.", () => highwayShowHitFretFeedback, v => highwayShowHitFretFeedback = v);
+        RegisterBoolSetting("highway.showMissFretFeedback", "Highway 3D - Notes", "Show Miss Fret Dots", "Shows the short fret-position glow when notes are missed.", () => highwayShowMissFretFeedback, v => highwayShowMissFretFeedback = v);
+        RegisterBoolSetting("highway.showLaneFlashFeedback", "Highway 3D - Notes", "Show Lane Flash", "Flashes the lane floor briefly on hit or miss.", () => highwayShowLaneFlashFeedback, v => highwayShowLaneFlashFeedback = v);
+        RegisterBoolSetting("highway.showFretLineScaleFeedback", "Highway 3D - Notes", "Show Fret Line Pop", "Briefly scales the fret boundary on hit or miss.", () => highwayShowFretLineScaleFeedback, v => highwayShowFretLineScaleFeedback = v);
+        RegisterBoolSetting("highway.showHitFretLineFlashFeedback", "Highway 3D - Notes", "Show Hit Fret Line Flash", "Shows the blue center-out fret-line flash when notes are hit.", () => highwayShowHitFretLineFlashFeedback, v => highwayShowHitFretLineFlashFeedback = v);
+        RegisterBoolSetting("highway.showMissFretLineFlashFeedback", "Highway 3D - Notes", "Show Miss Fret Line Flash", "Shows the red center-out fret-line flash when notes are missed.", () => highwayShowMissFretLineFlashFeedback, v => highwayShowMissFretLineFlashFeedback = v);
 
         RegisterFloatSetting("highway.backgroundDistance", "Highway 3D - Background", "Background Distance", "How far behind the track the Highway3D background sits.", 50f, 4000f, 10f, () => highwayBackgroundDistance, v => highwayBackgroundDistance = v);
         RegisterFloatSetting("highway.backgroundCenterY", "Highway 3D - Background", "Background Center Y", "Vertical offset of the Highway3D background anchor.", -3000f, 1000f, 10f, () => highwayBackgroundCenterY, v => highwayBackgroundCenterY = v);
@@ -22785,6 +22804,34 @@ private void ParseDetectorPacket(string detectorPacket)
                string.Equals(currentValue ?? string.Empty, expectedValue ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool ApplyGlobalRuntimeSettingsMigrations(Dictionary<string, string> values, int sourceVersion, out int migratedVersion)
+    {
+        migratedVersion = Mathf.Max(0, sourceVersion);
+        if (values == null)
+            return false;
+
+        bool migrated = false;
+
+        if (migratedVersion < 1)
+        {
+            SetRuntimeSettingMigrationValue(values, "bg.skyStarCount", "500");
+            SetRuntimeSettingMigrationValue(values, "highway.showHitNoteFeedbackBox", "false");
+            SetRuntimeSettingMigrationValue(values, "highway.showMissNoteFeedbackBox", "false");
+            migratedVersion = 1;
+            migrated = true;
+        }
+
+        return migrated;
+    }
+
+    private static void SetRuntimeSettingMigrationValue(Dictionary<string, string> values, string settingId, string value)
+    {
+        if (values == null || string.IsNullOrEmpty(settingId))
+            return;
+
+        values[settingId] = value ?? string.Empty;
+    }
+
     private static bool IsSharedAudioRuntimeSettingId(string settingId)
     {
         return !string.IsNullOrWhiteSpace(settingId) &&
@@ -22794,6 +22841,7 @@ private void ParseDetectorPacket(string detectorPacket)
     private void LoadGlobalRuntimeSettingsMetadata()
     {
         pendingGlobalRuntimeSettingValues.Clear();
+        loadedGlobalRuntimeSettingsVersion = CurrentGlobalRuntimeSettingsVersion;
         selectedHighwayCharacter = HighwayCharacterChoice.Hero;
         selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
         string path = Path.Combine(ExternalContentPaths.PersistentRoot, GlobalRuntimeSettingsFileName);
@@ -22810,12 +22858,12 @@ private void ParseDetectorPacket(string detectorPacket)
 
             string json = File.ReadAllText(path);
             GlobalRuntimeSettingsMetadata metadata = JsonUtility.FromJson<GlobalRuntimeSettingsMetadata>(json);
+            loadedGlobalRuntimeSettingsVersion = Mathf.Max(0, metadata?.settingsVersion ?? 0);
             selectedHighwayCharacter = ParseHighwayCharacterChoice(metadata?.selectedHighwayCharacterId);
             selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
-            if (metadata?.values == null)
-                return;
 
-            foreach (RuntimeSettingValueEntry entry in metadata.values)
+            List<RuntimeSettingValueEntry> metadataValues = metadata?.values ?? new List<RuntimeSettingValueEntry>();
+            foreach (RuntimeSettingValueEntry entry in metadataValues)
             {
                 if (entry == null || string.IsNullOrEmpty(entry.id))
                     continue;
@@ -22827,6 +22875,10 @@ private void ParseDetectorPacket(string detectorPacket)
             }
 
             bool normalizedLegacyBindings = NormalizeLegacyRhythmRuntimeSettings(pendingGlobalRuntimeSettingValues);
+            bool appliedRuntimeSettingsMigrations = ApplyGlobalRuntimeSettingsMigrations(
+                pendingGlobalRuntimeSettingValues,
+                loadedGlobalRuntimeSettingsVersion,
+                out loadedGlobalRuntimeSettingsVersion);
 
             foreach (KeyValuePair<string, string> pair in pendingGlobalRuntimeSettingValues)
                 ApplyRuntimeSettingValue(pair.Key, pair.Value, saveMetadata: false);
@@ -22856,7 +22908,7 @@ private void ParseDetectorPacket(string detectorPacket)
 
             selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
 
-            if (appliedMissingDefaults || normalizedLegacyBindings)
+            if (appliedMissingDefaults || normalizedLegacyBindings || appliedRuntimeSettingsMigrations)
                 SaveGlobalRuntimeSettingsMetadata();
         }
         catch (Exception ex)
@@ -22872,8 +22924,10 @@ private void ParseDetectorPacket(string detectorPacket)
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+            int versionToSave = Mathf.Max(loadedGlobalRuntimeSettingsVersion, CurrentGlobalRuntimeSettingsVersion);
             GlobalRuntimeSettingsMetadata metadata = new GlobalRuntimeSettingsMetadata
             {
+                settingsVersion = versionToSave,
                 selectedHighwayCharacterId = SerializeHighwayCharacterChoice(selectedHighwayCharacter),
                 values = runtimeSettingDefinitions
                     .Where(def => def != null && !IsSharedAudioRuntimeSettingId(def.Id))
@@ -22886,6 +22940,7 @@ private void ParseDetectorPacket(string detectorPacket)
             };
 
             File.WriteAllText(path, JsonUtility.ToJson(metadata, true));
+            loadedGlobalRuntimeSettingsVersion = versionToSave;
         }
         catch (Exception ex)
         {

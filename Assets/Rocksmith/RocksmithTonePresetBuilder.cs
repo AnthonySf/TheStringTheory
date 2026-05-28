@@ -892,6 +892,9 @@ public static class RocksmithTonePresetBuilder
             if (!float.IsFinite(value))
                 return DefaultKnobValue;
 
+            if (IsPercentageControl(control))
+                return NormalizePercentageKnob(value);
+
             if (string.Equals(control, "time", StringComparison.OrdinalIgnoreCase))
             {
                 if (value > 10f)
@@ -906,6 +909,20 @@ public static class RocksmithTonePresetBuilder
                 return Mathf.InverseLerp(1f, 8f, Mathf.Clamp(value, 1f, 8f));
 
             return NormalizeGenericKnob(value);
+        }
+
+        private static bool IsPercentageControl(string control)
+        {
+            return string.Equals(control, "mix", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(control, "feedback", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static float NormalizePercentageKnob(float value)
+        {
+            float absolute = Mathf.Abs(value);
+            if (absolute <= 1.0001f)
+                return Mathf.Clamp01(value);
+            return Mathf.Clamp01(value / 100f);
         }
 
         private static float NormalizeGenericKnob(float value)

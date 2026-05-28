@@ -9,6 +9,8 @@ public sealed class GuitarTunerService
     private const float InTuneCentsThreshold = 4f;
     private const float ConfirmTuneHoldSeconds = 0.55f;
     private const float RetuneClearCentsThreshold = 12f;
+    private const float RetuneClearHoldSeconds = 0.45f;
+    private const float RetuneClearConfidenceThreshold = 0.55f;
     private const int MinimumUsefulSamples = 2048;
 
     private static readonly GuitarTunerTarget[] StandardGuitarTargets =
@@ -39,6 +41,7 @@ public sealed class GuitarTunerService
     private int activeTargetIndex;
     private GuitarTunerTarget[] targets = CloneDefaultTargets();
     private bool[] tunedTargets = new bool[StandardGuitarTargets.Length];
+    private float[] retuneClearSeconds = new float[StandardGuitarTargets.Length];
     private int confirmingTargetIndex = -1;
     private float confirmingSeconds;
     private bool hasSmoothedDetection;
@@ -66,6 +69,7 @@ public sealed class GuitarTunerService
 
         targets = nextTargets;
         tunedTargets = new bool[targets.Length];
+        retuneClearSeconds = new float[targets.Length];
         selectedTargetIndex = Mathf.Clamp(selectedTargetIndex, 0, Mathf.Max(0, targets.Length - 1));
         activeTargetIndex = Mathf.Clamp(activeTargetIndex, 0, Mathf.Max(0, targets.Length - 1));
         confirmingTargetIndex = -1;
@@ -88,6 +92,7 @@ public sealed class GuitarTunerService
         latestDetection = default;
         activeTargetIndex = mode == GuitarTunerMode.Manual ? selectedTargetIndex : activeTargetIndex;
         Array.Clear(tunedTargets, 0, tunedTargets.Length);
+        Array.Clear(retuneClearSeconds, 0, retuneClearSeconds.Length);
         confirmingTargetIndex = -1;
         confirmingSeconds = 0f;
         ResetSmoothing();
@@ -373,11 +378,11 @@ public sealed class GuitarTunerService
         {
             confirmingTargetIndex = -1;
             confirmingSeconds = 0f;
-            if (Mathf.Abs(cents) > RetuneClearCentsThreshold)
-                tunedTargets[safeTargetIndex] = false;
+            UpdateRetuneClearProgress(safeTargetIndex, cents, confidence);
             return false;
         }
 
+        retuneClearSeconds[safeTargetIndex] = 0f;
         if (confirmingTargetIndex != safeTargetIndex)
         {
             confirmingTargetIndex = safeTargetIndex;
@@ -389,6 +394,7 @@ public sealed class GuitarTunerService
             return false;
 
         tunedTargets[safeTargetIndex] = true;
+        retuneClearSeconds[safeTargetIndex] = 0f;
         if (mode == GuitarTunerMode.Automatic && !AllTargetsTuned())
         {
             activeTargetIndex = FindNextUntunedTargetAfter(safeTargetIndex);
@@ -396,6 +402,29 @@ public sealed class GuitarTunerService
         }
 
         return false;
+    }
+
+    private void UpdateRetuneClearProgress(int targetIndex, float cents, float confidence)
+    {
+        if (!tunedTargets[targetIndex])
+        {
+            retuneClearSeconds[targetIndex] = 0f;
+            return;
+        }
+
+        bool reliableDetune = confidence >= RetuneClearConfidenceThreshold && Mathf.Abs(cents) > RetuneClearCentsThreshold;
+        if (!reliableDetune)
+        {
+            retuneClearSeconds[targetIndex] = 0f;
+            return;
+        }
+
+        retuneClearSeconds[targetIndex] += AnalysisIntervalSeconds;
+        if (retuneClearSeconds[targetIndex] < RetuneClearHoldSeconds)
+            return;
+
+        tunedTargets[targetIndex] = false;
+        retuneClearSeconds[targetIndex] = 0f;
     }
 
     private float CentsFromTarget(float frequencyHz, int targetIndex)
