@@ -7016,6 +7016,7 @@ public sealed class TabsSongHeaderOverlay
             out gameplayAudioPopupGuitarLabel,
             out gameplayAudioPopupGuitarValueLabel,
             out gameplayAudioPopupGuitarSlider);
+        gameplayAudioPopupGuitarSlider.highValue = UnityToneLabRuntime.MaxMonitorVolumePercent;
         gameplayAudioPopupGuitarSlider.RegisterValueChangedCallback(evt =>
         {
             if (suppressCallbacks)
@@ -10180,7 +10181,7 @@ public sealed class TabsSongHeaderOverlay
 
         settingsVolumeSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songVolumePercent, 0f, 100f));
         gameplayAudioPopupSongSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.songVolumePercent, 0f, 100f));
-        gameplayAudioPopupGuitarSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.guitarVolumePercent, 0f, 100f));
+        gameplayAudioPopupGuitarSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.guitarVolumePercent, 0f, UnityToneLabRuntime.MaxMonitorVolumePercent));
         UpdateGameplayAudioStemSliderValues(snapshot);
 
         loopPauseDurationSlider.SetValueWithoutNotify(Mathf.Clamp(snapshot.loopPauseDurationSeconds, 0f, 8f));

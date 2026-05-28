@@ -285,6 +285,22 @@
       "value": "false"
     },
     {
+      "id": "highway.showLaneFlashFeedback",
+      "value": "false"
+    },
+    {
+      "id": "highway.showFretLineScaleFeedback",
+      "value": "false"
+    },
+    {
+      "id": "highway.showHitFretLineFlashFeedback",
+      "value": "true"
+    },
+    {
+      "id": "highway.showMissFretLineFlashFeedback",
+      "value": "true"
+    },
+    {
       "id": "highway.backgroundDistance",
       "value": "100"
     },

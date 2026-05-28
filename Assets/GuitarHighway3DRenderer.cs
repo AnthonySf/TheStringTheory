@@ -2076,7 +2076,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (material.HasProperty(FretBoundaryFlashSoftnessShaderId))
             material.SetFloat(FretBoundaryFlashSoftnessShaderId, 0.22f);
         if (material.HasProperty(FretBoundaryGlowWidthShaderId))
-            material.SetFloat(FretBoundaryGlowWidthShaderId, 0.62f);
+            material.SetFloat(FretBoundaryGlowWidthShaderId, 0f);
         return material;
     }
 
@@ -2384,6 +2384,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 bool fretLineFeedbackEnabled = IsFretLineFeedbackEnabled(feedbackIsMiss, feedbackPulse);
                 float flashStrength = fretLineFeedbackEnabled ? shapedPulse : 0f;
                 float flashProgress = fretLineFeedbackEnabled ? Mathf.Clamp01(flashExpansion) : 0f;
+                if (mat.HasProperty(FretBoundaryGlowWidthShaderId))
+                    mat.SetFloat(FretBoundaryGlowWidthShaderId, owner.highwayShowFretLineScaleFeedback ? 0.62f : 0f);
 
                 ApplyFretBoundaryMaterialState(mat, color, emissionColor, flashColor, flashProgress, flashStrength);
                 ApplyFretBoundaryTransform(renderer, i, fretLineFeedbackEnabled && owner.highwayShowFretLineScaleFeedback ? shapedPulse : 0f);

@@ -61,6 +61,99 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void GuitarTunerService_DetectsLowBassStrings()
+    {
+        const int sampleRate = 48000;
+        const int sampleCount = 4096;
+        float[] samples = new float[sampleCount];
+        GuitarTunerService service = new GuitarTunerService();
+        service.SetTuningPitches(StringTuningUtils.StandardBassTuning);
+
+        for (int i = 0; i < 24; i++)
+        {
+            FillSine(samples, sampleRate, GuitarTunerPitchDetector.MidiToFrequency(28), 0.42f);
+            service.SubmitAudioBlock(samples, 1, samples.Length, sampleRate, SharedAudioInputChannelModes.Input1);
+            service.Update(1f / 30f);
+        }
+
+        GuitarTunerSnapshot snapshot = service.GetSnapshot();
+        Assert.IsNotNull(snapshot.tunedTargets);
+        Assert.GreaterOrEqual(snapshot.tunedTargets.Length, 1);
+        Assert.IsTrue(snapshot.tunedTargets[0], "Stable E1 should be confirmed as tuned for bass.");
+        Assert.AreEqual("A1", snapshot.targetNoteName, "Automatic bass tuning should advance to the next string.");
+    }
+
+    [Test]
+    public void GuitarTunerService_AutomaticModeUsesAlternateGuitarTuning()
+    {
+        GuitarTunerService service = new GuitarTunerService();
+        service.SetTuningPitches(new[] { 38, 45, 50, 55, 59, 64 }); // Drop D
+
+        SubmitStableTunerPitch(service, midi: 38);
+
+        GuitarTunerSnapshot snapshot = service.GetSnapshot();
+        Assert.IsNotNull(snapshot.tunedTargets);
+        Assert.AreEqual("D2", snapshot.targets[0].noteName);
+        Assert.IsTrue(snapshot.tunedTargets[0], "Stable D2 should tune the low string in Drop D.");
+        Assert.AreEqual("A2", snapshot.targetNoteName, "Automatic tuning should advance from Drop D low string to A2.");
+    }
+
+    [Test]
+    public void GuitarTunerService_AutomaticModeSelectsPlayedAlternateGuitarString()
+    {
+        GuitarTunerService service = new GuitarTunerService();
+        service.SetTuningPitches(new[] { 38, 45, 50, 54, 57, 62 }); // Open D
+
+        SubmitStableTunerPitch(service, midi: 54);
+
+        GuitarTunerSnapshot snapshot = service.GetSnapshot();
+        Assert.IsNotNull(snapshot.tunedTargets);
+        Assert.AreEqual("F#3", snapshot.targets[3].noteName);
+        Assert.IsTrue(snapshot.tunedTargets[3], "Automatic mode should select and tune the played F#3 string in Open D.");
+        Assert.AreEqual("A3", snapshot.targetNoteName, "Automatic tuning should advance to the next untuned target after F#3.");
+    }
+
+    [Test]
+    public void GuitarTunerService_AutomaticModeUsesAlternateBassTuning()
+    {
+        GuitarTunerService service = new GuitarTunerService();
+        service.SetTuningPitches(new[] { 23, 30, 35, 40 }); // Drop B Bass
+
+        SubmitStableTunerPitch(service, midi: 23);
+
+        GuitarTunerSnapshot snapshot = service.GetSnapshot();
+        Assert.IsNotNull(snapshot.tunedTargets);
+        Assert.AreEqual("B0", snapshot.targets[0].noteName);
+        Assert.IsTrue(snapshot.tunedTargets[0], "Stable B0 should tune the low string in Drop B bass.");
+        Assert.AreEqual("F#1", snapshot.targetNoteName, "Automatic bass tuning should advance from B0 to F#1.");
+    }
+
+    [Test]
+    public void GuitarTunerService_ResetStartsAutomaticModeOnFirstTarget()
+    {
+        const int sampleRate = 48000;
+        const int sampleCount = 4096;
+        float[] samples = new float[sampleCount];
+        GuitarTunerService service = new GuitarTunerService();
+
+        for (int i = 0; i < 24; i++)
+        {
+            FillSine(samples, sampleRate, GuitarTunerPitchDetector.MidiToFrequency(40), 0.42f);
+            service.SubmitAudioBlock(samples, 1, samples.Length, sampleRate, SharedAudioInputChannelModes.Input1);
+            service.Update(1f / 30f);
+        }
+
+        Assert.AreEqual("A2", service.GetSnapshot().targetNoteName, "Test setup should advance to the second string before reset.");
+
+        service.Reset();
+
+        GuitarTunerSnapshot snapshot = service.GetSnapshot();
+        Assert.AreEqual("E2", snapshot.targetNoteName);
+        Assert.IsFalse(snapshot.allTargetsTuned);
+        Assert.IsFalse(snapshot.hasSignal);
+    }
+
+    [Test]
     public void SharedAudioSettingsNormalization_CoversBackendRatesResamplerAndDeviceKeys()
     {
         Assert.AreEqual(SharedAudioBackendModes.Auto, SharedAudioBackendModes.Normalize(null));
@@ -755,6 +848,71 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void ToneLabMonitorVolume_AllowsControlledBoostAboveOneHundredPercent()
+    {
+        using (RuntimeFixture fixture = RuntimeFixture.Create())
+        {
+            fixture.Runtime.SetMonitorVolumePercent(150f);
+            float[] boosted = { 0.20f, -0.10f };
+            InvokeInstance(fixture.Runtime, "ApplyMonitorVolumeToBuffer", boosted);
+            Assert.AreEqual(0.30f, boosted[0], 0.0001f);
+            Assert.AreEqual(-0.15f, boosted[1], 0.0001f);
+
+            fixture.Runtime.SetMonitorVolumePercent(999f);
+            float[] clamped = { 0.20f };
+            InvokeInstance(fixture.Runtime, "ApplyMonitorVolumeToBuffer", clamped);
+            Assert.AreEqual(0.40f, clamped[0], 0.0001f);
+        }
+    }
+
+    [Test]
+    public void ToneLabSharedDetectorRestore_IsDeferredUntilPortAudioAttemptsFinish()
+    {
+        using (RuntimeFixture fixture = RuntimeFixture.Create())
+        {
+            int startCount = 0;
+            int restoreCount = 0;
+            fixture.Runtime.SharedInputRouteStarting = _ =>
+            {
+                startCount++;
+                return true;
+            };
+            fixture.Runtime.SharedInputRouteStopped = () => restoreCount++;
+
+            UnityToneLabRuntime.SharedInputRouteInfo route = new UnityToneLabRuntime.SharedInputRouteInfo
+            {
+                InputDeviceIndex = 7,
+                InputDeviceDisplayName = "ASIO Instrument",
+                HostApiName = "ASIO",
+                SampleRate = 48000,
+                InputChannelCount = 2,
+                MaxBlockFrames = 128,
+                InputChannelMode = SharedAudioInputChannelModes.Input1
+            };
+
+            Assert.IsTrue((bool)InvokeInstance(fixture.Runtime, "TryStartSharedInputRoute", route));
+            InvokeInstance(fixture.Runtime, "DeferSharedInputRestoreAfterFailedPortAudioStart");
+
+            Assert.AreEqual(1, startCount);
+            Assert.AreEqual(0, restoreCount, "A failed route attempt must not reopen the independent detector before fallback route attempts run.");
+            Assert.IsTrue((bool)GetField(fixture.Runtime, "sharedInputRouteActive"));
+            Assert.IsTrue((bool)GetField(fixture.Runtime, "sharedInputRestoreDeferredAfterRouteFailure"));
+
+            Assert.IsTrue((bool)InvokeInstance(fixture.Runtime, "TryStartSharedInputRoute", route));
+            Assert.AreEqual(2, startCount);
+            Assert.AreEqual(0, restoreCount);
+            Assert.IsFalse((bool)GetField(fixture.Runtime, "sharedInputRestoreDeferredAfterRouteFailure"));
+
+            InvokeInstance(fixture.Runtime, "DeferSharedInputRestoreAfterFailedPortAudioStart");
+            InvokeInstance(fixture.Runtime, "RestoreDeferredSharedInputRouteAfterFailedPortAudioStart");
+
+            Assert.AreEqual(1, restoreCount);
+            Assert.IsFalse((bool)GetField(fixture.Runtime, "sharedInputRouteActive"));
+            Assert.IsFalse((bool)GetField(fixture.Runtime, "sharedInputRestoreDeferredAfterRouteFailure"));
+        }
+    }
+
+    [Test]
     public void NativeDetectorInputCandidates_SelectedDeviceOnlyFallsBackToSamePhysicalInput()
     {
         NativeNotesDetectorBridge bridge = new NativeNotesDetectorBridge();
@@ -1159,6 +1317,19 @@ public sealed class AudioPathRegressionTests
         double phaseStep = (Math.PI * 2d * frequencyHz) / sampleRate;
         for (int i = 0; i < samples.Length; i++)
             samples[i] = (float)(Math.Sin(i * phaseStep) * amplitude);
+    }
+
+    private static void SubmitStableTunerPitch(GuitarTunerService service, int midi, int sampleRate = 48000, int sampleCount = 4096)
+    {
+        Assert.IsNotNull(service);
+        float[] samples = new float[sampleCount];
+        float frequency = GuitarTunerPitchDetector.MidiToFrequency(midi);
+        for (int i = 0; i < 24; i++)
+        {
+            FillSine(samples, sampleRate, frequency, 0.42f);
+            service.SubmitAudioBlock(samples, 1, samples.Length, sampleRate, SharedAudioInputChannelModes.Input1);
+            service.Update(1f / 30f);
+        }
     }
 
     private static T InvokeNativeDetectorBridgeStatic<T>(string methodName, params object[] args)

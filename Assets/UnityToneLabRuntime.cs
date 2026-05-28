@@ -32,6 +32,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private const float DefaultRigInputGainDb = 14f;
     private const float DefaultRigOutputGainDb = 10f;
     private const float LiveAudioDiagnosticsIntervalSeconds = 1f;
+    public const float MaxMonitorVolumePercent = 200f;
 
     [Serializable]
     public sealed class ToneLabSettings
@@ -593,6 +594,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private volatile bool sharedInputRouteActive;
     private volatile bool sharedInputSubmitDisabled;
     private volatile bool sharedInputSubmitFailurePending;
+    private bool sharedInputRestoreDeferredAfterRouteFailure;
     private SharedInputRouteInfo activeSharedInputRoute;
     private float monitorVolumePercent = 100f;
     private AdvancedRoutingOptions advancedRoutingOptions = new AdvancedRoutingOptions();
@@ -830,7 +832,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     public void SetMonitorVolumePercent(float percent)
     {
-        monitorVolumePercent = Mathf.Clamp(percent, 0f, 100f);
+        monitorVolumePercent = Mathf.Clamp(percent, 0f, MaxMonitorVolumePercent);
     }
 
     public void SetAdvancedRoutingOptions(AdvancedRoutingOptions options)
@@ -2034,7 +2036,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             }
             else
             {
-                StopMonitoringInternal(restoreAudioConfiguration: false);
+                StopMonitoringInternal(restoreAudioConfiguration: false, notifySharedInputStopped: false);
                 StringBuilder attempts = new StringBuilder();
                 for (int i = 0; i < plans.Count; i++)
                 {
@@ -2066,9 +2068,11 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
                 lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
                 LogAudioRouteEvent("Legacy PortAudio attempts failed", lastRoutingAttemptSummary, warning: true);
+                RestoreDeferredSharedInputRouteAfterFailedPortAudioStart();
             }
         }
 
+        RestoreDeferredSharedInputRouteAfterFailedPortAudioStart();
         inputDevices = Microphone.devices ?? Array.Empty<string>();
         outputDevices = new[] { "System Default" };
         LogAudioRouteEvent("Falling back to Unity microphone monitoring", BuildDeviceCatalogLog(), warning: true);
@@ -2101,7 +2105,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         if (plans.Count > 0)
         {
-            StopMonitoringInternal(restoreAudioConfiguration: false);
+            StopMonitoringInternal(restoreAudioConfiguration: false, notifySharedInputStopped: false);
             for (int i = 0; i < plans.Count; i++)
             {
                 PortAudioRoutePlan plan = plans[i];
@@ -2159,6 +2163,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         lastRoutingDiagnostics = diagnostics.ToString().TrimEnd();
         lastRoutingAttemptSummary = attempts.ToString().TrimEnd();
         LogAudioRouteEvent("Advanced audio failed to start", $"{lastRoutingDiagnostics}\n{lastRoutingAttemptSummary}", warning: true);
+        RestoreDeferredSharedInputRouteAfterFailedPortAudioStart();
         return false;
     }
 
@@ -2175,6 +2180,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         try
         {
             bool started = callback(route.Clone());
+            if (started)
+                sharedInputRestoreDeferredAfterRouteFailure = false;
             sharedInputRouteActive = started;
             return started;
         }
@@ -2195,6 +2202,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (!wasActive || !notifyStopped)
             return;
 
+        sharedInputRestoreDeferredAfterRouteFailure = false;
         try
         {
             SharedInputRouteStopped?.Invoke();
@@ -2216,6 +2224,34 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         Debug.LogWarning("[UnityToneLabRuntime] Shared detector input stopped accepting Tone Lab audio; restoring independent detector input.");
         StopSharedInputRoute();
+    }
+
+    private void DeferSharedInputRestoreAfterFailedPortAudioStart()
+    {
+        if (SharedInputRouteStopped != null)
+            sharedInputRestoreDeferredAfterRouteFailure = true;
+    }
+
+    private void RestoreDeferredSharedInputRouteAfterFailedPortAudioStart()
+    {
+        if (!sharedInputRestoreDeferredAfterRouteFailure)
+            return;
+
+        sharedInputRestoreDeferredAfterRouteFailure = false;
+        if (sharedInputRouteActive)
+        {
+            StopSharedInputRoute();
+            return;
+        }
+
+        try
+        {
+            SharedInputRouteStopped?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[UnityToneLabRuntime] Deferred shared detector input restore failed: {ex.Message}");
+        }
     }
 
     private static int ResolvePortAudioCallbackFrameCapacity(uint framesPerBuffer)
@@ -2295,7 +2331,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (!started)
         {
             if (sharedInputStarted)
-                StopSharedInputRoute();
+                DeferSharedInputRestoreAfterFailedPortAudioStart();
             error = portAudioStartError;
             statusMessage = portAudioStartError;
             return false;
@@ -2326,7 +2362,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                     {
                         error = captureError;
                         statusMessage = captureError;
-                        StopMonitoringInternal(restoreAudioConfiguration: false);
+                        if (sharedInputStarted)
+                            DeferSharedInputRestoreAfterFailedPortAudioStart();
+                        StopMonitoringInternal(restoreAudioConfiguration: false, notifySharedInputStopped: false);
                         return false;
                     }
 
@@ -2347,6 +2385,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         LogAudioRouteEvent(
             "PortAudio route opened",
             $"route={routeDescription}, sampleRate={sampleRate}, framesPerBuffer={framesPerBuffer}, inputLatency={inputDevice.DefaultLowInputLatency:0.####}, outputLatency={outputDevice.DefaultLowOutputLatency:0.####}, unityOutputCapture={enableUnityOutputCapture}, recorderCapture={enableUnityRecorderCapture}");
+        sharedInputRestoreDeferredAfterRouteFailure = false;
         return true;
     }
 
@@ -6223,7 +6262,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (data == null || data.Length == 0)
             return;
 
-        float monitorGain = Mathf.Clamp01(monitorVolumePercent / 100f);
+        float monitorGain = Mathf.Clamp(monitorVolumePercent / 100f, 0f, MaxMonitorVolumePercent / 100f);
         if (Mathf.Approximately(monitorGain, 1f))
             return;
 

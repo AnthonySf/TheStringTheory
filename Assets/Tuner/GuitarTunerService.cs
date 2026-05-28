@@ -12,6 +12,7 @@ public sealed class GuitarTunerService
     private const float RetuneClearHoldSeconds = 0.45f;
     private const float RetuneClearConfidenceThreshold = 0.55f;
     private const int MinimumUsefulSamples = 2048;
+    private const float DetectionSearchMarginSemitones = 5f;
 
     private static readonly GuitarTunerTarget[] StandardGuitarTargets =
     {
@@ -90,7 +91,7 @@ public sealed class GuitarTunerService
         analysisTimer = 0f;
         secondsSinceSignal = float.PositiveInfinity;
         latestDetection = default;
-        activeTargetIndex = mode == GuitarTunerMode.Manual ? selectedTargetIndex : activeTargetIndex;
+        activeTargetIndex = mode == GuitarTunerMode.Manual ? selectedTargetIndex : 0;
         Array.Clear(tunedTargets, 0, tunedTargets.Length);
         Array.Clear(retuneClearSeconds, 0, retuneClearSeconds.Length);
         confirmingTargetIndex = -1;
@@ -218,12 +219,15 @@ public sealed class GuitarTunerService
             return;
         }
 
+        ResolveDetectionSearchRange(out float minFrequencyHz, out float maxFrequencyHz);
         bool detected = GuitarTunerPitchDetector.TryDetectPitch(
             analysisBuffer,
             AnalysisWindowSize,
             sampleRate,
             scoreScratch,
-            out GuitarTunerPitchDetection detection);
+            out GuitarTunerPitchDetection detection,
+            minFrequencyHz,
+            maxFrequencyHz);
 
         detection.inputLevel = Mathf.Clamp01(Mathf.Max(detection.inputLevel, inputLevel));
 
@@ -431,6 +435,34 @@ public sealed class GuitarTunerService
     {
         int safeTargetIndex = Mathf.Clamp(targetIndex, 0, Mathf.Max(0, targets.Length - 1));
         return 1200f * Mathf.Log(frequencyHz / Mathf.Max(1e-6f, targets[safeTargetIndex].frequencyHz), 2f);
+    }
+
+    private void ResolveDetectionSearchRange(out float minFrequencyHz, out float maxFrequencyHz)
+    {
+        float lowest = float.PositiveInfinity;
+        float highest = 0f;
+        for (int i = 0; i < targets.Length; i++)
+        {
+            float frequency = targets[i]?.frequencyHz ?? 0f;
+            if (frequency <= 0f)
+                continue;
+
+            if (frequency < lowest)
+                lowest = frequency;
+            if (frequency > highest)
+                highest = frequency;
+        }
+
+        if (float.IsNaN(lowest) || float.IsInfinity(lowest) || highest <= 0f)
+        {
+            minFrequencyHz = GuitarTunerPitchDetector.DefaultMinFrequencyHz;
+            maxFrequencyHz = GuitarTunerPitchDetector.DefaultMaxFrequencyHz;
+            return;
+        }
+
+        float marginRatio = Mathf.Pow(2f, DetectionSearchMarginSemitones / 12f);
+        minFrequencyHz = Mathf.Max(20f, lowest / marginRatio);
+        maxFrequencyHz = Mathf.Min(2000f, highest * marginRatio);
     }
 
     private int FindNextUntunedTargetAfter(int targetIndex)

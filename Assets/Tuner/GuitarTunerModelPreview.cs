@@ -16,7 +16,6 @@ public sealed class GuitarTunerModelPreview
     private const string DiagnosticShaderName = "Hidden/StringTheory/TunerDiagnosticPartColors";
     private const string DiagnosticShaderResourcePath = "Shaders/TunerDiagnosticPartColors";
     private const string GuitarResourcePath = "3d/IbanezJem/GuitarSplit";
-    private const string LegacyGuitarResourcePath = "3d/IbanezJem/IbanezJem";
     private const string GuitarDiffuseTexturePath = "3d/IbanezJem/IbanezJem_Diffuse";
     private const string GuitarNormalTexturePath = "3d/IbanezJem/IbanezJem_Normal";
     private const string GuitarSpecularTexturePath = "3d/IbanezJem/IbanezJem_Specular";
@@ -446,7 +445,7 @@ public sealed class GuitarTunerModelPreview
             Instrument = GuitarTunerInstrument.Guitar,
             StringCount = 6,
             ResourcePath = GuitarResourcePath,
-            FallbackResourcePath = LegacyGuitarResourcePath,
+            FallbackResourcePath = string.Empty,
             DiffuseTexturePath = GuitarDiffuseTexturePath,
             NormalTexturePath = GuitarNormalTexturePath,
             SpecularTexturePath = GuitarSpecularTexturePath,

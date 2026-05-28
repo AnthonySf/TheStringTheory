@@ -12654,7 +12654,7 @@ private void OpenOrFocusToneLab()
             needsSave = true;
         }
 
-        float normalizedGuitarVolume = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, 100f);
+        float normalizedGuitarVolume = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, UnityToneLabRuntime.MaxMonitorVolumePercent);
         if (!Mathf.Approximately(sharedAudioSettings.guitarVolumePercent, normalizedGuitarVolume))
         {
             sharedAudioSettings.guitarVolumePercent = normalizedGuitarVolume;
@@ -12692,7 +12692,7 @@ private void OpenOrFocusToneLab()
         sharedAudioSettings.outputDeviceName = NormalizeSharedAudioStoredSelection(sharedAudioSettings.outputDeviceName);
         sharedAudioSettings.monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize);
         sharedAudioSettings.songVolumePercent = Mathf.Clamp(sharedAudioSettings.songVolumePercent, 0f, 100f);
-        sharedAudioSettings.guitarVolumePercent = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, 100f);
+        sharedAudioSettings.guitarVolumePercent = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, UnityToneLabRuntime.MaxMonitorVolumePercent);
         sharedAudioSettings.detectorResamplerMode = SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings.detectorResamplerMode);
         sharedAudioSettings.advanced = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, sharedAudioSettings.monitoringBufferSize, out _);
         SharedAudioSettingsUtility.Save(ExternalContentPaths.PersistentAudioSettingsPath, sharedAudioSettings);
@@ -13067,7 +13067,7 @@ private void OpenOrFocusToneLab()
         int monitoringBufferSize = NormalizeSharedMonitoringBufferSize(sharedAudioSettings.monitoringBufferSize);
         sharedAudioSettings.monitoringBufferSize = monitoringBufferSize;
         sharedAudioSettings.songVolumePercent = Mathf.Clamp(sharedAudioSettings.songVolumePercent, 0f, 100f);
-        sharedAudioSettings.guitarVolumePercent = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, 100f);
+        sharedAudioSettings.guitarVolumePercent = Mathf.Clamp(sharedAudioSettings.guitarVolumePercent, 0f, UnityToneLabRuntime.MaxMonitorVolumePercent);
         sharedAudioSettings.detectorResamplerMode = SharedAudioDetectorResamplerModes.Normalize(sharedAudioSettings.detectorResamplerMode);
         SharedAudioAdvancedSettings advancedSettings = NormalizeSharedAudioAdvancedSettings(sharedAudioSettings.advanced, monitoringBufferSize, out _);
         sharedAudioSettings.advanced = advancedSettings;
@@ -13186,7 +13186,7 @@ private void OpenOrFocusToneLab()
 
     public float GetSharedAudioGuitarVolumePercent()
     {
-        return Mathf.Clamp(sharedAudioSettings?.guitarVolumePercent ?? 100f, 0f, 100f);
+        return Mathf.Clamp(sharedAudioSettings?.guitarVolumePercent ?? 100f, 0f, UnityToneLabRuntime.MaxMonitorVolumePercent);
     }
 
     public float GetToneLabGlobalInputGainDb()
@@ -13306,7 +13306,7 @@ private void OpenOrFocusToneLab()
         if (sharedAudioSettings == null)
             sharedAudioSettings = new SharedAudioSettings();
 
-        float clampedPercent = Mathf.Clamp(percent, 0f, 100f);
+        float clampedPercent = Mathf.Clamp(percent, 0f, UnityToneLabRuntime.MaxMonitorVolumePercent);
         if (Mathf.Approximately(sharedAudioSettings.guitarVolumePercent, clampedPercent))
             return;
 
@@ -21648,7 +21648,7 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("audio.globalInputGain", "Audio", "Global Input Gain", string.Empty, -36f, 12f, 0.5f, () => GetToneLabGlobalInputGainDb(), SetToneLabGlobalInputGainFromUi);
         RegisterFloatSetting("audio.globalOutputGain", "Audio", "Global Output Gain", string.Empty, -12f, 12f, 0.5f, () => GetToneLabGlobalOutputGainDb(), SetToneLabGlobalOutputGainFromUi);
         RegisterFloatSetting("audio.songVolume", "Audio", "Song Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioSongVolumePercent(), SetSongVolumePercentFromUi);
-        RegisterFloatSetting("audio.guitarVolume", "Audio", "Guitar Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioGuitarVolumePercent(), SetSharedAudioGuitarVolumeFromUi);
+        RegisterFloatSetting("audio.guitarVolume", "Audio", "Guitar Volume", string.Empty, 0f, UnityToneLabRuntime.MaxMonitorVolumePercent, 1f, () => GetSharedAudioGuitarVolumePercent(), SetSharedAudioGuitarVolumeFromUi);
         RegisterEnumSetting("audio.monitoringLatency", "Audio", "Monitoring Latency", string.Empty, UnityToneLabRuntime.SharedMonitoringLatencyOptions, () => GetSharedAudioSelectedLatencyLabel(), SetSharedAudioMonitoringLatencyFromUi);
         RegisterBoolSetting("tonelab.useSongToneMappings", "Audio", "Use Song Tone Mappings", "When ON, songs use auto-generated Tone Lab mappings when available and switch tones at the song's tone-change points. You can override generated tones in Tone Lab's Song Tone Mapping screen. When OFF, the currently selected Tone Lab preset is used.", () => useSongToneMappings, v =>
         {

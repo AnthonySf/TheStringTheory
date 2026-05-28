@@ -1055,7 +1055,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         VisualElement volumeField = CreateSharedVolumeSliderField(
             "Guitar Volume",
             0f,
-            100f,
+            UnityToneLabRuntime.MaxMonitorVolumePercent,
             value => $"{value:F0}%",
             () => owner != null ? owner.GetSharedAudioGuitarVolumePercent() : runtime?.MonitorVolumePercent ?? 100f,
             value =>
