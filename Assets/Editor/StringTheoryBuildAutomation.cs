@@ -1,5 +1,6 @@
 #if UNITY_EDITOR
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
@@ -14,7 +15,7 @@ public static class StringTheoryBuildAutomation
     public static void OnPostprocessBuild(BuildTarget target, string pathToBuiltProject)
     {
         if (target == BuildTarget.StandaloneOSX)
-            PatchMacInfoPlist(NormalizeMacAppOutputPath(pathToBuiltProject));
+            FinalizeMacAppBundle(NormalizeMacAppOutputPath(pathToBuiltProject));
     }
 
     public static void BuildMacOS()
@@ -67,10 +68,16 @@ public static class StringTheoryBuildAutomation
                 $"macOS build failed with result {report.summary.result} and {report.summary.totalErrors} errors.");
         }
 
-        PatchMacInfoPlist(outputPath);
+        FinalizeMacAppBundle(outputPath);
     }
 
-    private static void PatchMacInfoPlist(string appBundlePath)
+    private static void FinalizeMacAppBundle(string appBundlePath)
+    {
+        PatchMacInfoPlist(appBundlePath);
+        AdHocSignMacAppBundle(appBundlePath);
+    }
+
+    private static bool PatchMacInfoPlist(string appBundlePath)
     {
         string plistPath = Path.Combine(appBundlePath, "Contents", "Info.plist");
         if (!File.Exists(plistPath))
@@ -82,15 +89,18 @@ public static class StringTheoryBuildAutomation
         if (dict == null)
             throw new InvalidOperationException($"macOS Info.plist has no root dict: {plistPath}");
 
-        SetPlistString(
+        bool changed = SetPlistString(
             dict,
             "NSMicrophoneUsageDescription",
             "String Theory uses microphone input for live guitar note detection and Tone Lab monitoring.");
 
-        document.Save(plistPath);
+        if (changed)
+            document.Save(plistPath);
+
+        return changed;
     }
 
-    private static void SetPlistString(XElement dict, string key, string value)
+    private static bool SetPlistString(XElement dict, string key, string value)
     {
         XElement existingKey = dict
             .Elements("key")
@@ -101,17 +111,79 @@ public static class StringTheoryBuildAutomation
             if (existingValue == null || existingValue.Name.LocalName != "string")
             {
                 existingKey.AddAfterSelf(new XElement("string", value));
-            }
-            else
-            {
-                existingValue.Value = value;
+                return true;
             }
 
-            return;
+            if (string.Equals(existingValue.Value, value, StringComparison.Ordinal))
+                return false;
+
+            existingValue.Value = value;
+            return true;
         }
 
         dict.Add(new XElement("key", key));
         dict.Add(new XElement("string", value));
+        return true;
+    }
+
+    private static void AdHocSignMacAppBundle(string appBundlePath)
+    {
+        if (UnityEngine.Application.platform != UnityEngine.RuntimePlatform.OSXEditor)
+            return;
+
+        if (!Directory.Exists(appBundlePath))
+            throw new DirectoryNotFoundException($"macOS app bundle was not found for signing: {appBundlePath}");
+
+        RunMacTool(
+            "/usr/bin/xattr",
+            $"-dr com.apple.quarantine {Quote(appBundlePath)}",
+            allowFailure: true);
+
+        RunMacTool(
+            "/usr/bin/codesign",
+            $"--force --deep --sign - --timestamp=none {Quote(appBundlePath)}",
+            allowFailure: false);
+
+        RunMacTool(
+            "/usr/bin/codesign",
+            $"--verify --deep --strict --verbose=2 {Quote(appBundlePath)}",
+            allowFailure: false);
+    }
+
+    private static void RunMacTool(string executable, string arguments, bool allowFailure)
+    {
+        ProcessStartInfo startInfo = new ProcessStartInfo
+        {
+            FileName = executable,
+            Arguments = arguments,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true
+        };
+
+        using Process process = Process.Start(startInfo);
+        if (process == null)
+            throw new InvalidOperationException($"Failed to start {executable}.");
+
+        string output = process.StandardOutput.ReadToEnd();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+
+        if (process.ExitCode == 0 || allowFailure)
+        {
+            if (!string.IsNullOrWhiteSpace(output))
+                UnityEngine.Debug.Log(output.Trim());
+            if (!string.IsNullOrWhiteSpace(error))
+                UnityEngine.Debug.Log(error.Trim());
+            return;
+        }
+
+        throw new InvalidOperationException($"{executable} failed with exit code {process.ExitCode}: {error.Trim()} {output.Trim()}");
+    }
+
+    private static string Quote(string value)
+    {
+        return "\"" + (value ?? string.Empty).Replace("\"", "\\\"") + "\"";
     }
 
     private static string NormalizeMacAppOutputPath(string outputPath)

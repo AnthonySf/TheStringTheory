@@ -396,6 +396,7 @@ jobs:
         shell: bash
         run: |
           test -d build/StringTheory-macOS/StringTheory.app
+          codesign --verify --deep --strict --verbose=2 build/StringTheory-macOS/StringTheory.app
           ditto -c -k --sequesterRsrc --keepParent \
             build/StringTheory-macOS/StringTheory.app \
             StringTheory-macOS.zip
