@@ -622,6 +622,18 @@ public sealed class GuitarGameplaySnapshot
     public bool notesDetectorRoutineCompleted;
     public bool showStartupTuningReminder;
     public bool showGlobalSettings;
+    public bool showDiagnosticsConsentPopup;
+    public int selectedDiagnosticsConsentIndex;
+    public bool showBugReportScreen;
+    public int selectedBugReportActionIndex;
+    public string bugReportDescription;
+    public string bugReportStatus;
+    public bool bugReportSending;
+    public bool showBugReportSentPopup;
+    public int selectedBugReportSentActionIndex;
+    public string bugReportSentMessage;
+    public bool diagnosticsUploadEnabled;
+    public bool diagnosticsUploadEndpointConfigured;
     public string songsFolderMenuValueLabel;
     public string effectsFolderMenuValueLabel;
     public int selectedGlobalSettingsTopIndex;

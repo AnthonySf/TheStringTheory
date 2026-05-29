@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using UnityEngine;
 using Unity.Collections;
 
@@ -31,6 +32,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private const float DefaultGlobalOutputGainDb = 0f;
     private const float DefaultRigInputGainDb = 14f;
     private const float DefaultRigOutputGainDb = 10f;
+    private const float MaxIntermediateAudioMagnitude = 16f;
     private const float LiveAudioDiagnosticsIntervalSeconds = 1f;
     public const float MaxMonitorVolumePercent = 200f;
 
@@ -587,6 +589,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private string outputRouteLabel = "System Default Output";
     private string activeHostApiName = string.Empty;
     private ToneLabPortAudio.DuplexStream portAudioStream;
+    private ToneLabPortAudio.SplitStream portAudioSplitStream;
     private ToneLabPortAudio.DeviceDescriptor[] portAudioAllDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private ToneLabPortAudio.DeviceDescriptor[] portAudioInputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
     private ToneLabPortAudio.DeviceDescriptor[] portAudioOutputDevices = Array.Empty<ToneLabPortAudio.DeviceDescriptor>();
@@ -625,6 +628,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private string latestAudioDiagnosticsInputChannelMode = SharedAudioInputChannelModes.Input1;
     private int liveAudioDiagnosticsBurstLogsRemaining;
     private float nextLiveAudioDiagnosticsLogTime = -1f;
+    private long portAudioProcessBlockCount;
+    private long portAudioProcessFrameCount;
+    private long sharedDetectorSubmitCount;
+    private long sharedDetectorRejectedCount;
     private volatile bool unityRecorderCaptureActive;
     private int unityRecorderCaptureChannels = 2;
     private int unityRecorderCaptureSampleRate = PreferredSampleRate;
@@ -738,6 +745,101 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public float MonitorVolumePercent => monitorVolumePercent;
     public string LastRoutingDiagnostics => lastRoutingDiagnostics;
     public string LastRoutingAttemptSummary => lastRoutingAttemptSummary;
+
+    public string BuildAudioDiagnosticSnapshot()
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.AppendLine("ToneLabRuntime");
+        builder.AppendLine($"  monitoring: {monitoring}");
+        builder.AppendLine($"  awaitingMicrophoneStart: {awaitingMicrophoneStart}");
+        builder.AppendLine($"  usingPortAudioBackend: {usingPortAudioBackend}");
+        builder.AppendLine($"  activeBackend: {ActiveAudioBackendLabel}");
+        builder.AppendLine($"  activeHostApi: {ActiveHostApiLabel}");
+        builder.AppendLine($"  activeInput: {(string.IsNullOrWhiteSpace(inputRouteLabel) ? "-" : inputRouteLabel)}");
+        builder.AppendLine($"  activeOutput: {(string.IsNullOrWhiteSpace(outputRouteLabel) ? "-" : outputRouteLabel)}");
+        builder.AppendLine($"  activeSampleRate: {activeSampleRate}");
+        builder.AppendLine($"  activeBuffer: {FormatActiveBufferLabel(activeDspBufferSize)}");
+        builder.AppendLine($"  status: {(string.IsNullOrWhiteSpace(statusMessage) ? "-" : statusMessage)}");
+        builder.AppendLine($"  stream: {GetPortAudioDiagnosticSummary()}");
+        builder.AppendLine($"  rawPeak: {latestRawInputPeak:0.0000}");
+        builder.AppendLine($"  rawRms: {latestRawInputRms:0.0000}");
+        builder.AppendLine($"  rawDc: {latestRawInputDc:0.0000}");
+        builder.AppendLine($"  processedPeak: {latestProcessedPeak:0.0000}");
+        builder.AppendLine($"  processedRms: {latestProcessedRms:0.0000}");
+        builder.AppendLine($"  processedDc: {latestProcessedDc:0.0000}");
+        builder.AppendLine($"  latestInputChannels: {latestAudioDiagnosticsInputChannels}");
+        builder.AppendLine($"  latestOutputChannels: {latestAudioDiagnosticsOutputChannels}");
+        builder.AppendLine($"  latestInputChannelMode: {latestAudioDiagnosticsInputChannelMode}");
+        builder.AppendLine($"  processBlocks: {Volatile.Read(ref portAudioProcessBlockCount)}");
+        builder.AppendLine($"  processFrames: {Volatile.Read(ref portAudioProcessFrameCount)}");
+        builder.AppendLine($"  sharedDetectorActive: {sharedInputRouteActive}");
+        builder.AppendLine($"  sharedDetectorSubmits: {Volatile.Read(ref sharedDetectorSubmitCount)}");
+        builder.AppendLine($"  sharedDetectorRejects: {Volatile.Read(ref sharedDetectorRejectedCount)}");
+        builder.AppendLine($"  currentPreset: {GetCurrentDiagnosticPresetName()}");
+        builder.AppendLine($"  currentChain: {GetCurrentDiagnosticChainSummary()}");
+        builder.AppendLine($"  playbackOverrideActive: {playbackPresetOverrideActive}");
+        builder.AppendLine($"  monitorVolumePercent: {monitorVolumePercent:0.##}");
+
+        if (settings != null)
+        {
+            builder.AppendLine("ToneLabSettings");
+            builder.AppendLine($"  inputDevice: {(string.IsNullOrWhiteSpace(settings.input_device_name) ? "Automatic" : settings.input_device_name)}");
+            builder.AppendLine($"  outputDevice: {(string.IsNullOrWhiteSpace(settings.output_device_name) ? "Automatic" : settings.output_device_name)}");
+            builder.AppendLine($"  monitoringBufferSize: {FormatActiveBufferLabel(settings.monitoring_buffer_size)}");
+            builder.AppendLine($"  selectedPresetId: {settings.selected_preset_id}");
+            builder.AppendLine($"  inputGainDb: {settings.input_gain_db:0.###}");
+            builder.AppendLine($"  outputGainDb: {settings.output_gain_db:0.###}");
+            builder.AppendLine($"  globalInputTrimDb: {settings.global_input_trim_db:0.###}");
+            builder.AppendLine($"  globalOutputGainDb: {settings.global_output_gain_db:0.###}");
+            builder.AppendLine($"  presetCount: {(settings.presets != null ? settings.presets.Count : 0)}");
+        }
+
+        if (advancedRoutingOptions != null)
+        {
+            builder.AppendLine("AdvancedAudio");
+            builder.AppendLine($"  betaEnabled: {advancedRoutingOptions.betaEnabled}");
+            builder.AppendLine($"  inputChannelMode: {SharedAudioInputChannelModes.Normalize(advancedRoutingOptions.inputChannelMode)}");
+            builder.AppendLine($"  backendMode: {SharedAudioBackendModes.Normalize(advancedRoutingOptions.backendMode)}");
+            builder.AppendLine($"  allowFallback: {advancedRoutingOptions.allowFallback}");
+            builder.AppendLine($"  preferredInput: {(string.IsNullOrWhiteSpace(advancedRoutingOptions.preferredInputDeviceName) ? "Automatic" : advancedRoutingOptions.preferredInputDeviceName)}");
+            builder.AppendLine($"  preferredOutput: {(string.IsNullOrWhiteSpace(advancedRoutingOptions.preferredOutputDeviceName) ? "Automatic" : advancedRoutingOptions.preferredOutputDeviceName)}");
+            builder.AppendLine($"  sampleRate: {SharedAudioSampleRateOptions.ToLabel(advancedRoutingOptions.sampleRate)}");
+            builder.AppendLine($"  bufferSize: {FormatActiveBufferLabel(advancedRoutingOptions.bufferSize)}");
+            builder.AppendLine($"  splitInputOutput: {advancedRoutingOptions.splitInputOutputEnabled}");
+            builder.AppendLine($"  unifiedOutput: {advancedRoutingOptions.unifiedOutputEnabled}");
+            builder.AppendLine($"  unityRecorderCapture: {advancedRoutingOptions.unityRecorderCaptureEnabled}");
+        }
+
+        builder.AppendLine("DeviceCatalog");
+        builder.AppendLine(BuildDeviceCatalogLog(includeAllPortAudioInputs: true, includeAllPortAudioOutputs: true));
+
+        if (!string.IsNullOrWhiteSpace(lastRoutingDiagnostics))
+        {
+            builder.AppendLine("LastRoutingDiagnostics");
+            builder.AppendLine(lastRoutingDiagnostics);
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastRoutingAttemptSummary))
+        {
+            builder.AppendLine("LastRoutingAttempts");
+            builder.AppendLine(lastRoutingAttemptSummary);
+        }
+
+        SharedInputRouteInfo route = GetActiveSharedInputRouteInfo();
+        if (route != null)
+        {
+            builder.AppendLine("SharedInputRoute");
+            builder.AppendLine($"  inputDeviceIndex: {route.InputDeviceIndex}");
+            builder.AppendLine($"  inputDevice: {route.InputDeviceDisplayName}");
+            builder.AppendLine($"  hostApi: {route.HostApiName}");
+            builder.AppendLine($"  sampleRate: {route.SampleRate}");
+            builder.AppendLine($"  inputChannels: {route.InputChannelCount}");
+            builder.AppendLine($"  maxBlockFrames: {route.MaxBlockFrames}");
+            builder.AppendLine($"  inputChannelMode: {route.InputChannelMode}");
+        }
+
+        return builder.ToString().TrimEnd();
+    }
     public string LastExternalPedalRefreshSummary => ToneLabPedalRegistry.LastExternalRefreshSummary;
     public bool IsAdvancedRoutingBetaEnabled => advancedRoutingOptions != null && advancedRoutingOptions.betaEnabled;
     public bool IsSharedInputRouteActive => sharedInputRouteActive && usingPortAudioBackend;
@@ -772,6 +874,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         public string preferredOutputDeviceName = string.Empty;
         public int sampleRate;
         public int bufferSize = PreferredDspBufferSize;
+        public bool splitInputOutputEnabled;
         public bool unifiedOutputEnabled;
         public bool unityRecorderCaptureEnabled;
     }
@@ -826,6 +929,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         monitorSource.ignoreListenerPause = true;
         monitorSource.clip = CreateMonitorDriverClip(PreferredSampleRate);
         portAudioStream = new ToneLabPortAudio.DuplexStream(ProcessPortAudioBlock);
+        portAudioSplitStream = new ToneLabPortAudio.SplitStream(ProcessPortAudioBlock);
         EnsureSettingsLoaded();
         RefreshInputDevices();
     }
@@ -1260,6 +1364,97 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             .ToList();
     }
 
+    private List<PortAudioRoutePlan> BuildAdvancedSplitRoutePlans()
+    {
+        string backendMode = SharedAudioBackendModes.Normalize(advancedRoutingOptions.backendMode);
+        bool allowFallback = advancedRoutingOptions.allowFallback;
+        int forcedUnifiedSampleRate = (advancedRoutingOptions.unifiedOutputEnabled || advancedRoutingOptions.unityRecorderCaptureEnabled) ? GetUnityOutputSampleRate() : 0;
+
+        List<ToneLabPortAudio.DeviceDescriptor> inputCandidates = portAudioAllDevices
+            .Where(device => device != null && device.MaxInputChannels > 0 && MatchesBackendMode(device.HostApiName, backendMode))
+            .OrderBy(device => GetAdvancedHostPriority(device.HostApiName))
+            .ThenBy(device => device.Index)
+            .ToList();
+        List<ToneLabPortAudio.DeviceDescriptor> outputCandidates = portAudioAllDevices
+            .Where(device => device != null && device.MaxOutputChannels > 0 && MatchesBackendMode(device.HostApiName, backendMode))
+            .OrderBy(device => GetAdvancedHostPriority(device.HostApiName))
+            .ThenBy(device => device.Index)
+            .ToList();
+
+        ToneLabPortAudio.DeviceDescriptor selectedInput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredInputDeviceName, inputCandidates, input: true)
+            ?? ResolvePortAudioDevice(settings.input_device_name, inputCandidates.ToArray());
+        ToneLabPortAudio.DeviceDescriptor selectedOutput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredOutputDeviceName, outputCandidates, input: false)
+            ?? ResolvePortAudioDevice(settings.output_device_name, outputCandidates.ToArray());
+
+        bool selectedInputExplicit = !IsAutomaticDeviceChoice(advancedRoutingOptions.preferredInputDeviceName) && selectedInput != null;
+        bool selectedOutputExplicit = !IsAutomaticDeviceChoice(advancedRoutingOptions.preferredOutputDeviceName) && selectedOutput != null;
+        List<(ToneLabPortAudio.DeviceDescriptor input, ToneLabPortAudio.DeviceDescriptor output, int rank)> rankedPairs = new List<(ToneLabPortAudio.DeviceDescriptor, ToneLabPortAudio.DeviceDescriptor, int)>();
+        for (int i = 0; i < inputCandidates.Count; i++)
+        {
+            ToneLabPortAudio.DeviceDescriptor inputDevice = inputCandidates[i];
+            for (int j = 0; j < outputCandidates.Count; j++)
+            {
+                ToneLabPortAudio.DeviceDescriptor outputDevice = outputCandidates[j];
+                if (inputDevice.Index == outputDevice.Index)
+                    continue;
+
+                int rank = 0;
+                if (selectedInput != null && inputDevice.Index != selectedInput.Index)
+                    rank += 10;
+                if (selectedOutput != null && outputDevice.Index != selectedOutput.Index)
+                    rank += 10;
+                rank += GetAdvancedHostPriority(inputDevice.HostApiName) * 100;
+                rank += GetAdvancedHostPriority(outputDevice.HostApiName) * 100;
+                rankedPairs.Add((inputDevice, outputDevice, rank));
+            }
+        }
+
+        if (selectedInputExplicit)
+            rankedPairs = rankedPairs.Where(pair => pair.input.Index == selectedInput.Index).ToList();
+        if (selectedOutputExplicit)
+            rankedPairs = rankedPairs.Where(pair => pair.output.Index == selectedOutput.Index).ToList();
+
+        if (rankedPairs.Count == 0)
+            return new List<PortAudioRoutePlan>();
+
+        rankedPairs = rankedPairs
+            .OrderBy(pair => pair.rank)
+            .ThenBy(pair => pair.input.Index)
+            .ThenBy(pair => pair.output.Index)
+            .ToList();
+
+        if (!allowFallback)
+            rankedPairs = rankedPairs.Take(1).ToList();
+
+        List<PortAudioRoutePlan> plans = new List<PortAudioRoutePlan>();
+        for (int i = 0; i < rankedPairs.Count; i++)
+        {
+            (ToneLabPortAudio.DeviceDescriptor inputDevice, ToneLabPortAudio.DeviceDescriptor outputDevice, int rank) = rankedPairs[i];
+            List<int> sampleRates = BuildSampleRateCandidates(advancedRoutingOptions.sampleRate, inputDevice, outputDevice, allowFallback, forcedUnifiedSampleRate);
+            List<int> bufferSizes = BuildBufferSizeCandidates(advancedRoutingOptions.bufferSize, allowFallback, inputDevice, outputDevice);
+            for (int sampleIndex = 0; sampleIndex < sampleRates.Count; sampleIndex++)
+            {
+                for (int bufferIndex = 0; bufferIndex < bufferSizes.Count; bufferIndex++)
+                {
+                    plans.Add(new PortAudioRoutePlan
+                    {
+                        InputDevice = inputDevice,
+                        OutputDevice = outputDevice,
+                        SampleRate = sampleRates[sampleIndex],
+                        BufferSize = bufferSizes[bufferIndex],
+                        Rank = rank + (sampleIndex * 10) + bufferIndex
+                    });
+                }
+            }
+        }
+
+        return plans
+            .OrderBy(plan => plan.Rank)
+            .ThenBy(plan => plan.InputDevice.Index)
+            .ThenBy(plan => plan.OutputDevice.Index)
+            .ToList();
+    }
+
     private List<PortAudioRoutePlan> BuildLegacyRoutePlans()
     {
         List<ToneLabPortAudio.DeviceDescriptor> inputCandidates = portAudioInputDevices?
@@ -1322,6 +1517,45 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             .ThenBy(plan => plan.InputDevice.Index)
             .ThenBy(plan => plan.OutputDevice.Index)
             .ToList();
+    }
+
+    private static string FormatRoutePlanPreview(IReadOnlyList<PortAudioRoutePlan> plans, int maxPlans = 8)
+    {
+        if (plans == null || plans.Count == 0)
+            return "(none)";
+
+        int count = Mathf.Min(Mathf.Max(1, maxPlans), plans.Count);
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < count; i++)
+        {
+            PortAudioRoutePlan plan = plans[i];
+            if (plan == null)
+                continue;
+
+            if (builder.Length > 0)
+                builder.Append(" || ");
+            builder.Append("#");
+            builder.Append(i + 1);
+            builder.Append(": ");
+            builder.Append(BuildAdvancedDeviceChoiceLabel(plan.InputDevice));
+            builder.Append(" -> ");
+            builder.Append(BuildAdvancedDeviceChoiceLabel(plan.OutputDevice));
+            builder.Append(" @ ");
+            builder.Append(plan.SampleRate);
+            builder.Append(" Hz / ");
+            builder.Append(FormatActiveBufferLabel(plan.BufferSize));
+            builder.Append(" rank=");
+            builder.Append(plan.Rank);
+        }
+
+        if (plans.Count > count)
+        {
+            builder.Append(" || +");
+            builder.Append(plans.Count - count);
+            builder.Append(" more");
+        }
+
+        return builder.ToString();
     }
 
     private void Update()
@@ -1417,6 +1651,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         StopMonitoringInternal(restoreAudioConfiguration: true, notifySharedInputStopped: false);
         FlushSettingsToDisk();
         portAudioStream?.Dispose();
+        portAudioSplitStream?.Dispose();
         ToneLabPortAudio.Shutdown();
     }
 
@@ -1949,7 +2184,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         RefreshInputDevices();
         lastRoutingDiagnostics = string.Empty;
         lastRoutingAttemptSummary = string.Empty;
-        LogAudioRouteEvent("Start requested", BuildDeviceCatalogLog());
+        LogAudioRouteEvent("Start requested", BuildDeviceCatalogLog(includeAllPortAudioInputs: true, includeAllPortAudioOutputs: true));
 
         if (advancedRoutingOptions != null && advancedRoutingOptions.betaEnabled)
             return TryStartMonitoringAdvancedPath();
@@ -1971,13 +2206,15 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private void StopMonitoringInternal(bool restoreAudioConfiguration, bool notifySharedInputStopped = true)
     {
         if (monitoring || awaitingMicrophoneStart || usingPortAudioBackend)
-            LogAudioRouteEvent("Stopping monitoring", $"restoreAudioConfiguration={restoreAudioConfiguration}");
+            LogAudioRouteEvent("Stopping monitoring", $"restoreAudioConfiguration={restoreAudioConfiguration}\n{GetPortAudioDiagnosticSummary()}");
 
         usingPortAudioBackend = false;
         StopUnityOutputCapture();
         StopUnityRecorderCapture();
         if (portAudioStream != null && portAudioStream.IsRunning)
             portAudioStream.Stop();
+        if (portAudioSplitStream != null && portAudioSplitStream.IsRunning)
+            portAudioSplitStream.Stop();
         StopSharedInputRoute(notifySharedInputStopped);
         StopUnifiedSongSourceTaps();
 
@@ -2038,6 +2275,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             {
                 StopMonitoringInternal(restoreAudioConfiguration: false, notifySharedInputStopped: false);
                 StringBuilder attempts = new StringBuilder();
+                attempts.AppendLine($"Candidate preview: {FormatRoutePlanPreview(plans)}");
                 for (int i = 0; i < plans.Count; i++)
                 {
                     PortAudioRoutePlan plan = plans[i];
@@ -2090,6 +2328,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         diagnostics.AppendLine($"Input channel mode: {SharedAudioInputChannelModes.Normalize(advancedRoutingOptions.inputChannelMode)}");
         diagnostics.AppendLine($"Backend mode: {backendMode}");
         diagnostics.AppendLine($"Allow fallback: {allowFallback}");
+        diagnostics.AppendLine($"Split input/output: {advancedRoutingOptions.splitInputOutputEnabled}");
         diagnostics.AppendLine($"Unified output beta: {advancedRoutingOptions.unifiedOutputEnabled}");
         diagnostics.AppendLine($"Unity Recorder guitar capture: {advancedRoutingOptions.unityRecorderCaptureEnabled}");
         if (advancedRoutingOptions.unifiedOutputEnabled || advancedRoutingOptions.unityRecorderCaptureEnabled)
@@ -2099,9 +2338,12 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         diagnostics.AppendLine($"Requested sample rate: {SharedAudioSampleRateOptions.ToLabel(advancedRoutingOptions.sampleRate)}");
         diagnostics.AppendLine($"Requested buffer: {ResolveMonitoringBufferSize(advancedRoutingOptions.bufferSize)}");
 
-        List<PortAudioRoutePlan> plans = BuildAdvancedRoutePlans();
+        List<PortAudioRoutePlan> plans = advancedRoutingOptions.splitInputOutputEnabled
+            ? BuildAdvancedSplitRoutePlans()
+            : BuildAdvancedRoutePlans();
         diagnostics.AppendLine($"PortAudio devices: {portAudioAllDevices.Length}");
         diagnostics.AppendLine($"Candidate route plans: {plans.Count}");
+        diagnostics.AppendLine($"Candidate preview: {FormatRoutePlanPreview(plans)}");
 
         if (plans.Count > 0)
         {
@@ -2112,15 +2354,29 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 attempts.AppendLine(
                     $"Attempt {i + 1}: {BuildAdvancedDeviceChoiceLabel(plan.InputDevice)} -> {BuildAdvancedDeviceChoiceLabel(plan.OutputDevice)} @ {plan.SampleRate} Hz / {plan.BufferSize}");
 
-                if (TryStartPortAudioRoute(
-                    plan.InputDevice,
-                    plan.OutputDevice,
-                    plan.SampleRate,
-                    plan.BufferSize,
-                    advancedRoutingOptions.unifiedOutputEnabled,
-                    advancedRoutingOptions.unityRecorderCaptureEnabled,
-                    out string error,
-                    out string captureNotice))
+                string error;
+                string captureNotice;
+                bool started = advancedRoutingOptions.splitInputOutputEnabled
+                    ? TryStartPortAudioSplitRoute(
+                        plan.InputDevice,
+                        plan.OutputDevice,
+                        plan.SampleRate,
+                        plan.BufferSize,
+                        advancedRoutingOptions.unifiedOutputEnabled,
+                        advancedRoutingOptions.unityRecorderCaptureEnabled,
+                        out error,
+                        out captureNotice)
+                    : TryStartPortAudioRoute(
+                        plan.InputDevice,
+                        plan.OutputDevice,
+                        plan.SampleRate,
+                        plan.BufferSize,
+                        advancedRoutingOptions.unifiedOutputEnabled,
+                        advancedRoutingOptions.unityRecorderCaptureEnabled,
+                        out error,
+                        out captureNotice);
+
+                if (started)
                 {
                     if (!string.IsNullOrWhiteSpace(captureNotice))
                         attempts.AppendLine($"  Note: {captureNotice}");
@@ -2156,8 +2412,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (plans.Count == 0)
         {
             statusMessage = backendMode == SharedAudioBackendModes.Auto
-                ? "Advanced audio beta found no valid PortAudio duplex route."
-                : $"Advanced audio beta found no valid {backendMode} duplex route.";
+                ? $"Advanced audio beta found no valid PortAudio {(advancedRoutingOptions.splitInputOutputEnabled ? "split" : "duplex")} route."
+                : $"Advanced audio beta found no valid {backendMode} {(advancedRoutingOptions.splitInputOutputEnabled ? "split" : "duplex")} route.";
         }
 
         lastRoutingDiagnostics = diagnostics.ToString().TrimEnd();
@@ -2222,8 +2478,18 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (!sharedInputRouteActive)
             return;
 
-        Debug.LogWarning("[UnityToneLabRuntime] Shared detector input stopped accepting Tone Lab audio; restoring independent detector input.");
+        Debug.LogWarning(
+            "[UnityToneLabRuntime] Shared detector input stopped accepting Tone Lab audio; restoring independent detector input. " +
+            $"submits={Volatile.Read(ref sharedDetectorSubmitCount)}, rejects={Volatile.Read(ref sharedDetectorRejectedCount)}, activeRoute={FormatSharedInputRoute(activeSharedInputRoute)}, {GetPortAudioDiagnosticSummary()}");
         StopSharedInputRoute();
+    }
+
+    private static string FormatSharedInputRoute(SharedInputRouteInfo route)
+    {
+        if (route == null)
+            return "(none)";
+
+        return $"deviceIndex={route.InputDeviceIndex}, device={route.InputDeviceDisplayName}, host={route.HostApiName}, sampleRate={route.SampleRate}, channels={route.InputChannelCount}, maxBlockFrames={route.MaxBlockFrames}, inputMode={route.InputChannelMode}";
     }
 
     private void DeferSharedInputRestoreAfterFailedPortAudioStart()
@@ -2384,7 +2650,134 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             statusMessage = $"{statusMessage}  \u2022  Unity Recorder guitar capture";
         LogAudioRouteEvent(
             "PortAudio route opened",
-            $"route={routeDescription}, sampleRate={sampleRate}, framesPerBuffer={framesPerBuffer}, inputLatency={inputDevice.DefaultLowInputLatency:0.####}, outputLatency={outputDevice.DefaultLowOutputLatency:0.####}, unityOutputCapture={enableUnityOutputCapture}, recorderCapture={enableUnityRecorderCapture}");
+            $"route={routeDescription}, sampleRate={sampleRate}, framesPerBuffer={framesPerBuffer}, inputLatency={inputDevice.DefaultLowInputLatency:0.####}, outputLatency={outputDevice.DefaultLowOutputLatency:0.####}, unityOutputCapture={enableUnityOutputCapture}, recorderCapture={enableUnityRecorderCapture}, sharedInputStarted={sharedInputStarted}\n{GetPortAudioDiagnosticSummary()}");
+        sharedInputRestoreDeferredAfterRouteFailure = false;
+        return true;
+    }
+
+    private bool TryStartPortAudioSplitRoute(
+        ToneLabPortAudio.DeviceDescriptor inputDevice,
+        ToneLabPortAudio.DeviceDescriptor outputDevice,
+        int sampleRate,
+        int monitoringBufferSize,
+        bool enableUnityOutputCapture,
+        bool enableUnityRecorderCapture,
+        out string error,
+        out string captureNotice)
+    {
+        error = string.Empty;
+        captureNotice = string.Empty;
+        if (inputDevice == null || outputDevice == null)
+        {
+            error = "No PortAudio split route available.";
+            statusMessage = error;
+            return false;
+        }
+
+        if (enableUnityOutputCapture || enableUnityRecorderCapture)
+        {
+            int unityOutputSampleRate = GetUnityOutputSampleRate();
+            if (sampleRate != unityOutputSampleRate)
+                sampleRate = unityOutputSampleRate;
+        }
+
+        int inputChannels = ResolveRequestedChannelCount(inputDevice, input: true);
+        int outputChannels = ResolveRequestedChannelCount(outputDevice, input: false);
+        bool driverManagedBuffer = monitoringBufferSize <= 0;
+        uint framesPerBuffer = driverManagedBuffer ? 0u : (uint)ResolveMonitoringBufferSize(monitoringBufferSize);
+        int callbackFrameCapacity = ResolvePortAudioCallbackFrameCapacity(framesPerBuffer);
+        string routeDescription =
+            $"{BuildAdvancedDeviceChoiceLabel(inputDevice)} [{inputChannels}ch] -> " +
+            $"{BuildAdvancedDeviceChoiceLabel(outputDevice)} [{outputChannels}ch] (split)";
+
+        SharedInputRouteInfo sharedRoute = new SharedInputRouteInfo
+        {
+            InputDeviceIndex = inputDevice.Index,
+            InputDeviceDisplayName = BuildAdvancedDeviceChoiceLabel(inputDevice),
+            HostApiName = inputDevice.HostApiName,
+            SampleRate = sampleRate,
+            InputChannelCount = inputChannels,
+            MaxBlockFrames = callbackFrameCapacity,
+            InputChannelMode = SharedAudioInputChannelModes.Normalize(advancedRoutingOptions?.inputChannelMode)
+        };
+
+        bool sharedInputStarted = TryStartSharedInputRoute(sharedRoute);
+        activeSampleRate = sampleRate;
+        activeDspBufferSize = driverManagedBuffer ? 0 : ResolveMonitoringBufferSize(monitoringBufferSize);
+        if (!driverManagedBuffer)
+            GetPortAudioProcessBuffer(callbackFrameCapacity * (outputChannels > 1 ? 2 : 1));
+        EnsureUnityOutputMixBufferCapacity(callbackFrameCapacity * Mathf.Max(inputChannels, outputChannels));
+
+        string portAudioStartError = string.Empty;
+        bool started = portAudioSplitStream != null && portAudioSplitStream.Start(
+            inputDevice.Index,
+            outputDevice.Index,
+            inputChannels,
+            outputChannels,
+            sampleRate,
+            framesPerBuffer,
+            Math.Max(0.0, inputDevice.DefaultLowInputLatency),
+            Math.Max(0.0, outputDevice.DefaultLowOutputLatency),
+            routeDescription,
+            out portAudioStartError);
+
+        if (!started)
+        {
+            if (sharedInputStarted)
+                DeferSharedInputRestoreAfterFailedPortAudioStart();
+            error = portAudioStartError;
+            statusMessage = portAudioStartError;
+            return false;
+        }
+
+        monitoring = true;
+        usingPortAudioBackend = true;
+        awaitingMicrophoneStart = false;
+        sharedInputRouteActive = sharedInputStarted;
+        activeSharedInputRoute = sharedRoute;
+        activeHostApiName = $"{GetNormalizedHostApiLabel(inputDevice.HostApiName)} -> {GetNormalizedHostApiLabel(outputDevice.HostApiName)}";
+        pendingDeviceName = inputDevice.DisplayName;
+        inputRouteLabel = BuildAdvancedDeviceChoiceLabel(inputDevice);
+        outputRouteLabel = BuildAdvancedDeviceChoiceLabel(outputDevice);
+        preparedCompiledPedalSampleRate = -1;
+        preparedCompiledPedalChannelCount = -1;
+        SetUnityRecorderCaptureActive(enableUnityRecorderCapture, outputChannels > 1 ? 2 : 1, sampleRate);
+        ResetLiveAudioDiagnosticsBurst();
+
+        if (enableUnityOutputCapture)
+        {
+            bool usingDirectSourceTaps = TryStartUnifiedSongSourceTaps(out captureNotice);
+            if (!usingDirectSourceTaps)
+            {
+                if (!TryStartUnityOutputCapture(out string captureError))
+                {
+                    if (!advancedRoutingOptions.allowFallback)
+                    {
+                        error = captureError;
+                        statusMessage = captureError;
+                        if (sharedInputStarted)
+                            DeferSharedInputRestoreAfterFailedPortAudioStart();
+                        StopMonitoringInternal(restoreAudioConfiguration: false, notifySharedInputStopped: false);
+                        return false;
+                    }
+
+                    captureNotice = captureError;
+                }
+                else
+                {
+                    captureNotice = "Unified output capture active.";
+                }
+            }
+        }
+
+        statusMessage = $"Live  {inputRouteLabel}  \u2022  {sampleRate} Hz  \u2022  Buffer {FormatActiveBufferLabel(activeDspBufferSize)}  \u2022  PortAudio split  {activeHostApiName}";
+        if (!string.IsNullOrWhiteSpace(captureNotice))
+            statusMessage = $"{statusMessage}  \u2022  {captureNotice}";
+        if (enableUnityRecorderCapture)
+            statusMessage = $"{statusMessage}  \u2022  Unity Recorder guitar capture";
+        LogAudioRouteEvent(
+            "PortAudio split route opened",
+            $"route={routeDescription}, sampleRate={sampleRate}, framesPerBuffer={framesPerBuffer}, inputLatency={inputDevice.DefaultLowInputLatency:0.####}, outputLatency={outputDevice.DefaultLowOutputLatency:0.####}, unityOutputCapture={enableUnityOutputCapture}, recorderCapture={enableUnityRecorderCapture}, sharedInputStarted={sharedInputStarted}\n{GetPortAudioDiagnosticSummary()}");
         sharedInputRestoreDeferredAfterRouteFailure = false;
         return true;
     }
@@ -3397,6 +3790,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     private void ProcessPortAudioBlock(float[] input, int inputChannels, int outputChannels, int frameCount, float[] output)
     {
+        Interlocked.Increment(ref portAudioProcessBlockCount);
+        Interlocked.Add(ref portAudioProcessFrameCount, Mathf.Max(0, frameCount));
         if (output != null)
             Array.Clear(output, 0, output.Length);
 
@@ -3428,12 +3823,18 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             {
                 if (!sharedInputBlockReceived(input, inputChannels, frameCount, sampleRate, inputChannelMode))
                 {
+                    Interlocked.Increment(ref sharedDetectorRejectedCount);
                     sharedInputSubmitDisabled = true;
                     sharedInputSubmitFailurePending = true;
+                }
+                else
+                {
+                    Interlocked.Increment(ref sharedDetectorSubmitCount);
                 }
             }
             catch
             {
+                Interlocked.Increment(ref sharedDetectorRejectedCount);
                 sharedInputSubmitDisabled = true;
                 sharedInputSubmitFailurePending = true;
             }
@@ -3459,6 +3860,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         latestProcessedPeak = 0f;
         latestProcessedRms = 0f;
         latestProcessedDc = 0f;
+        Volatile.Write(ref portAudioProcessBlockCount, 0L);
+        Volatile.Write(ref portAudioProcessFrameCount, 0L);
+        Volatile.Write(ref sharedDetectorSubmitCount, 0L);
+        Volatile.Write(ref sharedDetectorRejectedCount, 0L);
     }
 
     private void CaptureRawInputMetrics(float[] input, int inputChannels, int frameCount, int sampleRate, string inputChannelMode)
@@ -3518,11 +3923,29 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         string presetName = GetCurrentDiagnosticPresetName();
         string chainSummary = GetCurrentDiagnosticChainSummary();
+        string streamSummary = GetPortAudioDiagnosticSummary();
         Debug.Log(
             $"[ToneLabAudio] Live levels | rawPeak={latestRawInputPeak:0.0000}, rawRms={latestRawInputRms:0.0000}, rawDc={latestRawInputDc:0.0000} | " +
             $"processedPeak={latestProcessedPeak:0.0000}, processedRms={latestProcessedRms:0.0000}, processedDc={latestProcessedDc:0.0000} | " +
             $"sampleRate={latestAudioDiagnosticsSampleRate}, frames={latestAudioDiagnosticsFrameCount}, inputChannels={latestAudioDiagnosticsInputChannels}, outputChannels={latestAudioDiagnosticsOutputChannels}, inputMode={latestAudioDiagnosticsInputChannelMode} | " +
-            $"preset={presetName}, monitor={monitorVolumePercent:0.#}%, globalIn={(settings?.global_input_trim_db ?? 0f):0.#} dB, globalOut={(settings?.global_output_gain_db ?? 0f):0.#} dB, chain={chainSummary}");
+            $"processBlocks={Volatile.Read(ref portAudioProcessBlockCount)}, processFrames={Volatile.Read(ref portAudioProcessFrameCount)}, sharedDetectorActive={sharedInputRouteActive}, sharedDetectorSubmits={Volatile.Read(ref sharedDetectorSubmitCount)}, sharedDetectorRejects={Volatile.Read(ref sharedDetectorRejectedCount)} | " +
+            $"preset={presetName}, monitor={monitorVolumePercent:0.#}%, globalIn={(settings?.global_input_trim_db ?? 0f):0.#} dB, globalOut={(settings?.global_output_gain_db ?? 0f):0.#} dB, chain={chainSummary} | {streamSummary}");
+    }
+
+    private string GetPortAudioDiagnosticSummary()
+    {
+        if (!usingPortAudioBackend)
+            return "stream=not-portaudio";
+
+        if (portAudioSplitStream != null && portAudioSplitStream.IsRunning)
+            return portAudioSplitStream.GetDiagnosticSummary();
+        if (portAudioStream != null && portAudioStream.IsRunning)
+            return portAudioStream.GetDiagnosticSummary();
+
+        bool split = advancedRoutingOptions != null && advancedRoutingOptions.splitInputOutputEnabled;
+        if (split && portAudioSplitStream != null)
+            return portAudioSplitStream.GetDiagnosticSummary();
+        return portAudioStream != null ? portAudioStream.GetDiagnosticSummary() : "portAudioStream=missing";
     }
 
     private string GetCurrentDiagnosticPresetName()
@@ -6237,6 +6660,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 continue;
 
             compiledSlot.processor?.Process(data, channels, sampleRate);
+            ScrubIntermediateAudioBlock(data);
         }
 
         float outputGain = ToneLabPedalUtility.DbToLinear(outputGainDb);
@@ -6424,6 +6848,27 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return Mathf.Clamp(sample, -1f, 1f);
     }
 
+    private static void ScrubIntermediateAudioBlock(float[] data)
+    {
+        if (data == null)
+            return;
+
+        for (int i = 0; i < data.Length; i++)
+        {
+            float sample = data[i];
+            if (float.IsNaN(sample) || float.IsInfinity(sample))
+            {
+                data[i] = 0f;
+                continue;
+            }
+
+            if (sample > MaxIntermediateAudioMagnitude)
+                data[i] = MaxIntermediateAudioMagnitude;
+            else if (sample < -MaxIntermediateAudioMagnitude)
+                data[i] = -MaxIntermediateAudioMagnitude;
+        }
+    }
+
     private void FillOutputBufferFromMicrophoneRing(float[] data, int channels)
     {
         lock (microphoneBufferLock)
@@ -6444,9 +6889,19 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         }
     }
 
-    private string BuildDeviceCatalogLog(bool includeAllPortAudioInputs = false)
+    private string BuildDeviceCatalogLog(bool includeAllPortAudioInputs = false, bool includeAllPortAudioOutputs = false)
     {
         StringBuilder builder = new StringBuilder();
+        int dspBufferLength;
+        int dspBufferCount;
+        AudioSettings.GetDSPBufferSize(out dspBufferLength, out dspBufferCount);
+        builder.Append("unityAudioSampleRate=");
+        builder.Append(AudioSettings.outputSampleRate);
+        builder.Append(", unityDspBuffer=");
+        builder.Append(dspBufferLength);
+        builder.Append("x");
+        builder.Append(dspBufferCount);
+        builder.Append("\n");
         builder.Append("inputChoices=");
         builder.Append(FormatDeviceList(inputDevices));
         builder.Append("\noutputChoices=");
@@ -6457,10 +6912,19 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         builder.Append(portAudioInputDevices != null ? portAudioInputDevices.Length : 0);
         builder.Append(", preferredOutputs=");
         builder.Append(portAudioOutputDevices != null ? portAudioOutputDevices.Length : 0);
+        builder.Append("\npreferredPortAudioInputs=");
+        builder.Append(FormatPortAudioDeviceList(portAudioInputDevices, input: true));
+        builder.Append("\npreferredPortAudioOutputs=");
+        builder.Append(FormatPortAudioDeviceList(portAudioOutputDevices, input: false));
         if (includeAllPortAudioInputs)
         {
             builder.Append("\nallPortAudioInputs=");
             builder.Append(FormatPortAudioDeviceList(portAudioAllDevices, input: true));
+        }
+        if (includeAllPortAudioOutputs)
+        {
+            builder.Append("\nallPortAudioOutputs=");
+            builder.Append(FormatPortAudioDeviceList(portAudioAllDevices, input: false));
         }
 
         return builder.ToString();
@@ -6485,7 +6949,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             .Select(device =>
             {
                 int channels = input ? device.MaxInputChannels : device.MaxOutputChannels;
-                return $"{device.Index}: {device.Name} [{GetNormalizedHostApiLabel(device.HostApiName)}] ({channels}ch)";
+                double latency = input ? device.DefaultLowInputLatency : device.DefaultLowOutputLatency;
+                return $"{device.Index}: {device.Name} [{GetNormalizedHostApiLabel(device.HostApiName)}] ({channels}ch, defaultSr={device.DefaultSampleRate:0.#}, lowLatency={latency:0.####})";
             })
             .ToArray();
         return labels.Length == 0 ? "(none)" : string.Join("; ", labels);
@@ -6543,6 +7008,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             builder.Append(SharedAudioSampleRateOptions.ToLabel(advancedRoutingOptions.sampleRate));
             builder.Append(" | advancedBuffer=");
             builder.Append(FormatActiveBufferLabel(advancedRoutingOptions.bufferSize));
+            builder.Append(" | splitInputOutput=");
+            builder.Append(advancedRoutingOptions.splitInputOutputEnabled);
             builder.Append(" | unifiedOutput=");
             builder.Append(advancedRoutingOptions.unifiedOutputEnabled);
             builder.Append(" | recorderCapture=");

@@ -76,6 +76,7 @@ public sealed class NativeNotesDetectorBridge
     private bool presetStoreLoaded;
     private string lastStatus = "Native detector idle.";
     private string lastError = string.Empty;
+    private bool defaultDebugLogPathConfigured;
     private NativeDetectorDeviceListPayload cachedDevices = new NativeDetectorDeviceListPayload();
     private NativeDetectorRuntimeInfo cachedRuntimeInfo = new NativeDetectorRuntimeInfo();
     private NativeDetectorPresetStore presetStore = new NativeDetectorPresetStore();
@@ -199,6 +200,7 @@ public sealed class NativeNotesDetectorBridge
             initialized = result != 0;
             if (initialized)
             {
+                ConfigureDefaultDebugLogPath();
                 ApplyWorkingSettingsToNative();
                 ApplyPreferredResamplerModeToNative();
             }
@@ -676,6 +678,7 @@ public sealed class NativeNotesDetectorBridge
         }
 
         initialized = false;
+        defaultDebugLogPathConfigured = false;
     }
 
     public List<string> BuildPresetLabels()
@@ -756,6 +759,31 @@ public sealed class NativeNotesDetectorBridge
             lastError = $"Native detector debug log path set failed: {ex.Message}";
             lastStatus = lastError;
             return false;
+        }
+    }
+
+    private void ConfigureDefaultDebugLogPath()
+    {
+        if (!initialized || defaultDebugLogPathConfigured)
+            return;
+
+        defaultDebugLogPathConfigured = true;
+        try
+        {
+            string directory = StringTheoryDiagnostics.DiagnosticsDirectory;
+            Directory.CreateDirectory(directory);
+            string path = Path.Combine(directory, "native_detector.log");
+            File.AppendAllText(path, $"[{DateTime.Now:HH:mm:ss.fff}] [managed] Native detector debug log attaching | version={StringTheoryBuildInfo.DiagnosticVersionLabel} | channel={StringTheoryBuildInfo.Channel}.{Environment.NewLine}", Encoding.UTF8);
+            if (NativeDetector_SetDebugLogPath(path) != 0)
+            {
+                File.AppendAllText(path, $"[{DateTime.Now:HH:mm:ss.fff}] [managed] Native detector debug log enabled | version={StringTheoryBuildInfo.DiagnosticVersionLabel} | channel={StringTheoryBuildInfo.Channel}.{Environment.NewLine}", Encoding.UTF8);
+                Debug.Log($"[NativeNotesDetector] Native debug log enabled: {StringTheoryDiagnostics.RedactSensitiveText(path)}");
+            }
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector default debug log setup failed: {ex.Message}";
+            Debug.LogWarning($"[NativeNotesDetector] {lastError}");
         }
     }
 

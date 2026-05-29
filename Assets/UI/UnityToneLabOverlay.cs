@@ -484,6 +484,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private DropdownField advancedBufferDropdown;
     private Button advancedBetaToggleButton;
     private Button advancedFallbackToggleButton;
+    private Button advancedSplitToggleButton;
     private Button advancedUnifiedToggleButton;
     private Button advancedRecorderCaptureToggleButton;
     private Button advancedAudioApplyButton;
@@ -1381,6 +1382,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         advancedBetaToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedBetaDraft);
         advancedFallbackToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedFallbackDraft);
+        advancedSplitToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedSplitDraft);
         advancedUnifiedToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedUnifiedDraft);
         advancedRecorderCaptureToggleButton = CreateButton("OFF", "tone-lab-toggle", ToggleAdvancedRecorderCaptureDraft);
 
@@ -1474,6 +1476,9 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedSampleRateHost.Add(advancedSampleRateDropdown);
         advancedAudioHost.Add(CreateSettingRow("Buffer", out VisualElement advancedBufferHost));
         advancedBufferHost.Add(advancedBufferDropdown);
+        advancedAudioHost.Add(CreateSettingRow("Split Input/Output", out VisualElement advancedSplitHost));
+        advancedSplitHost.Add(advancedSplitToggleButton);
+        advancedAudioHost.Add(CreateSettingHint("Use only when guitar input and headphones are on different audio devices, such as interface input plus USB headphones. Keep Backend on Auto for different driver types; turn Allow Fallback off if you want to force this route."));
         advancedAudioHost.Add(CreateSettingRow("Allow Fallback", out VisualElement advancedFallbackHost));
         advancedFallbackHost.Add(advancedFallbackToggleButton);
         advancedAudioHost.Add(CreateSettingRow("Unified Output", out VisualElement advancedUnifiedHost));
@@ -2409,6 +2414,12 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         RefreshAdvancedAudioToggleStates();
     }
 
+    private void ToggleAdvancedSplitDraft()
+    {
+        advancedAudioDraft.splitInputOutputEnabled = !advancedAudioDraft.splitInputOutputEnabled;
+        RefreshAdvancedAudioToggleStates();
+    }
+
     private void ToggleAdvancedUnifiedDraft()
     {
         advancedAudioDraft.unifiedOutputEnabled = !advancedAudioDraft.unifiedOutputEnabled;
@@ -2442,6 +2453,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     {
         ApplyToggleButtonState(advancedBetaToggleButton, advancedAudioDraft.betaEnabled);
         ApplyToggleButtonState(advancedFallbackToggleButton, advancedAudioDraft.allowFallback);
+        ApplyToggleButtonState(advancedSplitToggleButton, advancedAudioDraft.splitInputOutputEnabled);
         ApplyToggleButtonState(advancedUnifiedToggleButton, advancedAudioDraft.unifiedOutputEnabled);
         ApplyToggleButtonState(advancedRecorderCaptureToggleButton, advancedAudioDraft.unityRecorderCaptureEnabled);
         advancedInputChannelDropdown?.SetEnabled(true);
@@ -2451,6 +2463,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedSampleRateDropdown?.SetEnabled(advancedAudioDraft.betaEnabled && !advancedAudioDraft.unifiedOutputEnabled && !advancedAudioDraft.unityRecorderCaptureEnabled);
         advancedBufferDropdown?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedFallbackToggleButton?.SetEnabled(advancedAudioDraft.betaEnabled);
+        advancedSplitToggleButton?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedUnifiedToggleButton?.SetEnabled(advancedAudioDraft.betaEnabled);
         advancedRecorderCaptureToggleButton?.SetEnabled(true);
     }
@@ -2484,6 +2497,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
         string inputChannelMode = advancedAudioDraft != null ? SharedAudioInputChannelModes.Normalize(advancedAudioDraft.inputChannelMode) : SharedAudioInputChannelModes.Input1;
         string summary = $"{runtime.ActiveAudioBackendLabel}  \u2022  {runtime.ActiveHostApiLabel}  \u2022  In {runtime.InputRouteLabel}  \u2022  Out {runtime.OutputRouteLabel}  \u2022  Channel {inputChannelMode}";
+        if (advancedAudioDraft != null && advancedAudioDraft.betaEnabled && advancedAudioDraft.splitInputOutputEnabled)
+            summary = $"{summary}\nSplit Input/Output opens separate input and output streams for different audio devices.";
         if (advancedAudioDraft != null && advancedAudioDraft.betaEnabled && advancedAudioDraft.unifiedOutputEnabled)
             summary = $"{summary}\nUnified output locks sample rate to Unity output.";
         if (advancedAudioDraft != null && advancedAudioDraft.unityRecorderCaptureEnabled)
@@ -5456,6 +5471,18 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         divider.style.marginBottom = 18f;
         divider.style.backgroundColor = new Color(1f, 1f, 1f, 0.16f);
         return divider;
+    }
+
+    private static Label CreateSettingHint(string text)
+    {
+        Label hint = new Label(text ?? string.Empty);
+        hint.style.color = new Color(0.62f, 0.67f, 0.74f, 0.92f);
+        hint.style.fontSize = 12f;
+        hint.style.whiteSpace = WhiteSpace.Normal;
+        hint.style.marginTop = -8f;
+        hint.style.marginBottom = 14f;
+        hint.style.marginLeft = 0f;
+        return hint;
     }
 
     private static Button CreateButton(string text, string classNames, Action onClick)

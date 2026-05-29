@@ -205,6 +205,7 @@ public sealed class AudioPathRegressionTests
             outputDeviceName = "  Focusrite   Output  ",
             sampleRate = 96000,
             bufferSize = 777,
+            splitInputOutputEnabled = true,
             unifiedOutputEnabled = true,
             unityRecorderCaptureEnabled = true
         });
@@ -217,6 +218,7 @@ public sealed class AudioPathRegressionTests
         Assert.AreEqual("Focusrite Output", clone.outputDeviceName);
         Assert.AreEqual(96000, clone.sampleRate);
         Assert.AreEqual(777, clone.bufferSize);
+        Assert.IsTrue(clone.splitInputOutputEnabled);
         Assert.IsTrue(clone.unifiedOutputEnabled);
         Assert.IsTrue(clone.unityRecorderCaptureEnabled);
     }
@@ -262,6 +264,7 @@ public sealed class AudioPathRegressionTests
             outputDeviceName = "No output devices found",
             sampleRate = 12345,
             bufferSize = -256,
+            splitInputOutputEnabled = true,
             unifiedOutputEnabled = true,
             unityRecorderCaptureEnabled = true
         };
@@ -276,6 +279,7 @@ public sealed class AudioPathRegressionTests
         Assert.AreEqual(string.Empty, normalized.outputDeviceName);
         Assert.AreEqual(0, normalized.sampleRate);
         Assert.AreEqual(256, normalized.bufferSize);
+        Assert.IsTrue(normalized.splitInputOutputEnabled);
         Assert.IsTrue(normalized.unifiedOutputEnabled);
         Assert.IsTrue(normalized.unityRecorderCaptureEnabled);
 
@@ -585,6 +589,96 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void AdvancedSplitRoutePlans_AllowExplicitCrossBackendPairOnlyInSplitBuilder()
+    {
+        object asioInput = Device(1, "1: Focusrite Inst", "Focusrite Inst", "ASIO", 2, 0, 48000);
+        object asioOutput = Device(2, "2: Focusrite Out", "Focusrite Out", "ASIO", 0, 2, 48000);
+        object wasapiOutput = Device(4, "4: USB Headphones", "USB Headphones", "Windows WASAPI", 0, 2, 48000);
+        Array allDevices = DeviceArray(asioOutput, asioInput, wasapiOutput);
+
+        using (RuntimeFixture fixture = RuntimeFixture.Create())
+        {
+            SetRuntimeRoutingFields(
+                fixture.Runtime,
+                allDevices,
+                SharedAudioBackendModes.Auto,
+                allowFallback: false,
+                input: "Focusrite Inst [ASIO] (#1)",
+                output: "USB Headphones [WASAPI] (#4)",
+                sampleRate: 48000,
+                bufferSize: 128,
+                splitInputOutput: true);
+
+            IList duplexPlans = (IList)InvokeRuntimeInstance(fixture.Runtime, "BuildAdvancedRoutePlans");
+            Assert.AreEqual(0, duplexPlans.Count, "The normal route builder must stay same-host only.");
+
+            IList splitPlans = (IList)InvokeRuntimeInstance(fixture.Runtime, "BuildAdvancedSplitRoutePlans");
+            Assert.Greater(splitPlans.Count, 0);
+            object firstPlan = splitPlans[0];
+            Assert.AreEqual(1, GetDeviceIndex(GetPlanDevice(firstPlan, "InputDevice")));
+            Assert.AreEqual(4, GetDeviceIndex(GetPlanDevice(firstPlan, "OutputDevice")));
+            Assert.AreEqual(48000, GetPlanInt(firstPlan, "SampleRate"));
+            Assert.AreEqual(128, GetPlanInt(firstPlan, "BufferSize"));
+        }
+    }
+
+    [Test]
+    public void AdvancedSplitRoutePlans_PreferSameBackendRouteWhenAutomatic()
+    {
+        object asioInput = Device(1, "1: Focusrite Inst", "Focusrite Inst", "ASIO", 2, 0, 48000);
+        object asioOutput = Device(2, "2: Focusrite Out", "Focusrite Out", "ASIO", 0, 2, 48000);
+        object wasapiOutput = Device(4, "4: USB Headphones", "USB Headphones", "Windows WASAPI", 0, 2, 48000);
+        Array allDevices = DeviceArray(asioOutput, asioInput, wasapiOutput);
+
+        using (RuntimeFixture fixture = RuntimeFixture.Create())
+        {
+            SetRuntimeRoutingFields(
+                fixture.Runtime,
+                allDevices,
+                SharedAudioBackendModes.Auto,
+                allowFallback: false,
+                input: "Automatic",
+                output: "Automatic",
+                sampleRate: 48000,
+                bufferSize: 128,
+                splitInputOutput: true);
+
+            IList splitPlans = (IList)InvokeRuntimeInstance(fixture.Runtime, "BuildAdvancedSplitRoutePlans");
+            Assert.Greater(splitPlans.Count, 0);
+            object firstPlan = splitPlans[0];
+            Assert.AreEqual(1, GetDeviceIndex(GetPlanDevice(firstPlan, "InputDevice")));
+            Assert.AreEqual(2, GetDeviceIndex(GetPlanDevice(firstPlan, "OutputDevice")));
+        }
+    }
+
+    [Test]
+    public void AdvancedSplitRoutePlans_DoNotOpenSamePhysicalDeviceTwice()
+    {
+        object fullDuplex = Device(7, "7: Interface", "Interface", "ASIO", 2, 2, 48000);
+        Array allDevices = DeviceArray(fullDuplex);
+
+        using (RuntimeFixture fixture = RuntimeFixture.Create())
+        {
+            SetRuntimeRoutingFields(
+                fixture.Runtime,
+                allDevices,
+                SharedAudioBackendModes.Auto,
+                allowFallback: false,
+                input: "Interface [ASIO] (#7)",
+                output: "Interface [ASIO] (#7)",
+                sampleRate: 48000,
+                bufferSize: 128,
+                splitInputOutput: true);
+
+            IList duplexPlans = (IList)InvokeRuntimeInstance(fixture.Runtime, "BuildAdvancedRoutePlans");
+            Assert.Greater(duplexPlans.Count, 0, "The normal route remains responsible for a single full-duplex device.");
+
+            IList splitPlans = (IList)InvokeRuntimeInstance(fixture.Runtime, "BuildAdvancedSplitRoutePlans");
+            Assert.AreEqual(0, splitPlans.Count, "Split mode must not open the same PortAudio device as two independent streams.");
+        }
+    }
+
+    [Test]
     public void PortAudioChannelCopying_HandlesMonoStereoTruncatedAndNullBuffers()
     {
         float[] monoInput = { 0.25f, -0.5f, 0.75f };
@@ -632,6 +726,31 @@ public sealed class AudioPathRegressionTests
         float[] quadOutput = Enumerable.Repeat(8f, 8).ToArray();
         InvokeRuntimeStatic("FillPortAudioOutputBufferFromProcessedAudio", stereoProcessed, 2, 2, quadOutput, 4);
         CollectionAssert.AreEqual(new[] { 0.1f, 0.2f, 0.1f, 0.2f, 0.3f, 0.4f, 0.3f, 0.4f }, quadOutput);
+    }
+
+    [Test]
+    public void ToneLabIntermediateScrub_ContainsBadPluginSamplesWithoutChangingNormalAudio()
+    {
+        float[] buffer =
+        {
+            0.25f,
+            -0.5f,
+            1.5f,
+            float.NaN,
+            float.PositiveInfinity,
+            1000f,
+            -1000f
+        };
+
+        InvokeRuntimeStatic("ScrubIntermediateAudioBlock", buffer);
+
+        Assert.AreEqual(0.25f, buffer[0], 0.0001f);
+        Assert.AreEqual(-0.5f, buffer[1], 0.0001f);
+        Assert.AreEqual(1.5f, buffer[2], 0.0001f);
+        Assert.AreEqual(0f, buffer[3], 0.0001f);
+        Assert.AreEqual(0f, buffer[4], 0.0001f);
+        Assert.AreEqual(16f, buffer[5], 0.0001f);
+        Assert.AreEqual(-16f, buffer[6], 0.0001f);
     }
 
     [Test]
@@ -1146,7 +1265,7 @@ public sealed class AudioPathRegressionTests
         };
     }
 
-    private static void SetRuntimeRoutingFields(UnityToneLabRuntime runtime, Array allDevices, string backendMode, bool allowFallback, string input, string output, int sampleRate, int bufferSize)
+    private static void SetRuntimeRoutingFields(UnityToneLabRuntime runtime, Array allDevices, string backendMode, bool allowFallback, string input, string output, int sampleRate, int bufferSize, bool splitInputOutput = false)
     {
         SetField(runtime, "settings", new UnityToneLabRuntime.ToneLabSettings
         {
@@ -1164,7 +1283,8 @@ public sealed class AudioPathRegressionTests
             preferredInputDeviceName = input,
             preferredOutputDeviceName = output,
             sampleRate = sampleRate,
-            bufferSize = bufferSize
+            bufferSize = bufferSize,
+            splitInputOutputEnabled = splitInputOutput
         });
     }
 

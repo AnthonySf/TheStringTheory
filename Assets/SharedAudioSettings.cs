@@ -28,6 +28,7 @@ public sealed class SharedAudioAdvancedSettings
     public string outputDeviceName = string.Empty;
     public int sampleRate;
     public int bufferSize;
+    public bool splitInputOutputEnabled;
     public bool unifiedOutputEnabled;
     public bool unityRecorderCaptureEnabled;
 }
@@ -309,6 +310,7 @@ public static class SharedAudioSettingsUtility
             outputDeviceName = NormalizeStoredDeviceName(source.outputDeviceName),
             sampleRate = SharedAudioSampleRateOptions.Normalize(source.sampleRate),
             bufferSize = source.bufferSize,
+            splitInputOutputEnabled = source.splitInputOutputEnabled,
             unifiedOutputEnabled = source.unifiedOutputEnabled,
             unityRecorderCaptureEnabled = source.unityRecorderCaptureEnabled
         };

@@ -8,6 +8,8 @@
 [Ll]ogs/
 MemoryCaptures/
 UserSettings/
+TestResults/
+Assets/_Recovery/*
 
 # Asset meta backup / crash
 sysinfo.txt
@@ -60,6 +62,8 @@ Assets/StreamingAssets/ToneLab/LV2/linux-x64/
 Assets/Plugins/x86_64/*.pdb
 Assets/Plugins/x86_64/*.lib
 Assets/Plugins/x86_64/*.exp
+Assets/Plugins/x86_64/*.lib.meta
+Assets/Plugins/x86_64/*.exp.meta
 
 # Public source release: bundled libraries / binaries / packaged runtimes
 Assets/MidiPlayer/
@@ -70,6 +74,8 @@ Assets/Plugins/**/*.dylib
 Assets/Plugins/**/*.a
 Assets/Plugins/**/*.lib
 Assets/Plugins/**/*.exp
+Assets/Plugins/**/*.lib.meta
+Assets/Plugins/**/*.exp.meta
 Assets/Plugins/**/*.pdb
 Assets/StreamingAssets/NotesReader/*.exe
 Assets/StreamingAssets/NotesReader/Models/*.onnx

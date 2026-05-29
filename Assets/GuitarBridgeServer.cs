@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -11,6 +12,7 @@ using System.Threading.Tasks;
 using System.IO;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.Networking;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -938,6 +940,19 @@ public class GuitarBridgeServer : MonoBehaviour
     private int selectedGlobalSettingsSelectionPopupIndex;
     private string activeGlobalSettingsCategory = string.Empty;
     private bool globalSettingsTransparentBackground;
+    private bool showDiagnosticsConsentPopup;
+    private bool diagnosticsConsentOpenBugReportOnApprove;
+    private int selectedDiagnosticsConsentIndex;
+    private bool showBugReportScreen;
+    private int selectedBugReportActionIndex;
+    private string bugReportDescription = string.Empty;
+    private string bugReportStatus = string.Empty;
+    private bool bugReportSending;
+    private bool showBugReportSentPopup;
+    private int selectedBugReportSentActionIndex;
+    private string bugReportSentMessage = string.Empty;
+    private bool keyboardTextInputActive;
+    private bool diagnosticsStartupSnapshotCompleted;
     private bool gameplayHudPreviewInMenus;
     private int selectedSongListIndex;
     private int songListScrollOffset;
@@ -1305,12 +1320,13 @@ public class GuitarBridgeServer : MonoBehaviour
     private const int CurrentGlobalRuntimeSettingsVersion = 1;
     private int loadedGlobalRuntimeSettingsVersion = CurrentGlobalRuntimeSettingsVersion;
     private const int ArcadeControllerSlotCount = 8;
-    private const int GlobalSettingsTopLevelCount = 13;
+    private const int GlobalSettingsTopLevelCount = 14;
     private const int GlobalSettingsSongsFolderTopIndex = 2;
     private const int GlobalSettingsEffectsFolderTopIndex = 3;
     private const int GlobalSettingsFirstCategoryTopIndex = 4;
     private const int GlobalSettingsLastCategoryTopIndex = 11;
-    private const int GlobalSettingsResetTopIndex = 12;
+    private const int GlobalSettingsBugReportTopIndex = 12;
+    private const int GlobalSettingsResetTopIndex = 13;
     private const string SharedAudioAutomaticLabel = "Automatic";
 
     private enum GlobalSettingsSelectionPopupMode
@@ -1404,6 +1420,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void Start()
     {
+        StringTheoryDiagnostics.EnsureInitialized("game-start");
+        StringTheoryDiagnosticsUploadService.Initialize();
+        showDiagnosticsConsentPopup = StringTheoryDiagnosticsUploadService.ShouldShowStartupConsentPrompt;
         Application.targetFrameRate = 60;
         ExternalContentBootstrap.EnsureRuntimeContentReady();
         Debug.Log($"[GuitarBridgeServer] Using persistent content folder: {ExternalContentPaths.PersistentRoot}");
@@ -1436,6 +1455,161 @@ public class GuitarBridgeServer : MonoBehaviour
         unityToneLabRuntime?.StartBackgroundMonitoring();
         EnsureRenderer();
         SyncAudioToSongTimer(playImmediately: false);
+        LogFullDiagnosticsSnapshot("startup-complete", includeEnvironment: true);
+        diagnosticsStartupSnapshotCompleted = true;
+        QueueAutomaticDiagnosticsUploads("startup-complete");
+    }
+
+    private void LogFullDiagnosticsSnapshot(string reason, bool includeEnvironment)
+    {
+        try
+        {
+            StringBuilder builder = new StringBuilder();
+            if (includeEnvironment)
+            {
+                builder.AppendLine(StringTheoryDiagnostics.BuildEnvironmentSnapshot());
+                builder.AppendLine();
+            }
+
+            builder.AppendLine(BuildGameDiagnosticSnapshot());
+            if (unityToneLabRuntime != null)
+            {
+                builder.AppendLine();
+                builder.AppendLine(unityToneLabRuntime.BuildAudioDiagnosticSnapshot());
+            }
+
+            StringTheoryDiagnostics.LogSnapshot(reason, builder.ToString());
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[Diagnostics] Failed to build diagnostics snapshot '{reason}': {ex.Message}");
+        }
+    }
+
+    private void QueueAutomaticDiagnosticsUploads(string reason)
+    {
+        if (!StringTheoryDiagnosticsUploadService.AutomaticUploadsEnabled)
+            return;
+
+        StartCoroutine(AutomaticDiagnosticsUploadSequence(reason));
+    }
+
+    private IEnumerator AutomaticDiagnosticsUploadSequence(string reason)
+    {
+        yield return StringTheoryDiagnosticsUploadService.UploadPreviousSessionIfNeeded();
+        yield return StringTheoryDiagnosticsUploadService.UploadCurrentSessionIfNeeded(reason, diagnosticsStartupSnapshotCompleted ? 8f : 20f);
+    }
+
+    private string BuildGameDiagnosticSnapshot()
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.AppendLine("Build");
+        builder.AppendLine($"  version: {StringTheoryBuildInfo.Version}");
+        builder.AppendLine($"  channel: {StringTheoryBuildInfo.Channel}");
+        builder.AppendLine($"  diagnosticsSchemaVersion: {StringTheoryBuildInfo.DiagnosticsSchemaVersion}");
+        builder.AppendLine($"  unityApplicationVersion: {StringTheoryBuildInfo.UnityApplicationVersion}");
+        builder.AppendLine($"  unityVersionMatchesBuildInfo: {StringTheoryBuildInfo.UnityVersionMatchesBuildInfo}");
+
+        builder.AppendLine("GameState");
+        builder.AppendLine($"  isRunning: {isRunning}");
+        builder.AppendLine($"  isPaused: {isPaused}");
+        builder.AppendLine($"  showMainMenu: {showMainMenu}");
+        builder.AppendLine($"  mainMenuFlowActive: {mainMenuFlowActive}");
+        builder.AppendLine($"  showStartMenu: {showStartMenu}");
+        builder.AppendLine($"  showToneLab: {showToneLab}");
+        builder.AppendLine($"  showTuner: {showTuner}");
+        builder.AppendLine($"  songTimer: {songTimer:0.000}");
+        builder.AppendLine($"  loadedNotes: {(chartNotes != null ? chartNotes.Count : 0)}");
+        builder.AppendLine($"  forceStandardTuning: {forceStandardTuning}");
+        builder.AppendLine($"  useSongToneMappings: {useSongToneMappings}");
+        builder.AppendLine($"  selectedLibraryType: {selectedSongLibraryType}");
+        builder.AppendLine($"  selectedTrackIndex: {selectedTrackListIndex}");
+        builder.AppendLine($"  currentTuning: {StringTuningUtils.FormatTuningDisplayName(GetVisibleTunerTargetPitches())}");
+
+        if (currentSongEntry != null)
+        {
+            builder.AppendLine("CurrentSong");
+            builder.AppendLine($"  songId: {currentSongEntry.SongId}");
+            builder.AppendLine($"  displayName: {currentSongEntry.DisplayName}");
+            builder.AppendLine($"  artist: {currentSongEntry.Artist}");
+            builder.AppendLine($"  libraryType: {currentSongEntry.LibraryType}");
+            builder.AppendLine($"  durationSeconds: {currentSongEntry.DurationSeconds:0.###}");
+            builder.AppendLine($"  notationKind: {currentSongEntry.PrimaryNotationKind}");
+            builder.AppendLine($"  directory: {currentSongEntry.SongDirectory}");
+            builder.AppendLine($"  notationPath: {currentSongEntry.PrimaryNotationPath}");
+            builder.AppendLine($"  audioPath: {currentSongEntry.Mp3Path}");
+            builder.AppendLine($"  metadataPath: {currentSongEntry.MetadataPath}");
+        }
+
+        builder.AppendLine("SharedAudioSettings");
+        builder.AppendLine(sharedAudioSettings != null ? JsonUtility.ToJson(sharedAudioSettings, true) : "(null)");
+        builder.AppendLine($"  selectedToneLabInputLabel: {GetSharedAudioSelectedInputLabel()}");
+        builder.AppendLine($"  selectedToneLabOutputLabel: {GetSharedAudioSelectedOutputLabel()}");
+        builder.AppendLine($"  selectedInputChannelMode: {GetSharedAudioInputChannelModeLabel()}");
+        builder.AppendLine($"  settingsPath: {ExternalContentPaths.PersistentAudioSettingsPath}");
+        builder.AppendLine($"  inputChoices: {FormatStringList(sharedAudioInputDeviceChoices)}");
+        builder.AppendLine($"  outputChoices: {FormatStringList(sharedAudioOutputDeviceChoices)}");
+
+        builder.AppendLine("NotesDetector");
+        builder.AppendLine($"  backendMode: {notesDetectorBackendMode}");
+        builder.AppendLine($"  autoLaunchExternal: {autoLaunchNotesDetector}");
+        builder.AppendLine($"  selectedNativeInputDeviceIndex: {selectedNativeNotesDetectorInputDeviceIndex}");
+        builder.AppendLine($"  selectedNativeInputLabel: {GetSelectedNativeNotesDetectorInputDeviceLabel()}");
+        builder.AppendLine($"  status: {GetNotesDetectorStatusText()}");
+        builder.AppendLine($"  routineStatus: {GetNotesDetectorRoutineStatusText()}");
+        builder.AppendLine($"  inputDevices: {FormatStringList(BuildNotesDetectorInputDeviceSnapshot())}");
+        if (nativeNotesDetectorBridge != null)
+        {
+            NativeDetectorRuntimeInfo runtimeInfo = nativeNotesDetectorBridge.RefreshRuntimeInfo();
+            NativeDetectorDeviceListPayload devices = nativeNotesDetectorBridge.RefreshDevices(forcePortAudioRescan: false);
+            builder.AppendLine("NativeDetectorRuntime");
+            builder.AppendLine(runtimeInfo != null ? JsonUtility.ToJson(runtimeInfo, true) : "(null)");
+            builder.AppendLine("NativeDetectorDevices");
+            builder.AppendLine(devices != null ? JsonUtility.ToJson(devices, true) : "(null)");
+        }
+
+        builder.AppendLine("RuntimeSettings");
+        AppendRuntimeSettingsSnapshot(builder);
+        return builder.ToString().TrimEnd();
+    }
+
+    private void AppendRuntimeSettingsSnapshot(StringBuilder builder)
+    {
+        List<RuntimeSettingSectionSnapshot> sections = BuildRuntimeSettingsSnapshot();
+        if (sections == null || sections.Count == 0)
+        {
+            builder.AppendLine("  (none)");
+            return;
+        }
+
+        for (int sectionIndex = 0; sectionIndex < sections.Count; sectionIndex++)
+        {
+            RuntimeSettingSectionSnapshot section = sections[sectionIndex];
+            builder.AppendLine($"  [{section?.title ?? "Untitled"}]");
+            List<RuntimeSettingSnapshot> settings = section?.settings;
+            if (settings == null || settings.Count == 0)
+            {
+                builder.AppendLine("    (empty)");
+                continue;
+            }
+
+            for (int settingIndex = 0; settingIndex < settings.Count; settingIndex++)
+            {
+                RuntimeSettingSnapshot setting = settings[settingIndex];
+                if (setting == null)
+                    continue;
+
+                builder.AppendLine($"    {setting.id}: {setting.value} ({setting.label})");
+            }
+        }
+    }
+
+    private static string FormatStringList(IReadOnlyList<string> values)
+    {
+        if (values == null || values.Count == 0)
+            return "(none)";
+
+        return string.Join("; ", values);
     }
 
     private void Update()
@@ -1746,6 +1920,24 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandlePauseControls()
     {
+        if (showDiagnosticsConsentPopup)
+        {
+            HandleDiagnosticsConsentControls();
+            return;
+        }
+
+        if (showBugReportScreen)
+        {
+            HandleBugReportControls();
+            return;
+        }
+
+        if (showBugReportSentPopup)
+        {
+            HandleBugReportSentPopupControls();
+            return;
+        }
+
         if (showStartupTuningReminder)
         {
             if (IsUiSubmitPressed() ||
@@ -2257,6 +2449,61 @@ public class GuitarBridgeServer : MonoBehaviour
             ResetToneLabSongTonePlaybackCache();
             ClearToneLabSongTonePlaybackOverride();
         }
+    }
+
+    private void HandleDiagnosticsConsentControls()
+    {
+        if (IsUiLeftPressed() || IsUiUpPressed())
+        {
+            MoveDiagnosticsConsentSelectionFromUi(-1);
+            return;
+        }
+
+        if (IsUiRightPressed() || IsUiDownPressed())
+        {
+            MoveDiagnosticsConsentSelectionFromUi(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed())
+        {
+            ActivateSelectedDiagnosticsConsentOptionFromUi();
+            return;
+        }
+
+        if (IsUiBackPressed() || IsUiPausePressed())
+            DeclineDiagnosticsUploadConsentFromUi();
+    }
+
+    private void HandleBugReportControls()
+    {
+        if (IsUiBackPressed() || IsUiPausePressed())
+        {
+            CloseBugReportScreenFromUi();
+            return;
+        }
+
+        if (IsUiLeftPressed() || IsUiUpPressed())
+        {
+            MoveBugReportActionSelectionFromUi(-1);
+            return;
+        }
+
+        if (IsUiRightPressed() || IsUiDownPressed())
+        {
+            MoveBugReportActionSelectionFromUi(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed() && !bugReportSending)
+            ActivateSelectedBugReportActionFromUi();
+    }
+
+    private void HandleBugReportSentPopupControls()
+    {
+        selectedBugReportSentActionIndex = 0;
+        if (IsUiSubmitPressed() || IsUiBackPressed() || IsUiPausePressed())
+            CloseBugReportSentPopupFromUi();
     }
 
     private void RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(bool applyIfEligible)
@@ -7326,6 +7573,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private bool IsUiSubmitPressed(bool allowControllerPointerSubmit = false)
     {
+        if (keyboardTextInputActive || IsTextInputFocused())
+            return false;
+
         bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
         bool suppressControllerSubmit = ShouldUseControllerPointerUiMode() && !allowControllerPointerSubmit;
         return Input.GetKeyDown(KeyCode.Return) ||
@@ -7336,8 +7586,29 @@ public class GuitarBridgeServer : MonoBehaviour
                (!suppressControllerSubmit && !hasInputSystemGamepad && Input.GetKeyDown(KeyCode.JoystickButton0));
     }
 
+    private static bool IsTextInputFocused()
+    {
+        EventSystem eventSystem = EventSystem.current;
+        if (eventSystem == null)
+            return false;
+
+        GameObject selected = eventSystem.currentSelectedGameObject;
+        if (selected == null)
+            return false;
+
+        return selected.GetComponent<TMPro.TMP_InputField>() != null ||
+               selected.GetComponent<UnityEngine.UI.InputField>() != null;
+    }
+
     private bool IsUiBackPressed()
     {
+        if (keyboardTextInputActive || IsTextInputFocused())
+        {
+            bool keyboardBackOnly = Input.GetKeyDown(KeyCode.Backspace);
+            if (keyboardBackOnly)
+                return false;
+        }
+
         bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
         return Input.GetKeyDown(KeyCode.Escape) ||
                Input.GetKeyDown(KeyCode.Backspace) ||
@@ -10860,6 +11131,179 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: false);
     }
 
+    public void OpenDiagnosticsConsentPopupFromUi(bool openBugReportOnApprove = false)
+    {
+        diagnosticsConsentOpenBugReportOnApprove = openBugReportOnApprove;
+        selectedDiagnosticsConsentIndex = 0;
+        showDiagnosticsConsentPopup = true;
+        showBugReportScreen = false;
+        showBugReportSentPopup = false;
+        bugReportStatus = StringTheoryDiagnosticsUploadService.LastStatus;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void AcceptDiagnosticsUploadConsentFromUi()
+    {
+        bool shouldOpenBugReport = diagnosticsConsentOpenBugReportOnApprove;
+        StringTheoryDiagnosticsUploadService.SetAutomaticUploadsConsent(true);
+        showDiagnosticsConsentPopup = false;
+        showBugReportSentPopup = false;
+        selectedDiagnosticsConsentIndex = 0;
+        bugReportStatus = StringTheoryDiagnosticsUploadService.LastStatus;
+        diagnosticsConsentOpenBugReportOnApprove = false;
+        if (shouldOpenBugReport)
+        {
+            OpenBugReportScreenFromUi();
+        }
+        else
+        {
+            QueueAutomaticDiagnosticsUploads("diagnostics-consent-approved");
+        }
+    }
+
+    public void DeclineDiagnosticsUploadConsentFromUi()
+    {
+        StringTheoryDiagnosticsUploadService.MarkStartupPromptSeen();
+        StringTheoryDiagnosticsUploadService.SetAutomaticUploadsConsent(false);
+        showDiagnosticsConsentPopup = false;
+        showBugReportSentPopup = false;
+        selectedDiagnosticsConsentIndex = 0;
+        diagnosticsConsentOpenBugReportOnApprove = false;
+        bugReportStatus = StringTheoryDiagnosticsUploadService.LastStatus;
+    }
+
+    public void SetDiagnosticsConsentSelectionFromUi(int index)
+    {
+        selectedDiagnosticsConsentIndex = Mathf.Clamp(index, 0, 1);
+    }
+
+    public void MoveDiagnosticsConsentSelectionFromUi(int delta)
+    {
+        selectedDiagnosticsConsentIndex = (selectedDiagnosticsConsentIndex + delta + 2) % 2;
+    }
+
+    public void ActivateSelectedDiagnosticsConsentOptionFromUi()
+    {
+        if (selectedDiagnosticsConsentIndex == 0)
+            AcceptDiagnosticsUploadConsentFromUi();
+        else
+            DeclineDiagnosticsUploadConsentFromUi();
+    }
+
+    public void OpenBugReportFromUi()
+    {
+        if (!StringTheoryDiagnosticsUploadService.AutomaticUploadsEnabled)
+        {
+            OpenDiagnosticsConsentPopupFromUi(openBugReportOnApprove: true);
+            return;
+        }
+
+        OpenBugReportScreenFromUi();
+    }
+
+    public void OpenBugReportScreenFromUi()
+    {
+        showBugReportScreen = true;
+        showDiagnosticsConsentPopup = false;
+        showBugReportSentPopup = false;
+        selectedBugReportActionIndex = 0;
+        bugReportDescription = string.Empty;
+        bugReportStatus = string.Empty;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseBugReportScreenFromUi()
+    {
+        showBugReportScreen = false;
+        selectedBugReportActionIndex = 0;
+        bugReportSending = false;
+        bugReportDescription = string.Empty;
+        keyboardTextInputActive = false;
+    }
+
+    public void CloseBugReportSentPopupFromUi()
+    {
+        showBugReportSentPopup = false;
+        selectedBugReportSentActionIndex = 0;
+        bugReportSentMessage = string.Empty;
+        keyboardTextInputActive = false;
+    }
+
+    public void SetBugReportSentActionSelectionFromUi(int index)
+    {
+        selectedBugReportSentActionIndex = Mathf.Clamp(index, 0, 0);
+    }
+
+    public void SetBugReportDescriptionFromUi(string description)
+    {
+        bugReportDescription = description ?? string.Empty;
+    }
+
+    public void SetKeyboardTextInputActiveFromUi(bool active)
+    {
+        keyboardTextInputActive = active;
+    }
+
+    public void SetBugReportActionSelectionFromUi(int index)
+    {
+        selectedBugReportActionIndex = Mathf.Clamp(index, 0, 1);
+    }
+
+    public void MoveBugReportActionSelectionFromUi(int delta)
+    {
+        selectedBugReportActionIndex = (selectedBugReportActionIndex + delta + 2) % 2;
+    }
+
+    public void ActivateSelectedBugReportActionFromUi()
+    {
+        if (selectedBugReportActionIndex == 0)
+            SendBugReportFromUi();
+        else
+            CloseBugReportScreenFromUi();
+    }
+
+    public void SendBugReportFromUi()
+    {
+        if (bugReportSending)
+            return;
+
+        if (!StringTheoryDiagnosticsUploadService.AutomaticUploadsEnabled)
+        {
+            OpenDiagnosticsConsentPopupFromUi(openBugReportOnApprove: true);
+            return;
+        }
+
+        StartCoroutine(SendBugReportCoroutine());
+    }
+
+    private IEnumerator SendBugReportCoroutine()
+    {
+        bugReportSending = true;
+        bugReportStatus = "Preparing diagnostics package...";
+        DiagnosticsUploadResult uploadResult = null;
+        yield return StringTheoryDiagnosticsUploadService.SendUserBugReport(
+            bugReportDescription,
+            result => uploadResult = result);
+        bugReportSending = false;
+        bugReportStatus = uploadResult != null ? uploadResult.message : StringTheoryDiagnosticsUploadService.LastStatus;
+        if (uploadResult != null && uploadResult.success)
+        {
+            showBugReportScreen = false;
+            showBugReportSentPopup = true;
+            selectedBugReportSentActionIndex = 0;
+            bugReportDescription = string.Empty;
+            bugReportSentMessage = "Report sent. Thank you for helping improve String Theory.";
+            isPaused = true;
+            SyncAudioToSongTimer(playImmediately: false);
+        }
+        else
+        {
+            bugReportStatus = "Could not send the report. Please try again later.";
+        }
+    }
+
     public void SetGlobalRuntimeSettingFromUi(string settingId, string serializedValue)
     {
         ApplyRuntimeSettingValue(settingId, serializedValue, saveMetadata: true);
@@ -12327,6 +12771,7 @@ private void OpenOrFocusToneLab()
         StopArcadeMidiInput();
         ShutdownNativeNotesDetectorIfRunning();
         ShutdownNotesDetectorIfRunning();
+        StringTheoryDiagnostics.Shutdown("application-quit");
     }
 
     private void OnDestroy()
@@ -13098,6 +13543,7 @@ private void OpenOrFocusToneLab()
                 preferredOutputDeviceName = advancedSettings.outputDeviceName,
                 sampleRate = advancedSettings.sampleRate,
                 bufferSize = advancedSettings.bufferSize,
+                splitInputOutputEnabled = advancedSettings.splitInputOutputEnabled,
                 unifiedOutputEnabled = advancedSettings.unifiedOutputEnabled,
                 unityRecorderCaptureEnabled = advancedSettings.unityRecorderCaptureEnabled
             });
@@ -13131,6 +13577,9 @@ private void OpenOrFocusToneLab()
         RefreshNativeNotesDetectorUiState();
         runtimeSettingsSnapshotDirty = true;
         MarkDetectorHintDirty();
+
+        if (restartDetector || restartToneLab || refreshCatalogs)
+            LogFullDiagnosticsSnapshot("shared-audio-settings-applied", includeEnvironment: false);
     }
 
     public IReadOnlyList<string> GetSharedAudioInputDeviceChoices()
@@ -18071,6 +18520,18 @@ private void ParseDetectorPacket(string detectorPacket)
             notesDetectorRoutineStatusOk = showNotesDetectorRoutinePopup && (notesDetectorRoutineStageIndex >= notesDetectorRoutineSteps.Count || notesDetectorRoutineMatchedSinceTime >= 0f),
             notesDetectorRoutineCompleted = showNotesDetectorRoutinePopup && notesDetectorRoutineStageIndex >= notesDetectorRoutineSteps.Count,
             showStartupTuningReminder = showStartupTuningReminder,
+            showDiagnosticsConsentPopup = showDiagnosticsConsentPopup,
+            selectedDiagnosticsConsentIndex = selectedDiagnosticsConsentIndex,
+            showBugReportScreen = showBugReportScreen,
+            selectedBugReportActionIndex = selectedBugReportActionIndex,
+            bugReportDescription = bugReportDescription,
+            bugReportStatus = bugReportStatus,
+            bugReportSending = bugReportSending || StringTheoryDiagnosticsUploadService.IsUserUploadInProgress,
+            showBugReportSentPopup = showBugReportSentPopup,
+            selectedBugReportSentActionIndex = selectedBugReportSentActionIndex,
+            bugReportSentMessage = bugReportSentMessage,
+            diagnosticsUploadEnabled = StringTheoryDiagnosticsUploadService.AutomaticUploadsEnabled,
+            diagnosticsUploadEndpointConfigured = StringTheoryDiagnosticsUploadService.HasUploadEndpoint,
             runtimeSettingsSections = BuildRuntimeSettingsSnapshot()
         };
     }
@@ -22414,6 +22875,12 @@ private void ParseDetectorPacket(string detectorPacket)
                 return;
             }
 
+            if (selectedGlobalSettingsTopIndex == GlobalSettingsBugReportTopIndex)
+            {
+                OpenBugReportFromUi();
+                return;
+            }
+
             if (selectedGlobalSettingsTopIndex == GlobalSettingsResetTopIndex)
                 ResetGlobalSettingsToDefaultsFromUi();
 
@@ -22484,6 +22951,7 @@ private void ParseDetectorPacket(string detectorPacket)
                     break;
                 case GlobalSettingsSongsFolderTopIndex:
                 case GlobalSettingsEffectsFolderTopIndex:
+                case GlobalSettingsBugReportTopIndex:
                     break;
                 case GlobalSettingsResetTopIndex:
                     if (delta != 0)

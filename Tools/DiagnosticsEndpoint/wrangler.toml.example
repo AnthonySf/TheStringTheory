@@ -1,0 +1,10 @@
+name = "string-theory-diagnostics"
+main = "cloudflare-worker.js"
+compatibility_date = "2026-05-29"
+
+# Set this as a secret instead of committing it:
+# wrangler secret put DISCORD_WEBHOOK_URL
+# wrangler secret put DISCORD_AUTO_WEBHOOK_URL
+#
+# Optional:
+# wrangler secret put MAX_UPLOAD_BYTES

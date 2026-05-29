@@ -1872,6 +1872,19 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Dictionary<string, VisualElement> globalSettingsColumns = new Dictionary<string, VisualElement>();
 
+    private readonly VisualElement diagnosticsConsentOverlay;
+    private readonly Label diagnosticsConsentStatusLabel;
+    private readonly Button diagnosticsConsentAllowButton;
+    private readonly Button diagnosticsConsentNotNowButton;
+    private readonly VisualElement bugReportOverlay;
+    private readonly Label bugReportStatusLabel;
+    private readonly TextField bugReportDescriptionField;
+    private readonly Button bugReportSendButton;
+    private readonly Button bugReportCancelButton;
+    private readonly VisualElement bugReportSentOverlay;
+    private readonly Label bugReportSentMessageLabel;
+    private readonly Button bugReportSentOkButton;
+
 
 
     private readonly VisualElement selectionOverlay;
@@ -7300,6 +7313,157 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsOverlay.Add(globalSettingsCard);
 
+        diagnosticsConsentOverlay = CreateFullscreenOverlay();
+        diagnosticsConsentOverlay.style.justifyContent = Justify.Center;
+        diagnosticsConsentOverlay.style.paddingTop = 0f;
+        diagnosticsConsentOverlay.style.backgroundColor = new Color(0.006f, 0.009f, 0.015f, 0.88f);
+
+        VisualElement diagnosticsConsentCard = CreateDiagnosticsCard(1420f);
+        diagnosticsConsentCard.Add(CreateDiagnosticsLabel("DIAGNOSTICS", 32f, LibraryPrimaryColor, true));
+        Label diagnosticsConsentTitle = CreateDiagnosticsLabel("Help Improve String Theory", 82f, Color.white, true);
+        diagnosticsConsentTitle.style.marginTop = 6f;
+        diagnosticsConsentTitle.style.marginBottom = 16f;
+        diagnosticsConsentCard.Add(diagnosticsConsentTitle);
+
+        Label diagnosticsConsentMessage = CreateDiagnosticsLabel(
+            "Send diagnostic logs automatically to help fix audio, device, and note detection bugs faster.",
+            42f,
+            new Color(0.86f, 0.92f, 0.98f, 0.98f),
+            false);
+        diagnosticsConsentMessage.style.marginBottom = 26f;
+        diagnosticsConsentCard.Add(diagnosticsConsentMessage);
+
+        diagnosticsConsentCard.Add(CreateDiagnosticsInfoRow(
+            "Included",
+            "Device names, audio settings, game settings, system info, song names, and errors.",
+            new Color(0.47f, 0.86f, 1f, 1f)));
+        diagnosticsConsentCard.Add(CreateDiagnosticsInfoRow(
+            "Not included",
+            "No audio recordings or anything unrelated to game settings and diagnostics.",
+            new Color(0.70f, 0.96f, 0.76f, 1f)));
+
+        diagnosticsConsentStatusLabel = CreateDiagnosticsLabel(string.Empty, 36f, new Color(0.74f, 0.82f, 0.90f, 0.96f), false);
+        diagnosticsConsentStatusLabel.style.marginTop = 24f;
+        diagnosticsConsentStatusLabel.style.marginBottom = 22f;
+        diagnosticsConsentStatusLabel.style.display = DisplayStyle.None;
+        diagnosticsConsentCard.Add(diagnosticsConsentStatusLabel);
+
+        VisualElement diagnosticsConsentButtons = new VisualElement();
+        diagnosticsConsentButtons.style.flexDirection = FlexDirection.Row;
+        diagnosticsConsentButtons.style.justifyContent = Justify.FlexEnd;
+        diagnosticsConsentButtons.style.alignItems = Align.Center;
+        diagnosticsConsentButtons.style.marginTop = 8f;
+        diagnosticsConsentAllowButton = CreateActionButton("Allow", () => owner?.AcceptDiagnosticsUploadConsentFromUi());
+        diagnosticsConsentAllowButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetDiagnosticsConsentSelectionFromUi(0));
+        diagnosticsConsentNotNowButton = CreateActionButton("Not Now", () => owner?.DeclineDiagnosticsUploadConsentFromUi());
+        diagnosticsConsentNotNowButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetDiagnosticsConsentSelectionFromUi(1));
+        StyleDiagnosticsActionButton(diagnosticsConsentAllowButton, true);
+        StyleDiagnosticsActionButton(diagnosticsConsentNotNowButton, false);
+        diagnosticsConsentAllowButton.style.marginRight = 16f;
+        diagnosticsConsentButtons.Add(diagnosticsConsentAllowButton);
+        diagnosticsConsentButtons.Add(diagnosticsConsentNotNowButton);
+        diagnosticsConsentCard.Add(diagnosticsConsentButtons);
+        diagnosticsConsentOverlay.Add(diagnosticsConsentCard);
+
+        bugReportOverlay = CreateFullscreenOverlay();
+        bugReportOverlay.style.justifyContent = Justify.Center;
+        bugReportOverlay.style.paddingTop = 0f;
+        bugReportOverlay.style.backgroundColor = new Color(0.006f, 0.009f, 0.015f, 0.88f);
+
+        VisualElement bugReportCard = CreateDiagnosticsCard(1420f);
+        bugReportCard.Add(CreateDiagnosticsLabel("USER BUG REPORT", 32f, LibraryPrimaryColor, true));
+        Label bugReportTitle = CreateDiagnosticsLabel("Send Bug Report", 82f, Color.white, true);
+        bugReportTitle.style.marginTop = 6f;
+        bugReportTitle.style.marginBottom = 16f;
+        bugReportCard.Add(bugReportTitle);
+        Label bugReportHelp = CreateDiagnosticsLabel(
+            "Describe what happened. Current diagnostic logs and settings will be attached automatically as a user-sent report.",
+            42f,
+            new Color(0.84f, 0.90f, 0.96f, 0.96f),
+            false);
+        bugReportHelp.style.marginBottom = 24f;
+        bugReportCard.Add(bugReportHelp);
+
+        bugReportDescriptionField = new TextField();
+        bugReportDescriptionField.multiline = true;
+        bugReportDescriptionField.style.height = 320f;
+        bugReportDescriptionField.style.marginBottom = 24f;
+        bugReportDescriptionField.style.fontSize = 40f;
+        bugReportDescriptionField.style.unityFontDefinition = modernUiFontDefinition;
+        bugReportDescriptionField.style.color = Color.white;
+        bugReportDescriptionField.style.backgroundColor = new Color(0.03f, 0.04f, 0.055f, 1f);
+        bugReportDescriptionField.style.whiteSpace = WhiteSpace.Normal;
+        bugReportDescriptionField.style.borderTopWidth = 1f;
+        bugReportDescriptionField.style.borderRightWidth = 1f;
+        bugReportDescriptionField.style.borderBottomWidth = 1f;
+        bugReportDescriptionField.style.borderLeftWidth = 1f;
+        Color bugReportFieldBorder = new Color(0.20f, 0.29f, 0.38f, 1f);
+        bugReportDescriptionField.style.borderTopColor = bugReportFieldBorder;
+        bugReportDescriptionField.style.borderRightColor = bugReportFieldBorder;
+        bugReportDescriptionField.style.borderBottomColor = bugReportFieldBorder;
+        bugReportDescriptionField.style.borderLeftColor = bugReportFieldBorder;
+        bugReportDescriptionField.RegisterValueChangedCallback(evt =>
+        {
+            if (!suppressCallbacks)
+                owner?.SetBugReportDescriptionFromUi(evt.newValue);
+        });
+        bugReportDescriptionField.RegisterCallback<FocusInEvent>(_ => owner?.SetKeyboardTextInputActiveFromUi(true), TrickleDown.TrickleDown);
+        bugReportDescriptionField.RegisterCallback<FocusOutEvent>(_ => owner?.SetKeyboardTextInputActiveFromUi(false), TrickleDown.TrickleDown);
+        bugReportDescriptionField.RegisterCallback<DetachFromPanelEvent>(_ => owner?.SetKeyboardTextInputActiveFromUi(false));
+        bugReportDescriptionField.RegisterCallback<AttachToPanelEvent>(_ => ApplyDiagnosticsTextFieldStyle(bugReportDescriptionField, 40f));
+        bugReportCard.Add(bugReportDescriptionField);
+
+        bugReportStatusLabel = CreateDiagnosticsLabel(string.Empty, 36f, new Color(0.78f, 0.86f, 0.94f, 0.94f), false);
+        bugReportStatusLabel.style.marginBottom = 22f;
+        bugReportStatusLabel.style.display = DisplayStyle.None;
+        bugReportCard.Add(bugReportStatusLabel);
+
+        VisualElement bugReportButtons = new VisualElement();
+        bugReportButtons.style.flexDirection = FlexDirection.Row;
+        bugReportButtons.style.justifyContent = Justify.FlexEnd;
+        bugReportButtons.style.alignItems = Align.Center;
+        bugReportSendButton = CreateActionButton("Send Report", () => owner?.SendBugReportFromUi());
+        bugReportSendButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetBugReportActionSelectionFromUi(0));
+        bugReportCancelButton = CreateActionButton("Cancel", () => owner?.CloseBugReportScreenFromUi());
+        bugReportCancelButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetBugReportActionSelectionFromUi(1));
+        StyleDiagnosticsActionButton(bugReportSendButton, true);
+        StyleDiagnosticsActionButton(bugReportCancelButton, false);
+        bugReportSendButton.style.marginRight = 16f;
+        bugReportButtons.Add(bugReportSendButton);
+        bugReportButtons.Add(bugReportCancelButton);
+        bugReportCard.Add(bugReportButtons);
+        bugReportOverlay.Add(bugReportCard);
+
+        bugReportSentOverlay = CreateFullscreenOverlay();
+        bugReportSentOverlay.style.justifyContent = Justify.Center;
+        bugReportSentOverlay.style.paddingTop = 0f;
+        bugReportSentOverlay.style.backgroundColor = new Color(0.006f, 0.009f, 0.015f, 0.88f);
+
+        VisualElement bugReportSentCard = CreateDiagnosticsCard(1060f);
+        bugReportSentCard.Add(CreateDiagnosticsLabel("REPORT SENT", 32f, LibraryPrimaryColor, true));
+        Label bugReportSentTitle = CreateDiagnosticsLabel("Thank You!", 82f, Color.white, true);
+        bugReportSentTitle.style.marginTop = 6f;
+        bugReportSentTitle.style.marginBottom = 18f;
+        bugReportSentCard.Add(bugReportSentTitle);
+        bugReportSentMessageLabel = CreateDiagnosticsLabel(
+            "Report sent. Thank you for helping improve String Theory.",
+            44f,
+            new Color(0.84f, 0.90f, 0.96f, 0.96f),
+            false);
+        bugReportSentMessageLabel.style.marginBottom = 34f;
+        bugReportSentCard.Add(bugReportSentMessageLabel);
+
+        VisualElement bugReportSentButtons = new VisualElement();
+        bugReportSentButtons.style.flexDirection = FlexDirection.Row;
+        bugReportSentButtons.style.justifyContent = Justify.FlexEnd;
+        bugReportSentButtons.style.alignItems = Align.Center;
+        bugReportSentOkButton = CreateActionButton("OK", () => owner?.CloseBugReportSentPopupFromUi());
+        bugReportSentOkButton.RegisterCallback<MouseEnterEvent>(_ => owner?.SetBugReportSentActionSelectionFromUi(0));
+        StyleDiagnosticsActionButton(bugReportSentOkButton, true);
+        bugReportSentButtons.Add(bugReportSentOkButton);
+        bugReportSentCard.Add(bugReportSentButtons);
+        bugReportSentOverlay.Add(bugReportSentCard);
+
 
 
         selectionOverlay = CreateFullscreenOverlay();
@@ -9728,6 +9892,12 @@ public sealed class TabsSongHeaderOverlay
 
         root.Add(globalSettingsOverlay);
 
+        root.Add(diagnosticsConsentOverlay);
+
+        root.Add(bugReportOverlay);
+
+        root.Add(bugReportSentOverlay);
+
         root.Add(selectionOverlay);
 
         root.Add(trackSelectionOverlay);
@@ -10255,7 +10425,11 @@ public sealed class TabsSongHeaderOverlay
 
         bool showOffsetHelper = snapshot.showOffsetHelper && !showEnd && !showToneLab && !showTuner;
 
-        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showDiagnosticsConsent = snapshot.showDiagnosticsConsentPopup && !showEnd;
+        bool showBugReport = snapshot.showBugReportScreen && !showDiagnosticsConsent && !showEnd;
+        bool showBugReportSent = snapshot.showBugReportSentPopup && !showDiagnosticsConsent && !showBugReport && !showEnd;
+
+        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showDiagnosticsConsent && !showBugReport && !showBugReportSent && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
 
         bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showGameplayAudioPopup;
         bool showSharedPauseSidebarBase = showPause || showGameModes || showSettings;
@@ -10358,6 +10532,26 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
         globalSettingsOverlay.style.backgroundColor = new Color(0.08f, 0.08f, 0.09f, snapshot.globalSettingsTransparentBackground ? 0f : 0.992f);
+        diagnosticsConsentOverlay.style.display = showDiagnosticsConsent ? DisplayStyle.Flex : DisplayStyle.None;
+        bugReportOverlay.style.display = showBugReport ? DisplayStyle.Flex : DisplayStyle.None;
+        bugReportSentOverlay.style.display = showBugReportSent ? DisplayStyle.Flex : DisplayStyle.None;
+        if (showDiagnosticsConsent)
+        {
+            UpdateDiagnosticsConsentPopup(snapshot);
+            diagnosticsConsentOverlay.BringToFront();
+        }
+
+        if (showBugReport)
+        {
+            UpdateBugReportScreen(snapshot);
+            bugReportOverlay.BringToFront();
+        }
+
+        if (showBugReportSent)
+        {
+            UpdateBugReportSentPopup(snapshot);
+            bugReportSentOverlay.BringToFront();
+        }
 
         libraryLoadingOverlay.SetVisible(showLibraryLoading, Time.unscaledTime);
         if (libraryLoadingStatusLabel != null)
@@ -10446,6 +10640,9 @@ public sealed class TabsSongHeaderOverlay
             && !showSelection
             && !showTrackSelection
             && !showGlobalSettings
+            && !showDiagnosticsConsent
+            && !showBugReport
+            && !showBugReportSent
             && !showLoopSetup
             && !showLoopPausePopup
             && !showGameModes
@@ -10495,10 +10692,10 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        bool pauseLikeHudMenu = showPause || showSettings || showGlobalSettings || showGameModes || showHeroModeSettings;
+        bool pauseLikeHudMenu = showPause || showSettings || showGlobalSettings || showGameModes || showHeroModeSettings || showDiagnosticsConsent || showBugReport || showBugReportSent;
         pauseLikeHudMenu = pauseLikeHudMenu || showGameplayAudioPopup;
         bool showGameplayHudPreviewInMenus = snapshot.showGameplayHudPreviewInMenus;
-        bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
+        bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
         bool detectorGameplayMinimalHud = snapshot.notesDetectorGameplayTestActive;
         highwayCharacterVisible = snapshot.showHighwayCharacter;
 
@@ -10522,6 +10719,9 @@ public sealed class TabsSongHeaderOverlay
                                            !showPause &&
                                            !showSettings &&
                                            !showGlobalSettings &&
+                                           !showDiagnosticsConsent &&
+                                           !showBugReport &&
+                                           !showBugReportSent &&
                                            !showSelection &&
                                            !showTrackSelection &&
                                            !showEnd &&
@@ -10548,6 +10748,9 @@ public sealed class TabsSongHeaderOverlay
                                         !showEnd &&
                                         !showLoopPausePopup &&
                                         !showLoopSetup &&
+                                        !showDiagnosticsConsent &&
+                                        !showBugReport &&
+                                        !showBugReportSent &&
                                         !showToneLab &&
                                         !showTuner &&
                                         !showNotesDetectorTest &&
@@ -10561,7 +10764,7 @@ public sealed class TabsSongHeaderOverlay
 
         UpdateControllerCursor(snapshot);
 
-        judgePopupLayer.style.display = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showLoopPausePopup || showArrangementDifficultyPopup || showMultiplayerRhythmSetup || pauseLikeHudMenu ? DisplayStyle.None : DisplayStyle.Flex;
+        judgePopupLayer.style.display = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showLoopPausePopup || showArrangementDifficultyPopup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || pauseLikeHudMenu ? DisplayStyle.None : DisplayStyle.Flex;
 
         if (showPause || showSettings || showNotesDetectorTest || showGameModes || showHeroModeSettings)
 
@@ -11252,6 +11455,212 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private void UpdateDiagnosticsConsentPopup(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || diagnosticsConsentOverlay == null)
+            return;
+
+        diagnosticsConsentStatusLabel.text = string.Empty;
+        diagnosticsConsentStatusLabel.style.display = DisplayStyle.None;
+        UpdateDiagnosticsPopupButton(diagnosticsConsentAllowButton, snapshot.selectedDiagnosticsConsentIndex == 0, LibraryPrimaryColor, LibraryPrimaryTextColor);
+        UpdateDiagnosticsPopupButton(diagnosticsConsentNotNowButton, snapshot.selectedDiagnosticsConsentIndex == 1, new Color(0.24f, 0.30f, 0.40f, 1f), new Color(0.93f, 0.96f, 0.99f, 1f));
+    }
+
+    private void UpdateBugReportScreen(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || bugReportOverlay == null)
+            return;
+
+        suppressCallbacks = true;
+        if (bugReportDescriptionField != null && !string.Equals(bugReportDescriptionField.value, snapshot.bugReportDescription ?? string.Empty, StringComparison.Ordinal))
+            bugReportDescriptionField.SetValueWithoutNotify(snapshot.bugReportDescription ?? string.Empty);
+        suppressCallbacks = false;
+
+        if (bugReportStatusLabel != null)
+        {
+            bool showStatus = !snapshot.bugReportSending && !string.IsNullOrWhiteSpace(snapshot.bugReportStatus);
+            bugReportStatusLabel.text = showStatus ? snapshot.bugReportStatus : string.Empty;
+            bugReportStatusLabel.style.color = new Color(1f, 0.58f, 0.58f, 1f);
+            bugReportStatusLabel.style.display = showStatus ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
+        if (bugReportSendButton != null)
+        {
+            bugReportSendButton.text = snapshot.bugReportSending ? "Sending..." : "Send Report";
+            bugReportSendButton.SetEnabled(!snapshot.bugReportSending);
+        }
+
+        UpdateDiagnosticsPopupButton(bugReportSendButton, snapshot.selectedBugReportActionIndex == 0, LibraryPrimaryColor, LibraryPrimaryTextColor);
+        UpdateDiagnosticsPopupButton(bugReportCancelButton, snapshot.selectedBugReportActionIndex == 1, new Color(0.24f, 0.30f, 0.40f, 1f), new Color(0.93f, 0.96f, 0.99f, 1f));
+    }
+
+    private void UpdateBugReportSentPopup(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || bugReportSentOverlay == null)
+            return;
+
+        if (bugReportSentMessageLabel != null)
+        {
+            bugReportSentMessageLabel.text = string.IsNullOrWhiteSpace(snapshot.bugReportSentMessage)
+                ? "Report sent. Thank you for helping improve String Theory."
+                : snapshot.bugReportSentMessage;
+        }
+
+        UpdateDiagnosticsPopupButton(bugReportSentOkButton, snapshot.selectedBugReportSentActionIndex == 0, LibraryPrimaryColor, LibraryPrimaryTextColor);
+    }
+
+    private static void UpdateDiagnosticsPopupButton(Button button, bool selected, Color baseColor, Color textColor)
+    {
+        if (button == null)
+            return;
+
+        button.style.backgroundColor = selected ? Color.Lerp(baseColor, Color.white, 0.24f) : baseColor;
+        button.style.color = textColor;
+        button.style.scale = selected ? new Scale(new Vector3(1.065f, 1.065f, 1f)) : new Scale(Vector3.one);
+        button.style.translate = selected ? new Translate(0f, -3f, 0f) : new Translate(0f, 0f, 0f);
+        Color borderColor = selected ? Color.Lerp(baseColor, Color.white, 0.58f) : Color.Lerp(baseColor, Color.black, 0.18f);
+        button.style.borderTopColor = borderColor;
+        button.style.borderRightColor = borderColor;
+        button.style.borderBottomColor = borderColor;
+        button.style.borderLeftColor = borderColor;
+    }
+
+    private Label CreateDiagnosticsLabel(string text, float size, Color color, bool bold = false, TextAnchor anchor = TextAnchor.MiddleLeft)
+    {
+        Label label = CreateLabel(text, size, color, bold, anchor, useTitleFont: false);
+        label.style.unityFontDefinition = modernUiFontDefinition;
+        label.style.whiteSpace = WhiteSpace.Normal;
+        label.style.letterSpacing = 0f;
+        label.style.unityTextAlign = anchor;
+        label.style.minWidth = 0f;
+        label.style.flexShrink = 1f;
+        return label;
+    }
+
+    private VisualElement CreateDiagnosticsInfoRow(string title, string detail, Color accentColor)
+    {
+        VisualElement row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Column;
+        row.style.alignItems = Align.Stretch;
+        row.style.marginTop = 10f;
+        row.style.marginBottom = 10f;
+        row.style.paddingTop = 18f;
+        row.style.paddingRight = 22f;
+        row.style.paddingBottom = 18f;
+        row.style.paddingLeft = 22f;
+        row.style.backgroundColor = new Color(0.035f, 0.047f, 0.065f, 0.96f);
+        row.style.borderTopWidth = 1f;
+        row.style.borderRightWidth = 1f;
+        row.style.borderBottomWidth = 1f;
+        row.style.borderLeftWidth = 5f;
+        row.style.borderTopColor = new Color(0.15f, 0.22f, 0.30f, 1f);
+        row.style.borderRightColor = new Color(0.15f, 0.22f, 0.30f, 1f);
+        row.style.borderBottomColor = new Color(0.08f, 0.12f, 0.17f, 1f);
+        row.style.borderLeftColor = accentColor;
+        row.style.borderTopLeftRadius = 8f;
+        row.style.borderTopRightRadius = 8f;
+        row.style.borderBottomLeftRadius = 8f;
+        row.style.borderBottomRightRadius = 8f;
+
+        Label titleLabel = CreateDiagnosticsLabel(title, 34f, accentColor, true);
+        titleLabel.style.marginBottom = 8f;
+        row.Add(titleLabel);
+
+        Label detailLabel = CreateDiagnosticsLabel(detail, 34f, new Color(0.86f, 0.91f, 0.96f, 0.96f), false);
+        detailLabel.style.flexGrow = 1f;
+        row.Add(detailLabel);
+
+        return row;
+    }
+
+    private void StyleDiagnosticsActionButton(Button button, bool primary)
+    {
+        if (button == null)
+            return;
+
+        Color baseColor = primary ? LibraryPrimaryColor : new Color(0.24f, 0.30f, 0.40f, 1f);
+        Color textColor = primary ? LibraryPrimaryTextColor : new Color(0.93f, 0.96f, 0.99f, 1f);
+
+        button.pickingMode = PickingMode.Position;
+        button.style.height = 82f;
+        button.style.minWidth = primary ? 300f : 270f;
+        button.style.paddingLeft = 32f;
+        button.style.paddingRight = 32f;
+        button.style.fontSize = 36f;
+        button.style.unityFontDefinition = modernUiFontDefinition;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.letterSpacing = 0f;
+        button.style.borderTopWidth = 1f;
+        button.style.borderRightWidth = 1f;
+        button.style.borderBottomWidth = 5f;
+        button.style.borderLeftWidth = 1f;
+        button.style.borderTopLeftRadius = 8f;
+        button.style.borderTopRightRadius = 8f;
+        button.style.borderBottomLeftRadius = 8f;
+        button.style.borderBottomRightRadius = 8f;
+        button.style.backgroundColor = baseColor;
+        button.style.color = textColor;
+
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.backgroundColor = Color.Lerp(baseColor, Color.white, 0.28f);
+            button.style.scale = new Scale(new Vector3(1.065f, 1.065f, 1f));
+            button.style.translate = new Translate(0f, -3f, 0f);
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.backgroundColor = baseColor;
+            button.style.scale = new Scale(Vector3.one);
+            button.style.translate = new Translate(0f, 0f, 0f);
+        });
+        button.RegisterCallback<PointerDownEvent>(_ =>
+        {
+            button.style.scale = new Scale(new Vector3(0.985f, 0.985f, 1f));
+            button.style.translate = new Translate(0f, 1f, 0f);
+        });
+        button.RegisterCallback<PointerUpEvent>(_ =>
+        {
+            button.style.scale = new Scale(new Vector3(1.065f, 1.065f, 1f));
+            button.style.translate = new Translate(0f, -3f, 0f);
+        });
+    }
+
+    private static void ApplyDiagnosticsTextFieldStyle(TextField field, float fontSize)
+    {
+        if (field == null)
+            return;
+
+        Color background = new Color(0.03f, 0.04f, 0.055f, 1f);
+        Color textColor = Color.white;
+        field.style.backgroundColor = background;
+        field.style.color = textColor;
+        field.style.fontSize = fontSize;
+
+        VisualElement input =
+            field.Q(className: TextInputBaseField<string>.textInputUssName)
+            ?? field.Q(className: "unity-text-field__input")
+            ?? field.Q(className: "unity-base-text-field__input")
+            ?? field.Q(className: "unity-base-field__input");
+
+        if (input != null)
+        {
+            input.style.backgroundColor = background;
+            input.style.color = textColor;
+            input.style.fontSize = fontSize;
+            input.style.unityTextAlign = TextAnchor.UpperLeft;
+            input.style.whiteSpace = WhiteSpace.Normal;
+        }
+
+        foreach (UnityEngine.UIElements.TextElement textElement in field.Query<UnityEngine.UIElements.TextElement>().ToList())
+        {
+            textElement.style.backgroundColor = background;
+            textElement.style.color = textColor;
+            textElement.style.fontSize = fontSize;
+            textElement.style.unityTextAlign = TextAnchor.UpperLeft;
+            textElement.style.whiteSpace = WhiteSpace.Normal;
+        }
+    }
+
 
 
     private static string GetScoreLetterGrade(float scorePercent)
@@ -11555,6 +11964,9 @@ public sealed class TabsSongHeaderOverlay
                snapshot.showGeneratedAudioTrackSelectionPopup ||
                snapshot.showSongSettingsTrackSelectionPopup ||
                snapshot.showStartupTuningReminder ||
+               snapshot.showDiagnosticsConsentPopup ||
+               snapshot.showBugReportScreen ||
+               snapshot.showBugReportSentPopup ||
                snapshot.showLibraryLoadingOverlay ||
                snapshot.showOffsetHelper ||
                snapshot.showMultiplayerRhythmSetup ||
@@ -15518,7 +15930,9 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsTopCategoryRow(menuList, 11, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 11);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 12, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 12);
+            AddGlobalSettingsTopCategoryRow(menuList, 12, "Send Bug Report", snapshot.selectedGlobalSettingsTopIndex == 12, "OPEN");
+
+            AddGlobalSettingsTopCategoryRow(menuList, 13, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 13, "DEFAULTS");
 
             return;
 
@@ -15618,11 +16032,11 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-    private void AddGlobalSettingsTopCategoryRow(VisualElement parent, int index, string title, bool isSelected)
+    private void AddGlobalSettingsTopCategoryRow(VisualElement parent, int index, string title, bool isSelected, string value = "ENTER")
 
     {
 
-        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(title, "ENTER", isSelected, showArrows: false, onHover: () => owner?.HoverGlobalSettingsTopSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsTopSelectionFromUi(index), onLeft: null, onRight: null);
+        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(title, value, isSelected, showArrows: false, onHover: () => owner?.HoverGlobalSettingsTopSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsTopSelectionFromUi(index), onLeft: null, onRight: null);
 
         parent.Add(row.row);
 
@@ -16281,7 +16695,9 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsFullscreenTopCategoryRow(menuList, 11, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 11);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 12, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 12, "DEFAULTS");
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 12, "Send Bug Report", snapshot.selectedGlobalSettingsTopIndex == 12, "OPEN");
+
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 13, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 13, "DEFAULTS");
 
             return;
 
@@ -24334,6 +24750,32 @@ public sealed class TabsSongHeaderOverlay
 
         return overlay;
 
+    }
+
+    private static VisualElement CreateDiagnosticsCard(float maxWidth)
+    {
+        VisualElement card = new VisualElement();
+        card.style.width = Length.Percent(88f);
+        card.style.maxWidth = maxWidth;
+        card.style.paddingLeft = 66f;
+        card.style.paddingRight = 66f;
+        card.style.paddingTop = 54f;
+        card.style.paddingBottom = 52f;
+        card.style.backgroundColor = new Color(0.045f, 0.055f, 0.073f, 0.985f);
+        card.style.borderTopWidth = 2f;
+        card.style.borderRightWidth = 2f;
+        card.style.borderBottomWidth = 2f;
+        card.style.borderLeftWidth = 2f;
+        Color borderColor = new Color(0.92f, 0.96f, 1f, 0.82f);
+        card.style.borderTopColor = borderColor;
+        card.style.borderRightColor = borderColor;
+        card.style.borderBottomColor = borderColor;
+        card.style.borderLeftColor = borderColor;
+        card.style.borderTopLeftRadius = 8f;
+        card.style.borderTopRightRadius = 8f;
+        card.style.borderBottomLeftRadius = 8f;
+        card.style.borderBottomRightRadius = 8f;
+        return card;
     }
 
 
