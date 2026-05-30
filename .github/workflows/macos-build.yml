@@ -104,6 +104,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PRIVATE_ASSET_TAG: ci-private-assets
           MIDIPLAYER_SHA256: b75288fdfbc2dbb1ca199ed033ebbfad79fa979f830cd02f4f4873e03706f6d6
+          RELEASE_ASSETS_SHA256: 31c46ca556333154aaedc96c363fee7e27aa717ec09dd8e6da84567647f587af
         run: |
           mkdir -p Temp/private-unity-assets
           python3 - <<'PY'
@@ -116,8 +117,11 @@ jobs:
           repo = os.environ["GITHUB_REPOSITORY"]
           token = os.environ["GITHUB_TOKEN"]
           tag = os.environ["PRIVATE_ASSET_TAG"]
-          expected_sha = os.environ["MIDIPLAYER_SHA256"].lower()
-          out_path = pathlib.Path("Temp/private-unity-assets/MidiPlayer.zip")
+          assets = {
+              "MidiPlayer.zip": os.environ["MIDIPLAYER_SHA256"].lower(),
+              "StringTheoryReleaseAssets.zip": os.environ["RELEASE_ASSETS_SHA256"].lower(),
+          }
+          out_dir = pathlib.Path("Temp/private-unity-assets")
 
           def github_request(url, accept="application/vnd.github+json"):
               request = urllib.request.Request(url)
@@ -130,23 +134,32 @@ jobs:
           with github_request(f"https://api.github.com/repos/{repo}/releases/tags/{tag}") as response:
               release = json.load(response)
 
-          asset = next((item for item in release.get("assets", []) if item.get("name") == "MidiPlayer.zip"), None)
-          if asset is None:
-              raise SystemExit("Private release asset MidiPlayer.zip was not found.")
+          release_assets = {item.get("name"): item for item in release.get("assets", [])}
+          for asset_name, expected_sha in assets.items():
+              asset = release_assets.get(asset_name)
+              if asset is None:
+                  raise SystemExit(f"Private release asset {asset_name} was not found.")
 
-          with github_request(asset["url"], accept="application/octet-stream") as response:
-              data = response.read()
+              with github_request(asset["url"], accept="application/octet-stream") as response:
+                  data = response.read()
 
-          actual_sha = hashlib.sha256(data).hexdigest()
-          if actual_sha != expected_sha:
-              raise SystemExit(f"MidiPlayer.zip SHA256 mismatch: expected {expected_sha}, got {actual_sha}")
+              actual_sha = hashlib.sha256(data).hexdigest()
+              if actual_sha != expected_sha:
+                  raise SystemExit(
+                      f"{asset_name} SHA256 mismatch: expected {expected_sha}, got {actual_sha}"
+                  )
 
-          out_path.write_bytes(data)
-          print(f"Downloaded MidiPlayer.zip ({len(data)} bytes, sha256 {actual_sha})")
+              out_path = out_dir / asset_name
+              out_path.write_bytes(data)
+              print(f"Downloaded {asset_name} ({len(data)} bytes, sha256 {actual_sha})")
           PY
           rm -rf Assets/MidiPlayer
           unzip -q Temp/private-unity-assets/MidiPlayer.zip -d Assets
           test -f Assets/MidiPlayer/Scripts/MidiPlayer.Run.asmdef
+          unzip -q Temp/private-unity-assets/StringTheoryReleaseAssets.zip -d .
+          test -f Assets/Resources/Hero.png
+          test -d Assets/StreamingAssets/Songs
+          find Assets/StreamingAssets/Songs -mindepth 1 -maxdepth 1 | grep -q .
 
       - name: Download native plugins
         uses: actions/download-artifact@v4

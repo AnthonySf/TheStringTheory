@@ -41,3 +41,23 @@ APPLE_APP_SPECIFIC_PASSWORD    App-specific password from account.apple.com
 ```
 
 Never commit files from `Signing\`.
+
+## Private release assets
+
+The macOS workflow also expects `StringTheoryReleaseAssets.zip` on the private `ci-private-assets` release. This package contains ignored release-only content that should match the local Windows release build, such as bundled songs and private character art.
+
+The zip must preserve repository-relative paths, for example:
+
+```text
+Assets/StreamingAssets/Songs/...
+Assets/Resources/Hero.png
+Assets/Resources/Hero.png.meta
+```
+
+After changing bundled songs or private character art, rebuild and re-upload `StringTheoryReleaseAssets.zip`, then update `RELEASE_ASSETS_SHA256` in `.github/workflows/macos-build.yml`.
+
+On Windows, rebuild the package from the repository root with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File Tools\Mac\create-release-assets-package-windows.ps1
+```
