@@ -392,7 +392,80 @@ jobs:
           buildMethod: StringTheoryBuildAutomation.BuildMacOS
           customParameters: -macOSArchitecture ${{ steps.macos-unity-arch.outputs.value }} -buildOutput build/StringTheory-macOS/StringTheory.app
 
+      - name: Import Developer ID certificate
+        id: developer-id
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "configured=false" >> "$GITHUB_OUTPUT"
+
+          if [[ -z "${MACOS_CERTIFICATE_P12}" && -z "${MACOS_CERTIFICATE_PASSWORD}" ]]; then
+            echo "Developer ID signing secrets are not configured. Keeping ad-hoc signed macOS artifact."
+            exit 0
+          fi
+
+          if [[ -z "${MACOS_CERTIFICATE_P12}" || -z "${MACOS_CERTIFICATE_PASSWORD}" ]]; then
+            echo "Both MACOS_CERTIFICATE_P12 and MACOS_CERTIFICATE_PASSWORD must be configured." >&2
+            exit 1
+          fi
+
+          keychain_password="$(uuidgen)"
+          keychain_path="${RUNNER_TEMP}/stringtheory-signing.keychain-db"
+          p12_path="${RUNNER_TEMP}/developer-id.p12"
+
+          if ! echo "${MACOS_CERTIFICATE_P12}" | base64 --decode > "${p12_path}" 2>/dev/null; then
+            echo "${MACOS_CERTIFICATE_P12}" | base64 -D > "${p12_path}"
+          fi
+          security create-keychain -p "${keychain_password}" "${keychain_path}"
+          security set-keychain-settings -lut 21600 "${keychain_path}"
+          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
+          security import "${p12_path}" \
+            -k "${keychain_path}" \
+            -P "${MACOS_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security list-keychains -d user -s "${keychain_path}"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "${keychain_password}" \
+            "${keychain_path}"
+
+          identity="$(security find-identity -v -p codesigning "${keychain_path}" | awk -F '"' '/Developer ID Application/ { print $2; exit }')"
+          if [[ -z "${identity}" ]]; then
+            security find-identity -v -p codesigning "${keychain_path}" || true
+            echo "Developer ID Application identity was not found in imported certificate." >&2
+            exit 1
+          fi
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "identity=${identity}" >> "$GITHUB_OUTPUT"
+          echo "keychain=${keychain_path}" >> "$GITHUB_OUTPUT"
+          echo "Imported ${identity}"
+
+      - name: Developer ID sign and notarize Unity player
+        if: steps.developer-id.outputs.configured == 'true'
+        shell: bash
+        env:
+          DEVELOPER_ID_APPLICATION: ${{ steps.developer-id.outputs.identity }}
+          MACOS_SIGNING_KEYCHAIN: ${{ steps.developer-id.outputs.keychain }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          if [[ -z "${APPLE_ID}" || -z "${APPLE_TEAM_ID}" || -z "${APPLE_APP_SPECIFIC_PASSWORD}" ]]; then
+            echo "APPLE_ID, APPLE_TEAM_ID, and APPLE_APP_SPECIFIC_PASSWORD are required for notarization." >&2
+            exit 1
+          fi
+
+          bash Tools/Mac/sign-and-notarize-app.sh \
+            build/StringTheory-macOS/StringTheory.app \
+            StringTheory-macOS.zip
+
       - name: Pack Unity player for distribution
+        if: steps.developer-id.outputs.configured != 'true'
         shell: bash
         run: |
           test -d build/StringTheory-macOS/StringTheory.app

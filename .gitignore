@@ -46,9 +46,15 @@ node_modules/
 .env
 *.pem
 *.key
+*.csr
+*.cer
+*.p12
+*.pfx
+*.base64
 *.alf
 *.ulf
 serviceAccount*.json
+Signing/
 
 # Python / packaged app output
 Assets/StreamingAssets/ToneLab/dist/
