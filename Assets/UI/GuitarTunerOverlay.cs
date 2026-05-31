@@ -49,6 +49,8 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
     private VisualElement modelPegGlowLayer;
     private VisualElement modelTargetButtonLayer;
     private VisualElement contentRoot;
+    private VisualElement tunerRegion;
+    private VisualElement bottomBar;
     private UIBackdropBlurController backdropBlurController;
     private VisualElement needle;
     private VisualElement needleGlow;
@@ -58,6 +60,7 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
     private Label centsLabel;
     private Label statusLabel;
     private VisualElement tuningInfoPanel;
+    private ScrollView tuningInfoScroll;
     private Label tuningNameLabel;
     private Label tuningNotesLabel;
     private Label tuningExplanationLabel;
@@ -96,6 +99,8 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
     private bool controllerCursorPressActive;
     private bool controllerCursorPrimaryWasHeld;
     private float controllerCursorLastActivityTime = float.NegativeInfinity;
+    private float lastResponsiveLayoutWidth = -1f;
+    private float lastResponsiveLayoutHeight = -1f;
     private const float ControllerCursorIdleHideSeconds = 4f;
 
     private enum TunerNavigationKind
@@ -182,6 +187,9 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
             overlayRoot.pickingMode = visible ? PickingMode.Position : PickingMode.Ignore;
         }
 
+        if (visible)
+            UpdateResponsiveLayout(force: true);
+
         if (blurBackdrop != null)
             blurBackdrop.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -222,6 +230,7 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         if (!isVisible || tunerService == null)
             return;
 
+        UpdateResponsiveLayout();
         RefreshUi(tunerService.GetSnapshot());
         UpdateIntroAnimation(Time.unscaledDeltaTime);
         UpdateControllerCursor();
@@ -318,7 +327,7 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         topBar.Add(headerControls);
         topBar.Add(backButton);
 
-        VisualElement tunerRegion = new VisualElement();
+        tunerRegion = new VisualElement();
         tunerRegion.style.position = Position.Absolute;
         tunerRegion.style.left = 64f;
         tunerRegion.style.top = 148f;
@@ -445,7 +454,7 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
 
         BuildTuningInfoPanel();
 
-        VisualElement bottomBar = new VisualElement();
+        bottomBar = new VisualElement();
         bottomBar.style.position = Position.Absolute;
         bottomBar.style.left = 84f;
         bottomBar.style.right = 84f;
@@ -529,8 +538,10 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         tuningInfoPanel.style.position = Position.Absolute;
         tuningInfoPanel.style.right = 84f;
         tuningInfoPanel.style.top = 152f;
+        tuningInfoPanel.style.bottom = 112f;
         tuningInfoPanel.style.width = 430f;
         tuningInfoPanel.style.flexDirection = FlexDirection.Column;
+        tuningInfoPanel.style.overflow = Overflow.Hidden;
         tuningInfoPanel.style.paddingTop = 24f;
         tuningInfoPanel.style.paddingRight = 24f;
         tuningInfoPanel.style.paddingBottom = 24f;
@@ -549,21 +560,30 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         tuningInfoPanel.style.borderBottomLeftRadius = 10f;
         tuningInfoPanel.style.borderBottomRightRadius = 10f;
 
+        tuningInfoScroll = new ScrollView(ScrollViewMode.Vertical);
+        tuningInfoScroll.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        tuningInfoScroll.verticalScrollerVisibility = ScrollerVisibility.Auto;
+        tuningInfoScroll.style.flexGrow = 1f;
+        tuningInfoScroll.style.flexShrink = 1f;
+        tuningInfoScroll.style.minHeight = 0f;
+        tuningInfoScroll.contentContainer.style.flexDirection = FlexDirection.Column;
+        tuningInfoPanel.Add(tuningInfoScroll);
+
         Label tuningTitle = CreateLabel("TUNING TARGET", 15f, new Color(0.56f, 0.74f, 0.90f, 0.96f), true, TextAnchor.MiddleLeft);
         tuningTitle.style.letterSpacing = 2.0f;
         tuningTitle.style.marginBottom = 8f;
-        tuningInfoPanel.Add(tuningTitle);
+        tuningInfoScroll.Add(tuningTitle);
 
         tuningNameLabel = CreateLabel("E Standard", 34f, Color.white, true, TextAnchor.MiddleLeft);
         tuningNameLabel.style.marginBottom = 2f;
-        tuningInfoPanel.Add(tuningNameLabel);
+        tuningInfoScroll.Add(tuningNameLabel);
 
         tuningNotesLabel = CreateLabel("E2  A2  D3  G3  B3  E4", 21f, new Color(0.74f, 0.86f, 0.96f, 0.96f), true, TextAnchor.MiddleLeft);
         tuningNotesLabel.style.marginBottom = 18f;
-        tuningInfoPanel.Add(tuningNotesLabel);
+        tuningInfoScroll.Add(tuningNotesLabel);
 
         standaloneTuningPresetLabel = CreateFieldLabel("Tuning");
-        tuningInfoPanel.Add(standaloneTuningPresetLabel);
+        tuningInfoScroll.Add(standaloneTuningPresetLabel);
 
         standaloneTuningPresetDropdown = new DropdownField();
         StyleSettingsDropdown(standaloneTuningPresetDropdown);
@@ -575,43 +595,43 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
 
             owner?.SetStandaloneTunerTuningPresetFromUi(evt.newValue);
         });
-        tuningInfoPanel.Add(standaloneTuningPresetDropdown);
+        tuningInfoScroll.Add(standaloneTuningPresetDropdown);
 
         forceStandardButton = new Button(() => owner?.ToggleTunerForceStandardFromUi()) { text = "Force Standard: ON" };
         StyleTuningToggleButton(forceStandardButton, enabled: true);
         EnableButtonInteraction(forceStandardButton);
         forceStandardButton.style.marginBottom = 12f;
-        tuningInfoPanel.Add(forceStandardButton);
+        tuningInfoScroll.Add(forceStandardButton);
 
         tuningExplanationLabel = CreateLabel(string.Empty, 16f, new Color(0.76f, 0.84f, 0.92f, 0.92f), false, TextAnchor.MiddleLeft);
         tuningExplanationLabel.style.whiteSpace = WhiteSpace.Normal;
         tuningExplanationLabel.style.marginBottom = 14f;
-        tuningInfoPanel.Add(tuningExplanationLabel);
+        tuningInfoScroll.Add(tuningExplanationLabel);
 
         songToneMappingsButton = new Button(() => owner?.ToggleTunerUseSongToneMappingsFromUi()) { text = "Song Tone Mapping: ON" };
         StyleTuningToggleButton(songToneMappingsButton, enabled: true);
         EnableButtonInteraction(songToneMappingsButton);
         songToneMappingsButton.style.marginTop = 2f;
         songToneMappingsButton.style.marginBottom = 10f;
-        tuningInfoPanel.Add(songToneMappingsButton);
+        tuningInfoScroll.Add(songToneMappingsButton);
 
         songToneMappingsExplanationLabel = CreateLabel(string.Empty, 15f, new Color(0.76f, 0.84f, 0.92f, 0.90f), false, TextAnchor.MiddleLeft);
         songToneMappingsExplanationLabel.style.whiteSpace = WhiteSpace.Normal;
         songToneMappingsExplanationLabel.style.marginBottom = 22f;
-        tuningInfoPanel.Add(songToneMappingsExplanationLabel);
+        tuningInfoScroll.Add(songToneMappingsExplanationLabel);
 
         VisualElement separator = new VisualElement();
         separator.style.height = 1f;
         separator.style.backgroundColor = new Color(0.42f, 0.56f, 0.68f, 0.24f);
         separator.style.marginBottom = 20f;
-        tuningInfoPanel.Add(separator);
+        tuningInfoScroll.Add(separator);
 
         Label audioTitle = CreateLabel("AUDIO INPUT", 15f, new Color(0.56f, 0.74f, 0.90f, 0.96f), true, TextAnchor.MiddleLeft);
         audioTitle.style.letterSpacing = 2.0f;
         audioTitle.style.marginBottom = 12f;
-        tuningInfoPanel.Add(audioTitle);
+        tuningInfoScroll.Add(audioTitle);
 
-        tuningInfoPanel.Add(CreateFieldLabel("Input Device"));
+        tuningInfoScroll.Add(CreateFieldLabel("Input Device"));
         audioInputDropdown = new DropdownField();
         StyleSettingsDropdown(audioInputDropdown);
         audioInputDropdown.RegisterValueChangedCallback(evt =>
@@ -621,9 +641,9 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
 
             owner?.SetSharedAudioInputDeviceFromUi(evt.newValue);
         });
-        tuningInfoPanel.Add(audioInputDropdown);
+        tuningInfoScroll.Add(audioInputDropdown);
 
-        tuningInfoPanel.Add(CreateFieldLabel("Input Channel"));
+        tuningInfoScroll.Add(CreateFieldLabel("Input Channel"));
         audioChannelDropdown = new DropdownField();
         StyleSettingsDropdown(audioChannelDropdown);
         audioChannelDropdown.RegisterValueChangedCallback(evt =>
@@ -633,7 +653,7 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
 
             owner?.SetSharedAudioInputChannelModeFromUi(evt.newValue);
         });
-        tuningInfoPanel.Add(audioChannelDropdown);
+        tuningInfoScroll.Add(audioChannelDropdown);
 
         refreshDevicesButton = new Button(() =>
         {
@@ -646,7 +666,7 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         StylePanelActionButton(refreshDevicesButton);
         EnableButtonInteraction(refreshDevicesButton);
         refreshDevicesButton.style.marginTop = 16f;
-        tuningInfoPanel.Add(refreshDevicesButton);
+        tuningInfoScroll.Add(refreshDevicesButton);
     }
 
     private void BuildBlurBackdrop()
@@ -924,6 +944,67 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
 
         RefreshPegHighlights(snapshot);
         RefreshNavigationVisuals();
+    }
+
+    private void UpdateResponsiveLayout(bool force = false)
+    {
+        if (overlayRoot == null || contentRoot == null)
+            return;
+
+        Vector2 panelSize = ResolveControllerCursorPanelSize();
+        if (!force &&
+            Mathf.Abs(panelSize.x - lastResponsiveLayoutWidth) < 0.5f &&
+            Mathf.Abs(panelSize.y - lastResponsiveLayoutHeight) < 0.5f)
+            return;
+
+        lastResponsiveLayoutWidth = panelSize.x;
+        lastResponsiveLayoutHeight = panelSize.y;
+
+        bool compactHeight = panelSize.y < 920f;
+        bool narrowWidth = panelSize.x < 1380f;
+        float sidePadding = Mathf.Clamp(panelSize.x * 0.044f, 30f, narrowWidth ? 56f : 84f);
+        float topPadding = compactHeight ? 18f : 28f;
+        float bottomPadding = compactHeight ? 30f : 54f;
+        float settingsTop = compactHeight ? 118f : 152f;
+        float settingsBottom = compactHeight ? 30f : 112f;
+        float settingsWidth = Mathf.Clamp(panelSize.x * (narrowWidth ? 0.30f : 0.22f), narrowWidth ? 300f : 360f, 430f);
+
+        contentRoot.style.paddingLeft = sidePadding;
+        contentRoot.style.paddingRight = sidePadding;
+        contentRoot.style.paddingTop = topPadding;
+        contentRoot.style.paddingBottom = bottomPadding;
+
+        if (titleLabel != null)
+            titleLabel.style.fontSize = compactHeight ? 64f : 78f;
+
+        if (tunerRegion != null)
+        {
+            tunerRegion.style.left = Mathf.Clamp(sidePadding - 20f, 36f, 64f);
+            tunerRegion.style.top = compactHeight ? 118f : 148f;
+            tunerRegion.style.bottom = compactHeight ? 78f : 112f;
+            tunerRegion.style.width = Mathf.Clamp(panelSize.x * (narrowWidth ? 0.34f : 0.27f), 360f, compactHeight ? 480f : 520f);
+        }
+
+        if (tuningInfoPanel != null)
+        {
+            tuningInfoPanel.style.right = sidePadding;
+            tuningInfoPanel.style.top = settingsTop;
+            tuningInfoPanel.style.bottom = settingsBottom;
+            tuningInfoPanel.style.width = settingsWidth;
+
+            float padding = compactHeight ? 18f : 24f;
+            tuningInfoPanel.style.paddingTop = padding;
+            tuningInfoPanel.style.paddingRight = padding;
+            tuningInfoPanel.style.paddingBottom = padding;
+            tuningInfoPanel.style.paddingLeft = padding;
+        }
+
+        if (bottomBar != null)
+        {
+            bottomBar.style.left = sidePadding;
+            bottomBar.style.right = sidePadding;
+            bottomBar.style.bottom = bottomPadding;
+        }
     }
 
     private void UpdateControllerCursor()
@@ -2135,7 +2216,7 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         settings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
         settings.referenceResolution = new Vector2Int(1920, 1080);
         settings.screenMatchMode = PanelScreenMatchMode.MatchWidthOrHeight;
-        settings.match = 0.5f;
+        settings.match = 1f;
         settings.scale = 1f;
         settings.targetDisplay = 0;
         settings.sortingOrder = 235;
