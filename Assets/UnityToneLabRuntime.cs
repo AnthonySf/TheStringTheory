@@ -2006,6 +2006,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (preset == null || preset.pedal_chain == null || preset.pedal_chain.Count == 0)
             return false;
 
+        EnsureSettingsLoaded();
+        if (settings == null)
+            return false;
+
         string presetId = preset.preset_id ?? string.Empty;
         if (playbackPresetOverrideActive &&
             string.Equals(playbackPresetOverrideId, presetId, StringComparison.Ordinal) &&

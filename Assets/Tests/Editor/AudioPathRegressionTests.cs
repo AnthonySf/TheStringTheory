@@ -796,6 +796,12 @@ public sealed class AudioPathRegressionTests
     [Test]
     public void RocksmithTonePresetBuilder_BuildsStructuredGearToneWithoutTreatingBassKnobAsBassRoute()
     {
+        const string gxSd1 = "http://guitarix.sourceforge.net/plugins/gx_sd1sim_#_sd1sim_";
+        const string gxPlexi = "http://guitarix.sourceforge.net/plugins/gx_plexi_#_plexi_";
+        const string gxUltraCab = "http://guitarix.sourceforge.net/plugins/gx_ultracab_#_ultracab_";
+        const string gxAmpegSvt = "http://guitarix.sourceforge.net/plugins/gx_ampegsvt_#_ampegsvt_";
+        const string zamDelay = "urn:zamaudio:ZamDelay";
+
         string rawToneJson =
             @"{
                 ""Name"": ""Clean Verse"",
@@ -828,16 +834,108 @@ public sealed class AudioPathRegressionTests
 
         Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Clean Verse", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
         Assert.IsTrue(RocksmithTonePresetBuilder.IsGeneratedPresetId(preset.preset_id));
-        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Distortion);
-        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Amp);
-        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.CabSim);
-        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Delay);
+        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin);
+        AssertHasLv2Plugin(preset, gxSd1);
+        AssertHasLv2Plugin(preset, gxPlexi);
+        AssertHasLv2Plugin(preset, gxUltraCab);
+        AssertHasLv2Plugin(preset, zamDelay);
+        Assert.IsFalse(HasLv2Plugin(preset, gxAmpegSvt), "A guitar route with a Bass EQ knob should not be treated as a bass arrangement.");
 
-        UnityToneLabRuntime.ToneLabPedalSlot cabSlot = preset.pedal_chain.First(slot => slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.CabSim);
-        CabSimPedalSettings cabSettings = (CabSimPedalSettings)ToneLabPedalRegistry
-            .GetDescriptor(UnityToneLabRuntime.ToneLabPedalType.CabSim)
-            .DeserializeSettingsObject(cabSlot.settings_json);
-        Assert.Less(cabSettings.thump, 0.78f, "A guitar route with a Bass EQ knob should not be treated as a bass arrangement.");
+        ToneLabExternalPedalSettings cabSettings = FindLv2Settings(preset, gxUltraCab);
+        Assert.Less(GetExternalParameter(cabSettings, "PUNCH"), 0.78f, "A guitar route should keep guitar-cab voicing even when an amp exposes a Bass knob.");
+    }
+
+    [Test]
+    public void RocksmithTonePresetBuilder_MapsRocksmithGraphicEqBandsToLv2GraphicEq()
+    {
+        const string zamGeq31 = "urn:zamaudio:ZamGEQ31";
+        string rawToneJson =
+            @"{
+                ""Name"": ""Graphic EQ"",
+                ""GearList"": {
+                    ""Rack1"": {
+                        ""Type"": ""Rack"",
+                        ""Category"": ""EQ"",
+                        ""Key"": ""Rack_StudioGraphicEQ"",
+                        ""KnobValues"": { ""Band_50"": -5, ""Band_800"": 4, ""Band_6.4k"": 3 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Graphic EQ", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        ToneLabExternalPedalSettings eqSettings = FindLv2Settings(preset, zamGeq31);
+        Assert.AreEqual(-5f, GetExternalParameter(eqSettings, "band3"), 0.0001f);
+        Assert.AreEqual(4f, GetExternalParameter(eqSettings, "band15"), 0.0001f);
+        Assert.AreEqual(3f, GetExternalParameter(eqSettings, "band24"), 0.0001f);
+    }
+
+    [Test]
+    public void RocksmithTonePresetBuilder_MapsStudioEqFrequencyAndGainKnobsSeparately()
+    {
+        const string zamEq2 = "urn:zamaudio:ZamEQ2";
+        const string zamGeq31 = "urn:zamaudio:ZamGEQ31";
+        string rawToneJson =
+            @"{
+                ""Name"": ""Studio EQ"",
+                ""GearList"": {
+                    ""Rack1"": {
+                        ""Type"": ""Rack"",
+                        ""Category"": ""EQ"",
+                        ""Key"": ""Rack_StudioEQ"",
+                        ""KnobValues"": {
+                            ""Rack_StudioEQ_BassFreq"": 120,
+                            ""Rack_StudioEQ_Bass"": -4,
+                            ""Rack_StudioEQ_LoMidFreq"": 750,
+                            ""Rack_StudioEQ_LoMid"": 3,
+                            ""Rack_StudioEQ_HiMidFreq"": 2.2,
+                            ""Rack_StudioEQ_HiMid"": -2,
+                            ""Rack_StudioEQ_TrebleFreq"": 6.4,
+                            ""Rack_StudioEQ_Treble"": 5
+                        }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Studio EQ", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsFalse(HasLv2Plugin(preset, zamGeq31), "Studio EQ frequency knobs should not be mistaken for graphic-EQ gain bands.");
+
+        ToneLabExternalPedalSettings eqSettings = FindLv2Settings(preset, zamEq2);
+        Assert.AreEqual(-4f, GetExternalParameter(eqSettings, "boostl"), 0.0001f);
+        Assert.AreEqual(120f, GetExternalParameter(eqSettings, "fl"), 0.0001f);
+        Assert.AreEqual(3f, GetExternalParameter(eqSettings, "boost1"), 0.0001f);
+        Assert.AreEqual(750f, GetExternalParameter(eqSettings, "f1"), 0.0001f);
+        Assert.AreEqual(-2f, GetExternalParameter(eqSettings, "boost2"), 0.0001f);
+        Assert.AreEqual(2200f, GetExternalParameter(eqSettings, "f2"), 0.0001f);
+        Assert.AreEqual(5f, GetExternalParameter(eqSettings, "boosth"), 0.0001f);
+        Assert.AreEqual(6400f, GetExternalParameter(eqSettings, "fh"), 0.0001f);
+    }
+
+    [Test]
+    public void RocksmithTonePresetBuilder_UsesBassLv2AmpWithoutAddingGuitarCabForBassRoutes()
+    {
+        const string gxAmpegSvt = "http://guitarix.sourceforge.net/plugins/gx_ampegsvt_#_ampegsvt_";
+        const string gxUltraCab = "http://guitarix.sourceforge.net/plugins/gx_ultracab_#_ultracab_";
+        string rawToneJson =
+            @"{
+                ""Name"": ""Bass Tone"",
+                ""GearList"": {
+                    ""Amp"": {
+                        ""Type"": ""Amps"",
+                        ""Key"": ""Bass_Amp_BT975B"",
+                        ""KnobValues"": { ""Gain"": 42, ""Bass"": 75, ""Middle"": 52, ""Treble"": 48, ""Volume"": 60 }
+                    },
+                    ""Cabinet"": {
+                        ""Type"": ""Cabinets"",
+                        ""Key"": ""Bass_Cab_Ampeg8x10"",
+                        ""KnobValues"": {}
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Bass Tone", "Bass", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        ToneLabExternalPedalSettings ampSettings = FindLv2Settings(preset, gxAmpegSvt);
+        Assert.AreEqual(1f, GetExternalParameter(ampSettings, "CABSWITCH"), 0.0001f);
+        Assert.IsFalse(HasLv2Plugin(preset, gxUltraCab), "Bass LV2 amp already carries its cabinet model, so generated bass routes should not add a guitar cab slot.");
     }
 
     [Test]
@@ -867,7 +965,7 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Delay Transition", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Delay Transition", "Lead", rawToneJson, _ => false, out UnityToneLabRuntime.ToneLabPreset preset));
 
         UnityToneLabRuntime.ToneLabPedalSlot delaySlot = preset.pedal_chain.First(slot => slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.Delay);
         DelayPedalSettings delaySettings = (DelayPedalSettings)ToneLabPedalRegistry
@@ -877,6 +975,39 @@ public sealed class AudioPathRegressionTests
         Assert.AreEqual(0.34f, delaySettings.delay_seconds, 0.02f);
         Assert.AreEqual(0.04f, delaySettings.feedback, 0.001f);
         Assert.AreEqual(0.10f, delaySettings.mix, 0.001f);
+    }
+
+    [Test]
+    public void RocksmithTonePresetBuilder_FallsBackToBuiltInPedalsWhenLv2CatalogIsUnavailable()
+    {
+        string rawToneJson =
+            @"{
+                ""Name"": ""LV2 Missing Safe Fallback"",
+                ""GearList"": {
+                    ""Amp"": {
+                        ""Type"": ""Amps"",
+                        ""Key"": ""Amp_MarshallPlexi"",
+                        ""KnobValues"": { ""Gain"": 7, ""Bass"": 5, ""Mid"": 5, ""Treble"": 6 }
+                    },
+                    ""Cabinet"": {
+                        ""Type"": ""Cabinets"",
+                        ""Key"": ""Cab_Marshall1960TV"",
+                        ""KnobValues"": {}
+                    },
+                    ""PrePedal1"": {
+                        ""Type"": ""Pedals"",
+                        ""Category"": ""Distortion"",
+                        ""Key"": ""Pedal_TubeScreamer"",
+                        ""KnobValues"": { ""Drive"": 4, ""Tone"": 5, ""Level"": 6 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("LV2 Missing Safe Fallback", "Lead", rawToneJson, _ => false, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsFalse(preset.pedal_chain.Any(slot => slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin));
+        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Distortion);
+        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Amp);
+        CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.CabSim);
     }
 
     [Test]
@@ -1205,6 +1336,53 @@ public sealed class AudioPathRegressionTests
         foreach (ToneLabPedalParameterDefinition parameter in descriptor.Parameters)
             parameter.SetValue(settings, valueSelector(parameter));
         return settings;
+    }
+
+    private static bool HasLv2Plugin(UnityToneLabRuntime.ToneLabPreset preset, string pluginUri)
+    {
+        return GetLv2Settings(preset).Any(settings => string.Equals(settings.plugin_uri, pluginUri, StringComparison.Ordinal));
+    }
+
+    private static void AssertHasLv2Plugin(UnityToneLabRuntime.ToneLabPreset preset, string pluginUri)
+    {
+        Assert.IsTrue(HasLv2Plugin(preset, pluginUri), $"Expected generated preset to include LV2 plugin '{pluginUri}'.");
+    }
+
+    private static ToneLabExternalPedalSettings FindLv2Settings(UnityToneLabRuntime.ToneLabPreset preset, string pluginUri)
+    {
+        ToneLabExternalPedalSettings settings = GetLv2Settings(preset)
+            .FirstOrDefault(candidate => string.Equals(candidate.plugin_uri, pluginUri, StringComparison.Ordinal));
+        Assert.IsNotNull(settings, $"Expected generated preset to include LV2 plugin '{pluginUri}'.");
+        return settings;
+    }
+
+    private static List<ToneLabExternalPedalSettings> GetLv2Settings(UnityToneLabRuntime.ToneLabPreset preset)
+    {
+        Assert.IsNotNull(preset);
+        Assert.IsNotNull(preset.pedal_chain);
+        List<ToneLabExternalPedalSettings> settings = new List<ToneLabExternalPedalSettings>();
+        foreach (UnityToneLabRuntime.ToneLabPedalSlot slot in preset.pedal_chain)
+        {
+            if (slot.pedal_type != UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin)
+                continue;
+
+            ToneLabExternalPedalSettings parsed = JsonUtility.FromJson<ToneLabExternalPedalSettings>(slot.settings_json);
+            Assert.IsNotNull(parsed, "Generated LV2 pedal settings should deserialize.");
+            Assert.AreEqual(ToneLabExternalPedalCatalog.BuildLv2DescriptorId(parsed.plugin_uri), slot.descriptor_id);
+            settings.Add(parsed);
+        }
+
+        return settings;
+    }
+
+    private static float GetExternalParameter(ToneLabExternalPedalSettings settings, string parameterId)
+    {
+        Assert.IsNotNull(settings);
+        Assert.IsNotNull(settings.parameters);
+        ToneLabExternalParameterValue parameter = settings.parameters
+            .FirstOrDefault(candidate => string.Equals(candidate.parameter_id, parameterId, StringComparison.Ordinal));
+        Assert.IsNotNull(parameter, $"Expected LV2 settings for '{settings.plugin_uri}' to include parameter '{parameterId}'.");
+        return parameter.value;
     }
 
     private static float[] CreateSyntheticGuitarBuffer(int frames, int channels, int sampleRate, float frequencyHz, float amplitude)

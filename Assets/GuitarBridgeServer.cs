@@ -1042,6 +1042,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private string activeSongToneMappingToneName = string.Empty;
     private string activeSongToneMappingPresetId = string.Empty;
     private readonly Dictionary<string, UnityToneLabRuntime.ToneLabPreset> generatedRocksmithTonePresetCache = new Dictionary<string, UnityToneLabRuntime.ToneLabPreset>(StringComparer.Ordinal);
+    private bool generatedToneExternalPedalLibraryReady;
     private string cachedSongToneMappingSongKey = string.Empty;
     private string cachedSongToneMappingArrangementKey = string.Empty;
     private string cachedSongToneMappingPartId = string.Empty;
@@ -21353,7 +21354,14 @@ private void ParseDetectorPacket(string detectorPacket)
         out string presetId)
     {
         presetId = string.Empty;
-        if (!RocksmithTonePresetBuilder.TryBuildPreset(toneName, arrangementRoute, rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset) ||
+        EnsureGeneratedToneExternalPedalLibraryReady();
+
+        if (!RocksmithTonePresetBuilder.TryBuildPreset(
+                toneName,
+                arrangementRoute,
+                rawToneJson,
+                IsGeneratedToneLv2PluginAvailable,
+                out UnityToneLabRuntime.ToneLabPreset preset) ||
             preset == null ||
             string.IsNullOrWhiteSpace(preset.preset_id))
         {
@@ -21363,6 +21371,22 @@ private void ParseDetectorPacket(string detectorPacket)
         generatedRocksmithTonePresetCache[preset.preset_id] = preset;
         presetId = preset.preset_id;
         return true;
+    }
+
+    private void EnsureGeneratedToneExternalPedalLibraryReady()
+    {
+        if (generatedToneExternalPedalLibraryReady)
+            return;
+
+        EnsureToneLabRuntimeComponent();
+        unityToneLabRuntime?.RefreshExternalPedalLibrary();
+        generatedToneExternalPedalLibraryReady = true;
+    }
+
+    private static bool IsGeneratedToneLv2PluginAvailable(string pluginUri)
+    {
+        string descriptorId = ToneLabExternalPedalCatalog.BuildLv2DescriptorId(pluginUri);
+        return ToneLabPedalRegistry.HasDescriptor(descriptorId);
     }
 
     private static string GetToneDefinitionRawJson(RocksmithCachedArrangementToneData toneData, string toneName)

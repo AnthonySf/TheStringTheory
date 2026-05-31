@@ -103,6 +103,16 @@ public static class ToneLabPedalRegistry
         throw new ArgumentOutOfRangeException(nameof(descriptorId), descriptorId, "Unknown Tone Lab pedal descriptor.");
     }
 
+    public static bool HasDescriptor(string descriptorId)
+    {
+        string resolvedDescriptorId = ToneLabExternalPedalCatalog.ResolveNamDescriptorId(descriptorId);
+        if (string.IsNullOrWhiteSpace(resolvedDescriptorId))
+            return false;
+
+        lock (syncRoot)
+            return descriptorsById.ContainsKey(resolvedDescriptorId);
+    }
+
     public static IToneLabPedalDescriptor GetDescriptor(UnityToneLabRuntime.ToneLabPedalSlot slot)
     {
         if (slot == null)

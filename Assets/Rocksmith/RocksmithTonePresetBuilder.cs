@@ -29,6 +29,16 @@ public static class RocksmithTonePresetBuilder
         string rawToneJson,
         out UnityToneLabRuntime.ToneLabPreset preset)
     {
+        return TryBuildPreset(toneName, arrangementRoute, rawToneJson, _ => true, out preset);
+    }
+
+    public static bool TryBuildPreset(
+        string toneName,
+        string arrangementRoute,
+        string rawToneJson,
+        Func<string, bool> lv2PluginAvailable,
+        out UnityToneLabRuntime.ToneLabPreset preset)
+    {
         preset = null;
         if (string.IsNullOrWhiteSpace(rawToneJson) ||
             !RocksmithToneJsonParser.TryParse(rawToneJson, out object parsed) ||
@@ -46,7 +56,7 @@ public static class RocksmithTonePresetBuilder
 
         float? rootToneVolumeDb = TryGetRootToneVolumeDb(root);
         ToneBuildContext context = BuildContext(toneName, arrangementRoute, gears, rootToneVolumeDb);
-        List<UnityToneLabRuntime.ToneLabPedalSlot> chain = BuildPedalChain(context, gears);
+        List<UnityToneLabRuntime.ToneLabPedalSlot> chain = BuildPedalChain(context, gears, lv2PluginAvailable);
         if (chain.Count == 0)
             return false;
 
@@ -291,13 +301,21 @@ public static class RocksmithTonePresetBuilder
         return builder.ToString();
     }
 
-    private static List<UnityToneLabRuntime.ToneLabPedalSlot> BuildPedalChain(ToneBuildContext context, IReadOnlyList<RocksmithGear> gears)
+    private static List<UnityToneLabRuntime.ToneLabPedalSlot> BuildPedalChain(
+        ToneBuildContext context,
+        IReadOnlyList<RocksmithGear> gears,
+        Func<string, bool> lv2PluginAvailable)
     {
+        bool useLv2GeneratedChain = RocksmithToneLv2Mappings.AreRequiredPluginsAvailable(lv2PluginAvailable);
         List<UnityToneLabRuntime.ToneLabPedalSlot> dynamics = new List<UnityToneLabRuntime.ToneLabPedalSlot>();
         List<UnityToneLabRuntime.ToneLabPedalSlot> gain = new List<UnityToneLabRuntime.ToneLabPedalSlot>();
+        List<UnityToneLabRuntime.ToneLabPedalSlot> eq = new List<UnityToneLabRuntime.ToneLabPedalSlot>();
         List<UnityToneLabRuntime.ToneLabPedalSlot> modulation = new List<UnityToneLabRuntime.ToneLabPedalSlot>();
         List<UnityToneLabRuntime.ToneLabPedalSlot> ambience = new List<UnityToneLabRuntime.ToneLabPedalSlot>();
+        UnityToneLabRuntime.ToneLabPedalSlot ampSlot = null;
+        UnityToneLabRuntime.ToneLabPedalSlot cabSlot = null;
         bool sawKnownGear = false;
+        bool hasGate = false;
         bool hasCompressor = false;
         bool hasDelay = false;
         bool hasReverb = false;
@@ -307,6 +325,83 @@ public static class RocksmithTonePresetBuilder
         {
             GearFamily family = ClassifyGear(gear);
             CanonicalControls controls = CanonicalControls.FromKnobs(gear.Knobs);
+            if (useLv2GeneratedChain && RocksmithToneLv2Mappings.TryCreateMappedSlot(
+                    gear.SlotKey,
+                    gear.Type,
+                    gear.Name,
+                    gear.Category,
+                    gear.Knobs,
+                    context.IsBass,
+                    context.HighGain,
+                    context.DriveIntent,
+                    out RocksmithToneLv2SlotMapping mappedSlot))
+            {
+                switch (mappedSlot.Role)
+                {
+                    case RocksmithToneLv2SlotRole.Dynamics:
+                        if (family == GearFamily.NoiseGate)
+                        {
+                            if (!hasGate)
+                            {
+                                dynamics.Insert(0, mappedSlot.Slot);
+                                hasGate = true;
+                            }
+                        }
+                        else if (!hasCompressor)
+                        {
+                            dynamics.Add(mappedSlot.Slot);
+                            hasCompressor = true;
+                        }
+                        break;
+                    case RocksmithToneLv2SlotRole.Gain:
+                        if (drivePedalCount < 2)
+                        {
+                            gain.Add(mappedSlot.Slot);
+                            drivePedalCount++;
+                        }
+                        break;
+                    case RocksmithToneLv2SlotRole.Amp:
+                        ampSlot ??= mappedSlot.Slot;
+                        break;
+                    case RocksmithToneLv2SlotRole.Cab:
+                        cabSlot ??= mappedSlot.Slot;
+                        break;
+                    case RocksmithToneLv2SlotRole.Eq:
+                        eq.Add(mappedSlot.Slot);
+                        break;
+                    case RocksmithToneLv2SlotRole.Modulation:
+                        modulation.Add(mappedSlot.Slot);
+                        break;
+                    case RocksmithToneLv2SlotRole.Ambience:
+                        if (family == GearFamily.Delay)
+                        {
+                            if (!hasDelay)
+                            {
+                                ambience.Add(mappedSlot.Slot);
+                                hasDelay = true;
+                            }
+                        }
+                        else if (family == GearFamily.Reverb)
+                        {
+                            if (!hasReverb)
+                            {
+                                ambience.Add(mappedSlot.Slot);
+                                hasReverb = true;
+                            }
+                        }
+                        else
+                        {
+                            ambience.Add(mappedSlot.Slot);
+                        }
+                        break;
+                }
+
+                sawKnownGear = true;
+                if (family == GearFamily.NoiseGate)
+                    context.NeedsGate = false;
+                continue;
+            }
+
             switch (family)
             {
                 case GearFamily.NoiseGate:
@@ -400,36 +495,77 @@ public static class RocksmithTonePresetBuilder
             return new List<UnityToneLabRuntime.ToneLabPedalSlot>();
 
         List<UnityToneLabRuntime.ToneLabPedalSlot> chain = new List<UnityToneLabRuntime.ToneLabPedalSlot>();
-        if (context.NeedsGate)
+        if (context.NeedsGate && !hasGate)
         {
-            chain.Add(CreateSlot(UnityToneLabRuntime.ToneLabPedalType.NoiseGate, new NoiseGatePedalSettings
-            {
-                threshold_db = Mathf.Lerp(-62f, -40f, context.DriveIntent),
-                attack_ms = context.HighGain ? 0.8f : 3f,
-                hold_ms = context.HighGain ? 20f : 35f,
-                release_ms = context.HighGain ? 70f : 125f,
-                range_db = -80f
-            }));
+            chain.Add(useLv2GeneratedChain
+                ? RocksmithToneLv2Mappings.CreateDefaultNoiseGateSlot(context.DriveIntent, context.HighGain)
+                : CreateSlot(UnityToneLabRuntime.ToneLabPedalType.NoiseGate, new NoiseGatePedalSettings
+                {
+                    threshold_db = Mathf.Lerp(-62f, -40f, context.DriveIntent),
+                    attack_ms = context.HighGain ? 0.8f : 3f,
+                    hold_ms = context.HighGain ? 20f : 35f,
+                    release_ms = context.HighGain ? 70f : 125f,
+                    range_db = -80f
+                }));
         }
 
         chain.AddRange(dynamics);
         chain.AddRange(gain);
-        chain.Add(CreateSlot(UnityToneLabRuntime.ToneLabPedalType.Amp, BuildAmpSettings(context)));
-        chain.Add(CreateSlot(UnityToneLabRuntime.ToneLabPedalType.CabSim, BuildCabSettings(context)));
-        chain.Add(CreateSlot(UnityToneLabRuntime.ToneLabPedalType.StudioEq, BuildEqSettings(context)));
+        chain.Add(ampSlot ?? (useLv2GeneratedChain
+            ? RocksmithToneLv2Mappings.CreateDefaultAmpSlot(
+                context.IsBass,
+                context.HighGain,
+                context.DriveIntent,
+                context.BassIntent,
+                context.MidIntent,
+                context.TrebleIntent,
+                context.PresenceIntent)
+            : CreateSlot(UnityToneLabRuntime.ToneLabPedalType.Amp, BuildAmpSettings(context))));
+
+        UnityToneLabRuntime.ToneLabPedalSlot defaultCab = cabSlot ?? (useLv2GeneratedChain
+            ? RocksmithToneLv2Mappings.CreateDefaultCabSlot(
+                context.IsBass,
+                context.HighGain,
+                context.DriveIntent,
+                context.BassIntent,
+                context.MidIntent,
+                context.TrebleIntent,
+                context.PresenceIntent)
+            : CreateSlot(UnityToneLabRuntime.ToneLabPedalType.CabSim, BuildCabSettings(context)));
+        if (defaultCab != null)
+            chain.Add(defaultCab);
+
+        if (eq.Count > 0)
+        {
+            chain.AddRange(eq);
+        }
+        else
+        {
+            chain.Add(useLv2GeneratedChain
+                ? RocksmithToneLv2Mappings.CreateDefaultEqSlot(
+                    context.IsBass,
+                    context.HighGain,
+                    context.BassIntent,
+                    context.MidIntent,
+                    context.TrebleIntent)
+                : CreateSlot(UnityToneLabRuntime.ToneLabPedalType.StudioEq, BuildEqSettings(context)));
+        }
+
         chain.AddRange(modulation);
         chain.AddRange(ambience);
         if (!hasReverb)
         {
-            chain.Add(CreateSlot(UnityToneLabRuntime.ToneLabPedalType.Reverb, new ReverbPedalSettings
-            {
-                room_size = context.HighGain ? 0.18f : 0.32f,
-                damping = context.HighGain ? 0.56f : 0.42f,
-                wet = context.HighGain ? 0.08f : 0.15f,
-                dry = 0.96f,
-                width = 0.95f,
-                freeze = 0f
-            }));
+            chain.Add(useLv2GeneratedChain
+                ? RocksmithToneLv2Mappings.CreateDefaultReverbSlot(context.HighGain)
+                : CreateSlot(UnityToneLabRuntime.ToneLabPedalType.Reverb, new ReverbPedalSettings
+                {
+                    room_size = context.HighGain ? 0.18f : 0.32f,
+                    damping = context.HighGain ? 0.56f : 0.42f,
+                    wet = context.HighGain ? 0.08f : 0.15f,
+                    dry = 0.96f,
+                    width = 0.95f,
+                    freeze = 0f
+                }));
         }
 
         return chain;
@@ -503,17 +639,17 @@ public static class RocksmithTonePresetBuilder
             return GearFamily.Unknown;
         if (ContainsAny(text, "gate", "noise suppress", "noise reduction", "hush"))
             return GearFamily.NoiseGate;
-        if (ContainsAny(text, "compress", "sustain", "limiter"))
+        if (ContainsAny(text, "compress", "sustain", "limiter", "mbcomp", "studio compressor"))
             return GearFamily.Compressor;
         if (ContainsAny(text, "amp") || text.StartsWith("amp ", StringComparison.Ordinal) || text.StartsWith("amp_", StringComparison.Ordinal))
             return GearFamily.Amp;
         if (ContainsAny(text, "cab", "cabinet", "speaker"))
             return GearFamily.Cab;
-        if (ContainsAny(text, "eq", "equalizer", "filter"))
+        if (ContainsAny(text, "eq", "equalizer", "filter", "graphic"))
             return GearFamily.Eq;
         if (ContainsAny(text, "delay", "echo"))
             return GearFamily.Delay;
-        if (ContainsAny(text, "reverb", "room", "hall", "plate", "spring"))
+        if (ContainsAny(text, "reverb", "room", "hall", "plate", "spring", "verb"))
             return GearFamily.Reverb;
         if (ContainsAny(text, "chorus", "flanger", "rotary", "doubler"))
             return GearFamily.Chorus;
