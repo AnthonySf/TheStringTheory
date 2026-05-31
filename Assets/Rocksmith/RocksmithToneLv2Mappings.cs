@@ -148,7 +148,7 @@ internal static class RocksmithToneLv2Mappings
             return cabSlot != null && Return(RocksmithToneLv2SlotRole.Cab, cabSlot, out mapping);
         }
 
-        if (ContainsAny(text, "amp") || text.StartsWith("amp ", StringComparison.Ordinal) || text.StartsWith("amp_", StringComparison.Ordinal))
+        if (LooksLikeAmpGear(slotKey, type, name, category, text))
             return Return(RocksmithToneLv2SlotRole.Amp, CreateAmpSlot(text, knobs, isBassRoute, highGain, driveIntent), out mapping);
 
         if (ContainsAny(text, "eq", "equalizer", "filter", "graphic"))
@@ -169,7 +169,7 @@ internal static class RocksmithToneLv2Mappings
         if (ContainsAny(text, "octave", "pitch", "whammy", "harmon"))
             return Return(RocksmithToneLv2SlotRole.Gain, CreatePitchShiftSlot(knobs), out mapping);
 
-        if (ContainsAny(text, "drive", "dist", "fuzz", "muff", "screamer", "overdrive", "boost", "rat", "ds1", "sd1", "tube", "edenwtdi"))
+        if (ContainsAny(text, "drive", "dist", "fuzz", "muff", "screamer", "overdrive", "boost", "clean boost", "microamp", "micro amp", "preamp", "pre amp", "rat", "ds1", "sd1", "tube", "edenwtdi"))
             return Return(RocksmithToneLv2SlotRole.Gain, CreateDriveSlot(text, knobs, isBassRoute), out mapping);
 
         if (ContainsAny(text, "acoustic emulator"))
@@ -290,6 +290,39 @@ internal static class RocksmithToneLv2Mappings
     {
         mapping = slot == null ? default : new RocksmithToneLv2SlotMapping(role, slot);
         return slot != null;
+    }
+
+    private static bool LooksLikeAmpGear(string slotKey, string type, string name, string category, string normalizedText)
+    {
+        string slot = NormalizeText(slotKey);
+        string gearType = NormalizeText(type);
+        string gearName = NormalizeText(name);
+        string gearCategory = NormalizeText(category);
+
+        if (HasToken(gearType, "amp") || HasToken(gearType, "amps"))
+            return true;
+
+        if (StartsWithAmpToken(slot) || StartsWithAmpToken(gearName))
+            return true;
+
+        bool pedalOrRackSlot = ContainsAny($"{slot} {gearType} {gearCategory}", "pedal", "pedals", "stomp", "rack", "pre", "post");
+        if (pedalOrRackSlot)
+            return false;
+
+        return HasToken(gearCategory, "amp") ||
+               HasToken(gearCategory, "amps") ||
+               HasToken(normalizedText, "amp") ||
+               HasToken(normalizedText, "amps");
+    }
+
+    private static bool StartsWithAmpToken(string normalizedText)
+    {
+        return string.Equals(normalizedText, "amp", StringComparison.Ordinal) ||
+               string.Equals(normalizedText, "amps", StringComparison.Ordinal) ||
+               normalizedText.StartsWith("amp ", StringComparison.Ordinal) ||
+               normalizedText.StartsWith("amps ", StringComparison.Ordinal) ||
+               normalizedText.StartsWith("bass amp ", StringComparison.Ordinal) ||
+               normalizedText.StartsWith("bass amps ", StringComparison.Ordinal);
     }
 
     private static UnityToneLabRuntime.ToneLabPedalSlot CreateNoiseGateSlot(IReadOnlyDictionary<string, float> knobs, float driveIntent, bool highGain)
@@ -955,6 +988,15 @@ internal static class RocksmithToneLv2Mappings
             }
         }
 
+        if ((keyCompact.EndsWith("freq", StringComparison.Ordinal) ||
+             keyCompact.EndsWith("frequency", StringComparison.Ordinal)) &&
+            !aliasCompact.EndsWith("freq", StringComparison.Ordinal) &&
+            !aliasCompact.EndsWith("frequency", StringComparison.Ordinal) &&
+            !aliasCompact.EndsWith("hz", StringComparison.Ordinal))
+        {
+            return 0;
+        }
+
         // Compound aliases such as "bassfreq" or "pre gain" intentionally match
         // compact Rocksmith keys like "Rack_StudioEQ_BassFreq" and "Amp_PreGain".
         // Short generic aliases do not use substring matching because they can
@@ -1120,6 +1162,22 @@ internal static class RocksmithToneLv2Mappings
         {
             string needle = NormalizeText(needles[i]);
             if (!string.IsNullOrWhiteSpace(needle) && haystack.Contains(needle, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasToken(string normalizedText, string token)
+    {
+        string normalizedToken = NormalizeText(token);
+        if (string.IsNullOrWhiteSpace(normalizedText) || string.IsNullOrWhiteSpace(normalizedToken))
+            return false;
+
+        string[] tokens = normalizedText.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < tokens.Length; i++)
+        {
+            if (string.Equals(tokens[i], normalizedToken, StringComparison.Ordinal))
                 return true;
         }
 

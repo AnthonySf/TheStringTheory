@@ -870,6 +870,34 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void RocksmithTonePresetBuilder_TreatsMicroAmpAsGainPedalNotMainAmp()
+    {
+        const string gxMicroAmp = "http://guitarix.sourceforge.net/plugins/gx_MicroAmp_#_MicroAmp_";
+        const string gxPlexi = "http://guitarix.sourceforge.net/plugins/gx_plexi_#_plexi_";
+        string rawToneJson =
+            @"{
+                ""Name"": ""Boosted Amp"",
+                ""GearList"": {
+                    ""PrePedal1"": {
+                        ""Type"": ""Pedals"",
+                        ""Category"": ""Boost"",
+                        ""Key"": ""Pedal_MicroAmp"",
+                        ""KnobValues"": { ""Gain"": 72 }
+                    },
+                    ""Amp"": {
+                        ""Type"": ""Amps"",
+                        ""Key"": ""Amp_MarshallPlexi"",
+                        ""KnobValues"": { ""Gain"": 5, ""Bass"": 5, ""Mid"": 5, ""Treble"": 5 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Boosted Amp", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        AssertHasLv2Plugin(preset, gxMicroAmp);
+        AssertHasLv2Plugin(preset, gxPlexi);
+    }
+
+    [Test]
     public void RocksmithTonePresetBuilder_MapsStudioEqFrequencyAndGainKnobsSeparately()
     {
         const string zamEq2 = "urn:zamaudio:ZamEQ2";

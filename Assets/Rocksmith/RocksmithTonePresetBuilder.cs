@@ -641,7 +641,7 @@ public static class RocksmithTonePresetBuilder
             return GearFamily.NoiseGate;
         if (ContainsAny(text, "compress", "sustain", "limiter", "mbcomp", "studio compressor"))
             return GearFamily.Compressor;
-        if (ContainsAny(text, "amp") || text.StartsWith("amp ", StringComparison.Ordinal) || text.StartsWith("amp_", StringComparison.Ordinal))
+        if (LooksLikeAmpGear(gear))
             return GearFamily.Amp;
         if (ContainsAny(text, "cab", "cabinet", "speaker"))
             return GearFamily.Cab;
@@ -655,9 +655,43 @@ public static class RocksmithTonePresetBuilder
             return GearFamily.Chorus;
         if (ContainsAny(text, "phaser", "phase", "vibe", "tremolo", "wah", "envelope"))
             return GearFamily.Phaser;
-        if (ContainsAny(text, "drive", "dist", "fuzz", "muff", "screamer", "overdrive", "boost", "rat", "ds1", "sd1", "octave", "pitch", "whammy"))
+        if (ContainsAny(text, "drive", "dist", "fuzz", "muff", "screamer", "overdrive", "boost", "clean boost", "microamp", "micro amp", "preamp", "pre amp", "rat", "ds1", "sd1", "octave", "pitch", "whammy"))
             return GearFamily.Drive;
         return GearFamily.Unknown;
+    }
+
+    private static bool LooksLikeAmpGear(RocksmithGear gear)
+    {
+        string slot = NormalizeText(gear?.SlotKey);
+        string type = NormalizeText(gear?.Type);
+        string name = NormalizeText(gear?.Name);
+        string category = NormalizeText(gear?.Category);
+        string text = NormalizeText($"{gear?.SlotKey} {gear?.Type} {gear?.Name} {gear?.Category}");
+
+        if (ContainsToken(type, "amp") || ContainsToken(type, "amps"))
+            return true;
+
+        if (StartsWithAmpToken(slot) || StartsWithAmpToken(name))
+            return true;
+
+        bool pedalOrRackSlot = ContainsAny($"{slot} {type} {category}", "pedal", "pedals", "stomp", "rack", "pre", "post");
+        if (pedalOrRackSlot)
+            return false;
+
+        return ContainsToken(category, "amp") ||
+               ContainsToken(category, "amps") ||
+               ContainsToken(text, "amp") ||
+               ContainsToken(text, "amps");
+    }
+
+    private static bool StartsWithAmpToken(string normalizedText)
+    {
+        return string.Equals(normalizedText, "amp", StringComparison.Ordinal) ||
+               string.Equals(normalizedText, "amps", StringComparison.Ordinal) ||
+               normalizedText.StartsWith("amp ", StringComparison.Ordinal) ||
+               normalizedText.StartsWith("amps ", StringComparison.Ordinal) ||
+               normalizedText.StartsWith("bass amp ", StringComparison.Ordinal) ||
+               normalizedText.StartsWith("bass amps ", StringComparison.Ordinal);
     }
 
     private static int GetGearSlotOrder(string key)

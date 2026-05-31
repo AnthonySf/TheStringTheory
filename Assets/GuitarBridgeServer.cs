@@ -21379,7 +21379,10 @@ private void ParseDetectorPacket(string detectorPacket)
             return;
 
         EnsureToneLabRuntimeComponent();
-        unityToneLabRuntime?.RefreshExternalPedalLibrary();
+        if (unityToneLabRuntime == null)
+            return;
+
+        unityToneLabRuntime.RefreshExternalPedalLibrary();
         generatedToneExternalPedalLibraryReady = true;
     }
 
