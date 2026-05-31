@@ -8,7 +8,7 @@ using UnityEngine;
 internal static class Gp5Reader
 {
     private const int BendPosition = 60;
-    private const int BendSemitone = 25;
+    private const float BendSemitone = 50f;
     private static readonly Encoding GpEncoding;
 
     static Gp5Reader()
@@ -722,7 +722,7 @@ internal static class Gp5Reader
                 bend.points.Add(new Gp5BendPoint
                 {
                     position = Mathf.RoundToInt(rawPosition * 12f / BendPosition),
-                    value = Mathf.RoundToInt(rawValue * 1f / BendSemitone),
+                    value = rawValue / BendSemitone,
                     vibrato = vibrato
                 });
             }

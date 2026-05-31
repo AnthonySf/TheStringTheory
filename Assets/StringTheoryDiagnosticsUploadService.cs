@@ -12,7 +12,7 @@ using UnityEngine.Networking;
 
 public static class StringTheoryDiagnosticsUploadService
 {
-    private const int StateVersion = 1;
+    private const int StateVersion = 2;
     private const string StateFileName = "diagnostics_upload_state.json";
     private const string ReportsFolderName = "Reports";
     private const long MaxTextFileBytes = 8L * 1024L * 1024L;
@@ -41,7 +41,7 @@ public static class StringTheoryDiagnosticsUploadService
         get
         {
             EnsureInitialized();
-            return state != null && !state.automaticUploadsEnabled && !state.startupPromptSeen;
+            return false;
         }
     }
 
@@ -748,6 +748,13 @@ public static class StringTheoryDiagnosticsUploadService
         state = LoadState();
         if (string.IsNullOrWhiteSpace(state.installId))
             state.installId = Guid.NewGuid().ToString("N");
+
+        if (state.version < 2 && !state.startupPromptSeen && !state.automaticUploadsEnabled)
+        {
+            state.startupPromptSeen = true;
+            state.automaticUploadsEnabled = true;
+        }
+
         state.version = StateVersion;
         state.updatedUtc = DateTime.UtcNow.ToString("O", CultureInfo.InvariantCulture);
         initialized = true;
@@ -776,7 +783,9 @@ public static class StringTheoryDiagnosticsUploadService
         return new DiagnosticsUploadState
         {
             version = StateVersion,
-            installId = Guid.NewGuid().ToString("N")
+            installId = Guid.NewGuid().ToString("N"),
+            startupPromptSeen = true,
+            automaticUploadsEnabled = true
         };
     }
 

@@ -886,6 +886,7 @@ public static class RocksmithCachedSongLoader
             loaded.tones.changes ??= new List<RocksmithCachedToneChangeData>();
             loaded.tones.definitions ??= new List<RocksmithCachedToneDefinitionData>();
             loaded.timing.ebeats ??= new List<RocksmithCachedEbeatData>();
+            loaded.timing.sections ??= new List<RocksmithCachedSectionData>();
             if (loaded.timing.averageTempoBpm <= 0.01f)
                 loaded.timing.averageTempoBpm = 120f;
             if (loaded.timing.capo < 0)
@@ -893,6 +894,11 @@ public static class RocksmithCachedSongLoader
             loaded.timing.ebeats = loaded.timing.ebeats
                 .Where(ebeat => ebeat != null)
                 .OrderBy(ebeat => ebeat.timeSeconds)
+                .ToList();
+            loaded.timing.sections = loaded.timing.sections
+                .Where(section => section != null && section.timeSeconds >= 0f)
+                .OrderBy(section => section.timeSeconds)
+                .ThenBy(section => section.number)
                 .ToList();
             if (loaded.generatedPart == null)
                 loaded.generatedPart = new RocksmithCachedGeneratedPartInfo();

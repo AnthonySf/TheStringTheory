@@ -445,8 +445,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             HighwayCharacterHeightViewportFraction,
             HighwayCharacterViewportCenterY,
             owner != null ? owner.highwayCharacterScale : 1f,
-            0f,
-            owner != null ? owner.highwayCharacterRigOffsetY : 0f);
+            owner != null ? owner.highwayCharacterRigOffsetX : 0f,
+            owner != null ? owner.highwayCharacterRigOffsetY : 0f,
+            true);
         highwayCharacterManualLocalXOffset = HighwayCharacterVisualUtility.ComputeCharacterLocalXOffset(
             viewportRect.width,
             owner != null ? owner.highwayCharacterOffsetX : 0f,
@@ -483,7 +484,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             highwayCharacterSourcePixelWidth,
             highwayCharacterSourcePixelHeight,
             owner != null ? owner.highwayCharacterScale : 1f,
-            owner != null ? owner.highwayCharacterOffsetX : 0f,
+            (owner != null ? owner.highwayCharacterRigOffsetX : 0f) + (owner != null ? owner.highwayCharacterOffsetX : 0f),
             (owner != null ? owner.highwayCharacterRigOffsetY : 0f) + (owner != null ? owner.highwayCharacterOffsetY : 0f));
     }
 

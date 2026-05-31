@@ -72,10 +72,10 @@ Shader "Custom/HighwayFretBoundaryGlow"
                 half4 baseColor = _Color.a > 0.0001 ? _Color : _BaseColor;
                 float flash = CenterOutMask(i.localY01) * saturate(_FlashStrength);
                 half3 rgb = baseColor.rgb + (_EmissionColor.rgb * 0.10);
-                half3 flashRgb = _FlashColor.rgb * (1.0 + flash * 1.65);
-                rgb = lerp(rgb, flashRgb, saturate(flash * 0.94));
-                rgb += _FlashColor.rgb * flash * 0.38;
-                half alpha = saturate(max(baseColor.a, _BaseColor.a) + (_FlashColor.a * flash * 0.86));
+                half3 flashRgb = _FlashColor.rgb * (1.0 + flash * 2.35);
+                rgb = lerp(rgb, flashRgb, saturate(flash));
+                rgb += _FlashColor.rgb * flash * 0.72;
+                half alpha = saturate(max(baseColor.a, _BaseColor.a) + (_FlashColor.a * flash * 1.18));
                 return half4(rgb, alpha);
             }
             ENDCG
@@ -136,8 +136,8 @@ Shader "Custom/HighwayFretBoundaryGlow"
                 float band = CenterOutMask(i.localY01);
                 float core = 1.0 - smoothstep(0.0, 0.24, centerDistance);
                 float flash = saturate(_FlashStrength) * band;
-                half3 glow = _FlashColor.rgb * (flash * 3.25 + core * flash * 1.25);
-                half alpha = saturate(flash * _FlashColor.a * 1.0);
+                half3 glow = _FlashColor.rgb * (flash * 5.2 + core * flash * 2.35);
+                half alpha = saturate(flash * _FlashColor.a * 1.35);
                 return half4(glow, alpha);
             }
             ENDCG

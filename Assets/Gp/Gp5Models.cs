@@ -124,6 +124,6 @@ internal sealed class Gp5BendEffect
 internal sealed class Gp5BendPoint
 {
     public int position;
-    public int value;
+    public float value;
     public bool vibrato;
 }

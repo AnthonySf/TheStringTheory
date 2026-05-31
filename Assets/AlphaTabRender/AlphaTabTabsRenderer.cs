@@ -3,7 +3,8 @@ using UnityEngine;
 
 public sealed class AlphaTabTabsRenderer : IGuitarGameplayRenderer
 {
-    public static readonly Vector2 SheetAnchorMin = new Vector2(0.05f, 0.07f);
+    public const float SheetHudLiftFraction = 0.045f;
+    public static readonly Vector2 SheetAnchorMin = new Vector2(0.05f, 0.07f + SheetHudLiftFraction);
     public static readonly Vector2 SheetAnchorMax = new Vector2(0.95f, 0.82f);
     public const int SheetVisibleSectionCount = 4;
     public const float SheetTopInsetPixels = 42f;

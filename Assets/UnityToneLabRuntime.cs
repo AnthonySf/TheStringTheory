@@ -618,9 +618,15 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private float latestRawInputPeak;
     private float latestRawInputRms;
     private float latestRawInputDc;
+    private float latestRawInputUnclampedPeak;
+    private float latestRawInputClipPercent;
+    private int latestRawInputNonFiniteSamples;
     private float latestProcessedPeak;
     private float latestProcessedRms;
     private float latestProcessedDc;
+    private float latestProcessedUnclampedPeak;
+    private float latestProcessedClipPercent;
+    private int latestProcessedNonFiniteSamples;
     private int latestAudioDiagnosticsSampleRate;
     private int latestAudioDiagnosticsInputChannels;
     private int latestAudioDiagnosticsOutputChannels;
@@ -764,9 +770,17 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         builder.AppendLine($"  rawPeak: {latestRawInputPeak:0.0000}");
         builder.AppendLine($"  rawRms: {latestRawInputRms:0.0000}");
         builder.AppendLine($"  rawDc: {latestRawInputDc:0.0000}");
+        builder.AppendLine($"  rawUnclampedPeak: {latestRawInputUnclampedPeak:0.0000}");
+        builder.AppendLine($"  rawClipPercent: {latestRawInputClipPercent:0.###}");
+        builder.AppendLine($"  rawNonFiniteSamples: {latestRawInputNonFiniteSamples}");
         builder.AppendLine($"  processedPeak: {latestProcessedPeak:0.0000}");
         builder.AppendLine($"  processedRms: {latestProcessedRms:0.0000}");
         builder.AppendLine($"  processedDc: {latestProcessedDc:0.0000}");
+        builder.AppendLine($"  processedUnclampedPeak: {latestProcessedUnclampedPeak:0.0000}");
+        builder.AppendLine($"  processedClipPercent: {latestProcessedClipPercent:0.###}");
+        builder.AppendLine($"  processedNonFiniteSamples: {latestProcessedNonFiniteSamples}");
+        builder.AppendLine($"  rawInputClippingLikely: {IsRawInputClippingLikely()}");
+        builder.AppendLine($"  processedOutputClippingLikely: {IsProcessedOutputClippingLikely()}");
         builder.AppendLine($"  latestInputChannels: {latestAudioDiagnosticsInputChannels}");
         builder.AppendLine($"  latestOutputChannels: {latestAudioDiagnosticsOutputChannels}");
         builder.AppendLine($"  latestInputChannelMode: {latestAudioDiagnosticsInputChannelMode}");
@@ -777,6 +791,14 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         builder.AppendLine($"  sharedDetectorRejects: {Volatile.Read(ref sharedDetectorRejectedCount)}");
         builder.AppendLine($"  currentPreset: {GetCurrentDiagnosticPresetName()}");
         builder.AppendLine($"  currentChain: {GetCurrentDiagnosticChainSummary()}");
+        builder.AppendLine("EffectiveToneLabPreset");
+        ToneLabPreset effectivePreset = GetCurrentDiagnosticPresetSnapshot();
+        builder.AppendLine(effectivePreset != null ? JsonUtility.ToJson(effectivePreset, true) : "(null)");
+        builder.AppendLine("EffectivePedalResolution");
+        builder.AppendLine(BuildCurrentDiagnosticPedalResolutionSummary());
+        builder.AppendLine($"  externalPedalRefreshUtc: {ToneLabPedalRegistry.LastExternalRefreshUtc:O}");
+        builder.AppendLine($"  externalPedalRefreshSummary: {ToneLabPedalRegistry.LastExternalRefreshSummary}");
+        builder.AppendLine($"  registeredPedalDescriptorCount: {ToneLabPedalRegistry.AllDescriptors.Count}");
         builder.AppendLine($"  playbackOverrideActive: {playbackPresetOverrideActive}");
         builder.AppendLine($"  monitorVolumePercent: {monitorVolumePercent:0.##}");
 
@@ -3857,9 +3879,15 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         latestRawInputPeak = 0f;
         latestRawInputRms = 0f;
         latestRawInputDc = 0f;
+        latestRawInputUnclampedPeak = 0f;
+        latestRawInputClipPercent = 0f;
+        latestRawInputNonFiniteSamples = 0;
         latestProcessedPeak = 0f;
         latestProcessedRms = 0f;
         latestProcessedDc = 0f;
+        latestProcessedUnclampedPeak = 0f;
+        latestProcessedClipPercent = 0f;
+        latestProcessedNonFiniteSamples = 0;
         Volatile.Write(ref portAudioProcessBlockCount, 0L);
         Volatile.Write(ref portAudioProcessFrameCount, 0L);
         Volatile.Write(ref sharedDetectorSubmitCount, 0L);
@@ -3875,7 +3903,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             inputChannelMode,
             out latestRawInputPeak,
             out latestRawInputRms,
-            out latestRawInputDc);
+            out latestRawInputDc,
+            out latestRawInputUnclampedPeak,
+            out latestRawInputClipPercent,
+            out latestRawInputNonFiniteSamples);
         latestAudioDiagnosticsSampleRate = sampleRate;
         latestAudioDiagnosticsInputChannels = Mathf.Max(1, inputChannels);
         latestAudioDiagnosticsFrameCount = Mathf.Max(0, frameCount);
@@ -3890,7 +3921,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             frameCount,
             out latestProcessedPeak,
             out latestProcessedRms,
-            out latestProcessedDc);
+            out latestProcessedDc,
+            out latestProcessedUnclampedPeak,
+            out latestProcessedClipPercent,
+            out latestProcessedNonFiniteSamples);
         latestAudioDiagnosticsSampleRate = sampleRate;
         latestAudioDiagnosticsOutputChannels = Mathf.Max(1, outputChannels);
         latestAudioDiagnosticsFrameCount = Mathf.Max(0, frameCount);
@@ -3905,11 +3939,11 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         nextLiveAudioDiagnosticsLogTime = Time.unscaledTime + LiveAudioDiagnosticsIntervalSeconds;
         bool rawInputLooksBad =
-            latestRawInputPeak >= 0.999f ||
+            IsRawInputClippingLikely() ||
             latestRawInputRms >= 0.35f ||
             Mathf.Abs(latestRawInputDc) >= 0.08f;
         bool processedLooksBad =
-            latestProcessedPeak >= 0.999f ||
+            IsProcessedOutputClippingLikely() ||
             latestProcessedRms >= 0.35f ||
             Mathf.Abs(latestProcessedDc) >= 0.08f;
         bool quietInput = latestRawInputPeak < 0.05f && latestRawInputRms < 0.01f;
@@ -3925,11 +3959,25 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         string chainSummary = GetCurrentDiagnosticChainSummary();
         string streamSummary = GetPortAudioDiagnosticSummary();
         Debug.Log(
-            $"[ToneLabAudio] Live levels | rawPeak={latestRawInputPeak:0.0000}, rawRms={latestRawInputRms:0.0000}, rawDc={latestRawInputDc:0.0000} | " +
-            $"processedPeak={latestProcessedPeak:0.0000}, processedRms={latestProcessedRms:0.0000}, processedDc={latestProcessedDc:0.0000} | " +
+            $"[ToneLabAudio] Live levels | rawPeak={latestRawInputPeak:0.0000}, rawRms={latestRawInputRms:0.0000}, rawDc={latestRawInputDc:0.0000}, rawUnclampedPeak={latestRawInputUnclampedPeak:0.0000}, rawClip={latestRawInputClipPercent:0.###}%, rawBadSamples={latestRawInputNonFiniteSamples} | " +
+            $"processedPeak={latestProcessedPeak:0.0000}, processedRms={latestProcessedRms:0.0000}, processedDc={latestProcessedDc:0.0000}, processedUnclampedPeak={latestProcessedUnclampedPeak:0.0000}, processedClip={latestProcessedClipPercent:0.###}%, processedBadSamples={latestProcessedNonFiniteSamples} | " +
             $"sampleRate={latestAudioDiagnosticsSampleRate}, frames={latestAudioDiagnosticsFrameCount}, inputChannels={latestAudioDiagnosticsInputChannels}, outputChannels={latestAudioDiagnosticsOutputChannels}, inputMode={latestAudioDiagnosticsInputChannelMode} | " +
             $"processBlocks={Volatile.Read(ref portAudioProcessBlockCount)}, processFrames={Volatile.Read(ref portAudioProcessFrameCount)}, sharedDetectorActive={sharedInputRouteActive}, sharedDetectorSubmits={Volatile.Read(ref sharedDetectorSubmitCount)}, sharedDetectorRejects={Volatile.Read(ref sharedDetectorRejectedCount)} | " +
             $"preset={presetName}, monitor={monitorVolumePercent:0.#}%, globalIn={(settings?.global_input_trim_db ?? 0f):0.#} dB, globalOut={(settings?.global_output_gain_db ?? 0f):0.#} dB, chain={chainSummary} | {streamSummary}");
+    }
+
+    private bool IsRawInputClippingLikely()
+    {
+        return latestRawInputUnclampedPeak >= 0.999f ||
+               latestRawInputClipPercent > 0f ||
+               latestRawInputNonFiniteSamples > 0;
+    }
+
+    private bool IsProcessedOutputClippingLikely()
+    {
+        return latestProcessedUnclampedPeak >= 0.999f ||
+               latestProcessedClipPercent > 0f ||
+               latestProcessedNonFiniteSamples > 0;
     }
 
     private string GetPortAudioDiagnosticSummary()
@@ -3983,6 +4031,61 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return builder.Length == 0 ? "all disabled" : builder.ToString();
     }
 
+    private ToneLabPreset GetCurrentDiagnosticPresetSnapshot()
+    {
+        if (playbackPresetOverrideActive && playbackPresetOverride != null)
+            return ClonePreset(playbackPresetOverride);
+
+        if (settings == null)
+            return null;
+
+        ToneLabPreset selectedPreset = FindPreset(settings, settings.selected_preset_id);
+        return new ToneLabPreset
+        {
+            preset_id = settings.selected_preset_id ?? string.Empty,
+            preset_name = !string.IsNullOrWhiteSpace(selectedPreset?.preset_name)
+                ? selectedPreset.preset_name
+                : "Working rig",
+            input_gain_db = settings.input_gain_db,
+            output_gain_db = settings.output_gain_db,
+            pedal_chain = ClonePedalChain(settings.pedal_chain)
+        };
+    }
+
+    private string BuildCurrentDiagnosticPedalResolutionSummary()
+    {
+        List<ToneLabPedalSlot> chain = playbackPresetOverrideActive && playbackPresetOverride?.pedal_chain != null
+            ? playbackPresetOverride.pedal_chain
+            : settings?.pedal_chain;
+        if (chain == null || chain.Count == 0)
+            return "  (empty)";
+
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < chain.Count; i++)
+        {
+            ToneLabPedalSlot slot = chain[i];
+            if (slot == null)
+            {
+                builder.AppendLine($"  [{i}] null");
+                continue;
+            }
+
+            builder.Append($"  [{i}] enabled={slot.enabled}, type={slot.pedal_type}, descriptorId={(string.IsNullOrWhiteSpace(slot.descriptor_id) ? "-" : slot.descriptor_id)}");
+            try
+            {
+                IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot);
+                builder.Append($", resolved={descriptor.DescriptorId}, displayName={descriptor.DisplayName}, resolvedType={descriptor.PedalType}, parameters={(descriptor.Parameters != null ? descriptor.Parameters.Count : 0)}");
+            }
+            catch (Exception ex)
+            {
+                builder.Append($", resolutionError={ex.GetType().Name}: {ex.Message}");
+            }
+            builder.AppendLine();
+        }
+
+        return builder.ToString().TrimEnd();
+    }
+
     private static void ComputeSelectedInputMetrics(
         float[] input,
         int inputChannels,
@@ -3990,11 +4093,17 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         string inputChannelMode,
         out float peak,
         out float rms,
-        out float dc)
+        out float dc,
+        out float unclampedPeak,
+        out float clipPercent,
+        out int nonFiniteSamples)
     {
         peak = 0f;
         rms = 0f;
         dc = 0f;
+        unclampedPeak = 0f;
+        clipPercent = 0f;
+        nonFiniteSamples = 0;
         if (input == null || input.Length == 0 || frameCount <= 0)
             return;
 
@@ -4007,6 +4116,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         double sum = 0d;
         double energy = 0d;
         int count = 0;
+        int clippedSamples = 0;
 
         for (int frame = 0; frame < frameCount; frame++)
         {
@@ -4018,7 +4128,19 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             float sample = monoMix
                 ? MixPortAudioInputFrameToMono(input, inputFrameStart, safeInputChannels)
                 : ReadPortAudioInputChannel(input, inputFrameStart, sourceChannel, monoFallback);
-            sample = SanitizeAudioSample(sample);
+            if (float.IsNaN(sample) || float.IsInfinity(sample))
+            {
+                nonFiniteSamples++;
+                sample = 0f;
+            }
+
+            float unclampedAbsolute = Mathf.Abs(sample);
+            if (unclampedAbsolute > unclampedPeak)
+                unclampedPeak = unclampedAbsolute;
+            if (unclampedAbsolute >= 0.999f)
+                clippedSamples++;
+
+            sample = Mathf.Clamp(sample, -1f, 1f);
             float absolute = Mathf.Abs(sample);
             if (absolute > peak)
                 peak = absolute;
@@ -4032,6 +4154,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         rms = Mathf.Sqrt((float)(energy / count));
         dc = (float)(sum / count);
+        clipPercent = clippedSamples * 100f / count;
     }
 
     private static void ComputeInterleavedMetrics(
@@ -4040,20 +4163,40 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         int frameCount,
         out float peak,
         out float rms,
-        out float dc)
+        out float dc,
+        out float unclampedPeak,
+        out float clipPercent,
+        out int nonFiniteSamples)
     {
         peak = 0f;
         rms = 0f;
         dc = 0f;
+        unclampedPeak = 0f;
+        clipPercent = 0f;
+        nonFiniteSamples = 0;
         if (data == null || data.Length == 0 || frameCount <= 0)
             return;
 
         int sampleCount = Mathf.Min(data.Length, frameCount * Mathf.Max(1, channels));
         double sum = 0d;
         double energy = 0d;
+        int clippedSamples = 0;
         for (int i = 0; i < sampleCount; i++)
         {
-            float sample = SanitizeAudioSample(data[i]);
+            float sample = data[i];
+            if (float.IsNaN(sample) || float.IsInfinity(sample))
+            {
+                nonFiniteSamples++;
+                sample = 0f;
+            }
+
+            float unclampedAbsolute = Mathf.Abs(sample);
+            if (unclampedAbsolute > unclampedPeak)
+                unclampedPeak = unclampedAbsolute;
+            if (unclampedAbsolute >= 0.999f)
+                clippedSamples++;
+
+            sample = Mathf.Clamp(sample, -1f, 1f);
             float absolute = Mathf.Abs(sample);
             if (absolute > peak)
                 peak = absolute;
@@ -4066,6 +4209,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
         rms = Mathf.Sqrt((float)(energy / sampleCount));
         dc = (float)(sum / sampleCount);
+        clipPercent = clippedSamples * 100f / sampleCount;
     }
 
     private void ApplyUnifiedOutputLimiter(float[] data, int sampleRate, int frameCount)

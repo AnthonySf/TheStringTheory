@@ -22,11 +22,7 @@
     },
     {
       "id": "timing.hitWindowLate",
-      "value": "0.35"
-    },
-    {
-      "id": "timing.judgmentGrace",
-      "value": "0.85"
+      "value": "0.25"
     },
     {
       "id": "tabs.tabSectionDuration",
@@ -81,8 +77,12 @@
       "value": "1"
     },
     {
+      "id": "fx.characterRigOffsetX",
+      "value": "-0.025"
+    },
+    {
       "id": "fx.characterRigOffsetY",
-      "value": "-0.05"
+      "value": "0.005"
     },
     {
       "id": "fx.characterOffsetX",
@@ -131,6 +131,10 @@
     {
       "id": "fx.judgeableDarkenMultiplier",
       "value": "1"
+    },
+    {
+      "id": "fx.showGameplayTimeline",
+      "value": "true"
     },
     {
       "id": "fx.tabIdleFillDarken",
@@ -218,7 +222,7 @@
     },
     {
       "id": "highway.spawnZ",
-      "value": "100"
+      "value": "180"
     },
     {
       "id": "highway.defaultOpenAnchorFret",
@@ -243,6 +247,10 @@
     {
       "id": "highway.lookaheadWindow",
       "value": "5"
+    },
+    {
+      "id": "highway.cameraEngine",
+      "value": "Smart Lookahead"
     },
     {
       "id": "highway.cameraFarClip",
@@ -278,10 +286,14 @@
     },
     {
       "id": "highway.showHitNoteFeedbackBox",
-      "value": "false"
+      "value": "true"
     },
     {
       "id": "highway.showMissNoteFeedbackBox",
+      "value": "true"
+    },
+    {
+      "id": "highway.showMissFretFeedback",
       "value": "false"
     },
     {

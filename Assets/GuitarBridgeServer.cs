@@ -64,8 +64,10 @@ public class GuitarBridgeServer : MonoBehaviour
  
     [Header("Timing & Forgiveness")]
     public float hitWindowEarly = 0.3f;
-    public float hitWindowLate = 0.5f;
-    public float judgmentGrace = 0.75f; 
+    public float hitWindowLate = 0.25f;
+    public const float MissJudgmentSafetyDelay = 0.12f;
+    public const float SustainLateGraceMaxSeconds = 1.0f;
+    private const float MinimumSustainLateGraceSeconds = 0.05f;
     public float eventTimeSlack = 0.05f;
     public float highStringExtraEarly = 0.02f;
     public float highStringExtraLate = 0.08f;
@@ -103,6 +105,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public float alphaTabSpanMultiplier = 1.35f;
     public int alphaTabHybridVisibleTabs = 2;
     public bool alphaTabNoteFeedbackEnabled = true;
+    public bool showGameplayTimeline = true;
 
     [Header("UI & Logs")]
     public TextMeshProUGUI uiText;
@@ -166,11 +169,12 @@ public class GuitarBridgeServer : MonoBehaviour
     public int TotalFrets = 24;
     public float FretSpacing = 4.0f;
     public float StrikeLineZ = -5.0f;
-    public float SpawnZ = 100.0f;
+    public float SpawnZ = 180.0f;
     public float highwayCameraY = 8.0f;
     public float highwayCameraZ = -10.0f;
     public float highwayCameraPitch = 45f;
     public float lookaheadWindow = 3.0f;
+    public HighwayCameraEngine highwayCameraEngine = HighwayCameraEngine.SmartLookahead;
     public float highwayResolvedHoldTime = 0.4f;
     public float camMoveSpeed = 8.0f;
     public float highwayNoteHeightScale = 1.35f;
@@ -188,6 +192,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public float highwayLaneGuideThickness = 0.14f;
     public float highwayLaneGuideYOffset = 0f;
     public float highwayCharacterScale = 1f;
+    public float highwayCharacterRigOffsetX = 0f;
     public float highwayCharacterRigOffsetY = 0f;
     public float highwayCharacterOffsetX = 0.03f;
     public float highwayCharacterOffsetY = 0.045f;
@@ -220,10 +225,10 @@ public class GuitarBridgeServer : MonoBehaviour
     public bool highwayHighlightFretBoundaries = false;
     public bool highwayShowApproachLine = false;
     public bool highwayShowLandingDot = false;
-    public bool highwayShowHitNoteFeedbackBox = false;
-    public bool highwayShowMissNoteFeedbackBox = false;
+    public bool highwayShowHitNoteFeedbackBox = true;
+    public bool highwayShowMissNoteFeedbackBox = true;
     public bool highwayShowHitFretFeedback = true;
-    public bool highwayShowMissFretFeedback = true;
+    public bool highwayShowMissFretFeedback = false;
     public bool highwayShowLaneFlashFeedback = false;
     public bool highwayShowFretLineScaleFeedback = false;
     public bool highwayShowHitFretLineFlashFeedback = true;
@@ -519,6 +524,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private List<NoteData> chartNotes = new List<NoteData>();
     private List<GameplayNoteState> noteStates = new List<GameplayNoteState>();
     private List<TabSectionData> tabSections = new List<TabSectionData>();
+    private List<SongTimelineSectionData> songTimelineSections = new List<SongTimelineSectionData>();
     private List<ArpeggioGuideData> currentArpeggioGuides = new List<ArpeggioGuideData>();
 
     private IGuitarGameplayRenderer activeRenderer;
@@ -1317,15 +1323,14 @@ public class GuitarBridgeServer : MonoBehaviour
     private List<RuntimeSettingSectionSnapshot> cachedRuntimeSettingsSnapshot = new List<RuntimeSettingSectionSnapshot>();
     private bool runtimeSettingsSnapshotDirty = true;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
-    private const int CurrentGlobalRuntimeSettingsVersion = 1;
+    private const int CurrentGlobalRuntimeSettingsVersion = 6;
     private int loadedGlobalRuntimeSettingsVersion = CurrentGlobalRuntimeSettingsVersion;
     private const int ArcadeControllerSlotCount = 8;
     private const int GlobalSettingsTopLevelCount = 14;
     private const int GlobalSettingsSongsFolderTopIndex = 2;
     private const int GlobalSettingsEffectsFolderTopIndex = 3;
     private const int GlobalSettingsFirstCategoryTopIndex = 4;
-    private const int GlobalSettingsLastCategoryTopIndex = 11;
-    private const int GlobalSettingsBugReportTopIndex = 12;
+    private const int GlobalSettingsLastCategoryTopIndex = 12;
     private const int GlobalSettingsResetTopIndex = 13;
     private const string SharedAudioAutomaticLabel = "Automatic";
 
@@ -2120,6 +2125,12 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (!isPaused && Input.GetKeyDown(KeyCode.L) && IsLoopModeAvailable())
+        {
+            ToggleLoopFromUi();
+            return;
+        }
+
         if (IsUiPausePressed())
         {
             isPaused = !isPaused;
@@ -2209,6 +2220,9 @@ public class GuitarBridgeServer : MonoBehaviour
             ActivateSelectedPauseActionFromUi();
             return;
         }
+
+        if (HandleRightStickSeekInput(snapIntoLoopWindow: true))
+            return;
 
         if (selectedPauseActionIndex == 0)
         {
@@ -2369,6 +2383,9 @@ public class GuitarBridgeServer : MonoBehaviour
             JumpToAdjacentTabSection(1);
             return;
         }
+
+        if (HandleRightStickSeekInput(snapIntoLoopWindow: false))
+            return;
 
         float seekDirection = 0f;
         if (IsUiLeftHeld())
@@ -4543,6 +4560,13 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (guitarTunerOverlay != null &&
+            guitarTunerOverlay.IsControllerCursorPointerModeActive &&
+            IsControllerSubmitPressedForPointerMode())
+        {
+            return;
+        }
+
         if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
         {
             if (guitarTunerOverlay != null && guitarTunerOverlay.ActivateNavigationSelection())
@@ -4569,6 +4593,14 @@ public class GuitarBridgeServer : MonoBehaviour
             MoveTunerManualTargetFromUi(1);
             return;
         }
+    }
+
+    private static bool IsControllerSubmitPressedForPointerMode()
+    {
+        bool hasInputSystemGamepad = HasInputSystemGamepadConnected();
+        return IsAnyGamepadSubmitPressedThisFrame() ||
+               (!hasInputSystemGamepad && TryGetButtonDown("Submit")) ||
+               (!hasInputSystemGamepad && Input.GetKeyDown(KeyCode.JoystickButton0));
     }
 
     private void HandleSongSelectionControls()
@@ -6758,14 +6790,16 @@ public class GuitarBridgeServer : MonoBehaviour
         selectedLoopPausePopupIndex = 0;
         loopRestartPauseRemainingSeconds = 0f;
         loopSettingsPreviewPlaying = false;
+        isPaused = true;
         showLoopSettings = true;
-        showLoopBookmarksPanel = false;
+        showLoopBookmarksPanel = true;
         showSongSettings = false;
         showSongSelection = false;
         showTrackSelection = false;
         showGlobalSettings = false;
         selectedLoopMarker = 3;
         loopSettingsReturnRenderMode = renderMode;
+        ClearNoteByNoteWaitingState();
 
         SyncAudioToSongTimer(playImmediately: false);
     }
@@ -6808,6 +6842,8 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         loopSettingsPreviewPlaying = !loopSettingsPreviewPlaying;
         loopRestartPauseRemainingSeconds = 0f;
+        if (loopSettingsPreviewPlaying)
+            ClearNoteByNoteWaitingState();
         if (loopSettingsPreviewPlaying && HasConfiguredLoopWindow())
             SnapSongTimeIntoLoopWindowIfNeeded();
 
@@ -6895,6 +6931,150 @@ public class GuitarBridgeServer : MonoBehaviour
         showGameModes = false;
         showHeroModeSettings = false;
         EnterLoopSettingsMode();
+    }
+
+    public void ToggleLoopBookmarksPanelFromUi()
+    {
+        if (!showLoopSettings)
+            return;
+
+        ToggleLoopBookmarksPanel();
+    }
+
+    public void ToggleLoopPreviewFromUi()
+    {
+        if (!showLoopSettings)
+            return;
+
+        ToggleLoopSettingsPreviewPlayback();
+    }
+
+    public void ToggleGameplayPauseFromUi()
+    {
+        if (showMainMenu || showStartMenu || showSongSelection || showTrackSelection || showTuner || showToneLab || songHasEnded)
+            return;
+
+        if (isPaused)
+        {
+            ResumePlaybackFromUi();
+            return;
+        }
+
+        isPaused = true;
+        selectedPauseActionIndex = GetFirstVisiblePauseActionIndex();
+        gameplayHudPreviewInMenus = false;
+        showSongSettings = false;
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        showSongSelection = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        showGameplayAudioPopup = false;
+        gameplayAudioPopupOpenedWhilePaused = false;
+        CloseGlobalSettingsSelectionPopupFromUi();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void SeekGameplayByStepFromUi(int direction)
+    {
+        if (direction == 0 || showMainMenu || showStartMenu || showSongSelection || showTrackSelection || showTuner || songHasEnded)
+            return;
+
+        SeekSongTimeFromUserNavigation(songTimer + (Mathf.Sign(direction) * pauseSeekStepSeconds), false);
+        if (loopEnabled)
+            SnapSongTimeIntoLoopWindowIfNeeded();
+    }
+
+    public void JumpGameplayToAdjacentNoteFromUi(bool moveForward)
+    {
+        if (showMainMenu || showStartMenu || showSongSelection || showTrackSelection || showTuner || songHasEnded)
+            return;
+
+        JumpToAdjacentNote(moveForward);
+    }
+
+    public void SetLoopStartAtCurrentTimeFromUi()
+    {
+        if (!showLoopSettings)
+            return;
+
+        if (UsesRhythmPracticeSectionLoop())
+            ActivateArcadePracticeSectionFromUi(selectedArcadePracticeSectionIndex);
+        else
+            TrySetLoopStartAtCurrentTime();
+    }
+
+    public void SetLoopEndAtCurrentTimeFromUi()
+    {
+        if (!showLoopSettings || UsesRhythmPracticeSectionLoop())
+            return;
+
+        TrySetLoopEndAtCurrentTime();
+    }
+
+    public void NudgeLoopTimelineFromUi(int direction)
+    {
+        if (!showLoopSettings || direction == 0)
+            return;
+
+        if (UsesRhythmPracticeSectionLoop())
+        {
+            MoveArcadePracticeSectionSelectionFromUi(direction);
+            return;
+        }
+
+        SeekSongTimeFromUserNavigation(songTimer + (Mathf.Sign(direction) * pauseSeekStepSeconds), false);
+    }
+
+    public void ContinueLoopSetupFromUi()
+    {
+        if (!showLoopSettings)
+            return;
+
+        if (UsesRhythmPracticeSectionLoop())
+            StartRhythmPracticeLoopFromUi();
+        else
+            OpenLoopPausePopup();
+    }
+
+    public void SetLoopBoundaryFromTimeline(int markerIndex, float targetTime)
+    {
+        if (!IsLoopModeAvailable() || (!loopEnabled && !showLoopSettings))
+            return;
+
+        float duration = GetSongDurationSeconds();
+        float markerTime = duration > 0.001f ? Mathf.Clamp(targetTime, 0f, duration) : Mathf.Max(0f, targetTime);
+        if (markerIndex == 1)
+        {
+            loopStartTime = Mathf.Min(markerTime, Mathf.Max(0f, loopEndTime - 0.05f));
+            loopStartConfigured = true;
+            if (!loopEndConfigured || loopEndTime < loopStartTime + 0.05f)
+            {
+                loopEndTime = Mathf.Min(duration > 0.001f ? duration : loopStartTime + 0.05f, loopStartTime + 0.05f);
+                loopEndConfigured = true;
+            }
+            selectedLoopMarker = 1;
+        }
+        else if (markerIndex == 2)
+        {
+            loopEndTime = Mathf.Max(loopStartTime + 0.05f, markerTime);
+            if (duration > 0.001f)
+                loopEndTime = Mathf.Min(duration, loopEndTime);
+            loopEndConfigured = true;
+            if (!loopStartConfigured)
+                loopStartConfigured = true;
+            selectedLoopMarker = 2;
+        }
+        else
+        {
+            return;
+        }
+
+        loopRestartPauseRemainingSeconds = 0f;
+        pendingLoopRestartFromStartAfterResume = false;
+        pendingLoopStartCountdownAfterResume = false;
+        if (loopEnabled)
+            scoreSaveInvalidated = true;
     }
 
     public void ToggleNoteByNoteModeFromUi()
@@ -7958,6 +8138,25 @@ public class GuitarBridgeServer : MonoBehaviour
             return 0;
 
         return leftHeld ? -1 : 1;
+    }
+
+    private bool HandleRightStickSeekInput(bool snapIntoLoopWindow)
+    {
+        float direction = GetRightStickSeekDirection();
+        if (Mathf.Approximately(direction, 0f))
+            return false;
+
+        SeekSongTimeFromUserNavigation(songTimer + (direction * pauseSeekStepSeconds * Time.deltaTime), false);
+        if (snapIntoLoopWindow)
+            SnapSongTimeIntoLoopWindowIfNeeded();
+
+        return true;
+    }
+
+    private static float GetRightStickSeekDirection()
+    {
+        Vector2 axis = ControllerCursorVisualUtility.ReadRightStickAxis();
+        return Mathf.Abs(axis.x) < 0.22f ? 0f : Mathf.Clamp(axis.x, -1f, 1f);
     }
 
     private bool ConsumeHeldHorizontalUiStep(string context, int direction)
@@ -11147,6 +11346,8 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         bool shouldOpenBugReport = diagnosticsConsentOpenBugReportOnApprove;
         StringTheoryDiagnosticsUploadService.SetAutomaticUploadsConsent(true);
+        runtimeSettingsSnapshotDirty = true;
+        SaveGlobalRuntimeSettingsMetadata();
         showDiagnosticsConsentPopup = false;
         showBugReportSentPopup = false;
         selectedDiagnosticsConsentIndex = 0;
@@ -11166,6 +11367,8 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         StringTheoryDiagnosticsUploadService.MarkStartupPromptSeen();
         StringTheoryDiagnosticsUploadService.SetAutomaticUploadsConsent(false);
+        runtimeSettingsSnapshotDirty = true;
+        SaveGlobalRuntimeSettingsMetadata();
         showDiagnosticsConsentPopup = false;
         showBugReportSentPopup = false;
         selectedDiagnosticsConsentIndex = 0;
@@ -12346,6 +12549,16 @@ private void OpenOrFocusToneLab()
         RebuildSessionProgressAfterUserSeek();
     }
 
+    public void RequestTimelineSeek(float targetTime)
+    {
+        if (showMainMenu || showStartMenu || showSongSelection || showTrackSelection || songHasEnded || showTuner)
+            return;
+
+        float duration = GetSongDurationSeconds();
+        float clampedTime = duration > 0.001f ? Mathf.Clamp(targetTime, 0f, duration) : Mathf.Max(0f, targetTime);
+        SeekSongTimeFromUserNavigation(clampedTime, false);
+    }
+
     private void SeekSongTimeForLoopRestartPause(float targetTime)
     {
         SeekSongTimeInternal(
@@ -12412,7 +12625,7 @@ private void OpenOrFocusToneLab()
                 if (noteState.IsResolved)
                     continue;
 
-                float latestJudgeTime = noteState.data.time + hitWindowLate + judgmentGrace;
+                float latestJudgeTime = noteState.data.time + hitWindowLate + GetSustainLateGrace(noteState.data) + MissJudgmentSafetyDelay;
                 if (clampedTime > latestJudgeTime + (noteState.data.stringIdx >= 4 ? highStringExtraLate : 0f))
                 {
                     noteState.result = GameplayNoteResult.Missed;
@@ -14819,7 +15032,7 @@ private void OpenOrFocusToneLab()
                     continue;
                 }
 
-                float chordLatestJudgeTime = chordTime + hitWindowLate + judgmentGrace;
+                float chordLatestJudgeTime = chordTime + hitWindowLate + GetChordSustainLateGrace(chordMatchScratchStates) + MissJudgmentSafetyDelay;
                 if (songTimer > chordLatestJudgeTime + chordHighStringExtraLate)
                 {
                     for (int chordIndex = 0; chordIndex < chordMatchScratchStates.Count; chordIndex++)
@@ -14880,7 +15093,7 @@ private void OpenOrFocusToneLab()
                 continue;
             }
 
-            float latestJudgeTime = noteState.data.time + hitWindowLate + judgmentGrace;
+            float latestJudgeTime = noteState.data.time + hitWindowLate + GetSustainLateGrace(noteState.data) + MissJudgmentSafetyDelay;
             if (songTimer > latestJudgeTime + (noteState.data.stringIdx >= 4 ? highStringExtraLate : 0f))
             {
                 noteState.result = GameplayNoteResult.Missed;
@@ -16726,6 +16939,43 @@ private void OpenOrFocusToneLab()
                sustainBeats >= ArcadeMinimumSustainBeats;
     }
 
+    private static float GetSustainLateGrace(NoteData note)
+    {
+        float sustainSeconds = Mathf.Max(0f, note.duration);
+
+        if (note.techniqueSegments != null)
+        {
+            for (int i = 0; i < note.techniqueSegments.Count; i++)
+            {
+                NoteTechniqueSegmentData segment = note.techniqueSegments[i];
+                sustainSeconds = Mathf.Max(sustainSeconds, Mathf.Max(segment.startOffset, segment.endOffset));
+            }
+        }
+
+        if (sustainSeconds <= MinimumSustainLateGraceSeconds)
+            return 0f;
+
+        return Mathf.Min(sustainSeconds, SustainLateGraceMaxSeconds);
+    }
+
+    private static float GetChordSustainLateGrace(IReadOnlyList<GameplayNoteState> chordStates)
+    {
+        if (chordStates == null || chordStates.Count == 0)
+            return 0f;
+
+        float lateGrace = 0f;
+        for (int i = 0; i < chordStates.Count; i++)
+        {
+            GameplayNoteState state = chordStates[i];
+            if (state == null)
+                continue;
+
+            lateGrace = Mathf.Max(lateGrace, GetSustainLateGrace(state.data));
+        }
+
+        return lateGrace;
+    }
+
     private void PopulateUnresolvedChordScratchStates(int chordId)
     {
         chordMatchScratchStates.Clear();
@@ -16769,7 +17019,8 @@ private void OpenOrFocusToneLab()
         }
 
         float windowStart = note.data.time - eventMatchEarly - eventTimeSlack - extraEarly;
-        float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + extraLate;
+        float normalWindowEnd = note.data.time + eventMatchLate + eventTimeSlack + extraLate;
+        float windowEnd = normalWindowEnd + GetChordSustainLateGrace(chordMatchScratchStates);
         float bestDistance = float.MaxValue;
         if (Application.isEditor && notesDetectorGameplayTestActive)
             LogChordMatchAttempt("SEARCH_START", note, null, chordMatchScratchStates, null, $"windowStart={windowStart.ToString("F3", CultureInfo.InvariantCulture)} windowEnd={windowEnd.ToString("F3", CultureInfo.InvariantCulture)} recentEvents={recentNoteEvents.Count}");
@@ -16822,6 +17073,13 @@ private void OpenOrFocusToneLab()
                 continue;
             }
 
+            if (IsSustainLateEventReservedForUpcomingNote(note, ev, normalWindowEnd))
+            {
+                if (Application.isEditor && notesDetectorGameplayTestActive)
+                    LogChordMatchAttempt("CANDIDATE_REJECT", note, ev, chordMatchScratchStates, candidateConsumeKeys, "reason=reserved-for-upcoming-note");
+                continue;
+            }
+
             float distance = Mathf.Abs(ev.time - note.data.time);
             if (distance >= bestDistance)
             {
@@ -16863,7 +17121,8 @@ private void OpenOrFocusToneLab()
         float extraLate = note.data.stringIdx >= 4 ? highStringExtraLate : 0f;
 
         float windowStart = note.data.time - eventMatchEarly - eventTimeSlack - extraEarly;
-        float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + extraLate;
+        float normalWindowEnd = note.data.time + eventMatchLate + eventTimeSlack + extraLate;
+        float windowEnd = normalWindowEnd + GetSustainLateGrace(note.data);
 
         float bestDistance = float.MaxValue;
 
@@ -16876,6 +17135,7 @@ private void OpenOrFocusToneLab()
 
             if (!TryGetAcceptedConsumeKey(note, ev.pitches, out int acceptedConsumeKey)) continue;
             if (ev.consumedKeys.Contains(acceptedConsumeKey)) continue;
+            if (IsSustainLateEventReservedForUpcomingNote(note, ev, normalWindowEnd)) continue;
 
             float distance = Mathf.Abs(ev.time - note.data.time);
             if (distance >= bestDistance) continue;
@@ -16902,7 +17162,8 @@ private void OpenOrFocusToneLab()
         }
 
         float windowStart = note.data.time - eventMatchEarly - eventTimeSlack;
-        float windowEnd = note.data.time + eventMatchLate + eventTimeSlack + 0.1f;
+        float normalWindowEnd = note.data.time + eventMatchLate + eventTimeSlack + 0.1f;
+        float windowEnd = normalWindowEnd + GetSustainLateGrace(note.data);
 
         if (linkedSourceWasHit && songTimer >= windowStart && songTimer <= windowEnd)
         {
@@ -16920,6 +17181,9 @@ private void OpenOrFocusToneLab()
             if (ev.time < windowStart)
                 break;
             if (ev.time > windowEnd)
+                continue;
+
+            if (IsSustainLateEventReservedForUpcomingNote(note, ev, normalWindowEnd))
                 continue;
 
             if (ContainsAcceptedPitch(note, ev.pitches))
@@ -16963,6 +17227,74 @@ private void OpenOrFocusToneLab()
             }
         }
         return false;
+    }
+
+    private bool IsSustainLateEventReservedForUpcomingNote(GameplayNoteState currentNote, NoteEvent ev, float currentNormalWindowEnd)
+    {
+        if (currentNote == null || ev == null || ev.time <= currentNormalWindowEnd + 0.0001f || noteStates == null)
+            return false;
+
+        float currentNoteTime = currentNote.data.time;
+        float currentDistance = Mathf.Abs(ev.time - currentNoteTime);
+        int currentChordId = currentNote.data.chordId;
+        float latestPossibleCandidateTime = ev.time + eventMatchEarly + eventTimeSlack + highStringExtraEarly + 0.0001f;
+
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState candidate = noteStates[i];
+            if (candidate == null || candidate == currentNote || candidate.IsResolved)
+                continue;
+
+            if (candidate.data.time > latestPossibleCandidateTime)
+                break;
+
+            if (currentChordId >= 0 && candidate.data.chordId == currentChordId)
+                continue;
+
+            if (candidate.data.time <= currentNoteTime + 0.0001f)
+                continue;
+
+            if (ShouldIgnoreGuitarNoteForActiveLoop(candidate.data))
+                continue;
+
+            float extraEarly = candidate.data.stringIdx >= 4 ? highStringExtraEarly : 0f;
+            float extraLate = candidate.data.stringIdx >= 4 ? highStringExtraLate : 0f;
+            float candidateWindowStart = candidate.data.time - eventMatchEarly - eventTimeSlack - extraEarly;
+            float candidateWindowEnd = candidate.data.time + eventMatchLate + eventTimeSlack + extraLate;
+            if (ev.time < candidateWindowStart || ev.time > candidateWindowEnd)
+                continue;
+
+            if (candidate.data.chordId >= 0 && ev.pitches.Count < GetUnresolvedChordStateCount(candidate.data.chordId))
+                continue;
+
+            if (!TryGetAcceptedConsumeKey(candidate, ev.pitches, out int candidateConsumeKey))
+                continue;
+
+            if (ev.consumedKeys.Contains(candidateConsumeKey))
+                continue;
+
+            float candidateDistance = Mathf.Abs(ev.time - candidate.data.time);
+            if (candidateDistance <= currentDistance + 0.0001f)
+                return true;
+        }
+
+        return false;
+    }
+
+    private int GetUnresolvedChordStateCount(int chordId)
+    {
+        if (chordId < 0 || noteStates == null)
+            return 0;
+
+        int count = 0;
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState state = noteStates[i];
+            if (state != null && !state.IsResolved && state.data.chordId == chordId)
+                count++;
+        }
+
+        return count;
     }
 
     private int GetBaseTargetPitch(GameplayNoteState note)
@@ -17050,7 +17382,7 @@ private void OpenOrFocusToneLab()
     private void LogMissReason(GameplayNoteState noteState)
     {
         float windowStart = noteState.data.time - eventMatchEarly - eventTimeSlack;
-        float windowEnd = noteState.data.time + eventMatchLate + eventTimeSlack;
+        float windowEnd = noteState.data.time + eventMatchLate + eventTimeSlack + GetSustainLateGrace(noteState.data);
         
         int exactTargetPitch = GetStringBasePitch(noteState.data.stringIdx) + noteState.data.fret;
         string targetNoteName = GetNoteNameFromMidi(exactTargetPitch);
@@ -17835,7 +18167,7 @@ private void ParseDetectorPacket(string detectorPacket)
     private bool IsNoteJudgeableNow(GameplayNoteState noteState)
     {
         float start = noteState.data.time - hitWindowEarly;
-        float end = noteState.data.time + hitWindowLate;
+        float end = noteState.data.time + hitWindowLate + GetSustainLateGrace(noteState.data);
         return songTimer >= start && songTimer <= end;
     }
 
@@ -18019,6 +18351,7 @@ private void ParseDetectorPacket(string detectorPacket)
         float sectionDuration = GetEffectiveTabSectionDuration();
         float sectionStart = currentSectionIndex * sectionDuration;
         float progress = Mathf.Clamp01((songTimer - sectionStart) / Mathf.Max(0.01f, sectionDuration));
+        float songDurationSecondsSnapshot = GetSongDurationSeconds();
         SongMetadata pendingTrackMetadata = pendingTrackSelectionSong != null ? LoadSongMetadataForEntry(pendingTrackSelectionSong) : null;
         List<bool> availableSongFavorited = new List<bool>(displayedSongLibraryEntries.Count);
         List<float> availableSongScores = new List<float>(displayedSongLibraryEntries.Count);
@@ -18258,6 +18591,7 @@ private void ParseDetectorPacket(string detectorPacket)
             songLibraryType = selectedSongLibraryType,
             selectedSongLibraryTypeIndex = (int)selectedSongLibraryType,
             songTime = songTimer,
+            songDurationSeconds = songDurationSecondsSnapshot,
             isPaused = isPaused,
             noteByNoteModeEnabled = noteByNoteModeEnabled,
             noteByNoteWaitingForMatch = noteByNoteWaitingForMatch,
@@ -18328,6 +18662,7 @@ private void ParseDetectorPacket(string detectorPacket)
             arcadeDifficultyAvailable = arcadeDifficultyAvailable,
             selectedArcadeDifficultyIndex = DifficultyToUiIndex(selectedArcadeDifficulty),
             sections = tabSections,
+            songTimelineSections = songTimelineSections,
             latestDetectedPitches = latestDetectedPitches,
             showSongSettings = showSongSettings,
             showGameplayAudioPopup = showGameplayAudioPopup,
@@ -18381,6 +18716,7 @@ private void ParseDetectorPacket(string detectorPacket)
             globalSettingsSelectionPopupOptionActions = BuildGlobalSettingsSelectionPopupOptionActions(),
             selectedGlobalSettingsSelectionPopupIndex = selectedGlobalSettingsSelectionPopupIndex,
             showGameplayHudPreviewInMenus = gameplayHudPreviewInMenus,
+            showGameplayTimeline = showGameplayTimeline,
             selectedNotesDetectorTestIndex = selectedNotesDetectorTestIndex,
             selectedNotesDetectorCatalogIndex = selectedNotesDetectorCatalogIndex,
             songLibraryListTitle = GetSongLibraryListTitle(),
@@ -22126,6 +22462,14 @@ private void ParseDetectorPacket(string detectorPacket)
             Setter = null,
             Activator = RefreshSharedAudioDevicesFromUi
         });
+        RegisterBoolSetting("diagnostics.automaticReports", "Diagnostics", "Automatic Reports", "Automatically sends diagnostic logs once per game session so audio, device, and note detection issues are easier to fix. No audio recordings are included.", () => StringTheoryDiagnosticsUploadService.AutomaticUploadsEnabled, v =>
+        {
+            bool wasEnabled = StringTheoryDiagnosticsUploadService.AutomaticUploadsEnabled;
+            StringTheoryDiagnosticsUploadService.SetAutomaticUploadsConsent(v);
+            if (v && !wasEnabled)
+                QueueAutomaticDiagnosticsUploads("automatic-reports-enabled-from-settings");
+        });
+        RegisterActionSetting("diagnostics.sendBugReport", "Diagnostics", "Send Bug Report", "Opens a report form and attaches the current diagnostic logs automatically.", "OPEN", OpenBugReportFromUi);
         RegisterIntSetting("arcade.highwayLaneCount", "Rhythm Mode", "Rhythm Lanes", "Minimum number of lane columns used by the Rhythm highway.", 1, 8, 1, () => arcadeHighwayLaneCount, v => arcadeHighwayLaneCount = Mathf.Clamp(v, 1, 8));
         RegisterFloatSetting("arcade.hitWindowEarly", "Rhythm Mode", "Early Hit Window", "How far before the strike line a Rhythm input can hit.", 0.02f, 0.30f, 0.005f, () => arcadeHitWindowEarly, v => arcadeHitWindowEarly = Mathf.Max(0f, v));
         RegisterFloatSetting("arcade.hitWindowLate", "Rhythm Mode", "Late Hit Window", "How far after the strike line a Rhythm input can hit after the gem has visually passed.", 0.02f, 0.30f, 0.005f, () => arcadeHitWindowLate, v => arcadeHitWindowLate = Mathf.Max(0f, v));
@@ -22157,7 +22501,6 @@ private void ParseDetectorPacket(string detectorPacket)
 
         RegisterFloatSetting("timing.hitWindowEarly", "Timing & Forgiveness", "Hit Window Early", "How far before a note you can strike and still get credit.", 0.05f, 0.6f, 0.005f, () => hitWindowEarly, v => hitWindowEarly = v);
         RegisterFloatSetting("timing.hitWindowLate", "Timing & Forgiveness", "Hit Window Late", "How far after a note you can strike and still get credit.", 0.05f, 0.8f, 0.005f, () => hitWindowLate, v => hitWindowLate = v);
-        RegisterFloatSetting("timing.judgmentGrace", "Timing & Forgiveness", "Judgment Grace", "Extends visibility for judged notes so feedback is easier to read.", 0.1f, 1.2f, 0.01f, () => judgmentGrace, v => judgmentGrace = v);
 
         RegisterEnumSetting(
             "fx.characterDisplay",
@@ -22168,6 +22511,7 @@ private void ParseDetectorPacket(string detectorPacket)
             () => SerializeHighwayCharacterDisplayMode(highwayCharacterDisplayMode),
             value => highwayCharacterDisplayMode = ParseHighwayCharacterDisplayMode(value));
         RegisterFloatSetting("fx.characterScale", "Visuals - Character", "Character Scale", "Scales the highway character up or down. Pixel-art scaling still snaps cleanly.", 0.5f, 3f, 0.05f, () => highwayCharacterScale, v => highwayCharacterScale = v);
+        RegisterFloatSetting("fx.characterRigOffsetX", "Visuals - Character", "Character Rig Position X", "Moves the entire character + portal rig left or right without changing the character's position relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterRigOffsetX, v => highwayCharacterRigOffsetX = v);
         RegisterFloatSetting("fx.characterRigOffsetY", "Visuals - Character", "Character Rig Position Y", "Moves the entire character + portal rig up or down without changing the character's position relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterRigOffsetY, v => highwayCharacterRigOffsetY = v);
         RegisterFloatSetting("fx.characterOffsetX", "Visuals - Character", "Character Position X", "Moves the highway character left or right relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterOffsetX, v => highwayCharacterOffsetX = v);
         RegisterFloatSetting("fx.characterOffsetY", "Visuals - Character", "Character Position Y", "Moves the highway character up or down relative to the portal and automatically rebalances the fade/portal blend.", -0.20f, 0.20f, 0.005f, () => highwayCharacterOffsetY, v => highwayCharacterOffsetY = v);
@@ -22186,6 +22530,7 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("fx.alphaTabSpan", "Visuals", "Tabs Span", "Controls how much notation each tabs panel covers. Higher values fit more notes in each panel and reload the rendered tabs immediately.", 0.70f, 2.50f, 0.05f, () => alphaTabSpanMultiplier, v => alphaTabSpanMultiplier = Mathf.Clamp(v, 0.70f, 2.50f));
         RegisterEnumSetting("fx.alphaTabHybridVisibleTabs", "Visuals", "3D + Tabs Visible Tabs", "Chooses whether the split 3D + Tabs mode shows one or two visible tabs at the bottom. The mixed tabs layout updates immediately when this changes.", AlphaTabHybridVisibleTabOptions, () => SerializeAlphaTabHybridVisibleTabs(alphaTabHybridVisibleTabs), value => alphaTabHybridVisibleTabs = ParseAlphaTabHybridVisibleTabs(value));
         RegisterBoolSetting("fx.alphaTabNoteFeedback", "Visuals", "Tabs Note Feedback", "Shows green note highlights on tabs after successful hits. Active tabs views update immediately when this changes.", () => alphaTabNoteFeedbackEnabled, v => alphaTabNoteFeedbackEnabled = v);
+        RegisterBoolSetting("fx.showGameplayTimeline", "Visuals", "Song Timeline", "Shows the clickable song section timeline at the bottom of the gameplay screen.", () => showGameplayTimeline, v => showGameplayTimeline = v);
         RegisterFloatSetting("mp.cameraOffsetX", "Visuals - Multiplayer", "Camera Offset X", "Moves the multiplayer camera left or right.", -20f, 20f, 0.05f, () => multiplayerHighwayCameraOffsetX, v => multiplayerHighwayCameraOffsetX = v);
         RegisterFloatSetting("mp.cameraOffsetY", "Visuals - Multiplayer", "Camera Offset Y", "Moves the multiplayer camera up or down.", -10f, 10f, 0.05f, () => multiplayerHighwayCameraOffsetY, v => multiplayerHighwayCameraOffsetY = v);
         RegisterFloatSetting("mp.cameraOffsetZ", "Visuals - Multiplayer", "Camera Offset Z", "Moves the multiplayer camera forward or backward.", -40f, 20f, 0.05f, () => multiplayerHighwayCameraOffsetZ, v => multiplayerHighwayCameraOffsetZ = v);
@@ -22223,7 +22568,7 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterIntSetting("highway.totalFrets", "Highway 3D - Layout", "Total Frets", "How many fret lanes are generated for the 3D highway.", 12, 36, 1, () => TotalFrets, v => TotalFrets = v);
         RegisterFloatSetting("highway.fretSpacing", "Highway 3D - Layout", "Fret Spacing", "Horizontal spacing between fret lanes in Highway3D.", 0.4f, 6f, 0.01f, () => FretSpacing, v => FretSpacing = v);
         RegisterFloatSetting("highway.strikeLineZ", "Highway 3D - Layout", "Strike Line Z", "Depth of the hit line in Highway3D.", -20f, 5f, 0.05f, () => StrikeLineZ, v => StrikeLineZ = v);
-        RegisterFloatSetting("highway.spawnZ", "Highway 3D - Layout", "Spawn Z", "Depth where incoming Highway3D notes appear.", 10f, 120f, 0.5f, () => SpawnZ, v => SpawnZ = v);
+        RegisterFloatSetting("highway.spawnZ", "Highway 3D - Layout", "Spawn Z", "Depth where incoming Highway3D notes appear.", 10f, 260f, 0.5f, () => SpawnZ, v => SpawnZ = v);
         RegisterFloatSetting("highway.defaultOpenAnchorFret", "Highway 3D - Layout", "Open Anchor Fret", "Anchor fret used to visualize open notes in Highway3D.", 1f, 8f, 0.1f, () => defaultOpenAnchorFret, v => defaultOpenAnchorFret = v);
         RegisterBoolSetting("highway.hideOpenFretNumber", "Highway 3D - Layout", "Hide Open Fret Number", "Hides the open fret index marker on the Highway3D board.", () => hideOpenFretNumber, v => hideOpenFretNumber = v);
 
@@ -22231,6 +22576,7 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("highway.cameraZ", "Highway 3D - Camera", "Camera Z", "Depth placement of the Highway3D camera.", -30f, 5f, 0.05f, () => highwayCameraZ, v => highwayCameraZ = v);
         RegisterFloatSetting("highway.cameraPitch", "Highway 3D - Camera", "Camera Pitch", "Pitch angle of the Highway3D camera.", 10f, 80f, 0.5f, () => highwayCameraPitch, v => highwayCameraPitch = v);
         RegisterFloatSetting("highway.lookaheadWindow", "Highway 3D - Camera", "Lookahead Window", "How far ahead the Highway3D camera frames upcoming notes.", 0.5f, 6f, 0.05f, () => lookaheadWindow, v => lookaheadWindow = v);
+        RegisterEnumSetting("highway.cameraEngine", "Highway 3D - Camera", "Camera Engine", "Legacy keeps the current camera. Smart Lookahead is an experimental smoother camera that anticipates notes, sustains, and fret-range changes.", new []{"Legacy","Smart Lookahead"}, () => SerializeHighwayCameraEngine(highwayCameraEngine), value => highwayCameraEngine = ParseHighwayCameraEngine(value));
         RegisterFloatSetting("highway.cameraFarClip", "Highway 3D - Camera", "Camera Far Clip", "Far clipping plane for the Highway3D camera.", 100f, 6000f, 10f, () => highwayCameraFarClip, v => highwayCameraFarClip = v);
         RegisterFloatSetting("highway.cameraMoveSpeed", "Highway 3D - Camera", "Camera Move Speed", "Movement speed tuning value for Highway3D camera transitions.", 0.5f, 20f, 0.1f, () => camMoveSpeed, v => camMoveSpeed = v);
 
@@ -22297,6 +22643,23 @@ private void ParseDetectorPacket(string detectorPacket)
             default:
                 return GuitarRenderMode.Highway3D;
         }
+    }
+
+    private static string SerializeHighwayCameraEngine(HighwayCameraEngine engine)
+    {
+        return engine == HighwayCameraEngine.SmartLookahead ? "Smart Lookahead" : "Legacy";
+    }
+
+    private static HighwayCameraEngine ParseHighwayCameraEngine(string value)
+    {
+        string normalized = (value ?? string.Empty).Trim();
+        if (string.Equals(normalized, "Smart Lookahead", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "SmartLookahead", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Camera Engine V2", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "V2", StringComparison.OrdinalIgnoreCase))
+            return HighwayCameraEngine.SmartLookahead;
+
+        return HighwayCameraEngine.Legacy;
     }
 
     private bool CanUseAlphaTabRenderMode()
@@ -22875,12 +23238,6 @@ private void ParseDetectorPacket(string detectorPacket)
                 return;
             }
 
-            if (selectedGlobalSettingsTopIndex == GlobalSettingsBugReportTopIndex)
-            {
-                OpenBugReportFromUi();
-                return;
-            }
-
             if (selectedGlobalSettingsTopIndex == GlobalSettingsResetTopIndex)
                 ResetGlobalSettingsToDefaultsFromUi();
 
@@ -22951,7 +23308,6 @@ private void ParseDetectorPacket(string detectorPacket)
                     break;
                 case GlobalSettingsSongsFolderTopIndex:
                 case GlobalSettingsEffectsFolderTopIndex:
-                case GlobalSettingsBugReportTopIndex:
                     break;
                 case GlobalSettingsResetTopIndex:
                     if (delta != 0)
@@ -23029,6 +23385,7 @@ private void ParseDetectorPacket(string detectorPacket)
             case 9: return "Controls";
             case 10: return "Visuals";
             case 11: return "Multiplayer Visuals";
+            case 12: return "Diagnostics";
             default: return string.Empty;
         }
     }
@@ -23043,6 +23400,9 @@ private void ParseDetectorPacket(string detectorPacket)
 
         if (normalizedTitle.Contains("audio") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "audio."))
             return "Audio";
+
+        if (normalizedTitle.Contains("diagnostic") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "diagnostics."))
+            return "Diagnostics";
 
         if (normalizedTitle.Contains("control") || IsRuntimeSettingsSectionIdPrefix(sectionSettings, "arcade.controls."))
             return "Controls";
@@ -23272,6 +23632,15 @@ private void ParseDetectorPacket(string detectorPacket)
                string.Equals(currentValue ?? string.Empty, expectedValue ?? string.Empty, StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool RuntimeSettingFloatLooksLike(Dictionary<string, string> values, string settingId, float expectedValue)
+    {
+        if (values == null || !values.TryGetValue(settingId, out string currentValue))
+            return false;
+
+        return float.TryParse(currentValue, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedValue) &&
+               Mathf.Abs(parsedValue - expectedValue) <= 0.0001f;
+    }
+
     private static bool ApplyGlobalRuntimeSettingsMigrations(Dictionary<string, string> values, int sourceVersion, out int migratedVersion)
     {
         migratedVersion = Mathf.Max(0, sourceVersion);
@@ -23286,6 +23655,59 @@ private void ParseDetectorPacket(string detectorPacket)
             SetRuntimeSettingMigrationValue(values, "highway.showHitNoteFeedbackBox", "false");
             SetRuntimeSettingMigrationValue(values, "highway.showMissNoteFeedbackBox", "false");
             migratedVersion = 1;
+            migrated = true;
+        }
+
+        if (migratedVersion < 2)
+        {
+            if (!values.ContainsKey("timing.hitWindowLate") ||
+                RuntimeSettingFloatLooksLike(values, "timing.hitWindowLate", 0.35f) ||
+                RuntimeSettingFloatLooksLike(values, "timing.hitWindowLate", 0.5f))
+            {
+                SetRuntimeSettingMigrationValue(values, "timing.hitWindowLate", "0.25");
+                migrated = true;
+            }
+
+            if (values.Remove("timing.judgmentGrace"))
+                migrated = true;
+
+            migratedVersion = 2;
+        }
+
+        if (migratedVersion < 3)
+        {
+            SetRuntimeSettingMigrationValue(values, "fx.characterRigOffsetX", "-0.025");
+            SetRuntimeSettingMigrationValue(values, "fx.characterRigOffsetY", "0.005");
+            SetRuntimeSettingMigrationValue(values, "fx.characterOffsetX", "0.03");
+            SetRuntimeSettingMigrationValue(values, "fx.characterOffsetY", "0.045");
+            SetRuntimeSettingMigrationValue(values, "highway.spawnZ", "180");
+            migratedVersion = 3;
+            migrated = true;
+        }
+
+        if (migratedVersion < 4)
+        {
+            SetRuntimeSettingMigrationValue(values, "highway.showMissFretFeedback", "false");
+            migratedVersion = 4;
+            migrated = true;
+        }
+
+        if (migratedVersion < 5)
+        {
+            SetRuntimeSettingMigrationValue(values, "highway.showHitNoteFeedbackBox", "true");
+            SetRuntimeSettingMigrationValue(values, "highway.showMissNoteFeedbackBox", "true");
+            migratedVersion = 5;
+            migrated = true;
+        }
+
+        if (migratedVersion < 6)
+        {
+            SetRuntimeSettingMigrationValue(values, "highway.cameraEngine", "Smart Lookahead");
+            SetRuntimeSettingMigrationValue(values, "fx.characterRigOffsetX", "-0.025");
+            SetRuntimeSettingMigrationValue(values, "fx.characterRigOffsetY", "0.005");
+            SetRuntimeSettingMigrationValue(values, "fx.characterOffsetX", "0.03");
+            SetRuntimeSettingMigrationValue(values, "fx.characterOffsetY", "0.045");
+            migratedVersion = 6;
             migrated = true;
         }
 
@@ -23766,7 +24188,11 @@ private void ParseDetectorPacket(string detectorPacket)
     private void GenerateTabSections()
     {
         tabSections = new List<TabSectionData>();
-        if (chartNotes == null || chartNotes.Count == 0) return;
+        if (chartNotes == null || chartNotes.Count == 0)
+        {
+            RefreshSongTimelineSections();
+            return;
+        }
 
         float maxTime = chartNotes.Max(n => n.time + n.duration);
         float sectionDuration = GetEffectiveTabSectionDuration();
@@ -23790,5 +24216,383 @@ private void ParseDetectorPacket(string detectorPacket)
                 noteIds = ids
             });
         }
+
+        RefreshSongTimelineSections();
+    }
+
+    private void RefreshSongTimelineSections()
+    {
+        songTimelineSections = new List<SongTimelineSectionData>();
+        float duration = GetSongDurationSeconds();
+
+        if (gameplayMode == GuitarGameplayMode.Arcade)
+        {
+            AddArcadeTimelineSections(duration);
+        }
+        else if (TryGetCurrentArrangementTimelineSections(out List<RocksmithCachedSectionData> arrangementSections, out float arrangementDuration) &&
+                 arrangementSections != null &&
+                 arrangementSections.Count > 0)
+        {
+            AddArrangementTimelineSections(arrangementSections, Mathf.Max(duration, arrangementDuration));
+        }
+        else if (currentSongEntry != null && currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Gp5)
+        {
+            AddGp5TimelineSections(duration);
+        }
+
+        if (songTimelineSections.Count == 0)
+            AddGeneratedTimelineSections(duration);
+
+        NormalizeTimelineSectionEnds(Mathf.Max(duration, GetTimelineLastEndTime()));
+    }
+
+    private bool TryGetCurrentArrangementTimelineSections(out List<RocksmithCachedSectionData> sections, out float duration)
+    {
+        sections = null;
+        duration = 0f;
+        if (currentSongEntry == null ||
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache ||
+            string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath))
+        {
+            return false;
+        }
+
+        if (TryGetCurrentArrangementCachePart(out RocksmithCachedArrangementPart selectedPart) &&
+            selectedPart?.timing?.sections != null &&
+            selectedPart.timing.sections.Count > 0)
+        {
+            sections = selectedPart.timing.sections;
+            duration = selectedPart.durationSeconds;
+            return true;
+        }
+
+        if (!RocksmithCachedSongLoader.TryLoadManifest(currentSongEntry.PrimaryNotationPath, out RocksmithCachedSongManifest manifest) ||
+            manifest?.arrangements == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < manifest.arrangements.Count; i++)
+        {
+            if (!RocksmithCachedSongLoader.TryLoadArrangementPart(currentSongEntry.PrimaryNotationPath, i, out _, out RocksmithCachedArrangementPart candidate) ||
+                candidate?.timing?.sections == null ||
+                candidate.timing.sections.Count == 0)
+            {
+                continue;
+            }
+
+            sections = candidate.timing.sections;
+            duration = Mathf.Max(candidate.durationSeconds, manifest.durationSeconds);
+            return true;
+        }
+
+        return false;
+    }
+
+    private struct Gp5TimelineTempoPoint
+    {
+        public double quarterPos;
+        public double bpm;
+    }
+
+    private void AddGp5TimelineSections(float duration)
+    {
+        if (currentSongEntry == null ||
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.Gp5 ||
+            string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath))
+        {
+            return;
+        }
+
+        Gp5Song song = Gp5Loader.GetParsedSong(currentSongEntry.PrimaryNotationPath);
+        if (song?.measureHeaders == null || song.measureHeaders.Count == 0)
+            return;
+
+        List<Gp5TimelineTempoPoint> tempoMap = BuildGp5TimelineTempoMap(song);
+        int index = 0;
+        float lastStartTime = -1f;
+        foreach (Gp5MeasureHeader header in song.measureHeaders.OrderBy(header => header.startQuarter))
+        {
+            if (header == null || string.IsNullOrWhiteSpace(header.markerName))
+                continue;
+
+            float startTime = Mathf.Max(0f, (float)Gp5QuarterToSeconds(header.startQuarter, tempoMap));
+            if (startTime > duration + 2f)
+                continue;
+
+            if (songTimelineSections.Count > 0 && Mathf.Abs(lastStartTime - startTime) <= 0.001f)
+            {
+                songTimelineSections[songTimelineSections.Count - 1].name = FormatTimelineSectionName(header.markerName, index);
+                continue;
+            }
+
+            songTimelineSections.Add(new SongTimelineSectionData
+            {
+                index = index,
+                name = FormatTimelineSectionName(header.markerName, index),
+                startTime = startTime,
+                endTime = Mathf.Max(startTime + 0.05f, duration)
+            });
+            index++;
+            lastStartTime = startTime;
+        }
+    }
+
+    private static List<Gp5TimelineTempoPoint> BuildGp5TimelineTempoMap(Gp5Song song)
+    {
+        List<Gp5TimelineTempoPoint> tempoMap = new List<Gp5TimelineTempoPoint>();
+        if (song?.tempoChanges != null)
+        {
+            for (int i = 0; i < song.tempoChanges.Count; i++)
+            {
+                Gp5TempoChange change = song.tempoChanges[i];
+                if (change == null)
+                    continue;
+
+                tempoMap.Add(new Gp5TimelineTempoPoint
+                {
+                    quarterPos = Math.Max(0.0, change.quarterPos),
+                    bpm = Math.Max(1.0, change.bpm)
+                });
+            }
+        }
+
+        tempoMap = tempoMap
+            .OrderBy(point => point.quarterPos)
+            .ToList();
+
+        if (tempoMap.Count == 0 || tempoMap[0].quarterPos > 0.0001)
+        {
+            tempoMap.Insert(0, new Gp5TimelineTempoPoint
+            {
+                quarterPos = 0.0,
+                bpm = Math.Max(1.0, song != null ? song.initialTempo : 120)
+            });
+        }
+
+        return tempoMap;
+    }
+
+    private static double Gp5QuarterToSeconds(double quarterPos, List<Gp5TimelineTempoPoint> tempoMap)
+    {
+        if (tempoMap == null || tempoMap.Count == 0)
+            return Math.Max(0.0, quarterPos) * 0.5;
+
+        double targetQuarter = Math.Max(0.0, quarterPos);
+        double seconds = 0.0;
+        Gp5TimelineTempoPoint current = tempoMap[0];
+
+        for (int i = 1; i < tempoMap.Count; i++)
+        {
+            Gp5TimelineTempoPoint next = tempoMap[i];
+            if (targetQuarter <= next.quarterPos)
+            {
+                seconds += Math.Max(0.0, targetQuarter - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
+                return seconds;
+            }
+
+            seconds += Math.Max(0.0, next.quarterPos - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
+            current = next;
+        }
+
+        seconds += Math.Max(0.0, targetQuarter - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
+        return seconds;
+    }
+
+    private bool TryGetCurrentArrangementCachePart(out RocksmithCachedArrangementPart part)
+    {
+        part = null;
+        if (currentSongEntry == null ||
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache ||
+            string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath))
+        {
+            return false;
+        }
+
+        string selectedPartId = selectedMusicXmlPartId ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(selectedPartId) &&
+            ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(currentSongEntry.PrimaryNotationPath, selectedPartId, out _, out part))
+        {
+            return part != null;
+        }
+
+        string selectedGroupId = !string.IsNullOrWhiteSpace(selectedPartId)
+            ? GetArrangementGroupIdFromPartId(selectedPartId)
+            : string.Empty;
+        if (!string.IsNullOrWhiteSpace(selectedGroupId) &&
+            ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(currentSongEntry.PrimaryNotationPath, selectedGroupId, out _, out part))
+        {
+            return part != null;
+        }
+
+        if (currentSongPartSummaries != null && midiTrackIndex >= 0 && midiTrackIndex < currentSongPartSummaries.Count)
+        {
+            MusicXmlLoader.MusicXmlPartSummary summary = currentSongPartSummaries[midiTrackIndex];
+            if (summary != null)
+            {
+                if (!string.IsNullOrWhiteSpace(summary.PartId) &&
+                    ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(currentSongEntry.PrimaryNotationPath, summary.PartId, out _, out part))
+                {
+                    return part != null;
+                }
+
+                if (!string.IsNullOrWhiteSpace(summary.GroupId) &&
+                    ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(currentSongEntry.PrimaryNotationPath, summary.GroupId, out _, out part))
+                {
+                    return part != null;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private void AddArrangementTimelineSections(List<RocksmithCachedSectionData> sections, float duration)
+    {
+        if (sections == null)
+            return;
+
+        int index = 0;
+        float lastTime = -1f;
+        for (int i = 0; i < sections.Count; i++)
+        {
+            RocksmithCachedSectionData source = sections[i];
+            if (source == null || source.timeSeconds < 0f)
+                continue;
+
+            float startTime = Mathf.Max(0f, source.timeSeconds);
+            if (startTime + 0.001f < lastTime)
+                continue;
+
+            if (songTimelineSections.Count > 0 &&
+                Mathf.Abs(songTimelineSections[songTimelineSections.Count - 1].startTime - startTime) <= 0.001f)
+            {
+                songTimelineSections[songTimelineSections.Count - 1].name = FormatTimelineSectionName(source.name, index);
+                continue;
+            }
+
+            songTimelineSections.Add(new SongTimelineSectionData
+            {
+                index = index,
+                name = FormatTimelineSectionName(source.name, index),
+                startTime = startTime,
+                endTime = Mathf.Max(startTime + 0.05f, duration)
+            });
+            index++;
+            lastTime = startTime;
+        }
+    }
+
+    private void AddArcadeTimelineSections(float duration)
+    {
+        if (currentArcadePracticeSections == null || currentArcadePracticeSections.Count == 0)
+            return;
+
+        for (int i = 0; i < currentArcadePracticeSections.Count; i++)
+        {
+            ArcadePracticeSectionData source = currentArcadePracticeSections[i];
+            if (source == null || source.endTime <= source.startTime)
+                continue;
+
+            songTimelineSections.Add(new SongTimelineSectionData
+            {
+                index = songTimelineSections.Count,
+                name = FormatTimelineSectionName(source.name, songTimelineSections.Count),
+                startTime = Mathf.Max(0f, source.startTime),
+                endTime = Mathf.Max(source.startTime + 0.05f, source.endTime)
+            });
+        }
+    }
+
+    private void AddGeneratedTimelineSections(float duration)
+    {
+        if (tabSections == null || tabSections.Count == 0)
+            return;
+
+        int sectionStride = Mathf.Max(1, Mathf.RoundToInt(16f / Mathf.Max(0.01f, GetEffectiveTabSectionDuration())));
+        for (int i = 0; i < tabSections.Count; i += sectionStride)
+        {
+            TabSectionData source = tabSections[i];
+            if (source == null)
+                continue;
+
+            float endTime = i + sectionStride < tabSections.Count
+                ? tabSections[i + sectionStride].startTime
+                : Mathf.Max(duration, source.endTime);
+
+            songTimelineSections.Add(new SongTimelineSectionData
+            {
+                index = songTimelineSections.Count,
+                name = $"Part {songTimelineSections.Count + 1}",
+                startTime = Mathf.Max(0f, source.startTime),
+                endTime = Mathf.Max(source.startTime + 0.05f, endTime)
+            });
+        }
+    }
+
+    private void NormalizeTimelineSectionEnds(float duration)
+    {
+        if (songTimelineSections == null || songTimelineSections.Count == 0)
+            return;
+
+        songTimelineSections = songTimelineSections
+            .Where(section => section != null && section.startTime >= 0f)
+            .OrderBy(section => section.startTime)
+            .ToList();
+
+        for (int i = 0; i < songTimelineSections.Count; i++)
+        {
+            SongTimelineSectionData section = songTimelineSections[i];
+            section.index = i;
+            float nextStart = i + 1 < songTimelineSections.Count
+                ? songTimelineSections[i + 1].startTime
+                : duration;
+            section.endTime = Mathf.Max(section.startTime + 0.05f, nextStart);
+        }
+    }
+
+    private float GetTimelineLastEndTime()
+    {
+        if (songTimelineSections == null || songTimelineSections.Count == 0)
+            return 0f;
+
+        float max = 0f;
+        for (int i = 0; i < songTimelineSections.Count; i++)
+        {
+            SongTimelineSectionData section = songTimelineSections[i];
+            if (section != null)
+                max = Mathf.Max(max, section.endTime, section.startTime);
+        }
+
+        return max;
+    }
+
+    private static string FormatTimelineSectionName(string rawName, int index)
+    {
+        string normalized = string.IsNullOrWhiteSpace(rawName)
+            ? $"Part {index + 1}"
+            : rawName.Trim().Replace('_', ' ').Replace('-', ' ');
+
+        normalized = Regex.Replace(normalized, @"\s+", " ");
+        if (normalized.Length == 0)
+            return $"Part {index + 1}";
+
+        string key = normalized.Replace(" ", string.Empty).ToLowerInvariant();
+        switch (key)
+        {
+            case "noguitar":
+                return "No Guitar";
+            case "postvs":
+                return "Post Verse";
+            case "prevs":
+                return "Pre Verse";
+            case "modverse":
+                return "Verse";
+            case "modchorus":
+                return "Chorus";
+        }
+
+        TextInfo textInfo = CultureInfo.InvariantCulture.TextInfo;
+        return textInfo.ToTitleCase(normalized.ToLowerInvariant());
     }
 }

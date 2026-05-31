@@ -58,6 +58,12 @@ public enum HighwayCharacterChoice
     ElizeColor2 = 1
 }
 
+public enum HighwayCameraEngine
+{
+    Legacy = 0,
+    SmartLookahead = 1
+}
+
 public enum GameplayNoteResult
 {
     Pending,
@@ -350,6 +356,15 @@ public sealed class TabSectionData
     public List<int> noteIds = new List<int>();
 }
 
+[Serializable]
+public sealed class SongTimelineSectionData
+{
+    public int index;
+    public string name;
+    public float startTime;
+    public float endTime;
+}
+
 public enum MultiplayerRhythmInputDeviceKind
 {
     Keyboard,
@@ -394,6 +409,7 @@ public sealed class GuitarGameplaySnapshot
     public SongLibraryType songLibraryType;
     public int selectedSongLibraryTypeIndex;
     public float songTime;
+    public float songDurationSeconds;
     public bool isPaused;
     public bool noteByNoteModeEnabled;
     public bool noteByNoteWaitingForMatch;
@@ -461,6 +477,7 @@ public sealed class GuitarGameplaySnapshot
     public List<bool> libraryDifficultyAvailable;
     public int selectedLibraryDifficultyIndex;
     public List<TabSectionData> sections;
+    public List<SongTimelineSectionData> songTimelineSections;
     public HashSet<int> latestDetectedPitches;
     public bool showSongSettings;
     public bool showGameplayAudioPopup;
@@ -649,6 +666,7 @@ public sealed class GuitarGameplaySnapshot
     public List<string> globalSettingsSelectionPopupOptionActions;
     public int selectedGlobalSettingsSelectionPopupIndex;
     public bool showGameplayHudPreviewInMenus;
+    public bool showGameplayTimeline;
     public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
 }
 

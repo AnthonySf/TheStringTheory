@@ -25,6 +25,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly ProfilerMarker UpdateBendTechniqueProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateBendTechnique");
     private static readonly ProfilerMarker UpdateNoteSustainTechniqueProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateNoteSustainTechnique");
     private static readonly ProfilerMarker UpdateTechniqueSegmentRibbonsProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateTechniqueSegmentRibbons");
+    private static readonly ProfilerMarker UpdateContinuousBendRibbonProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateContinuousBendRibbon");
     private static readonly ProfilerMarker RebuildVisibleNoteStateCacheProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.RebuildVisibleNoteStateCache");
     private static readonly ProfilerMarker UpdateArpeggioGuidesProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateArpeggioGuides");
     private static readonly ProfilerMarker UpdateChordFramesProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateChordFrames");
@@ -36,6 +37,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private readonly Dictionary<int, NoteData> chartById = new Dictionary<int, NoteData>();
     private readonly Dictionary<int, List<NoteData>> chordGroups = new Dictionary<int, List<NoteData>>();
+    private readonly Dictionary<int, ChordRepeatRenderInfo> chordRepeatRenderInfoByChordId = new Dictionary<int, ChordRepeatRenderInfo>();
     private readonly Dictionary<int, HighwayNoteView> noteViews = new Dictionary<int, HighwayNoteView>();
     private readonly Dictionary<int, GameObject> arpeggioGuideFrames = new Dictionary<int, GameObject>();
     private readonly Dictionary<int, GameObject> chordFrames = new Dictionary<int, GameObject>();
@@ -62,8 +64,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float[] fretBoundaryMissFeedback = Array.Empty<float>();
     private float[] fretBoundaryHitExpansionFeedback = Array.Empty<float>();
     private float[] fretBoundaryMissExpansionFeedback = Array.Empty<float>();
+    private bool[] fretBoundaryActiveBuffer = Array.Empty<bool>();
+    private bool[] fretBoundaryLaneMaskBuffer = Array.Empty<bool>();
+    private bool[] laneGuideActiveBuffer = Array.Empty<bool>();
+    private bool[] laneGuideMaskBuffer = Array.Empty<bool>();
+    private bool[] laneSurfaceActiveBuffer = Array.Empty<bool>();
+    private bool[] laneSurfaceMaskBuffer = Array.Empty<bool>();
+    private bool[] fretNumberLabelActiveStates = Array.Empty<bool>();
+    private FretBoundaryVisualState[] fretBoundaryVisualStates = Array.Empty<FretBoundaryVisualState>();
+    private readonly HashSet<int> resolvedFretFeedbackProcessedChordIds = new HashSet<int>();
     private Mesh techniqueRibbonMesh;
     private Material sharedTechniqueRibbonMaterial;
+    private Material sharedContinuousRibbonMaterial;
     private Material sharedBendArrowMaterial;
     private Material sharedMuteSymbolMaterial;
     private Material sharedHighwayCharacterMaterial;
@@ -90,6 +102,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private int highwayCharacterSourcePixelHeight = 1;
     private float highwayCharacterManualLocalXOffset;
     private float highwayCharacterManualLocalYOffset;
+    private float highwayCharacterWorldWidth = 1f;
+    private float highwayCharacterWorldHeight = 1f;
+    private float highwayCharacterPortalLocalY = HighwayCharacterPortalLocalYInCharacterHeights;
     private Vector2 highwayCharacterTextureScale = Vector2.one;
     private Vector2 highwayCharacterTextureOffset = Vector2.zero;
     private HighwayCharacterChoice loadedHighwayCharacterChoice = HighwayCharacterChoice.Hero;
@@ -121,6 +136,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private bool currentNoteByNoteWaitingForMatch;
     private int lastObservedHighwayCharacterMissCount = -1;
     private float lastHighwayCharacterMissTriggerSongTime = float.NegativeInfinity;
+    private bool fretNumberLabelActiveStatesInitialized;
+    private int cachedLaneHighlightChunkIndex = -1;
     private float cameraTargetX;
     private float cameraTargetFOV = 60f;
     private float cameraXVelocity;
@@ -128,6 +145,42 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float urgentCameraHoldUntil = float.NegativeInfinity;
     private float urgentCameraHeldTargetX;
     private float urgentCameraHeldTargetFOV = 60f;
+    private bool cameraV2Initialized;
+    private bool cameraV2WasActive;
+    private bool cameraV2HighNeckLatch;
+    private float cameraV2SmoothedX;
+    private float cameraV2SmoothedFOV = 60f;
+    private float cameraV2TargetX;
+    private float cameraV2TargetFOV = 60f;
+    private float cameraV2XVelocity;
+    private float cameraV2FovVelocity;
+    private float cameraV2LookAtY;
+    private float cameraV2TargetLookAtY;
+    private float cameraV2LookAtYVelocity;
+    private float cameraV2DownAngle = 14f;
+    private float cameraV2TargetDownAngle = 14f;
+    private float cameraV2DownAngleVelocity;
+    private float cameraV2CameraY;
+    private float cameraV2TargetCameraY;
+    private float cameraV2CameraYVelocity;
+    private float cameraV2FocusDistance;
+    private float cameraV2TargetFocusDistance;
+    private float cameraV2FocusDistanceVelocity;
+    private bool cameraV2FocusStateInitialized;
+    private float cameraV2FocusX;
+    private float cameraV2FocusFretSpan = 4f;
+    private float cameraV2LowFretBonusUnits;
+    private float cameraV2LastFocusSongTime = float.NaN;
+    private const float CameraV2BaseFov = 70f;
+    private const float CameraV2LookaheadSeconds = 3f;
+    private const float CameraV2FocusBlendRate = 0.7f;
+    private const float CameraV2MinimumVisibleHalfFrets = 8.5f;
+    private const float CameraV2FretEdgeBlend = 0.1f;
+    private const int CameraV2LogFretCount = 24;
+    private const float CameraV2LogFretScale = 2.25f;
+    private const float CameraV2LogFretXScale = CameraV2LogFretScale * 1.1f;
+    private const float CameraV2LogFretStretchAbove12 = 1.1f;
+    private float cameraV2LastRenderSongTime = float.NaN;
     private int lastFretLightLayoutStringCount = -1;
     private int lastFretLightLayoutColumnCount = -1;
     private float lastFretLightLayoutOpenAnchorFret = float.NaN;
@@ -147,8 +200,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const float HighwayCharacterViewportMarginX = 0.035f;
     private const float HighwayCharacterViewportMarginY = 0.035f;
     private const float HighwayCharacterDepth = 44f;
-    private const float HighwayCharacterHeightViewportFraction = 0.375f;
-    private const float HighwayCharacterViewportCenterY = 0.57f;
+    private const float HighwayCharacterHeightViewportFraction = 0.34f;
+    private const float HighwayCharacterViewportCenterY = 0.58f;
     private const float HighwayCharacterScaleMultiplier = 1.1f;
     private const float HighwayCharacterBottomFadeStart01 = 0.22f;
     private const float HighwayCharacterBottomFadeEnd01 = 0.12f;
@@ -186,6 +239,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const float HighwayCharacterMissAuraParticleGlow = 1.1f; // [CHARACTER MISS] : particles - brightness of the secondary flare
     private const float HighwayResolvedFretFeedbackDurationSeconds = 0.52f;
     private const float HighwayResolvedFretFeedbackAttackSeconds = 0.045f;
+    private const float ChordRepeatChainGapSeconds = 0.5f;
+    private const int ChordRepeatFullChainMaxCount = 4;
+    private const float ChordRepeatFrameHeightScale = 0.52f;
+    private static readonly Color ChordRepeatFrameColor = new Color(0.56f, 0.82f, 1f, 0.92f);
+    private static readonly Color ChordRepeatFillBottomColor = new Color(0.16f, 0.66f, 0.92f, 0.30f);
+    private static readonly Color ChordRepeatFillTopColor = new Color(0.04f, 0.13f, 0.18f, 0.015f);
     private const float HighwayHitFretLightEmissionMultiplier = 12f;
     private const float HighwayMissFretLightEmissionMultiplier = 5.5f;
     private static readonly Color HighwayHitFretBoundaryColor = new Color(0.12f, 0.70f, 1f, 1f);
@@ -194,6 +253,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly Color HighwayHitNoteFeedbackColor = new Color(0.14f, 0.72f, 1f, 0.98f);
     private static readonly Color HighwayHitNoteFeedbackSheenColor = new Color(0.78f, 0.96f, 1f, 0.96f);
     private static readonly Color HighwayMissNoteFeedbackColor = new Color(1f, 0.08f, 0.06f, 0.98f);
+    private const float HighwayResolvedFeedbackBodyWidthScale = 1.22f;
+    private const float HighwayResolvedFeedbackBodyHeightScale = 1.16f;
+    private const float HighwayResolvedFeedbackBodyDepthScale = 0.72f;
+    private const float HighwayResolvedFeedbackBodyAttackSeconds = 0.055f;
     private static readonly Color HighwayHitLaneSurfaceColor = new Color(0.10f, 0.62f, 1f, 0.64f);
     private static readonly Color HighwayHitFretLightColor = new Color(0.22f, 0.76f, 1f, 1f);
     private static readonly Color HighwayMissLaneSurfaceColor = new Color(1f, 0.06f, 0.04f, 0.64f);
@@ -224,6 +287,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const float HighwayCharacterPortalSwirlSpeed = 0.55f; // [PORTAL] : motion - swirl animation speed
     private const float HighwayCharacterPortalSwirlSharpness = 5f; // [PORTAL] : detail - swirl sharpness
     private const float HighwayCharacterPortalPreviewTintMix = 0.18f; // [PORTAL] : mix - material preview tint
+    private const int HighwayCharacterRenderQueueOffset = -50;
+    private const int HighwayCharacterPortalBackRenderQueueOffset = -52;
+    private const int HighwayCharacterPortalFrontRenderQueueOffset = -51;
+    private const float HighwayNoteSpawnFadeSeconds = 0.35f;
+    private const float HighwayNoteSpawnMinimumScale = 0.38f;
+    private const float HighwayNoteBodyDepthFretScale = 0.09f;
+    private const float HighwayNoteBodyMinimumDepth = 0.14f;
+    private const float HighwayOpenNoteMinimumDepth = 0.12f;
     private const float StringLaneSpacing = 1.2f;
     private const float BendRibbonVisualHeightInStrings = 2f;
     private const float BendRibbonLeadOutDistance = 0.9f;
@@ -233,6 +304,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const float BendRibbonHeadMaximumFlatHoldSeconds = 1.2f;
     private const float BendRibbonFlatLightStrength = 0.85f;
     private const float BendRibbonDarkBandPaddingDistance = 0.32f;
+    private const int ContinuousBendRibbonSamples = 48;
+    private const float ContinuousBendRibbonMinimumDurationSeconds = 0.04f;
+    private const float MinimumVisualBendTransitionSeconds = 0.18f;
+    private const float VisualBendTransitionEpsilon = 0.0001f;
+    private const float ContinuousBendRibbonWidthFraction = 0.34f;
+    private const float ContinuousBendRibbonVisibleFadeWorldDistance = 0.55f;
+    private const float ContinuousBendRibbonLengthFadeWorldDistance = 0.75f;
     private const float BendArrowWidthFraction = 0.82f;
     private const float BendArrowFrontOffset = 0.035f;
     private const float BendArrowStackOffsetFraction = 0.72f;
@@ -305,6 +383,25 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public float darkBandStart01;
         public float darkBandEnd01;
     }
+
+    private sealed class ContinuousRibbonMeshState
+    {
+        public Mesh mesh;
+        public Vector3[] vertices;
+        public Vector3[] centerline;
+        public Vector2[] uvs;
+        public Vector2[] uv2;
+        public int[] triangles;
+        public int sampleCount;
+        public bool hasCachedGeometry;
+        public float cachedVisualNoteSpeed;
+        public float cachedStartOffset;
+        public float cachedEndOffset;
+        public float cachedPathLength;
+        public Vector3 cachedCenterOffset;
+        public bool hasCachedTransformPosition;
+        public Vector3 cachedTransformPosition;
+    }
   
     private struct SlideRibbonFadeState
     {
@@ -333,6 +430,20 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public float endTime;
         public bool[] laneSurfaceMask;
         public bool[] laneGuideMask;
+    }
+
+    private struct FretBoundaryVisualState
+    {
+        public bool materialInitialized;
+        public bool transformInitialized;
+        public Color baseColor;
+        public Color emissionColor;
+        public Color flashColor;
+        public float flashProgress;
+        public float flashStrength;
+        public float glowWidth;
+        public Vector3 localScale;
+        public Vector3 position;
     }
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
@@ -389,7 +500,22 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         arpeggioGuideFrames.Clear();
         chordFrames.Clear();
         fretNumberLabels.Clear();
+        ResetFretBoundaryRuntimeCaches();
         Initialize(owner, chartNotes, sections);
+    }
+
+    private void ResetFretBoundaryRuntimeCaches()
+    {
+        fretBoundaryActiveBuffer = Array.Empty<bool>();
+        fretBoundaryLaneMaskBuffer = Array.Empty<bool>();
+        laneGuideActiveBuffer = Array.Empty<bool>();
+        laneGuideMaskBuffer = Array.Empty<bool>();
+        laneSurfaceActiveBuffer = Array.Empty<bool>();
+        laneSurfaceMaskBuffer = Array.Empty<bool>();
+        fretNumberLabelActiveStates = Array.Empty<bool>();
+        fretBoundaryVisualStates = Array.Empty<FretBoundaryVisualState>();
+        fretNumberLabelActiveStatesInitialized = false;
+        cachedLaneHighlightChunkIndex = -1;
     }
 
     public void SetHighwayCharacterViewportHeightScale(float scale)
@@ -457,19 +583,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             }
 
             bool showHighwayCharacter = snapshot.showHighwayCharacter && !snapshot.showTuner;
-            if (characterRoot != null && characterRoot.activeSelf != showHighwayCharacter)
-                characterRoot.SetActive(showHighwayCharacter);
-
-            if (showHighwayCharacter)
+            if (!showHighwayCharacter && characterRoot != null && characterRoot.activeSelf)
             {
-                UpdateHighwayCharacterPlacement();
-                UpdateHighwayCharacterAnimation(snapshot);
-            }
-            if (logLoopCountdownDetail)
-            {
-                long afterCharacterTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                characterMs = (afterCharacterTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
-                phaseStartTicks = afterCharacterTicks;
+                characterRoot.SetActive(false);
+                UpdateHighwayCharacterPortalVisuals(false);
             }
 
             if (!suppressGameplay)
@@ -573,6 +690,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 }
             }
 
+            if (showHighwayCharacter)
+            {
+                UpdateHighwayCharacterPlacement();
+                UpdateHighwayCharacterAnimation(snapshot);
+            }
+            if (logLoopCountdownDetail)
+            {
+                long afterCharacterTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+                characterMs = (afterCharacterTicks - phaseStartTicks) * 1000d / System.Diagnostics.Stopwatch.Frequency;
+                phaseStartTicks = afterCharacterTicks;
+            }
+
             backgroundEffect?.Tick(Time.deltaTime);
             if (logLoopCountdownDetail)
             {
@@ -643,6 +772,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             Object.Destroy(sharedTechniqueRibbonMaterial);
             sharedTechniqueRibbonMaterial = null;
+        }
+
+        if (sharedContinuousRibbonMaterial != null)
+        {
+            Object.Destroy(sharedContinuousRibbonMaterial);
+            sharedContinuousRibbonMaterial = null;
         }
 
         if (sharedBendArrowMaterial != null)
@@ -716,6 +851,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         chartById.Clear();
         chordGroups.Clear();
+        chordRepeatRenderInfoByChordId.Clear();
         slideDestinationBySourceId.Clear();
         bendDestinationBySourceId.Clear();
         bendSourceByDestinationId.Clear();
@@ -726,6 +862,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         urgentCameraHoldUntil = float.NegativeInfinity;
         urgentCameraHeldTargetX = 0f;
         urgentCameraHeldTargetFOV = 60f;
+        ResetCameraV2State(seedFromCurrentCamera: false);
 
         if (chartNotes == null)
             return;
@@ -760,6 +897,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         foreach (var key in chordGroups.Keys.ToList())
             chordGroups[key] = chordGroups[key].OrderBy(n => n.stringIdx).ThenBy(n => n.fret).ToList();
+
+        BuildChordRepeatRenderCache();
 
         for (int i = 0; i < chartNotes.Count; i++)
         {
@@ -928,6 +1067,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void BuildLaneHighlightChunks(List<NoteData> chartNotes, List<TabSectionData> sections)
     {
         laneHighlightChunks.Clear();
+        cachedLaneHighlightChunkIndex = -1;
         if (chartNotes == null || chartNotes.Count == 0)
             return;
 
@@ -1045,7 +1185,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 mainCamera.cullingMask = originalMainCameraCullingMask & ~(1 << BackgroundLayer);
             mainCamera.depth = originalMainCameraDepth;
             mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, owner.highwayCameraFarClip);
-            mainCamera.transform.position = new Vector3(cameraTargetX, owner.highwayCameraY, owner.highwayCameraZ);
+            float configuredCameraX = IsSmartLookaheadCameraActive() && cameraV2Initialized ? cameraV2SmoothedX : cameraTargetX;
+            mainCamera.transform.position = new Vector3(configuredCameraX, owner.highwayCameraY, owner.highwayCameraZ);
             mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
             SyncBackgroundCamera();
         }
@@ -1088,6 +1229,50 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return owner.tabSpaceBackgroundColor;
 
         return owner.tabBackgroundColor;
+    }
+
+    private bool IsSmartLookaheadCameraActive()
+    {
+        return owner != null && owner.highwayCameraEngine == HighwayCameraEngine.SmartLookahead;
+    }
+
+    private void ResetCameraV2State(bool seedFromCurrentCamera)
+    {
+        float seedX = cameraTargetX;
+        float seedFov = 60f;
+        if (seedFromCurrentCamera && mainCamera != null)
+        {
+            seedX = mainCamera.transform.position.x;
+            seedFov = Mathf.Clamp(mainCamera.fieldOfView, 45f, 100f);
+        }
+
+        cameraV2Initialized = false;
+        cameraV2HighNeckLatch = false;
+        cameraV2SmoothedX = seedX;
+        cameraV2TargetX = seedX;
+        cameraV2SmoothedFOV = seedFov;
+        cameraV2TargetFOV = seedFov;
+        cameraV2XVelocity = 0f;
+        cameraV2FovVelocity = 0f;
+        cameraV2LookAtY = 0f;
+        cameraV2TargetLookAtY = 0f;
+        cameraV2LookAtYVelocity = 0f;
+        cameraV2DownAngle = 14f;
+        cameraV2TargetDownAngle = 14f;
+        cameraV2DownAngleVelocity = 0f;
+        float seedCameraY = owner != null ? owner.highwayCameraY : 14f;
+        cameraV2CameraY = seedCameraY;
+        cameraV2TargetCameraY = seedCameraY;
+        cameraV2CameraYVelocity = 0f;
+        cameraV2FocusDistance = owner != null ? Mathf.Abs(owner.StrikeLineZ - owner.highwayCameraZ) : 24f;
+        cameraV2TargetFocusDistance = cameraV2FocusDistance;
+        cameraV2FocusDistanceVelocity = 0f;
+        cameraV2FocusStateInitialized = false;
+        cameraV2FocusX = seedX;
+        cameraV2FocusFretSpan = 4f;
+        cameraV2LowFretBonusUnits = 0f;
+        cameraV2LastFocusSongTime = float.NaN;
+        cameraV2LastRenderSongTime = float.NaN;
     }
 
     private void EnsureGameplayVisualsBuilt()
@@ -1228,8 +1413,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             HighwayCharacterHeightViewportFraction * highwayCharacterViewportHeightScale,
             HighwayCharacterViewportCenterY + highwayCharacterViewportCenterYOffset,
             owner != null ? owner.highwayCharacterScale : 1f,
-            0f,
-            owner != null ? owner.highwayCharacterRigOffsetY : 0f);
+            owner != null ? owner.highwayCharacterRigOffsetX : 0f,
+            owner != null ? owner.highwayCharacterRigOffsetY : 0f,
+            true);
         highwayCharacterManualLocalXOffset = HighwayCharacterVisualUtility.ComputeCharacterLocalXOffset(
             viewportRect.width,
             owner != null ? owner.highwayCharacterOffsetX : 0f,
@@ -1245,14 +1431,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float targetWidth = Vector3.Distance(lowerLeft, lowerRight);
         float targetHeight = Vector3.Distance(lowerLeft, upperLeft);
         Vector3 worldPosition = (lowerLeft + upperRight) * 0.5f;
+        highwayCharacterWorldWidth = Mathf.Max(0.001f, targetWidth * HighwayCharacterScaleMultiplier);
+        highwayCharacterWorldHeight = Mathf.Max(0.001f, targetHeight * HighwayCharacterScaleMultiplier);
 
         characterRoot.transform.position = worldPosition;
         characterRoot.transform.rotation = mainCamera.transform.rotation;
-        characterRoot.transform.localScale = new Vector3(
-            targetWidth * HighwayCharacterScaleMultiplier,
-            targetHeight * HighwayCharacterScaleMultiplier,
-            1f);
+        characterRoot.transform.localScale = Vector3.one;
         ApplyHighwayCharacterVerticalCompensation();
+        ApplyHighwayCharacterVisualTransform(highwayCharacterManualLocalXOffset, highwayCharacterManualLocalYOffset, 1f, 0f);
+        UpdateHighwayCharacterParticleLayout();
         UpdateHighwayCharacterPortalVisuals(true);
     }
 
@@ -1263,7 +1450,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             highwayCharacterSourcePixelWidth,
             highwayCharacterSourcePixelHeight,
             (owner != null ? owner.highwayCharacterScale : 1f) * highwayCharacterViewportHeightScale,
-            owner != null ? owner.highwayCharacterOffsetX : 0f,
+            (owner != null ? owner.highwayCharacterRigOffsetX : 0f) + (owner != null ? owner.highwayCharacterOffsetX : 0f),
             (owner != null ? owner.highwayCharacterRigOffsetY : 0f) + (owner != null ? owner.highwayCharacterOffsetY : 0f) + highwayCharacterViewportCenterYOffset);
     }
 
@@ -1330,18 +1517,59 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 sharedHighwayCharacterMaterial.SetFloat(CharacterFadeEndShaderId, fadeEnd);
         }
 
-        if (highwayCharacterPortalBackRenderer != null)
+        highwayCharacterPortalLocalY = portalLocalY;
+        ApplyHighwayCharacterPortalTransform(highwayCharacterPortalBackRenderer, HighwayCharacterPortalBackForwardOffset);
+        ApplyHighwayCharacterPortalTransform(highwayCharacterPortalFrontRenderer, HighwayCharacterPortalFrontForwardOffset);
+    }
+
+    private void ApplyHighwayCharacterVisualTransform(float offsetXInCharacterWidths, float offsetYInCharacterHeights, float uniformScale, float rotationZ)
+    {
+        if (highwayCharacterTransform == null)
+            return;
+
+        float width = Mathf.Max(0.001f, highwayCharacterWorldWidth);
+        float height = Mathf.Max(0.001f, highwayCharacterWorldHeight);
+        highwayCharacterTransform.localPosition = new Vector3(
+            offsetXInCharacterWidths * width,
+            offsetYInCharacterHeights * height,
+            0f);
+        highwayCharacterTransform.localRotation = Quaternion.Euler(0f, 0f, rotationZ);
+        highwayCharacterTransform.localScale = new Vector3(width * uniformScale, height * uniformScale, 1f);
+    }
+
+    private void ApplyHighwayCharacterPortalTransform(Renderer renderer, float localForwardOffset)
+    {
+        if (renderer == null)
+            return;
+
+        float width = Mathf.Max(0.001f, highwayCharacterWorldWidth);
+        float height = Mathf.Max(0.001f, highwayCharacterWorldHeight);
+        Transform portalTransform = renderer.transform;
+        portalTransform.localPosition = new Vector3(
+            0f,
+            highwayCharacterPortalLocalY * height,
+            localForwardOffset);
+        portalTransform.localScale = new Vector3(
+            width * HighwayCharacterPortalWidthInCharacterWidths,
+            height * HighwayCharacterPortalHeightInCharacterHeights,
+            1f);
+    }
+
+    private void UpdateHighwayCharacterParticleLayout()
+    {
+        float height = Mathf.Max(0.001f, highwayCharacterWorldHeight);
+        if (highwayCharacterMissParticles != null)
         {
-            Vector3 position = highwayCharacterPortalBackRenderer.transform.localPosition;
-            position.y = HighwayCharacterPortalLocalYInCharacterHeights;
-            highwayCharacterPortalBackRenderer.transform.localPosition = position;
+            Transform particleTransform = highwayCharacterMissParticles.transform;
+            particleTransform.localPosition = new Vector3(0f, -0.12f * height, 0.02f);
+            particleTransform.localScale = Vector3.one * height;
         }
 
-        if (highwayCharacterPortalFrontRenderer != null)
+        if (highwayCharacterMissAuraParticles != null)
         {
-            Vector3 position = highwayCharacterPortalFrontRenderer.transform.localPosition;
-            position.y = HighwayCharacterPortalLocalYInCharacterHeights;
-            highwayCharacterPortalFrontRenderer.transform.localPosition = position;
+            Transform particleTransform = highwayCharacterMissAuraParticles.transform;
+            particleTransform.localPosition = new Vector3(0f, (highwayCharacterPortalLocalY + 0.07f) * height, 0.024f);
+            particleTransform.localScale = Vector3.one * height;
         }
     }
 
@@ -1372,9 +1600,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (!movementEnabled)
         {
-            highwayCharacterTransform.localPosition = new Vector3(highwayCharacterManualLocalXOffset, highwayCharacterManualLocalYOffset, 0f);
-            highwayCharacterTransform.localRotation = Quaternion.identity;
-            highwayCharacterTransform.localScale = Vector3.one;
+            ApplyHighwayCharacterVisualTransform(highwayCharacterManualLocalXOffset, highwayCharacterManualLocalYOffset, 1f, 0f);
             return;
         }
 
@@ -1448,9 +1674,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
 
         float uniformScale = Mathf.Max(0.82f, ((scaleX + scaleY) * 0.5f));
-        highwayCharacterTransform.localPosition = new Vector3(highwayCharacterManualLocalXOffset + idleLocalX, highwayCharacterManualLocalYOffset + localLift, 0f);
-        highwayCharacterTransform.localRotation = Quaternion.Euler(0f, 0f, rotationZ);
-        highwayCharacterTransform.localScale = new Vector3(uniformScale, uniformScale, 1f);
+        ApplyHighwayCharacterVisualTransform(
+            highwayCharacterManualLocalXOffset + idleLocalX,
+            highwayCharacterManualLocalYOffset + localLift,
+            uniformScale,
+            rotationZ);
     }
 
     private void ResetHighwayCharacterAnimation()
@@ -1458,9 +1686,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (highwayCharacterTransform == null)
             return;
 
-        highwayCharacterTransform.localPosition = new Vector3(highwayCharacterManualLocalXOffset, highwayCharacterManualLocalYOffset, 0f);
-        highwayCharacterTransform.localRotation = Quaternion.identity;
-        highwayCharacterTransform.localScale = Vector3.one;
+        ApplyHighwayCharacterVisualTransform(highwayCharacterManualLocalXOffset, highwayCharacterManualLocalYOffset, 1f, 0f);
         ClearHighwayCharacterMissFeedback();
     }
 
@@ -1611,9 +1837,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             sharedHighwayCharacterMaterial.SetFloat(CharacterMissFlashStrengthShaderId, 0f);
         if (sharedHighwayCharacterMaterial.HasProperty(CharacterMissFlashSpeedShaderId))
             sharedHighwayCharacterMaterial.SetFloat(CharacterMissFlashSpeedShaderId, HighwayCharacterMissFlashBandSpeed);
-        // Render the character before lane transparencies so they can blend over it,
-        // while opaque gameplay geometry still occludes it by depth.
-        sharedHighwayCharacterMaterial.renderQueue = (int)RenderQueue.Transparent - 50;
+        // Keep the character in the world/depth path so highway strings, frets,
+        // and notes stay visually in front when they cross the same screen area.
+        sharedHighwayCharacterMaterial.renderQueue = (int)RenderQueue.Transparent + HighwayCharacterRenderQueueOffset;
         sharedHighwayCharacterMaterial.SetInt("_ZWrite", 0);
         sharedHighwayCharacterMaterial.SetInt("_Cull", (int)CullMode.Off);
         sharedHighwayCharacterMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
@@ -1733,7 +1959,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         sharedHighwayCharacterMissParticleMaterial = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(HighwayCharacterMissParticleColor, 0.9f);
-        sharedHighwayCharacterMissParticleMaterial.renderQueue = (int)RenderQueue.Transparent - 50;
+        sharedHighwayCharacterMissParticleMaterial.renderQueue = (int)RenderQueue.Transparent + HighwayCharacterRenderQueueOffset + 1;
         sharedHighwayCharacterMissParticleMaterial.SetInt("_ZWrite", 0);
         sharedHighwayCharacterMissParticleMaterial.SetInt("_Cull", (int)CullMode.Off);
         sharedHighwayCharacterMissParticleMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
@@ -1850,7 +2076,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         sharedHighwayCharacterMissAuraParticleMaterial = shader != null
             ? new Material(shader)
             : owner.CreateSharedTransparentMaterial(HighwayCharacterMissAuraParticleColor, 0.65f);
-        sharedHighwayCharacterMissAuraParticleMaterial.renderQueue = (int)RenderQueue.Transparent - 50;
+        sharedHighwayCharacterMissAuraParticleMaterial.renderQueue = (int)RenderQueue.Transparent + HighwayCharacterRenderQueueOffset;
         sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_ZWrite", 0);
         sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_Cull", (int)CullMode.Off);
         sharedHighwayCharacterMissAuraParticleMaterial.SetInt("_ZTest", (int)CompareFunction.LessEqual);
@@ -1906,7 +2132,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (sharedHighwayCharacterPortalBackMaterial != null)
             return sharedHighwayCharacterPortalBackMaterial;
 
-        sharedHighwayCharacterPortalBackMaterial = CreateHighwayCharacterPortalMaterial(halfMode: -1f, renderQueue: (int)RenderQueue.Transparent - 52);
+        sharedHighwayCharacterPortalBackMaterial = CreateHighwayCharacterPortalMaterial(halfMode: -1f, renderQueue: (int)RenderQueue.Transparent + HighwayCharacterPortalBackRenderQueueOffset);
         return sharedHighwayCharacterPortalBackMaterial;
     }
 
@@ -1915,7 +2141,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (sharedHighwayCharacterPortalFrontMaterial != null)
             return sharedHighwayCharacterPortalFrontMaterial;
 
-        sharedHighwayCharacterPortalFrontMaterial = CreateHighwayCharacterPortalMaterial(halfMode: 1f, renderQueue: (int)RenderQueue.Transparent - 51);
+        sharedHighwayCharacterPortalFrontMaterial = CreateHighwayCharacterPortalMaterial(halfMode: 1f, renderQueue: (int)RenderQueue.Transparent + HighwayCharacterPortalFrontRenderQueueOffset);
         return sharedHighwayCharacterPortalFrontMaterial;
     }
 
@@ -2028,6 +2254,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void GenerateFretboard()
     {
         fretNumberLabels.Clear();
+        fretNumberLabelActiveStatesInitialized = false;
         float fretLineCenterY = GetFretLineCenterY();
         float fretLineHeight = GetFretLineHeight();
 
@@ -2343,15 +2570,22 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         using (UpdateFretBoundariesProfilerMarker.Auto())
         {
-            bool[] boundaryActive = BuildFretBoundaryActivityFlags(snapshot);
+            int boundaryCount = fretBoundaryMats.Length;
+            EnsureBoolBuffer(ref fretBoundaryActiveBuffer, boundaryCount);
+            EnsureFretBoundaryVisualStateBuffer(boundaryCount);
+            BuildFretBoundaryActivityFlags(snapshot, fretBoundaryActiveBuffer);
             float renderSongTime = GetRenderSongTime(snapshot);
-            EnsureFretBoundaryFeedbackBuffers(fretBoundaryMats.Length);
-            BuildResolvedFretBoundaryFeedback(snapshot, renderSongTime, fretBoundaryMats.Length);
+            EnsureFretBoundaryFeedbackBuffers(boundaryCount);
+            BuildResolvedFretBoundaryFeedback(snapshot, renderSongTime, boundaryCount);
 
             Color activeColor = new Color(0.46f, 0.50f, 0.56f, 0.92f);
             Color idleColor = new Color(0.20f, 0.22f, 0.25f, 0.18f);
+            float fretLineCenterY = GetFretLineCenterY();
+            float fretLineHeight = GetFretLineHeight();
+            float strikeLineZ = owner.StrikeLineZ;
+            float glowWidth = owner.highwayShowFretLineScaleFeedback ? 0.74f : 0f;
 
-            for (int i = 0; i < fretBoundaryMats.Length; i++)
+            for (int i = 0; i < boundaryCount; i++)
             {
                 Material mat = fretBoundaryMats[i];
                 Renderer renderer = fretBoundaryRenderers[i];
@@ -2369,34 +2603,53 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     ? (i < fretBoundaryMissExpansionFeedback.Length ? fretBoundaryMissExpansionFeedback[i] : 0f)
                     : (i < fretBoundaryHitExpansionFeedback.Length ? fretBoundaryHitExpansionFeedback[i] : 0f);
 
-                Color color = boundaryActive[i] ? activeColor : idleColor;
-                float emission = boundaryActive[i]
+                Color color = fretBoundaryActiveBuffer[i] ? activeColor : idleColor;
+                float emission = fretBoundaryActiveBuffer[i]
                     ? (owner.highwayHighlightFretBoundaries ? 0.18f : 0.04f)
                     : 0f;
                 Color emissionColor = emission > 0f ? color * Mathf.Pow(2f, emission) : Color.black;
                 Color flashColor = feedbackIsMiss ? HighwayMissFretBoundaryColor : HighwayHitFretBoundaryColor;
-                float flashHdrIntensity = feedbackIsMiss ? 4.8f : 4.2f;
+                float flashHdrIntensity = feedbackIsMiss ? 6.2f : 5.8f;
                 flashColor = new Color(
                     flashColor.r * flashHdrIntensity,
                     flashColor.g * flashHdrIntensity,
                     flashColor.b * flashHdrIntensity,
                     1f);
                 bool fretLineFeedbackEnabled = IsFretLineFeedbackEnabled(feedbackIsMiss, feedbackPulse);
-                float flashStrength = fretLineFeedbackEnabled ? shapedPulse : 0f;
+                float flashStrength = fretLineFeedbackEnabled ? Mathf.Clamp01(shapedPulse * 1.25f) : 0f;
                 float flashProgress = fretLineFeedbackEnabled ? Mathf.Clamp01(flashExpansion) : 0f;
-                if (mat.HasProperty(FretBoundaryGlowWidthShaderId))
-                    mat.SetFloat(FretBoundaryGlowWidthShaderId, owner.highwayShowFretLineScaleFeedback ? 0.62f : 0f);
 
-                ApplyFretBoundaryMaterialState(mat, color, emissionColor, flashColor, flashProgress, flashStrength);
-                ApplyFretBoundaryTransform(renderer, i, fretLineFeedbackEnabled && owner.highwayShowFretLineScaleFeedback ? shapedPulse : 0f);
-                renderer.enabled = true;
+                ApplyFretBoundaryMaterialStateIfChanged(
+                    mat,
+                    i,
+                    color,
+                    emissionColor,
+                    flashColor,
+                    flashProgress,
+                    flashStrength,
+                    glowWidth);
+                ApplyFretBoundaryTransformIfChanged(
+                    renderer,
+                    i,
+                    fretLineFeedbackEnabled && owner.highwayShowFretLineScaleFeedback ? shapedPulse : 0f,
+                    fretLineCenterY,
+                    fretLineHeight,
+                    strikeLineZ);
+                if (!renderer.enabled)
+                    renderer.enabled = true;
             }
 
-            UpdateFretNumberLabels(boundaryActive);
+            UpdateFretNumberLabels(fretBoundaryActiveBuffer);
         }
     }
 
-    private void ApplyFretBoundaryTransform(Renderer renderer, int boundaryIndex, float pulse)
+    private void ApplyFretBoundaryTransformIfChanged(
+        Renderer renderer,
+        int boundaryIndex,
+        float pulse,
+        float fretLineCenterY,
+        float fretLineHeight,
+        float strikeLineZ)
     {
         if (renderer == null)
             return;
@@ -2405,18 +2658,70 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (boundaryTransform == null)
             return;
 
-        float fretLineHeight = GetFretLineHeight();
         float widthBase = boundaryIndex == 0 ? HighwayNutBoundaryBaseWidth : HighwayFretBoundaryBaseWidth;
         float depthBase = boundaryIndex == 0 ? HighwayNutBoundaryBaseDepth : HighwayFretBoundaryBaseDepth;
         float width = widthBase * (1f + (pulse * (boundaryIndex == 0 ? 0.42f : 1.85f)));
         float height = fretLineHeight * (1f + (pulse * 0.16f));
         float depth = depthBase * (1f + (pulse * 1.45f));
-        boundaryTransform.localScale = new Vector3(width, height, depth);
+        Vector3 localScale = new Vector3(width, height, depth);
 
         Vector3 position = boundaryTransform.position;
-        position.y = GetFretLineCenterY();
-        position.z = owner.StrikeLineZ + 0.05f - (pulse * 0.015f);
+        position.y = fretLineCenterY;
+        position.z = strikeLineZ + 0.05f - (pulse * 0.015f);
+
+        ref FretBoundaryVisualState state = ref fretBoundaryVisualStates[boundaryIndex];
+        if (state.transformInitialized &&
+            Approximately(state.localScale, localScale) &&
+            Approximately(state.position, position))
+        {
+            return;
+        }
+
+        boundaryTransform.localScale = localScale;
         boundaryTransform.position = position;
+        state.transformInitialized = true;
+        state.localScale = localScale;
+        state.position = position;
+    }
+
+    private void ApplyFretBoundaryMaterialStateIfChanged(
+        Material material,
+        int boundaryIndex,
+        Color baseColor,
+        Color emissionColor,
+        Color flashColor,
+        float flashProgress,
+        float flashStrength,
+        float glowWidth)
+    {
+        if (material == null || boundaryIndex < 0 || boundaryIndex >= fretBoundaryVisualStates.Length)
+            return;
+
+        flashProgress = Mathf.Clamp01(flashProgress);
+        flashStrength = Mathf.Clamp01(flashStrength);
+        ref FretBoundaryVisualState state = ref fretBoundaryVisualStates[boundaryIndex];
+        if (state.materialInitialized &&
+            Approximately(state.baseColor, baseColor) &&
+            Approximately(state.emissionColor, emissionColor) &&
+            Approximately(state.flashColor, flashColor) &&
+            Approximately(state.flashProgress, flashProgress) &&
+            Approximately(state.flashStrength, flashStrength) &&
+            Approximately(state.glowWidth, glowWidth))
+        {
+            return;
+        }
+
+        ApplyFretBoundaryMaterialState(material, baseColor, emissionColor, flashColor, flashProgress, flashStrength);
+        if (material.HasProperty(FretBoundaryGlowWidthShaderId))
+            material.SetFloat(FretBoundaryGlowWidthShaderId, glowWidth);
+
+        state.materialInitialized = true;
+        state.baseColor = baseColor;
+        state.emissionColor = emissionColor;
+        state.flashColor = flashColor;
+        state.flashProgress = flashProgress;
+        state.flashStrength = flashStrength;
+        state.glowWidth = glowWidth;
     }
 
     private void ApplyFretBoundaryMaterialState(Material material, Color baseColor, Color emissionColor, Color flashColor, float flashProgress, float flashStrength)
@@ -2463,11 +2768,54 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             Array.Clear(fretBoundaryMissExpansionFeedback, 0, fretBoundaryMissExpansionFeedback.Length);
     }
 
+    private static void EnsureBoolBuffer(ref bool[] buffer, int count)
+    {
+        if (count <= 0)
+        {
+            buffer = Array.Empty<bool>();
+            return;
+        }
+
+        if (buffer == null || buffer.Length != count)
+            buffer = new bool[count];
+        else
+            Array.Clear(buffer, 0, buffer.Length);
+    }
+
+    private void EnsureFretBoundaryVisualStateBuffer(int boundaryCount)
+    {
+        if (boundaryCount <= 0)
+        {
+            fretBoundaryVisualStates = Array.Empty<FretBoundaryVisualState>();
+            return;
+        }
+
+        if (fretBoundaryVisualStates == null || fretBoundaryVisualStates.Length != boundaryCount)
+            fretBoundaryVisualStates = new FretBoundaryVisualState[boundaryCount];
+    }
+
+    private void EnsureFretNumberLabelStateBuffer(int boundaryCount)
+    {
+        if (boundaryCount <= 0)
+        {
+            fretNumberLabelActiveStates = Array.Empty<bool>();
+            fretNumberLabelActiveStatesInitialized = false;
+            return;
+        }
+
+        if (fretNumberLabelActiveStates == null || fretNumberLabelActiveStates.Length != boundaryCount)
+        {
+            fretNumberLabelActiveStates = new bool[boundaryCount];
+            fretNumberLabelActiveStatesInitialized = false;
+        }
+    }
+
     private void BuildResolvedFretBoundaryFeedback(GuitarGameplaySnapshot snapshot, float renderSongTime, int boundaryCount)
     {
         if (snapshot?.noteStates == null || boundaryCount <= 0)
             return;
 
+        resolvedFretFeedbackProcessedChordIds.Clear();
         GetResolvedFeedbackScanWindow(renderSongTime, out float earliestNoteTime, out float latestNoteTime);
         int startIndex = FindFirstNoteStateIndexAtOrAfter(snapshot.noteStates, earliestNoteTime);
         for (int i = startIndex; i < snapshot.noteStates.Count; i++)
@@ -2480,6 +2828,34 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 break;
             if (!IsResolvedFretLineFeedbackEnabled(state))
                 continue;
+
+            if (state.data.chordId >= 0 &&
+                chordGroups.TryGetValue(state.data.chordId, out List<NoteData> chordGroup) &&
+                chordGroup != null &&
+                chordGroup.Count > 1)
+            {
+                if (!resolvedFretFeedbackProcessedChordIds.Add(state.data.chordId))
+                    continue;
+
+                if (!TryGetChordResolvedFretBoundaryFeedback(
+                        snapshot,
+                        state.data.chordId,
+                        renderSongTime,
+                        out bool chordMissed,
+                        out float chordPulse,
+                        out float chordResolvedAt))
+                {
+                    continue;
+                }
+
+                float[] chordBuffer = chordMissed ? fretBoundaryMissFeedback : fretBoundaryHitFeedback;
+                float[] chordExpansionBuffer = chordMissed ? fretBoundaryMissExpansionFeedback : fretBoundaryHitExpansionFeedback;
+                float chordProgress = Mathf.Clamp01((renderSongTime - chordResolvedAt) / HighwayResolvedFretFeedbackDurationSeconds);
+                float chordExpansion = Mathf.SmoothStep(0.08f, 1f, Mathf.Clamp01(chordProgress / 0.38f));
+                ApplyResolvedFretBoundaryRange(chordBuffer, chordExpansionBuffer, chordGroup, boundaryCount, chordPulse, chordExpansion, 1f);
+                continue;
+            }
+
             if (!TryGetResolvedFeedbackPulse(state, renderSongTime, out float pulse))
                 continue;
 
@@ -2489,40 +2865,218 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float expansion = Mathf.SmoothStep(0.08f, 1f, Mathf.Clamp01(progress / 0.38f));
             if (state.data.fret <= 0)
             {
-                ApplyMaxFeedback(buffer, 0, pulse);
-                ApplyMaxFeedback(expansionBuffer, 0, expansion);
+                ApplyResolvedOpenFretBoundaryPair(buffer, expansionBuffer, boundaryCount, pulse, expansion, state.data);
                 continue;
             }
 
             int lowerBoundary = Mathf.Clamp(state.data.fret - 1, 0, boundaryCount - 1);
             int upperBoundary = Mathf.Clamp(state.data.fret, 0, boundaryCount - 1);
-            ApplyMaxFeedback(buffer, lowerBoundary, pulse * 0.58f);
+            ApplyMaxFeedback(buffer, lowerBoundary, pulse * 0.72f);
             ApplyMaxFeedback(buffer, upperBoundary, pulse);
             ApplyMaxFeedback(expansionBuffer, lowerBoundary, expansion);
             ApplyMaxFeedback(expansionBuffer, upperBoundary, expansion);
         }
     }
 
-    private bool[] BuildFretBoundaryActivityFlags(GuitarGameplaySnapshot snapshot)
+    private bool TryGetChordResolvedFretBoundaryFeedback(
+        GuitarGameplaySnapshot snapshot,
+        int chordId,
+        float renderSongTime,
+        out bool isMissed,
+        out float pulse,
+        out float resolvedAt)
+    {
+        isMissed = false;
+        pulse = 0f;
+        resolvedAt = -1f;
+
+        if (snapshot?.noteStates == null || chordId < 0)
+            return false;
+
+        bool found = false;
+        for (int i = 0; i < snapshot.noteStates.Count; i++)
+        {
+            GameplayNoteState chordState = snapshot.noteStates[i];
+            if (chordState == null || chordState.data.chordId != chordId)
+                continue;
+            if (!IsResolvedFretLineFeedbackEnabled(chordState))
+                continue;
+            if (!TryGetResolvedFeedbackPulse(chordState, renderSongTime, out float statePulse))
+                continue;
+
+            found = true;
+            isMissed |= chordState.IsMissed;
+            pulse = Mathf.Max(pulse, statePulse);
+            resolvedAt = Mathf.Max(resolvedAt, chordState.resolvedAt);
+        }
+
+        return found && pulse > 0.001f && resolvedAt >= 0f;
+    }
+
+    private void ApplyResolvedFretBoundaryRange(
+        float[] buffer,
+        float[] expansionBuffer,
+        List<NoteData> notes,
+        int boundaryCount,
+        float pulse,
+        float expansion,
+        float lowerPulseScale)
+    {
+        if (notes == null || notes.Count == 0)
+            return;
+
+        int minFret = int.MaxValue;
+        int maxFret = int.MinValue;
+        bool hasOpenNote = false;
+        for (int i = 0; i < notes.Count; i++)
+        {
+            NoteData note = notes[i];
+            if (note.fret <= 0)
+            {
+                hasOpenNote = true;
+                continue;
+            }
+
+            minFret = Mathf.Min(minFret, note.fret);
+            maxFret = Mathf.Max(maxFret, note.fret);
+        }
+
+        if (hasOpenNote && TryGetVisualOpenFretBoundaryPair(notes, boundaryCount, out int openLowerBoundary, out int openUpperBoundary))
+        {
+            if (minFret != int.MaxValue)
+            {
+                openLowerBoundary = Mathf.Min(openLowerBoundary, Mathf.Clamp(minFret - 1, 0, boundaryCount - 1));
+                openUpperBoundary = Mathf.Max(openUpperBoundary, Mathf.Clamp(maxFret, 0, boundaryCount - 1));
+            }
+
+            ApplyResolvedFretBoundaryPair(buffer, expansionBuffer, openLowerBoundary, openUpperBoundary, pulse, expansion, lowerPulseScale);
+            return;
+        }
+
+        if (maxFret <= 0 || minFret == int.MaxValue)
+        {
+            ApplyResolvedOpenFretBoundaryPair(buffer, expansionBuffer, boundaryCount, pulse, expansion);
+            return;
+        }
+
+        int lowerBoundary = Mathf.Clamp(minFret - 1, 0, boundaryCount - 1);
+        int upperBoundary = Mathf.Clamp(maxFret, 0, boundaryCount - 1);
+        ApplyResolvedFretBoundaryPair(buffer, expansionBuffer, lowerBoundary, upperBoundary, pulse, expansion, lowerPulseScale);
+    }
+
+    private void ApplyResolvedOpenFretBoundaryPair(float[] buffer, float[] expansionBuffer, int boundaryCount, float pulse, float expansion, NoteData openNote)
+    {
+        if (TryGetVisualOpenFretBoundaryPair(GetChordGroup(openNote), boundaryCount, out int visualLower, out int visualUpper))
+        {
+            ApplyResolvedFretBoundaryPair(buffer, expansionBuffer, visualLower, visualUpper, pulse, expansion, 1f);
+            return;
+        }
+
+        ApplyResolvedOpenFretBoundaryPair(buffer, expansionBuffer, boundaryCount, pulse, expansion);
+    }
+
+    private void ApplyResolvedOpenFretBoundaryPair(float[] buffer, float[] expansionBuffer, int boundaryCount, float pulse, float expansion)
+    {
+        int anchorFret = GetOpenFeedbackAnchorFret(boundaryCount);
+        int lowerBoundary = Mathf.Clamp(anchorFret - 1, 0, boundaryCount - 1);
+        int upperBoundary = Mathf.Clamp(anchorFret, 0, boundaryCount - 1);
+        ApplyResolvedFretBoundaryPair(buffer, expansionBuffer, lowerBoundary, upperBoundary, pulse, expansion, 1f);
+    }
+
+    private bool TryGetVisualOpenFretBoundaryPair(List<NoteData> group, int boundaryCount, out int lowerBoundary, out int upperBoundary)
+    {
+        lowerBoundary = 0;
+        upperBoundary = 0;
+        if (owner == null || boundaryCount <= 1 || group == null || group.Count == 0 || owner.FretSpacing <= 0.001f)
+            return false;
+
+        bool hasOpenNote = false;
+        for (int i = 0; i < group.Count; i++)
+        {
+            if (group[i].fret <= 0)
+            {
+                hasOpenNote = true;
+                break;
+            }
+        }
+
+        if (!hasOpenNote)
+            return false;
+
+        int handFret = GetGroupHandFret(group);
+        float leftX;
+        float rightX;
+        if (group.Count > 1)
+        {
+            leftX = GetHandWindowStartX(handFret);
+            rightX = GetHandWindowEndX(handFret, group);
+        }
+        else
+        {
+            float centerX = GetGroupAnchorX(group);
+            float halfWidth = GetSingleOpenNoteScale().x * 0.5f;
+            leftX = centerX - halfWidth;
+            rightX = centerX + halfWidth;
+        }
+
+        lowerBoundary = Mathf.Clamp(Mathf.FloorToInt((leftX / owner.FretSpacing) + 0.0001f), 0, boundaryCount - 1);
+        upperBoundary = Mathf.Clamp(Mathf.CeilToInt((rightX / owner.FretSpacing) - 0.0001f), 0, boundaryCount - 1);
+        if (upperBoundary <= lowerBoundary)
+            upperBoundary = Mathf.Min(boundaryCount - 1, lowerBoundary + 1);
+
+        return upperBoundary > lowerBoundary;
+    }
+
+    private int GetOpenFeedbackAnchorFret(int boundaryCount)
+    {
+        return Mathf.Clamp(Mathf.RoundToInt(owner != null ? owner.defaultOpenAnchorFret : 2f), 1, Mathf.Max(1, boundaryCount - 1));
+    }
+
+    private static void ApplyResolvedFretBoundaryPair(
+        float[] buffer,
+        float[] expansionBuffer,
+        int lowerBoundary,
+        int upperBoundary,
+        float pulse,
+        float expansion,
+        float lowerPulseScale)
+    {
+        if (buffer == null || expansionBuffer == null || buffer.Length == 0 || expansionBuffer.Length == 0)
+            return;
+
+        int lower = Mathf.Clamp(lowerBoundary, 0, buffer.Length - 1);
+        int upper = Mathf.Clamp(upperBoundary, 0, buffer.Length - 1);
+        ApplyMaxFeedback(buffer, lower, pulse * Mathf.Clamp01(lowerPulseScale));
+        ApplyMaxFeedback(expansionBuffer, lower, expansion);
+        if (upper == lower)
+            return;
+
+        ApplyMaxFeedback(buffer, upper, pulse);
+        ApplyMaxFeedback(expansionBuffer, upper, expansion);
+    }
+
+    private void BuildFretBoundaryActivityFlags(GuitarGameplaySnapshot snapshot, bool[] boundaryActive)
     {
         int boundaryCount = fretBoundaryMats != null ? fretBoundaryMats.Length : GetFretLightColumnCount();
-        bool[] boundaryActive = new bool[boundaryCount];
-        bool[] laneMask = GetChunkLaneMask(snapshot, boundaryCount, useGuideMask: false);
+        if (boundaryActive == null || boundaryActive.Length < boundaryCount)
+            return;
+
+        Array.Clear(boundaryActive, 0, boundaryCount);
+        EnsureBoolBuffer(ref fretBoundaryLaneMaskBuffer, boundaryCount);
+        FillChunkLaneMask(snapshot, boundaryCount, useGuideMask: false, fretBoundaryLaneMaskBuffer);
 
         for (int fret = 0; fret < boundaryCount; fret++)
         {
             if (fret == 0)
             {
-                boundaryActive[fret] = laneMask.Length > 1 && laneMask[1];
+                boundaryActive[fret] = fretBoundaryLaneMaskBuffer.Length > 1 && fretBoundaryLaneMaskBuffer[1];
                 continue;
             }
 
-            bool lowerFretLaneActive = fret < laneMask.Length && laneMask[fret];
-            bool higherFretLaneActive = fret + 1 < laneMask.Length && laneMask[fret + 1];
+            bool lowerFretLaneActive = fret < fretBoundaryLaneMaskBuffer.Length && fretBoundaryLaneMaskBuffer[fret];
+            bool higherFretLaneActive = fret + 1 < fretBoundaryLaneMaskBuffer.Length && fretBoundaryLaneMaskBuffer[fret + 1];
             boundaryActive[fret] = lowerFretLaneActive || higherFretLaneActive;
         }
-
-        return boundaryActive;
     }
 
     private void UpdateLaneGuides(GuitarGameplaySnapshot snapshot)
@@ -2532,16 +3086,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         using (UpdateLaneGuidesProfilerMarker.Auto())
         {
-            bool[] laneHasIncomingNotes = BuildLaneGuideActivityFlags(snapshot);
+            int laneCount = laneGuideMats.Length;
+            EnsureBoolBuffer(ref laneGuideActiveBuffer, laneCount);
+            BuildLaneGuideActivityFlags(snapshot, laneGuideActiveBuffer);
 
-            for (int lane = 0; lane < laneGuideMats.Length; lane++)
+            for (int lane = 0; lane < laneCount; lane++)
             {
                 Material mat = laneGuideMats[lane];
                 Renderer renderer = laneGuideRenderers[lane];
                 if (mat == null || renderer == null)
                     continue;
 
-            bool isActive = laneHasIncomingNotes[lane];
+            bool isActive = laneGuideActiveBuffer[lane];
             Color laneColor = isActive
                 ? new Color(0.34f, 0.74f, 1f, 1f)
                 : new Color(0.03f, 0.07f, 0.14f, 0.18f);
@@ -2735,15 +3291,29 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (fretNumberLabels.Count == 0)
             return;
 
+        int boundaryCount = boundaryActive != null ? boundaryActive.Length : 0;
+        EnsureFretNumberLabelStateBuffer(boundaryCount);
         foreach (KeyValuePair<int, TextMeshPro> pair in fretNumberLabels)
         {
             TextMeshPro label = pair.Value;
             if (label == null)
                 continue;
 
-            bool isActive = pair.Key >= 0 && pair.Key < boundaryActive.Length && boundaryActive[pair.Key];
+            bool isActive = pair.Key >= 0 && pair.Key < boundaryCount && boundaryActive[pair.Key];
+            if (pair.Key >= 0 &&
+                pair.Key < fretNumberLabelActiveStates.Length &&
+                fretNumberLabelActiveStatesInitialized &&
+                fretNumberLabelActiveStates[pair.Key] == isActive)
+            {
+                continue;
+            }
+
             ApplyFretNumberLabelStyle(label, isActive);
+            if (pair.Key >= 0 && pair.Key < fretNumberLabelActiveStates.Length)
+                fretNumberLabelActiveStates[pair.Key] = isActive;
         }
+
+        fretNumberLabelActiveStatesInitialized = true;
     }
 
     private void ApplyFretNumberLabelStyle(TextMeshPro label, bool isActive)
@@ -2783,21 +3353,23 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         using (UpdateLaneSurfacesProfilerMarker.Auto())
         {
-            bool[] activeLanes = BuildLaneSurfaceActivityFlags(snapshot);
+            int laneCount = laneSurfaceMats.Length;
+            EnsureBoolBuffer(ref laneSurfaceActiveBuffer, laneCount);
+            BuildLaneSurfaceActivityFlags(snapshot, laneSurfaceActiveBuffer);
             float renderSongTime = GetRenderSongTime(snapshot);
-            EnsureLaneSurfaceFeedbackBuffers(laneSurfaceMats.Length);
-            BuildResolvedLaneSurfaceFeedback(snapshot, renderSongTime, laneSurfaceMats.Length);
+            EnsureLaneSurfaceFeedbackBuffers(laneCount);
+            BuildResolvedLaneSurfaceFeedback(snapshot, renderSongTime, laneCount);
 
-            for (int lane = 0; lane < laneSurfaceMats.Length; lane++)
+            for (int lane = 0; lane < laneCount; lane++)
             {
                 Material mat = laneSurfaceMats[lane];
                 Renderer renderer = laneSurfaceRenderers[lane];
                 if (mat == null || renderer == null)
                     continue;
 
-                bool isActive = activeLanes[lane];
-                bool hasLeftNeighbor = lane > 0 && activeLanes[lane - 1];
-                bool hasRightNeighbor = lane + 1 < activeLanes.Length && activeLanes[lane + 1];
+                bool isActive = laneSurfaceActiveBuffer[lane];
+                bool hasLeftNeighbor = lane > 0 && laneSurfaceActiveBuffer[lane - 1];
+                bool hasRightNeighbor = lane + 1 < laneSurfaceActiveBuffer.Length && laneSurfaceActiveBuffer[lane + 1];
                 float hitPulse = lane < laneSurfaceHitFeedback.Length ? laneSurfaceHitFeedback[lane] : 0f;
                 float missPulse = lane < laneSurfaceMissFeedback.Length ? laneSurfaceMissFeedback[lane] : 0f;
                 float feedbackPulse = Mathf.Max(hitPulse, missPulse);
@@ -2877,89 +3449,153 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
     }
 
-    private bool[] BuildLaneGuideActivityFlags(GuitarGameplaySnapshot snapshot)
+    private void BuildLaneGuideActivityFlags(GuitarGameplaySnapshot snapshot, bool[] guideMask)
     {
         int laneCount = laneGuideMats != null ? laneGuideMats.Length : GetFretLightColumnCount();
-        bool[] laneMask = GetChunkLaneMask(snapshot, laneCount, useGuideMask: false);
-        bool[] guideMask = new bool[laneCount];
+        if (guideMask == null || guideMask.Length < laneCount)
+            return;
+
+        Array.Clear(guideMask, 0, laneCount);
+        EnsureBoolBuffer(ref laneGuideMaskBuffer, laneCount);
+        FillChunkLaneMask(snapshot, laneCount, useGuideMask: false, laneGuideMaskBuffer);
 
         for (int guide = 0; guide < laneCount; guide++)
         {
-            bool lowerLaneActive = guide < laneMask.Length && laneMask[guide];
-            bool higherLaneActive = guide + 1 < laneMask.Length && laneMask[guide + 1];
+            bool lowerLaneActive = guide < laneGuideMaskBuffer.Length && laneGuideMaskBuffer[guide];
+            bool higherLaneActive = guide + 1 < laneGuideMaskBuffer.Length && laneGuideMaskBuffer[guide + 1];
             guideMask[guide] = lowerLaneActive || higherLaneActive;
         }
-
-        return guideMask;
     }
 
-    private bool[] BuildLaneSurfaceActivityFlags(GuitarGameplaySnapshot snapshot)
+    private void BuildLaneSurfaceActivityFlags(GuitarGameplaySnapshot snapshot, bool[] activeLanes)
     {
         int laneCount = laneSurfaceMats != null ? laneSurfaceMats.Length : GetFretLightColumnCount();
-        return ExpandLaneMask(GetChunkLaneMask(snapshot, laneCount, useGuideMask: false), 1);
+        if (activeLanes == null || activeLanes.Length < laneCount)
+            return;
+
+        EnsureBoolBuffer(ref laneSurfaceMaskBuffer, laneCount);
+        FillChunkLaneMask(snapshot, laneCount, useGuideMask: false, laneSurfaceMaskBuffer);
+        FillExpandedLaneMask(laneSurfaceMaskBuffer, activeLanes, 1);
     }
 
-    private bool[] ExpandLaneMask(bool[] sourceMask, int extraLanesPerSide)
+    private void FillExpandedLaneMask(bool[] sourceMask, bool[] expanded, int extraLanesPerSide)
     {
-        if (sourceMask == null || sourceMask.Length == 0 || extraLanesPerSide <= 0)
-            return sourceMask ?? new bool[0];
+        if (expanded == null)
+            return;
 
-        bool[] expanded = new bool[sourceMask.Length];
-        for (int lane = 0; lane < sourceMask.Length; lane++)
+        Array.Clear(expanded, 0, expanded.Length);
+        if (sourceMask == null || sourceMask.Length == 0)
+            return;
+
+        if (extraLanesPerSide <= 0)
+        {
+            Array.Copy(sourceMask, expanded, Mathf.Min(sourceMask.Length, expanded.Length));
+            return;
+        }
+
+        int sourceLength = Mathf.Min(sourceMask.Length, expanded.Length);
+        for (int lane = 0; lane < sourceLength; lane++)
         {
             if (!sourceMask[lane])
                 continue;
 
-            int start = Mathf.Clamp(lane - extraLanesPerSide, 0, sourceMask.Length - 1);
-            int end = Mathf.Clamp(lane + extraLanesPerSide, 0, sourceMask.Length - 1);
+            int start = Mathf.Clamp(lane - extraLanesPerSide, 0, expanded.Length - 1);
+            int end = Mathf.Clamp(lane + extraLanesPerSide, 0, expanded.Length - 1);
             for (int i = start; i <= end; i++)
                 expanded[i] = true;
         }
-
-        return expanded;
     }
 
-    private bool[] GetChunkLaneMask(GuitarGameplaySnapshot snapshot, int laneCount, bool useGuideMask)
+    private void FillChunkLaneMask(GuitarGameplaySnapshot snapshot, int laneCount, bool useGuideMask, bool[] targetMask)
     {
-        bool[] emptyMask = new bool[laneCount];
-        if (laneHighlightChunks == null || laneHighlightChunks.Count == 0 || snapshot == null)
-            return emptyMask;
+        if (targetMask == null)
+            return;
+
+        int clearLength = Mathf.Min(laneCount, targetMask.Length);
+        if (clearLength > 0)
+            Array.Clear(targetMask, 0, clearLength);
+        if (laneCount <= 0 || laneHighlightChunks == null || laneHighlightChunks.Count == 0 || snapshot == null)
+            return;
 
         float renderSongTime = GetRenderSongTime(snapshot);
         if (renderSongTime < laneHighlightChunks[0].startTime)
-            return CloneChunkMask(laneHighlightChunks[0], laneCount, useGuideMask);
-
-        for (int i = 0; i < laneHighlightChunks.Count; i++)
         {
-            LaneHighlightChunk chunk = laneHighlightChunks[i];
-            if (chunk == null)
-                continue;
-
-            bool isInChunk = renderSongTime >= chunk.startTime && renderSongTime < chunk.endTime;
-            bool isLastChunk = i == laneHighlightChunks.Count - 1 && renderSongTime >= chunk.startTime;
-            if (!isInChunk && !isLastChunk)
-                continue;
-
-            return CloneChunkMask(chunk, laneCount, useGuideMask);
+            CopyChunkMask(laneHighlightChunks[0], laneCount, useGuideMask, targetMask);
+            return;
         }
 
-        return emptyMask;
+        LaneHighlightChunk chunk = GetLaneHighlightChunkForTime(renderSongTime);
+        if (chunk != null)
+            CopyChunkMask(chunk, laneCount, useGuideMask, targetMask);
     }
 
-    private bool[] CloneChunkMask(LaneHighlightChunk chunk, int laneCount, bool useGuideMask)
+    private LaneHighlightChunk GetLaneHighlightChunkForTime(float renderSongTime)
     {
-        bool[] clonedMask = new bool[laneCount];
+        if (laneHighlightChunks == null || laneHighlightChunks.Count == 0)
+            return null;
+
+        int count = laneHighlightChunks.Count;
+        int index = Mathf.Clamp(cachedLaneHighlightChunkIndex, 0, count - 1);
+        if (IsLaneHighlightChunkActive(index, renderSongTime))
+            return laneHighlightChunks[index];
+
+        if (cachedLaneHighlightChunkIndex >= 0)
+        {
+            if (index < count && laneHighlightChunks[index] != null && renderSongTime >= laneHighlightChunks[index].endTime)
+            {
+                while (index + 1 < count && !IsLaneHighlightChunkActive(index, renderSongTime))
+                    index++;
+            }
+            else
+            {
+                while (index > 0 && !IsLaneHighlightChunkActive(index, renderSongTime))
+                    index--;
+            }
+
+            if (IsLaneHighlightChunkActive(index, renderSongTime))
+            {
+                cachedLaneHighlightChunkIndex = index;
+                return laneHighlightChunks[index];
+            }
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (IsLaneHighlightChunkActive(i, renderSongTime))
+            {
+                cachedLaneHighlightChunkIndex = i;
+                return laneHighlightChunks[i];
+            }
+        }
+
+        return null;
+    }
+
+    private bool IsLaneHighlightChunkActive(int index, float renderSongTime)
+    {
+        if (index < 0 || laneHighlightChunks == null || index >= laneHighlightChunks.Count)
+            return false;
+
+        LaneHighlightChunk chunk = laneHighlightChunks[index];
         if (chunk == null)
-            return clonedMask;
+            return false;
+
+        bool isInChunk = renderSongTime >= chunk.startTime && renderSongTime < chunk.endTime;
+        bool isLastChunk = index == laneHighlightChunks.Count - 1 && renderSongTime >= chunk.startTime;
+        return isInChunk || isLastChunk;
+    }
+
+    private void CopyChunkMask(LaneHighlightChunk chunk, int laneCount, bool useGuideMask, bool[] targetMask)
+    {
+        if (chunk == null || targetMask == null)
+            return;
 
         bool[] sourceMask = useGuideMask ? chunk.laneGuideMask : chunk.laneSurfaceMask;
         if (sourceMask == null)
-            return clonedMask;
+            return;
 
-        int copyLength = Mathf.Min(laneCount, sourceMask.Length);
-        for (int lane = 0; lane < copyLength; lane++)
-            clonedMask[lane] = sourceMask[lane];
-        return clonedMask;
+        int copyLength = Mathf.Min(Mathf.Min(laneCount, sourceMask.Length), targetMask.Length);
+        Array.Copy(sourceMask, targetMask, copyLength);
     }
 
     private void AddGroupToChunkMasks(List<NoteData> group, bool[] surfaceMask, bool[] guideMask, List<int> frettedSurfaceAnchors, List<int> frettedGuideAnchors)
@@ -3047,16 +3683,24 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return furthestFret;
     }
 
+    private static bool ShouldSuppressStaticLoopSetupGuides(GuitarGameplaySnapshot snapshot)
+    {
+        return snapshot != null && snapshot.showLoopSettings;
+    }
+
     private void UpdateNotes(GuitarGameplaySnapshot snapshot)
     {
         using (UpdateNotesProfilerMarker.Auto())
         {
             float renderSongTime = GetRenderSongTime(snapshot);
             float spawnLeadSeconds = Mathf.Max(0f, (owner.SpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, currentVisualNoteSpeed));
-            float maxVisibleTime = renderSongTime + spawnLeadSeconds;
+            float spawnFadeLeadSeconds = GetNoteSpawnFadeLeadSeconds();
+            float maxVisibleTime = renderSongTime + spawnLeadSeconds + spawnFadeLeadSeconds;
+            float spawnFadeDistance = currentVisualNoteSpeed * spawnFadeLeadSeconds;
             float resolvedFadeTime = GetResolvedFadeTime();
             float floorY = GetLaneSurfaceTopY();
             float laneTagY = GetLaneGuideStringY() + 0.15f;
+            bool suppressStaticLoopSetupGuides = ShouldSuppressStaticLoopSetupGuides(snapshot);
             visibleNoteIdsThisFrame.Clear();
             RebuildVisibleNoteStateCache(snapshot);
 
@@ -3075,7 +3719,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     bool resolvedAtOrBeforeRenderTime = state.IsResolved && state.resolvedAt >= 0f && renderSongTime >= state.resolvedAt;
                     bool keepForResult = resolvedAtOrBeforeRenderTime && renderSongTime - state.resolvedAt <= resolvedFadeTime;
                     bool keepForTechnique = resolvedAtOrBeforeRenderTime && ShouldKeepTechniqueAliveAfterResolution(state.data, renderSongTime);
-                    bool visible = travelZ <= owner.SpawnZ && (!state.IsResolved || keepForResult || keepForTechnique || travelZ >= owner.StrikeLineZ);
+                    bool expiredLoopSetupPreviewNote =
+                        suppressStaticLoopSetupGuides &&
+                        !state.IsResolved &&
+                        travelZ < owner.StrikeLineZ - 0.001f &&
+                        renderSongTime > GetTechniqueVisualEndTime(state.data) + 0.02f;
+                    if (expiredLoopSetupPreviewNote)
+                        continue;
+
+                    bool visible = travelZ <= owner.SpawnZ + spawnFadeDistance && (!state.IsResolved || keepForResult || keepForTechnique || travelZ >= owner.StrikeLineZ);
 
                     if (!visible)
                         continue;
@@ -3088,8 +3740,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                         noteViews[state.data.id] = view;
                     }
 
-                    float displayZ = Mathf.Max(owner.StrikeLineZ, travelZ);
-                    UpdateNoteView(view, state, displayZ, travelZ, renderSongTime, floorY, laneTagY);
+                    float displayZ = Mathf.Clamp(travelZ, owner.StrikeLineZ, owner.SpawnZ);
+                    UpdateNoteView(view, state, displayZ, travelZ, renderSongTime, floorY, laneTagY, suppressStaticLoopSetupGuides);
                 }
             }
 
@@ -3257,8 +3909,32 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         GameObject outlineRoot = CreateNoteOutline(cube.transform.localScale, owner.GetStringColor(data.stringIdx));
         outlineRoot.SetActive(false);
 
+        GameObject resolvedFeedbackRoot = CreateResolvedFeedbackBody(
+            cube.transform.localScale,
+            owner.GetStringColor(data.stringIdx),
+            out Material resolvedFeedbackMaterial);
+        resolvedFeedbackRoot.SetActive(false);
+
         GameObject techniqueRoot = new GameObject("Technique_" + data.id);
         techniqueRoot.transform.SetParent(gameplayRoot.transform, false);
+
+        GameObject continuousBendRibbon = null;
+        Renderer continuousBendRibbonRenderer = null;
+        MaterialPropertyBlock continuousBendRibbonPropertyBlock = null;
+        ContinuousRibbonMeshState continuousBendRibbonMesh = null;
+        if (CanUseContinuousBendRibbon(data))
+        {
+            EnsureContinuousRibbonResources();
+            if (sharedContinuousRibbonMaterial != null)
+            {
+                continuousBendRibbon = CreateContinuousRibbonObject(
+                    "ContinuousBendRibbon_" + data.id,
+                    techniqueRoot.transform,
+                    out continuousBendRibbonRenderer,
+                    out continuousBendRibbonMesh);
+                continuousBendRibbonPropertyBlock = continuousBendRibbonRenderer != null ? new MaterialPropertyBlock() : null;
+            }
+        }
 
         GameObject[] techniqueSegmentRibbons = null;
         Renderer[] techniqueSegmentRibbonRenderers = null;
@@ -3378,8 +4054,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 muteSymbolRenderer = muteSymbolRenderer,
                 outlineRoot = outlineRoot,
                 outlineTransform = outlineRoot != null ? outlineRoot.transform : null,
+                resolvedFeedbackRoot = resolvedFeedbackRoot,
+                resolvedFeedbackTransform = resolvedFeedbackRoot != null ? resolvedFeedbackRoot.transform : null,
+                resolvedFeedbackMaterial = resolvedFeedbackMaterial,
                 techniqueRoot = techniqueRoot,
                 techniqueRootTransform = techniqueRoot.transform,
+                continuousBendRibbon = continuousBendRibbon,
+                continuousBendRibbonRenderer = continuousBendRibbonRenderer,
+                continuousBendRibbonPropertyBlock = continuousBendRibbonPropertyBlock,
+                continuousBendRibbonMesh = continuousBendRibbonMesh,
                 techniqueSegmentRibbons = techniqueSegmentRibbons,
                 techniqueSegmentRibbonRenderers = techniqueSegmentRibbonRenderers,
                 techniqueSegmentRibbonPropertyBlocks = techniqueSegmentRibbonPropertyBlocks,
@@ -3402,17 +4085,21 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 noteX = xPos,
                 noteY = yPos,
                 noteStrikeOffset = GetVisualNoteStrikeOffset(cube.transform.localScale),
-                hasAnyTechniqueVisual = techniqueSegmentRibbons != null ||
+                hasAnyTechniqueVisual = continuousBendRibbon != null ||
+                                       techniqueSegmentRibbons != null ||
                                        slideRibbon != null ||
                                        legatoCurve != null ||
                                        bendRibbon != null ||
                                        bendSustainRibbon != null ||
-                                       sustainRibbon != null
+                                       sustainRibbon != null,
+                orderedTechniqueSegmentSource = data.techniqueSegments,
+                orderedTechniqueSegmentSourceCount = data.techniqueSegments != null ? data.techniqueSegments.Count : 0,
+                orderedTechniqueSegments = BuildOrderedTechniqueSegments(data.techniqueSegments)
             };
         }
     }
 
-    private void UpdateNoteView(HighwayNoteView view, GameplayNoteState state, float z, float rawTravelZ, float songTime, float floorY, float laneTagY)
+    private void UpdateNoteView(HighwayNoteView view, GameplayNoteState state, float z, float rawTravelZ, float songTime, float floorY, float laneTagY, bool suppressStaticLoopSetupGuides)
     {
         using (UpdateNoteViewProfilerMarker.Auto())
         {
@@ -3425,51 +4112,80 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float rawVisualNoteZ = rawTravelZ - view.noteStrikeOffset;
             float laneTagZ = visualNoteZ - 0.55f;
 
-        view.noteTransform.position = new Vector3(x, y, visualNoteZ);
+            bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
+            bool hideBendTargetBox = bendSourceByDestinationId.ContainsKey(state.data.id);
+            bool hideSlideTargetBox = IsSlideDestinationNote(state.data);
+            bool hideTravelingNoteBox = hideBendTargetBox || hideSlideTargetBox;
+            Vector3 techniqueHeadPosition = Vector3.zero;
+            bool showTechniqueHead = !hideTravelingNoteBox &&
+                TryGetActiveTechniqueNoteHeadPosition(view, state, songTime, out techniqueHeadPosition);
+            bool repeatChordBodySuppressed = IsRepeatChordBodySuppressed(state.data);
+            if (showTechniqueHead)
+            {
+                x = techniqueHeadPosition.x;
+                y = techniqueHeadPosition.y;
+                visualNoteZ = techniqueHeadPosition.z;
+                laneTagZ = visualNoteZ - 0.55f;
+            }
 
-        bool isStuckOnString = !state.IsResolved && z <= owner.StrikeLineZ + 0.001f;
-        bool hideBendTargetBox = bendSourceByDestinationId.ContainsKey(state.data.id);
-        bool hideSlideTargetBox = IsSlideDestinationNote(state.data);
-        bool hideTravelingNoteBox = hideBendTargetBox || hideSlideTargetBox;
-        bool keepNoteBoxVisibleOnString =
-            currentNoteByNoteModeEnabled &&
-            currentNoteByNoteWaitingForMatch &&
-            !state.IsResolved &&
-            isStuckOnString &&
-            !hideTravelingNoteBox;
-        bool hideResolvedCoreVisuals = state.IsResolved &&
-            state.resolvedAt >= 0f &&
-            songTime >= state.resolvedAt &&
-            songTime - state.resolvedAt > GetResolvedFadeTime() &&
-            ShouldKeepTechniqueAliveAfterResolution(state.data, songTime);
-        bool resolvedNoteFeedbackBoxEnabled = IsResolvedNoteFeedbackBoxEnabled(state);
-        bool noteRendererEnabled = resolvedNoteFeedbackBoxEnabled && !hideResolvedCoreVisuals && (!isStuckOnString || keepNoteBoxVisibleOnString) && !hideTravelingNoteBox;
-        if (view.noteRenderer != null)
-        {
-            if (!view.hasCachedNoteRendererEnabled || view.cachedNoteRendererEnabled != noteRendererEnabled)
+            view.noteTransform.position = new Vector3(x, y, visualNoteZ);
+
+            bool keepNoteBoxVisibleOnString =
+                currentNoteByNoteModeEnabled &&
+                currentNoteByNoteWaitingForMatch &&
+                !state.IsResolved &&
+                isStuckOnString &&
+                !hideTravelingNoteBox;
+            bool hideResolvedCoreVisuals = state.IsResolved &&
+                state.resolvedAt >= 0f &&
+                songTime >= state.resolvedAt &&
+                songTime - state.resolvedAt > GetResolvedFadeTime() &&
+                ShouldKeepTechniqueAliveAfterResolution(state.data, songTime);
+            bool resolvedNoteFeedbackBoxEnabled = IsResolvedNoteFeedbackBoxEnabled(state);
+            float spawnFade = (!state.IsResolved && !showTechniqueHead) ? GetNoteSpawnFade(rawTravelZ) : 1f;
+            bool showResolvedFeedbackBody = state.IsResolved &&
+                (state.IsHit || state.IsMissed) &&
+                state.resolvedAt >= 0f &&
+                songTime >= state.resolvedAt &&
+                resolvedNoteFeedbackBoxEnabled &&
+                !hideResolvedCoreVisuals &&
+                !showTechniqueHead &&
+                !hideTravelingNoteBox &&
+                !repeatChordBodySuppressed &&
+                spawnFade > 0.01f;
+            bool noteRendererEnabled = (resolvedNoteFeedbackBoxEnabled || showTechniqueHead) &&
+                (!hideResolvedCoreVisuals || showTechniqueHead) &&
+                (!isStuckOnString || keepNoteBoxVisibleOnString || showTechniqueHead) &&
+                !hideTravelingNoteBox &&
+                !repeatChordBodySuppressed &&
+                !showResolvedFeedbackBody &&
+                spawnFade > 0.01f;
+            if (view.noteRenderer != null)
             {
-                view.noteRenderer.enabled = noteRendererEnabled;
-                view.cachedNoteRendererEnabled = noteRendererEnabled;
-                view.hasCachedNoteRendererEnabled = true;
+                if (!view.hasCachedNoteRendererEnabled || view.cachedNoteRendererEnabled != noteRendererEnabled)
+                {
+                    view.noteRenderer.enabled = noteRendererEnabled;
+                    view.cachedNoteRendererEnabled = noteRendererEnabled;
+                    view.hasCachedNoteRendererEnabled = true;
+                }
             }
-        }
-        bool showOutline = !hideResolvedCoreVisuals && isStuckOnString && !keepNoteBoxVisibleOnString;
-        if (view.outlineRoot != null)
-        {
-            if (showOutline && view.outlineTransform != null)
+            bool showOutline = !suppressStaticLoopSetupGuides && !hideResolvedCoreVisuals && isStuckOnString && !keepNoteBoxVisibleOnString && !showTechniqueHead && !repeatChordBodySuppressed;
+            if (view.outlineRoot != null)
             {
-                view.outlineTransform.position = new Vector3(x, y, GetStuckOutlineCenterZ());
-                view.outlineTransform.localScale = Vector3.one;
+                if (showOutline && view.outlineTransform != null)
+                {
+                    view.outlineTransform.position = new Vector3(x, y, GetStuckOutlineCenterZ());
+                    view.outlineTransform.localScale = Vector3.one;
+                }
+                SetGameObjectActive(view.outlineRoot, showOutline);
             }
-            SetGameObjectActive(view.outlineRoot, showOutline);
-        }
-        if (view.label != null)
-            SetGameObjectActive(view.label.gameObject, resolvedNoteFeedbackBoxEnabled && !hideResolvedCoreVisuals);
+            if (view.label != null)
+                SetGameObjectActive(view.label.gameObject, resolvedNoteFeedbackBoxEnabled && !hideResolvedCoreVisuals && !repeatChordBodySuppressed);
 
         float tailLength = Mathf.Max(0f, z - owner.StrikeLineZ);
         if (view.tail != null)
         {
-            bool showTail = owner.highwayShowApproachLine && tailLength > 0.01f && !state.IsResolved;
+            bool showTail = owner.highwayShowApproachLine && tailLength > 0.01f && !state.IsResolved && !showTechniqueHead && !repeatChordBodySuppressed && spawnFade > 0.08f;
             if (showTail && view.tailTransform != null)
             {
                 view.tailTransform.position = new Vector3(x, y, owner.StrikeLineZ + (tailLength * 0.5f));
@@ -3484,7 +4200,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float tetherTopGap = Mathf.Max(0.18f, view.baseScale.y * 0.7f);
             float tetherTopY = noteBottomY - tetherTopGap;
             float tetherLength = Mathf.Max(0f, tetherTopY - floorY);
-            bool showTether = tetherLength > 0.02f && z > owner.StrikeLineZ + 0.001f && !state.IsResolved;
+            bool showTether = tetherLength > 0.02f && z > owner.StrikeLineZ + 0.001f && !state.IsResolved && !showTechniqueHead && !repeatChordBodySuppressed && spawnFade > 0.10f;
             if (showTether && view.tetherTransform != null)
             {
                 view.tetherTransform.position = new Vector3(x, floorY + (tetherLength * 0.5f), visualNoteZ);
@@ -3495,7 +4211,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (view.laneTagLabel != null)
         {
-            bool showLaneTag = z > owner.StrikeLineZ + 0.001f && !state.IsResolved;
+            bool showLaneTag = z > owner.StrikeLineZ + 0.001f && !state.IsResolved && !showTechniqueHead && !repeatChordBodySuppressed && spawnFade > 0.18f;
             if (showLaneTag && view.laneTagTransform != null)
                 view.laneTagTransform.position = new Vector3(x, laneTagY, laneTagZ);
             SetGameObjectActive(view.laneTagLabel.gameObject, showLaneTag);
@@ -3505,8 +4221,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         Color finalColor = view.baseColor;
         float emission = 0.8f;
+        Color resolvedFeedbackBodyColor = finalColor;
+        float resolvedFeedbackBodyEmission = emission;
+        float resolvedFeedbackBodyScale = 1f;
 
-        if (state.IsHit || state.IsMissed)
+        if (showTechniqueHead && state.IsHit)
+        {
+            finalColor = Color.Lerp(view.baseColor, HighwayHitNoteFeedbackSheenColor, 0.28f);
+            emission = 1.65f;
+            targetScale = view.baseScale * 1.06f;
+        }
+        else if (state.IsHit || state.IsMissed)
         {
             float fade = Mathf.Clamp01((songTime - state.resolvedAt) / Mathf.Max(0.01f, GetResolvedFadeTime()));
             float hitPulse = 0f;
@@ -3516,6 +4241,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 : HighwayMissNoteFeedbackColor;
             if (hasHitPulse)
                 resolvedColor = Color.Lerp(resolvedColor, HighwayHitNoteFeedbackSheenColor, Mathf.Clamp01(hitPulse * 0.32f));
+            float attack = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((songTime - state.resolvedAt) / HighwayResolvedFeedbackBodyAttackSeconds));
+            resolvedFeedbackBodyColor = resolvedColor;
+            resolvedFeedbackBodyColor.a = Mathf.Lerp(0f, state.IsHit ? 0.68f : 0.62f, attack) * (1f - fade);
+            resolvedFeedbackBodyEmission = Mathf.Lerp(state.IsHit ? 1.65f : 0.75f, 0f, fade) * attack;
+            resolvedFeedbackBodyScale = Mathf.Lerp(0.82f, state.IsHit ? 1.025f : 1.015f, attack);
+            resolvedFeedbackBodyScale = Mathf.Lerp(resolvedFeedbackBodyScale, 1f, fade);
+            if (hasHitPulse)
+                resolvedFeedbackBodyScale += hitPulse * 0.01f;
             finalColor = Color.Lerp(resolvedColor, owner.highwayBackgroundColor, fade);
             emission = Mathf.Lerp(state.IsHit ? 2.35f : 0.45f, 0f, fade);
             if (state.IsHit)
@@ -3528,6 +4261,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             emission = 0.95f;
             finalColor = view.baseColor;
+        }
+
+        if (spawnFade < 0.999f)
+        {
+            targetScale = ApplyNoteSpawnScale(targetScale, spawnFade);
+            emission *= Mathf.Lerp(0.35f, 1f, spawnFade);
         }
 
         if (!view.hasCachedAppliedNoteScale || !ApproximatelyVector3(view.cachedAppliedNoteScale, targetScale))
@@ -3549,6 +4288,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             view.hasCachedNoteAppearance = true;
         }
 
+        UpdateResolvedFeedbackBody(
+            view,
+            showResolvedFeedbackBody,
+            x,
+            y,
+            visualNoteZ,
+            resolvedFeedbackBodyScale,
+            resolvedFeedbackBodyColor,
+            resolvedFeedbackBodyEmission);
+
         if (view.tetherMaterial != null)
         {
             Color tetherColor = new Color(finalColor.r, finalColor.g, finalColor.b, state.IsResolved ? Mathf.Clamp01(finalColor.a * 0.55f) : 0.95f);
@@ -3565,7 +4314,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         if (view.marker != null)
         {
-            bool showMarker = owner.highwayShowLandingDot && !hideResolvedCoreVisuals;
+            bool showMarker = owner.highwayShowLandingDot && !hideResolvedCoreVisuals && !repeatChordBodySuppressed;
             SetGameObjectActive(view.marker, showMarker);
             if (showMarker && view.markerMaterial != null)
             {
@@ -3591,7 +4340,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float arrowHeight = Mathf.Max(0.05f, currentScale.y);
             float arrowFrontZ = visualNoteZ - (currentScale.z * 0.5f) - BendArrowFrontOffset;
             float arrowBaseY = y + (currentScale.y * 0.5f);
-            bool showPrimaryArrow = !hideResolvedCoreVisuals && !hideTravelingNoteBox && !hideOverlaySymbol;
+            bool showPrimaryArrow = !hideResolvedCoreVisuals && !hideTravelingNoteBox && !hideOverlaySymbol && !repeatChordBodySuppressed;
             int bendArrowCount = GetDisplayedBendArrowCount(state.data);
             bool showSecondaryArrow = showPrimaryArrow && bendArrowCount > 1;
 
@@ -3633,7 +4382,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             float referenceNoteSize = Mathf.Max(GetSingleFrettedNoteScale().y, currentScale.y);
             float symbolSize = Mathf.Max(0.05f, referenceNoteSize * MuteSymbolScaleFraction);
             float symbolFrontZ = visualNoteZ - (currentScale.z * 0.5f) - MuteSymbolFrontOffset;
-            bool showMuteSymbol = ShouldShowMuteSymbolForNote(state.data) && !hideResolvedCoreVisuals && !hideTravelingNoteBox && !hideOverlaySymbol;
+            bool showMuteSymbol = ShouldShowMuteSymbolForNote(state.data) && !hideResolvedCoreVisuals && !hideTravelingNoteBox && !hideOverlaySymbol && !repeatChordBodySuppressed;
 
             if (showMuteSymbol && view.muteSymbolTransform != null)
             {
@@ -3649,6 +4398,312 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
     }
 
+
+    private bool TryGetActiveTechniqueNoteHeadPosition(HighwayNoteView view, GameplayNoteState state, float songTime, out Vector3 position)
+    {
+        position = default;
+        if (view == null || state == null || owner == null)
+            return false;
+
+        if (state.IsMissed || songTime < state.data.time)
+            return false;
+
+        if (!HasPersistentTechniqueVisual(state.data))
+            return false;
+
+        float techniqueEndTime = GetTechniqueVisualEndTime(state.data);
+        if (songTime > techniqueEndTime + 0.02f)
+            return false;
+
+        float centerZ = GetStringPlaneNoteHeadCenterZ();
+        if (HasTechniqueSegments(state.data))
+            return TryGetSegmentTechniqueNoteHeadPosition(state.data, centerZ, songTime, out position);
+
+        if (HasBendRibbon(state.data))
+        {
+            float duration = Mathf.Max(MinimumVisualBendTransitionSeconds, 0.14f, state.data.duration);
+            float t = Mathf.Clamp01((songTime - state.data.time) / Mathf.Max(0.02f, duration));
+            float easedT = EaseBendNoteHeadVisualT(t);
+            float bendAmount = Mathf.Max(0f, state.data.bendStep);
+            float startBend = state.data.bendPreBend ? bendAmount : 0f;
+            float endBend = state.data.bendRelease ? 0f : bendAmount;
+            float currentBend = Mathf.Lerp(startBend, endBend, easedT);
+            position = new Vector3(
+                GetVisualNoteX(state.data),
+                GetContinuousBendVisualY(state.data.stringIdx, currentBend),
+                centerZ);
+            return true;
+        }
+
+        if (state.data.slideTargetFret >= 0)
+        {
+            float endTime = GetTechniqueVisualEndTime(state.data);
+            float t = Mathf.Clamp01((songTime - state.data.time) / Mathf.Max(0.02f, endTime - state.data.time));
+            float startX = GetVisualNoteX(state.data);
+            float endX = GetNoteX(state.data.slideTargetFret);
+            float startY = GetStringY(state.data.stringIdx);
+            float endY = startY;
+
+            if (slideDestinationBySourceId.TryGetValue(state.data.id, out int destinationId) &&
+                chartById.TryGetValue(destinationId, out NoteData destinationData))
+            {
+                endX = GetVisualNoteX(destinationData);
+                endY = GetStringY(destinationData.stringIdx);
+            }
+
+            position = new Vector3(
+                Mathf.Lerp(startX, endX, t),
+                Mathf.Lerp(startY, endY, t),
+                centerZ);
+            return true;
+        }
+
+        if (HasNoteSustainRibbon(state.data))
+        {
+            position = new Vector3(GetVisualNoteX(state.data), GetStringY(state.data.stringIdx), centerZ);
+            return true;
+        }
+
+        return false;
+    }
+
+    private bool TryGetSegmentTechniqueNoteHeadPosition(NoteData data, float centerZ, float songTime, out Vector3 position)
+    {
+        position = default;
+        if (data.techniqueSegments == null || data.techniqueSegments.Count == 0)
+            return false;
+
+        bool hasSelected = false;
+        NoteTechniqueSegmentData selected = default;
+        float selectedStartTime = data.time;
+        float selectedEndTime = data.time;
+        float selectedT = 0f;
+        float lastEndTime = float.NegativeInfinity;
+        bool selectedUsesVisualBendTransition = false;
+        float offset = songTime - data.time;
+        float visualMaxOffset = GetVisualTechniqueSegmentEndOffset(data);
+
+        if (TryEvaluateVisualBendTransition(
+                data.techniqueSegments,
+                offset,
+                0f,
+                visualMaxOffset,
+                out selected,
+                out selectedT))
+        {
+            selectedStartTime = data.time + selected.startOffset;
+            selectedEndTime = data.time + selected.endOffset;
+            selectedUsesVisualBendTransition = true;
+            hasSelected = true;
+        }
+
+        for (int i = 0; !hasSelected && i < data.techniqueSegments.Count; i++)
+        {
+            NoteTechniqueSegmentData segment = data.techniqueSegments[i];
+            float startTime = data.time + Mathf.Max(0f, segment.startOffset);
+            float endTime = data.time + Mathf.Max(segment.startOffset, segment.endOffset);
+            if (endTime <= startTime + 0.0001f)
+                continue;
+
+            if (songTime >= startTime && songTime <= endTime)
+            {
+                selected = segment;
+                selectedStartTime = startTime;
+                selectedEndTime = endTime;
+                selectedT = Mathf.Clamp01((songTime - startTime) / Mathf.Max(0.0001f, endTime - startTime));
+                hasSelected = true;
+                break;
+            }
+
+            if (songTime > endTime && endTime > lastEndTime)
+            {
+                selected = segment;
+                selectedStartTime = startTime;
+                selectedEndTime = endTime;
+                selectedT = 1f;
+                lastEndTime = endTime;
+                hasSelected = true;
+            }
+        }
+
+        if (!hasSelected)
+        {
+            position = new Vector3(GetVisualNoteX(data), GetStringY(data.stringIdx), centerZ);
+            return true;
+        }
+
+        float startX = GetSegmentFretVisualX(data, selected.startFret);
+        float endX = GetSegmentFretVisualX(data, selected.endFret);
+        float bendT = selectedUsesVisualBendTransition
+            ? selectedT
+            : (selected.type == NoteTechniqueSegmentType.Bend
+                ? EaseBendNoteHeadVisualT(selectedT)
+                : selectedT);
+        float bend = Mathf.Lerp(selected.startBend, selected.endBend, bendT);
+        float y = GetContinuousBendVisualY(data.stringIdx, bend);
+
+        if (selected.type == NoteTechniqueSegmentType.Vibrato)
+        {
+            float duration = Mathf.Max(0.02f, selectedEndTime - selectedStartTime);
+            float cycles = Mathf.Max(1f, duration * VibratoCyclesPerSecond);
+            y += Mathf.Sin(selectedT * cycles * Mathf.PI * 2f) * GetStringLaneSpacing() * VibratoRibbonAmplitudeInStrings;
+        }
+
+        position = new Vector3(Mathf.Lerp(startX, endX, selectedT), y, centerZ);
+        return true;
+    }
+
+    private static float EaseBendNoteHeadVisualT(float t)
+    {
+        t = Mathf.Clamp01(t);
+        return Mathf.SmoothStep(0f, 1f, t);
+    }
+
+    private static bool TryEvaluateVisualBendTransition(
+        List<NoteTechniqueSegmentData> segments,
+        float offset,
+        float minOffset,
+        float maxOffset,
+        out NoteTechniqueSegmentData segment,
+        out float visualT)
+    {
+        segment = default;
+        visualT = 0f;
+        if (segments == null || segments.Count == 0)
+            return false;
+
+        minOffset = Mathf.Max(0f, minOffset);
+        maxOffset = Mathf.Max(minOffset + VisualBendTransitionEpsilon, maxOffset);
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            NoteTechniqueSegmentData candidate = segments[i];
+            if (!IsVisualBendTransition(candidate))
+                continue;
+
+            GetVisualBendTransitionWindow(
+                segments,
+                i,
+                minOffset,
+                maxOffset,
+                out float visualStart,
+                out float visualEnd);
+
+            if (offset < visualStart - VisualBendTransitionEpsilon ||
+                offset > visualEnd + VisualBendTransitionEpsilon)
+            {
+                continue;
+            }
+
+            float rawT = Mathf.Clamp01((offset - visualStart) / Mathf.Max(VisualBendTransitionEpsilon, visualEnd - visualStart));
+            segment = candidate;
+            visualT = EaseBendNoteHeadVisualT(rawT);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsVisualBendTransition(NoteTechniqueSegmentData segment)
+    {
+        return segment.type == NoteTechniqueSegmentType.Bend &&
+               segment.endOffset > segment.startOffset + VisualBendTransitionEpsilon &&
+               Mathf.Abs(segment.endBend - segment.startBend) > 0.01f;
+    }
+
+    private static void GetVisualBendTransitionWindow(
+        List<NoteTechniqueSegmentData> segments,
+        int segmentIndex,
+        float minOffset,
+        float maxOffset,
+        out float visualStart,
+        out float visualEnd)
+    {
+        NoteTechniqueSegmentData segment = segments[segmentIndex];
+        float actualStart = Mathf.Max(minOffset, segment.startOffset);
+        float actualEnd = Mathf.Max(actualStart + VisualBendTransitionEpsilon, segment.endOffset);
+        float center = (actualStart + actualEnd) * 0.5f;
+        float visualDuration = Mathf.Max(actualEnd - actualStart, MinimumVisualBendTransitionSeconds);
+
+        visualStart = center - (visualDuration * 0.5f);
+        visualEnd = center + (visualDuration * 0.5f);
+
+        if (TryGetNeighborVisualBendTransitionCenter(segments, segmentIndex, -1, out float previousCenter))
+            visualStart = Mathf.Max(visualStart, (previousCenter + center) * 0.5f);
+
+        if (TryGetNeighborVisualBendTransitionCenter(segments, segmentIndex, 1, out float nextCenter))
+            visualEnd = Mathf.Min(visualEnd, (center + nextCenter) * 0.5f);
+
+        if (visualStart < minOffset)
+        {
+            visualEnd += minOffset - visualStart;
+            visualStart = minOffset;
+        }
+
+        if (visualEnd > maxOffset)
+        {
+            visualStart -= visualEnd - maxOffset;
+            visualEnd = maxOffset;
+        }
+
+        visualStart = Mathf.Max(minOffset, visualStart);
+        visualEnd = Mathf.Min(maxOffset, visualEnd);
+
+        if (visualEnd <= visualStart + VisualBendTransitionEpsilon)
+        {
+            visualStart = Mathf.Max(minOffset, actualStart);
+            visualEnd = Mathf.Min(maxOffset, Mathf.Max(actualEnd, visualStart + VisualBendTransitionEpsilon));
+        }
+    }
+
+    private static bool TryGetNeighborVisualBendTransitionCenter(
+        List<NoteTechniqueSegmentData> segments,
+        int segmentIndex,
+        int direction,
+        out float center)
+    {
+        center = 0f;
+        if (segments == null || direction == 0)
+            return false;
+
+        for (int i = segmentIndex + direction; i >= 0 && i < segments.Count; i += direction)
+        {
+            NoteTechniqueSegmentData segment = segments[i];
+            if (!IsVisualBendTransition(segment))
+                continue;
+
+            float start = Mathf.Max(0f, segment.startOffset);
+            float end = Mathf.Max(start + VisualBendTransitionEpsilon, segment.endOffset);
+            center = (start + end) * 0.5f;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static float GetVisualTechniqueSegmentEndOffset(NoteData data)
+    {
+        float endOffset = 0f;
+        if (data.techniqueSegments == null || data.techniqueSegments.Count == 0)
+            return endOffset;
+
+        for (int i = 0; i < data.techniqueSegments.Count; i++)
+        {
+            NoteTechniqueSegmentData segment = data.techniqueSegments[i];
+            endOffset = Mathf.Max(endOffset, segment.endOffset);
+
+            if (!IsVisualBendTransition(segment))
+                continue;
+
+            float start = Mathf.Max(0f, segment.startOffset);
+            float end = Mathf.Max(start + VisualBendTransitionEpsilon, segment.endOffset);
+            float center = (start + end) * 0.5f;
+            float visualDuration = Mathf.Max(end - start, MinimumVisualBendTransitionSeconds);
+            endOffset = Mathf.Max(endOffset, center + (visualDuration * 0.5f));
+        }
+
+        return endOffset;
+    }
 
     private void RebuildVisibleNoteStateCache(GuitarGameplaySnapshot snapshot)
     {
@@ -3708,6 +4763,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             SetGameObjectActive(view.bendSustainRibbon, false);
         if (view.sustainRibbon != null)
             SetGameObjectActive(view.sustainRibbon, false);
+        if (view.continuousBendRibbon != null)
+            SetGameObjectActive(view.continuousBendRibbon, false);
 
         if (view.techniqueSegmentRibbons != null)
         {
@@ -3892,6 +4949,46 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return data.technique == NoteTechnique.Bend || data.bendStep > 0f || data.bendPreBend || data.bendRelease;
     }
 
+    private static bool CanUseContinuousBendRibbon(NoteData data)
+    {
+        return CanUseContinuousBendRibbon(data, data.techniqueSegments);
+    }
+
+    private static bool CanUseContinuousBendRibbon(NoteData data, List<NoteTechniqueSegmentData> segments)
+    {
+        if (segments == null || segments.Count == 0)
+            return false;
+
+        bool hasRenderableBend = false;
+        for (int i = 0; i < segments.Count; i++)
+        {
+            NoteTechniqueSegmentData segment = segments[i];
+            if (segment.endOffset <= segment.startOffset + 0.0001f)
+                continue;
+
+            if (segment.type != NoteTechniqueSegmentType.Bend &&
+                segment.type != NoteTechniqueSegmentType.Sustain)
+            {
+                return false;
+            }
+
+            if (segment.startFret != segment.endFret)
+                return false;
+
+            if (segment.startFret != data.fret)
+                return false;
+
+            if (segment.type == NoteTechniqueSegmentType.Bend ||
+                Mathf.Abs(segment.startBend) > 0.01f ||
+                Mathf.Abs(segment.endBend) > 0.01f)
+            {
+                hasRenderableBend = true;
+            }
+        }
+
+        return hasRenderableBend;
+    }
+
     private static int GetDisplayedBendArrowCount(NoteData data)
     {
         float bendAmount = Mathf.Max(0f, data.bendStep);
@@ -3994,9 +5091,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float targetY = startY + bendHeight;
 
         float bendEndTime = state.data.time + Mathf.Max(0.14f, state.data.duration);
-        float fullEndTravelZ = Mathf.Max(
-            owner.StrikeLineZ,
-            owner.StrikeLineZ + ((bendEndTime - songTime) * currentVisualNoteSpeed));
+        float fullEndTravelZ = owner.StrikeLineZ + ((bendEndTime - songTime) * currentVisualNoteSpeed);
         float minimumVisualDepth = BendRibbonLeadOutDistance + BendRibbonCornerDepth + BendRibbonMinimumTopHoldDistance;
         float fullEndAttachZ = Mathf.Max(startAttachZ + minimumVisualDepth, Mathf.Max(startAttachZ + 0.4f, fullEndTravelZ));
         float totalDepth = Mathf.Max(minimumVisualDepth, fullEndAttachZ - startAttachZ);
@@ -4222,6 +5317,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (ribbon == null || ribbonRenderer == null || techniqueRoot == null || propertyBlock == null)
             return;
 
+        float croppedStart01 = Mathf.Clamp01(visibleStart01);
+        if (croppedStart01 >= 0.999f)
+        {
+            SetGameObjectActive(ribbon, false);
+            return;
+        }
+
+        if (croppedStart01 > 0.001f)
+        {
+            profile = CropTechniqueRibbonProfileStart(profile, croppedStart01);
+            visibleStart01 = 0f;
+        }
+
         Vector3 center = (profile.start + profile.end) * 0.5f;
         ribbon.transform.localPosition = center;
         ribbon.transform.localRotation = Quaternion.identity;
@@ -4253,6 +5361,34 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         propertyBlock.SetFloat(DarkBandEnd01ShaderId, Mathf.Clamp01(profile.darkBandEnd01));
         ribbonRenderer.SetPropertyBlock(propertyBlock);
         ribbon.SetActive(true);
+    }
+
+    private static TechniqueRibbonProfile CropTechniqueRibbonProfileStart(TechniqueRibbonProfile profile, float start01)
+    {
+        start01 = Mathf.Clamp01(start01);
+        if (start01 <= 0.001f)
+            return profile;
+
+        Vector3 p0 = profile.start;
+        Vector3 p1 = profile.control1;
+        Vector3 p2 = profile.control2;
+        Vector3 p3 = profile.end;
+
+        Vector3 p01 = Vector3.Lerp(p0, p1, start01);
+        Vector3 p12 = Vector3.Lerp(p1, p2, start01);
+        Vector3 p23 = Vector3.Lerp(p2, p3, start01);
+        Vector3 p012 = Vector3.Lerp(p01, p12, start01);
+        Vector3 p123 = Vector3.Lerp(p12, p23, start01);
+        Vector3 p0123 = Vector3.Lerp(p012, p123, start01);
+
+        float remaining = Mathf.Max(0.001f, 1f - start01);
+        profile.start = p0123;
+        profile.control1 = p123;
+        profile.control2 = p23;
+        profile.end = p3;
+        profile.darkBandStart01 = Mathf.Clamp01((profile.darkBandStart01 - start01) / remaining);
+        profile.darkBandEnd01 = Mathf.Clamp01((profile.darkBandEnd01 - start01) / remaining);
+        return profile;
     }
 
     private bool UpdateBendTechnique(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
@@ -4287,15 +5423,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             return false;
         }
 
-        float fadeStartSongTime = state.data.time;
-        float displayedRibbonDuration = Mathf.Max(0.02f, totalDisplayedDepth / Mathf.Max(0.01f, currentVisualNoteSpeed));
-        float fadeEndSongTime = fadeStartSongTime + displayedRibbonDuration;
-        float visibleDistance = 0f;
-        if (songTime >= fadeStartSongTime)
-        {
-            float overallVisibleStart01 = Mathf.Clamp01((songTime - fadeStartSongTime) / Mathf.Max(0.02f, fadeEndSongTime - fadeStartSongTime));
-            visibleDistance = overallVisibleStart01 * totalDisplayedDepth;
-        }
+        float visibleDistance = GetRibbonVisibleDistanceAtClip(headProfile.start.z, totalDisplayedDepth, GetTechniqueRibbonClipZ(view));
 
         float headDepth = Mathf.Max(0.01f, headProfile.end.z - headProfile.start.z);
         float headVisibleStart01 = Mathf.Clamp01(visibleDistance / headDepth);
@@ -4372,9 +5500,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float startX = GetVisualNoteX(state.data);
         float startY = GetStringY(state.data.stringIdx);
         float sustainEndTime = state.data.time + Mathf.Max(GuitarTechniqueVisualThresholds.SustainSeconds, state.data.duration);
-        float endTravelZ = Mathf.Max(
-            owner.StrikeLineZ,
-            owner.StrikeLineZ + ((sustainEndTime - songTime) * currentVisualNoteSpeed));
+        float endTravelZ = owner.StrikeLineZ + ((sustainEndTime - songTime) * currentVisualNoteSpeed);
         float endAttachZ = Mathf.Max(startAttachZ + 0.35f, endTravelZ);
         float totalDepth = Mathf.Max(0.35f, endAttachZ - startAttachZ);
         float firstControlZ = startAttachZ + (totalDepth / 3f);
@@ -4405,22 +5531,103 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 return false;
             }
 
-        float fadeStartSongTime = state.data.time;
-        float fadeEndSongTime = state.data.time + Mathf.Max(GuitarTechniqueVisualThresholds.SustainSeconds, state.data.duration);
-        float visibleStart01 = 0f;
-        if (songTime >= fadeStartSongTime)
-        {
-            visibleStart01 = Mathf.Clamp01((songTime - fadeStartSongTime) / Mathf.Max(0.02f, fadeEndSongTime - fadeStartSongTime));
+            float visibleStart01 = GetRibbonVisibleStartAtClip(profile, GetTechniqueRibbonClipZ(view));
             if (visibleStart01 >= 0.999f)
             {
                 view.sustainRibbon.SetActive(false);
                 return false;
             }
-        }
 
             ApplyNoteSustainTechniqueRibbon(view, profile, state.IsResolved, visibleStart01);
             return true;
         }
+    }
+
+    private float GetTechniqueRibbonClipZ(HighwayNoteView view)
+    {
+        return owner != null ? owner.StrikeLineZ : 0f;
+    }
+
+    private float GetRibbonVisibleStartAtClip(TechniqueRibbonProfile profile, float clipZ)
+    {
+        if (profile.end.z <= profile.start.z + 0.001f)
+            return 1f;
+
+        if (clipZ <= profile.start.z)
+            return 0f;
+        if (clipZ >= profile.end.z)
+            return 1f;
+
+        float low = 0f;
+        float high = 1f;
+        for (int i = 0; i < 8; i++)
+        {
+            float mid = (low + high) * 0.5f;
+            float z = EvaluateTechniqueBezier(profile, mid).z;
+            if (z < clipZ)
+                low = mid;
+            else
+                high = mid;
+        }
+
+        return Mathf.Clamp01(high);
+    }
+
+    private static float GetRibbonVisibleDistanceAtClip(float startAttachZ, float totalDepth, float clipZ)
+    {
+        if (totalDepth <= 0.001f)
+            return totalDepth;
+
+        return Mathf.Clamp(clipZ - startAttachZ, 0f, totalDepth);
+    }
+
+    private static List<NoteTechniqueSegmentData> GetOrderedTechniqueSegments(
+        HighwayNoteView view,
+        List<NoteTechniqueSegmentData> source)
+    {
+        if (source == null || source.Count == 0)
+            return null;
+
+        if (view == null)
+            return BuildOrderedTechniqueSegments(source);
+
+        if (!ReferenceEquals(view.orderedTechniqueSegmentSource, source) ||
+            view.orderedTechniqueSegmentSourceCount != source.Count ||
+            view.orderedTechniqueSegments == null)
+        {
+            view.orderedTechniqueSegmentSource = source;
+            view.orderedTechniqueSegmentSourceCount = source.Count;
+            view.orderedTechniqueSegments = BuildOrderedTechniqueSegments(source);
+        }
+
+        return view.orderedTechniqueSegments;
+    }
+
+    private static List<NoteTechniqueSegmentData> BuildOrderedTechniqueSegments(List<NoteTechniqueSegmentData> source)
+    {
+        if (source == null || source.Count <= 1)
+            return source;
+
+        bool alreadySorted = true;
+        float previousStart = source[0].startOffset;
+        for (int i = 1; i < source.Count; i++)
+        {
+            float currentStart = source[i].startOffset;
+            if (currentStart < previousStart)
+            {
+                alreadySorted = false;
+                break;
+            }
+
+            previousStart = currentStart;
+        }
+
+        if (alreadySorted)
+            return source;
+
+        List<NoteTechniqueSegmentData> ordered = new List<NoteTechniqueSegmentData>(source);
+        ordered.Sort((a, b) => a.startOffset.CompareTo(b.startOffset));
+        return ordered;
     }
 
     private bool UpdateTechniqueSegmentRibbons(HighwayNoteView view, GameplayNoteState state, float z, float songTime)
@@ -4433,9 +5640,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 state.data.techniqueSegments == null)
                 return false;
 
-            List<NoteTechniqueSegmentData> orderedSegments = state.data.techniqueSegments
-                .OrderBy(segment => segment.startOffset)
-                .ToList();
+            List<NoteTechniqueSegmentData> orderedSegments = GetOrderedTechniqueSegments(view, state.data.techniqueSegments);
+            if (orderedSegments == null || orderedSegments.Count == 0)
+                return false;
+
+            if (view.continuousBendRibbon != null &&
+                CanUseContinuousBendRibbon(state.data, orderedSegments))
+            {
+                bool continuousVisible = UpdateContinuousBendRibbon(view, state, orderedSegments, songTime);
+                HideTechniqueSegmentRibbonSlots(view);
+                return continuousVisible;
+            }
+
+            SetGameObjectActive(view.continuousBendRibbon, false);
 
         int slotIndex = 0;
         bool anyVisible = false;
@@ -4453,21 +5670,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 segmentIndex + 1 < orderedSegments.Count &&
                 AreTechniqueSegmentsContinuous(segment.endOffset, orderedSegments[segmentIndex + 1].startOffset);
 
-            float segmentStartTime = state.data.time + segment.startOffset;
-            float segmentEndTime = state.data.time + segment.endOffset;
             float segmentVisibleStart01 = 0f;
-            if (songTime >= segmentStartTime)
-            {
-                segmentVisibleStart01 = Mathf.Clamp01((songTime - segmentStartTime) / Mathf.Max(0.02f, segmentEndTime - segmentStartTime));
-                if (segmentVisibleStart01 >= 0.999f)
-                {
-                    int consumedSlots = GetTechniqueSegmentVisualSlotCount(segment);
-                    for (int i = 0; i < consumedSlots && slotIndex + i < view.techniqueSegmentRibbons.Length; i++)
-                        SetGameObjectActive(view.techniqueSegmentRibbons[slotIndex + i], false);
-                    slotIndex += consumedSlots;
-                    continue;
-                }
-            }
 
             if (segment.type == NoteTechniqueSegmentType.Bend)
             {
@@ -4493,7 +5696,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 if (hasPreviousProfile && AreTechniqueSegmentsContinuous(previousEndOffset, segment.startOffset))
                     ApplyRibbonJoinOverlap(previousProfile, ref headProfile);
 
-                float visibleDistance = segmentVisibleStart01 * Mathf.Max(0.01f, totalDisplayedDepth);
+                float clipZ = GetTechniqueRibbonClipZ(view);
+                float visibleDistance = GetRibbonVisibleDistanceAtClip(headProfile.start.z, Mathf.Max(0.01f, totalDisplayedDepth), clipZ);
                 float headDepth = Mathf.Max(0.01f, headProfile.end.z - headProfile.start.z);
                 float headVisibleStart01 = Mathf.Clamp01(visibleDistance / headDepth);
                 float tailVisibleStart01 = 0f;
@@ -4558,8 +5762,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     continue;
                 }
 
-                float visibleDistance = segmentVisibleStart01 * Mathf.Max(0.01f, vibratoTotalDepth);
-                float cumulativeDepth = 0f;
+                float clipZ = GetTechniqueRibbonClipZ(view);
                 TechniqueRibbonProfile lastVibratoProfile = default;
                 bool hasLastVibratoProfile = false;
 
@@ -4593,9 +5796,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                         ApplyRibbonJoinOverlap(lastVibratoProfile, ref vibratoProfile);
                     }
 
-                    float vibratoDepth = Mathf.Max(0.01f, vibratoProfile.end.z - vibratoProfile.start.z);
-                    float vibratoVisibleStart01 = Mathf.Clamp01((visibleDistance - cumulativeDepth) / vibratoDepth);
-                    if (vibratoVisibleStart01 < 0.999f)
+                    float vibratoVisibleStart01 = GetRibbonVisibleStartAtClip(vibratoProfile, clipZ);
+                    if (vibratoProfile.end.z > clipZ + 0.001f && vibratoVisibleStart01 < 0.999f)
                     {
                         ApplyTechniqueSegmentRibbon(view, slotIndex + vibratoIndex, segment.type, vibratoProfile, state.IsResolved, vibratoVisibleStart01);
                         anyVisible = true;
@@ -4605,7 +5807,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                         SetGameObjectActive(view.techniqueSegmentRibbons[slotIndex + vibratoIndex], false);
                     }
 
-                    cumulativeDepth += vibratoDepth;
                     lastVibratoProfile = vibratoProfile;
                     hasLastVibratoProfile = true;
                 }
@@ -4631,6 +5832,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             if (hasPreviousProfile && AreTechniqueSegmentsContinuous(previousEndOffset, segment.startOffset))
                 ApplyRibbonJoinOverlap(previousProfile, ref profile);
 
+            segmentVisibleStart01 = GetRibbonVisibleStartAtClip(profile, GetTechniqueRibbonClipZ(view));
+            if (segmentVisibleStart01 >= 0.999f)
+            {
+                if (slotIndex < view.techniqueSegmentRibbons.Length)
+                    SetGameObjectActive(view.techniqueSegmentRibbons[slotIndex], false);
+                previousProfile = profile;
+                previousEndOffset = segment.endOffset;
+                hasPreviousProfile = true;
+                slotIndex++;
+                continue;
+            }
+
             ApplyTechniqueSegmentRibbon(view, slotIndex, segment.type, profile, state.IsResolved, segmentVisibleStart01);
             anyVisible = true;
             previousProfile = profile;
@@ -4644,6 +5857,346 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             return anyVisible;
         }
+    }
+
+    private void HideTechniqueSegmentRibbonSlots(HighwayNoteView view)
+    {
+        if (view?.techniqueSegmentRibbons == null)
+            return;
+
+        for (int i = 0; i < view.techniqueSegmentRibbons.Length; i++)
+            SetGameObjectActive(view.techniqueSegmentRibbons[i], false);
+    }
+
+    private bool UpdateContinuousBendRibbon(
+        HighwayNoteView view,
+        GameplayNoteState state,
+        List<NoteTechniqueSegmentData> orderedSegments,
+        float songTime)
+    {
+        using (UpdateContinuousBendRibbonProfilerMarker.Auto())
+        {
+            if (view == null ||
+                state == null ||
+                view.continuousBendRibbon == null ||
+                view.continuousBendRibbonRenderer == null ||
+                view.continuousBendRibbonPropertyBlock == null ||
+                view.continuousBendRibbonMesh == null ||
+                !TryGetContinuousBendWindow(orderedSegments, out float startOffset, out float endOffset))
+            {
+                SetGameObjectActive(view?.continuousBendRibbon, false);
+                return false;
+            }
+
+            endOffset = Mathf.Max(endOffset, GetVisualTechniqueSegmentEndOffset(state.data));
+            if (!EnsureContinuousBendRibbonMesh(
+                    view,
+                    state,
+                    orderedSegments,
+                    startOffset,
+                    endOffset,
+                    out float pathLength))
+            {
+                SetGameObjectActive(view.continuousBendRibbon, false);
+                return false;
+            }
+
+            ContinuousRibbonMeshState meshState = view.continuousBendRibbonMesh;
+            float anchorZ = owner.StrikeLineZ + ((state.data.time - songTime) * currentVisualNoteSpeed);
+            float visibleStart01 = GetContinuousRibbonVisibleStartAtClip(
+                meshState.centerline,
+                meshState.sampleCount,
+                GetTechniqueRibbonClipZ(view) - anchorZ);
+            if (visibleStart01 >= 0.999f)
+            {
+                SetGameObjectActive(view.continuousBendRibbon, false);
+                return false;
+            }
+
+            ApplyContinuousBendRibbonTransform(view, anchorZ);
+            ApplyContinuousBendRibbon(view, state.IsResolved, visibleStart01, pathLength);
+            return true;
+        }
+    }
+
+    private static bool TryGetContinuousBendWindow(List<NoteTechniqueSegmentData> orderedSegments, out float startOffset, out float endOffset)
+    {
+        startOffset = 0f;
+        endOffset = 0f;
+
+        if (orderedSegments == null || orderedSegments.Count == 0)
+            return false;
+
+        bool found = false;
+        for (int i = 0; i < orderedSegments.Count; i++)
+        {
+            NoteTechniqueSegmentData segment = orderedSegments[i];
+            if (segment.endOffset <= segment.startOffset + 0.0001f)
+                continue;
+
+            if (!found)
+            {
+                startOffset = Mathf.Max(0f, segment.startOffset);
+                endOffset = Mathf.Max(startOffset, segment.endOffset);
+                found = true;
+            }
+            else
+            {
+                startOffset = Mathf.Min(startOffset, Mathf.Max(0f, segment.startOffset));
+                endOffset = Mathf.Max(endOffset, segment.endOffset);
+            }
+        }
+
+        startOffset = Mathf.Min(startOffset, 0f);
+        if (found)
+        {
+            for (int i = 0; i < orderedSegments.Count; i++)
+            {
+                NoteTechniqueSegmentData segment = orderedSegments[i];
+                if (!IsVisualBendTransition(segment))
+                    continue;
+
+                float start = Mathf.Max(0f, segment.startOffset);
+                float end = Mathf.Max(start + VisualBendTransitionEpsilon, segment.endOffset);
+                float center = (start + end) * 0.5f;
+                float visualDuration = Mathf.Max(end - start, MinimumVisualBendTransitionSeconds);
+                endOffset = Mathf.Max(endOffset, center + (visualDuration * 0.5f));
+            }
+        }
+
+        return found && endOffset > startOffset + ContinuousBendRibbonMinimumDurationSeconds;
+    }
+
+    private bool EnsureContinuousBendRibbonMesh(
+        HighwayNoteView view,
+        GameplayNoteState state,
+        List<NoteTechniqueSegmentData> orderedSegments,
+        float startOffset,
+        float endOffset,
+        out float pathLength)
+    {
+        pathLength = 0f;
+        ContinuousRibbonMeshState meshState = view.continuousBendRibbonMesh;
+        if (meshState == null ||
+            meshState.mesh == null ||
+            meshState.vertices == null ||
+            meshState.centerline == null ||
+            meshState.sampleCount < 2)
+        {
+            return false;
+        }
+
+        int sampleCount = meshState.sampleCount;
+        float duration = Mathf.Max(ContinuousBendRibbonMinimumDurationSeconds, endOffset - startOffset);
+        if (meshState.hasCachedGeometry &&
+            Mathf.Approximately(meshState.cachedVisualNoteSpeed, currentVisualNoteSpeed) &&
+            Mathf.Approximately(meshState.cachedStartOffset, startOffset) &&
+            Mathf.Approximately(meshState.cachedEndOffset, endOffset))
+        {
+            pathLength = meshState.cachedPathLength;
+            return pathLength > 0.01f;
+        }
+
+        for (int i = 0; i < sampleCount; i++)
+        {
+            float t = i / (float)(sampleCount - 1);
+            float offset = startOffset + (duration * t);
+            meshState.centerline[i] = EvaluateContinuousBendRibbonLocalPoint(view, state.data, orderedSegments, offset);
+        }
+
+        pathLength = 0f;
+        for (int i = 1; i < sampleCount; i++)
+            pathLength += Vector3.Distance(meshState.centerline[i - 1], meshState.centerline[i]);
+
+        if (pathLength <= 0.01f)
+            return false;
+
+        Vector3 center = (meshState.centerline[0] + meshState.centerline[sampleCount - 1]) * 0.5f;
+        float halfWidth = Mathf.Max(0.16f, view.baseScale.x * ContinuousBendRibbonWidthFraction);
+        for (int i = 0; i < sampleCount; i++)
+        {
+            Vector3 previous = i > 0 ? meshState.centerline[i - 1] : meshState.centerline[i];
+            Vector3 next = i + 1 < sampleCount ? meshState.centerline[i + 1] : meshState.centerline[i];
+            Vector3 tangent = next - previous;
+            if (tangent.sqrMagnitude <= 0.0001f)
+                tangent = Vector3.forward;
+            else
+                tangent.Normalize();
+
+            Vector3 widthAxis = Vector3.Cross(Vector3.up, tangent);
+            if (widthAxis.sqrMagnitude <= 0.0001f)
+                widthAxis = Vector3.right;
+            else
+                widthAxis.Normalize();
+
+            int baseIndex = i * 2;
+            Vector3 localCenter = meshState.centerline[i] - center;
+            meshState.vertices[baseIndex] = localCenter - (widthAxis * halfWidth);
+            meshState.vertices[baseIndex + 1] = localCenter + (widthAxis * halfWidth);
+
+            float horizontalMagnitude = Mathf.Max(0.0001f, new Vector2(tangent.x, tangent.z).magnitude);
+            float slope = Mathf.Abs(tangent.y) / horizontalMagnitude;
+            float riseStrength = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.06f, 0.38f, slope));
+            meshState.uv2[baseIndex] = new Vector2(riseStrength, 0f);
+            meshState.uv2[baseIndex + 1] = new Vector2(riseStrength, 0f);
+        }
+
+        meshState.cachedCenterOffset = center;
+        meshState.cachedVisualNoteSpeed = currentVisualNoteSpeed;
+        meshState.cachedStartOffset = startOffset;
+        meshState.cachedEndOffset = endOffset;
+        meshState.cachedPathLength = pathLength;
+        meshState.hasCachedGeometry = true;
+        meshState.hasCachedTransformPosition = false;
+
+        view.continuousBendRibbon.transform.localRotation = Quaternion.identity;
+        view.continuousBendRibbon.transform.localScale = Vector3.one;
+
+        Mesh mesh = meshState.mesh;
+        mesh.vertices = meshState.vertices;
+        mesh.uv2 = meshState.uv2;
+        mesh.bounds = new Bounds(Vector3.zero, new Vector3(256f, 64f, 256f));
+        return true;
+    }
+
+    private Vector3 EvaluateContinuousBendRibbonLocalPoint(
+        HighwayNoteView view,
+        NoteData data,
+        List<NoteTechniqueSegmentData> orderedSegments,
+        float offset)
+    {
+        EvaluateContinuousBendState(data, orderedSegments, offset, out float x, out float bend);
+        float y = GetContinuousBendVisualY(data.stringIdx, bend);
+        float z = (offset * currentVisualNoteSpeed) + (Mathf.Max(0.1f, view.baseScale.z) * 0.5f);
+        return new Vector3(x, y, z);
+    }
+
+    private void ApplyContinuousBendRibbonTransform(HighwayNoteView view, float anchorZ)
+    {
+        ContinuousRibbonMeshState meshState = view.continuousBendRibbonMesh;
+        if (meshState == null || view.continuousBendRibbon == null)
+            return;
+
+        Vector3 position = meshState.cachedCenterOffset;
+        position.z += anchorZ;
+        if (meshState.hasCachedTransformPosition && ApproximatelyVector3(meshState.cachedTransformPosition, position))
+            return;
+
+        view.continuousBendRibbon.transform.localPosition = position;
+        meshState.cachedTransformPosition = position;
+        meshState.hasCachedTransformPosition = true;
+    }
+
+    private static float GetContinuousRibbonVisibleStartAtClip(Vector3[] centerline, int sampleCount, float clipZ)
+    {
+        if (centerline == null || sampleCount <= 1)
+            return 1f;
+
+        if (centerline[0].z >= clipZ)
+            return 0f;
+
+        for (int i = 1; i < sampleCount; i++)
+        {
+            float previousZ = centerline[i - 1].z;
+            float currentZ = centerline[i].z;
+            if (currentZ < clipZ)
+                continue;
+
+            float segmentT = Mathf.InverseLerp(previousZ, currentZ, clipZ);
+            return Mathf.Clamp01(((i - 1) + segmentT) / Mathf.Max(1f, sampleCount - 1f));
+        }
+
+        return 1f;
+    }
+
+    private void EvaluateContinuousBendState(
+        NoteData data,
+        List<NoteTechniqueSegmentData> orderedSegments,
+        float offset,
+        out float x,
+        out float bend)
+    {
+        x = GetVisualNoteX(data);
+        bend = 0f;
+
+        if (orderedSegments == null || orderedSegments.Count == 0)
+            return;
+
+        NoteTechniqueSegmentData first = orderedSegments[0];
+        bend = first.startBend;
+        x = GetSegmentFretVisualX(data, first.startFret);
+        float maxOffset = Mathf.Max(GetVisualTechniqueSegmentEndOffset(data), offset);
+
+        if (TryEvaluateVisualBendTransition(
+                orderedSegments,
+                offset,
+                0f,
+                maxOffset,
+                out NoteTechniqueSegmentData visualSegment,
+                out float visualT))
+        {
+            float startX = GetSegmentFretVisualX(data, visualSegment.startFret);
+            float endX = GetSegmentFretVisualX(data, visualSegment.endFret);
+            x = Mathf.Lerp(startX, endX, visualT);
+            bend = Mathf.Lerp(visualSegment.startBend, visualSegment.endBend, visualT);
+            return;
+        }
+
+        for (int i = 0; i < orderedSegments.Count; i++)
+        {
+            NoteTechniqueSegmentData segment = orderedSegments[i];
+            if (offset < segment.startOffset - 0.0001f)
+                break;
+
+            if (offset <= segment.endOffset + 0.0001f)
+            {
+                float duration = Mathf.Max(0.0001f, segment.endOffset - segment.startOffset);
+                float t = Mathf.Clamp01((offset - segment.startOffset) / duration);
+                if (segment.type == NoteTechniqueSegmentType.Bend)
+                    t = Mathf.SmoothStep(0f, 1f, t);
+
+                float startX = GetSegmentFretVisualX(data, segment.startFret);
+                float endX = GetSegmentFretVisualX(data, segment.endFret);
+                x = Mathf.Lerp(startX, endX, t);
+                bend = Mathf.Lerp(segment.startBend, segment.endBend, t);
+                return;
+            }
+
+            x = GetSegmentFretVisualX(data, segment.endFret);
+            bend = segment.endBend;
+        }
+    }
+
+    private void ApplyContinuousBendRibbon(HighwayNoteView view, bool isResolved, float visibleStart01, float pathLength)
+    {
+        if (view.continuousBendRibbon == null ||
+            view.continuousBendRibbonRenderer == null ||
+            view.continuousBendRibbonPropertyBlock == null)
+        {
+            return;
+        }
+
+        Color centerBaseColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.10f : 0.16f);
+        Color centerColor = new Color(centerBaseColor.r, centerBaseColor.g, centerBaseColor.b, isResolved ? 0.34f : 0.70f);
+        Color edgeColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.42f : 0.70f);
+        edgeColor.a = isResolved ? 0.50f : 1.0f;
+        Color emissionColor = Color.Lerp(view.baseColor, Color.white, isResolved ? 0.44f : 0.90f) * Mathf.Pow(2f, isResolved ? 0.46f : 1.38f);
+
+        MaterialPropertyBlock propertyBlock = view.continuousBendRibbonPropertyBlock;
+        propertyBlock.Clear();
+        propertyBlock.SetColor(CenterColorShaderId, centerColor);
+        propertyBlock.SetColor(EdgeColorShaderId, edgeColor);
+        propertyBlock.SetColor(EmissionColorShaderId, emissionColor);
+        propertyBlock.SetFloat(VisibleStart01ShaderId, Mathf.Clamp01(visibleStart01));
+        propertyBlock.SetFloat(
+            VisibleFadeSoftness01ShaderId,
+            Mathf.Clamp(ContinuousBendRibbonVisibleFadeWorldDistance / Mathf.Max(0.01f, pathLength), 0.0025f, 0.03f));
+        propertyBlock.SetFloat(
+            LengthFadeSoftness01ShaderId,
+            Mathf.Clamp(ContinuousBendRibbonLengthFadeWorldDistance / Mathf.Max(0.01f, pathLength), 0.005f, 0.05f));
+        propertyBlock.SetFloat(FlatLightStrengthShaderId, Mathf.Clamp01(BendRibbonFlatLightStrength));
+        view.continuousBendRibbonRenderer.SetPropertyBlock(propertyBlock);
+        SetGameObjectActive(view.continuousBendRibbon, true);
     }
 
     private bool TryBuildTechniqueSegmentRibbonProfile(
@@ -4716,8 +6269,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float startDepth = Mathf.Max(0.1f, view.baseScale.z);
         float segmentStartTime = state.data.time + segment.startOffset;
         float segmentEndTime = state.data.time + segment.endOffset;
-        float startTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed));
-        float endTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed));
+        float startTravelZ = owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed);
+        float endTravelZ = owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed);
         float startAttachZ = startTravelZ + (startDepth * 0.5f);
         float endAttachZ = connectsToNextSegment
             ? endTravelZ + (startDepth * 0.5f)
@@ -4762,8 +6315,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float startDepth = Mathf.Max(0.1f, view.baseScale.z);
         float segmentStartTime = state.data.time + segment.startOffset;
         float segmentEndTime = state.data.time + segment.endOffset;
-        float startTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed));
-        float endTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed));
+        float startTravelZ = owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed);
+        float endTravelZ = owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed);
         float startAttachZ = startTravelZ + (startDepth * 0.5f);
         float endAttachZ = Mathf.Max(startAttachZ + 0.35f, endTravelZ);
         float totalDepth = Mathf.Max(0.35f, endAttachZ - startAttachZ);
@@ -4823,8 +6376,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float startDepth = Mathf.Max(0.1f, view.baseScale.z);
         float segmentStartTime = state.data.time + segment.startOffset;
         float segmentEndTime = state.data.time + segment.endOffset;
-        float startTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed));
-        float fullEndTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed));
+        float startTravelZ = owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed);
+        float fullEndTravelZ = owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed);
         float startAttachZ = startTravelZ + (startDepth * 0.5f);
         float startX = GetNoteX(segment.startFret);
         float endX = GetNoteX(segment.endFret);
@@ -4914,8 +6467,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float startDepth = Mathf.Max(0.1f, view.baseScale.z);
         float segmentStartTime = state.data.time + segment.startOffset;
         float segmentEndTime = state.data.time + segment.endOffset;
-        float startTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed));
-        float endTravelZ = Mathf.Max(owner.StrikeLineZ, owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed));
+        float startTravelZ = owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed);
+        float endTravelZ = owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed);
         startAttachZ = startTravelZ + (startDepth * 0.5f);
         float endAttachZ = Mathf.Max(startAttachZ + 0.35f, endTravelZ);
         totalDisplayedDepth = Mathf.Max(0.35f, endAttachZ - startAttachZ);
@@ -5038,6 +6591,21 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return baseY + (GetStringLaneSpacing() * BendRibbonVisualHeightInStrings);
     }
 
+    private float GetContinuousBendVisualY(int stringIdx, float bendValue)
+    {
+        float baseY = GetStringY(stringIdx);
+        float bend01 = Mathf.Clamp01(Mathf.Abs(bendValue));
+        if (bend01 <= 0.01f)
+            return baseY;
+
+        return baseY + (GetStringLaneSpacing() * BendRibbonVisualHeightInStrings * bend01);
+    }
+
+    private float GetStringPlaneNoteHeadCenterZ()
+    {
+        return owner != null ? owner.StrikeLineZ : 0f;
+    }
+
     private void ApplyTechniqueSegmentRibbon(
         HighwayNoteView view,
         int slotIndex,
@@ -5100,7 +6668,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             activeArpeggioGuideIdsThisFrame.Clear();
             List<ArpeggioGuideData> guides = snapshot?.arpeggioGuides;
-            if (guides == null || guides.Count == 0)
+            if (ShouldSuppressStaticLoopSetupGuides(snapshot) || guides == null || guides.Count == 0)
             {
                 ClearArpeggioGuideFrames();
                 return;
@@ -5481,6 +7049,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         using (UpdateChordFramesProfilerMarker.Auto())
         {
+            if (ShouldSuppressStaticLoopSetupGuides(snapshot))
+            {
+                ClearChordFrames();
+                return;
+            }
+
             float renderSongTime = GetRenderSongTime(snapshot);
             activeChordIdsThisFrame.Clear();
 
@@ -5520,15 +7094,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 int handFret = GetGroupHandFret(group);
                 float leftX = GetHandWindowStartX(handFret);
                 float rightX = GetHandWindowEndX(handFret, group);
+                bool isRepeatChord = IsRepeatChordFrame(pair.Key);
+                float frameHeight = GetChordFrameRenderHeight(pair.Key, group);
 
                 if (!chordFrames.TryGetValue(pair.Key, out GameObject frame) || frame == null)
                 {
-                    frame = CreateChordFrame(leftX, rightX, GetChordBoxCenterY(group), GetChordBoxHeight(group));
+                    Color? frameColorOverride = isRepeatChord ? ChordRepeatFrameColor : (Color?)null;
+                    float frameGlowIntensity = isRepeatChord ? 0.85f : 1.6f;
+                    frame = CreateChordFrame(leftX, rightX, GetChordBoxCenterY(group), frameHeight, frameColorOverride, frameGlowIntensity, isRepeatChord);
                     chordFrames[pair.Key] = frame;
                 }
 
                 frame.transform.position = new Vector3(frame.transform.position.x, frame.transform.position.y, z + 0.01f);
-                UpdateChordFrameLabel(frame, group, rightX - leftX, GetChordBoxHeight(group));
+                UpdateChordFrameLabel(frame, isRepeatChord ? string.Empty : GetChordDisplayName(group), rightX - leftX, frameHeight);
             }
 
             chordFrameRemovalBuffer.Clear();
@@ -5547,6 +7125,24 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                     Object.Destroy(chordFrames[key]);
                 chordFrames.Remove(key);
             }
+        }
+    }
+
+    private void ClearChordFrames()
+    {
+        if (chordFrames.Count == 0)
+            return;
+
+        chordFrameRemovalBuffer.Clear();
+        foreach (int key in chordFrames.Keys)
+            chordFrameRemovalBuffer.Add(key);
+
+        for (int i = 0; i < chordFrameRemovalBuffer.Count; i++)
+        {
+            int key = chordFrameRemovalBuffer[i];
+            if (chordFrames[key] != null)
+                Object.Destroy(chordFrames[key]);
+            chordFrames.Remove(key);
         }
     }
 
@@ -5661,9 +7257,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void GetResolvedFeedbackScanWindow(float renderSongTime, out float earliestNoteTime, out float latestNoteTime)
     {
         float earlyWindow = owner != null ? Mathf.Max(0f, owner.hitWindowEarly) : 0.3f;
-        float lateWindow = owner != null ? Mathf.Max(0f, owner.hitWindowLate) : 0.5f;
-        float graceWindow = owner != null ? Mathf.Max(0f, owner.judgmentGrace) : 0.75f;
-        earliestNoteTime = renderSongTime - lateWindow - graceWindow - HighwayResolvedFretFeedbackDurationSeconds - 0.12f;
+        float lateWindow = owner != null ? Mathf.Max(0f, owner.hitWindowLate) : 0.25f;
+        earliestNoteTime = renderSongTime -
+                           lateWindow -
+                           GuitarBridgeServer.SustainLateGraceMaxSeconds -
+                           GuitarBridgeServer.MissJudgmentSafetyDelay -
+                           HighwayResolvedFretFeedbackDurationSeconds -
+                           0.12f;
         latestNoteTime = renderSongTime + earlyWindow + 0.12f;
     }
 
@@ -5744,6 +7344,26 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             buffer[index] = value;
     }
 
+    private static bool Approximately(float left, float right, float epsilon = 0.0001f)
+    {
+        return Mathf.Abs(left - right) <= epsilon;
+    }
+
+    private static bool Approximately(Vector3 left, Vector3 right, float epsilon = 0.0001f)
+    {
+        return Approximately(left.x, right.x, epsilon) &&
+               Approximately(left.y, right.y, epsilon) &&
+               Approximately(left.z, right.z, epsilon);
+    }
+
+    private static bool Approximately(Color left, Color right, float epsilon = 0.0005f)
+    {
+        return Approximately(left.r, right.r, epsilon) &&
+               Approximately(left.g, right.g, epsilon) &&
+               Approximately(left.b, right.b, epsilon) &&
+               Approximately(left.a, right.a, epsilon);
+    }
+
     private static int GetFeedbackFretLightIndex(NoteData data, int fretLightColumns)
     {
         if (fretLightColumns <= 0)
@@ -5818,6 +7438,21 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     }
 
     private void UpdateSectionCamera(GuitarGameplaySnapshot snapshot)
+    {
+        bool useCameraV2 = IsSmartLookaheadCameraActive();
+        if (cameraV2WasActive != useCameraV2)
+        {
+            ResetCameraV2State(seedFromCurrentCamera: true);
+            cameraV2WasActive = useCameraV2;
+        }
+
+        if (useCameraV2)
+            UpdateSectionCameraV2(snapshot);
+        else
+            UpdateSectionCameraLegacy(snapshot);
+    }
+
+    private void UpdateSectionCameraLegacy(GuitarGameplaySnapshot snapshot)
     {
         using (UpdateSectionCameraProfilerMarker.Auto())
         {
@@ -5999,6 +7634,595 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         }
     }
 
+    private void UpdateSectionCameraV2(GuitarGameplaySnapshot snapshot)
+    {
+        using (UpdateSectionCameraProfilerMarker.Auto())
+        {
+            if (mainCamera == null || owner == null)
+                return;
+
+            float renderSongTime = GetRenderSongTime(snapshot);
+            if (ShouldResetCameraV2ForTimeJump(renderSongTime))
+                ResetCameraV2State(seedFromCurrentCamera: true);
+
+            cameraV2LastRenderSongTime = renderSongTime;
+
+            if (TryComputeCameraV2Target(snapshot, renderSongTime, out CameraV2Target target))
+            {
+                if (!cameraV2Initialized)
+                {
+                    cameraV2TargetX = target.targetX;
+                    cameraV2TargetFOV = target.targetFov;
+                    cameraV2SmoothedX = target.targetX;
+                    cameraV2SmoothedFOV = target.targetFov;
+                    cameraV2DownAngle = target.downAngle;
+                    cameraV2TargetDownAngle = target.downAngle;
+                    cameraV2CameraY = target.cameraY;
+                    cameraV2TargetCameraY = target.cameraY;
+                    cameraV2FocusDistance = target.focusDistance;
+                    cameraV2TargetFocusDistance = target.focusDistance;
+                    cameraV2XVelocity = 0f;
+                    cameraV2FovVelocity = 0f;
+                    cameraV2DownAngleVelocity = 0f;
+                    cameraV2CameraYVelocity = 0f;
+                    cameraV2FocusDistanceVelocity = 0f;
+                    cameraV2Initialized = true;
+                }
+                else
+                {
+                    cameraV2TargetX = target.targetX;
+                    cameraV2TargetFOV = target.targetFov;
+                    cameraV2TargetDownAngle = target.downAngle;
+                    cameraV2TargetCameraY = target.cameraY;
+                    cameraV2TargetFocusDistance = target.focusDistance;
+                }
+            }
+
+            if (!cameraV2Initialized)
+                return;
+
+            const float panSmoothTime = 0.72f;
+            const float zoomSmoothTime = 0.90f;
+            const float angleSmoothTime = 0.86f;
+            float smoothedX = Mathf.SmoothDamp(mainCamera.transform.position.x, cameraV2TargetX, ref cameraV2XVelocity, panSmoothTime, Mathf.Infinity, Time.deltaTime);
+            float smoothedFov = Mathf.SmoothDamp(mainCamera.fieldOfView, cameraV2TargetFOV, ref cameraV2FovVelocity, zoomSmoothTime, Mathf.Infinity, Time.deltaTime);
+            cameraV2DownAngle = Mathf.SmoothDamp(cameraV2DownAngle, cameraV2TargetDownAngle, ref cameraV2DownAngleVelocity, angleSmoothTime, Mathf.Infinity, Time.deltaTime);
+            cameraV2CameraY = Mathf.SmoothDamp(cameraV2CameraY, cameraV2TargetCameraY, ref cameraV2CameraYVelocity, angleSmoothTime, Mathf.Infinity, Time.deltaTime);
+            cameraV2FocusDistance = Mathf.SmoothDamp(cameraV2FocusDistance, cameraV2TargetFocusDistance, ref cameraV2FocusDistanceVelocity, zoomSmoothTime, Mathf.Infinity, Time.deltaTime);
+
+            cameraV2SmoothedX = smoothedX;
+            cameraV2SmoothedFOV = smoothedFov;
+            mainCamera.fieldOfView = smoothedFov;
+            ApplyCameraV2Transform(smoothedX);
+            SyncBackgroundCamera();
+        }
+    }
+
+    private bool ShouldResetCameraV2ForTimeJump(float renderSongTime)
+    {
+        if (float.IsNaN(cameraV2LastRenderSongTime))
+            return false;
+
+        float delta = renderSongTime - cameraV2LastRenderSongTime;
+        return delta < -0.25f || delta > 2.5f;
+    }
+
+    private void ApplyCameraV2Transform(float targetX)
+    {
+        Vector3 cameraPosition = GetCameraV2Position(targetX);
+        mainCamera.transform.position = cameraPosition;
+
+        float lookAtZ = GetCameraV2LookAtZ(cameraPosition, cameraV2DownAngle);
+        const float lookAtSmoothTime = 0.72f;
+        Quaternion tentativeRotation = Quaternion.LookRotation(
+            new Vector3(targetX, cameraV2LookAtY, lookAtZ) - cameraPosition,
+            Vector3.up);
+        mainCamera.transform.rotation = tentativeRotation;
+
+        UpdateCameraV2LookAtYTarget(targetX);
+        cameraV2LookAtY = Mathf.SmoothDamp(cameraV2LookAtY, cameraV2TargetLookAtY, ref cameraV2LookAtYVelocity, lookAtSmoothTime, Mathf.Infinity, Time.deltaTime);
+
+        Vector3 lookAt = new Vector3(targetX, cameraV2LookAtY, lookAtZ);
+        Vector3 lookDirection = lookAt - cameraPosition;
+        if (lookDirection.sqrMagnitude > 0.0001f)
+            mainCamera.transform.rotation = Quaternion.LookRotation(lookDirection, Vector3.up);
+    }
+
+    private void UpdateCameraV2LookAtYTarget(float targetX)
+    {
+        int activeStringCount = GetRenderableStringCount();
+        if (activeStringCount <= 0)
+            return;
+
+        float minY = float.PositiveInfinity;
+        float maxY = float.NegativeInfinity;
+        for (int i = 0; i < activeStringCount; i++)
+        {
+            float y = GetStringY(i);
+            minY = Mathf.Min(minY, y);
+            maxY = Mathf.Max(maxY, y);
+        }
+
+        if (!float.IsFinite(minY) || !float.IsFinite(maxY))
+            return;
+
+        float fretboardCenterY = (minY + maxY) * 0.5f;
+        Vector3 probe = new Vector3(targetX, fretboardCenterY, owner.StrikeLineZ);
+        Vector3 viewport = mainCamera.WorldToViewportPoint(probe);
+        if (viewport.z <= 0.01f)
+            return;
+
+        float laneSpan = Mathf.Max(GetStringLaneSpacing(), maxY - minY);
+        float minViewportY = float.PositiveInfinity;
+        float maxViewportY = float.NegativeInfinity;
+        AccumulateCameraV2ViewportY(new Vector3(targetX, minY, owner.StrikeLineZ), ref minViewportY, ref maxViewportY);
+        AccumulateCameraV2ViewportY(new Vector3(targetX, maxY, owner.StrikeLineZ), ref minViewportY, ref maxViewportY);
+        AccumulateCameraV2ViewportY(new Vector3(targetX, minY, Mathf.Lerp(owner.StrikeLineZ, owner.SpawnZ, 0.18f)), ref minViewportY, ref maxViewportY);
+        AccumulateCameraV2ViewportY(new Vector3(targetX, maxY, Mathf.Lerp(owner.StrikeLineZ, owner.SpawnZ, 0.18f)), ref minViewportY, ref maxViewportY);
+
+        if (!float.IsFinite(minViewportY) || !float.IsFinite(maxViewportY))
+            return;
+
+        const float DesiredViewportY = 0.34f;
+        const float DeadBand = 0.09f;
+        const float LowMargin = 0.10f;
+        const float HighMargin = 0.86f;
+        float correction = 0f;
+        if (minViewportY < LowMargin)
+            correction += (LowMargin - minViewportY) * laneSpan * 1.65f;
+        if (maxViewportY > HighMargin)
+            correction -= (maxViewportY - HighMargin) * laneSpan * 1.65f;
+
+        if (Mathf.Abs(correction) <= 0.0001f)
+        {
+            float error = DesiredViewportY - viewport.y;
+            if (Mathf.Abs(error) <= DeadBand)
+                return;
+
+            correction = error * laneSpan * 0.42f;
+        }
+
+        float lookRange = Mathf.Max(laneSpan * 3.4f, fretboardCenterY + (laneSpan * 1.5f));
+        float minLookY = -lookRange;
+        float maxLookY = lookRange;
+        cameraV2TargetLookAtY = Mathf.Clamp(cameraV2TargetLookAtY - correction, minLookY, maxLookY);
+    }
+
+    private void AccumulateCameraV2ViewportY(Vector3 worldPoint, ref float minViewportY, ref float maxViewportY)
+    {
+        Vector3 viewport = mainCamera.WorldToViewportPoint(worldPoint);
+        if (viewport.z <= 0.01f)
+            return;
+
+        minViewportY = Mathf.Min(minViewportY, viewport.y);
+        maxViewportY = Mathf.Max(maxViewportY, viewport.y);
+    }
+
+    private float GetCameraV2ShoulderOffset()
+    {
+        return Mathf.Clamp(owner.TotalFrets * owner.FretSpacing * 0.055f, owner.FretSpacing * 0.85f, owner.FretSpacing * 1.65f);
+    }
+
+    private Vector3 GetCameraV2Position(float targetX)
+    {
+        float cameraY = Mathf.Max(0.1f, cameraV2CameraY);
+        float downAngleRadians = Mathf.Clamp(cameraV2DownAngle, 8f, 38f) * Mathf.Deg2Rad;
+        float forwardZ = Mathf.Max(0.01f, Mathf.Cos(downAngleRadians));
+        float forwardY = -Mathf.Sin(downAngleRadians);
+        float desiredFocusDistance = Mathf.Max(owner.FretSpacing * 3.0f, cameraV2FocusDistance);
+        float cameraToStrikeZ = (desiredFocusDistance - ((-cameraY) * forwardY)) / forwardZ;
+        float cameraZ = owner.StrikeLineZ - Mathf.Max(owner.FretSpacing * 2.5f, cameraToStrikeZ);
+        return new Vector3(targetX + GetCameraV2ShoulderOffset(), cameraY, cameraZ);
+    }
+
+    private float GetCameraV2LookAtZ(Vector3 cameraPosition, float downAngle)
+    {
+        float pitchRadians = Mathf.Clamp(downAngle, 8f, 38f) * Mathf.Deg2Rad;
+        float projectedZ = cameraPosition.z + (cameraPosition.y / Mathf.Max(0.01f, Mathf.Tan(pitchRadians)));
+        float minZ = owner.StrikeLineZ + Mathf.Max(1f, owner.FretSpacing * 1.25f);
+        float maxZ = owner.SpawnZ + (Mathf.Max(1f, owner.SpawnZ - owner.StrikeLineZ) * 0.55f);
+        return Mathf.Clamp(projectedZ, minZ, maxZ);
+    }
+
+    private bool TryComputeCameraV2Target(GuitarGameplaySnapshot snapshot, float renderSongTime, out CameraV2Target target)
+    {
+        target = default;
+        if (snapshot?.noteStates == null || snapshot.noteStates.Count == 0)
+            return false;
+
+        float previewWindow = Mathf.Clamp(Mathf.Min(Mathf.Max(1.6f, owner.lookaheadWindow), CameraV2LookaheadSeconds), 1.0f, CameraV2LookaheadSeconds);
+        float sustainBehindWindow = 0.22f;
+        float windowEnd = renderSongTime + previewWindow;
+        float requiredMinX = 0f;
+        float requiredMaxX = 0f;
+        int minFret = int.MaxValue;
+        int maxFret = 0;
+        bool found = false;
+
+        for (int i = 0; i < snapshot.noteStates.Count; i++)
+        {
+            GameplayNoteState state = snapshot.noteStates[i];
+            if (state == null)
+                continue;
+
+            NoteData data = state.data;
+            if (data.time > windowEnd)
+                break;
+
+            if (!ShouldCameraV2IncludeNote(state, renderSongTime, windowEnd, sustainBehindWindow))
+                continue;
+
+            GetCameraV2FramingRange(data, out float minX, out float maxX, out int noteMinFret, out int noteMaxFret);
+            if (!found)
+            {
+                requiredMinX = minX;
+                requiredMaxX = maxX;
+                found = true;
+            }
+            else
+            {
+                requiredMinX = Mathf.Min(requiredMinX, minX);
+                requiredMaxX = Mathf.Max(requiredMaxX, maxX);
+            }
+
+            minFret = Mathf.Min(minFret, noteMinFret);
+            maxFret = Mathf.Max(maxFret, noteMaxFret);
+        }
+
+        if (!found)
+            return false;
+
+        minFret = minFret == int.MaxValue ? Mathf.RoundToInt(owner.defaultOpenAnchorFret) : minFret;
+        maxFret = Mathf.Max(minFret, maxFret);
+        if (maxFret <= 10)
+            cameraV2HighNeckLatch = false;
+        else if (maxFret >= 13)
+            cameraV2HighNeckLatch = true;
+
+        float rawTargetX = ComputeCameraV2LogFretTargetX(minFret, maxFret);
+        float rawFretSpan = Mathf.Max(1f, maxFret - minFret + 1f);
+        float rawLowFretBonusUnits = ComputeCameraV2LowFretBonusUnits(minFret);
+        UpdateCameraV2FocusState(renderSongTime, rawTargetX, rawFretSpan, rawLowFretBonusUnits);
+
+        float desiredTargetX = cameraV2FocusX;
+        float calmness = cameraV2HighNeckLatch ? 0.35f : 0.58f;
+        float minFov = ComputeCameraV2MinimumFovForStringLanes(desiredTargetX);
+        float targetFov = minFov;
+
+        float logFretDistanceUnits = ComputeCameraV2LogFretDistanceUnits(cameraV2FocusFretSpan, cameraV2LowFretBonusUnits);
+        float effectiveLogFretDistanceUnits = ComputeCameraV2EffectiveLogFretDistanceUnits(logFretDistanceUnits);
+        float logFretFocusDistance = ComputeCameraV2LogFretFocusDistance(effectiveLogFretDistanceUnits);
+        float maxVisibleHalfSpan = ComputeCameraV2HalfSpanForFocusDistance(logFretFocusDistance, targetFov) - Mathf.Max(owner.FretSpacing * 0.35f, 0.45f);
+        if (maxVisibleHalfSpan > 0.01f && (desiredTargetX - requiredMinX > maxVisibleHalfSpan || requiredMaxX - desiredTargetX > maxVisibleHalfSpan))
+        {
+            float minCenter = requiredMaxX - maxVisibleHalfSpan;
+            float maxCenter = requiredMinX + maxVisibleHalfSpan;
+            desiredTargetX = minCenter <= maxCenter
+                ? Mathf.Clamp(desiredTargetX, minCenter, maxCenter)
+                : (requiredMinX + requiredMaxX) * 0.5f;
+
+            minFov = ComputeCameraV2MinimumFovForStringLanes(desiredTargetX);
+            targetFov = minFov;
+        }
+
+        target = new CameraV2Target
+        {
+            targetX = desiredTargetX,
+            targetFov = targetFov,
+            requiredMinX = requiredMinX,
+            requiredMaxX = requiredMaxX,
+            cameraY = ComputeCameraV2LogFretCameraHeight(effectiveLogFretDistanceUnits),
+            focusDistance = logFretFocusDistance,
+            downAngle = ComputeCameraV2LogFretDownAngle(effectiveLogFretDistanceUnits),
+            calmness = calmness
+        };
+        return true;
+    }
+
+    private void UpdateCameraV2FocusState(float renderSongTime, float rawTargetX, float rawFretSpan, float rawLowFretBonusUnits)
+    {
+        float blend = 1f;
+        if (cameraV2FocusStateInitialized && !float.IsNaN(cameraV2LastFocusSongTime))
+        {
+            float rawDelta = renderSongTime - cameraV2LastFocusSongTime;
+            float deltaTime = rawDelta > -1f && rawDelta < 2f ? Mathf.Clamp(rawDelta, 1f / 960f, 0.2f) : Mathf.Clamp(Time.deltaTime, 1f / 960f, 0.2f);
+            blend = 1f - Mathf.Pow(1f - CameraV2FocusBlendRate, deltaTime);
+        }
+
+        if (!cameraV2FocusStateInitialized)
+        {
+            cameraV2FocusX = rawTargetX;
+            cameraV2FocusFretSpan = rawFretSpan;
+            cameraV2LowFretBonusUnits = rawLowFretBonusUnits;
+            cameraV2FocusStateInitialized = true;
+        }
+        else
+        {
+            cameraV2FocusX = Mathf.Lerp(cameraV2FocusX, rawTargetX, blend);
+            cameraV2FocusFretSpan = Mathf.Lerp(cameraV2FocusFretSpan, rawFretSpan, blend);
+            cameraV2LowFretBonusUnits = Mathf.Lerp(cameraV2LowFretBonusUnits, rawLowFretBonusUnits, blend);
+        }
+
+        cameraV2LastFocusSongTime = renderSongTime;
+    }
+
+    private float ComputeCameraV2LogFretTargetX(int minFret, int maxFret)
+    {
+        int safeMinFret = Mathf.Clamp(minFret, 1, owner.TotalFrets);
+        int safeMaxFret = Mathf.Clamp(Mathf.Max(maxFret, safeMinFret), safeMinFret, owner.TotalFrets);
+        float middle = (GetNoteX(safeMinFret) + GetNoteX(safeMaxFret)) * 0.5f;
+        float boardWeighted = owner.TotalFrets * owner.FretSpacing * 0.4f;
+        return Mathf.Lerp(middle, boardWeighted, CameraV2FretEdgeBlend);
+    }
+
+    private static float ComputeCameraV2LogFretDistanceUnits(int minFret, int maxFret)
+    {
+        int safeMinFret = Mathf.Clamp(minFret, 1, 24);
+        int safeMaxFret = Mathf.Clamp(Mathf.Max(maxFret, safeMinFret), safeMinFret, 36);
+        int fretSpan = Mathf.Max(1, safeMaxFret - safeMinFret + 1);
+        return ComputeCameraV2LogFretDistanceUnits(fretSpan, ComputeCameraV2LowFretBonusUnits(safeMinFret));
+    }
+
+    private static float ComputeCameraV2LogFretDistanceUnits(float fretSpan, float lowFretBonusUnits)
+    {
+        return 65f + (Mathf.Max(fretSpan, 4f) * 3f) + Mathf.Max(0f, lowFretBonusUnits);
+    }
+
+    private static float ComputeCameraV2LowFretBonusUnits(int minFret)
+    {
+        return Mathf.Max(0, 5 - Mathf.Clamp(minFret, 1, 24)) * 4f;
+    }
+
+    private float ComputeCameraV2EffectiveLogFretDistanceUnits(float distanceUnits)
+    {
+        float convertedDistance = ComputeCameraV2LogFretFocusDistance(distanceUnits);
+        float minimumWideBoardDistance = ComputeCameraV2FocusDistanceForHalfSpan(owner.FretSpacing * CameraV2MinimumVisibleHalfFrets, CameraV2BaseFov);
+        if (convertedDistance >= minimumWideBoardDistance || convertedDistance <= 0.0001f)
+            return distanceUnits;
+
+        float scaledDistanceUnits = distanceUnits * (minimumWideBoardDistance / convertedDistance);
+        return Mathf.Clamp(scaledDistanceUnits, distanceUnits, 180f);
+    }
+
+    private float ComputeCameraV2LogFretCameraHeight(float distanceUnits)
+    {
+        float heightUnits = 150f * (distanceUnits / 240f) * 0.95f;
+        float convertedHeight = (heightUnits / 4f) * GetStringLaneSpacing();
+
+        int activeStringCount = GetRenderableStringCount();
+        float maxStringY = activeStringCount > 0 ? GetStringY(activeStringCount - 1) : GetStringLaneSpacing();
+        float minHeight = maxStringY + (GetStringLaneSpacing() * 1.10f);
+        float maxHeight = Mathf.Max(owner.highwayCameraY * 1.25f, maxStringY + (GetStringLaneSpacing() * 14f));
+        return Mathf.Clamp(convertedHeight, minHeight, maxHeight);
+    }
+
+    private float ComputeCameraV2LogFretFocusDistance(float distanceUnits)
+    {
+        const float logFretK = CameraV2LogFretScale / 300f;
+        float cameraY = 150f * logFretK * (distanceUnits / 240f) * 0.95f;
+        float cameraZ = distanceUnits * logFretK * 0.75f;
+        float lookAtZ = -600f * logFretK * 0.35f;
+        float length = Mathf.Sqrt((cameraY * cameraY) + ((lookAtZ - cameraZ) * (lookAtZ - cameraZ)));
+        float focusDistance = length > 0.0001f
+            ? (((-cameraY) * (-cameraY / length)) + ((-cameraZ) * ((lookAtZ - cameraZ) / length)))
+            : cameraZ;
+
+        float fretEquivalentDistance = focusDistance / LogFretUniformFretWidth();
+        return Mathf.Clamp(fretEquivalentDistance * owner.FretSpacing, owner.FretSpacing * 5.0f, owner.FretSpacing * 20.0f);
+    }
+
+    private float ComputeCameraV2FocusDistanceForHalfSpan(float halfSpan, float verticalFov)
+    {
+        float aspect = mainCamera != null ? Mathf.Max(0.6f, mainCamera.aspect) : 16f / 9f;
+        float verticalRadians = Mathf.Clamp(verticalFov, 1f, 140f) * Mathf.Deg2Rad;
+        float horizontalHalfAngle = Mathf.Atan(Mathf.Tan(verticalRadians * 0.5f) * aspect);
+        return halfSpan / Mathf.Max(0.01f, Mathf.Tan(horizontalHalfAngle));
+    }
+
+    private float ComputeCameraV2HalfSpanForFocusDistance(float focusDistance, float verticalFov)
+    {
+        float aspect = mainCamera != null ? Mathf.Max(0.6f, mainCamera.aspect) : 16f / 9f;
+        float verticalRadians = Mathf.Clamp(verticalFov, 1f, 140f) * Mathf.Deg2Rad;
+        float horizontalHalfAngle = Mathf.Atan(Mathf.Tan(verticalRadians * 0.5f) * aspect);
+        return Mathf.Max(0.01f, Mathf.Max(0.01f, focusDistance) * Mathf.Tan(horizontalHalfAngle));
+    }
+
+    private static float LogFretUniformFretWidth()
+    {
+        return LogFretX(CameraV2LogFretCount) / CameraV2LogFretCount;
+    }
+
+    private static float LogFretX(int fret)
+    {
+        if (fret <= 0)
+            return 0f;
+
+        float raw = CameraV2LogFretXScale - (CameraV2LogFretXScale / Mathf.Pow(2f, fret / 12f));
+        if (fret <= 12)
+            return raw;
+
+        float anchor = CameraV2LogFretXScale - (CameraV2LogFretXScale / Mathf.Pow(2f, 1f));
+        return anchor + ((raw - anchor) * CameraV2LogFretStretchAbove12);
+    }
+
+    private static float ComputeCameraV2LogFretDownAngle(float distanceUnits)
+    {
+        float heightUnits = 150f * (distanceUnits / 240f) * 0.95f;
+        float depthUnits = (distanceUnits * 0.75f) + (600f * 0.35f);
+        float angle = Mathf.Atan(heightUnits / Mathf.Max(0.001f, depthUnits)) * Mathf.Rad2Deg;
+        return Mathf.Clamp(angle * 1.65f, 16f, 28f);
+    }
+
+    private bool ShouldCameraV2IncludeNote(GameplayNoteState state, float renderSongTime, float windowEnd, float sustainBehindWindow)
+    {
+        NoteData data = state.data;
+        float noteEnd = GetCameraV2VisualEndTime(data);
+        bool hasActiveSustain = noteEnd > data.time + 0.05f &&
+                                data.time <= renderSongTime + 0.05f &&
+                                noteEnd >= renderSongTime - sustainBehindWindow;
+        if (hasActiveSustain)
+            return true;
+
+        return data.time >= renderSongTime && data.time <= windowEnd;
+    }
+
+    private static float GetCameraV2VisualEndTime(NoteData data)
+    {
+        float endTime = data.time + Mathf.Max(0f, data.duration);
+        if (data.techniqueSegments != null)
+        {
+            for (int i = 0; i < data.techniqueSegments.Count; i++)
+                endTime = Mathf.Max(endTime, data.time + Mathf.Max(data.techniqueSegments[i].startOffset, data.techniqueSegments[i].endOffset));
+        }
+
+        return endTime;
+    }
+
+    private void GetCameraV2FramingRange(NoteData data, out float minX, out float maxX, out int minFret, out int maxFret)
+    {
+        List<NoteData> group = GetChordGroup(data);
+        bool isGrouped = group.Count > 1;
+        if (isGrouped || data.fret == 0)
+        {
+            int handFret = GetGroupHandFret(group);
+            minX = GetHandWindowStartX(handFret);
+            maxX = GetHandWindowEndX(handFret, group);
+        }
+        else
+        {
+            float x = GetNoteX(data.fret);
+            minX = x;
+            maxX = x;
+        }
+
+        GetCameraV2FretRange(group, out minFret, out maxFret);
+
+        IncludeCameraV2Fret(data.slideTargetFret, ref minX, ref maxX, ref minFret, ref maxFret);
+        if (data.techniqueSegments != null)
+        {
+            for (int i = 0; i < data.techniqueSegments.Count; i++)
+            {
+                NoteTechniqueSegmentData segment = data.techniqueSegments[i];
+                IncludeCameraV2Fret(segment.startFret, ref minX, ref maxX, ref minFret, ref maxFret);
+                IncludeCameraV2Fret(segment.endFret, ref minX, ref maxX, ref minFret, ref maxFret);
+            }
+        }
+    }
+
+    private void GetCameraV2FretRange(List<NoteData> group, out int minFret, out int maxFret)
+    {
+        minFret = int.MaxValue;
+        maxFret = 0;
+
+        for (int i = 0; i < group.Count; i++)
+        {
+            int fret = group[i].fret;
+            if (fret <= 0)
+                continue;
+
+            minFret = Mathf.Min(minFret, fret);
+            maxFret = Mathf.Max(maxFret, fret);
+        }
+
+        if (minFret == int.MaxValue)
+        {
+            int handFret = GetGroupHandFret(group);
+            minFret = Mathf.Clamp(handFret, 1, owner.TotalFrets);
+            maxFret = Mathf.Clamp(handFret + 3, minFret, owner.TotalFrets);
+        }
+
+        minFret = Mathf.Clamp(minFret, 1, owner.TotalFrets);
+        maxFret = Mathf.Clamp(Mathf.Max(minFret, maxFret), 1, owner.TotalFrets);
+    }
+
+    private void IncludeCameraV2Fret(int fret, ref float minX, ref float maxX, ref int minFret, ref int maxFret)
+    {
+        if (fret <= 0)
+            return;
+
+        int clampedFret = Mathf.Clamp(fret, 1, owner.TotalFrets);
+        float x = GetNoteX(clampedFret);
+        minX = Mathf.Min(minX, x);
+        maxX = Mathf.Max(maxX, x);
+        minFret = Mathf.Min(minFret, clampedFret);
+        maxFret = Mathf.Max(maxFret, clampedFret);
+    }
+
+    private float ComputeCameraV2MinimumFovForStringLanes(float targetX)
+    {
+        int activeStringCount = GetRenderableStringCount();
+        if (activeStringCount <= 0)
+            return CameraV2BaseFov;
+
+        float minY = float.PositiveInfinity;
+        float maxY = float.NegativeInfinity;
+        for (int i = 0; i < activeStringCount; i++)
+        {
+            float y = GetStringY(i);
+            minY = Mathf.Min(minY, y);
+            maxY = Mathf.Max(maxY, y);
+        }
+
+        if (!float.IsFinite(minY) || !float.IsFinite(maxY))
+            return CameraV2BaseFov;
+
+        float verticalPadding = Mathf.Max(GetStringLaneSpacing() * 1.0f, owner.chordFrameVerticalPadding + 0.35f);
+        minY -= verticalPadding;
+        maxY += verticalPadding;
+
+        Vector3 cameraPosition = GetCameraV2Position(targetX);
+        float lookAtZ = GetCameraV2LookAtZ(cameraPosition, cameraV2DownAngle);
+        Vector3 lookDirection = new Vector3(targetX, cameraV2LookAtY, lookAtZ) - cameraPosition;
+        Quaternion inverseRotation = lookDirection.sqrMagnitude > 0.0001f
+            ? Quaternion.Inverse(Quaternion.LookRotation(lookDirection, Vector3.up))
+            : Quaternion.Inverse(Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f));
+        float maxSlope = 0f;
+        AccumulateCameraV2VerticalSlope(new Vector3(targetX, minY, owner.StrikeLineZ), cameraPosition, inverseRotation, ref maxSlope);
+        AccumulateCameraV2VerticalSlope(new Vector3(targetX, maxY, owner.StrikeLineZ), cameraPosition, inverseRotation, ref maxSlope);
+        AccumulateCameraV2VerticalSlope(new Vector3(targetX, minY, Mathf.Lerp(owner.StrikeLineZ, owner.SpawnZ, 0.18f)), cameraPosition, inverseRotation, ref maxSlope);
+        AccumulateCameraV2VerticalSlope(new Vector3(targetX, maxY, Mathf.Lerp(owner.StrikeLineZ, owner.SpawnZ, 0.18f)), cameraPosition, inverseRotation, ref maxSlope);
+
+        if (maxSlope <= 0.0001f)
+            return CameraV2BaseFov;
+
+        float requiredFov = (2f * Mathf.Atan(maxSlope) * Mathf.Rad2Deg) + 4f;
+        return Mathf.Clamp(requiredFov, CameraV2BaseFov, 90f);
+    }
+
+    private static void AccumulateCameraV2VerticalSlope(Vector3 worldPoint, Vector3 cameraPosition, Quaternion inverseRotation, ref float maxSlope)
+    {
+        Vector3 local = inverseRotation * (worldPoint - cameraPosition);
+        if (local.z <= 0.01f)
+            return;
+
+        maxSlope = Mathf.Max(maxSlope, Mathf.Abs(local.y) / local.z);
+    }
+
+    private struct CameraV2Target
+    {
+        public float targetX;
+        public float targetFov;
+        public float requiredMinX;
+        public float requiredMaxX;
+        public float cameraY;
+        public float focusDistance;
+        public float downAngle;
+        public float calmness;
+    }
+
+    private struct ChordRepeatChainEntry
+    {
+        public int chordId;
+        public float time;
+        public string shapeSignature;
+        public bool hasTechniqueOrSustain;
+    }
+
+    private struct ChordRepeatRenderInfo
+    {
+        public bool isRepeat;
+    }
+
     private float GetRenderSongTime(GuitarGameplaySnapshot snapshot)
     {
         using (GetRenderSongTimeProfilerMarker.Auto())
@@ -6079,6 +8303,33 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return Mathf.Max(0.01f, (owner.SpawnZ - owner.StrikeLineZ) / Mathf.Max(0.01f, currentVisualNoteSpeed));
     }
 
+    private static float GetNoteSpawnFadeLeadSeconds()
+    {
+        return HighwayNoteSpawnFadeSeconds;
+    }
+
+    private float GetNoteSpawnFade(float rawTravelZ)
+    {
+        if (owner == null)
+            return 1f;
+
+        float fadeDistance = Mathf.Max(0.01f, currentVisualNoteSpeed * GetNoteSpawnFadeLeadSeconds());
+        float fadeStartZ = owner.SpawnZ + fadeDistance;
+        float fade = Mathf.Clamp01((fadeStartZ - rawTravelZ) / fadeDistance);
+        return Mathf.SmoothStep(0f, 1f, fade);
+    }
+
+    private static Vector3 ApplyNoteSpawnScale(Vector3 scale, float spawnFade)
+    {
+        float shapedFade = Mathf.Clamp01(spawnFade);
+        float lateralScale = Mathf.Lerp(HighwayNoteSpawnMinimumScale, 1f, shapedFade);
+        float heightScale = Mathf.Lerp(HighwayNoteSpawnMinimumScale * 0.82f, 1f, shapedFade);
+        return new Vector3(
+            scale.x * lateralScale,
+            scale.y * heightScale,
+            scale.z);
+    }
+
     private float GetVisualNoteSpeed(GuitarGameplaySnapshot snapshot)
     {
         float spacingScale = 1f;
@@ -6086,6 +8337,167 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             spacingScale = Mathf.Clamp(snapshot.tabSpeedOffsetPercent / 100f, 0.5f, 1.5f);
 
         return Mathf.Max(0.01f, owner.noteSpeed * spacingScale);
+    }
+
+    private void BuildChordRepeatRenderCache()
+    {
+        chordRepeatRenderInfoByChordId.Clear();
+
+        if (chordGroups.Count == 0)
+            return;
+
+        // Visual-only cache: repeated strums keep their NoteData/GameplayNoteState untouched for scoring.
+        List<ChordRepeatChainEntry> entries = new List<ChordRepeatChainEntry>(chordGroups.Count);
+        foreach (KeyValuePair<int, List<NoteData>> pair in chordGroups)
+        {
+            List<NoteData> group = pair.Value;
+            if (group == null || group.Count < 2)
+                continue;
+
+            string signature = BuildChordShapeSignature(group);
+            if (string.IsNullOrEmpty(signature))
+                continue;
+
+            entries.Add(new ChordRepeatChainEntry
+            {
+                chordId = pair.Key,
+                time = GetChordAnchorTime(group),
+                shapeSignature = signature,
+                hasTechniqueOrSustain = HasChordTechniqueOrSustain(group)
+            });
+        }
+
+        if (entries.Count == 0)
+            return;
+
+        entries.Sort((left, right) =>
+        {
+            int cmp = left.time.CompareTo(right.time);
+            if (cmp != 0)
+                return cmp;
+
+            return left.chordId.CompareTo(right.chordId);
+        });
+
+        List<ChordRepeatChainEntry> chain = new List<ChordRepeatChainEntry>();
+        for (int i = 0; i < entries.Count; i++)
+        {
+            ChordRepeatChainEntry entry = entries[i];
+            if (chain.Count == 0)
+            {
+                chain.Add(entry);
+                continue;
+            }
+
+            ChordRepeatChainEntry previous = chain[chain.Count - 1];
+            bool continuesChain =
+                string.Equals(entry.shapeSignature, previous.shapeSignature, StringComparison.Ordinal) &&
+                entry.time - previous.time < ChordRepeatChainGapSeconds;
+
+            if (!continuesChain)
+            {
+                CommitChordRepeatChain(chain);
+                chain.Clear();
+            }
+
+            chain.Add(entry);
+        }
+
+        CommitChordRepeatChain(chain);
+    }
+
+    private void CommitChordRepeatChain(List<ChordRepeatChainEntry> chain)
+    {
+        if (chain == null || chain.Count == 0)
+            return;
+
+        bool collapseEligibleChain = chain.Count >= ChordRepeatFullChainMaxCount;
+        for (int i = 0; i < chain.Count; i++)
+        {
+            ChordRepeatChainEntry entry = chain[i];
+            chordRepeatRenderInfoByChordId[entry.chordId] = new ChordRepeatRenderInfo
+            {
+                isRepeat = collapseEligibleChain && i > 0 && !entry.hasTechniqueOrSustain
+            };
+        }
+    }
+
+    private static float GetChordAnchorTime(List<NoteData> group)
+    {
+        if (group == null || group.Count == 0)
+            return 0f;
+
+        return group[0].time;
+    }
+
+    private static string BuildChordShapeSignature(List<NoteData> group)
+    {
+        if (group == null || group.Count < 2)
+            return string.Empty;
+
+        List<NoteData> ordered = group
+            .OrderBy(note => note.stringIdx)
+            .ThenBy(note => note.fret)
+            .ToList();
+
+        string[] parts = new string[ordered.Count];
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            NoteData note = ordered[i];
+            parts[i] = note.stringIdx.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+                       ":" +
+                       note.fret.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        return string.Join("|", parts);
+    }
+
+    private bool HasChordTechniqueOrSustain(List<NoteData> group)
+    {
+        if (group == null)
+            return false;
+
+        for (int i = 0; i < group.Count; i++)
+        {
+            NoteData note = group[i];
+            if (note.technique != NoteTechnique.None ||
+                note.slideTargetFret >= 0 ||
+                Mathf.Abs(note.bendStep) > 0.01f ||
+                note.bendPreBend ||
+                note.bendRelease ||
+                note.isMuted ||
+                note.isLegato ||
+                !note.requiresPluck ||
+                note.duration >= GuitarTechniqueVisualThresholds.SustainSeconds ||
+                HasTechniqueSegments(note))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool IsRepeatChordBodySuppressed(NoteData data)
+    {
+        return data.chordId >= 0 &&
+               chordRepeatRenderInfoByChordId.TryGetValue(data.chordId, out ChordRepeatRenderInfo info) &&
+               info.isRepeat;
+    }
+
+    private bool IsRepeatChordFrame(int chordId)
+    {
+        return chordId >= 0 &&
+               chordRepeatRenderInfoByChordId.TryGetValue(chordId, out ChordRepeatRenderInfo info) &&
+               info.isRepeat;
+    }
+
+    private float GetChordFrameRenderHeight(int chordId, List<NoteData> group)
+    {
+        float baseHeight = GetChordBoxHeight(group);
+        return IsRepeatChordFrame(chordId)
+            ? Mathf.Max(GetStringLaneSpacing() * 1.35f, baseHeight * ChordRepeatFrameHeightScale)
+            : baseHeight;
     }
 
     private List<NoteData> GetChordGroup(NoteData data)
@@ -6197,17 +8609,17 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private Vector3 GetSingleFrettedNoteScale()
     {
         return new Vector3(
-            owner.FretSpacing * 0.56f,
-            0.44f * GetNoteHeightScale(),
-            Mathf.Max(0.48f, owner.FretSpacing * 0.28f));
+            owner.FretSpacing * 0.58f,
+            0.84f * GetNoteHeightScale(),
+            GetFrettedNoteDepth());
     }
 
     private Vector3 GetGroupedFrettedNoteScale()
     {
         return new Vector3(
-            owner.FretSpacing * 0.54f,
-            0.4f * GetNoteHeightScale(),
-            Mathf.Max(0.44f, owner.FretSpacing * 0.26f));
+            owner.FretSpacing * 0.56f,
+            0.78f * GetNoteHeightScale(),
+            GetFrettedNoteDepth());
     }
 
     private Vector3 GetSingleOpenNoteScale()
@@ -6220,7 +8632,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetScaledOpenHeight()
     {
-        return 0.2f * GetNoteHeightScale();
+        return 0.34f * GetNoteHeightScale();
     }
 
     private float GetNoteHeightScale()
@@ -6230,7 +8642,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetScaledOpenDepth()
     {
-        return Mathf.Max(0.36f, owner.FretSpacing * 0.22f);
+        return Mathf.Max(HighwayOpenNoteMinimumDepth, owner.FretSpacing * 0.07f);
+    }
+
+    private float GetFrettedNoteDepth()
+    {
+        return Mathf.Max(HighwayNoteBodyMinimumDepth, owner.FretSpacing * HighwayNoteBodyDepthFretScale);
     }
 
     private Vector3 GetMarkerScale()
@@ -6267,6 +8684,81 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             target.SetActive(active);
     }
 
+    private void UpdateResolvedFeedbackBody(
+        HighwayNoteView view,
+        bool showBody,
+        float x,
+        float y,
+        float z,
+        float scale,
+        Color color,
+        float emission)
+    {
+        if (view == null || view.resolvedFeedbackRoot == null)
+            return;
+
+        if (!showBody || color.a <= 0.01f)
+        {
+            SetGameObjectActive(view.resolvedFeedbackRoot, false);
+            return;
+        }
+
+        if (view.resolvedFeedbackTransform != null)
+        {
+            Vector3 targetPosition = new Vector3(x, y, z);
+            Vector3 targetScale = Vector3.one * Mathf.Max(0.01f, scale);
+            if (!view.hasCachedResolvedFeedbackPosition ||
+                !ApproximatelyVector3(view.cachedResolvedFeedbackPosition, targetPosition))
+            {
+                view.resolvedFeedbackTransform.position = targetPosition;
+                view.cachedResolvedFeedbackPosition = targetPosition;
+                view.hasCachedResolvedFeedbackPosition = true;
+            }
+
+            if (!view.hasCachedResolvedFeedbackScale ||
+                !ApproximatelyVector3(view.cachedResolvedFeedbackScale, targetScale))
+            {
+                view.resolvedFeedbackTransform.localScale = targetScale;
+                view.cachedResolvedFeedbackScale = targetScale;
+                view.hasCachedResolvedFeedbackScale = true;
+            }
+        }
+
+        if (view.resolvedFeedbackMaterial != null &&
+            (!view.hasCachedResolvedFeedbackAppearance ||
+             view.cachedResolvedFeedbackColor != color ||
+             !Mathf.Approximately(view.cachedResolvedFeedbackEmission, emission)))
+        {
+            ApplyResolvedFeedbackMaterialState(view.resolvedFeedbackMaterial, color, emission);
+            view.cachedResolvedFeedbackColor = color;
+            view.cachedResolvedFeedbackEmission = emission;
+            view.hasCachedResolvedFeedbackAppearance = true;
+        }
+
+        SetGameObjectActive(view.resolvedFeedbackRoot, true);
+    }
+
+    private static void ApplyResolvedFeedbackMaterialState(Material material, Color color, float emission)
+    {
+        if (material == null)
+            return;
+
+        material.color = color;
+        if (material.HasProperty("_Color"))
+            material.SetColor("_Color", color);
+        if (material.HasProperty("_BaseColor"))
+            material.SetColor("_BaseColor", color);
+        if (material.HasProperty("_TintColor"))
+            material.SetColor("_TintColor", color);
+
+        if (material.HasProperty("_EmissionColor"))
+        {
+            material.EnableKeyword("_EMISSION");
+            material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+            material.SetColor("_EmissionColor", emission > 0f ? color * Mathf.Pow(2f, emission) : Color.black);
+        }
+    }
+
     private bool ShouldKeepTechniqueAliveAfterResolution(NoteData data, float songTime)
     {
         if (!HasPersistentTechniqueVisual(data))
@@ -6284,9 +8776,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         float endTime = data.time;
         if (HasTechniqueSegments(data))
-            endTime = Mathf.Max(endTime, data.time + data.techniqueSegments.Max(segment => segment.endOffset));
+            endTime = Mathf.Max(endTime, data.time + GetVisualTechniqueSegmentEndOffset(data));
         if (HasBendRibbon(data))
-            endTime = Mathf.Max(endTime, data.time + Mathf.Max(0.14f, data.duration));
+            endTime = Mathf.Max(endTime, data.time + Mathf.Max(MinimumVisualBendTransitionSeconds, 0.14f, data.duration));
         if (HasNoteSustainRibbon(data))
             endTime = Mathf.Max(endTime, data.time + Mathf.Max(GuitarTechniqueVisualThresholds.SustainSeconds, data.duration));
 
@@ -6300,9 +8792,16 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return endTime;
     }
 
-    private GameObject CreateChordFrame(float leftX, float rightX, float centerY, float height, Color? frameColorOverride = null, float frameGlowIntensity = 1.6f)
+    private GameObject CreateChordFrame(
+        float leftX,
+        float rightX,
+        float centerY,
+        float height,
+        Color? frameColorOverride = null,
+        float frameGlowIntensity = 1.6f,
+        bool repeatStyle = false)
     {
-        GameObject parent = new GameObject("ChordFrame");
+        GameObject parent = new GameObject(repeatStyle ? "RepeatChordFrame" : "ChordFrame");
         parent.transform.SetParent(gameplayRoot.transform, false);
         float centerX = (leftX + rightX) * 0.5f;
         float width = Mathf.Max(0.5f, rightX - leftX);
@@ -6312,12 +8811,49 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float halfW = width * 0.5f;
         float halfH = height * 0.5f;
 
-        CreateChordFrameBackground(parent.transform, width, height);
-        CreateFramePiece(parent.transform, new Vector3(0f, halfH, 0f), new Vector3(width, owner.chordFrameThickness, 0.08f), frameMat);
+        if (repeatStyle)
+            CreateRepeatChordFrameFill(parent.transform, width, height);
+        else
+            CreateChordFrameBackground(parent.transform, width, height);
+
+        if (!repeatStyle)
+            CreateFramePiece(parent.transform, new Vector3(0f, halfH, 0f), new Vector3(width, owner.chordFrameThickness, 0.08f), frameMat);
         CreateFramePiece(parent.transform, new Vector3(0f, -halfH, 0f), new Vector3(width, owner.chordFrameThickness, 0.08f), frameMat);
         CreateFramePiece(parent.transform, new Vector3(-halfW, 0f, 0f), new Vector3(owner.chordFrameThickness, height, 0.08f), frameMat);
         CreateFramePiece(parent.transform, new Vector3(halfW, 0f, 0f), new Vector3(owner.chordFrameThickness, height, 0.08f), frameMat);
         return parent;
+    }
+
+    private void CreateRepeatChordFrameFill(Transform parent, float width, float height)
+    {
+        if (parent == null)
+            return;
+
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayChordRepeatFill");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayChordRepeatFill");
+
+        Material fillMat = shader != null
+            ? new Material(shader)
+            : owner.CreateSharedTransparentMaterial(ChordRepeatFillBottomColor, 0.04f);
+        if (fillMat.HasProperty("_BottomColor"))
+            fillMat.SetColor("_BottomColor", ChordRepeatFillBottomColor);
+        if (fillMat.HasProperty("_TopColor"))
+            fillMat.SetColor("_TopColor", ChordRepeatFillTopColor);
+        ConfigureOverlayMaterial(fillMat, 99, true);
+
+        float inset = owner.chordFrameThickness * 1.35f;
+        float fillWidth = Mathf.Max(0.16f, width - inset);
+        float fillHeight = Mathf.Max(0.16f, height - inset);
+        GameObject fill = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        fill.name = "RepeatChordFrameFill";
+        fill.transform.SetParent(parent, false);
+        fill.transform.localPosition = new Vector3(0f, 0f, 0.012f);
+        fill.transform.localRotation = Quaternion.identity;
+        fill.transform.localScale = new Vector3(fillWidth, fillHeight, 1f);
+        Renderer fillRenderer = fill.GetComponent<Renderer>();
+        fillRenderer.material = fillMat;
+        Object.Destroy(fill.GetComponent<Collider>());
     }
 
     private void UpdateChordFrameLabel(GameObject frame, List<NoteData> group, float width, float height)
@@ -6617,13 +9153,19 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return ChordPitchClassNames[normalized];
     }
 
-    private void CreateFramePiece(Transform parent, Vector3 localPosition, Vector3 localScale, Material material)
+    private GameObject CreateFramePieceObject(Transform parent, Vector3 localPosition, Vector3 localScale, Material material)
     {
         GameObject piece = GameObject.CreatePrimitive(PrimitiveType.Cube);
         piece.transform.SetParent(parent, false);
         piece.transform.localPosition = localPosition;
         piece.transform.localScale = localScale;
         piece.GetComponent<Renderer>().material = material;
+        return piece;
+    }
+
+    private void CreateFramePiece(Transform parent, Vector3 localPosition, Vector3 localScale, Material material)
+    {
+        CreateFramePieceObject(parent, localPosition, localScale, material);
     }
 
     private GameObject CreateNoteOutline(Vector3 noteScale, Color color)
@@ -6646,6 +9188,39 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         CreateFramePiece(outlineRoot.transform, new Vector3(-insetHalfWidth, 0f, outlinePlaneZ), new Vector3(thickness, height, depth), outlineMat);
         CreateFramePiece(outlineRoot.transform, new Vector3(insetHalfWidth, 0f, outlinePlaneZ), new Vector3(thickness, height, depth), outlineMat);
         return outlineRoot;
+    }
+
+    private GameObject CreateResolvedFeedbackBody(Vector3 noteScale, Color color, out Material bodyMat)
+    {
+        GameObject bodyRoot = new GameObject("ResolvedNoteFeedbackBody");
+        bodyRoot.transform.SetParent(gameplayRoot.transform, false);
+
+        Color initialColor = new Color(color.r, color.g, color.b, 0.64f);
+        bodyMat = owner.CreateSharedTransparentMaterial(initialColor, 0.75f);
+        // Resolved feedback must draw below live note bodies so quick follow-up notes remain readable on top.
+        ConfigureOverlayMaterial(bodyMat, 112, true);
+
+        GameObject body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        body.name = "ResolvedNoteFeedbackBodyMesh";
+        body.transform.SetParent(bodyRoot.transform, false);
+        body.transform.localPosition = Vector3.zero;
+        body.transform.localScale = new Vector3(
+            Mathf.Max(0.03f, noteScale.x * HighwayResolvedFeedbackBodyWidthScale),
+            Mathf.Max(0.03f, noteScale.y * HighwayResolvedFeedbackBodyHeightScale),
+            Mathf.Max(0.035f, noteScale.z * HighwayResolvedFeedbackBodyDepthScale));
+
+        Renderer renderer = body.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            renderer.material = bodyMat;
+            renderer.shadowCastingMode = ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            renderer.lightProbeUsage = LightProbeUsage.Off;
+            renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+        }
+
+        Object.Destroy(body.GetComponent<Collider>());
+        return bodyRoot;
     }
 
     private float GetStuckOutlineCenterZ()
@@ -6680,6 +9255,21 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             sharedTechniqueRibbonMaterial = new Material(shader);
             ConfigureOverlayMaterial(sharedTechniqueRibbonMaterial, 100, true);
         }
+    }
+
+    private void EnsureContinuousRibbonResources()
+    {
+        if (sharedContinuousRibbonMaterial != null)
+            return;
+
+        Shader shader = Resources.Load<Shader>("Shaders/HighwayContinuousRibbon");
+        if (shader == null)
+            shader = Shader.Find("Custom/HighwayContinuousRibbon");
+        if (shader == null)
+            return;
+
+        sharedContinuousRibbonMaterial = new Material(shader);
+        ConfigureOverlayMaterial(sharedContinuousRibbonMaterial, 101, true);
     }
 
     private void EnsureBendArrowResources()
@@ -6786,6 +9376,79 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         meshRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
         renderer = meshRenderer;
         return ribbon;
+    }
+
+    private GameObject CreateContinuousRibbonObject(
+        string name,
+        Transform parent,
+        out Renderer renderer,
+        out ContinuousRibbonMeshState meshState)
+    {
+        GameObject ribbon = new GameObject(name);
+        ribbon.transform.SetParent(parent, false);
+        MeshFilter meshFilter = ribbon.AddComponent<MeshFilter>();
+        meshState = CreateContinuousRibbonMeshState(ContinuousBendRibbonSamples);
+        meshFilter.sharedMesh = meshState.mesh;
+
+        MeshRenderer meshRenderer = ribbon.AddComponent<MeshRenderer>();
+        meshRenderer.sharedMaterial = sharedContinuousRibbonMaterial;
+        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = false;
+        meshRenderer.lightProbeUsage = LightProbeUsage.Off;
+        meshRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
+        renderer = meshRenderer;
+        return ribbon;
+    }
+
+    private static ContinuousRibbonMeshState CreateContinuousRibbonMeshState(int sampleCount)
+    {
+        int clampedSamples = Mathf.Max(8, sampleCount);
+        Vector3[] vertices = new Vector3[clampedSamples * 2];
+        Vector3[] centerline = new Vector3[clampedSamples];
+        Vector2[] uvs = new Vector2[vertices.Length];
+        Vector2[] uv2 = new Vector2[vertices.Length];
+        int[] triangles = new int[(clampedSamples - 1) * 6];
+
+        for (int i = 0; i < clampedSamples; i++)
+        {
+            float t = i / (float)(clampedSamples - 1);
+            int baseIndex = i * 2;
+            uvs[baseIndex] = new Vector2(0f, t);
+            uvs[baseIndex + 1] = new Vector2(1f, t);
+
+            if (i >= clampedSamples - 1)
+                continue;
+
+            int triangleIndex = i * 6;
+            triangles[triangleIndex] = baseIndex;
+            triangles[triangleIndex + 1] = baseIndex + 2;
+            triangles[triangleIndex + 2] = baseIndex + 1;
+            triangles[triangleIndex + 3] = baseIndex + 1;
+            triangles[triangleIndex + 4] = baseIndex + 2;
+            triangles[triangleIndex + 5] = baseIndex + 3;
+        }
+
+        Mesh mesh = new Mesh
+        {
+            name = "HighwayContinuousBendRibbonMesh"
+        };
+        mesh.MarkDynamic();
+        mesh.vertices = vertices;
+        mesh.uv = uvs;
+        mesh.uv2 = uv2;
+        mesh.triangles = triangles;
+        mesh.bounds = new Bounds(Vector3.zero, new Vector3(256f, 64f, 256f));
+
+        return new ContinuousRibbonMeshState
+        {
+            mesh = mesh,
+            vertices = vertices,
+            centerline = centerline,
+            uvs = uvs,
+            uv2 = uv2,
+            triangles = triangles,
+            sampleCount = clampedSamples
+        };
     }
 
     private Material CreateLaneSurfaceMaterial()
@@ -6915,8 +9578,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public Renderer muteSymbolRenderer;
         public GameObject outlineRoot;
         public Transform outlineTransform;
+        public GameObject resolvedFeedbackRoot;
+        public Transform resolvedFeedbackTransform;
+        public Material resolvedFeedbackMaterial;
         public GameObject techniqueRoot;
         public Transform techniqueRootTransform;
+        public GameObject continuousBendRibbon;
+        public Renderer continuousBendRibbonRenderer;
+        public MaterialPropertyBlock continuousBendRibbonPropertyBlock;
+        public ContinuousRibbonMeshState continuousBendRibbonMesh;
         public GameObject[] techniqueSegmentRibbons;
         public Renderer[] techniqueSegmentRibbonRenderers;
         public MaterialPropertyBlock[] techniqueSegmentRibbonPropertyBlocks;
@@ -6940,6 +9610,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public float noteX;
         public float noteY;
         public float noteStrikeOffset;
+        public List<NoteTechniqueSegmentData> orderedTechniqueSegmentSource;
+        public List<NoteTechniqueSegmentData> orderedTechniqueSegments;
+        public int orderedTechniqueSegmentSourceCount;
         public bool hasAnyTechniqueVisual;
         public bool hasCachedNoteAppearance;
         public Color cachedNoteColor;
@@ -6953,6 +9626,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         public bool hasCachedMarkerColor;
         public Color cachedMarkerColor;
         public float cachedMarkerEmissionMultiplier;
+        public bool hasCachedResolvedFeedbackPosition;
+        public Vector3 cachedResolvedFeedbackPosition;
+        public bool hasCachedResolvedFeedbackScale;
+        public Vector3 cachedResolvedFeedbackScale;
+        public bool hasCachedResolvedFeedbackAppearance;
+        public Color cachedResolvedFeedbackColor;
+        public float cachedResolvedFeedbackEmission;
 
         public void Destroy()
         {
@@ -6974,8 +9654,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 Object.Destroy(muteSymbol);
             if (legatoCurve != null)
                 Object.Destroy(legatoCurve);
+            if (continuousBendRibbonMesh != null && continuousBendRibbonMesh.mesh != null)
+                Object.Destroy(continuousBendRibbonMesh.mesh);
             if (outlineRoot != null)
                 Object.Destroy(outlineRoot);
+            if (resolvedFeedbackRoot != null)
+                Object.Destroy(resolvedFeedbackRoot);
             if (techniqueRoot != null)
                 Object.Destroy(techniqueRoot);
         }

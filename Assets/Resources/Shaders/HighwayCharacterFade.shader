@@ -9,6 +9,7 @@ Shader "Custom/HighwayCharacterFade"
         _MissFlashColor ("Miss Flash Color", Color) = (1, 0.34, 0.10, 1)
         _MissFlashStrength ("Miss Flash Strength", Range(0, 1)) = 0
         _MissFlashSpeed ("Miss Flash Speed", Range(0, 40)) = 14
+        _ZTest ("ZTest", Float) = 4
     }
 
     SubShader
@@ -16,7 +17,7 @@ Shader "Custom/HighwayCharacterFade"
         Tags { "Queue"="Transparent" "RenderType"="Transparent" }
         Blend SrcAlpha OneMinusSrcAlpha
         ZWrite Off
-        ZTest LEqual
+        ZTest [_ZTest]
         Cull Off
 
         Pass

@@ -16,6 +16,7 @@ Shader "Custom/HighwayCharacterPortal"
         _HalfMode ("Half Mode", Range(-1, 1)) = 0
         _SplitY ("Split Y", Range(0, 1)) = 0.5
         _SplitSoftness ("Split Softness", Range(0.001, 0.2)) = 0.035
+        _ZTest ("ZTest", Float) = 4
     }
 
     SubShader
@@ -24,7 +25,7 @@ Shader "Custom/HighwayCharacterPortal"
         Blend SrcAlpha OneMinusSrcAlpha
         Cull Off
         ZWrite Off
-        ZTest LEqual
+        ZTest [_ZTest]
 
         Pass
         {

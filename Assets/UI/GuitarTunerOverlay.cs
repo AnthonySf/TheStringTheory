@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using UnityEngine;
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
@@ -81,6 +84,19 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
     private bool suppressTunerSettingsCallbacks;
     private bool navigationActive;
     private int navigationIndex;
+    private VisualElement controllerCursor;
+    private VisualElement controllerCursorInner;
+    private VisualElement lastControllerCursorTarget;
+    private VisualElement controllerCursorPressedTarget;
+    private Vector2 controllerCursorPanelPosition;
+    private Vector3 lastPhysicalMousePosition;
+    private bool controllerCursorActive;
+    private bool controllerCursorInitialized;
+    private bool controllerCursorPointerMode;
+    private bool controllerCursorPressActive;
+    private bool controllerCursorPrimaryWasHeld;
+    private float controllerCursorLastActivityTime = float.NegativeInfinity;
+    private const float ControllerCursorIdleHideSeconds = 4f;
 
     private enum TunerNavigationKind
     {
@@ -194,7 +210,10 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         {
             modelPreview?.SetVisible(visible);
             if (!visible)
+            {
                 ClearNavigationSelection();
+                HideControllerCursor();
+            }
         }
     }
 
@@ -205,6 +224,7 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
 
         RefreshUi(tunerService.GetSnapshot());
         UpdateIntroAnimation(Time.unscaledDeltaTime);
+        UpdateControllerCursor();
     }
 
     private void BuildUi(VisualElement root)
@@ -482,6 +502,25 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         if (modelTargetButtonLayer != null)
             overlayRoot.Add(modelTargetButtonLayer);
         root.Add(overlayRoot);
+        BuildControllerCursor(root);
+    }
+
+    public bool IsControllerCursorPointerModeActive =>
+        controllerCursorActive &&
+        controllerCursorPointerMode &&
+        Time.unscaledTime - controllerCursorLastActivityTime <= ControllerCursorIdleHideSeconds;
+
+    private void BuildControllerCursor(VisualElement root)
+    {
+        controllerCursor = new VisualElement();
+        controllerCursor.style.opacity = 0f;
+        controllerCursor.style.display = DisplayStyle.None;
+
+        controllerCursorInner = new VisualElement();
+        controllerCursor.Add(controllerCursorInner);
+        ControllerCursorVisualUtility.Apply(controllerCursor, controllerCursorInner, root);
+
+        root.Add(controllerCursor);
     }
 
     private void BuildTuningInfoPanel()
@@ -885,6 +924,412 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
 
         RefreshPegHighlights(snapshot);
         RefreshNavigationVisuals();
+    }
+
+    private void UpdateControllerCursor()
+    {
+        if (controllerCursor == null || overlayRoot?.panel == null)
+            return;
+
+        Vector2 panelSize = ResolveControllerCursorPanelSize();
+        if (!controllerCursorInitialized || !IsFiniteVector2(controllerCursorPanelPosition))
+        {
+            controllerCursorPanelPosition = panelSize * 0.5f;
+            lastPhysicalMousePosition = Input.mousePosition;
+            controllerCursorInitialized = true;
+        }
+        else
+        {
+            controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+        }
+
+        Vector3 currentMousePosition = Input.mousePosition;
+        bool mouseMoved = (currentMousePosition - lastPhysicalMousePosition).sqrMagnitude > 1f;
+        bool mouseClicked = Input.GetMouseButtonDown(0) || Input.GetMouseButtonDown(1) || Input.GetMouseButtonDown(2);
+        lastPhysicalMousePosition = currentMousePosition;
+        if (mouseMoved || mouseClicked)
+        {
+            HideControllerCursor();
+            return;
+        }
+
+        float axisX = ReadControllerCursorHorizontalAxis();
+        float axisY = ReadControllerCursorVerticalAxis();
+        Vector2 movement = new Vector2(axisX, -axisY);
+        bool controllerMovementDetected = movement.sqrMagnitude >= 0.04f;
+        bool primaryPressed = WasControllerPrimaryActionPressedThisFrame();
+        bool primaryHeld = IsControllerPrimaryActionHeld();
+        bool primaryReleased = controllerCursorPrimaryWasHeld && !primaryHeld;
+        bool rightStickActivity = controllerCursorActive &&
+            ControllerCursorVisualUtility.ReadRightStickAxis().sqrMagnitude >= 0.04f;
+
+        if (controllerMovementDetected || rightStickActivity)
+        {
+            bool wasInactive = !controllerCursorActive;
+            controllerCursorActive = true;
+            controllerCursorPointerMode = true;
+            controllerCursorLastActivityTime = Time.unscaledTime;
+            if (wasInactive)
+                ClearNativeUiFocusForControllerCursor();
+        }
+        else if (primaryHeld && controllerCursorActive)
+        {
+            controllerCursorLastActivityTime = Time.unscaledTime;
+        }
+
+        if (!controllerCursorActive)
+        {
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+            controllerCursorPrimaryWasHeld = primaryHeld;
+            return;
+        }
+
+        bool hiddenByIdle = Time.unscaledTime - controllerCursorLastActivityTime > ControllerCursorIdleHideSeconds;
+        if (hiddenByIdle)
+        {
+            EndControllerCursorPress(sendRelease: true);
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+            lastControllerCursorTarget = null;
+            controllerCursorPrimaryWasHeld = primaryHeld;
+            return;
+        }
+
+        controllerCursor.style.display = DisplayStyle.Flex;
+        controllerCursor.style.opacity = 1f;
+        controllerCursor.BringToFront();
+
+        if (movement.sqrMagnitude > 0.0001f)
+        {
+            float speed = 2200f;
+            if (movement.sqrMagnitude > 1f)
+                movement.Normalize();
+            controllerCursorPanelPosition += movement * speed * Time.unscaledDeltaTime;
+        }
+
+        controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+        PositionControllerCursorVisual();
+
+        VisualElement pickedTarget = PickControllerCursorTarget();
+        if (ControllerCursorVisualUtility.TryScrollHoveredScrollView(pickedTarget, Time.unscaledDeltaTime, out _))
+            controllerCursorLastActivityTime = Time.unscaledTime;
+        if (TryFindControllerCursorActionTarget(pickedTarget, out VisualElement actionTarget))
+            pickedTarget = actionTarget;
+
+        if (pickedTarget != null && pickedTarget != lastControllerCursorTarget && movement.sqrMagnitude > 0.0001f)
+            DispatchControllerCursorMove(pickedTarget);
+        lastControllerCursorTarget = pickedTarget;
+
+        if (primaryPressed && controllerCursorPointerMode)
+        {
+            ClearNativeUiFocusForControllerCursor();
+            BeginControllerCursorPress(pickedTarget);
+        }
+
+        if (controllerCursorPressActive && controllerCursorPressedTarget != null)
+        {
+            if (primaryHeld)
+                DispatchControllerCursorDrag(controllerCursorPressedTarget);
+            if (primaryReleased)
+                EndControllerCursorPress(sendRelease: true);
+        }
+
+        controllerCursorPrimaryWasHeld = primaryHeld;
+    }
+
+    private void HideControllerCursor()
+    {
+        EndControllerCursorPress(sendRelease: false);
+        controllerCursorActive = false;
+        controllerCursorPointerMode = false;
+        controllerCursorPrimaryWasHeld = false;
+        lastControllerCursorTarget = null;
+        if (controllerCursor != null)
+        {
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+        }
+    }
+
+    private void PositionControllerCursorVisual()
+    {
+        ControllerCursorVisualUtility.Apply(controllerCursor, controllerCursorInner, overlayRoot);
+        controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, ResolveControllerCursorPanelSize());
+        controllerCursor.style.left = controllerCursorPanelPosition.x;
+        controllerCursor.style.top = controllerCursorPanelPosition.y;
+    }
+
+    private void ClearNativeUiFocusForControllerCursor()
+    {
+        FocusController focusController = overlayRoot?.panel?.focusController;
+        if (focusController?.focusedElement is Focusable focusedElement)
+            focusedElement.Blur();
+    }
+
+    private Vector2 ResolveControllerCursorPanelSize()
+    {
+        float panelWidth = overlayRoot?.resolvedStyle.width ?? float.NaN;
+        float panelHeight = overlayRoot?.resolvedStyle.height ?? float.NaN;
+        if (!IsFiniteFloat(panelWidth) || panelWidth < 8f)
+            panelWidth = Screen.width;
+        if (!IsFiniteFloat(panelHeight) || panelHeight < 8f)
+            panelHeight = Screen.height;
+        if (!IsFiniteFloat(panelWidth) || panelWidth < 8f)
+            panelWidth = 1920f;
+        if (!IsFiniteFloat(panelHeight) || panelHeight < 8f)
+            panelHeight = 1080f;
+
+        return new Vector2(Mathf.Max(1f, panelWidth), Mathf.Max(1f, panelHeight));
+    }
+
+    private static Vector2 SanitizeControllerCursorPosition(Vector2 position, Vector2 panelSize)
+    {
+        Vector2 fallback = panelSize * 0.5f;
+        if (!IsFiniteVector2(position))
+            return fallback;
+
+        float minX = 8f;
+        float minY = 8f;
+        float maxX = Mathf.Max(minX, panelSize.x - 8f);
+        float maxY = Mathf.Max(minY, panelSize.y - 8f);
+        position.x = Mathf.Clamp(position.x, minX, maxX);
+        position.y = Mathf.Clamp(position.y, minY, maxY);
+
+        return IsFiniteVector2(position) ? position : fallback;
+    }
+
+    private static bool IsFiniteVector2(Vector2 value)
+    {
+        return IsFiniteFloat(value.x) && IsFiniteFloat(value.y);
+    }
+
+    private static bool IsFiniteFloat(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    private VisualElement PickControllerCursorTarget()
+    {
+        IPanel panel = overlayRoot?.panel;
+        if (panel == null)
+            return null;
+
+        VisualElement picked = panel.Pick(controllerCursorPanelPosition);
+        if (picked == controllerCursor || picked == controllerCursorInner)
+            return null;
+
+        return picked;
+    }
+
+    private bool TryFindControllerCursorActionTarget(VisualElement target, out VisualElement actionTarget)
+    {
+        actionTarget = null;
+        for (VisualElement current = target; current != null && current != overlayRoot; current = current.parent)
+        {
+            if (current == controllerCursor || current == controllerCursorInner || current == blurBackdrop)
+                continue;
+
+            if (current is Button || current is DropdownField)
+            {
+                actionTarget = current;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private void DispatchControllerCursorMove(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        using (PointerMoveEvent pointerMove = PointerMoveEvent.GetPooled(CreateControllerCursorMouseEvent(EventType.MouseMove, 0, 0)))
+        {
+            target.SendEvent(pointerMove);
+        }
+    }
+
+    private void BeginControllerCursorPress(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        EndControllerCursorPress(sendRelease: false);
+        controllerCursorPressedTarget = target;
+        controllerCursorPressActive = true;
+        DispatchControllerCursorMove(target);
+
+        using (PointerDownEvent pointerDown = PointerDownEvent.GetPooled(CreateControllerCursorMouseEvent(EventType.MouseDown, 0, 1)))
+        {
+            target.SendEvent(pointerDown);
+        }
+    }
+
+    private void DispatchControllerCursorDrag(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        using (PointerMoveEvent pointerMove = PointerMoveEvent.GetPooled(CreateControllerCursorMouseEvent(EventType.MouseDrag, 0, 0)))
+        {
+            target.SendEvent(pointerMove);
+        }
+    }
+
+    private void EndControllerCursorPress(bool sendRelease)
+    {
+        if (!controllerCursorPressActive)
+            return;
+
+        VisualElement target = controllerCursorPressedTarget;
+        controllerCursorPressActive = false;
+        controllerCursorPressedTarget = null;
+        if (!sendRelease || target == null)
+            return;
+
+        using (PointerUpEvent pointerUp = PointerUpEvent.GetPooled(CreateControllerCursorMouseEvent(EventType.MouseUp, 0, 1)))
+        {
+            target.SendEvent(pointerUp);
+        }
+    }
+
+    private Event CreateControllerCursorMouseEvent(EventType eventType, int button, int clickCount)
+    {
+        return new Event
+        {
+            type = eventType,
+            mousePosition = controllerCursorPanelPosition,
+            button = button,
+            clickCount = clickCount
+        };
+    }
+
+    private static float ReadControllerCursorHorizontalAxis()
+    {
+        float axis = ReadControllerCursorInputSystemAxis().x;
+        if (Mathf.Abs(axis) < 0.001f)
+            axis = TryGetAxisRaw("JoystickHorizontal");
+
+        return Mathf.Abs(axis) < 0.18f ? 0f : Mathf.Clamp(axis, -1f, 1f);
+    }
+
+    private static float ReadControllerCursorVerticalAxis()
+    {
+        float axis = ReadControllerCursorInputSystemAxis().y;
+        if (Mathf.Abs(axis) < 0.001f)
+            axis = TryGetAxisRaw("JoystickVertical");
+
+        return Mathf.Abs(axis) < 0.18f ? 0f : Mathf.Clamp(axis, -1f, 1f);
+    }
+
+    private static bool WasControllerPrimaryActionPressedThisFrame()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad?.buttonSouth.wasPressedThisFrame == true)
+                return true;
+        }
+#endif
+        if (HasInputSystemGamepadConnected())
+            return false;
+
+        return TryGetButtonDown("Submit") || Input.GetKeyDown(KeyCode.JoystickButton0);
+    }
+
+    private static bool IsControllerPrimaryActionHeld()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad?.buttonSouth.isPressed == true)
+                return true;
+        }
+#endif
+        if (HasInputSystemGamepadConnected())
+            return false;
+
+        return TryGetButton("Submit") || Input.GetKey(KeyCode.JoystickButton0);
+    }
+
+    private static Vector2 ReadControllerCursorInputSystemAxis()
+    {
+#if ENABLE_INPUT_SYSTEM
+        Vector2 strongest = Vector2.zero;
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad == null)
+                continue;
+
+            Vector2 candidate = gamepad.leftStick.ReadValue();
+            if (candidate.sqrMagnitude > strongest.sqrMagnitude)
+                strongest = candidate;
+        }
+
+        foreach (Joystick joystick in Joystick.all)
+        {
+            if (joystick == null)
+                continue;
+
+            Vector2 candidate = joystick.stick.ReadValue();
+            if (candidate.sqrMagnitude > strongest.sqrMagnitude)
+                strongest = candidate;
+        }
+
+        return Vector2.ClampMagnitude(strongest, 1f);
+#else
+        return Vector2.zero;
+#endif
+    }
+
+    private static bool HasInputSystemGamepadConnected()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad != null)
+                return true;
+        }
+#endif
+        return false;
+    }
+
+    private static float TryGetAxisRaw(string axisName)
+    {
+        try
+        {
+            return Input.GetAxisRaw(axisName);
+        }
+        catch (ArgumentException)
+        {
+            return 0f;
+        }
+    }
+
+    private static bool TryGetButtonDown(string buttonName)
+    {
+        try
+        {
+            return Input.GetButtonDown(buttonName);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryGetButton(string buttonName)
+    {
+        try
+        {
+            return Input.GetButton(buttonName);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
     }
 
     private void RefreshModelInstrument()

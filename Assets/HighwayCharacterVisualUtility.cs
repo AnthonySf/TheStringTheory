@@ -122,7 +122,8 @@ public static class HighwayCharacterVisualUtility
         float centerY,
         float scale,
         float offsetX,
-        float offsetY)
+        float offsetY,
+        bool allowHorizontalBleed = false)
     {
         float safeScreenWidth = Mathf.Max(1f, screenWidth);
         float safeScreenHeight = Mathf.Max(1f, screenHeight);
@@ -139,8 +140,9 @@ public static class HighwayCharacterVisualUtility
         }
 
         float left = marginX + offsetX;
-        float minLeft = marginX;
-        float maxLeft = 1f - marginX - viewportWidth;
+        float horizontalBleed = allowHorizontalBleed ? viewportWidth * 0.90f : 0f;
+        float minLeft = marginX - horizontalBleed;
+        float maxLeft = 1f - marginX - viewportWidth + horizontalBleed;
         left = Mathf.Clamp(left, minLeft, maxLeft);
         float clampedCenterY = Mathf.Clamp(
             centerY + offsetY,

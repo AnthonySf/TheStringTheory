@@ -6,6 +6,7 @@ using UnityEngine;
 
 internal static class AlphaTabGpLoader
 {
+    private const float AlphaTabQuarterTonesPerSemitone = 2f;
     private static readonly string[] NoteNames = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 
     public static string TryReadTitle(string filePath)
@@ -126,7 +127,7 @@ internal static class AlphaTabGpLoader
                     float bendStart = float.MaxValue;
                     float bendEnd = 0f;
                     bool hasRelease = false;
-                    bool hasPreBend = false;
+                    bool hasPreBend = source != null && IsPreBendType(source.BendType);
 
                     for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
                     {
@@ -139,7 +140,6 @@ internal static class AlphaTabGpLoader
                         maxBend = Mathf.Max(maxBend, segment.startBend, segment.endBend);
                         minBend = Mathf.Min(minBend, segment.startBend, segment.endBend);
                         hasRelease |= segment.endBend < segment.startBend - 0.01f;
-                        hasPreBend |= segment.startOffset <= 0.0005f && Mathf.Abs(segment.startBend) > 0.01f;
                     }
 
                     bendStep = Mathf.Max(Mathf.Abs(maxBend), Mathf.Abs(minBend));
@@ -242,13 +242,13 @@ internal static class AlphaTabGpLoader
             return curve;
         }
 
-        float initialOffset = (float)note.InitialBendValue / 4f;
+        float initialOffset = BendValueToSemitones(note.InitialBendValue);
         AddOrReplacePitchPoint(curve, 0f, initialOffset);
 
         for (int i = 0; i < note.BendPoints.Count; i++)
         {
             BendPoint point = note.BendPoints[i];
-            AddOrReplacePitchPoint(curve, (float)point.Offset / 60f, (float)point.Value / 4f);
+            AddOrReplacePitchPoint(curve, (float)point.Offset / 60f, BendValueToSemitones(point.Value));
         }
 
         if (curve[curve.Count - 1].normalizedTime < 0.9995f)
@@ -261,6 +261,18 @@ internal static class AlphaTabGpLoader
         }
 
         return NormalizeSegmentCurve(curve);
+    }
+
+    private static float BendValueToSemitones(double bendValue)
+    {
+        return (float)(bendValue / AlphaTabQuarterTonesPerSemitone);
+    }
+
+    private static bool IsPreBendType(BendType bendType)
+    {
+        return bendType == BendType.Prebend ||
+               bendType == BendType.PrebendBend ||
+               bendType == BendType.PrebendRelease;
     }
 
     internal static float ResolveVibratoDelayNormalized(Note source, List<GeneratedPlaybackPitchPoint> pitchCurve)

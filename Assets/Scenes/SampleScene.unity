@@ -481,8 +481,7 @@ MonoBehaviour:
   invertStrings: 0
   noteSpeed: 22
   hitWindowEarly: 0.3
-  hitWindowLate: 0.35
-  judgmentGrace: 0.85
+  hitWindowLate: 0.25
   eventTimeSlack: 0.05
   highStringExtraEarly: 0.02
   highStringExtraLate: 0.08

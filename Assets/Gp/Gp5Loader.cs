@@ -6,6 +6,9 @@ using UnityEngine;
 
 public static class Gp5Loader
 {
+    private const int BendTypePreBend = 4;
+    private const int BendTypePreBendRelease = 5;
+
     private sealed class CachedSong
     {
         public Gp5Song song;
@@ -253,6 +256,7 @@ public static class Gp5Loader
     private static void ApplyBendSegments(ParsedGpNote parsedNote, Gp5BendEffect bend)
     {
         float maxBend = 0f;
+        bool preBendType = IsPreBendType(bend.type);
         if (bend.points.Count == 1)
         {
             float value = bend.points[0].value;
@@ -263,10 +267,10 @@ public static class Gp5Loader
                 endQuarter = parsedNote.quarterPos + parsedNote.durationQuarter,
                 startFret = parsedNote.fret,
                 endFret = parsedNote.fret,
-                startBend = value,
+                startBend = preBendType ? value : 0f,
                 endBend = value
             });
-            maxBend = Mathf.Max(maxBend, value);
+            maxBend = Mathf.Max(maxBend, Mathf.Abs(value));
         }
         else
         {
@@ -287,13 +291,18 @@ public static class Gp5Loader
                     endBend = next.value
                 };
                 parsedNote.techniqueSegments.Add(segment);
-                maxBend = Mathf.Max(maxBend, Mathf.Max(segment.startBend, segment.endBend));
+                maxBend = Mathf.Max(maxBend, Mathf.Abs(segment.startBend), Mathf.Abs(segment.endBend));
             }
         }
 
         parsedNote.bendStep = maxBend;
-        parsedNote.bendPreBend = parsedNote.techniqueSegments.Count > 0 && parsedNote.techniqueSegments[0].startBend > 0.01f;
+        parsedNote.bendPreBend = preBendType;
         parsedNote.bendRelease = parsedNote.techniqueSegments.Any(segment => segment.endBend < segment.startBend - 0.01f);
+    }
+
+    private static bool IsPreBendType(int bendType)
+    {
+        return bendType == BendTypePreBend || bendType == BendTypePreBendRelease;
     }
 
     private static List<NoteData> BuildGameplayNotes(List<ParsedGpNote> parsed, List<TempoEvent> tempoMap)

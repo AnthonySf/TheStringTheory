@@ -536,9 +536,11 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     private bool controllerCursorActive;
     private bool controllerCursorInitialized;
     private bool controllerCursorPointerMode;
+    private float controllerCursorLastActivityTime = float.NegativeInfinity;
     private const float NavigationAxisThreshold = 0.55f;
     private const float NavigationInitialRepeatDelay = 0.34f;
     private const float NavigationRepeatDelay = 0.10f;
+    private const float ControllerCursorIdleHideSeconds = 4f;
 
     private readonly List<ToneSliderBinding> sliderBindings = new List<ToneSliderBinding>();
     private readonly List<ToneToggleBinding> toggleBindings = new List<ToneToggleBinding>();
@@ -1643,41 +1645,12 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             return;
 
         controllerCursor = new VisualElement();
-        controllerCursor.style.position = Position.Absolute;
-        controllerCursor.style.width = 40f;
-        controllerCursor.style.height = 40f;
-        controllerCursor.style.borderTopWidth = 3f;
-        controllerCursor.style.borderRightWidth = 3f;
-        controllerCursor.style.borderBottomWidth = 3f;
-        controllerCursor.style.borderLeftWidth = 3f;
-        controllerCursor.style.borderTopColor = new Color(1f, 1f, 1f, 0.96f);
-        controllerCursor.style.borderRightColor = new Color(1f, 1f, 1f, 0.96f);
-        controllerCursor.style.borderBottomColor = new Color(1f, 1f, 1f, 0.96f);
-        controllerCursor.style.borderLeftColor = new Color(1f, 1f, 1f, 0.96f);
-        controllerCursor.style.borderTopLeftRadius = 999f;
-        controllerCursor.style.borderTopRightRadius = 999f;
-        controllerCursor.style.borderBottomLeftRadius = 999f;
-        controllerCursor.style.borderBottomRightRadius = 999f;
-        controllerCursor.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
         controllerCursor.style.opacity = 0f;
         controllerCursor.style.display = DisplayStyle.None;
-        controllerCursor.style.translate = new Translate(-20f, -20f, 0f);
-        controllerCursor.pickingMode = PickingMode.Ignore;
 
         controllerCursorInner = new VisualElement();
-        controllerCursorInner.style.position = Position.Absolute;
-        controllerCursorInner.style.left = new Length(50f, LengthUnit.Percent);
-        controllerCursorInner.style.top = new Length(50f, LengthUnit.Percent);
-        controllerCursorInner.style.width = 12f;
-        controllerCursorInner.style.height = 12f;
-        controllerCursorInner.style.translate = new Translate(-6f, -6f, 0f);
-        controllerCursorInner.style.borderTopLeftRadius = 999f;
-        controllerCursorInner.style.borderTopRightRadius = 999f;
-        controllerCursorInner.style.borderBottomLeftRadius = 999f;
-        controllerCursorInner.style.borderBottomRightRadius = 999f;
-        controllerCursorInner.style.backgroundColor = new Color(1f, 1f, 1f, 0.98f);
-        controllerCursorInner.pickingMode = PickingMode.Ignore;
         controllerCursor.Add(controllerCursorInner);
+        ControllerCursorVisualUtility.Apply(controllerCursor, controllerCursorInner, root);
 
         root.Add(controllerCursor);
     }
@@ -1717,11 +1690,19 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         bool controllerMovementDetected = movement.sqrMagnitude >= 0.04f;
         bool controllerButtonPressed = WasAnyControllerUiButtonPressedThisFrame();
         bool primaryPressed = WasControllerPrimaryActionPressedThisFrame();
+        bool rightStickActivity = controllerCursorActive &&
+            ControllerCursorVisualUtility.ReadRightStickAxis().sqrMagnitude >= 0.04f;
+        bool wasHiddenByIdle = controllerCursorActive &&
+            Time.unscaledTime - controllerCursorLastActivityTime > ControllerCursorIdleHideSeconds;
+        bool controllerActivity = controllerMovementDetected || controllerButtonPressed || rightStickActivity;
 
-        if (!controllerCursorActive && (controllerMovementDetected || controllerButtonPressed))
+        if (controllerActivity)
         {
+            bool wasInactive = !controllerCursorActive;
             controllerCursorActive = true;
-            ClearNativeUiFocusForControllerCursor();
+            controllerCursorLastActivityTime = Time.unscaledTime;
+            if (wasInactive)
+                ClearNativeUiFocusForControllerCursor();
             controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
         }
 
@@ -1729,6 +1710,15 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         {
             controllerCursor.style.display = DisplayStyle.None;
             controllerCursor.style.opacity = 0f;
+            return false;
+        }
+
+        bool hiddenByIdle = Time.unscaledTime - controllerCursorLastActivityTime > ControllerCursorIdleHideSeconds;
+        if (hiddenByIdle)
+        {
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+            lastControllerCursorTarget = null;
             return false;
         }
 
@@ -1749,11 +1739,13 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         PositionControllerCursorVisual();
 
         VisualElement pickedTarget = PickControllerCursorTarget();
+        if (ControllerCursorVisualUtility.TryScrollHoveredScrollView(pickedTarget, Time.unscaledDeltaTime, out _))
+            controllerCursorLastActivityTime = Time.unscaledTime;
         if (pickedTarget != null && pickedTarget != lastControllerCursorTarget && movement.sqrMagnitude > 0.0001f)
             DispatchControllerCursorMove(pickedTarget);
         lastControllerCursorTarget = pickedTarget;
 
-        if (!primaryPressed)
+        if (!primaryPressed || wasHiddenByIdle)
             return false;
 
         ClearNativeUiFocusForControllerCursor();
@@ -1785,6 +1777,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
 
     private void PositionControllerCursorVisual()
     {
+        ControllerCursorVisualUtility.Apply(controllerCursor, controllerCursorInner, overlayRoot);
         controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, ResolveControllerCursorPanelSize());
         controllerCursor.style.left = controllerCursorPanelPosition.x;
         controllerCursor.style.top = controllerCursorPanelPosition.y;

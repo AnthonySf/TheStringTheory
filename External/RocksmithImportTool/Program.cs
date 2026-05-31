@@ -13,7 +13,7 @@ using Rocksmith2014.XML.Processing;
 
 internal static class Program
 {
-    private const int SchemaVersion = 19;
+    private const int SchemaVersion = 20;
     private const string ManifestFileName = "song.rs2song.json";
     private const string ContentDirectoryName = "psarc_content";
     private const float RocksmithVibratoCyclesPerSecond = 5f;

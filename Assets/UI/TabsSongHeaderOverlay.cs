@@ -1506,6 +1506,14 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label loopSetupStatusLabel;
 
     private readonly Label loopSetupHintLabel;
+    private readonly VisualElement loopSetupShortcutRow;
+    private readonly Button loopSetupSeekLeftButton;
+    private readonly Button loopSetupSeekRightButton;
+    private readonly Button loopSetupStartButton;
+    private readonly Button loopSetupEndButton;
+    private readonly Button loopSetupBookmarksButton;
+    private readonly Button loopSetupPreviewButton;
+    private readonly Button loopSetupContinueButton;
     private readonly VisualElement loopBookmarksCard;
     private readonly Label loopBookmarksTitleLabel;
     private readonly Label loopBookmarksTrackLabel;
@@ -1646,6 +1654,8 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Label mainMenuFooterHintLabel;
 
+    private readonly Label mainMenuVersionLabel;
+
     private readonly Label mainMenuCurrentSongValueLabel;
 
     private readonly Label mainMenuCurrentTrackValueLabel;
@@ -1744,6 +1754,56 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label libraryLoadingProgressLabel;
 
     private readonly Label gameplayShortcutLabel;
+    private readonly VisualElement gameplayShortcutRow;
+    private readonly Button gameplayShortcutPauseButton;
+    private readonly Button gameplayShortcutRestartButton;
+    private readonly Button gameplayShortcutAudioButton;
+    private readonly Button gameplayShortcutToneLabButton;
+    private readonly Button gameplayShortcutLoopButton;
+    private readonly Button gameplayShortcutOpenButton;
+    private readonly Button gameplayShortcutSeekLeftButton;
+    private readonly Button gameplayShortcutSeekRightButton;
+    private readonly Button gameplayShortcutPrevNoteButton;
+    private readonly Button gameplayShortcutNextNoteButton;
+    private readonly VisualElement gameplayTimelineContainer;
+    private readonly VisualElement gameplayTimelineHeaderRow;
+    private readonly VisualElement gameplayTimelineSectionInfoRow;
+    private readonly Label gameplayTimelineNowBadgeLabel;
+    private readonly Label gameplayTimelineSectionLabel;
+    private readonly VisualElement gameplayTimelineNextChip;
+    private readonly Label gameplayTimelineNextLabel;
+    private readonly Label gameplayTimelineTimeLabel;
+    private readonly VisualElement gameplayTimelineTrack;
+    private readonly VisualElement gameplayTimelineFill;
+    private readonly VisualElement gameplayTimelineSectionLayer;
+    private readonly VisualElement gameplayTimelinePlayhead;
+    private readonly VisualElement gameplayTimelineLabelsLayer;
+    private readonly VisualElement gameplayTimelineBlockPlayheadGlow;
+    private readonly VisualElement gameplayTimelineBlockPlayhead;
+    private readonly VisualElement gameplayTimelineLoopStartMarker;
+    private readonly VisualElement gameplayTimelineLoopEndMarker;
+    private readonly Label gameplayTimelineHintLabel;
+    private bool gameplayTimelineExpanded;
+    private bool gameplayTimelineDragging;
+    private float gameplayTimelineDurationSeconds;
+    private string gameplayTimelineSignature = string.Empty;
+    private float gameplayTimelineLayoutBottom = 18f;
+    private float gameplayTimelineShortcutGap = 10f;
+    private readonly List<VisualElement> gameplayTimelineSegmentHosts = new List<VisualElement>();
+    private readonly List<Label> gameplayTimelineSegmentLabels = new List<Label>();
+    private readonly List<string> gameplayTimelineSegmentNames = new List<string>();
+    private readonly List<string> gameplayTimelineSegmentCompactLabels = new List<string>();
+    private readonly List<float> gameplayTimelineSegmentStarts = new List<float>();
+    private readonly List<float> gameplayTimelineSegmentEnds = new List<float>();
+    private int gameplayTimelineHoveredSegmentIndex = -1;
+    private int gameplayTimelineAnimatedHoverSegmentIndex = -1;
+    private int gameplayTimelinePreviousHoverSegmentIndex = -1;
+    private float gameplayTimelineHoverBlend;
+    private float gameplayTimelinePreviousHoverBlend;
+    private int gameplayTimelineLoopHoveredMarker;
+    private int gameplayTimelineLoopDraggingMarker;
+    private Texture2D gameplayTimelineDensityTexture;
+    private Texture2D gameplayTimelineActiveSectionTexture;
 
     private readonly Slider speedSlider;
 
@@ -2251,6 +2311,11 @@ public sealed class TabsSongHeaderOverlay
     private Vector2 controllerCursorPanelPosition;
     private Vector3 lastPhysicalMousePosition;
     private VisualElement lastControllerCursorTarget;
+    private VisualElement controllerCursorPressedTarget;
+    private float controllerCursorLastActivityTime = float.NegativeInfinity;
+    private bool controllerCursorPressActive;
+    private bool controllerCursorPrimaryWasHeld;
+    private const float ControllerCursorIdleHideSeconds = 4f;
 
 
 
@@ -2742,9 +2807,261 @@ public sealed class TabsSongHeaderOverlay
         gameplayShortcutLabel.style.left = 24f;
         gameplayShortcutLabel.style.bottom = 18f;
         gameplayShortcutLabel.style.maxWidth = 1680f;
-        gameplayShortcutLabel.style.whiteSpace = WhiteSpace.Normal;
+        gameplayShortcutLabel.style.whiteSpace = WhiteSpace.NoWrap;
         gameplayShortcutLabel.style.display = DisplayStyle.None;
         gameplayShortcutLabel.pickingMode = PickingMode.Ignore;
+
+        gameplayShortcutRow = new VisualElement();
+        gameplayShortcutRow.style.position = Position.Absolute;
+        gameplayShortcutRow.style.left = 24f;
+        gameplayShortcutRow.style.bottom = 18f;
+        gameplayShortcutRow.style.flexDirection = FlexDirection.Row;
+        gameplayShortcutRow.style.flexWrap = Wrap.Wrap;
+        gameplayShortcutRow.style.alignItems = Align.Center;
+        gameplayShortcutRow.style.justifyContent = Justify.FlexStart;
+        gameplayShortcutRow.style.display = DisplayStyle.None;
+        gameplayShortcutRow.pickingMode = PickingMode.Position;
+
+        gameplayShortcutPauseButton = CreateShortcutKeycapButton("Pause (Esc)", () => owner?.ToggleGameplayPauseFromUi());
+        gameplayShortcutRestartButton = CreateShortcutKeycapButton("Restart (R)", () => owner?.RetrySongFromUi());
+        gameplayShortcutAudioButton = CreateShortcutKeycapButton("Audio (V)", () => owner?.OpenGameplayAudioPopupFromUi());
+        gameplayShortcutToneLabButton = CreateShortcutKeycapButton("Tone Lab (T)", () => owner?.OpenToneLabFromUi());
+        gameplayShortcutLoopButton = CreateShortcutKeycapButton("Loop (L)", () => owner?.ToggleLoopFromUi());
+        gameplayShortcutOpenButton = CreateShortcutKeycapButton("Open (Enter)", () => owner?.ActivateSelectedPauseActionFromUi());
+        gameplayShortcutSeekLeftButton = CreateShortcutKeycapButton("Seek - (←)", () => owner?.SeekGameplayByStepFromUi(-1));
+        gameplayShortcutSeekRightButton = CreateShortcutKeycapButton("Seek + (→)", () => owner?.SeekGameplayByStepFromUi(1));
+        gameplayShortcutPrevNoteButton = CreateShortcutKeycapButton("Prev Note (←←)", () => owner?.JumpGameplayToAdjacentNoteFromUi(false));
+        gameplayShortcutNextNoteButton = CreateShortcutKeycapButton("Next Note (→→)", () => owner?.JumpGameplayToAdjacentNoteFromUi(true));
+
+        gameplayShortcutRow.Add(gameplayShortcutPauseButton);
+        gameplayShortcutRow.Add(gameplayShortcutRestartButton);
+        gameplayShortcutRow.Add(gameplayShortcutAudioButton);
+        gameplayShortcutRow.Add(gameplayShortcutToneLabButton);
+        gameplayShortcutLoopButton.tooltip = "Open loop mode";
+        gameplayShortcutRow.Add(gameplayShortcutLoopButton);
+        gameplayShortcutRow.Add(gameplayShortcutOpenButton);
+        gameplayShortcutRow.Add(gameplayShortcutSeekLeftButton);
+        gameplayShortcutRow.Add(gameplayShortcutSeekRightButton);
+        gameplayShortcutRow.Add(gameplayShortcutPrevNoteButton);
+        gameplayShortcutRow.Add(gameplayShortcutNextNoteButton);
+
+        gameplayTimelineContainer = new VisualElement();
+        gameplayTimelineContainer.style.position = Position.Absolute;
+        gameplayTimelineContainer.style.left = 0f;
+        gameplayTimelineContainer.style.right = 0f;
+        gameplayTimelineContainer.style.bottom = 18f;
+        gameplayTimelineContainer.style.width = StyleKeyword.Auto;
+        gameplayTimelineContainer.style.height = GetGameplayTimelineHeight(expanded: false);
+        gameplayTimelineContainer.style.minHeight = GetGameplayTimelineHeight(expanded: false);
+        gameplayTimelineContainer.style.paddingLeft = 0f;
+        gameplayTimelineContainer.style.paddingRight = 0f;
+        gameplayTimelineContainer.style.paddingTop = 10f;
+        gameplayTimelineContainer.style.paddingBottom = 10f;
+        gameplayTimelineContainer.style.display = DisplayStyle.None;
+        gameplayTimelineContainer.style.overflow = Overflow.Visible;
+        gameplayTimelineContainer.style.opacity = 0.96f;
+        gameplayTimelineContainer.style.flexDirection = FlexDirection.Column;
+        gameplayTimelineContainer.style.justifyContent = Justify.FlexStart;
+        gameplayTimelineContainer.pickingMode = PickingMode.Position;
+        StyleCard(gameplayTimelineContainer, new Color(0.006f, 0.012f, 0.020f, 0.62f), radius: 4f);
+        gameplayTimelineContainer.style.borderTopWidth = 0f;
+        gameplayTimelineContainer.style.borderTopColor = Color.clear;
+        gameplayTimelineContainer.style.borderRightColor = new Color(0.10f, 0.26f, 0.34f, 0.24f);
+        gameplayTimelineContainer.style.borderBottomColor = new Color(0.10f, 0.26f, 0.34f, 0.24f);
+        gameplayTimelineContainer.style.borderLeftColor = new Color(0.10f, 0.26f, 0.34f, 0.24f);
+
+        gameplayTimelineHeaderRow = new VisualElement();
+        gameplayTimelineHeaderRow.style.flexDirection = FlexDirection.Row;
+        gameplayTimelineHeaderRow.style.justifyContent = Justify.SpaceBetween;
+        gameplayTimelineHeaderRow.style.alignItems = Align.Center;
+        gameplayTimelineHeaderRow.style.marginBottom = 6f;
+        gameplayTimelineHeaderRow.style.display = DisplayStyle.None;
+
+        gameplayTimelineSectionInfoRow = new VisualElement();
+        gameplayTimelineSectionInfoRow.style.flexDirection = FlexDirection.Row;
+        gameplayTimelineSectionInfoRow.style.alignItems = Align.Center;
+        gameplayTimelineSectionInfoRow.style.flexGrow = 1f;
+        gameplayTimelineSectionInfoRow.style.flexShrink = 1f;
+        gameplayTimelineSectionInfoRow.style.overflow = Overflow.Hidden;
+        gameplayTimelineSectionInfoRow.style.marginRight = 18f;
+
+        gameplayTimelineNowBadgeLabel = CreateLabel("NOW", 11f, new Color(0.015f, 0.055f, 0.085f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        gameplayTimelineNowBadgeLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayTimelineNowBadgeLabel.style.backgroundColor = new Color(0.47f, 0.92f, 1f, 0.96f);
+        gameplayTimelineNowBadgeLabel.style.paddingLeft = 8f;
+        gameplayTimelineNowBadgeLabel.style.paddingRight = 8f;
+        gameplayTimelineNowBadgeLabel.style.paddingTop = 2f;
+        gameplayTimelineNowBadgeLabel.style.paddingBottom = 2f;
+        gameplayTimelineNowBadgeLabel.style.marginRight = 9f;
+        gameplayTimelineNowBadgeLabel.style.borderTopLeftRadius = 999f;
+        gameplayTimelineNowBadgeLabel.style.borderTopRightRadius = 999f;
+        gameplayTimelineNowBadgeLabel.style.borderBottomLeftRadius = 999f;
+        gameplayTimelineNowBadgeLabel.style.borderBottomRightRadius = 999f;
+        gameplayTimelineNowBadgeLabel.style.flexShrink = 0f;
+
+        gameplayTimelineSectionLabel = CreateLabel("Timeline", 24f, new Color(0.93f, 0.98f, 1f, 0.99f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+        gameplayTimelineSectionLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayTimelineSectionLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        gameplayTimelineSectionLabel.style.overflow = Overflow.Hidden;
+        gameplayTimelineSectionLabel.style.textOverflow = TextOverflow.Ellipsis;
+        gameplayTimelineSectionLabel.style.flexGrow = 0f;
+        gameplayTimelineSectionLabel.style.flexShrink = 1f;
+        gameplayTimelineSectionLabel.style.marginRight = 12f;
+
+        gameplayTimelineNextChip = new VisualElement();
+        gameplayTimelineNextChip.style.flexDirection = FlexDirection.Row;
+        gameplayTimelineNextChip.style.alignItems = Align.Center;
+        gameplayTimelineNextChip.style.paddingLeft = 10f;
+        gameplayTimelineNextChip.style.paddingRight = 10f;
+        gameplayTimelineNextChip.style.paddingTop = 3f;
+        gameplayTimelineNextChip.style.paddingBottom = 3f;
+        gameplayTimelineNextChip.style.borderTopWidth = 1f;
+        gameplayTimelineNextChip.style.borderRightWidth = 1f;
+        gameplayTimelineNextChip.style.borderBottomWidth = 1f;
+        gameplayTimelineNextChip.style.borderLeftWidth = 1f;
+        gameplayTimelineNextChip.style.borderTopLeftRadius = 999f;
+        gameplayTimelineNextChip.style.borderTopRightRadius = 999f;
+        gameplayTimelineNextChip.style.borderBottomLeftRadius = 999f;
+        gameplayTimelineNextChip.style.borderBottomRightRadius = 999f;
+        gameplayTimelineNextChip.style.backgroundColor = new Color(0.05f, 0.12f, 0.18f, 0.78f);
+        Color nextChipBorder = new Color(0.40f, 0.78f, 0.95f, 0.32f);
+        gameplayTimelineNextChip.style.borderTopColor = nextChipBorder;
+        gameplayTimelineNextChip.style.borderRightColor = nextChipBorder;
+        gameplayTimelineNextChip.style.borderBottomColor = nextChipBorder;
+        gameplayTimelineNextChip.style.borderLeftColor = nextChipBorder;
+        gameplayTimelineNextChip.style.display = DisplayStyle.None;
+        gameplayTimelineNextChip.style.flexShrink = 2f;
+        gameplayTimelineNextChip.style.overflow = Overflow.Hidden;
+
+        gameplayTimelineNextLabel = CreateLabel("Up Next", 20f, new Color(0.74f, 0.91f, 1f, 0.95f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        gameplayTimelineNextLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayTimelineNextLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        gameplayTimelineNextLabel.style.overflow = Overflow.Hidden;
+        gameplayTimelineNextLabel.style.textOverflow = TextOverflow.Ellipsis;
+        gameplayTimelineNextChip.Add(gameplayTimelineNextLabel);
+
+        gameplayTimelineSectionInfoRow.Add(gameplayTimelineNowBadgeLabel);
+        gameplayTimelineSectionInfoRow.Add(gameplayTimelineSectionLabel);
+        gameplayTimelineSectionInfoRow.Add(gameplayTimelineNextChip);
+
+        gameplayTimelineTimeLabel = CreateLabel("0:00 / 0:00", 22f, new Color(0.78f, 0.88f, 0.98f, 0.98f), false, TextAnchor.MiddleRight, useTitleFont: false);
+        gameplayTimelineTimeLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayTimelineTimeLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        gameplayTimelineTimeLabel.style.flexShrink = 0f;
+        gameplayTimelineHeaderRow.Add(gameplayTimelineSectionInfoRow);
+        gameplayTimelineHeaderRow.Add(gameplayTimelineTimeLabel);
+
+        gameplayTimelineTrack = new VisualElement();
+        gameplayTimelineTrack.style.position = Position.Relative;
+        gameplayTimelineTrack.style.height = 7f;
+        gameplayTimelineTrack.style.marginTop = 8f;
+        gameplayTimelineTrack.style.flexGrow = 0f;
+        gameplayTimelineTrack.style.backgroundColor = new Color(0.07f, 0.18f, 0.25f, 0.88f);
+        gameplayTimelineTrack.style.borderTopLeftRadius = 999f;
+        gameplayTimelineTrack.style.borderTopRightRadius = 999f;
+        gameplayTimelineTrack.style.borderBottomLeftRadius = 999f;
+        gameplayTimelineTrack.style.borderBottomRightRadius = 999f;
+        gameplayTimelineTrack.style.overflow = Overflow.Hidden;
+        gameplayTimelineTrack.pickingMode = PickingMode.Position;
+
+        gameplayTimelineFill = new VisualElement();
+        gameplayTimelineFill.style.position = Position.Absolute;
+        gameplayTimelineFill.style.left = 0f;
+        gameplayTimelineFill.style.top = 0f;
+        gameplayTimelineFill.style.bottom = 0f;
+        gameplayTimelineFill.style.width = new Length(0f, LengthUnit.Percent);
+        gameplayTimelineFill.style.backgroundColor = new Color(0.22f, 0.92f, 1f, 0.95f);
+        gameplayTimelineFill.style.borderTopLeftRadius = 999f;
+        gameplayTimelineFill.style.borderTopRightRadius = 999f;
+        gameplayTimelineFill.style.borderBottomLeftRadius = 999f;
+        gameplayTimelineFill.style.borderBottomRightRadius = 999f;
+        gameplayTimelineFill.style.display = DisplayStyle.None;
+        gameplayTimelineFill.pickingMode = PickingMode.Ignore;
+
+        gameplayTimelineSectionLayer = new VisualElement();
+        gameplayTimelineSectionLayer.style.position = Position.Absolute;
+        gameplayTimelineSectionLayer.style.left = 0f;
+        gameplayTimelineSectionLayer.style.right = 0f;
+        gameplayTimelineSectionLayer.style.top = 0f;
+        gameplayTimelineSectionLayer.style.bottom = 0f;
+        gameplayTimelineSectionLayer.pickingMode = PickingMode.Ignore;
+
+        gameplayTimelinePlayhead = new VisualElement();
+        gameplayTimelinePlayhead.style.position = Position.Absolute;
+        gameplayTimelinePlayhead.style.top = -6f;
+        gameplayTimelinePlayhead.style.width = 4f;
+        gameplayTimelinePlayhead.style.height = 18f;
+        gameplayTimelinePlayhead.style.translate = new Translate(-2f, 0f, 0f);
+        gameplayTimelinePlayhead.style.backgroundColor = new Color(0.42f, 0.96f, 1f, 0.96f);
+        gameplayTimelinePlayhead.style.borderTopLeftRadius = 999f;
+        gameplayTimelinePlayhead.style.borderTopRightRadius = 999f;
+        gameplayTimelinePlayhead.style.borderBottomLeftRadius = 999f;
+        gameplayTimelinePlayhead.style.borderBottomRightRadius = 999f;
+        gameplayTimelinePlayhead.style.display = DisplayStyle.None;
+        gameplayTimelinePlayhead.pickingMode = PickingMode.Ignore;
+
+        gameplayTimelineTrack.Add(gameplayTimelineFill);
+        gameplayTimelineTrack.Add(gameplayTimelineSectionLayer);
+        gameplayTimelineTrack.Add(gameplayTimelinePlayhead);
+
+        gameplayTimelineLabelsLayer = new VisualElement();
+        gameplayTimelineLabelsLayer.style.position = Position.Relative;
+        gameplayTimelineLabelsLayer.style.height = GetGameplayTimelineBlockHeight(expanded: false);
+        gameplayTimelineLabelsLayer.style.marginTop = 8f;
+        gameplayTimelineLabelsLayer.style.display = DisplayStyle.Flex;
+        gameplayTimelineLabelsLayer.style.overflow = Overflow.Visible;
+        gameplayTimelineLabelsLayer.pickingMode = PickingMode.Position;
+
+        gameplayTimelineBlockPlayheadGlow = new VisualElement();
+        gameplayTimelineBlockPlayheadGlow.style.position = Position.Absolute;
+        gameplayTimelineBlockPlayheadGlow.style.top = -6f;
+        gameplayTimelineBlockPlayheadGlow.style.bottom = -13f;
+        gameplayTimelineBlockPlayheadGlow.style.width = 28f;
+        gameplayTimelineBlockPlayheadGlow.style.translate = new Translate(-14f, 0f, 0f);
+        gameplayTimelineBlockPlayheadGlow.style.backgroundColor = new Color(0.00f, 0.92f, 1f, 0.22f);
+        gameplayTimelineBlockPlayheadGlow.style.borderTopLeftRadius = 999f;
+        gameplayTimelineBlockPlayheadGlow.style.borderTopRightRadius = 999f;
+        gameplayTimelineBlockPlayheadGlow.style.borderBottomLeftRadius = 999f;
+        gameplayTimelineBlockPlayheadGlow.style.borderBottomRightRadius = 999f;
+        gameplayTimelineBlockPlayheadGlow.style.display = DisplayStyle.None;
+        gameplayTimelineBlockPlayheadGlow.pickingMode = PickingMode.Ignore;
+
+        gameplayTimelineBlockPlayhead = new VisualElement();
+        gameplayTimelineBlockPlayhead.style.position = Position.Absolute;
+        gameplayTimelineBlockPlayhead.style.top = -8f;
+        gameplayTimelineBlockPlayhead.style.bottom = -15f;
+        gameplayTimelineBlockPlayhead.style.width = 4f;
+        gameplayTimelineBlockPlayhead.style.translate = new Translate(-2f, 0f, 0f);
+        gameplayTimelineBlockPlayhead.style.backgroundColor = new Color(0.28f, 0.96f, 1f, 0.98f);
+        gameplayTimelineBlockPlayhead.style.borderTopLeftRadius = 999f;
+        gameplayTimelineBlockPlayhead.style.borderTopRightRadius = 999f;
+        gameplayTimelineBlockPlayhead.style.borderBottomLeftRadius = 999f;
+        gameplayTimelineBlockPlayhead.style.borderBottomRightRadius = 999f;
+        gameplayTimelineBlockPlayhead.pickingMode = PickingMode.Ignore;
+
+        gameplayTimelineLoopStartMarker = CreateGameplayTimelineLoopMarker(1, "Loop start");
+        gameplayTimelineLoopEndMarker = CreateGameplayTimelineLoopMarker(2, "Loop end");
+
+        gameplayTimelineHintLabel = CreateLabel("Hover for details. Click or drag to jump.", 14f, new Color(0.74f, 0.86f, 0.98f, 0.90f), false, TextAnchor.MiddleRight, useTitleFont: false);
+        gameplayTimelineHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        gameplayTimelineHintLabel.style.marginTop = 5f;
+        gameplayTimelineHintLabel.style.display = DisplayStyle.None;
+        gameplayTimelineHintLabel.style.whiteSpace = WhiteSpace.NoWrap;
+
+        gameplayTimelineContainer.Add(gameplayTimelineHeaderRow);
+        gameplayTimelineContainer.Add(gameplayTimelineLabelsLayer);
+        gameplayTimelineContainer.Add(gameplayTimelineTrack);
+        gameplayTimelineContainer.Add(gameplayTimelineHintLabel);
+        gameplayTimelineTrack.RegisterCallback<PointerDownEvent>(HandleGameplayTimelinePointerDown);
+        gameplayTimelineTrack.RegisterCallback<PointerMoveEvent>(HandleGameplayTimelinePointerMove);
+        gameplayTimelineTrack.RegisterCallback<PointerUpEvent>(HandleGameplayTimelinePointerUp);
+        gameplayTimelineTrack.RegisterCallback<PointerCancelEvent>(HandleGameplayTimelinePointerCancel);
+        gameplayTimelineTrack.RegisterCallback<PointerLeaveEvent>(HandleGameplayTimelinePointerLeave);
+        gameplayTimelineLabelsLayer.RegisterCallback<PointerDownEvent>(HandleGameplayTimelinePointerDown);
+        gameplayTimelineLabelsLayer.RegisterCallback<PointerMoveEvent>(HandleGameplayTimelinePointerMove);
+        gameplayTimelineLabelsLayer.RegisterCallback<PointerUpEvent>(HandleGameplayTimelinePointerUp);
+        gameplayTimelineLabelsLayer.RegisterCallback<PointerCancelEvent>(HandleGameplayTimelinePointerCancel);
+        gameplayTimelineLabelsLayer.RegisterCallback<PointerLeaveEvent>(HandleGameplayTimelinePointerLeave);
 
 
 
@@ -5062,11 +5379,19 @@ public sealed class TabsSongHeaderOverlay
 
         loopSetupBar = new VisualElement();
 
-        loopSetupBar.style.width = Length.Percent(82f);
+        loopSetupBar.style.position = Position.Absolute;
 
-        loopSetupBar.style.maxWidth = 1620f;
+        loopSetupBar.style.left = 10f;
 
-        loopSetupBar.style.minWidth = 720f;
+        loopSetupBar.style.right = 10f;
+
+        loopSetupBar.style.bottom = 36f;
+
+        loopSetupBar.style.width = StyleKeyword.Auto;
+
+        loopSetupBar.style.maxWidth = 100000f;
+
+        loopSetupBar.style.minWidth = 0f;
 
         loopSetupBar.style.paddingLeft = 34f;
 
@@ -5106,7 +5431,7 @@ public sealed class TabsSongHeaderOverlay
 
         loopSetupBar.style.justifyContent = Justify.Center;
 
-        loopSetupBar.pickingMode = PickingMode.Ignore;
+        loopSetupBar.pickingMode = PickingMode.Position;
 
 
 
@@ -5130,12 +5455,41 @@ public sealed class TabsSongHeaderOverlay
         loopSetupHintLabel.style.whiteSpace = WhiteSpace.Normal;
 
         loopSetupHintLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        loopSetupHintLabel.style.display = DisplayStyle.None;
+
+        loopSetupShortcutRow = new VisualElement();
+        loopSetupShortcutRow.style.flexDirection = FlexDirection.Row;
+        loopSetupShortcutRow.style.flexWrap = Wrap.NoWrap;
+        loopSetupShortcutRow.style.alignItems = Align.Center;
+        loopSetupShortcutRow.style.justifyContent = Justify.Center;
+        loopSetupShortcutRow.style.alignSelf = Align.Stretch;
+        loopSetupShortcutRow.style.width = Length.Percent(100f);
+        loopSetupShortcutRow.style.marginTop = 2f;
+        loopSetupShortcutRow.style.marginBottom = 0f;
+        loopSetupShortcutRow.pickingMode = PickingMode.Position;
+
+        loopSetupSeekLeftButton = CreateShortcutKeycapButton("Seek - (←)", () => owner?.NudgeLoopTimelineFromUi(-1));
+        loopSetupSeekRightButton = CreateShortcutKeycapButton("Seek + (→)", () => owner?.NudgeLoopTimelineFromUi(1));
+        loopSetupStartButton = CreateShortcutKeycapButton("Start (1)", () => owner?.SetLoopStartAtCurrentTimeFromUi());
+        loopSetupEndButton = CreateShortcutKeycapButton("End (2)", () => owner?.SetLoopEndAtCurrentTimeFromUi());
+        loopSetupBookmarksButton = CreateShortcutKeycapButton("Bookmarks (B)", () => owner?.ToggleLoopBookmarksPanelFromUi());
+        loopSetupPreviewButton = CreateShortcutKeycapButton("Preview (Space)", () => owner?.ToggleLoopPreviewFromUi());
+        loopSetupContinueButton = CreateShortcutKeycapButton("Continue (Esc)", () => owner?.ContinueLoopSetupFromUi());
+
+        loopSetupShortcutRow.Add(loopSetupSeekLeftButton);
+        loopSetupShortcutRow.Add(loopSetupSeekRightButton);
+        loopSetupShortcutRow.Add(loopSetupStartButton);
+        loopSetupShortcutRow.Add(loopSetupEndButton);
+        loopSetupShortcutRow.Add(loopSetupBookmarksButton);
+        loopSetupShortcutRow.Add(loopSetupPreviewButton);
+        loopSetupShortcutRow.Add(loopSetupContinueButton);
 
 
 
         loopSetupBar.Add(loopSetupStatusLabel);
 
         loopSetupBar.Add(loopSetupHintLabel);
+        loopSetupBar.Add(loopSetupShortcutRow);
 
         loopSetupOverlay.Add(loopSetupBar);
 
@@ -5151,13 +5505,11 @@ public sealed class TabsSongHeaderOverlay
         loopBookmarksCard = new VisualElement();
         loopBookmarksCard.style.position = Position.Absolute;
         loopBookmarksCard.style.top = 22f;
-        loopBookmarksCard.style.left = 0f;
-        loopBookmarksCard.style.right = 0f;
-        loopBookmarksCard.style.width = 1240f;
-        loopBookmarksCard.style.maxWidth = 1480f;
-        loopBookmarksCard.style.minWidth = 980f;
-        loopBookmarksCard.style.marginLeft = StyleKeyword.Auto;
-        loopBookmarksCard.style.marginRight = StyleKeyword.Auto;
+        loopBookmarksCard.style.left = 1120f;
+        loopBookmarksCard.style.right = StyleKeyword.Auto;
+        loopBookmarksCard.style.width = 760f;
+        loopBookmarksCard.style.maxWidth = 860f;
+        loopBookmarksCard.style.minWidth = 560f;
         loopBookmarksCard.style.paddingLeft = 36f;
         loopBookmarksCard.style.paddingRight = 36f;
         loopBookmarksCard.style.paddingTop = 32f;
@@ -5181,6 +5533,7 @@ public sealed class TabsSongHeaderOverlay
         loopBookmarksTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
         loopBookmarksTitleLabel.style.marginBottom = 4f;
         loopBookmarksTitleLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+        loopBookmarksTitleLabel.style.display = DisplayStyle.None;
 
         loopBookmarksTrackLabel = CreateLabel("Track", 28f, new Color(0.76f, 0.88f, 0.98f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
         loopBookmarksTrackLabel.style.unityFontDefinition = modernUiFontDefinition;
@@ -5886,6 +6239,16 @@ public sealed class TabsSongHeaderOverlay
         mainMenuShell.Add(mainMenuRightColumn);
 
         mainMenuOverlay.Add(mainMenuShell);
+
+        mainMenuVersionLabel = CreateLabel($"v{StringTheoryBuildInfo.Version}", 38f, Color.white, false, TextAnchor.MiddleRight, useTitleFont: false);
+        mainMenuVersionLabel.style.position = Position.Absolute;
+        mainMenuVersionLabel.style.right = 32f;
+        mainMenuVersionLabel.style.bottom = 24f;
+        mainMenuVersionLabel.style.opacity = 0.92f;
+        mainMenuVersionLabel.style.letterSpacing = 0.6f;
+        mainMenuVersionLabel.style.unityFontDefinition = modernUiFontDefinition;
+        mainMenuVersionLabel.pickingMode = PickingMode.Ignore;
+        mainMenuOverlay.Add(mainMenuVersionLabel);
 
         startMenuOverlay = CreateFullscreenOverlay();
         startMenuOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.44f);
@@ -9917,43 +10280,16 @@ public sealed class TabsSongHeaderOverlay
         root.Add(songEndOverlay);
 
         root.Add(gameplayShortcutLabel);
+        root.Add(gameplayShortcutRow);
+        root.Add(gameplayTimelineContainer);
 
         controllerCursor = new VisualElement();
-        controllerCursor.style.position = Position.Absolute;
-        controllerCursor.style.width = 40f;
-        controllerCursor.style.height = 40f;
-        controllerCursor.style.borderTopWidth = 3f;
-        controllerCursor.style.borderRightWidth = 3f;
-        controllerCursor.style.borderBottomWidth = 3f;
-        controllerCursor.style.borderLeftWidth = 3f;
-        controllerCursor.style.borderTopColor = new Color(1f, 1f, 1f, 0.96f);
-        controllerCursor.style.borderRightColor = new Color(1f, 1f, 1f, 0.96f);
-        controllerCursor.style.borderBottomColor = new Color(1f, 1f, 1f, 0.96f);
-        controllerCursor.style.borderLeftColor = new Color(1f, 1f, 1f, 0.96f);
-        controllerCursor.style.borderTopLeftRadius = 999f;
-        controllerCursor.style.borderTopRightRadius = 999f;
-        controllerCursor.style.borderBottomLeftRadius = 999f;
-        controllerCursor.style.borderBottomRightRadius = 999f;
-        controllerCursor.style.backgroundColor = new Color(1f, 1f, 1f, 0.08f);
         controllerCursor.style.opacity = 0f;
         controllerCursor.style.display = DisplayStyle.None;
-        controllerCursor.style.translate = new Translate(-20f, -20f, 0f);
-        controllerCursor.pickingMode = PickingMode.Ignore;
 
         controllerCursorInner = new VisualElement();
-        controllerCursorInner.style.position = Position.Absolute;
-        controllerCursorInner.style.left = new Length(50f, LengthUnit.Percent);
-        controllerCursorInner.style.top = new Length(50f, LengthUnit.Percent);
-        controllerCursorInner.style.width = 12f;
-        controllerCursorInner.style.height = 12f;
-        controllerCursorInner.style.translate = new Translate(-6f, -6f, 0f);
-        controllerCursorInner.style.borderTopLeftRadius = 999f;
-        controllerCursorInner.style.borderTopRightRadius = 999f;
-        controllerCursorInner.style.borderBottomLeftRadius = 999f;
-        controllerCursorInner.style.borderBottomRightRadius = 999f;
-        controllerCursorInner.style.backgroundColor = new Color(1f, 1f, 1f, 0.98f);
-        controllerCursorInner.pickingMode = PickingMode.Ignore;
         controllerCursor.Add(controllerCursorInner);
+        ControllerCursorVisualUtility.Apply(controllerCursor, controllerCursorInner, root);
 
         root.Add(controllerCursor);
 
@@ -10663,8 +10999,40 @@ public sealed class TabsSongHeaderOverlay
                     ? $"Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
                     : $"Esc pause  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab";
             }
-            gameplayShortcutLabel.style.display = showGameplayShortcuts ? DisplayStyle.Flex : DisplayStyle.None;
+            gameplayShortcutLabel.style.display = DisplayStyle.None;
         }
+        if (gameplayShortcutRow != null)
+        {
+            bool loopModeAvailable = !snapshot.multiplayerRhythmMode &&
+                                     (snapshot.gameplayMode == GuitarGameplayMode.Guitar || snapshot.gameplayMode == GuitarGameplayMode.Arcade);
+            gameplayShortcutRow.style.display = showGameplayShortcuts ? DisplayStyle.Flex : DisplayStyle.None;
+            if (gameplayShortcutPauseButton != null)
+                gameplayShortcutPauseButton.text = showPause ? "Resume (Esc)" : "Pause (Esc)";
+            if (gameplayShortcutRestartButton != null)
+                gameplayShortcutRestartButton.text = "Restart (R)";
+            if (gameplayShortcutAudioButton != null)
+                gameplayShortcutAudioButton.text = "Audio (V)";
+            if (gameplayShortcutToneLabButton != null)
+                gameplayShortcutToneLabButton.text = "Tone Lab (T)";
+            if (gameplayShortcutLoopButton != null)
+            {
+                gameplayShortcutLoopButton.text = snapshot.loopEnabled ? "Loop On (L)" : "Loop (L)";
+                gameplayShortcutLoopButton.style.display = loopModeAvailable ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+            DisplayStyle pauseOnlyDisplay = showPause ? DisplayStyle.Flex : DisplayStyle.None;
+            if (gameplayShortcutOpenButton != null)
+                gameplayShortcutOpenButton.style.display = pauseOnlyDisplay;
+            if (gameplayShortcutSeekLeftButton != null)
+                gameplayShortcutSeekLeftButton.style.display = pauseOnlyDisplay;
+            if (gameplayShortcutSeekRightButton != null)
+                gameplayShortcutSeekRightButton.style.display = pauseOnlyDisplay;
+            if (gameplayShortcutPrevNoteButton != null)
+                gameplayShortcutPrevNoteButton.style.display = pauseOnlyDisplay;
+            if (gameplayShortcutNextNoteButton != null)
+                gameplayShortcutNextNoteButton.style.display = pauseOnlyDisplay;
+        }
+
+        UpdateGameplayTimeline(snapshot, showGameplayShortcuts || showLoopSetup);
 
         bool showLoopPauseCountdown = snapshot.loopRestartPauseRemainingSeconds > 0.0001f
 
@@ -11345,6 +11713,7 @@ public sealed class TabsSongHeaderOverlay
                 : (snapshot.showLoopBookmarksPanel
                     ? "Arrows move time  \u2022  1 set start  \u2022  2 set end  \u2022  B hide bookmarks  \u2022  Space preview  \u2022  Esc continue"
                     : "Arrows move time  \u2022  1 set start  \u2022  2 set end  \u2022  B show bookmarks  \u2022  Space preview  \u2022  Esc continue");
+            UpdateLoopSetupShortcutButtons(snapshot);
 
         }
 
@@ -11897,20 +12266,40 @@ public sealed class TabsSongHeaderOverlay
         float axisY = ReadControllerCursorVerticalAxis();
         bool controllerButtonPressed = WasAnyControllerUiButtonPressedThisFrame();
         bool controllerMovementDetected = Mathf.Abs(axisX) >= 0.2f || Mathf.Abs(axisY) >= 0.2f;
+        bool primaryPressed = WasControllerPrimaryActionPressedThisFrame();
+        bool primaryHeld = IsControllerPrimaryActionHeld();
+        bool primaryReleased = controllerCursorPrimaryWasHeld && !primaryHeld;
+        bool rightStickActivity = controllerCursorActive &&
+            ControllerCursorVisualUtility.ReadRightStickAxis().sqrMagnitude >= 0.04f;
+        bool wasHiddenByIdle = controllerCursorActive &&
+            Time.unscaledTime - controllerCursorLastActivityTime > ControllerCursorIdleHideSeconds;
+        bool controllerActivity = controllerMovementDetected || controllerButtonPressed || primaryHeld || rightStickActivity;
 
-        if (!controllerCursorActive && (controllerButtonPressed || controllerMovementDetected))
+        if (controllerActivity)
         {
+            bool wasInactive = !controllerCursorActive;
             controllerCursorActive = true;
-            ClearNativeUiFocusForControllerCursor();
+            controllerCursorLastActivityTime = Time.unscaledTime;
+            if (wasInactive)
+                ClearNativeUiFocusForControllerCursor();
             controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
-            controllerCursor.style.display = DisplayStyle.Flex;
-            controllerCursor.style.opacity = 1f;
         }
 
         if (!controllerCursorActive)
         {
             controllerCursor.style.display = DisplayStyle.None;
             controllerCursor.style.opacity = 0f;
+            return;
+        }
+
+        bool hiddenByIdle = Time.unscaledTime - controllerCursorLastActivityTime > ControllerCursorIdleHideSeconds;
+        if (hiddenByIdle)
+        {
+            EndControllerCursorPress(sendRelease: true);
+            controllerCursor.style.display = DisplayStyle.None;
+            controllerCursor.style.opacity = 0f;
+            lastControllerCursorTarget = null;
+            controllerCursorPrimaryWasHeld = primaryHeld;
             return;
         }
 
@@ -11932,16 +12321,32 @@ public sealed class TabsSongHeaderOverlay
         PositionControllerCursorVisual();
 
         VisualElement pickedTarget = PickControllerCursorTarget();
+        if (ControllerCursorVisualUtility.TryScrollHoveredScrollView(pickedTarget, Time.unscaledDeltaTime, out ScrollView scrolledView))
+        {
+            controllerCursorLastActivityTime = Time.unscaledTime;
+            if (scrolledView == globalSettingsScrollView)
+                globalSettingsScrollOffset = scrolledView.scrollOffset;
+        }
         if (pickedTarget != null && pickedTarget != lastControllerCursorTarget && movement.sqrMagnitude > 0.0001f)
             DispatchControllerCursorMove(pickedTarget);
         lastControllerCursorTarget = pickedTarget;
 
-        if (WasControllerPrimaryActionPressedThisFrame())
+        if (primaryPressed && !wasHiddenByIdle)
         {
             ClearNativeUiFocusForControllerCursor();
             if (controllerCursorPointerMode)
-                DispatchControllerCursorClick(pickedTarget);
+                BeginControllerCursorPress(pickedTarget);
         }
+
+        if (controllerCursorPressActive && controllerCursorPressedTarget != null)
+        {
+            if (primaryHeld)
+                DispatchControllerCursorDrag(controllerCursorPressedTarget);
+            if (primaryReleased)
+                EndControllerCursorPress(sendRelease: true);
+        }
+
+        controllerCursorPrimaryWasHeld = primaryHeld;
     }
 
     private bool ShouldDisplayControllerCursor(GuitarGameplaySnapshot snapshot)
@@ -11949,35 +12354,15 @@ public sealed class TabsSongHeaderOverlay
         if (snapshot == null)
             return false;
 
-        return snapshot.showMainMenu ||
-               snapshot.showStartMenu ||
-               snapshot.showSongSelection ||
-               snapshot.showTrackSelection ||
-               snapshot.showSongSettings ||
-               snapshot.showGlobalSettings ||
-               snapshot.showLoopSettings ||
-               snapshot.showLoopPausePopup ||
-               snapshot.showGameModes ||
-               snapshot.showHeroModeSettings ||
-               snapshot.showNotesDetectorTestMenu ||
-               snapshot.showTuner ||
-               snapshot.showGeneratedAudioTrackSelectionPopup ||
-               snapshot.showSongSettingsTrackSelectionPopup ||
-               snapshot.showStartupTuningReminder ||
-               snapshot.showDiagnosticsConsentPopup ||
-               snapshot.showBugReportScreen ||
-               snapshot.showBugReportSentPopup ||
-               snapshot.showLibraryLoadingOverlay ||
-               snapshot.showOffsetHelper ||
-               snapshot.showMultiplayerRhythmSetup ||
-               snapshot.songEnded ||
-               snapshot.isPaused;
+        return !snapshot.showToneLab && !snapshot.showTuner;
     }
 
     private void HideControllerCursor()
     {
+        EndControllerCursorPress(sendRelease: false);
         controllerCursorActive = false;
         controllerCursorPointerMode = false;
+        controllerCursorPrimaryWasHeld = false;
         lastControllerCursorTarget = null;
         if (controllerCursor != null)
         {
@@ -11988,6 +12373,7 @@ public sealed class TabsSongHeaderOverlay
 
     private void PositionControllerCursorVisual()
     {
+        ControllerCursorVisualUtility.Apply(controllerCursor, controllerCursorInner, document?.rootVisualElement);
         controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, ResolveControllerCursorPanelSize());
         controllerCursor.style.left = controllerCursorPanelPosition.x;
         controllerCursor.style.top = controllerCursorPanelPosition.y;
@@ -12075,6 +12461,48 @@ public sealed class TabsSongHeaderOverlay
         Event downEvent = CreateControllerCursorMouseEvent(EventType.MouseDown, 0, 1);
         PointerDownEvent pointerDown = PointerDownEvent.GetPooled(downEvent);
         target.SendEvent(pointerDown);
+
+        Event upEvent = CreateControllerCursorMouseEvent(EventType.MouseUp, 0, 1);
+        PointerUpEvent pointerUp = PointerUpEvent.GetPooled(upEvent);
+        target.SendEvent(pointerUp);
+    }
+
+    private void BeginControllerCursorPress(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        EndControllerCursorPress(sendRelease: false);
+        controllerCursorPressedTarget = target;
+        controllerCursorPressActive = true;
+        DispatchControllerCursorMove(target);
+
+        Event downEvent = CreateControllerCursorMouseEvent(EventType.MouseDown, 0, 1);
+        PointerDownEvent pointerDown = PointerDownEvent.GetPooled(downEvent);
+        target.SendEvent(pointerDown);
+    }
+
+    private void DispatchControllerCursorDrag(VisualElement target)
+    {
+        if (target == null)
+            return;
+
+        Event dragEvent = CreateControllerCursorMouseEvent(EventType.MouseDrag, 0, 0);
+        PointerMoveEvent pointerMove = PointerMoveEvent.GetPooled(dragEvent);
+        target.SendEvent(pointerMove);
+    }
+
+    private void EndControllerCursorPress(bool sendRelease)
+    {
+        if (!controllerCursorPressActive)
+            return;
+
+        VisualElement target = controllerCursorPressedTarget;
+        controllerCursorPressActive = false;
+        controllerCursorPressedTarget = null;
+
+        if (!sendRelease || target == null)
+            return;
 
         Event upEvent = CreateControllerCursorMouseEvent(EventType.MouseUp, 0, 1);
         PointerUpEvent pointerUp = PointerUpEvent.GetPooled(upEvent);
@@ -12174,6 +12602,20 @@ public sealed class TabsSongHeaderOverlay
         if (HasInputSystemGamepadConnected())
             return false;
         return Input.GetKeyDown(KeyCode.JoystickButton0);
+    }
+
+    private static bool IsControllerPrimaryActionHeld()
+    {
+#if ENABLE_INPUT_SYSTEM
+        foreach (Gamepad gamepad in Gamepad.all)
+        {
+            if (gamepad?.buttonSouth.isPressed == true)
+                return true;
+        }
+#endif
+        if (HasInputSystemGamepadConnected())
+            return false;
+        return Input.GetKey(KeyCode.JoystickButton0);
     }
 
     private static bool HasInputSystemGamepadConnected()
@@ -12360,6 +12802,14 @@ public sealed class TabsSongHeaderOverlay
 
             UnityEngine.Object.Destroy(loopPauseCountdownTexture);
 
+        if (gameplayTimelineDensityTexture != null)
+
+            UnityEngine.Object.Destroy(gameplayTimelineDensityTexture);
+
+        if (gameplayTimelineActiveSectionTexture != null)
+
+            UnityEngine.Object.Destroy(gameplayTimelineActiveSectionTexture);
+
         foreach (Texture2D texture in libraryArtworkTextureCache.Values)
         {
             if (texture != null)
@@ -12418,6 +12868,1293 @@ public sealed class TabsSongHeaderOverlay
     public void SetStartupTuningReminderContent(string eyebrow, string title, string message, string callout, string hint, string primaryText)
     {
         startupTuningReminderPopup?.SetContent(eyebrow, title, message, callout, hint, primaryText);
+    }
+
+    private void UpdateGameplayTimeline(GuitarGameplaySnapshot snapshot, bool showGameplayShortcuts)
+    {
+        if (gameplayTimelineContainer == null)
+            return;
+
+        float duration = snapshot != null ? Mathf.Max(0f, snapshot.songDurationSeconds) : 0f;
+        bool loopTimelineVisible = snapshot != null && (snapshot.showLoopSettings || snapshot.loopEnabled);
+        bool visible = snapshot != null && ((showGameplayShortcuts && snapshot.showGameplayTimeline) || loopTimelineVisible) && duration > 0.25f;
+        gameplayTimelineContainer.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+        if (!visible)
+        {
+            gameplayTimelineDragging = false;
+            gameplayTimelineExpanded = false;
+            gameplayTimelineDurationSeconds = 0f;
+            UpdateGameplayShortcutTimelineOffset(0f);
+            return;
+        }
+
+        gameplayTimelineDurationSeconds = duration;
+        float progress = Mathf.Clamp01(Mathf.Max(0f, snapshot.songTime) / Mathf.Max(0.001f, duration));
+        gameplayTimelineExpanded = false;
+        bool expanded = false;
+
+        float timelineHeight = GetGameplayTimelineHeight(expanded);
+        gameplayTimelineContainer.style.height = timelineHeight;
+        gameplayTimelineContainer.style.minHeight = timelineHeight;
+        gameplayTimelineContainer.style.opacity = expanded ? 0.98f : 0.96f;
+        gameplayTimelineContainer.style.backgroundColor = expanded
+            ? new Color(0.006f, 0.014f, 0.024f, 0.74f)
+            : new Color(0.006f, 0.012f, 0.020f, 0.62f);
+        gameplayTimelineContainer.style.borderTopWidth = 0f;
+        gameplayTimelineContainer.style.borderTopColor = Color.clear;
+        gameplayTimelineContainer.style.borderRightColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.32f : 0.24f);
+        gameplayTimelineContainer.style.borderBottomColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.32f : 0.24f);
+        gameplayTimelineContainer.style.borderLeftColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.32f : 0.24f);
+        gameplayTimelineContainer.style.paddingLeft = 0f;
+        gameplayTimelineContainer.style.paddingRight = 0f;
+        gameplayTimelineContainer.style.paddingTop = expanded ? 12f : 10f;
+        gameplayTimelineContainer.style.paddingBottom = expanded ? 10f : 9f;
+        gameplayTimelineHeaderRow.style.display = expanded ? DisplayStyle.Flex : DisplayStyle.None;
+        gameplayTimelineHeaderRow.style.marginBottom = expanded ? 8f : 0f;
+        gameplayTimelineLabelsLayer.style.display = DisplayStyle.Flex;
+        gameplayTimelineLabelsLayer.style.height = GetGameplayTimelineBlockHeight(expanded);
+        gameplayTimelineLabelsLayer.style.marginTop = expanded ? 5f : 0f;
+        gameplayTimelineHintLabel.style.display = DisplayStyle.None;
+        gameplayTimelineTrack.style.height = expanded ? 8f : 7f;
+        gameplayTimelineTrack.style.marginTop = expanded ? 10f : 8f;
+        gameplayTimelineFill.style.display = DisplayStyle.None;
+        gameplayTimelinePlayhead.style.display = DisplayStyle.None;
+        gameplayTimelineBlockPlayheadGlow.style.display = DisplayStyle.None;
+        gameplayTimelineBlockPlayhead.style.top = expanded ? -10f : -8f;
+        gameplayTimelineBlockPlayhead.style.bottom = expanded ? -18f : -15f;
+        UpdateGameplayShortcutTimelineOffset(timelineHeight);
+
+        SongTimelineSectionData currentSection = GetTimelineSectionAt(snapshot.songTimelineSections, snapshot.songTime);
+        SongTimelineSectionData nextSection = GetNextTimelineSection(snapshot.songTimelineSections, snapshot.songTime);
+        if (currentSection != null)
+        {
+            gameplayTimelineNowBadgeLabel.text = "NOW";
+            gameplayTimelineNowBadgeLabel.style.backgroundColor = new Color(0.47f, 0.92f, 1f, 0.96f);
+            gameplayTimelineSectionLabel.text = GetGameplayTimelineDisplaySectionName(currentSection.name);
+        }
+        else if (nextSection != null)
+        {
+            gameplayTimelineNowBadgeLabel.text = "NEXT";
+            gameplayTimelineNowBadgeLabel.style.backgroundColor = new Color(0.83f, 0.92f, 1f, 0.92f);
+            gameplayTimelineSectionLabel.text = $"{GetGameplayTimelineDisplaySectionName(nextSection.name)} in {FormatTimelineClock(Mathf.Max(0f, nextSection.startTime - snapshot.songTime))}";
+        }
+        else
+        {
+            gameplayTimelineNowBadgeLabel.text = "MAP";
+            gameplayTimelineNowBadgeLabel.style.backgroundColor = new Color(0.66f, 0.78f, 0.91f, 0.88f);
+            gameplayTimelineSectionLabel.text = "Timeline";
+        }
+
+        bool showNextChip = expanded && currentSection != null && nextSection != null;
+        gameplayTimelineNextChip.style.display = showNextChip ? DisplayStyle.Flex : DisplayStyle.None;
+        if (showNextChip)
+            gameplayTimelineNextLabel.text = $"UP NEXT  {GetGameplayTimelineDisplaySectionName(nextSection.name)}  in {FormatTimelineClock(Mathf.Max(0f, nextSection.startTime - snapshot.songTime))}";
+
+        gameplayTimelineHintLabel.text = "Click or drag the timeline to jump";
+        gameplayTimelineTimeLabel.text = $"{FormatTimelineClock(snapshot.songTime)} / {FormatTimelineClock(duration)}";
+        gameplayTimelineBlockPlayhead.style.left = new Length(progress * 100f, LengthUnit.Percent);
+
+        string signature = BuildGameplayTimelineSignature(snapshot.songTimelineSections, duration, gameplayTimelineContainer.resolvedStyle.width, snapshot.noteStates);
+        if (!string.Equals(signature, gameplayTimelineSignature, StringComparison.Ordinal))
+        {
+            gameplayTimelineSignature = signature;
+            RebuildGameplayTimelineMarkers(snapshot.songTimelineSections, duration, snapshot.noteStates);
+        }
+
+        UpdateGameplayTimelineSegmentStates(snapshot.songTime);
+        UpdateGameplayTimelineLoopMarkers(snapshot);
+    }
+
+    private void UpdateLoopSetupShortcutButtons(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || loopSetupShortcutRow == null)
+            return;
+
+        bool rhythmPractice = snapshot.gameplayMode == GuitarGameplayMode.Arcade;
+        if (loopSetupSeekLeftButton != null)
+        {
+            loopSetupSeekLeftButton.text = rhythmPractice ? "Previous (↑)" : "Seek - (←)";
+            loopSetupSeekLeftButton.style.display = DisplayStyle.Flex;
+        }
+
+        if (loopSetupSeekRightButton != null)
+        {
+            loopSetupSeekRightButton.text = rhythmPractice ? "Next (↓)" : "Seek + (→)";
+            loopSetupSeekRightButton.style.display = DisplayStyle.Flex;
+        }
+
+        if (loopSetupStartButton != null)
+        {
+            loopSetupStartButton.text = rhythmPractice ? "Select (Enter)" : "Start (1)";
+            loopSetupStartButton.style.display = DisplayStyle.Flex;
+        }
+
+        if (loopSetupEndButton != null)
+        {
+            loopSetupEndButton.text = rhythmPractice ? "Clear" : "End (2)";
+            loopSetupEndButton.style.display = rhythmPractice ? DisplayStyle.None : DisplayStyle.Flex;
+        }
+
+        if (loopSetupBookmarksButton != null)
+            loopSetupBookmarksButton.text = rhythmPractice
+                ? "Sections (B)"
+                : "Bookmarks (B)";
+
+        if (loopSetupPreviewButton != null)
+            loopSetupPreviewButton.text = snapshot.loopPreviewPlaying ? "Stop (Space)" : "Preview (Space)";
+
+        if (loopSetupContinueButton != null)
+            loopSetupContinueButton.text = rhythmPractice ? "Start (Esc)" : "Continue (Esc)";
+    }
+
+    private static SongTimelineSectionData GetTimelineSectionAt(List<SongTimelineSectionData> sections, float songTime)
+    {
+        if (sections == null || sections.Count == 0)
+            return null;
+
+        SongTimelineSectionData current = null;
+        float clampedTime = Mathf.Max(0f, songTime);
+        for (int i = 0; i < sections.Count; i++)
+        {
+            SongTimelineSectionData section = sections[i];
+            if (section == null || section.startTime > clampedTime + 0.001f)
+                continue;
+
+            current = section;
+            if (clampedTime < section.endTime - 0.001f)
+                break;
+        }
+
+        return current;
+    }
+
+    private static SongTimelineSectionData GetNextTimelineSection(List<SongTimelineSectionData> sections, float songTime)
+    {
+        if (sections == null || sections.Count == 0)
+            return null;
+
+        float clampedTime = Mathf.Max(0f, songTime);
+        for (int i = 0; i < sections.Count; i++)
+        {
+            SongTimelineSectionData section = sections[i];
+            if (section != null && section.startTime > clampedTime + 0.001f)
+                return section;
+        }
+
+        return null;
+    }
+
+    private static float GetGameplayTimelineHeight(bool expanded)
+    {
+        return expanded ? 132f : 96f;
+    }
+
+    private static float GetGameplayTimelineBlockHeight(bool expanded)
+    {
+        return expanded ? 74f : 64f;
+    }
+
+    private void RebuildGameplayTimelineMarkers(List<SongTimelineSectionData> sections, float duration, List<GameplayNoteState> noteStates)
+    {
+        if (gameplayTimelineSectionLayer == null)
+            return;
+
+        gameplayTimelineSectionLayer.Clear();
+        gameplayTimelineLabelsLayer?.Clear();
+        gameplayTimelineSegmentHosts.Clear();
+        gameplayTimelineSegmentLabels.Clear();
+        gameplayTimelineSegmentNames.Clear();
+        gameplayTimelineSegmentCompactLabels.Clear();
+        gameplayTimelineSegmentStarts.Clear();
+        gameplayTimelineSegmentEnds.Clear();
+        gameplayTimelineHoveredSegmentIndex = -1;
+        gameplayTimelineAnimatedHoverSegmentIndex = -1;
+        gameplayTimelinePreviousHoverSegmentIndex = -1;
+        gameplayTimelineHoverBlend = 0f;
+        gameplayTimelinePreviousHoverBlend = 0f;
+        if (sections == null || sections.Count == 0 || duration <= 0.001f)
+        {
+            AddGameplayTimelinePlayheadOverlays();
+            return;
+        }
+
+        List<SongTimelineSectionData> displaySections = BuildGameplayTimelineDisplaySections(sections, duration);
+        if (displaySections == null || displaySections.Count == 0)
+        {
+            AddGameplayTimelinePlayheadOverlays();
+            return;
+        }
+
+        float timelineWidth = gameplayTimelineContainer != null && gameplayTimelineContainer.resolvedStyle.width > 1f
+            ? gameplayTimelineContainer.resolvedStyle.width
+            : 1600f;
+
+        for (int i = 0; i < displaySections.Count; i++)
+        {
+            SongTimelineSectionData section = displaySections[i];
+            if (section == null)
+                continue;
+
+            float percent = Mathf.Clamp01(section.startTime / duration) * 100f;
+            if (gameplayTimelineLabelsLayer == null)
+                continue;
+
+            float endTime = Mathf.Max(section.startTime + 0.05f, section.endTime);
+            float endPercent = Mathf.Clamp01(endTime / duration) * 100f;
+            float widthPercent = Mathf.Max(0.2f, endPercent - percent);
+            float segmentPixels = timelineWidth * (widthPercent / 100f);
+
+            VisualElement segmentLabelHost = new VisualElement();
+            segmentLabelHost.style.position = Position.Absolute;
+            segmentLabelHost.style.left = new Length(percent, LengthUnit.Percent);
+            segmentLabelHost.style.top = 0f;
+            segmentLabelHost.style.height = GetGameplayTimelineBlockHeight(expanded: false);
+            segmentLabelHost.style.width = new Length(widthPercent, LengthUnit.Percent);
+            segmentLabelHost.style.paddingLeft = segmentPixels >= 130f ? 14f : 4f;
+            segmentLabelHost.style.paddingRight = segmentPixels >= 130f ? 14f : 4f;
+            segmentLabelHost.style.justifyContent = Justify.Center;
+            segmentLabelHost.style.alignItems = Align.Center;
+            segmentLabelHost.style.overflow = Overflow.Hidden;
+            segmentLabelHost.style.borderTopWidth = 1f;
+            segmentLabelHost.style.borderRightWidth = 1f;
+            segmentLabelHost.style.borderBottomWidth = 1f;
+            segmentLabelHost.style.borderLeftWidth = 1f;
+            segmentLabelHost.style.borderTopLeftRadius = 2f;
+            segmentLabelHost.style.borderTopRightRadius = 2f;
+            segmentLabelHost.style.borderBottomLeftRadius = 2f;
+            segmentLabelHost.style.borderBottomRightRadius = 2f;
+            segmentLabelHost.tooltip = section.name ?? string.Empty;
+            segmentLabelHost.pickingMode = PickingMode.Ignore;
+
+            string labelText = GetTimelineSegmentLabel(section, segmentPixels);
+            Label segmentLabel = CreateLabel((labelText ?? string.Empty).ToUpperInvariant(), segmentPixels >= 170f ? 24f : 20f, new Color(0.88f, 0.92f, 0.98f, segmentPixels >= 110f ? 0.96f : 0.84f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+            segmentLabel.style.unityFontDefinition = modernUiFontDefinition;
+            segmentLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            segmentLabel.style.overflow = Overflow.Hidden;
+            segmentLabel.style.textOverflow = TextOverflow.Ellipsis;
+            segmentLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+            segmentLabel.style.opacity = string.IsNullOrEmpty(labelText) ? 0f : 1f;
+            segmentLabelHost.Add(segmentLabel);
+
+            gameplayTimelineSegmentHosts.Add(segmentLabelHost);
+            gameplayTimelineSegmentLabels.Add(segmentLabel);
+            gameplayTimelineSegmentNames.Add(section.name ?? string.Empty);
+            gameplayTimelineSegmentCompactLabels.Add(labelText ?? string.Empty);
+            gameplayTimelineSegmentStarts.Add(section.startTime);
+            gameplayTimelineSegmentEnds.Add(endTime);
+            gameplayTimelineLabelsLayer.Add(segmentLabelHost);
+        }
+
+        RebuildGameplayTimelineDensityLine(noteStates, duration, timelineWidth);
+
+        AddGameplayTimelinePlayheadOverlays();
+    }
+
+    private void AddGameplayTimelinePlayheadOverlays()
+    {
+        if (gameplayTimelineLabelsLayer == null)
+            return;
+
+        if (gameplayTimelineBlockPlayhead != null)
+            gameplayTimelineLabelsLayer.Add(gameplayTimelineBlockPlayhead);
+
+        if (gameplayTimelineLoopStartMarker != null)
+            gameplayTimelineLabelsLayer.Add(gameplayTimelineLoopStartMarker);
+
+        if (gameplayTimelineLoopEndMarker != null)
+            gameplayTimelineLabelsLayer.Add(gameplayTimelineLoopEndMarker);
+    }
+
+    private VisualElement CreateGameplayTimelineLoopMarker(int markerIndex, string tooltip)
+    {
+        VisualElement marker = new VisualElement();
+        marker.style.position = Position.Absolute;
+        marker.style.top = -22f;
+        marker.style.bottom = 0f;
+        marker.style.width = 20f;
+        marker.style.translate = new Translate(-10f, 0f, 0f);
+        marker.style.backgroundColor = Color.clear;
+        marker.style.borderTopLeftRadius = 999f;
+        marker.style.borderTopRightRadius = 999f;
+        marker.style.borderBottomLeftRadius = 999f;
+        marker.style.borderBottomRightRadius = 999f;
+        marker.style.display = DisplayStyle.None;
+        marker.style.overflow = Overflow.Visible;
+        marker.tooltip = tooltip;
+        marker.pickingMode = PickingMode.Position;
+
+        VisualElement knob = new VisualElement();
+        knob.name = "knob";
+        knob.style.position = Position.Absolute;
+        knob.style.top = 0f;
+        knob.style.left = 4.5f;
+        knob.style.width = 11f;
+        knob.style.height = 11f;
+        knob.style.borderTopLeftRadius = 999f;
+        knob.style.borderTopRightRadius = 999f;
+        knob.style.borderBottomLeftRadius = 999f;
+        knob.style.borderBottomRightRadius = 999f;
+        knob.style.borderTopWidth = 2f;
+        knob.style.borderRightWidth = 2f;
+        knob.style.borderBottomWidth = 2f;
+        knob.style.borderLeftWidth = 2f;
+        knob.style.backgroundColor = new Color(1f, 0.12f, 0.10f, 0.22f);
+        knob.style.borderTopColor = new Color(1f, 0.24f, 0.18f, 0.92f);
+        knob.style.borderRightColor = new Color(1f, 0.24f, 0.18f, 0.92f);
+        knob.style.borderBottomColor = new Color(1f, 0.24f, 0.18f, 0.92f);
+        knob.style.borderLeftColor = new Color(1f, 0.24f, 0.18f, 0.92f);
+        knob.pickingMode = PickingMode.Ignore;
+
+        VisualElement line = new VisualElement();
+        line.name = "line";
+        line.style.position = Position.Absolute;
+        line.style.top = 9f;
+        line.style.bottom = 0f;
+        line.style.left = 8.5f;
+        line.style.width = 3f;
+        line.style.backgroundColor = new Color(1f, 0.18f, 0.14f, 0.96f);
+        line.style.borderTopLeftRadius = 999f;
+        line.style.borderTopRightRadius = 999f;
+        line.style.borderBottomLeftRadius = 999f;
+        line.style.borderBottomRightRadius = 999f;
+        line.pickingMode = PickingMode.Ignore;
+        marker.Add(line);
+        marker.Add(knob);
+
+        marker.RegisterCallback<PointerEnterEvent>(_ =>
+        {
+            gameplayTimelineLoopHoveredMarker = markerIndex;
+            gameplayTimelineHoveredSegmentIndex = -1;
+            UpdateGameplayTimelineLoopMarkerVisuals();
+        });
+        marker.RegisterCallback<PointerLeaveEvent>(_ =>
+        {
+            if (gameplayTimelineLoopDraggingMarker != markerIndex)
+            {
+                gameplayTimelineLoopHoveredMarker = 0;
+            }
+            UpdateGameplayTimelineLoopMarkerVisuals();
+        });
+        marker.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (evt == null || evt.button != 0)
+                return;
+
+            gameplayTimelineLoopDraggingMarker = markerIndex;
+            gameplayTimelineLoopHoveredMarker = markerIndex;
+            gameplayTimelineHoveredSegmentIndex = -1;
+            marker.CapturePointer(evt.pointerId);
+            DragGameplayTimelineLoopMarker(markerIndex, evt.position);
+            UpdateGameplayTimelineLoopMarkerVisuals();
+            evt.StopPropagation();
+        });
+        marker.RegisterCallback<PointerMoveEvent>(evt =>
+        {
+            if (evt == null || gameplayTimelineLoopDraggingMarker != markerIndex)
+                return;
+
+            DragGameplayTimelineLoopMarker(markerIndex, evt.position);
+            evt.StopPropagation();
+        });
+        marker.RegisterCallback<PointerUpEvent>(evt =>
+        {
+            if (evt == null || gameplayTimelineLoopDraggingMarker != markerIndex)
+                return;
+
+            DragGameplayTimelineLoopMarker(markerIndex, evt.position);
+            gameplayTimelineLoopDraggingMarker = 0;
+            marker.ReleasePointer(evt.pointerId);
+            UpdateGameplayTimelineLoopMarkerVisuals();
+            evt.StopPropagation();
+        });
+        marker.RegisterCallback<PointerCancelEvent>(evt =>
+        {
+            if (gameplayTimelineLoopDraggingMarker == markerIndex)
+                gameplayTimelineLoopDraggingMarker = 0;
+            if (evt != null)
+                marker.ReleasePointer(evt.pointerId);
+            UpdateGameplayTimelineLoopMarkerVisuals();
+        });
+        return marker;
+    }
+
+    private void RebuildGameplayTimelineDensityLine(List<GameplayNoteState> noteStates, float duration, float timelineWidth)
+    {
+        if (gameplayTimelineSectionLayer == null || duration <= 0.001f)
+            return;
+
+        int controlPointCount = Mathf.Clamp(Mathf.RoundToInt(Mathf.Max(320f, timelineWidth) / 96f), 18, 38);
+        float[] rawCounts = new float[controlPointCount];
+        if (noteStates != null)
+        {
+            for (int i = 0; i < noteStates.Count; i++)
+            {
+                GameplayNoteState state = noteStates[i];
+                if (state == null)
+                    continue;
+
+                float time = state.data.time;
+                if (time < 0f || time > duration)
+                    continue;
+
+                int bucket = Mathf.Clamp(Mathf.FloorToInt((time / duration) * controlPointCount), 0, controlPointCount - 1);
+                rawCounts[bucket] += 1f;
+            }
+        }
+
+        float[] smoothedCounts = new float[controlPointCount];
+        List<float> nonZeroDensities = new List<float>(controlPointCount);
+        for (int i = 0; i < controlPointCount; i++)
+        {
+            float total = 0f;
+            float weightSum = 0f;
+            for (int offset = -3; offset <= 3; offset++)
+            {
+                int source = Mathf.Clamp(i + offset, 0, controlPointCount - 1);
+                float weight = 1f / (1f + Mathf.Abs(offset));
+                total += rawCounts[source] * weight;
+                weightSum += weight;
+            }
+
+            float smoothed = weightSum > 0.001f ? total / weightSum : 0f;
+            smoothedCounts[i] = smoothed;
+            if (smoothed > 0.001f)
+                nonZeroDensities.Add(smoothed);
+        }
+
+        float referenceDensity = 1f;
+        if (nonZeroDensities.Count > 0)
+        {
+            nonZeroDensities.Sort();
+            int percentileIndex = Mathf.Clamp(Mathf.RoundToInt((nonZeroDensities.Count - 1) * 0.88f), 0, nonZeroDensities.Count - 1);
+            referenceDensity = Mathf.Max(1f, nonZeroDensities[percentileIndex]);
+        }
+
+        Color[] controlColors = new Color[controlPointCount];
+        for (int i = 0; i < controlPointCount; i++)
+        {
+            float normalizedDensity = Mathf.Clamp01(smoothedCounts[i] / referenceDensity);
+            controlColors[i] = GetGameplayTimelineDensityColor(normalizedDensity);
+        }
+
+        Texture2D densityTexture = BuildGameplayTimelineDensityTexture(controlColors);
+        if (densityTexture == null)
+            return;
+
+        gameplayTimelineDensityTexture = densityTexture;
+        gameplayTimelineTrack.style.backgroundImage = new StyleBackground(densityTexture);
+        gameplayTimelineTrack.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
+    }
+
+    private Texture2D BuildGameplayTimelineDensityTexture(Color[] controlColors)
+    {
+        if (controlColors == null || controlColors.Length == 0)
+            return null;
+
+        const int width = 512;
+        const int height = 2;
+        if (gameplayTimelineDensityTexture == null ||
+            gameplayTimelineDensityTexture.width != width ||
+            gameplayTimelineDensityTexture.height != height)
+        {
+            if (gameplayTimelineDensityTexture != null)
+                UnityEngine.Object.Destroy(gameplayTimelineDensityTexture);
+
+            gameplayTimelineDensityTexture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            {
+                name = "GameplayTimelineDensityGradient",
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear
+            };
+        }
+
+        Color[] pixels = new Color[width * height];
+        int lastControlIndex = Mathf.Max(0, controlColors.Length - 1);
+        for (int x = 0; x < width; x++)
+        {
+            float normalizedX = width > 1 ? x / (float)(width - 1) : 0f;
+            float scaled = normalizedX * lastControlIndex;
+            int leftIndex = Mathf.Clamp(Mathf.FloorToInt(scaled), 0, lastControlIndex);
+            int rightIndex = Mathf.Clamp(leftIndex + 1, 0, lastControlIndex);
+            float blend = Mathf.Clamp01(scaled - leftIndex);
+            blend = blend * blend * (3f - (2f * blend));
+            Color color = Color.Lerp(controlColors[leftIndex], controlColors[rightIndex], blend);
+
+            for (int y = 0; y < height; y++)
+                pixels[(y * width) + x] = color;
+        }
+
+        gameplayTimelineDensityTexture.SetPixels(pixels);
+        gameplayTimelineDensityTexture.Apply(false, false);
+        return gameplayTimelineDensityTexture;
+    }
+
+    private static Color GetGameplayTimelineDensityColor(float normalizedDensity)
+    {
+        normalizedDensity = Mathf.Clamp01(normalizedDensity);
+        Color rest = new Color(0.08f, 0.24f, 0.34f, 0.82f);
+        if (normalizedDensity <= 0.001f)
+            return rest;
+
+        float t = Mathf.Pow(normalizedDensity, 0.72f);
+        Color low = new Color(0.08f, 0.63f, 0.76f, 0.88f);
+        Color medium = new Color(0.30f, 0.48f, 1.00f, 0.92f);
+        Color busy = new Color(0.68f, 0.30f, 1.00f, 0.95f);
+        Color intense = new Color(1.00f, 0.54f, 0.18f, 0.98f);
+        Color peak = new Color(1.00f, 0.20f, 0.28f, 1.00f);
+
+        if (t < 0.24f)
+            return Color.Lerp(rest, low, t / 0.24f);
+        if (t < 0.50f)
+            return Color.Lerp(low, medium, (t - 0.24f) / 0.26f);
+        if (t < 0.72f)
+            return Color.Lerp(medium, busy, (t - 0.50f) / 0.22f);
+        if (t < 0.90f)
+            return Color.Lerp(busy, intense, (t - 0.72f) / 0.18f);
+
+        return Color.Lerp(intense, peak, (t - 0.90f) / 0.10f);
+    }
+
+    private static List<SongTimelineSectionData> BuildGameplayTimelineDisplaySections(List<SongTimelineSectionData> sections, float duration)
+    {
+        List<SongTimelineSectionData> result = new List<SongTimelineSectionData>();
+        if (sections == null || sections.Count == 0 || duration <= 0.001f)
+            return result;
+
+        SongTimelineSectionData current = null;
+        string currentKey = string.Empty;
+        for (int i = 0; i < sections.Count; i++)
+        {
+            SongTimelineSectionData section = sections[i];
+            if (section == null)
+                continue;
+
+            float start = Mathf.Clamp(section.startTime, 0f, duration);
+            float end = Mathf.Clamp(Mathf.Max(section.endTime, start + 0.05f), 0f, duration);
+            if (end <= start + 0.001f)
+                continue;
+
+            string displayName = GetGameplayTimelineDisplaySectionName(section.name);
+            string key = NormalizeGameplayTimelineSectionKey(displayName);
+            bool shouldMerge = current != null
+                && string.Equals(key, currentKey, StringComparison.Ordinal)
+                && start <= current.endTime + 0.35f;
+
+            if (shouldMerge)
+            {
+                current.endTime = Mathf.Max(current.endTime, end);
+                continue;
+            }
+
+            current = new SongTimelineSectionData
+            {
+                index = result.Count,
+                name = displayName,
+                startTime = start,
+                endTime = end
+            };
+            currentKey = key;
+            result.Add(current);
+        }
+
+        for (int i = 0; i < result.Count; i++)
+        {
+            SongTimelineSectionData section = result[i];
+            if (section == null)
+                continue;
+
+            if (i + 1 < result.Count && result[i + 1] != null)
+                section.endTime = Mathf.Min(section.endTime, result[i + 1].startTime);
+            else
+                section.endTime = duration;
+        }
+
+        return result;
+    }
+
+    private static string GetGameplayTimelineDisplaySectionName(string sectionName)
+    {
+        if (string.IsNullOrWhiteSpace(sectionName))
+            return "Section";
+
+        string trimmed = sectionName.Trim();
+        string lower = trimmed.ToLowerInvariant();
+        string compact = BuildTimelineSectionCompactKey(lower);
+        if (compact.Contains("noguitar", StringComparison.Ordinal))
+            return "No Guitar";
+        if (compact.Contains("prechorus", StringComparison.Ordinal))
+            return "Pre-Chorus";
+        if (compact.Contains("preverse", StringComparison.Ordinal))
+            return "Pre-Verse";
+        if (compact.Contains("postchorus", StringComparison.Ordinal))
+            return "Post-Chorus";
+        if (compact.Contains("chorus", StringComparison.Ordinal))
+            return "Chorus";
+        if (compact.Contains("bridge", StringComparison.Ordinal))
+            return "Bridge";
+        if (compact.Contains("solo", StringComparison.Ordinal))
+            return "Solo";
+        if (compact.Contains("verse", StringComparison.Ordinal))
+            return "Verse";
+        if (compact.Contains("intro", StringComparison.Ordinal))
+            return "Intro";
+        if (compact.Contains("outro", StringComparison.Ordinal) || compact.Contains("end", StringComparison.Ordinal))
+            return "Outro";
+        if (compact.Contains("interlude", StringComparison.Ordinal))
+            return "Interlude";
+        if (compact.Contains("break", StringComparison.Ordinal))
+            return "Break";
+        if (compact.Contains("riff", StringComparison.Ordinal))
+            return "Riff";
+
+        return CultureInfo.CurrentCulture.TextInfo.ToTitleCase(trimmed.Replace('_', ' ').Replace('-', ' '));
+    }
+
+    private static string BuildTimelineSectionCompactKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return string.Empty;
+
+        StringBuilder builder = new StringBuilder(value.Length);
+        for (int i = 0; i < value.Length; i++)
+        {
+            char c = value[i];
+            if (char.IsLetter(c))
+                builder.Append(char.ToLowerInvariant(c));
+        }
+
+        return builder.ToString();
+    }
+
+    private static string NormalizeGameplayTimelineSectionKey(string sectionName)
+    {
+        if (string.IsNullOrWhiteSpace(sectionName))
+            return string.Empty;
+
+        string normalized = sectionName.Trim().ToLowerInvariant();
+        StringBuilder builder = new StringBuilder(normalized.Length);
+        for (int i = 0; i < normalized.Length; i++)
+        {
+            char c = normalized[i];
+            if (char.IsLetter(c))
+                builder.Append(c);
+            else if (char.IsWhiteSpace(c) || c == '-' || c == '_')
+                builder.Append(' ');
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private void UpdateGameplayTimelineSegmentStates(float songTime)
+    {
+        if (gameplayTimelineSegmentHosts.Count == 0)
+            return;
+
+        float clampedTime = Mathf.Max(0f, songTime);
+        UpdateGameplayTimelineHoverAnimation();
+        float totalLayoutWeight = GetGameplayTimelineLayoutWeightTotal();
+        float layoutCursor = 0f;
+        for (int i = 0; i < gameplayTimelineSegmentHosts.Count; i++)
+        {
+            VisualElement host = gameplayTimelineSegmentHosts[i];
+            if (host == null)
+                continue;
+
+            bool expanded = gameplayTimelineExpanded || gameplayTimelineDragging;
+            float start = i < gameplayTimelineSegmentStarts.Count ? gameplayTimelineSegmentStarts[i] : 0f;
+            float end = i < gameplayTimelineSegmentEnds.Count ? gameplayTimelineSegmentEnds[i] : start;
+            bool active = clampedTime >= start - 0.001f && clampedTime < end - 0.001f;
+            bool hovered = !gameplayTimelineDragging && i == gameplayTimelineHoveredSegmentIndex;
+            float hoverVisualBlend = !gameplayTimelineDragging ? GetGameplayTimelineHoverBlendForSegment(i) : 0f;
+            bool animatedHover = hoverVisualBlend > 0.001f;
+            float layoutWeight = GetGameplayTimelineSegmentBaseWeight(i) * GetGameplayTimelineHoverScaleForSegment(i);
+            float widthPercent = totalLayoutWeight > 0.001f ? (layoutWeight / totalLayoutWeight) * 100f : 0f;
+            host.style.left = new Length(layoutCursor, LengthUnit.Percent);
+            host.style.width = new Length(widthPercent, LengthUnit.Percent);
+            layoutCursor += widthPercent;
+
+            Color background = active
+                ? new Color(0.46f, 0.30f, 0.09f, expanded ? 0.26f : 0.20f)
+                : new Color(0.006f, 0.014f, 0.026f, expanded ? 0.24f : 0.16f);
+            Color border = active
+                ? new Color(0.96f, 0.66f, 0.20f, expanded ? 0.58f : 0.46f)
+                : hovered
+                    ? new Color(0.44f, 0.86f, 1f, 0.56f)
+                    : new Color(0.25f, 0.42f, 0.58f, expanded ? 0.34f : 0.25f);
+
+            host.style.backgroundColor = background;
+            host.style.borderTopColor = active ? new Color(0.80f, 0.58f, 0.24f, expanded ? 0.34f : 0.26f) : new Color(0.10f, 0.22f, 0.32f, expanded ? 0.24f : 0.14f);
+            host.style.borderRightColor = border;
+            host.style.borderBottomColor = active ? new Color(0.98f, 0.70f, 0.18f, expanded ? 0.74f : 0.58f) : new Color(0.10f, 0.22f, 0.32f, expanded ? 0.24f : 0.14f);
+            host.style.borderLeftColor = active ? border : new Color(0.25f, 0.42f, 0.58f, expanded ? 0.24f : 0.18f);
+            host.style.backgroundImage = active
+                ? new StyleBackground(GetGameplayTimelineActiveSectionTexture())
+                : StyleKeyword.None;
+            host.style.unityBackgroundScaleMode = ScaleMode.StretchToFill;
+            host.style.height = GetGameplayTimelineBlockHeight(expanded) + (animatedHover ? Mathf.Lerp(0f, 8f, hoverVisualBlend) : 0f);
+            host.style.scale = new Scale(Vector3.one);
+            host.style.translate = new Translate(0f, animatedHover ? Mathf.Lerp(0f, -5f, hoverVisualBlend) : 0f, 0f);
+
+            Label label = i < gameplayTimelineSegmentLabels.Count ? gameplayTimelineSegmentLabels[i] : null;
+            if (label != null)
+            {
+                string compactLabel = i < gameplayTimelineSegmentCompactLabels.Count ? gameplayTimelineSegmentCompactLabels[i] : string.Empty;
+                string fullLabel = i < gameplayTimelineSegmentNames.Count ? GetGameplayTimelineDisplaySectionName(gameplayTimelineSegmentNames[i]) : string.Empty;
+                bool hasCompactLabel = !string.IsNullOrWhiteSpace(compactLabel);
+                label.text = (animatedHover || hovered ? fullLabel : compactLabel).ToUpperInvariant();
+                label.style.opacity = animatedHover || hovered || hasCompactLabel ? 1f : 0f;
+                float baseFontSize = active ? (expanded ? 28f : 24f) : (expanded ? 24f : 21f);
+                label.style.fontSize = animatedHover ? Mathf.Lerp(baseFontSize, 27f, hoverVisualBlend) : baseFontSize;
+                label.style.color = active
+                    ? new Color(1f, 0.93f, 0.72f, 0.96f)
+                    : hovered || animatedHover
+                        ? new Color(0.92f, 0.98f, 1f, 0.98f)
+                        : new Color(0.88f, 0.92f, 0.98f, expanded ? 0.88f : 0.76f);
+            }
+        }
+
+        if (gameplayTimelineBlockPlayhead != null)
+            gameplayTimelineBlockPlayhead.style.left = new Length(GetGameplayTimelineDisplayNormalizedForTime(clampedTime) * 100f, LengthUnit.Percent);
+    }
+
+    private void UpdateGameplayTimelineLoopMarkers(GuitarGameplaySnapshot snapshot)
+    {
+        bool showMarkers = snapshot != null &&
+                           (snapshot.loopEnabled || snapshot.showLoopSettings) &&
+                           snapshot.loopEndTime > snapshot.loopStartTime + 0.01f &&
+                           gameplayTimelineDurationSeconds > 0.001f;
+
+        UpdateGameplayTimelineLoopMarkerPosition(gameplayTimelineLoopStartMarker, snapshot?.loopStartTime ?? 0f, showMarkers);
+        UpdateGameplayTimelineLoopMarkerPosition(gameplayTimelineLoopEndMarker, snapshot?.loopEndTime ?? 0f, showMarkers);
+        UpdateGameplayTimelineLoopMarkerVisuals();
+    }
+
+    private void UpdateGameplayTimelineLoopMarkerPosition(VisualElement marker, float markerTime, bool visible)
+    {
+        if (marker == null)
+            return;
+
+        marker.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+        if (!visible)
+            return;
+
+        float normalized = GetGameplayTimelineDisplayNormalizedForTime(markerTime);
+        marker.style.left = new Length(normalized * 100f, LengthUnit.Percent);
+    }
+
+    private void UpdateGameplayTimelineLoopMarkerVisuals()
+    {
+        UpdateGameplayTimelineLoopMarkerVisual(gameplayTimelineLoopStartMarker, 1);
+        UpdateGameplayTimelineLoopMarkerVisual(gameplayTimelineLoopEndMarker, 2);
+    }
+
+    private void UpdateGameplayTimelineLoopMarkerVisual(VisualElement marker, int markerIndex)
+    {
+        if (marker == null)
+            return;
+
+        bool active = gameplayTimelineLoopDraggingMarker == markerIndex || gameplayTimelineLoopHoveredMarker == markerIndex;
+        float width = active ? 24f : 20f;
+        float knobSize = active ? 14f : 11f;
+        marker.style.top = active ? -30f : -22f;
+        marker.style.bottom = 0f;
+        marker.style.width = width;
+        marker.style.translate = new Translate(width * -0.5f, 0f, 0f);
+        marker.style.backgroundColor = Color.clear;
+
+        VisualElement line = marker.Q("line");
+        if (line != null)
+        {
+            float lineWidth = active ? 5f : 3f;
+            line.style.width = lineWidth;
+            line.style.left = (width - lineWidth) * 0.5f;
+            line.style.top = Mathf.Max(7f, knobSize * 0.62f);
+            line.style.backgroundColor = active
+                ? new Color(1f, 0.25f, 0.18f, 1f)
+                : new Color(1f, 0.18f, 0.14f, 0.96f);
+        }
+
+        VisualElement knob = marker.Q("knob");
+        if (knob != null)
+        {
+            knob.style.width = knobSize;
+            knob.style.height = knobSize;
+            knob.style.left = (width - knobSize) * 0.5f;
+            knob.style.backgroundColor = active
+                ? new Color(1f, 0.10f, 0.08f, 0.34f)
+                : new Color(1f, 0.12f, 0.10f, 0.22f);
+            Color border = active
+                ? new Color(1f, 0.34f, 0.24f, 1f)
+                : new Color(1f, 0.24f, 0.18f, 0.92f);
+            knob.style.borderTopColor = border;
+            knob.style.borderRightColor = border;
+            knob.style.borderBottomColor = border;
+            knob.style.borderLeftColor = border;
+        }
+    }
+
+    private void UpdateGameplayTimelineHoverAnimation()
+    {
+        int targetIndex = gameplayTimelineHoveredSegmentIndex >= 0 && gameplayTimelineHoveredSegmentIndex < gameplayTimelineSegmentHosts.Count
+            ? gameplayTimelineHoveredSegmentIndex
+            : -1;
+        float step = Mathf.Max(0.001f, Time.unscaledDeltaTime) * 8f;
+        if (targetIndex >= 0)
+        {
+            if (gameplayTimelineAnimatedHoverSegmentIndex != targetIndex)
+            {
+                if (gameplayTimelineAnimatedHoverSegmentIndex >= 0 && gameplayTimelineHoverBlend > 0.001f)
+                {
+                    gameplayTimelinePreviousHoverSegmentIndex = gameplayTimelineAnimatedHoverSegmentIndex;
+                    gameplayTimelinePreviousHoverBlend = gameplayTimelineHoverBlend;
+                }
+                else
+                {
+                    gameplayTimelinePreviousHoverSegmentIndex = -1;
+                    gameplayTimelinePreviousHoverBlend = 0f;
+                }
+
+                gameplayTimelineAnimatedHoverSegmentIndex = targetIndex;
+                gameplayTimelineHoverBlend = 0f;
+            }
+
+            gameplayTimelineHoverBlend = Mathf.MoveTowards(gameplayTimelineHoverBlend, 1f, step);
+        }
+        else
+        {
+            gameplayTimelineHoverBlend = Mathf.MoveTowards(gameplayTimelineHoverBlend, 0f, step);
+            if (gameplayTimelineHoverBlend <= 0.001f)
+                gameplayTimelineAnimatedHoverSegmentIndex = -1;
+        }
+
+        if (gameplayTimelinePreviousHoverSegmentIndex >= 0)
+        {
+            gameplayTimelinePreviousHoverBlend = Mathf.MoveTowards(gameplayTimelinePreviousHoverBlend, 0f, step);
+            if (gameplayTimelinePreviousHoverBlend <= 0.001f)
+            {
+                gameplayTimelinePreviousHoverSegmentIndex = -1;
+                gameplayTimelinePreviousHoverBlend = 0f;
+            }
+        }
+
+        if (targetIndex < 0 && gameplayTimelineHoverBlend <= 0.001f)
+            gameplayTimelineAnimatedHoverSegmentIndex = -1;
+    }
+
+    private float GetGameplayTimelineSegmentBaseWeight(int index)
+    {
+        if (index < 0 || index >= gameplayTimelineSegmentStarts.Count || index >= gameplayTimelineSegmentEnds.Count)
+            return 0.001f;
+
+        return Mathf.Max(0.001f, gameplayTimelineSegmentEnds[index] - gameplayTimelineSegmentStarts[index]);
+    }
+
+    private float GetGameplayTimelineHoverScaleForSegment(int index)
+    {
+        if (gameplayTimelineDragging || gameplayTimelineLoopDraggingMarker != 0 || gameplayTimelineLoopHoveredMarker != 0)
+            return 1f;
+
+        return 1f + (0.5f * GetGameplayTimelineHoverBlendForSegment(index));
+    }
+
+    private float GetGameplayTimelineHoverBlendForSegment(int index)
+    {
+        float blend = 0f;
+        if (index == gameplayTimelineAnimatedHoverSegmentIndex)
+            blend = Mathf.Max(blend, gameplayTimelineHoverBlend);
+
+        if (index == gameplayTimelinePreviousHoverSegmentIndex)
+            blend = Mathf.Max(blend, gameplayTimelinePreviousHoverBlend);
+
+        return Mathf.Clamp01(blend);
+    }
+
+    private float GetGameplayTimelineLayoutWeightTotal()
+    {
+        float total = 0f;
+        for (int i = 0; i < gameplayTimelineSegmentHosts.Count; i++)
+            total += GetGameplayTimelineSegmentBaseWeight(i) * GetGameplayTimelineHoverScaleForSegment(i);
+
+        return Mathf.Max(0.001f, total);
+    }
+
+    private float GetGameplayTimelineDisplayNormalizedForTime(float songTime)
+    {
+        if (gameplayTimelineDurationSeconds <= 0.001f || gameplayTimelineSegmentStarts.Count == 0)
+            return gameplayTimelineDurationSeconds > 0.001f ? Mathf.Clamp01(songTime / gameplayTimelineDurationSeconds) : 0f;
+
+        float totalWeight = GetGameplayTimelineLayoutWeightTotal();
+        float cursor = 0f;
+        float clampedTime = Mathf.Clamp(songTime, 0f, gameplayTimelineDurationSeconds);
+        for (int i = 0; i < gameplayTimelineSegmentStarts.Count; i++)
+        {
+            float start = gameplayTimelineSegmentStarts[i];
+            float end = i < gameplayTimelineSegmentEnds.Count ? gameplayTimelineSegmentEnds[i] : start;
+            float weight = GetGameplayTimelineSegmentBaseWeight(i) * GetGameplayTimelineHoverScaleForSegment(i);
+            bool isLast = i == gameplayTimelineSegmentStarts.Count - 1;
+            if (clampedTime >= start - 0.001f && (clampedTime < end - 0.001f || isLast))
+            {
+                float local = Mathf.InverseLerp(start, Mathf.Max(start + 0.001f, end), clampedTime);
+                return Mathf.Clamp01((cursor + (weight * local)) / totalWeight);
+            }
+
+            cursor += weight;
+        }
+
+        return Mathf.Clamp01(clampedTime / gameplayTimelineDurationSeconds);
+    }
+
+    private void UpdateGameplayShortcutTimelineOffset(float timelineHeight)
+    {
+        float bottom = gameplayTimelineLayoutBottom + Mathf.Max(0f, timelineHeight) + gameplayTimelineShortcutGap;
+        if (gameplayShortcutLabel != null)
+            gameplayShortcutLabel.style.bottom = bottom;
+        if (gameplayShortcutRow != null)
+            gameplayShortcutRow.style.bottom = bottom;
+    }
+
+    private Texture2D GetGameplayTimelineActiveSectionTexture()
+    {
+        if (gameplayTimelineActiveSectionTexture != null)
+            return gameplayTimelineActiveSectionTexture;
+
+        const int width = 96;
+        const int height = 2;
+        gameplayTimelineActiveSectionTexture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+        {
+            name = "GameplayTimelineActiveSectionGradient",
+            wrapMode = TextureWrapMode.Clamp,
+            filterMode = FilterMode.Bilinear
+        };
+
+        Color blueEdge = new Color(0.02f, 0.08f, 0.15f, 0.08f);
+        Color coolGold = new Color(0.80f, 0.56f, 0.18f, 0.18f);
+        Color warmCenter = new Color(1.00f, 0.72f, 0.24f, 0.30f);
+        Color[] pixels = new Color[width * height];
+        for (int x = 0; x < width; x++)
+        {
+            float t = width > 1 ? x / (float)(width - 1) : 0f;
+            float center = 1f - Mathf.Abs((t * 2f) - 1f);
+            float easedCenter = center * center * (3f - (2f * center));
+            Color edgeMix = Color.Lerp(blueEdge, coolGold, Mathf.Clamp01(easedCenter * 1.35f));
+            Color color = Color.Lerp(edgeMix, warmCenter, easedCenter * 0.55f);
+            for (int y = 0; y < height; y++)
+                pixels[(y * width) + x] = color;
+        }
+
+        gameplayTimelineActiveSectionTexture.SetPixels(pixels);
+        gameplayTimelineActiveSectionTexture.Apply(false, true);
+        return gameplayTimelineActiveSectionTexture;
+    }
+
+    private static string GetTimelineSegmentLabel(SongTimelineSectionData section, float segmentPixels)
+    {
+        string name = section?.name ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(name) || segmentPixels < 76f)
+            return string.Empty;
+
+        if (segmentPixels >= 150f)
+            return name;
+
+        string compact = BuildTimelineCompactSectionName(name);
+        return compact.Length <= 3 || segmentPixels >= 110f ? compact : string.Empty;
+    }
+
+    private static string BuildTimelineCompactSectionName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return string.Empty;
+
+        string trimmed = name.Trim();
+        string lower = trimmed.ToLowerInvariant();
+        if (lower.StartsWith("intro", StringComparison.Ordinal))
+            return "In";
+        if (lower.StartsWith("outro", StringComparison.Ordinal))
+            return "Out";
+        if (lower.StartsWith("verse", StringComparison.Ordinal))
+            return "V";
+        if (lower.StartsWith("chorus", StringComparison.Ordinal))
+            return "C";
+        if (lower.StartsWith("bridge", StringComparison.Ordinal))
+            return "Br";
+        if (lower.StartsWith("solo", StringComparison.Ordinal))
+            return "S";
+        if (lower.StartsWith("pre", StringComparison.Ordinal))
+            return "Pre";
+        if (lower.StartsWith("post", StringComparison.Ordinal))
+            return "Post";
+
+        string[] words = trimmed.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (words.Length >= 2)
+            return string.Concat(words.Select(word => char.ToUpperInvariant(word[0]))).Substring(0, Mathf.Min(3, words.Length));
+
+        return trimmed.Length <= 3 ? trimmed : trimmed.Substring(0, 3);
+    }
+
+    private static string BuildGameplayTimelineSignature(List<SongTimelineSectionData> sections, float duration, float width, List<GameplayNoteState> noteStates)
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.Append(Mathf.RoundToInt(duration * 100f));
+        builder.Append('@');
+        builder.Append(Mathf.RoundToInt(Mathf.Max(0f, width) / 40f));
+        builder.Append('#');
+        builder.Append(noteStates != null ? noteStates.Count : 0);
+        if (noteStates != null && noteStates.Count > 0)
+        {
+            GameplayNoteState first = noteStates[0];
+            GameplayNoteState last = noteStates[noteStates.Count - 1];
+            builder.Append(':');
+            builder.Append(first != null ? Mathf.RoundToInt(first.data.time * 100f) : 0);
+            builder.Append(':');
+            builder.Append(last != null ? Mathf.RoundToInt(last.data.time * 100f) : 0);
+        }
+
+        if (sections != null)
+        {
+            for (int i = 0; i < sections.Count; i++)
+            {
+                SongTimelineSectionData section = sections[i];
+                if (section == null)
+                    continue;
+
+                builder.Append('|');
+                builder.Append(Mathf.RoundToInt(section.startTime * 100f));
+                builder.Append(':');
+                builder.Append(section.name ?? string.Empty);
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private static string FormatTimelineClock(float seconds)
+    {
+        int totalSeconds = Mathf.Max(0, Mathf.FloorToInt(seconds + 0.5f));
+        int minutes = totalSeconds / 60;
+        int remainder = totalSeconds % 60;
+        return $"{minutes}:{remainder:00}";
+    }
+
+    private void HandleGameplayTimelinePointerDown(PointerDownEvent evt)
+    {
+        if (evt == null || evt.button != 0)
+            return;
+
+        if (gameplayTimelineLoopDraggingMarker != 0)
+        {
+            DragGameplayTimelineLoopMarker(gameplayTimelineLoopDraggingMarker, evt.position);
+            evt.StopPropagation();
+            return;
+        }
+
+        float localX = GetGameplayTimelinePointerLocalX(evt.position);
+        UpdateGameplayTimelineHoverFromLocalX(localX);
+        gameplayTimelineDragging = true;
+        gameplayTimelineTrack?.CapturePointer(evt.pointerId);
+        SeekGameplayTimelineFromLocalX(localX);
+        evt.StopPropagation();
+    }
+
+    private void HandleGameplayTimelinePointerMove(PointerMoveEvent evt)
+    {
+        if (evt == null)
+            return;
+
+        if (gameplayTimelineLoopDraggingMarker != 0)
+        {
+            DragGameplayTimelineLoopMarker(gameplayTimelineLoopDraggingMarker, evt.position);
+            evt.StopPropagation();
+            return;
+        }
+
+        float localX = GetGameplayTimelinePointerLocalX(evt.position);
+        UpdateGameplayTimelineHoverFromLocalX(localX);
+        if (!gameplayTimelineDragging)
+            return;
+
+        SeekGameplayTimelineFromLocalX(localX);
+        evt.StopPropagation();
+    }
+
+    private void HandleGameplayTimelinePointerUp(PointerUpEvent evt)
+    {
+        if (evt == null)
+            return;
+
+        if (gameplayTimelineLoopDraggingMarker != 0)
+        {
+            DragGameplayTimelineLoopMarker(gameplayTimelineLoopDraggingMarker, evt.position);
+            gameplayTimelineLoopDraggingMarker = 0;
+            UpdateGameplayTimelineLoopMarkerVisuals();
+            evt.StopPropagation();
+            return;
+        }
+
+        gameplayTimelineDragging = false;
+        float localX = GetGameplayTimelinePointerLocalX(evt.position);
+        UpdateGameplayTimelineHoverFromLocalX(localX);
+        gameplayTimelineTrack?.ReleasePointer(evt.pointerId);
+        SeekGameplayTimelineFromLocalX(localX);
+        evt.StopPropagation();
+    }
+
+    private void HandleGameplayTimelinePointerCancel(PointerCancelEvent evt)
+    {
+        gameplayTimelineDragging = false;
+        gameplayTimelineLoopDraggingMarker = 0;
+        if (evt != null)
+            gameplayTimelineTrack?.ReleasePointer(evt.pointerId);
+    }
+
+    private void HandleGameplayTimelinePointerLeave(PointerLeaveEvent evt)
+    {
+        if (gameplayTimelineDragging)
+            return;
+
+        gameplayTimelineHoveredSegmentIndex = -1;
+    }
+
+    private float GetGameplayTimelinePointerLocalX(Vector2 panelPosition)
+    {
+        VisualElement source = gameplayTimelineLabelsLayer ?? gameplayTimelineTrack ?? gameplayTimelineContainer;
+        return source != null ? source.WorldToLocal(panelPosition).x : 0f;
+    }
+
+    private void DragGameplayTimelineLoopMarker(int markerIndex, Vector2 panelPosition)
+    {
+        if (markerIndex != 1 && markerIndex != 2)
+            return;
+
+        float width = GetGameplayTimelineInteractionWidth();
+        if (width <= 1f || gameplayTimelineDurationSeconds <= 0.001f)
+            return;
+
+        float normalized = Mathf.Clamp01(GetGameplayTimelinePointerLocalX(panelPosition) / width);
+        float time = GetGameplayTimelineTimeFromDisplayNormalized(normalized);
+        owner?.SetLoopBoundaryFromTimeline(markerIndex, time);
+    }
+
+    private void UpdateGameplayTimelineHoverFromLocalX(float localX)
+    {
+        if (gameplayTimelineDurationSeconds <= 0.001f)
+        {
+            gameplayTimelineHoveredSegmentIndex = -1;
+            return;
+        }
+
+        float width = GetGameplayTimelineInteractionWidth();
+        if (width <= 1f)
+        {
+            gameplayTimelineHoveredSegmentIndex = -1;
+            return;
+        }
+
+        gameplayTimelineHoveredSegmentIndex = FindGameplayTimelineSegmentIndexAtLocalX(localX);
+    }
+
+    private int FindGameplayTimelineSegmentIndexAtLocalX(float localX)
+    {
+        if (gameplayTimelineSegmentStarts.Count == 0)
+            return -1;
+
+        float width = GetGameplayTimelineInteractionWidth();
+        if (width <= 1f)
+            return -1;
+
+        float clampedX = Mathf.Clamp(localX, 0f, width);
+        float totalWeight = GetGameplayTimelineBaseLayoutWeightTotal();
+        float cursor = 0f;
+        for (int i = 0; i < gameplayTimelineSegmentStarts.Count; i++)
+        {
+            float segmentWidth = totalWeight > 0.001f
+                ? width * (GetGameplayTimelineSegmentBaseWeight(i) / totalWeight)
+                : 0f;
+            bool isLast = i == gameplayTimelineSegmentStarts.Count - 1;
+            float edge = cursor + segmentWidth;
+            if (clampedX >= cursor - 0.01f && (clampedX < edge - 0.01f || isLast))
+                return i;
+
+            cursor = edge;
+        }
+
+        return -1;
+    }
+
+    private float GetGameplayTimelineBaseLayoutWeightTotal()
+    {
+        float total = 0f;
+        for (int i = 0; i < gameplayTimelineSegmentHosts.Count; i++)
+            total += GetGameplayTimelineSegmentBaseWeight(i);
+
+        return Mathf.Max(0.001f, total);
+    }
+
+    private int FindGameplayTimelineSegmentIndex(float songTime)
+    {
+        if (gameplayTimelineSegmentStarts.Count == 0)
+            return -1;
+
+        float clampedTime = Mathf.Clamp(songTime, 0f, Mathf.Max(0f, gameplayTimelineDurationSeconds));
+        for (int i = 0; i < gameplayTimelineSegmentStarts.Count; i++)
+        {
+            float start = gameplayTimelineSegmentStarts[i];
+            float end = i < gameplayTimelineSegmentEnds.Count ? gameplayTimelineSegmentEnds[i] : start;
+            bool isLast = i == gameplayTimelineSegmentStarts.Count - 1;
+            if (clampedTime >= start - 0.001f && (clampedTime < end - 0.001f || isLast))
+                return i;
+        }
+
+        return -1;
+    }
+
+    private void SeekGameplayTimelineFromLocalX(float localX)
+    {
+        if (owner == null || gameplayTimelineDurationSeconds <= 0.001f)
+            return;
+
+        float width = GetGameplayTimelineInteractionWidth();
+        if (width <= 1f)
+            return;
+
+        float normalized = Mathf.Clamp01(localX / width);
+        owner.RequestTimelineSeek(GetGameplayTimelineTimeFromDisplayNormalized(normalized));
+    }
+
+    private float GetGameplayTimelineInteractionWidth()
+    {
+        if (gameplayTimelineLabelsLayer != null && gameplayTimelineLabelsLayer.resolvedStyle.width > 1f)
+            return gameplayTimelineLabelsLayer.resolvedStyle.width;
+
+        if (gameplayTimelineTrack != null && gameplayTimelineTrack.resolvedStyle.width > 1f)
+            return gameplayTimelineTrack.resolvedStyle.width;
+
+        return gameplayTimelineContainer != null ? gameplayTimelineContainer.resolvedStyle.width : 0f;
+    }
+
+    private float GetGameplayTimelineTimeFromDisplayNormalized(float normalized)
+    {
+        normalized = Mathf.Clamp01(normalized);
+        if (gameplayTimelineDurationSeconds <= 0.001f || gameplayTimelineSegmentStarts.Count == 0)
+            return normalized * Mathf.Max(0f, gameplayTimelineDurationSeconds);
+
+        float totalWeight = GetGameplayTimelineLayoutWeightTotal();
+        float targetWeight = normalized * totalWeight;
+        float cursor = 0f;
+        for (int i = 0; i < gameplayTimelineSegmentStarts.Count; i++)
+        {
+            float weight = GetGameplayTimelineSegmentBaseWeight(i) * GetGameplayTimelineHoverScaleForSegment(i);
+            if (targetWeight <= cursor + weight || i == gameplayTimelineSegmentStarts.Count - 1)
+            {
+                float local = Mathf.Clamp01((targetWeight - cursor) / Mathf.Max(0.001f, weight));
+                float start = gameplayTimelineSegmentStarts[i];
+                float end = i < gameplayTimelineSegmentEnds.Count ? gameplayTimelineSegmentEnds[i] : start;
+                return Mathf.Lerp(start, Mathf.Max(start, end), local);
+            }
+
+            cursor += weight;
+        }
+
+        return gameplayTimelineDurationSeconds;
     }
 
     private string BuildArcadeGameplayShortcutText(bool showPause, string restartTarget)
@@ -15930,7 +17667,7 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsTopCategoryRow(menuList, 11, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 11);
 
-            AddGlobalSettingsTopCategoryRow(menuList, 12, "Send Bug Report", snapshot.selectedGlobalSettingsTopIndex == 12, "OPEN");
+            AddGlobalSettingsTopCategoryRow(menuList, 12, "Diagnostics", snapshot.selectedGlobalSettingsTopIndex == 12);
 
             AddGlobalSettingsTopCategoryRow(menuList, 13, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 13, "DEFAULTS");
 
@@ -16695,7 +18432,7 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsFullscreenTopCategoryRow(menuList, 11, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 11);
 
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 12, "Send Bug Report", snapshot.selectedGlobalSettingsTopIndex == 12, "OPEN");
+            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 12, "Diagnostics", snapshot.selectedGlobalSettingsTopIndex == 12);
 
             AddGlobalSettingsFullscreenTopCategoryRow(menuList, 13, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 13, "DEFAULTS");
 
@@ -17823,6 +19560,10 @@ public sealed class TabsSongHeaderOverlay
         if (normalizedTitle.Contains("audio") || IsSectionIdPrefix(sectionSettings, "audio."))
 
             return "Audio";
+
+        if (normalizedTitle.Contains("diagnostic") || IsSectionIdPrefix(sectionSettings, "diagnostics."))
+
+            return "Diagnostics";
 
         if (normalizedTitle.Contains("control") || IsSectionIdPrefix(sectionSettings, "arcade.controls."))
 
@@ -18990,8 +20731,6 @@ public sealed class TabsSongHeaderOverlay
         return owner != null && owner.renderMode == GuitarRenderMode.TabsAlphaTab;
     }
 
-
-
     private void UpdateArcadeComboBadge(GuitarGameplaySnapshot snapshot)
 
     {
@@ -20013,6 +21752,82 @@ public sealed class TabsSongHeaderOverlay
 
         return button;
 
+    }
+
+    private Button CreateShortcutKeycapButton(string text, Action onClick)
+    {
+        Button button = new Button(() => onClick?.Invoke()) { text = text };
+        button.focusable = false;
+        button.style.height = 42f;
+        button.style.minWidth = 0f;
+        button.style.width = StyleKeyword.Auto;
+        button.style.paddingLeft = 13f;
+        button.style.paddingRight = 13f;
+        button.style.paddingTop = 5f;
+        button.style.paddingBottom = 6f;
+        button.style.marginRight = 8f;
+        button.style.marginTop = 4f;
+        button.style.marginBottom = 4f;
+        button.style.transformOrigin = new TransformOrigin(Length.Percent(50f), Length.Percent(50f), 0f);
+        button.style.fontSize = 18f;
+        button.style.unityFontDefinition = modernUiFontDefinition;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+        button.style.color = new Color(0.88f, 0.95f, 1f, 0.96f);
+        button.style.backgroundColor = new Color(0.012f, 0.030f, 0.052f, 0.86f);
+        button.style.borderTopLeftRadius = 7f;
+        button.style.borderTopRightRadius = 7f;
+        button.style.borderBottomLeftRadius = 7f;
+        button.style.borderBottomRightRadius = 7f;
+        button.style.borderTopWidth = 1f;
+        button.style.borderRightWidth = 1f;
+        button.style.borderBottomWidth = 1f;
+        button.style.borderLeftWidth = 1f;
+        button.style.scale = new Scale(Vector3.one);
+        button.style.transitionProperty = new List<StylePropertyName> { new StylePropertyName("scale"), new StylePropertyName("background-color"), new StylePropertyName("border-color") };
+        button.style.transitionDuration = new List<TimeValue>
+        {
+            new TimeValue(120f, TimeUnit.Millisecond),
+            new TimeValue(120f, TimeUnit.Millisecond),
+            new TimeValue(120f, TimeUnit.Millisecond)
+        };
+        button.style.transitionTimingFunction = new List<EasingFunction>
+        {
+            new EasingFunction(EasingMode.EaseOutCubic),
+            new EasingFunction(EasingMode.EaseOutCubic),
+            new EasingFunction(EasingMode.EaseOutCubic)
+        };
+        SetShortcutKeycapButtonHoverState(button, false, false);
+        button.RegisterCallback<MouseEnterEvent>(_ => SetShortcutKeycapButtonHoverState(button, true, false));
+        button.RegisterCallback<MouseLeaveEvent>(_ => SetShortcutKeycapButtonHoverState(button, false, false));
+        button.RegisterCallback<PointerDownEvent>(_ => SetShortcutKeycapButtonHoverState(button, true, true));
+        button.RegisterCallback<PointerUpEvent>(_ => SetShortcutKeycapButtonHoverState(button, true, false));
+        return button;
+    }
+
+    private static void SetShortcutKeycapButtonHoverState(Button button, bool hovered, bool pressed)
+    {
+        if (button == null)
+            return;
+
+        button.style.backgroundColor = pressed
+            ? new Color(1f, 1f, 1f, 0.04f)
+            : hovered
+                ? new Color(1f, 1f, 1f, 0.025f)
+                : new Color(0f, 0f, 0f, 0f);
+        Color border = hovered
+            ? new Color(0.82f, 0.97f, 1f, 0.92f)
+            : new Color(0.92f, 0.96f, 1f, 0.62f);
+        button.style.borderTopColor = border;
+        button.style.borderRightColor = border;
+        button.style.borderBottomColor = border;
+        button.style.borderLeftColor = border;
+        button.style.color = hovered
+            ? new Color(0.96f, 1f, 1f, 1f)
+            : new Color(0.88f, 0.95f, 1f, 0.96f);
+        float scale = pressed ? 0.985f : hovered ? 1.055f : 1f;
+        button.style.scale = new Scale(new Vector3(scale, scale, 1f));
+        button.style.translate = new Translate(0f, 0f, 0f);
     }
 
 
@@ -21272,6 +23087,7 @@ public sealed class TabsSongHeaderOverlay
 
         loopBookmarksCard.BringToFront();
         loopConfigurationTitleLabel.BringToFront();
+        PositionLoopBookmarksCard();
         bool rhythmPracticeMode = snapshot.gameplayMode == GuitarGameplayMode.Arcade && !snapshot.multiplayerRhythmMode;
         loopBookmarksTitleLabel.text = rhythmPracticeMode ? "SECTIONS" : "BOOKMARKS";
         loopConfigurationTitleLabel.text = rhythmPracticeMode ? "PRACTICE SECTIONS" : "LOOP CONFIGURATION";
@@ -21358,6 +23174,26 @@ public sealed class TabsSongHeaderOverlay
             loopBookmarksListView.ScrollTo(loopBookmarkRowButtons[scrollIndex]);
 
         wasLoopBookmarkRenameActive = renameActive;
+    }
+
+    private void PositionLoopBookmarksCard()
+    {
+        if (loopBookmarksCard == null)
+            return;
+
+        float panelWidth = document != null && document.rootVisualElement != null && document.rootVisualElement.resolvedStyle.width > 1f
+            ? document.rootVisualElement.resolvedStyle.width
+            : Mathf.Max(1, Screen.width);
+        float panelHeight = document != null && document.rootVisualElement != null && document.rootVisualElement.resolvedStyle.height > 1f
+            ? document.rootVisualElement.resolvedStyle.height
+            : Mathf.Max(1, Screen.height);
+        float width = loopBookmarksCard.resolvedStyle.width > 1f
+            ? loopBookmarksCard.resolvedStyle.width
+            : Mathf.Clamp(panelWidth * 0.34f, 560f, 840f);
+        float margin = Mathf.Clamp(panelWidth * 0.018f, 22f, 38f);
+        loopBookmarksCard.style.top = Mathf.Clamp(panelHeight * 0.030f, 22f, 36f);
+        loopBookmarksCard.style.left = Mathf.Max(margin, panelWidth - margin - width);
+        loopBookmarksCard.style.right = StyleKeyword.Auto;
     }
 
     private static string BuildLoopBookmarksSignature(GuitarGameplaySnapshot snapshot)
@@ -25505,6 +27341,8 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuFooterHintLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.020f, 17f, 24f);
 
+        mainMenuVersionLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.034f, 30f, 46f);
+
         mainMenuCurrentSongValueLabel.style.fontSize = menuSongSize;
 
         mainMenuCurrentTrackValueLabel.style.fontSize = menuMetaSize;
@@ -25758,23 +27596,57 @@ public sealed class TabsSongHeaderOverlay
         loopSetupStatusLabel.style.fontSize = bodySize * 0.82f;
 
         loopSetupHintLabel.style.fontSize = bodySize * 0.76f;
+        loopSetupOverlay.style.paddingBottom = Mathf.Clamp(menuLayoutHeight * 0.145f, 126f, 184f);
+        if (loopSetupShortcutRow != null)
+        {
+            loopSetupShortcutRow.style.width = Length.Percent(100f);
+            loopSetupShortcutRow.style.flexWrap = hudLayoutWidth >= 820f ? Wrap.NoWrap : Wrap.Wrap;
+        }
+        foreach (Button button in new[] { loopSetupSeekLeftButton, loopSetupSeekRightButton, loopSetupStartButton, loopSetupEndButton, loopSetupBookmarksButton, loopSetupPreviewButton, loopSetupContinueButton })
+        {
+            if (button == null)
+                continue;
 
-        loopSetupBar.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 1.25f, 980f, 1840f);
+            button.style.height = Mathf.Clamp(menuLayoutHeight * 0.034f, 32f, 40f);
+            button.style.fontSize = Mathf.Clamp(bodySize * 0.36f, 13f, 17f);
+            button.style.paddingLeft = Mathf.Clamp(menuLayoutWidth * 0.004f, 6f, 10f);
+            button.style.paddingRight = Mathf.Clamp(menuLayoutWidth * 0.004f, 6f, 10f);
+            button.style.marginRight = Mathf.Clamp(menuLayoutWidth * 0.002f, 3f, 5f);
+            button.style.marginTop = 2f;
+            button.style.marginBottom = 2f;
+        }
 
-        loopSetupBar.style.minWidth = Mathf.Clamp(menuLayoutWidth * 0.58f, 620f, 980f);
+        float loopSetupSideInset = Mathf.Clamp(hudLayoutWidth * 0.006f, 8f, 14f);
+        float loopSetupBarWidth = Mathf.Max(320f, hudLayoutWidth - (loopSetupSideInset * 2f));
+        float loopSetupHorizontalPadding = Mathf.Clamp(menuLayoutWidth * 0.010f, 12f, 22f);
+        loopSetupBar.style.left = loopSetupSideInset;
+        loopSetupBar.style.right = StyleKeyword.Auto;
+        loopSetupBar.style.bottom = Mathf.Clamp(menuLayoutHeight * 0.145f, 126f, 184f);
+        loopSetupBar.style.width = loopSetupBarWidth;
 
-        loopSetupBar.style.paddingLeft = Mathf.Clamp(menuLayoutWidth * 0.020f, 26f, 40f);
+        loopSetupBar.style.maxWidth = loopSetupBarWidth;
 
-        loopSetupBar.style.paddingRight = Mathf.Clamp(menuLayoutWidth * 0.020f, 26f, 40f);
+        loopSetupBar.style.minWidth = 0f;
 
-        loopSetupBar.style.paddingTop = Mathf.Clamp(menuLayoutHeight * 0.022f, 20f, 28f);
+        loopSetupBar.style.paddingLeft = loopSetupHorizontalPadding;
 
-        loopSetupBar.style.paddingBottom = Mathf.Clamp(menuLayoutHeight * 0.022f, 20f, 28f);
+        loopSetupBar.style.paddingRight = loopSetupHorizontalPadding;
 
-        loopBookmarksCard.style.top = Mathf.Clamp(screenHeight * 0.030f, 22f, 36f);
-        loopBookmarksCard.style.width = Mathf.Clamp(screenWidth * 0.74f, 980f, 1520f);
-        loopBookmarksCard.style.minWidth = Mathf.Clamp(screenWidth * 0.64f, 900f, 1120f);
-        loopBookmarksCard.style.maxWidth = Mathf.Clamp(screenWidth * 0.86f, 1240f, 1640f);
+        if (loopSetupShortcutRow != null)
+            loopSetupShortcutRow.style.maxWidth = Mathf.Max(300f, loopSetupBarWidth - (loopSetupHorizontalPadding * 2f));
+
+        loopSetupBar.style.paddingTop = Mathf.Clamp(menuLayoutHeight * 0.018f, 16f, 24f);
+
+        loopSetupBar.style.paddingBottom = Mathf.Clamp(menuLayoutHeight * 0.018f, 16f, 24f);
+
+        float loopBookmarksRightMargin = Mathf.Clamp(hudLayoutWidth * 0.018f, 22f, 38f);
+        float loopBookmarksWidth = Mathf.Clamp(hudLayoutWidth * 0.34f, 560f, 840f);
+        loopBookmarksCard.style.top = Mathf.Clamp(hudLayoutHeight * 0.030f, 22f, 36f);
+        loopBookmarksCard.style.left = Mathf.Max(18f, hudLayoutWidth - loopBookmarksRightMargin - loopBookmarksWidth);
+        loopBookmarksCard.style.right = StyleKeyword.Auto;
+        loopBookmarksCard.style.width = loopBookmarksWidth;
+        loopBookmarksCard.style.minWidth = Mathf.Clamp(hudLayoutWidth * 0.30f, 520f, 640f);
+        loopBookmarksCard.style.maxWidth = Mathf.Clamp(hudLayoutWidth * 0.40f, 680f, 900f);
         loopBookmarksCard.style.paddingLeft = Mathf.Clamp(menuLayoutWidth * 0.020f, 24f, 40f);
         loopBookmarksCard.style.paddingRight = Mathf.Clamp(menuLayoutWidth * 0.020f, 24f, 40f);
         loopBookmarksCard.style.paddingTop = Mathf.Clamp(menuLayoutHeight * 0.024f, 24f, 34f);
@@ -26308,6 +28180,10 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuOverlay.style.paddingBottom = (compactMainMenu ? 22f : 36f) * menuLayoutScale;
 
+        mainMenuVersionLabel.style.right = (compactMainMenu ? 20f : 32f) * menuLayoutScale;
+
+        mainMenuVersionLabel.style.bottom = (compactMainMenu ? 16f : 24f) * menuLayoutScale;
+
         mainMenuBackgroundPlane.style.left = Length.Percent(compactMainMenu ? 58f : 38f);
 
         mainMenuBackgroundPlane.style.top = (compactMainMenu ? -80f : -120f) * menuLayoutScale;
@@ -26494,14 +28370,41 @@ public sealed class TabsSongHeaderOverlay
         }
         if (gameplayShortcutLabel != null)
         {
-            float gameplayShortcutBottom = Mathf.Clamp(menuLayoutHeight * 0.012f, 14f, 26f);
-            if (isHighway3DAndTabs)
-                gameplayShortcutBottom += hudLayoutHeight * GuitarHighway3DAlphaTabRenderer.GetBottomTabViewportHeight(owner != null ? owner.alphaTabHybridVisibleTabs : 1);
-
+            float tabViewportBottom = isHighway3DAndTabs
+                ? hudLayoutHeight * GuitarHighway3DAlphaTabRenderer.GetBottomTabViewportHeight(owner != null ? owner.alphaTabHybridVisibleTabs : 1)
+                : 0f;
+            float gameplayTimelineHeight = GetGameplayTimelineHeight(expanded: false);
             gameplayShortcutLabel.style.fontSize = Mathf.Clamp(bodySize * 0.54f, 20f, 30f);
-            gameplayShortcutLabel.style.maxWidth = Mathf.Clamp(menuLayoutWidth * 0.55f, 880f, 1800f);
-            gameplayShortcutLabel.style.left = Mathf.Clamp(menuLayoutWidth * 0.010f, 18f, 32f);
-            gameplayShortcutLabel.style.bottom = gameplayShortcutBottom;
+            float timelineInset = 0f;
+            float shortcutInset = Mathf.Clamp(menuLayoutWidth * 0.003f, 4f, 10f);
+            gameplayTimelineLayoutBottom = tabViewportBottom;
+            gameplayTimelineShortcutGap = Mathf.Clamp(menuLayoutHeight * 0.005f, 8f, 12f);
+            gameplayShortcutLabel.style.maxWidth = Mathf.Max(320f, menuLayoutWidth - (shortcutInset * 2f) - 160f);
+            gameplayShortcutLabel.style.left = shortcutInset;
+            UpdateGameplayShortcutTimelineOffset(gameplayTimelineHeight);
+            if (gameplayShortcutRow != null)
+            {
+                gameplayShortcutRow.style.left = shortcutInset;
+                gameplayShortcutRow.style.right = StyleKeyword.Auto;
+                gameplayShortcutRow.style.maxWidth = Mathf.Max(520f, menuLayoutWidth - (shortcutInset * 2f));
+            }
+            foreach (Button button in new[] { gameplayShortcutPauseButton, gameplayShortcutRestartButton, gameplayShortcutAudioButton, gameplayShortcutToneLabButton, gameplayShortcutLoopButton, gameplayShortcutOpenButton, gameplayShortcutSeekLeftButton, gameplayShortcutSeekRightButton, gameplayShortcutPrevNoteButton, gameplayShortcutNextNoteButton })
+            {
+                if (button == null)
+                    continue;
+
+                button.style.height = Mathf.Clamp(bodySize * 1.00f, 40f, 52f);
+                button.style.fontSize = Mathf.Clamp(bodySize * 0.42f, 17f, 23f);
+                button.style.paddingLeft = Mathf.Clamp(menuLayoutWidth * 0.007f, 12f, 18f);
+                button.style.paddingRight = Mathf.Clamp(menuLayoutWidth * 0.007f, 12f, 18f);
+            }
+            if (gameplayTimelineContainer != null)
+            {
+                gameplayTimelineContainer.style.left = timelineInset;
+                gameplayTimelineContainer.style.right = timelineInset;
+                gameplayTimelineContainer.style.bottom = tabViewportBottom;
+                gameplayTimelineContainer.style.width = StyleKeyword.Auto;
+            }
         }
 
 

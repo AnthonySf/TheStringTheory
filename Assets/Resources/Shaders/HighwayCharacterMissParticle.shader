@@ -5,6 +5,7 @@ Shader "Custom/HighwayCharacterMissParticle"
         _Color ("Core Color", Color) = (1, 0.44, 0.16, 1)
         _EdgeColor ("Edge Color", Color) = (1, 0.84, 0.42, 1)
         _Glow ("Glow", Range(0, 4)) = 1.55
+        _ZTest ("ZTest", Float) = 4
     }
 
     SubShader
@@ -12,7 +13,7 @@ Shader "Custom/HighwayCharacterMissParticle"
         Tags { "Queue"="Transparent" "RenderType"="Transparent" }
         Blend SrcAlpha One
         ZWrite Off
-        ZTest LEqual
+        ZTest [_ZTest]
         Cull Off
 
         Pass

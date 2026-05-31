@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 public static class RocksmithCachedSongFormat
 {
-    public const int SchemaVersion = 19;
+    public const int SchemaVersion = 20;
     public const string ManifestFileName = "song.rs2song.json";
     public const string ContentDirectoryName = "psarc_content";
     public const string ImportedFolderPrefix = "__psarc_";
@@ -217,6 +217,7 @@ public sealed class RocksmithCachedArrangementTimingData
     public float averageTempoBpm = 120f;
     public int capo;
     public List<RocksmithCachedEbeatData> ebeats = new List<RocksmithCachedEbeatData>();
+    public List<RocksmithCachedSectionData> sections = new List<RocksmithCachedSectionData>();
 }
 
 [Serializable]
@@ -224,4 +225,12 @@ public sealed class RocksmithCachedEbeatData
 {
     public float timeSeconds;
     public short measure = -1;
+}
+
+[Serializable]
+public sealed class RocksmithCachedSectionData
+{
+    public string name;
+    public short number;
+    public float timeSeconds;
 }

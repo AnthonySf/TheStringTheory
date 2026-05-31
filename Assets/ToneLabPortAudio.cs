@@ -15,6 +15,11 @@ internal static class ToneLabPortAudio
     private const int PaNoError = 0;
     private const int PaNoDevice = -1;
     private const ulong PaFloat32 = 0x00000001;
+    private const uint PaInputUnderflow = 0x00000001;
+    private const uint PaInputOverflow = 0x00000002;
+    private const uint PaOutputUnderflow = 0x00000004;
+    private const uint PaOutputOverflow = 0x00000008;
+    private const uint PaPrimingOutput = 0x00000010;
 
     private static bool initialized;
     private static bool initializationAttempted;
@@ -305,6 +310,68 @@ internal static class ToneLabPortAudio
         return !double.IsNaN(info.sampleRate) && !double.IsInfinity(info.sampleRate) && info.sampleRate > 0.0;
     }
 
+    private static void RecordStatusFlags(
+        uint statusFlags,
+        ref int aggregateStatusFlags,
+        ref long inputUnderflowCount,
+        ref long inputOverflowCount,
+        ref long outputUnderflowCount,
+        ref long outputOverflowCount,
+        ref long primingOutputCount)
+    {
+        if (statusFlags == 0)
+            return;
+
+        int currentFlags = Volatile.Read(ref aggregateStatusFlags);
+        Volatile.Write(ref aggregateStatusFlags, currentFlags | unchecked((int)statusFlags));
+        if ((statusFlags & PaInputUnderflow) != 0)
+            Interlocked.Increment(ref inputUnderflowCount);
+        if ((statusFlags & PaInputOverflow) != 0)
+            Interlocked.Increment(ref inputOverflowCount);
+        if ((statusFlags & PaOutputUnderflow) != 0)
+            Interlocked.Increment(ref outputUnderflowCount);
+        if ((statusFlags & PaOutputOverflow) != 0)
+            Interlocked.Increment(ref outputOverflowCount);
+        if ((statusFlags & PaPrimingOutput) != 0)
+            Interlocked.Increment(ref primingOutputCount);
+    }
+
+    private static void AppendStatusFlagSummary(
+        StringBuilder builder,
+        string prefix,
+        int aggregateStatusFlags,
+        long inputUnderflows,
+        long inputOverflows,
+        long outputUnderflows,
+        long outputOverflows,
+        long primingOutputs)
+    {
+        builder.Append(", ");
+        builder.Append(prefix);
+        builder.Append("StatusFlags=0x");
+        builder.Append(aggregateStatusFlags.ToString("X", System.Globalization.CultureInfo.InvariantCulture));
+        builder.Append(", ");
+        builder.Append(prefix);
+        builder.Append("InputUnderflows=");
+        builder.Append(inputUnderflows);
+        builder.Append(", ");
+        builder.Append(prefix);
+        builder.Append("InputOverflows=");
+        builder.Append(inputOverflows);
+        builder.Append(", ");
+        builder.Append(prefix);
+        builder.Append("OutputUnderflows=");
+        builder.Append(outputUnderflows);
+        builder.Append(", ");
+        builder.Append(prefix);
+        builder.Append("OutputOverflows=");
+        builder.Append(outputOverflows);
+        builder.Append(", ");
+        builder.Append(prefix);
+        builder.Append("PrimingOutputs=");
+        builder.Append(primingOutputs);
+    }
+
     internal sealed class DuplexStream : IDisposable
     {
         private const int DriverManagedCallbackFrameCapacity = 8192;
@@ -318,6 +385,12 @@ internal static class ToneLabPortAudio
         private long callbackCount;
         private long totalFramesProcessed;
         private int lastFrameCount;
+        private int callbackStatusFlags;
+        private long inputUnderflowFlagCount;
+        private long inputOverflowFlagCount;
+        private long outputUnderflowFlagCount;
+        private long outputOverflowFlagCount;
+        private long primingOutputFlagCount;
         private double actualSampleRate;
         private double actualInputLatency;
         private double actualOutputLatency;
@@ -344,6 +417,7 @@ internal static class ToneLabPortAudio
         {
             error = string.Empty;
             Stop();
+            ResetStatusFlagCounters();
 
             if (!TryEnsureInitialized(out error))
                 return false;
@@ -470,6 +544,7 @@ internal static class ToneLabPortAudio
             Volatile.Write(ref callbackCount, 0L);
             Volatile.Write(ref totalFramesProcessed, 0L);
             Volatile.Write(ref lastFrameCount, 0);
+            ResetStatusFlagCounters();
         }
 
         public void Dispose()
@@ -485,6 +560,7 @@ internal static class ToneLabPortAudio
                 Interlocked.Increment(ref callbackCount);
                 Interlocked.Add(ref totalFramesProcessed, totalFrames);
                 Volatile.Write(ref lastFrameCount, totalFrames);
+                RecordStatusFlags(statusFlags, ref callbackStatusFlags, ref inputUnderflowFlagCount, ref inputOverflowFlagCount, ref outputUnderflowFlagCount, ref outputOverflowFlagCount, ref primingOutputFlagCount);
                 int inputFrameCapacity = inputBuffer.Length / Math.Max(1, inputChannels);
                 int outputFrameCapacity = outputBuffer.Length / Math.Max(1, outputChannels);
                 int callbackFrameCapacity = Math.Max(1, Math.Min(inputFrameCapacity, outputFrameCapacity));
@@ -560,6 +636,15 @@ internal static class ToneLabPortAudio
             builder.Append(Volatile.Read(ref totalFramesProcessed));
             builder.Append(", lastFrames=");
             builder.Append(Volatile.Read(ref lastFrameCount));
+            AppendStatusFlagSummary(
+                builder,
+                "callback",
+                Volatile.Read(ref callbackStatusFlags),
+                Volatile.Read(ref inputUnderflowFlagCount),
+                Volatile.Read(ref inputOverflowFlagCount),
+                Volatile.Read(ref outputUnderflowFlagCount),
+                Volatile.Read(ref outputOverflowFlagCount),
+                Volatile.Read(ref primingOutputFlagCount));
             builder.Append(", actualSampleRate=");
             builder.Append(actualSampleRate.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
             builder.Append(", actualInputLatency=");
@@ -580,6 +665,16 @@ internal static class ToneLabPortAudio
                 actualInputLatency = info.inputLatency;
                 actualOutputLatency = info.outputLatency;
             }
+        }
+
+        private void ResetStatusFlagCounters()
+        {
+            Volatile.Write(ref callbackStatusFlags, 0);
+            Volatile.Write(ref inputUnderflowFlagCount, 0L);
+            Volatile.Write(ref inputOverflowFlagCount, 0L);
+            Volatile.Write(ref outputUnderflowFlagCount, 0L);
+            Volatile.Write(ref outputOverflowFlagCount, 0L);
+            Volatile.Write(ref primingOutputFlagCount, 0L);
         }
 
         private static void EnsureBufferCapacity(ref float[] buffer, int requiredLength)
@@ -656,6 +751,18 @@ internal static class ToneLabPortAudio
         private long outputFramesProcessed;
         private long outputUnderflowCount;
         private long outputCatchUpCount;
+        private int inputCallbackStatusFlags;
+        private int outputCallbackStatusFlags;
+        private long inputCallbackUnderflowFlagCount;
+        private long inputCallbackOverflowFlagCount;
+        private long inputCallbackOutputUnderflowFlagCount;
+        private long inputCallbackOutputOverflowFlagCount;
+        private long inputCallbackPrimingOutputFlagCount;
+        private long outputCallbackInputUnderflowFlagCount;
+        private long outputCallbackInputOverflowFlagCount;
+        private long outputCallbackUnderflowFlagCount;
+        private long outputCallbackOverflowFlagCount;
+        private long outputCallbackPrimingOutputFlagCount;
         private int lastInputFrameCount;
         private int lastOutputFrameCount;
         private int largestObservedBufferedFrames;
@@ -687,6 +794,7 @@ internal static class ToneLabPortAudio
         {
             error = string.Empty;
             Stop();
+            ResetStatusFlagCounters();
 
             if (!TryEnsureInitialized(out error))
                 return false;
@@ -888,6 +996,7 @@ internal static class ToneLabPortAudio
                 Interlocked.Increment(ref inputCallbackCount);
                 Interlocked.Add(ref inputFramesProcessed, totalFrames);
                 Volatile.Write(ref lastInputFrameCount, totalFrames);
+                RecordStatusFlags(statusFlags, ref inputCallbackStatusFlags, ref inputCallbackUnderflowFlagCount, ref inputCallbackOverflowFlagCount, ref inputCallbackOutputUnderflowFlagCount, ref inputCallbackOutputOverflowFlagCount, ref inputCallbackPrimingOutputFlagCount);
                 UpdateMaxBufferedFramesForCallback(totalFrames);
                 int inputFrameCapacity = inputBuffer.Length / Math.Max(1, inputChannels);
                 int outputFrameCapacity = processedOutputBuffer.Length / Math.Max(1, outputChannels);
@@ -936,6 +1045,7 @@ internal static class ToneLabPortAudio
                 Interlocked.Increment(ref outputCallbackCount);
                 Interlocked.Add(ref outputFramesProcessed, totalFrames);
                 Volatile.Write(ref lastOutputFrameCount, totalFrames);
+                RecordStatusFlags(statusFlags, ref outputCallbackStatusFlags, ref outputCallbackInputUnderflowFlagCount, ref outputCallbackInputOverflowFlagCount, ref outputCallbackUnderflowFlagCount, ref outputCallbackOverflowFlagCount, ref outputCallbackPrimingOutputFlagCount);
                 UpdateMaxBufferedFramesForCallback(totalFrames);
                 int outputFrameCapacity = outputBuffer.Length / Math.Max(1, outputChannels);
                 int callbackFrameCapacity = Math.Max(1, outputFrameCapacity);
@@ -1110,6 +1220,7 @@ internal static class ToneLabPortAudio
             Volatile.Write(ref outputFramesProcessed, 0L);
             Volatile.Write(ref outputUnderflowCount, 0L);
             Volatile.Write(ref outputCatchUpCount, 0L);
+            ResetStatusFlagCounters();
             Volatile.Write(ref lastInputFrameCount, 0);
             Volatile.Write(ref lastOutputFrameCount, 0);
             Volatile.Write(ref largestObservedBufferedFrames, 0);
@@ -1118,6 +1229,22 @@ internal static class ToneLabPortAudio
 
             for (int i = 0; i < outputRing.Length; i++)
                 Volatile.Write(ref outputRing[i], 0L);
+        }
+
+        private void ResetStatusFlagCounters()
+        {
+            Volatile.Write(ref inputCallbackStatusFlags, 0);
+            Volatile.Write(ref outputCallbackStatusFlags, 0);
+            Volatile.Write(ref inputCallbackUnderflowFlagCount, 0L);
+            Volatile.Write(ref inputCallbackOverflowFlagCount, 0L);
+            Volatile.Write(ref inputCallbackOutputUnderflowFlagCount, 0L);
+            Volatile.Write(ref inputCallbackOutputOverflowFlagCount, 0L);
+            Volatile.Write(ref inputCallbackPrimingOutputFlagCount, 0L);
+            Volatile.Write(ref outputCallbackInputUnderflowFlagCount, 0L);
+            Volatile.Write(ref outputCallbackInputOverflowFlagCount, 0L);
+            Volatile.Write(ref outputCallbackUnderflowFlagCount, 0L);
+            Volatile.Write(ref outputCallbackOverflowFlagCount, 0L);
+            Volatile.Write(ref outputCallbackPrimingOutputFlagCount, 0L);
         }
 
         public string GetDiagnosticSummary()
@@ -1156,6 +1283,24 @@ internal static class ToneLabPortAudio
             builder.Append(Volatile.Read(ref outputUnderflowCount));
             builder.Append(", catchUps=");
             builder.Append(Volatile.Read(ref outputCatchUpCount));
+            AppendStatusFlagSummary(
+                builder,
+                "inputCallback",
+                Volatile.Read(ref inputCallbackStatusFlags),
+                Volatile.Read(ref inputCallbackUnderflowFlagCount),
+                Volatile.Read(ref inputCallbackOverflowFlagCount),
+                Volatile.Read(ref inputCallbackOutputUnderflowFlagCount),
+                Volatile.Read(ref inputCallbackOutputOverflowFlagCount),
+                Volatile.Read(ref inputCallbackPrimingOutputFlagCount));
+            AppendStatusFlagSummary(
+                builder,
+                "outputCallback",
+                Volatile.Read(ref outputCallbackStatusFlags),
+                Volatile.Read(ref outputCallbackInputUnderflowFlagCount),
+                Volatile.Read(ref outputCallbackInputOverflowFlagCount),
+                Volatile.Read(ref outputCallbackUnderflowFlagCount),
+                Volatile.Read(ref outputCallbackOverflowFlagCount),
+                Volatile.Read(ref outputCallbackPrimingOutputFlagCount));
             builder.Append(", actualInputSampleRate=");
             builder.Append(actualInputSampleRate.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
             builder.Append(", actualOutputSampleRate=");
