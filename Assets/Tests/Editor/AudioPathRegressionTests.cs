@@ -939,6 +939,79 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void RocksmithTonePresetBuilder_MapsGermaniumDriveToSmootherOverdrive()
+    {
+        const string gxTimRay = "http://guitarix.sourceforge.net/plugins/gx_timray_#_timray_";
+        const string gxGuvnor = "http://guitarix.sourceforge.net/plugins/gx_guvnor_#_guvnor_";
+        string rawToneJson =
+            @"{
+                ""Name"": ""Germanium Lead"",
+                ""GearList"": {
+                    ""PrePedal1"": {
+                        ""Type"": ""Pedals"",
+                        ""Category"": ""Distortion"",
+                        ""Key"": ""Pedal_GermaniumDrive"",
+                        ""KnobValues"": { ""Gain"": 100, ""Tone"": 80 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Germanium Lead", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        AssertHasLv2Plugin(preset, gxTimRay);
+        Assert.IsFalse(HasLv2Plugin(preset, gxGuvnor), "Germanium Drive should not fall through to the brighter generic distortion mapping.");
+
+        ToneLabExternalPedalSettings driveSettings = FindLv2Settings(preset, gxTimRay);
+        Assert.Greater(GetExternalParameter(driveSettings, "GAIN"), 0.80f);
+        Assert.Less(GetExternalParameter(driveSettings, "TREBLE"), 0.65f);
+    }
+
+    [Test]
+    public void RocksmithTonePresetBuilder_MapsStudioChamberAsTightAmbience()
+    {
+        const string dragonflyRoom = "urn:dragonfly:room";
+        string rawToneJson =
+            @"{
+                ""Name"": ""Chamber Drive"",
+                ""GearList"": {
+                    ""Rack1"": {
+                        ""Type"": ""Rack"",
+                        ""Category"": ""Reverb"",
+                        ""Key"": ""Rack_StudioChamber"",
+                        ""KnobValues"": { ""Depth"": 72, ""Mix"": 16, ""Time"": 60, ""Tone"": 26 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Chamber Drive", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        ToneLabExternalPedalSettings reverbSettings = FindLv2Settings(preset, dragonflyRoom);
+        Assert.Greater(GetExternalParameter(reverbSettings, "dry_level"), 95f);
+        Assert.Less(GetExternalParameter(reverbSettings, "late_level"), 5f);
+        Assert.Less(GetExternalParameter(reverbSettings, "decay"), 0.80f);
+    }
+
+    [Test]
+    public void RocksmithTonePresetBuilder_DoesNotTreatLowReverbTimeAsHalfDecay()
+    {
+        const string dragonflyRoom = "urn:dragonfly:room";
+        string rawToneJson =
+            @"{
+                ""Name"": ""Short Chamber"",
+                ""GearList"": {
+                    ""Rack1"": {
+                        ""Type"": ""Rack"",
+                        ""Category"": ""Reverb"",
+                        ""Key"": ""Rack_StudioChamber"",
+                        ""KnobValues"": { ""Depth"": 15, ""Mix"": 25, ""Time"": 5, ""Tone"": 50 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Short Chamber", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        ToneLabExternalPedalSettings reverbSettings = FindLv2Settings(preset, dragonflyRoom);
+        Assert.Less(GetExternalParameter(reverbSettings, "decay"), 0.25f);
+    }
+
+    [Test]
     public void RocksmithTonePresetBuilder_UsesBassLv2AmpWithoutAddingGuitarCabForBassRoutes()
     {
         const string gxAmpegSvt = "http://guitarix.sourceforge.net/plugins/gx_ampegsvt_#_ampegsvt_";
@@ -1003,6 +1076,33 @@ public sealed class AudioPathRegressionTests
         Assert.AreEqual(0.34f, delaySettings.delay_seconds, 0.02f);
         Assert.AreEqual(0.04f, delaySettings.feedback, 0.001f);
         Assert.AreEqual(0.10f, delaySettings.mix, 0.001f);
+    }
+
+    [Test]
+    public void RocksmithTonePresetBuilder_MapsLowRocksmithDelayPercentagesToSubtleZamDelay()
+    {
+        const string zamDelay = "urn:zamaudio:ZamDelay";
+        string rawToneJson =
+            @"{
+                ""Name"": ""Delay Transition"",
+                ""Key"": ""Tone_Delay"",
+                ""GearList"": {
+                    ""PostPedal1"": {
+                        ""Type"": ""Pedals"",
+                        ""Category"": ""Delay"",
+                        ""Key"": ""Pedal_AnalogueDelay"",
+                        ""KnobValues"": { ""Time"": 340, ""Feedback"": 4, ""Mix"": 10 }
+                    }
+                }
+            }";
+
+        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Delay Transition", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+
+        ToneLabExternalPedalSettings delaySettings = FindLv2Settings(preset, zamDelay);
+        Assert.AreEqual(340f, GetExternalParameter(delaySettings, "time"), 0.001f);
+        Assert.AreEqual(0.04f, GetExternalParameter(delaySettings, "feedb"), 0.001f);
+        Assert.AreEqual(0.10f, GetExternalParameter(delaySettings, "drywet"), 0.001f);
+        Assert.Less(GetExternalParameter(delaySettings, "gain"), -9f);
     }
 
     [Test]

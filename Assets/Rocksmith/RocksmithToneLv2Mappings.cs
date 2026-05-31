@@ -356,6 +356,17 @@ internal static class RocksmithToneLv2Mappings
         float mid = GetToneStackControl(knobs, 0.52f, "mid", "middle", "mids");
         float treble = GetToneStackControl(knobs, tone, "treble", "high");
 
+        if (ContainsAny(text, "germanium"))
+        {
+            float softenedTone = Mathf.Clamp01((tone * 0.48f) + 0.18f);
+            return CreateLv2Slot(GxTimRay, "GxTimRay",
+                ("BASS", Mathf.Clamp01(Mathf.Lerp(bass, 0.52f, 0.25f))),
+                ("GAIN", Mathf.Clamp01(drive * 0.86f)),
+                ("TREBLE", softenedTone),
+                ("TRIM", Mathf.Clamp01(Mathf.Lerp(0.34f, 0.58f, level))),
+                ("VOLUME", Mathf.Clamp01(Mathf.Lerp(0.48f, 0.78f, level))));
+        }
+
         if (ContainsAny(text, "screamer", "tube screamer", "sd1", "ts9", "overdrive"))
         {
             return CreateLv2Slot(GxSd1, "GxSD1",
@@ -582,33 +593,49 @@ internal static class RocksmithToneLv2Mappings
     private static UnityToneLabRuntime.ToneLabPedalSlot CreateDelaySlot(IReadOnlyDictionary<string, float> knobs)
     {
         float timeMs = GetDelayMilliseconds(knobs, 280f, "time", "delay");
-        float feedback = GetNormalizedControl(knobs, 0.30f, "feedback", "regen", "repeat");
-        float mix = GetNormalizedControl(knobs, 0.20f, "mix", "wet", "drywet", "blend");
+        float feedback = GetPercentageControl(knobs, 0.30f, "feedback", "regen", "repeat");
+        float mix = GetPercentageControl(knobs, 0.20f, "mix", "wet", "drywet", "blend");
         float tone = GetToneStackControl(knobs, 0.65f, "tone", "filter", "treble");
         return CreateZamDelaySlot(
             timeMs: timeMs,
             feedback: Mathf.Clamp(feedback, 0f, 0.92f),
-            dryWet: Mathf.Clamp(mix, 0.02f, 0.62f),
+            dryWet: Mathf.Clamp(mix, 0.0f, 0.48f),
             lowPassHz: Mathf.Lerp(2800f, 9000f, Mathf.Clamp01(tone)),
-            outputGainDb: Mathf.Lerp(-8f, -3f, Mathf.Clamp01(mix)));
+            outputGainDb: Mathf.Lerp(-10f, -4f, Mathf.Clamp01(mix)));
     }
 
     private static UnityToneLabRuntime.ToneLabPedalSlot CreateReverbSlot(string text, IReadOnlyDictionary<string, float> knobs, bool highGain)
     {
-        float mix = GetNormalizedControl(knobs, highGain ? 0.12f : 0.24f, "mix", "wet", "level");
-        float depth = GetNormalizedControl(knobs, 0.36f, "depth", "size", "room");
-        float decay = Mathf.Lerp(0.18f, highGain ? 0.65f : 2.4f, GetNormalizedControl(knobs, depth, "time", "decay"));
-        float tone = GetToneStackControl(knobs, highGain ? 0.42f : 0.62f, "tone", "treble", "damp");
-        float dry = Mathf.Lerp(96f, 82f, Mathf.Clamp01(mix));
-        float wet = Mathf.Lerp(4f, 36f, Mathf.Clamp01(mix));
+        float mix = GetPercentageControl(knobs, highGain ? 0.12f : 0.24f, "mix", "wet", "drywet", "blend");
+        float depth = GetPercentageControl(knobs, 0.36f, "depth", "size", "room");
+        float time = GetPercentageControl(knobs, depth, "time", "decay");
+        float tone = GetPercentageControl(knobs, highGain ? 0.42f : 0.62f, "tone", "treble", "damp");
+        float dry = Mathf.Lerp(98f, 88f, Mathf.Clamp01(mix));
+        float wet = Mathf.Lerp(2f, highGain ? 14f : 20f, Mathf.Clamp01(mix));
+        float highCut = Mathf.Lerp(3600f, highGain ? 7600f : 9800f, tone);
+
+        if (ContainsAny(text, "chamber"))
+        {
+            float chamberWet = Mathf.Lerp(1.5f, highGain ? 8f : 12f, Mathf.Clamp01(mix));
+            float chamberDecay = Mathf.Lerp(0.14f, highGain ? 0.55f : 1.05f, time);
+            float chamberSize = Mathf.Lerp(8f, 18f, depth);
+            return CreateDragonflyRoomSlot(dry, chamberWet * 0.35f, chamberWet, chamberSize, chamberDecay, Mathf.Lerp(42f, 78f, depth), highCut, 100f);
+        }
 
         if (ContainsAny(text, "plate", "spring"))
-            return CreateDragonflyPlateSlot(dry, wet, ContainsAny(text, "spring") ? 2f : 1f, decay, Mathf.Lerp(8f, 40f, depth), Mathf.Lerp(4200f, 12000f, tone), 100f);
+        {
+            float plateDecay = Mathf.Lerp(0.18f, highGain ? 0.75f : 1.55f, time);
+            return CreateDragonflyPlateSlot(dry, wet, ContainsAny(text, "spring") ? 2f : 1f, plateDecay, Mathf.Lerp(4f, 20f, depth), highCut, 100f);
+        }
 
         if (ContainsAny(text, "hall", "shimmer", "ambient"))
-            return CreateDragonflyHallSlot(dry, wet * 0.45f, wet, Mathf.Lerp(16f, 44f, depth), decay, Mathf.Lerp(8f, 32f, depth), Mathf.Lerp(4200f, 12000f, tone), 100f);
+        {
+            float hallDecay = Mathf.Lerp(0.28f, highGain ? 1.25f : 2.6f, time);
+            return CreateDragonflyHallSlot(dry, wet * 0.35f, wet, Mathf.Lerp(14f, 40f, depth), hallDecay, Mathf.Lerp(6f, 28f, depth), highCut, 100f);
+        }
 
-        return CreateDragonflyRoomSlot(dry, wet * 0.45f, wet, Mathf.Lerp(8f, 24f, depth), decay, Mathf.Lerp(45f, 95f, depth), Mathf.Lerp(4200f, 12000f, tone), 90f);
+        float roomDecay = Mathf.Lerp(0.14f, highGain ? 0.62f : 1.35f, time);
+        return CreateDragonflyRoomSlot(dry, wet * 0.35f, wet, Mathf.Lerp(8f, 22f, depth), roomDecay, Mathf.Lerp(42f, 86f, depth), highCut, 90f);
     }
 
     private static UnityToneLabRuntime.ToneLabPedalSlot CreateQuackSlot(IReadOnlyDictionary<string, float> knobs)
@@ -832,6 +859,21 @@ internal static class RocksmithToneLv2Mappings
     private static float GetNormalizedControl(IReadOnlyDictionary<string, float> knobs, float fallback, params string[] aliases)
     {
         return TryGetAnyKnob(knobs, out float value, aliases) ? NormalizeGenericKnob(value) : Mathf.Clamp01(fallback);
+    }
+
+    private static float GetPercentageControl(IReadOnlyDictionary<string, float> knobs, float fallback, params string[] aliases)
+    {
+        if (!TryGetAnyKnob(knobs, out float value, aliases))
+            return Mathf.Clamp01(fallback);
+
+        if (!float.IsFinite(value))
+            return Mathf.Clamp01(fallback);
+
+        float absolute = Mathf.Abs(value);
+        if (absolute <= 1.0001f)
+            return Mathf.Clamp01(value);
+
+        return Mathf.Clamp01(value / 100f);
     }
 
     private static float GetToneStackControl(IReadOnlyDictionary<string, float> knobs, float fallback, params string[] aliases)
