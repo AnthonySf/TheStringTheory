@@ -83,7 +83,6 @@ done < <(find "${APP_BUNDLE}" -type d \( -name "*.bundle" -o -name "*.plugin" \)
 echo "Signing outer app bundle..."
 codesign \
   --force \
-  --deep \
   --timestamp \
   --options runtime \
   --entitlements "${ENTITLEMENTS}" \
