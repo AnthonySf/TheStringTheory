@@ -134,15 +134,15 @@ echo "Preparing ${APP_BUNDLE} for Developer ID signing..."
 echo "Using app bundle identifier: ${APP_IDENTIFIER}"
 xattr -dr com.apple.quarantine "${APP_BUNDLE}" 2>/dev/null || true
 
-while IFS= read -r binary; do
-  codesign_nested_code "${binary}"
-done < <(find "${APP_BUNDLE}" -type f \( -name "*.dylib" -o -name "*.so" \) -print | sort)
-
-while IFS= read -r executable; do
-  if is_macho_file "${executable}"; then
-    codesign_nested_code "${executable}"
+while IFS= read -r file_path; do
+  if [[ "${file_path}" == "${APP_BUNDLE}/Contents/MacOS/"* ]]; then
+    continue
   fi
-done < <(find "${APP_BUNDLE}/Contents" -type f -perm -111 ! -path "${APP_BUNDLE}/Contents/MacOS/*" -print | sort)
+
+  if is_macho_file "${file_path}"; then
+    codesign_nested_code "${file_path}"
+  fi
+done < <(find "${APP_BUNDLE}" -type f -print | sort)
 
 while IFS= read -r framework; do
   codesign_nested_code "${framework}"
@@ -162,11 +162,51 @@ rm -f "${SUBMISSION_ZIP}" "${OUTPUT_ZIP}"
 ditto -c -k --sequesterRsrc --keepParent "${APP_BUNDLE}" "${SUBMISSION_ZIP}"
 
 echo "Submitting to Apple notarization..."
+NOTARY_JSON="${RUNNER_TEMP:-/tmp}/StringTheory-notary-submit.json"
+set +e
 xcrun notarytool submit "${SUBMISSION_ZIP}" \
   --apple-id "${APPLE_ID}" \
   --team-id "${APPLE_TEAM_ID}" \
   --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
-  --wait
+  --wait \
+  --output-format json > "${NOTARY_JSON}"
+notary_exit=$?
+set -e
+
+cat "${NOTARY_JSON}"
+notary_id="$(python3 - "${NOTARY_JSON}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+print(payload.get("id", ""))
+PY
+)"
+notary_status="$(python3 - "${NOTARY_JSON}" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], "r", encoding="utf-8") as handle:
+    payload = json.load(handle)
+
+print(payload.get("status", ""))
+PY
+)"
+
+if [[ -n "${notary_id}" && "${notary_status}" != "Accepted" ]]; then
+  echo "Fetching Apple notarization log for ${notary_id}..."
+  xcrun notarytool log "${notary_id}" \
+    --apple-id "${APPLE_ID}" \
+    --team-id "${APPLE_TEAM_ID}" \
+    --password "${APPLE_APP_SPECIFIC_PASSWORD}" || true
+fi
+
+if [[ "${notary_exit}" -ne 0 || "${notary_status}" != "Accepted" ]]; then
+  echo "Apple notarization failed with status '${notary_status}'." >&2
+  exit 1
+fi
 
 echo "Stapling notarization ticket..."
 xcrun stapler staple "${APP_BUNDLE}"
