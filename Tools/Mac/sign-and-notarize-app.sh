@@ -11,7 +11,8 @@ OUTPUT_ZIP="$2"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENTITLEMENTS="${MACOS_ENTITLEMENTS_PATH:-${REPO_ROOT}/Tools/Mac/StringTheory.entitlements}"
 INFO_PLIST="${APP_BUNDLE}/Contents/Info.plist"
-APP_IDENTIFIER="${MACOS_APP_IDENTIFIER:-}"
+DEFAULT_APP_IDENTIFIER="com.anthonysfeir.stringtheory"
+APP_IDENTIFIER="${MACOS_APP_IDENTIFIER:-${DEFAULT_APP_IDENTIFIER}}"
 IDENTITY="${DEVELOPER_ID_APPLICATION:-}"
 APPLE_ID="${APPLE_ID:-}"
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
@@ -43,13 +44,13 @@ if [[ ! -f "${INFO_PLIST}" ]]; then
   exit 1
 fi
 
-if [[ -z "${APP_IDENTIFIER}" ]]; then
-  APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${INFO_PLIST}" 2>/dev/null || true)"
-fi
-
-if [[ -z "${APP_IDENTIFIER}" ]]; then
-  echo "CFBundleIdentifier was not found in ${INFO_PLIST}." >&2
-  exit 1
+if [[ -z "${MACOS_APP_IDENTIFIER:-}" ]]; then
+  plist_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${INFO_PLIST}" 2>&1 || true)"
+  if [[ "${plist_identifier}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    APP_IDENTIFIER="${plist_identifier}"
+  else
+    echo "Could not read a valid CFBundleIdentifier from ${INFO_PLIST}; using ${APP_IDENTIFIER}." >&2
+  fi
 fi
 
 KEYCHAIN_ARGS=()
