@@ -104,7 +104,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PRIVATE_ASSET_TAG: ci-private-assets
           MIDIPLAYER_SHA256: b75288fdfbc2dbb1ca199ed033ebbfad79fa979f830cd02f4f4873e03706f6d6
-          RELEASE_ASSETS_SHA256: 31c46ca556333154aaedc96c363fee7e27aa717ec09dd8e6da84567647f587af
+          RELEASE_ASSETS_SHA256: a6e8328bb260d6d83ca4aa33a69f3cc68d2a12b7a212be6bd72389533547959f
         run: |
           mkdir -p Temp/private-unity-assets
           python3 - <<'PY'
