@@ -130,9 +130,50 @@ is_macho_file() {
   file "${file_path}" | grep -Eq 'Mach-O|ar archive'
 }
 
+sign_embedded_macho_zip() {
+  local zip_path="$1"
+  if [[ ! -f "${zip_path}" ]]; then
+    return 0
+  fi
+
+  echo "Signing embedded Mach-O files in ${zip_path#${APP_BUNDLE}/}"
+  local temp_root
+  temp_root="$(mktemp -d "${RUNNER_TEMP:-/tmp}/stringtheory-embedded-zip.XXXXXX")"
+  local extract_root="${temp_root}/extract"
+  local repacked_zip="${temp_root}/repacked.zip"
+  mkdir -p "${extract_root}"
+
+  unzip -q "${zip_path}" -d "${extract_root}"
+  xattr -dr com.apple.quarantine "${extract_root}" 2>/dev/null || true
+
+  local signed_count=0
+  while IFS= read -r file_path; do
+    if is_macho_file "${file_path}"; then
+      chmod u+w "${file_path}" 2>/dev/null || true
+      codesign_nested_code "${file_path}"
+      signed_count=$((signed_count + 1))
+    fi
+  done < <(find "${extract_root}" -type f -print | sort)
+
+  if [[ "${signed_count}" -gt 0 ]]; then
+    (
+      cd "${extract_root}"
+      zip -qry "${repacked_zip}" .
+    )
+    mv "${repacked_zip}" "${zip_path}"
+    echo "Signed ${signed_count} embedded Mach-O files in ${zip_path#${APP_BUNDLE}/}"
+  else
+    echo "No embedded Mach-O files found in ${zip_path#${APP_BUNDLE}/}"
+  fi
+
+  rm -rf "${temp_root}"
+}
+
 echo "Preparing ${APP_BUNDLE} for Developer ID signing..."
 echo "Using app bundle identifier: ${APP_IDENTIFIER}"
 xattr -dr com.apple.quarantine "${APP_BUNDLE}" 2>/dev/null || true
+
+sign_embedded_macho_zip "${APP_BUNDLE}/Contents/Resources/Data/StreamingAssets/StemSeparator/stem-separator-runtime-macos-universal.zip"
 
 while IFS= read -r file_path; do
   if [[ "${file_path}" == "${APP_BUNDLE}/Contents/MacOS/"* ]]; then
