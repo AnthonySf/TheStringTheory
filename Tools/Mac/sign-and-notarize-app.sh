@@ -41,9 +41,20 @@ if [[ -n "${KEYCHAIN}" ]]; then
   KEYCHAIN_ARGS=(--keychain "${KEYCHAIN}")
 fi
 
-codesign_item() {
+codesign_nested_code() {
   local item="$1"
   echo "Signing ${item#${APP_BUNDLE}/}"
+  codesign \
+    --force \
+    --timestamp \
+    --options runtime \
+    --sign "${IDENTITY}" \
+    "${KEYCHAIN_ARGS[@]}" \
+    "${item}"
+}
+
+codesign_app_bundle() {
+  echo "Signing outer app bundle..."
   codesign \
     --force \
     --timestamp \
@@ -51,7 +62,19 @@ codesign_item() {
     --entitlements "${ENTITLEMENTS}" \
     --sign "${IDENTITY}" \
     "${KEYCHAIN_ARGS[@]}" \
-    "${item}"
+    "${APP_BUNDLE}"
+}
+
+verify_app_bundle() {
+  if codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"; then
+    return 0
+  fi
+
+  echo "Developer ID signature verification failed. Dumping signature diagnostics..." >&2
+  codesign -dvvv "${APP_BUNDLE}" 2>&1 || true
+  codesign -d --entitlements :- "${APP_BUNDLE}" 2>&1 || true
+  codesign -d -r- "${APP_BUNDLE}" 2>&1 || true
+  exit 1
 }
 
 is_macho_file() {
@@ -63,35 +86,27 @@ echo "Preparing ${APP_BUNDLE} for Developer ID signing..."
 xattr -dr com.apple.quarantine "${APP_BUNDLE}" 2>/dev/null || true
 
 while IFS= read -r binary; do
-  codesign_item "${binary}"
+  codesign_nested_code "${binary}"
 done < <(find "${APP_BUNDLE}" -type f \( -name "*.dylib" -o -name "*.so" \) -print | sort)
 
 while IFS= read -r executable; do
   if is_macho_file "${executable}"; then
-    codesign_item "${executable}"
+    codesign_nested_code "${executable}"
   fi
-done < <(find "${APP_BUNDLE}/Contents" -type f -perm -111 -print | sort)
+done < <(find "${APP_BUNDLE}/Contents" -type f -perm -111 ! -path "${APP_BUNDLE}/Contents/MacOS/*" -print | sort)
 
 while IFS= read -r framework; do
-  codesign_item "${framework}"
+  codesign_nested_code "${framework}"
 done < <(find "${APP_BUNDLE}" -type d -name "*.framework" -print | sort)
 
 while IFS= read -r bundle; do
-  codesign_item "${bundle}"
+  codesign_nested_code "${bundle}"
 done < <(find "${APP_BUNDLE}" -type d \( -name "*.bundle" -o -name "*.plugin" \) -print | sort)
 
-echo "Signing outer app bundle..."
-codesign \
-  --force \
-  --timestamp \
-  --options runtime \
-  --entitlements "${ENTITLEMENTS}" \
-  --sign "${IDENTITY}" \
-  "${KEYCHAIN_ARGS[@]}" \
-  "${APP_BUNDLE}"
+codesign_app_bundle
 
 echo "Verifying Developer ID signature..."
-codesign --verify --deep --strict --verbose=2 "${APP_BUNDLE}"
+verify_app_bundle
 
 SUBMISSION_ZIP="${RUNNER_TEMP:-/tmp}/StringTheory-notary-submit.zip"
 rm -f "${SUBMISSION_ZIP}" "${OUTPUT_ZIP}"
