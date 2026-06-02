@@ -154,9 +154,9 @@ jobs:
               print(f"Downloaded {asset_name} ({len(data)} bytes, sha256 {actual_sha})")
           PY
           rm -rf Assets/MidiPlayer
-          unzip -q Temp/private-unity-assets/MidiPlayer.zip -d Assets
+          unzip -oq Temp/private-unity-assets/MidiPlayer.zip -d Assets
           test -f Assets/MidiPlayer/Scripts/MidiPlayer.Run.asmdef
-          unzip -q Temp/private-unity-assets/StringTheoryReleaseAssets.zip -d .
+          unzip -oq Temp/private-unity-assets/StringTheoryReleaseAssets.zip -d .
           test -f Assets/Resources/Hero.png
           test -d Assets/StreamingAssets/Songs
           find Assets/StreamingAssets/Songs -mindepth 1 -maxdepth 1 | grep -q .
