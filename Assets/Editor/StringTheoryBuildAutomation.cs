@@ -131,6 +131,12 @@ public static class StringTheoryBuildAutomation
         if (UnityEngine.Application.platform != UnityEngine.RuntimePlatform.OSXEditor)
             return;
 
+        if (IsTruthy(Environment.GetEnvironmentVariable("STRINGTHEORY_SKIP_ADHOC_MAC_SIGNING")))
+        {
+            UnityEngine.Debug.Log("Skipping ad-hoc macOS signing because STRINGTHEORY_SKIP_ADHOC_MAC_SIGNING is set.");
+            return;
+        }
+
         if (!Directory.Exists(appBundlePath))
             throw new DirectoryNotFoundException($"macOS app bundle was not found for signing: {appBundlePath}");
 
@@ -179,6 +185,15 @@ public static class StringTheoryBuildAutomation
         }
 
         throw new InvalidOperationException($"{executable} failed with exit code {process.ExitCode}: {error.Trim()} {output.Trim()}");
+    }
+
+    private static bool IsTruthy(string value)
+    {
+        string normalized = (value ?? string.Empty).Trim();
+        return string.Equals(normalized, "1", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "yes", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(normalized, "on", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Quote(string value)

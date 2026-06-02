@@ -395,6 +395,7 @@ jobs:
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
           MACOS_UNITY_ARCHITECTURE: ${{ steps.macos-unity-arch.outputs.value }}
+          STRINGTHEORY_SKIP_ADHOC_MAC_SIGNING: true
         with:
           projectPath: .
           unityVersion: 6000.2.9f1
