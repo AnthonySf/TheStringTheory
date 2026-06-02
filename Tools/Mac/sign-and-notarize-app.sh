@@ -10,6 +10,8 @@ APP_BUNDLE="$1"
 OUTPUT_ZIP="$2"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ENTITLEMENTS="${MACOS_ENTITLEMENTS_PATH:-${REPO_ROOT}/Tools/Mac/StringTheory.entitlements}"
+INFO_PLIST="${APP_BUNDLE}/Contents/Info.plist"
+APP_IDENTIFIER="${MACOS_APP_IDENTIFIER:-}"
 IDENTITY="${DEVELOPER_ID_APPLICATION:-}"
 APPLE_ID="${APPLE_ID:-}"
 APPLE_TEAM_ID="${APPLE_TEAM_ID:-}"
@@ -33,6 +35,20 @@ fi
 
 if [[ ! -f "${ENTITLEMENTS}" ]]; then
   echo "Entitlements file not found: ${ENTITLEMENTS}" >&2
+  exit 1
+fi
+
+if [[ ! -f "${INFO_PLIST}" ]]; then
+  echo "App Info.plist not found: ${INFO_PLIST}" >&2
+  exit 1
+fi
+
+if [[ -z "${APP_IDENTIFIER}" ]]; then
+  APP_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${INFO_PLIST}" 2>/dev/null || true)"
+fi
+
+if [[ -z "${APP_IDENTIFIER}" ]]; then
+  echo "CFBundleIdentifier was not found in ${INFO_PLIST}." >&2
   exit 1
 fi
 
@@ -60,6 +76,7 @@ codesign_app_bundle() {
     --timestamp \
     --options runtime \
     --entitlements "${ENTITLEMENTS}" \
+    --identifier "${APP_IDENTIFIER}" \
     --sign "${IDENTITY}" \
     "${KEYCHAIN_ARGS[@]}" \
     "${APP_BUNDLE}"
@@ -83,6 +100,7 @@ is_macho_file() {
 }
 
 echo "Preparing ${APP_BUNDLE} for Developer ID signing..."
+echo "Using app bundle identifier: ${APP_IDENTIFIER}"
 xattr -dr com.apple.quarantine "${APP_BUNDLE}" 2>/dev/null || true
 
 while IFS= read -r binary; do
