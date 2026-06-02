@@ -44,14 +44,44 @@ if [[ ! -f "${INFO_PLIST}" ]]; then
   exit 1
 fi
 
-if [[ -z "${MACOS_APP_IDENTIFIER:-}" ]]; then
-  plist_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${INFO_PLIST}" 2>&1 || true)"
-  if [[ "${plist_identifier}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
-    APP_IDENTIFIER="${plist_identifier}"
-  else
-    echo "Could not read a valid CFBundleIdentifier from ${INFO_PLIST}; using ${APP_IDENTIFIER}." >&2
-  fi
-fi
+APP_IDENTIFIER="$(
+  python3 - "${INFO_PLIST}" "${MACOS_APP_IDENTIFIER:-}" "${DEFAULT_APP_IDENTIFIER}" <<'PY'
+import plistlib
+import re
+import sys
+
+plist_path, requested_identifier, fallback_identifier = sys.argv[1:4]
+identifier_pattern = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+with open(plist_path, "rb") as handle:
+    plist = plistlib.load(handle)
+
+existing_identifier = str(plist.get("CFBundleIdentifier", "")).strip()
+requested_identifier = requested_identifier.strip()
+fallback_identifier = fallback_identifier.strip()
+
+if requested_identifier:
+    identifier = requested_identifier
+elif identifier_pattern.match(existing_identifier):
+    identifier = existing_identifier
+else:
+    identifier = fallback_identifier
+
+if not identifier_pattern.match(identifier):
+    raise SystemExit(f"Invalid macOS bundle identifier: {identifier}")
+
+plist["CFBundleIdentifier"] = identifier
+plist.setdefault("CFBundleExecutable", "StringTheory")
+plist.setdefault("CFBundlePackageType", "APPL")
+
+with open(plist_path, "wb") as handle:
+    plistlib.dump(plist, handle, fmt=plistlib.FMT_XML, sort_keys=False)
+
+print(identifier)
+PY
+)"
+
+plutil -lint "${INFO_PLIST}"
 
 KEYCHAIN_ARGS=()
 if [[ -n "${KEYCHAIN}" ]]; then
