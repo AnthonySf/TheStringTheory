@@ -58,6 +58,26 @@ public sealed class NativeDetectorSharedInputRoute
     public string inputChannelMode = SharedAudioInputChannelModes.Input1;
 }
 
+[Serializable]
+public sealed class NativeDetectorVerifierVerdict
+{
+    public int noteId = -1;
+    public int chordId = -1;
+    public int midi = -1;
+    public bool hit;
+    public float noteTime = -1f;
+    public float detectedSongTime = -1f;
+    public float confidence;
+    public float centsError;
+    public string source = string.Empty;
+}
+
+[Serializable]
+public sealed class NativeDetectorVerifierVerdictPayload
+{
+    public NativeDetectorVerifierVerdict[] verdicts = Array.Empty<NativeDetectorVerifierVerdict>();
+}
+
 public enum NativeDetectorResamplerMode
 {
     Linear = 0,
@@ -77,6 +97,7 @@ public sealed class NativeNotesDetectorBridge
     private string lastStatus = "Native detector idle.";
     private string lastError = string.Empty;
     private bool defaultDebugLogPathConfigured;
+    private bool verifierVerdictPollingUnavailable;
     private NativeDetectorDeviceListPayload cachedDevices = new NativeDetectorDeviceListPayload();
     private NativeDetectorRuntimeInfo cachedRuntimeInfo = new NativeDetectorRuntimeInfo();
     private NativeDetectorPresetStore presetStore = new NativeDetectorPresetStore();
@@ -122,6 +143,9 @@ public sealed class NativeNotesDetectorBridge
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_PollLatestPacket(StringBuilder destination, int capacity);
+
+    [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
+    private static extern int NativeDetector_PollVerifierVerdictsJson(StringBuilder destination, int capacity);
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_GetStatus(StringBuilder destination, int capacity);
@@ -805,6 +829,37 @@ public sealed class NativeNotesDetectorBridge
         }
 
         return string.Empty;
+    }
+
+    public NativeDetectorVerifierVerdict[] PollVerifierVerdicts()
+    {
+        if (!initialized || verifierVerdictPollingUnavailable)
+            return Array.Empty<NativeDetectorVerifierVerdict>();
+
+        try
+        {
+            StringBuilder builder = new StringBuilder(NativeBufferSize);
+            if (NativeDetector_PollVerifierVerdictsJson(builder, builder.Capacity) == 0)
+                return Array.Empty<NativeDetectorVerifierVerdict>();
+
+            string json = builder.ToString();
+            if (string.IsNullOrWhiteSpace(json))
+                return Array.Empty<NativeDetectorVerifierVerdict>();
+
+            NativeDetectorVerifierVerdictPayload payload = JsonUtility.FromJson<NativeDetectorVerifierVerdictPayload>(json);
+            return payload?.verdicts ?? Array.Empty<NativeDetectorVerifierVerdict>();
+        }
+        catch (EntryPointNotFoundException)
+        {
+            verifierVerdictPollingUnavailable = true;
+            return Array.Empty<NativeDetectorVerifierVerdict>();
+        }
+        catch (Exception ex)
+        {
+            lastError = $"Native detector verifier poll failed: {ex.Message}";
+            lastStatus = lastError;
+            return Array.Empty<NativeDetectorVerifierVerdict>();
+        }
     }
 
     public bool IsRunning()

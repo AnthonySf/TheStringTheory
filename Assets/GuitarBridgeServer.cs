@@ -127,6 +127,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public float detectorHintLookaheadSeconds = 0.45f;
     public float detectorHintInterpolationStepSeconds = 0.035f;
     public int detectorHintMaxWindowsPerPacket = 20;
+    public bool nativeExpectedNoteVerifierEnabled = true;
     private UdpClient detectorHintClient;
     private IPEndPoint detectorHintEndpoint;
     private float lastDetectorHintSendRealtime = -999f;
@@ -486,14 +487,20 @@ public class GuitarBridgeServer : MonoBehaviour
         public readonly int fret;
         public readonly int openMidi;
         public readonly int flags;
+        public readonly int noteId;
+        public readonly int chordId;
+        public readonly float noteTime;
 
-        public DetectorHintExpectedNote(int expectedMidi, int expectedStringIndex, int expectedFret, int expectedOpenMidi, DetectorHintNoteFlags expectedFlags)
+        public DetectorHintExpectedNote(int expectedMidi, int expectedStringIndex, int expectedFret, int expectedOpenMidi, DetectorHintNoteFlags expectedFlags, int expectedNoteId, int expectedChordId, float expectedNoteTime)
         {
             midi = expectedMidi;
             stringIndex = expectedStringIndex;
             fret = expectedFret;
             openMidi = expectedOpenMidi;
             flags = (int)expectedFlags;
+            noteId = expectedNoteId;
+            chordId = expectedChordId;
+            noteTime = expectedNoteTime;
         }
     }
 
@@ -517,6 +524,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private readonly Dictionary<string, int> noteToIndex = new Dictionary<string, int>();
     private readonly Dictionary<int, NoteData> chartNoteById = new Dictionary<int, NoteData>();
     private readonly List<NoteEvent> recentNoteEvents = new List<NoteEvent>();
+    private readonly List<NativeDetectorVerifierVerdict> nativeVerifierScratchVerdicts = new List<NativeDetectorVerifierVerdict>();
     private readonly HashSet<int> latestDetectedPitches = new HashSet<int>();
     private readonly List<GameplayNoteState> chordMatchScratchStates = new List<GameplayNoteState>();
     private readonly List<int> chordMatchScratchConsumeKeys = new List<int>();
@@ -9518,6 +9526,10 @@ public class GuitarBridgeServer : MonoBehaviour
             builder.Append(GetNoteNameFromMidi(expected.openMidi));
             builder.Append(" flags=");
             builder.Append(expected.flags);
+            builder.Append(" id=");
+            builder.Append(expected.noteId);
+            builder.Append(" chord=");
+            builder.Append(expected.chordId);
         }
 
         return builder.ToString();
@@ -9574,6 +9586,11 @@ public class GuitarBridgeServer : MonoBehaviour
                 case "fast continuous":
                 case "continuous":
                     normalizedToken = "Fast Continuous";
+                    break;
+                case "verifier-v2":
+                case "native-verifier":
+                case "native verifier":
+                    normalizedToken = "Native Verifier";
                     break;
                 default:
                     normalizedToken = token;
@@ -17522,6 +17539,8 @@ private void OpenOrFocusToneLab()
         StringBuilder builder = new StringBuilder();
         builder.Append("HINT|");
         builder.Append(currentSongTime.ToString("F3", CultureInfo.InvariantCulture));
+        builder.Append("|VERIFIER=");
+        builder.Append(nativeExpectedNoteVerifierEnabled ? '1' : '0');
 
         for (int i = 0; i < windows.Count; i++)
         {
@@ -17612,6 +17631,12 @@ private void OpenOrFocusToneLab()
             builder.Append(expectedNote.openMidi.ToString(CultureInfo.InvariantCulture));
             builder.Append('~');
             builder.Append(expectedNote.flags.ToString(CultureInfo.InvariantCulture));
+            builder.Append('~');
+            builder.Append(expectedNote.noteId.ToString(CultureInfo.InvariantCulture));
+            builder.Append('~');
+            builder.Append(expectedNote.chordId.ToString(CultureInfo.InvariantCulture));
+            builder.Append('~');
+            builder.Append(expectedNote.noteTime.ToString("F3", CultureInfo.InvariantCulture));
             first = false;
         }
 
@@ -17757,7 +17782,10 @@ private void OpenOrFocusToneLab()
                 a[i].stringIndex != b[i].stringIndex ||
                 a[i].fret != b[i].fret ||
                 a[i].openMidi != b[i].openMidi ||
-                a[i].flags != b[i].flags)
+                a[i].flags != b[i].flags ||
+                a[i].noteId != b[i].noteId ||
+                a[i].chordId != b[i].chordId ||
+                Mathf.Abs(a[i].noteTime - b[i].noteTime) > 0.0005f)
             {
                 return false;
             }
@@ -17931,7 +17959,7 @@ private void OpenOrFocusToneLab()
 
         int openMidi = GetStringBasePitch(note.stringIdx);
         int fret = Mathf.Max(0, Mathf.RoundToInt(fretValue));
-        return new DetectorHintExpectedNote(midi, note.stringIdx, fret, openMidi, flags);
+        return new DetectorHintExpectedNote(midi, note.stringIdx, fret, openMidi, flags, note.id, note.chordId, note.time);
     }
 
     private void AddDetectorHintWindow(float startTime, float endTime, HashSet<int> pitches, DetectorHintExpectedNote expectedNote, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)
@@ -17994,6 +18022,7 @@ private void OpenOrFocusToneLab()
                 Interlocked.Exchange(ref lastUdpPacketUtcTicks, DateTime.UtcNow.Ticks);
 
             ParseDetectorPacket(nativePacket);
+            ApplyNativeVerifierVerdicts();
             return;
         }
 
@@ -18916,6 +18945,117 @@ private void ParseDetectorPacket(string detectorPacket)
         }
     }
 
+    private void ApplyNativeVerifierVerdicts()
+    {
+        if (!nativeExpectedNoteVerifierEnabled ||
+            nativeNotesDetectorBridge == null ||
+            notesDetectorBackendMode != NotesDetectorBackendMode.NativeEmbeddedBridge ||
+            noteStates == null ||
+            noteStates.Count == 0)
+        {
+            return;
+        }
+
+        NativeDetectorVerifierVerdict[] verdicts = nativeNotesDetectorBridge.PollVerifierVerdicts();
+        if (verdicts == null || verdicts.Length == 0)
+            return;
+
+        nativeVerifierScratchVerdicts.Clear();
+        nativeVerifierScratchVerdicts.AddRange(verdicts);
+        nativeVerifierScratchVerdicts.Sort((a, b) =>
+        {
+            int timeCompare = a.noteTime.CompareTo(b.noteTime);
+            return timeCompare != 0 ? timeCompare : a.noteId.CompareTo(b.noteId);
+        });
+
+        for (int i = 0; i < nativeVerifierScratchVerdicts.Count; i++)
+        {
+            NativeDetectorVerifierVerdict verdict = nativeVerifierScratchVerdicts[i];
+            if (verdict == null || !verdict.hit || verdict.noteId < 0)
+                continue;
+
+            GameplayNoteState noteState = FindGameplayNoteStateById(verdict.noteId);
+            if (noteState == null || noteState.IsResolved || ShouldIgnoreGuitarNoteForActiveLoop(noteState.data))
+                continue;
+
+            if (!IsNativeVerifierVerdictValidForState(verdict, noteState))
+                continue;
+
+            RecordNotesDetectorAcceptanceSource(BuildDetectorAcceptanceSourceLabel(verdict.source));
+            noteState.result = GameplayNoteResult.Hit;
+            noteState.resolvedAt = songTimer;
+            noteState.isJudgeable = false;
+
+            if (Application.isEditor && notesDetectorGameplayTestActive)
+            {
+                LogNotesDetectorEditor(
+                    $"NATIVE_VERIFIER_HIT noteId={verdict.noteId} chordId={verdict.chordId} midi={verdict.midi} " +
+                    $"state=[{DescribeGameplayNoteStateForDetectorLog(noteState)}] " +
+                    $"noteTime={verdict.noteTime.ToString("F3", CultureInfo.InvariantCulture)} " +
+                    $"songTimer={songTimer.ToString("F3", CultureInfo.InvariantCulture)} " +
+                    $"confidence={verdict.confidence.ToString("F3", CultureInfo.InvariantCulture)} " +
+                    $"cents={verdict.centsError.ToString("F1", CultureInfo.InvariantCulture)} source={verdict.source}");
+            }
+        }
+    }
+
+    private GameplayNoteState FindGameplayNoteStateById(int noteId)
+    {
+        if (noteStates == null || noteId < 0)
+            return null;
+
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState state = noteStates[i];
+            if (state != null && state.data.id == noteId)
+                return state;
+        }
+
+        return null;
+    }
+
+    private bool IsNativeVerifierVerdictValidForState(NativeDetectorVerifierVerdict verdict, GameplayNoteState state)
+    {
+        if (verdict == null || state == null)
+            return false;
+
+        if (verdict.noteTime >= 0f && Mathf.Abs(verdict.noteTime - state.data.time) > 0.08f)
+            return false;
+
+        if (verdict.chordId >= 0 && state.data.chordId >= 0 && verdict.chordId != state.data.chordId)
+            return false;
+
+        if (verdict.midi >= 0)
+        {
+            int stateMidi = GetNoteMidiFromStringFret(state.data.stringIdx, state.data.fret);
+            int midiTolerance = NoteHasMovingPitch(state.data) ? 12 : 2;
+            if (Mathf.Abs(verdict.midi - stateMidi) > midiTolerance)
+                return false;
+        }
+
+        float acceptedSongTime = verdict.detectedSongTime >= 0f ? verdict.detectedSongTime : verdict.noteTime;
+        if (acceptedSongTime >= 0f && IsDetectorEventBeforeTimelineResetFloor(acceptedSongTime))
+            return false;
+
+        float earlyStart = state.data.time - hitWindowEarly - eventTimeSlack - (state.data.stringIdx >= 4 ? highStringExtraEarly : 0f);
+        float lateEnd = state.data.time + hitWindowLate + GetSustainLateGrace(state.data) + MissJudgmentSafetyDelay + (state.data.stringIdx >= 4 ? highStringExtraLate : 0f);
+        return songTimer >= earlyStart && songTimer <= lateEnd + 0.05f;
+    }
+
+    private static bool NoteHasMovingPitch(NoteData note)
+    {
+        if (note.technique == NoteTechnique.Bend ||
+            note.technique == NoteTechnique.Slide ||
+            note.bendStep > 0f ||
+            note.slideTargetFret >= 0)
+        {
+            return true;
+        }
+
+        return note.techniqueSegments != null &&
+               note.techniqueSegments.Any(segment => segment.type == NoteTechniqueSegmentType.Bend || segment.type == NoteTechniqueSegmentType.Slide);
+    }
+
     private IGuitarGameplayRenderer CreateRendererForType(Type rendererType)
     {
         if (rendererType == typeof(MultiplayerRhythm3DRenderer))
@@ -18973,6 +19113,7 @@ private void ParseDetectorPacket(string detectorPacket)
     private void LoadTestSong(bool preservePauseUiState = false)
     {
         ResetToneLabSongTonePlaybackCache();
+        ClearToneLabSongTonePlaybackOverride();
         currentLoadedTrackIndex = midiTrackIndex;
         latestDetectedPitches.Clear();
         recentNoteEvents.Clear();
@@ -22528,6 +22669,7 @@ private void ParseDetectorPacket(string detectorPacket)
 
         RegisterFloatSetting("timing.hitWindowEarly", "Timing & Forgiveness", "Hit Window Early", "How far before a note you can strike and still get credit.", 0.05f, 0.6f, 0.005f, () => hitWindowEarly, v => hitWindowEarly = v);
         RegisterFloatSetting("timing.hitWindowLate", "Timing & Forgiveness", "Hit Window Late", "How far after a note you can strike and still get credit.", 0.05f, 0.8f, 0.005f, () => hitWindowLate, v => hitWindowLate = v);
+        RegisterBoolSetting("timing.nativeExpectedNoteVerifier", "Timing & Forgiveness", "Native Note Verifier", "Uses the native expected-note verifier for direct note and chord hits. The legacy event matcher remains as fallback.", () => nativeExpectedNoteVerifierEnabled, v => nativeExpectedNoteVerifierEnabled = v);
 
         RegisterEnumSetting(
             "fx.characterDisplay",

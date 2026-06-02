@@ -589,6 +589,49 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void PortAudioRoutePlans_TrySelectedDevicesBeforeBackendPreference()
+    {
+        object asioDuplex = Device(14, "14: Realtek ASIO", "Realtek ASIO", "ASIO", 2, 2, 48000);
+        object selectedInput = Device(19, "19: Rear Mic (Realtek USB Audio)", "Rear Mic (Realtek USB Audio)", "Windows WASAPI", 2, 0, 48000);
+        object selectedOutput = Device(16, "16: 1 - LC27G5xT (2- AMD High Definition Audio Device)", "1 - LC27G5xT (2- AMD High Definition Audio Device)", "Windows WASAPI", 0, 2, 48000);
+        Array allDevices = DeviceArray(asioDuplex, selectedInput, selectedOutput);
+
+        using (RuntimeFixture fixture = RuntimeFixture.Create())
+        {
+            SetRuntimeLegacyRoutingFields(
+                fixture.Runtime,
+                DeviceArray(asioDuplex, selectedInput),
+                DeviceArray(asioDuplex, selectedOutput),
+                "19: Rear Mic (Realtek USB Audio)",
+                "16: 1 - LC27G5xT (2- AMD High Definition Audio Device)",
+                128);
+
+            IList legacyPlans = (IList)InvokeRuntimeInstance(fixture.Runtime, "BuildLegacyRoutePlans");
+            Assert.Greater(legacyPlans.Count, 0);
+            Assert.AreEqual(19, GetDeviceIndex(GetPlanDevice(legacyPlans[0], "InputDevice")));
+            Assert.AreEqual(16, GetDeviceIndex(GetPlanDevice(legacyPlans[0], "OutputDevice")));
+
+            SetRuntimeRoutingFields(
+                fixture.Runtime,
+                allDevices,
+                SharedAudioBackendModes.Auto,
+                allowFallback: true,
+                input: "19: Rear Mic (Realtek USB Audio)",
+                output: "16: 1 - LC27G5xT (2- AMD High Definition Audio Device)",
+                sampleRate: 0,
+                bufferSize: 128,
+                splitInputOutput: false,
+                preferredInput: "Automatic",
+                preferredOutput: "Automatic");
+
+            IList advancedPlans = (IList)InvokeRuntimeInstance(fixture.Runtime, "BuildAdvancedRoutePlans");
+            Assert.Greater(advancedPlans.Count, 0);
+            Assert.AreEqual(19, GetDeviceIndex(GetPlanDevice(advancedPlans[0], "InputDevice")));
+            Assert.AreEqual(16, GetDeviceIndex(GetPlanDevice(advancedPlans[0], "OutputDevice")));
+        }
+    }
+
+    [Test]
     public void AdvancedSplitRoutePlans_AllowExplicitCrossBackendPairOnlyInSplitBuilder()
     {
         object asioInput = Device(1, "1: Focusrite Inst", "Focusrite Inst", "ASIO", 2, 0, 48000);
@@ -1571,7 +1614,18 @@ public sealed class AudioPathRegressionTests
         };
     }
 
-    private static void SetRuntimeRoutingFields(UnityToneLabRuntime runtime, Array allDevices, string backendMode, bool allowFallback, string input, string output, int sampleRate, int bufferSize, bool splitInputOutput = false)
+    private static void SetRuntimeRoutingFields(
+        UnityToneLabRuntime runtime,
+        Array allDevices,
+        string backendMode,
+        bool allowFallback,
+        string input,
+        string output,
+        int sampleRate,
+        int bufferSize,
+        bool splitInputOutput = false,
+        string preferredInput = null,
+        string preferredOutput = null)
     {
         SetField(runtime, "settings", new UnityToneLabRuntime.ToneLabSettings
         {
@@ -1586,12 +1640,25 @@ public sealed class AudioPathRegressionTests
             betaEnabled = true,
             backendMode = backendMode,
             allowFallback = allowFallback,
-            preferredInputDeviceName = input,
-            preferredOutputDeviceName = output,
+            preferredInputDeviceName = preferredInput ?? input,
+            preferredOutputDeviceName = preferredOutput ?? output,
             sampleRate = sampleRate,
             bufferSize = bufferSize,
             splitInputOutputEnabled = splitInputOutput
         });
+    }
+
+    private static void SetRuntimeLegacyRoutingFields(UnityToneLabRuntime runtime, Array inputDevices, Array outputDevices, string input, string output, int bufferSize)
+    {
+        SetField(runtime, "settings", new UnityToneLabRuntime.ToneLabSettings
+        {
+            input_device_name = input,
+            output_device_name = output,
+            monitoring_buffer_size = bufferSize
+        });
+        SetField(runtime, "settingsLoaded", true);
+        SetField(runtime, "portAudioInputDevices", inputDevices);
+        SetField(runtime, "portAudioOutputDevices", outputDevices);
     }
 
     private static void AssertAllPlansUseSameInputAndOutputHost(IList plans)

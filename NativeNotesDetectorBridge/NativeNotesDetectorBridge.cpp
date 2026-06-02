@@ -89,6 +89,12 @@ constexpr int kHighStringBenefitMatchMaxDistance = 0;
 constexpr float kOnsetExpectLookaheadSeconds = 0.120f;
 constexpr int kMaxEventNotes = 6;
 constexpr float kChordResultMergeSeconds = 0.050f;
+constexpr double kVerifierScoreIntervalSeconds = 0.035;
+constexpr double kVerifierOnsetEarlySeconds = 0.170;
+constexpr double kVerifierOnsetLateSeconds = 0.260;
+constexpr double kVerifierOnsetRetentionSeconds = 2.0;
+constexpr double kVerifierSeekResetThresholdSeconds = 0.35;
+constexpr int kVerifierMaxGroupsPerHop = 4;
 constexpr int kBassRescuePrimaryWindowStartSamples = 640;
 constexpr int kBassRescueSecondaryWindowStartSamples = 1280;
 constexpr int kBassRescueAnalysisWindowSamples = 3072;
@@ -334,6 +340,10 @@ struct ExpectedHintNoteSpec
     int fret = -1;
     int openMidi = -1;
     uint32_t flags = ExpectedHintNoteFlagNone;
+    int noteId = -1;
+    int chordId = -1;
+    double noteTime = -1.0;       // Unity song time
+    double notePythonTime = -1.0; // Native audio time, filled after sync mapping.
 };
 
 struct ExpectedHintContext
@@ -398,6 +408,28 @@ struct DeepResult
     std::set<int> eventNotes;
     std::set<int> expectedMidiNotes;
     std::string sourceTag;
+};
+
+struct NativeVerifierVerdict
+{
+    int noteId = -1;
+    int chordId = -1;
+    int midi = -1;
+    bool hit = false;
+    double noteTime = -1.0;
+    double detectedSongTime = -1.0;
+    float confidence = 0.0f;
+    float centsError = 0.0f;
+    std::string source;
+};
+
+struct VerifierExpectedGroup
+{
+    std::vector<ExpectedHintNoteSpec> expectedNotes;
+    int chordId = -1;
+    double noteTime = -1.0;
+    double notePythonTime = -1.0;
+    bool requiresOnset = false;
 };
 
 struct ConstraintChordNoteDebugResult
@@ -810,7 +842,10 @@ bool ExpectedHintNoteSpecsEqual(const ExpectedHintNoteSpec& left, const Expected
         left.stringIndex == right.stringIndex &&
         left.fret == right.fret &&
         left.openMidi == right.openMidi &&
-        left.flags == right.flags;
+        left.flags == right.flags &&
+        left.noteId == right.noteId &&
+        left.chordId == right.chordId &&
+        std::abs(left.noteTime - right.noteTime) <= 0.0005;
 }
 
 void AppendUniqueExpectedNotes(std::vector<ExpectedHintNoteSpec>& destination, const std::vector<ExpectedHintNoteSpec>& source)
@@ -891,6 +926,12 @@ std::vector<ExpectedHintNoteSpec> ParseExpectedHintNoteSpecsCsv(const std::strin
                         spec.fret = std::stoi(fields[2]);
                         spec.openMidi = ParseHintTokenToMidi(fields[3]);
                         spec.flags = static_cast<uint32_t>(std::stoul(fields[4]));
+                        if (fields.size() >= 6)
+                            spec.noteId = std::stoi(fields[5]);
+                        if (fields.size() >= 7)
+                            spec.chordId = std::stoi(fields[6]);
+                        if (fields.size() >= 8)
+                            spec.noteTime = std::stod(fields[7]);
                         if (spec.midi >= 0 && spec.stringIndex >= 0 && spec.openMidi >= 0)
                             result.push_back(spec);
                     }
@@ -2594,14 +2635,17 @@ void HintState::AddHintWindow(double startTime, double endTime, const std::set<i
     window.endTime = std::max(startTime, endTime);
     window.midiNotes = midiNotes;
     window.expectedNotes = expectedNotes;
-    for (const ExpectedHintNoteSpec& expectedNote : expectedNotes)
+
+    std::lock_guard<std::mutex> lock(mutex_);
+    for (ExpectedHintNoteSpec& expectedNote : window.expectedNotes)
     {
         if (expectedNote.midi >= 0)
             window.midiNotes.insert(expectedNote.midi);
+        if (hasOffset_ && expectedNote.noteTime >= 0.0)
+            expectedNote.notePythonTime = expectedNote.noteTime + offset_;
     }
     window.createdAt = Clock::now();
 
-    std::lock_guard<std::mutex> lock(mutex_);
     windows_.push_back(std::move(window));
     pruneLocked_();
 }
@@ -2950,6 +2994,7 @@ public:
     void Shutdown();
     void SetHintPayload(const std::string& payload);
     std::string PollLatestPacket() const;
+    std::string PollVerifierVerdictsJson();
     std::string GetStatusLine() const;
     std::wstring GetLastError() const;
     bool IsRunning() const;
@@ -2966,6 +3011,7 @@ private:
     void pumpDeepResults_(double currentTime);
     void maybeDispatchFastChordTasks_(uint64_t availableFrames, double currentTime);
     void maybeDispatchFastSingleTasks_(uint64_t availableFrames, double currentTime, const std::set<int>& currentActiveNotes);
+    void maybeRunExpectedNoteVerifier_(uint64_t availableFrames, double currentTime, const DetectorSettings& settings, const std::deque<double>& onsetTimes);
     void maybeDispatchCaptureTasks_(uint64_t availableFrames);
     bool scoreExpectedChordConstraint_(const std::vector<float>& audioWindow, const std::vector<ExpectedHintNoteSpec>& expectedNotes, const DetectorSettings& settings, const char* sourceTag) const;
     bool tryScoreFastExpectedChord_(uint64_t endFrameExclusive, const std::vector<ExpectedHintNoteSpec>& expectedNotes, const DetectorSettings& settings) const;
@@ -2973,6 +3019,11 @@ private:
     bool tryScoreFastExpectedSingle_(uint64_t endFrameExclusive, const ExpectedHintNoteSpec& expectedNote, const DetectorSettings& settings) const;
     void publishFastChordEvent_(int eventId, double onsetTime, double currentTime, const std::set<int>& expectedMidi);
     void publishFastSingleEvent_(int eventId, double onsetTime, double currentTime, int expectedMidi);
+    void publishVerifierVerdicts_(const VerifierExpectedGroup& group, const ConstraintChordEvaluationResult& evaluation, double currentTime, const char* sourceTag);
+    void publishVerifierVerdict_(const ExpectedHintNoteSpec& spec, const ConstraintChordNoteDebugResult& noteResult, double currentTime, const char* sourceTag);
+    std::vector<VerifierExpectedGroup> buildVerifierGroups_(const ExpectedHintContext& context) const;
+    bool verifierGroupHasOnset_(const VerifierExpectedGroup& group, const std::deque<double>& onsetTimes) const;
+    void resetVerifierStateLocked_();
     bool initializeAubio_(std::wstring& error);
     void shutdownAubio_();
     void updateContinuousNotes_(const std::vector<float>& hop, double currentTime, std::deque<int>& recentPitchMidi, int& stableMidi, int& stableCount, double& lastContinuousTime, std::set<int>& currentActiveNotes);
@@ -3053,6 +3104,8 @@ private:
     std::deque<FastSingleTask> fastSingleTasks_;
     std::queue<std::pair<CaptureTask, std::vector<float>>> deepTasks_;
     std::queue<DeepResult> deepResults_;
+    std::deque<NativeVerifierVerdict> verifierVerdicts_;
+    std::set<int> verifierResolvedNoteIds_;
 
     std::string latestPacket_;
     std::string statusLine_;
@@ -3067,6 +3120,9 @@ private:
     std::set<int> broadcastExpectedNotes_;
     std::set<int> fastChordActiveNotes_;
     double fastChordActiveUntil_ = 0.0;
+    bool verifierEnabled_ = true;
+    double verifierLastScoreTime_ = -999.0;
+    double verifierLastUnitySongTime_ = -999.0;
 };
 
 NativeDetectorEngine::NativeDetectorEngine()
@@ -3398,6 +3454,49 @@ void NativeDetectorEngine::Shutdown()
 void NativeDetectorEngine::SetHintPayload(const std::string& payload)
 {
     const double currentTime = GetCurrentAudioTime();
+    const std::string verifierToken = "|VERIFIER=";
+    const size_t verifierTokenIndex = payload.find(verifierToken);
+    if (verifierTokenIndex != std::string::npos)
+    {
+        const size_t valueIndex = verifierTokenIndex + verifierToken.size();
+        const bool enabled = valueIndex < payload.size() && payload[valueIndex] != '0';
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        if (verifierEnabled_ != enabled)
+        {
+            verifierEnabled_ = enabled;
+            resetVerifierStateLocked_();
+        }
+    }
+
+    double unitySongTime = -1.0;
+    const size_t firstPipe = payload.find('|');
+    if (firstPipe != std::string::npos)
+    {
+        const size_t secondPipe = payload.find('|', firstPipe + 1);
+        const std::string timeToken = payload.substr(firstPipe + 1, secondPipe == std::string::npos ? std::string::npos : secondPipe - firstPipe - 1);
+        try
+        {
+            unitySongTime = std::stod(timeToken);
+        }
+        catch (...)
+        {
+            unitySongTime = -1.0;
+        }
+    }
+
+    if (unitySongTime >= 0.0)
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        if (verifierLastUnitySongTime_ >= 0.0 &&
+            (unitySongTime + kVerifierSeekResetThresholdSeconds < verifierLastUnitySongTime_ ||
+                std::abs(unitySongTime - verifierLastUnitySongTime_) > kHintRetentionSeconds + kVerifierSeekResetThresholdSeconds))
+        {
+            resetVerifierStateLocked_();
+        }
+
+        verifierLastUnitySongTime_ = unitySongTime;
+    }
+
     hintState_.ParsePayload(payload, currentTime);
 }
 
@@ -3405,6 +3504,37 @@ std::string NativeDetectorEngine::PollLatestPacket() const
 {
     std::lock_guard<std::mutex> lock(stateMutex_);
     return latestPacket_;
+}
+
+std::string NativeDetectorEngine::PollVerifierVerdictsJson()
+{
+    std::deque<NativeVerifierVerdict> verdicts;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        verdicts.swap(verifierVerdicts_);
+    }
+
+    std::ostringstream builder;
+    builder << "{\"verdicts\":[";
+    for (size_t i = 0; i < verdicts.size(); ++i)
+    {
+        const NativeVerifierVerdict& verdict = verdicts[i];
+        if (i > 0)
+            builder << ',';
+
+        builder << "{\"noteId\":" << verdict.noteId
+            << ",\"chordId\":" << verdict.chordId
+            << ",\"midi\":" << verdict.midi
+            << ",\"hit\":" << (verdict.hit ? "true" : "false")
+            << ",\"noteTime\":" << verdict.noteTime
+            << ",\"detectedSongTime\":" << verdict.detectedSongTime
+            << ",\"confidence\":" << verdict.confidence
+            << ",\"centsError\":" << verdict.centsError
+            << ",\"source\":\"" << JsonEscape(verdict.source)
+            << "\"}";
+    }
+    builder << "]}";
+    return builder.str();
 }
 
 std::string NativeDetectorEngine::GetStatusLine() const
@@ -3675,7 +3805,16 @@ void NativeDetectorEngine::resetStateLocked_()
         broadcastExpectedNotes_.clear();
         fastChordActiveNotes_.clear();
         fastChordActiveUntil_ = 0.0;
+        resetVerifierStateLocked_();
     }
+}
+
+void NativeDetectorEngine::resetVerifierStateLocked_()
+{
+    verifierVerdicts_.clear();
+    verifierResolvedNoteIds_.clear();
+    verifierLastScoreTime_ = -999.0;
+    verifierLastUnitySongTime_ = -999.0;
 }
 
 std::string EscapeJsonString(const std::string& value)
@@ -3926,6 +4065,7 @@ void NativeDetectorEngine::FastLoop_()
     int lastFastSingleScheduledMidi = -1;
     double lastFastSingleScheduledWindowStartPython = -999.0;
     double lastFastSingleScheduledWindowEndPython = -999.0;
+    std::deque<double> verifierOnsetTimes;
 
     auto scheduleFastSingleTask = [&](int eventId, uint64_t onsetFrame, double onsetTime, const ExpectedHintNoteSpec& expectedNote, bool proactive, double windowStartPythonTime, double windowEndPythonTime)
     {
@@ -3998,6 +4138,9 @@ void NativeDetectorEngine::FastLoop_()
             if (onsetDetected && (currentTime - lastOnsetTime) > kDebounceSeconds)
             {
                 lastOnsetTime = currentTime;
+                verifierOnsetTimes.push_back(currentTime);
+                while (!verifierOnsetTimes.empty() && currentTime - verifierOnsetTimes.front() > kVerifierOnsetRetentionSeconds)
+                    verifierOnsetTimes.pop_front();
                 ++pluckCounter;
 
                 if (expectedOnsetContext.expectedNotes.size() >= 2)
@@ -4110,6 +4253,10 @@ void NativeDetectorEngine::FastLoop_()
                 hasLastProactiveScheduledNote = false;
                 lastProactiveScheduledUntil = -999.0;
             }
+
+            while (!verifierOnsetTimes.empty() && currentTime - verifierOnsetTimes.front() > kVerifierOnsetRetentionSeconds)
+                verifierOnsetTimes.pop_front();
+            maybeRunExpectedNoteVerifier_(availableFrames, currentTime, settings, verifierOnsetTimes);
 
             buildLatestPacket_(currentTime, currentActiveNotes);
             availableFrames = totalFramesWritten_.load(std::memory_order_acquire);
@@ -4523,6 +4670,240 @@ bool NativeDetectorEngine::scoreExpectedSingleConstraint_(
     AppendDebugLogLine(summaryLog.str());
 
     return evaluation.accepted;
+}
+
+std::vector<VerifierExpectedGroup> NativeDetectorEngine::buildVerifierGroups_(const ExpectedHintContext& context) const
+{
+    std::vector<VerifierExpectedGroup> groups;
+    if (!context.hasWindow || context.expectedNotes.empty())
+        return groups;
+
+    for (const ExpectedHintNoteSpec& spec : context.expectedNotes)
+    {
+        if (spec.noteId < 0 || spec.midi < 0 || spec.stringIndex < 0 || spec.openMidi < 0)
+            continue;
+
+        const bool chordGroup = spec.chordId >= 0;
+        VerifierExpectedGroup* group = nullptr;
+        for (VerifierExpectedGroup& existing : groups)
+        {
+            if ((chordGroup && existing.chordId == spec.chordId) ||
+                (!chordGroup && existing.chordId < 0 && existing.expectedNotes.size() == 1 && existing.expectedNotes.front().noteId == spec.noteId))
+            {
+                group = &existing;
+                break;
+            }
+        }
+
+        if (group == nullptr)
+        {
+            VerifierExpectedGroup newGroup;
+            newGroup.chordId = spec.chordId;
+            newGroup.noteTime = spec.noteTime >= 0.0 ? spec.noteTime : context.windowStartTime;
+            newGroup.notePythonTime = spec.notePythonTime >= 0.0 ? spec.notePythonTime : context.windowStartPythonTime;
+            groups.push_back(std::move(newGroup));
+            group = &groups.back();
+        }
+
+        bool duplicate = false;
+        for (const ExpectedHintNoteSpec& existing : group->expectedNotes)
+        {
+            if (ExpectedHintNoteSpecsEqual(existing, spec))
+            {
+                duplicate = true;
+                break;
+            }
+        }
+
+        if (!duplicate)
+            group->expectedNotes.push_back(spec);
+
+        if (spec.noteTime >= 0.0)
+            group->noteTime = group->noteTime < 0.0 ? spec.noteTime : std::min(group->noteTime, spec.noteTime);
+        if (spec.notePythonTime >= 0.0)
+            group->notePythonTime = group->notePythonTime < 0.0 ? spec.notePythonTime : std::min(group->notePythonTime, spec.notePythonTime);
+        if ((spec.flags & ExpectedHintNoteFlagLegato) == 0)
+            group->requiresOnset = true;
+    }
+
+    groups.erase(
+        std::remove_if(groups.begin(), groups.end(), [](const VerifierExpectedGroup& group)
+        {
+            return group.expectedNotes.empty();
+        }),
+        groups.end());
+
+    return groups;
+}
+
+bool NativeDetectorEngine::verifierGroupHasOnset_(const VerifierExpectedGroup& group, const std::deque<double>& onsetTimes) const
+{
+    if (!group.requiresOnset)
+        return true;
+
+    if (group.notePythonTime < 0.0)
+        return false;
+
+    const double windowStart = group.notePythonTime - kVerifierOnsetEarlySeconds;
+    const double windowEnd = group.notePythonTime + kVerifierOnsetLateSeconds;
+    for (double onsetTime : onsetTimes)
+    {
+        if (onsetTime >= windowStart && onsetTime <= windowEnd)
+            return true;
+    }
+
+    return false;
+}
+
+void NativeDetectorEngine::publishVerifierVerdict_(
+    const ExpectedHintNoteSpec& spec,
+    const ConstraintChordNoteDebugResult& noteResult,
+    double currentTime,
+    const char* sourceTag)
+{
+    if (spec.noteId < 0 || spec.midi < 0 || !noteResult.hit)
+        return;
+
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    if (!verifierResolvedNoteIds_.insert(spec.noteId).second)
+        return;
+
+    NativeVerifierVerdict verdict;
+    verdict.noteId = spec.noteId;
+    verdict.chordId = spec.chordId;
+    verdict.midi = spec.midi;
+    verdict.hit = true;
+    verdict.noteTime = spec.noteTime;
+    verdict.detectedSongTime = spec.noteTime >= 0.0 ? spec.noteTime : currentTime;
+    verdict.confidence = noteResult.noteScore;
+    verdict.centsError = noteResult.centsError;
+    verdict.source = sourceTag != nullptr ? sourceTag : "verifier-v2";
+    verifierVerdicts_.push_back(verdict);
+    while (verifierVerdicts_.size() > 128)
+        verifierVerdicts_.pop_front();
+
+    std::ostringstream log;
+    log << "VERIFIER_HIT"
+        << " source=" << verdict.source
+        << " noteId=" << verdict.noteId
+        << " chordId=" << verdict.chordId
+        << " midi=" << verdict.midi
+        << " noteTime=" << verdict.noteTime
+        << " currentTime=" << currentTime
+        << " score=" << verdict.confidence
+        << " centsError=" << verdict.centsError;
+    AppendDebugLogLine(log.str());
+}
+
+void NativeDetectorEngine::publishVerifierVerdicts_(
+    const VerifierExpectedGroup&,
+    const ConstraintChordEvaluationResult& evaluation,
+    double currentTime,
+    const char* sourceTag)
+{
+    for (const ConstraintChordNoteDebugResult& noteResult : evaluation.noteResults)
+    {
+        if (noteResult.hit)
+            publishVerifierVerdict_(noteResult.spec, noteResult, currentTime, sourceTag);
+    }
+}
+
+void NativeDetectorEngine::maybeRunExpectedNoteVerifier_(
+    uint64_t,
+    double currentTime,
+    const DetectorSettings& settings,
+    const std::deque<double>& onsetTimes)
+{
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        if (!verifierEnabled_)
+            return;
+
+        if (currentTime - verifierLastScoreTime_ < kVerifierScoreIntervalSeconds)
+            return;
+        verifierLastScoreTime_ = currentTime;
+    }
+
+    double unityTime = -1.0;
+    const ExpectedHintContext context = hintState_.GetExpectedContextForPythonTime(currentTime, &unityTime);
+    std::vector<VerifierExpectedGroup> groups = buildVerifierGroups_(context);
+    if (groups.empty())
+        return;
+
+    std::sort(groups.begin(), groups.end(), [currentTime](const VerifierExpectedGroup& left, const VerifierExpectedGroup& right)
+    {
+        const double leftDistance = left.notePythonTime >= 0.0 ? std::abs(left.notePythonTime - currentTime) : std::numeric_limits<double>::max();
+        const double rightDistance = right.notePythonTime >= 0.0 ? std::abs(right.notePythonTime - currentTime) : std::numeric_limits<double>::max();
+        return leftDistance < rightDistance;
+    });
+
+    const int groupLimit = std::min<int>(static_cast<int>(groups.size()), kVerifierMaxGroupsPerHop);
+    for (int groupIndex = 0; groupIndex < groupLimit; ++groupIndex)
+    {
+        const VerifierExpectedGroup& group = groups[static_cast<size_t>(groupIndex)];
+        if (group.expectedNotes.empty())
+            continue;
+
+        bool allNotesAlreadyPublished = true;
+        {
+            std::lock_guard<std::mutex> lock(stateMutex_);
+            for (const ExpectedHintNoteSpec& spec : group.expectedNotes)
+            {
+                if (spec.noteId >= 0 && verifierResolvedNoteIds_.find(spec.noteId) == verifierResolvedNoteIds_.end())
+                {
+                    allNotesAlreadyPublished = false;
+                    break;
+                }
+            }
+        }
+        if (allNotesAlreadyPublished)
+            continue;
+
+        if (group.requiresOnset &&
+            group.notePythonTime >= 0.0 &&
+            currentTime > group.notePythonTime + kVerifierOnsetLateSeconds)
+        {
+            continue;
+        }
+
+        const bool hasOnset = verifierGroupHasOnset_(group, onsetTimes);
+        const bool presenceOnlyChordWindow =
+            group.expectedNotes.size() >= 2 &&
+            group.notePythonTime >= 0.0 &&
+            currentTime >= group.notePythonTime - 0.020 &&
+            currentTime <= group.notePythonTime + kVerifierOnsetLateSeconds;
+        if (group.requiresOnset && !hasOnset && !presenceOnlyChordWindow)
+            continue;
+
+        int lowestExpectedMidi = std::numeric_limits<int>::max();
+        for (const ExpectedHintNoteSpec& spec : group.expectedNotes)
+        {
+            if (spec.midi >= 0)
+                lowestExpectedMidi = std::min(lowestExpectedMidi, spec.midi);
+        }
+
+        if (lowestExpectedMidi == std::numeric_limits<int>::max())
+            continue;
+
+        const int analysisWindowSamples = group.expectedNotes.size() >= 2
+            ? (lowestExpectedMidi <= 40 ? kFastChordAnalysisWindowLongSamples : kFastChordAnalysisWindowShortSamples)
+            : GetFastSinglePrimaryAnalysisWindowSamples(group.expectedNotes.front());
+        const uint64_t endFrame = static_cast<uint64_t>(std::max(0.0, std::floor(currentTime * static_cast<double>(kSampleRate))));
+        std::vector<float> audioWindow(static_cast<size_t>(analysisWindowSamples), 0.0f);
+        readRecentWindow_(endFrame, audioWindow, analysisWindowSamples);
+
+        if (group.expectedNotes.size() >= 2)
+        {
+            ConstraintChordEvaluationResult evaluation = EvaluateExpectedChordConstraintWindow(audioWindow, group.expectedNotes, settings);
+            if (evaluation.accepted)
+                publishVerifierVerdicts_(group, evaluation, currentTime, "verifier-v2");
+            continue;
+        }
+
+        ConstraintSingleEvaluationResult evaluation = EvaluateExpectedSingleConstraintWindow(audioWindow, group.expectedNotes.front(), settings);
+        if (evaluation.accepted)
+            publishVerifierVerdict_(group.expectedNotes.front(), evaluation.noteResult, currentTime, "verifier-v2");
+    }
 }
 
 void NativeDetectorEngine::publishFastChordEvent_(
@@ -5386,6 +5767,14 @@ ST_NATIVE_EXPORT int NativeDetector_PollLatestPacket(char* destination, int capa
     if (!g_detector)
         return CopyUtf8String("--", destination, capacity) ? 1 : 0;
     return CopyUtf8String(g_detector->PollLatestPacket(), destination, capacity) ? 1 : 0;
+}
+
+ST_NATIVE_EXPORT int NativeDetector_PollVerifierVerdictsJson(char* destination, int capacity)
+{
+    std::lock_guard<std::mutex> lock(g_bridgeMutex);
+    if (!g_detector)
+        return CopyUtf8String("{\"verdicts\":[]}", destination, capacity) ? 1 : 0;
+    return CopyUtf8String(g_detector->PollVerifierVerdictsJson(), destination, capacity) ? 1 : 0;
 }
 
 ST_NATIVE_EXPORT int NativeDetector_GetStatus(char* destination, int capacity)

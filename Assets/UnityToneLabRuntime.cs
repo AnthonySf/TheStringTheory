@@ -34,6 +34,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private const float DefaultRigOutputGainDb = 10f;
     private const float MaxIntermediateAudioMagnitude = 16f;
     private const float LiveAudioDiagnosticsIntervalSeconds = 1f;
+    private const int SelectedRouteMismatchRankPenalty = 100000;
+    private const int HostPriorityRankScale = 100;
     public const float MaxMonitorVolumePercent = 200f;
 
     [Serializable]
@@ -1009,6 +1011,21 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         return SharedAudioBackendModes.GetHostPriority(hostApiName);
     }
 
+    private static int GetHostPriorityRank(ToneLabPortAudio.DeviceDescriptor device)
+    {
+        return GetAdvancedHostPriority(device?.HostApiName) * HostPriorityRankScale;
+    }
+
+    private static int GetSelectedDeviceRankPenalty(
+        ToneLabPortAudio.DeviceDescriptor device,
+        ToneLabPortAudio.DeviceDescriptor selectedDevice)
+    {
+        if (device == null || selectedDevice == null)
+            return 0;
+
+        return device.Index == selectedDevice.Index ? 0 : SelectedRouteMismatchRankPenalty;
+    }
+
     private static bool MatchesBackendMode(string hostApiName, string backendMode)
     {
         string normalizedBackendMode = SharedAudioBackendModes.Normalize(backendMode);
@@ -1331,11 +1348,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                     continue;
 
                 int rank = 0;
-                if (selectedInput != null && inputDevice.Index != selectedInput.Index)
-                    rank += 10;
-                if (selectedOutput != null && outputDevice.Index != selectedOutput.Index)
-                    rank += 10;
-                rank += GetAdvancedHostPriority(inputDevice.HostApiName) * 100;
+                rank += GetSelectedDeviceRankPenalty(inputDevice, selectedInput);
+                rank += GetSelectedDeviceRankPenalty(outputDevice, selectedOutput);
+                rank += GetHostPriorityRank(inputDevice);
                 rankedPairs.Add((inputDevice, outputDevice, rank));
             }
         }
@@ -1421,12 +1436,10 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                     continue;
 
                 int rank = 0;
-                if (selectedInput != null && inputDevice.Index != selectedInput.Index)
-                    rank += 10;
-                if (selectedOutput != null && outputDevice.Index != selectedOutput.Index)
-                    rank += 10;
-                rank += GetAdvancedHostPriority(inputDevice.HostApiName) * 100;
-                rank += GetAdvancedHostPriority(outputDevice.HostApiName) * 100;
+                rank += GetSelectedDeviceRankPenalty(inputDevice, selectedInput);
+                rank += GetSelectedDeviceRankPenalty(outputDevice, selectedOutput);
+                rank += GetHostPriorityRank(inputDevice);
+                rank += GetHostPriorityRank(outputDevice);
                 rankedPairs.Add((inputDevice, outputDevice, rank));
             }
         }
@@ -1503,11 +1516,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 if (!SameHostApi(inputDevice, outputDevice))
                     continue;
 
-                int rank = GetAdvancedHostPriority(inputDevice.HostApiName) * 100;
-                if (selectedInput != null && inputDevice.Index != selectedInput.Index)
-                    rank += 10;
-                if (selectedOutput != null && outputDevice.Index != selectedOutput.Index)
-                    rank += 10;
+                int rank = GetHostPriorityRank(inputDevice);
+                rank += GetSelectedDeviceRankPenalty(inputDevice, selectedInput);
+                rank += GetSelectedDeviceRankPenalty(outputDevice, selectedOutput);
                 rank += inputIndex + outputIndex;
                 rankedPairs.Add((inputDevice, outputDevice, rank));
             }
