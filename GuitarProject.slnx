@@ -1,5 +1,7 @@
 ﻿<Solution>
+  <Project Path="Enviro3.Editor.csproj" />
   <Project Path="Assembly-CSharp.csproj" />
+  <Project Path="Enviro3.Runtime.csproj" />
   <Project Path="MidiPlayer.Editor.csproj" />
   <Project Path="MidiPlayer.Demo.csproj" />
   <Project Path="MidiPlayer.Run.csproj" />

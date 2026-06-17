@@ -23,16 +23,44 @@ public class GuitarBridgeServer : MonoBehaviour
     public enum TabsBackgroundMode
     {
         SolidColor = 0,
-        Starfield = 1,
         BlueSky = 2,
-        Space = 3
+        NeonStage = 4
     }
 
-    public enum TabsStarStyle
+    public enum TabsNeonStageSkyDesign
     {
-        SoftDots = 0,
-        Crystal = 1,
-        Neon = 2
+        ProceduralDome = 0,
+        Enviro3 = 3
+    }
+
+    public enum TabsEnviroSkyMood
+    {
+        AuroraBorealis = 0,
+        VioletAuroraStorm = 1,
+        StarryCloudNight = 2,
+        CrimsonDusk = 3,
+        GalaxyFront = 4,
+        CloudyGiantMoon = 5,
+        GoldenSunset = 6,
+        DarkClouds = 7,
+        SilverMoon = 8,
+        BloodMoonHorror = 9
+    }
+
+    public enum TabsEnviroMoonMode
+    {
+        Normal = 0,
+        Big = 1,
+        Giant = 2,
+        Off = 3
+    }
+
+    public enum TabsEnviroGroundMode
+    {
+        Off = 0,
+        FlatPlane = 1,
+        ExtendedPlane = 2,
+        Mountains = 3
     }
 
     public enum TabsSkyMood
@@ -270,53 +298,127 @@ public class GuitarBridgeServer : MonoBehaviour
     public Color tabPanelBackdropColor = new Color(0.02f, 0.03f, 0.06f, 0.28f);
 
     [Header("Background")]
-    public TabsBackgroundMode tabBackgroundMode = TabsBackgroundMode.Starfield;
+    public TabsBackgroundMode tabBackgroundMode = TabsBackgroundMode.NeonStage;
 
-    [Header("Background - Starfield Core")]
-    public TabsStarStyle tabStarStyle = TabsStarStyle.SoftDots;
+    [Header("Background - Neon Horizon")]
+    public TabsNeonStageSkyDesign neonStageSkyDesign = TabsNeonStageSkyDesign.Enviro3;
+    public TabsEnviroSkyMood neonStageEnviroMood = TabsEnviroSkyMood.CloudyGiantMoon;
+    public TabsEnviroMoonMode neonStageEnviroMoonMode = TabsEnviroMoonMode.Giant;
+    public bool neonStageEnviroCloudsEnabled = true;
+    public float neonStageEnviroCloudAmount = 1f;
+    public float neonStageEnviroCloudThickness = 1f;
+    public float neonStageEnviroCloudConnectivity = 1f;
+    public float neonStageEnviroCloudContrast = 1f;
+    public TabsEnviroMoonMode[] neonStageEnviroMoonModeByMood = CreateDefaultEnviroMoonModes();
+    public TabsEnviroGroundMode[] neonStageEnviroGroundModeByMood = CreateDefaultEnviroGroundModes();
+    public bool[] neonStageEnviroCloudsEnabledByMood = CreateDefaultEnviroCloudEnabledValues();
+    public float[] neonStageEnviroCloudAmountByMood = CreateDefaultEnviroCloudModifierValues();
+    public float[] neonStageEnviroCloudThicknessByMood = CreateDefaultEnviroCloudModifierValues();
+    public float[] neonStageEnviroCloudConnectivityByMood = CreateDefaultEnviroCloudModifierValues();
+    public float[] neonStageEnviroCloudContrastByMood = CreateDefaultEnviroCloudModifierValues();
+    public float[] neonStageEnviroMountainOpacityByMood = CreateDefaultEnviroMountainOpacityValues();
+    public float[] neonStageEnviroMountainFarOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.34f);
+    public float[] neonStageEnviroMountainMidOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.58f);
+    public float[] neonStageEnviroMountainNearOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.96f);
+    public float[] neonStageEnviroSkyCameraPitchByMood = CreateDefaultEnviroSkyCameraPitchValues();
+    public float[] neonStageEnviroStarAnimationByMood = CreateDefaultEnviroStarAnimationValues();
+    public float[] neonStageEnviroStarDensityByMood = CreateDefaultEnviroStarDensityValues();
+    public TabsEnviroGroundMode neonStageEnviroGroundMode = TabsEnviroGroundMode.Mountains;
+    public bool neonStageEnviroGroundEnabled = true;
+    public bool neonStageEnviroHorizonEnabled = true;
+    public float neonHorizonLineDistance = 150f;
+    public float neonHorizonLineY = 2.6f;
+    public float neonHorizonLineWidth = 620f;
+    public float neonHorizonGlowBlurHeight = 2.85f;
+    public float neonHorizonCoreLineHeight = 0.085f;
+    public float neonHorizonCoreLineYOffset = 0.012f;
+    public float neonHorizonCenterGlowWidth = 230f;
+    public float neonHorizonCenterGlowHeight = 2.20f;
+    public float neonHorizonCenterGlowYOffset = 0.08f;
+    public float neonHorizonFloorHorizonOverlap = 0.035f;
+    public float neonHorizonColorStrength = 1.20f;
+    public float neonHorizonColorSaturation = 2.10f;
+    public float neonHorizonSoftGlowIntensity = 2.10f;
+    public float neonHorizonCoreGlowIntensity = 1.70f;
+    public float neonHorizonCenterGlowIntensity = 0.85f;
+    public float neonHorizonSoftAlpha = 0.44f;
+    public float neonHorizonCoreAlpha = 0.82f;
+    public float neonHorizonCenterAlpha = 0.22f;
+    public float neonHorizonSoftBlurFalloff = 3.10f;
+    public float neonHorizonCoreBlurFalloff = 36.0f;
+    public float neonHorizonSoftColorFalloff = 0.55f;
+    public float neonHorizonCoreColorFalloff = 0.22f;
+    public float neonHorizonCenterColorFalloff = 3.20f;
+    public float neonHorizonCenterBlendWidth = 0.14f;
+    public float neonHorizonCenterBlendFalloff = 6.50f;
+    public float neonHorizonCenterBlendStrength = 0.52f;
+    public float neonHorizonSoftCoreWidth = 0.030f;
+    public float neonHorizonSoftCoreSoftness = 0.090f;
+    public float neonHorizonCoreWidth = 0.040f;
+    public float neonHorizonCoreSoftness = 0.018f;
+    public float neonHorizonCenterCoreWidth = 0.075f;
+    public float neonHorizonCenterCoreSoftness = 0.120f;
+    public float neonHorizonSoftShimmerStrength = 0f;
+    public float neonHorizonCoreShimmerStrength = 0f;
+    public float neonHorizonCenterShimmerStrength = 0f;
+    public float neonHorizonEdgeBlurStrength = 0f;
+    public float neonHorizonEdgeBlurStart = 0.72f;
+    public float neonHorizonEdgeBlurSharpness = 2.0f;
+    public float neonHorizonCurveDown = 0f;
+    public float neonHorizonCurveTowardCamera = 0f;
+    public int neonHorizonTheme = 0;
+    public int neonHorizonColorPalette = 0;
+    public int neonHorizonSkyLineColorPalette = 0;
+    public int neonHorizonSkyLineStyle = 1;
+    public float neonHorizonSkyLineStrength = 8.10f;
+    public float neonHorizonSkyLineOpacity = 1.0f;
+    public float neonHorizonSkyLineReflectionStrength = 0.35f;
+    public float neonHorizonSkyDotStrength = 1.85f;
+    public float neonHorizonSkySideWashStrength = 1.65f;
+    public bool neonHorizonUseUnifiedSideColors = true;
+    public float neonHorizonSkyCoreBrightness = 1.42f;
+    public float neonHorizonSkyCoreSize = 0.28f;
+    public float neonHorizonSkyCoreHeight = 0.34f;
+    public float neonHorizonSkyCoreXOffset = 0f;
+    public float neonHorizonSkyCoreFalloff = 2.85f;
+    public float neonHorizonSkyOutsideDarkness = 1.72f;
+    public float neonHorizonSkyCorePurpleStrength = 1.08f;
+    public float neonHorizonSkyCorePurpleFalloff = 1.18f;
+    public float neonHorizonSkyAuroraRidgeStrength = 2.60f;
+    public float neonHorizonSkyAuroraRidgeWhiteFalloffPosition = 0.38f;
+    public float neonHorizonSkyAuroraRidgeWhiteFalloffSharpness = 0.62f;
+    public float neonHorizonSkyAuroraWaveBumpiness = 1.0f;
+
+    [Header("Background - Neon Ground")]
+    public float neonHorizonGroundDarkness = 1.0f;
+    public float neonHorizonGroundGradientStart = 0.58f;
+    public float neonHorizonGroundGradientBrightness = 1.0f;
+    public float neonHorizonGroundReflectivity = 0.0f;
+    public bool neonHorizonFloorAuroraReflectionEnabled = true;
+    public float neonHorizonFloorAuroraReflectionStrength = 1.35f;
+    public float neonHorizonFloorAuroraReflectionWidth = 17.0f;
+    public float neonHorizonFloorAuroraReflectionLength = 0.34f;
+
+    [Header("Background - Dome Stars")]
+    public bool neonHorizonDomeStarsEnabled = true;
+    [Range(0, 1200)] public int neonHorizonDomeStarsCount = 260;
+    [Min(0f)] public float neonHorizonDomeStarsBrightness = 0.82f;
+    [Range(0f, 1f)] public float neonHorizonDomeStarsTwinkleStrength = 0.35f;
+    [Min(0f)] public float neonHorizonDomeStarsTwinkleSpeed = 0.65f;
+    [Min(0.1f)] public float neonHorizonDomeStarsSize = 1.0f;
+    public int neonHorizonDomeStarsSeed = 1729;
+    public bool neonHorizonDomeMountainsEnabled = false;
+    [Range(0f, 1f)] public float neonHorizonDomeMountainFarOpacity = 0.34f;
+    [Range(0f, 1f)] public float neonHorizonDomeMountainMidOpacity = 0.58f;
+    [Range(0f, 1f)] public float neonHorizonDomeMountainNearOpacity = 0.96f;
+
+    [Header("Background - Neon Clouds")]
+    public bool neonHorizonCloudsEnabled = true;
+    [Range(0f, 1f)] public float neonHorizonCloudOpacity = 0.62f;
+    [Min(0f)] public float neonHorizonCloudSpeed = 0.22f;
+
+    [Header("Background - Shared Stars")]
     public int tabStarSeed = 1337;
-    [Min(0.01f)] public float tabStarfieldWidth = 46f;
-    public float tabStarfieldNearZ = -2.6f;
-    public float tabStarfieldFarZ = -8.2f;
-    public float tabStarfieldMinY = -6.6f;
-    public float tabStarfieldMaxY = 6.6f;
-    [Min(0f)] public float tabStarDriftSpeed = 0.55f;
-    [Range(0f, 1f)] public float tabStarTwinkleStrength = 0.25f;
-    [Range(0f, 1f)] public float tabStarSubtleVerticalWave = 0.05f;
-
-    [Header("Background - Star Layers")]
-    [Range(8, 1200)] public int tabNearStarCount = 130;
-    [Range(8, 1200)] public int tabMidStarCount = 170;
-    [Range(8, 1200)] public int tabFarStarCount = 220;
-    [Min(0.001f)] public float tabNearStarSizeMin = 0.06f;
-    [Min(0.001f)] public float tabNearStarSizeMax = 0.16f;
-    [Min(0.001f)] public float tabMidStarSizeMin = 0.04f;
-    [Min(0.001f)] public float tabMidStarSizeMax = 0.11f;
-    [Min(0.001f)] public float tabFarStarSizeMin = 0.02f;
-    [Min(0.001f)] public float tabFarStarSizeMax = 0.07f;
-    [Range(0f, 1f)] public float tabNearStarAlphaMin = 0.35f;
-    [Range(0f, 1f)] public float tabNearStarAlphaMax = 0.95f;
-    [Range(0f, 1f)] public float tabMidStarAlphaMin = 0.22f;
-    [Range(0f, 1f)] public float tabMidStarAlphaMax = 0.8f;
-    [Range(0f, 1f)] public float tabFarStarAlphaMin = 0.15f;
-    [Range(0f, 1f)] public float tabFarStarAlphaMax = 0.55f;
-    [Min(0f)] public float tabNearLayerSpeedMultiplier = 1.35f;
-    [Min(0f)] public float tabMidLayerSpeedMultiplier = 0.95f;
-    [Min(0f)] public float tabFarLayerSpeedMultiplier = 0.60f;
-    public Color tabNearStarColor = new Color(0.95f, 0.96f, 1f, 0.95f);
-    public Color tabMidStarColor = new Color(0.74f, 0.85f, 1f, 0.85f);
-    public Color tabFarStarColor = new Color(0.56f, 0.70f, 0.96f, 0.7f);
-    [Range(0f, 8f)] public float tabStarEmission = 0.35f;
-
-    [Header("Background - Shooting Stars")]
-    public bool tabShootingStarsEnabled = true;
-    [Range(1, 8)] public int tabShootingStarMaxConcurrent = 2;
-    [Min(0.1f)] public float tabShootingStarIntervalMin = 2.2f;
-    [Min(0.1f)] public float tabShootingStarIntervalMax = 6.5f;
-    [Min(0.1f)] public float tabShootingStarSpeed = 8.5f;
-    [Min(0.05f)] public float tabShootingStarLength = 0.9f;
-    [Range(0f, 1f)] public float tabShootingStarAlpha = 0.9f;
-    public Color tabShootingStarColor = new Color(0.95f, 0.97f, 1f, 0.9f);
 
     [Header("Background - Blue Sky")]
     public TabsSkyMood tabSkyMood = TabsSkyMood.Day;
@@ -367,14 +469,6 @@ public class GuitarBridgeServer : MonoBehaviour
     [Min(0.05f)] public float tabSkyStarTwinkleSpeedMin = 0.45f;
     [Min(0.05f)] public float tabSkyStarTwinkleSpeedMax = 1.2f;
     [Range(0f, 0.2f)] public float tabSkyCloudVerticalBob = 0.04f;
-
-    [Header("Background - Space")]
-    public Color tabSpaceBackgroundColor = new Color(0.015f, 0.028f, 0.09f, 1f);
-    public Color tabSpaceGlowColor = new Color(0.16f, 0.82f, 1f, 1f);
-    public Color tabSpaceAccentColor = new Color(0.50f, 0.38f, 0.96f, 1f);
-    [Min(0.01f)] public float tabSpaceFlowSpeed = 0.58f;
-    [Range(0.1f, 4f)] public float tabSpaceLineIntensity = 1.35f;
-    [Range(0.1f, 4f)] public float tabSpaceSparkIntensity = 1.15f;
 
     [Header("Tabs Header")]
     public float tabLabelFontSize = 3f;
@@ -858,7 +952,86 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         public int settingsVersion;
         public string selectedHighwayCharacterId;
+        public MainMenuBackgroundProfile mainMenuBackgroundProfile;
         public List<RuntimeSettingValueEntry> values = new List<RuntimeSettingValueEntry>();
+    }
+
+    [Serializable]
+    private class MainMenuBackgroundProfile
+    {
+        public TabsBackgroundMode backgroundMode = TabsBackgroundMode.NeonStage;
+        public TabsNeonStageSkyDesign skyDesign = TabsNeonStageSkyDesign.Enviro3;
+        public TabsEnviroSkyMood enviroMood = TabsEnviroSkyMood.StarryCloudNight;
+        public int neonHorizonTheme = 1;
+        public int neonHorizonColorPalette = 0;
+        public int neonHorizonSkyLineColorPalette = 0;
+        public bool neonHorizonUseUnifiedSideColors = true;
+        public bool enviroHorizonEnabled = false;
+        public TabsEnviroMoonMode[] enviroMoonModeByMood = CreateDefaultMainMenuEnviroMoonModes();
+        public TabsEnviroGroundMode[] enviroGroundModeByMood = CreateDefaultMainMenuEnviroGroundModes();
+        public bool[] enviroCloudsEnabledByMood = CreateDefaultMainMenuEnviroCloudEnabledValues();
+        public float[] enviroCloudAmountByMood = CreateDefaultMainMenuEnviroCloudAmountValues();
+        public float[] enviroCloudThicknessByMood = CreateDefaultMainMenuEnviroCloudThicknessValues();
+        public float[] enviroCloudConnectivityByMood = CreateDefaultMainMenuEnviroCloudConnectivityValues();
+        public float[] enviroCloudContrastByMood = CreateDefaultMainMenuEnviroCloudContrastValues();
+        public float[] enviroMountainOpacityByMood = CreateDefaultEnviroMountainOpacityValues();
+        public float[] enviroMountainFarOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.34f);
+        public float[] enviroMountainMidOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.58f);
+        public float[] enviroMountainNearOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.96f);
+        public float[] enviroSkyCameraPitchByMood = CreateDefaultMainMenuEnviroSkyCameraPitchValues();
+        public float[] enviroStarAnimationByMood = CreateDefaultEnviroStarAnimationValues();
+        public float[] enviroStarDensityByMood = CreateDefaultEnviroStarDensityValues();
+        public bool domeStarsEnabled = true;
+        public int domeStarsCount = 420;
+        public float domeStarsBrightness = 0.95f;
+        public float domeStarsTwinkleStrength = 0.35f;
+        public float domeStarsTwinkleSpeed = 0.65f;
+        public float domeStarsSize = 1.0f;
+        public int domeStarsSeed = 1729;
+        public bool domeMountainsEnabled = false;
+        public float domeMountainFarOpacity = 0.34f;
+        public float domeMountainMidOpacity = 0.58f;
+        public float domeMountainNearOpacity = 0.96f;
+
+        public void Ensure()
+        {
+            enviroMoonModeByMood = EnsureEnviroMoonModeArray(enviroMoonModeByMood, CreateDefaultMainMenuEnviroMoonModes());
+            enviroGroundModeByMood = EnsureEnviroGroundModeArray(enviroGroundModeByMood, CreateDefaultMainMenuEnviroGroundModes());
+            enviroCloudsEnabledByMood = EnsureBoolArray(enviroCloudsEnabledByMood, CreateDefaultMainMenuEnviroCloudEnabledValues());
+            enviroCloudAmountByMood = EnsureFloatArray(enviroCloudAmountByMood, CreateDefaultMainMenuEnviroCloudAmountValues(), 0f, 2f);
+            enviroCloudThicknessByMood = EnsureFloatArray(enviroCloudThicknessByMood, CreateDefaultMainMenuEnviroCloudThicknessValues(), 0f, 2f);
+            enviroCloudConnectivityByMood = EnsureFloatArray(enviroCloudConnectivityByMood, CreateDefaultMainMenuEnviroCloudConnectivityValues(), 0f, 2f);
+            enviroCloudContrastByMood = EnsureFloatArray(enviroCloudContrastByMood, CreateDefaultMainMenuEnviroCloudContrastValues(), 0f, 2f);
+            enviroMountainOpacityByMood = EnsureFloatArray(enviroMountainOpacityByMood, 1f, 0f, 1f);
+            enviroMountainFarOpacityByMood = EnsureFloatArray(enviroMountainFarOpacityByMood, 0.34f, 0f, 1f);
+            enviroMountainMidOpacityByMood = EnsureFloatArray(enviroMountainMidOpacityByMood, 0.58f, 0f, 1f);
+            enviroMountainNearOpacityByMood = EnsureFloatArray(enviroMountainNearOpacityByMood, 0.96f, 0f, 1f);
+            enviroSkyCameraPitchByMood = EnsureFloatArray(enviroSkyCameraPitchByMood, CreateDefaultMainMenuEnviroSkyCameraPitchValues(), -18f, 18f);
+            enviroStarAnimationByMood = EnsureFloatArray(enviroStarAnimationByMood, 1f, 0f, 2f);
+            enviroStarDensityByMood = EnsureFloatArray(enviroStarDensityByMood, 1f, 0f, 2f);
+            backgroundMode = ParseBackgroundMode(backgroundMode);
+            skyDesign = skyDesign == TabsNeonStageSkyDesign.Enviro3 ? TabsNeonStageSkyDesign.Enviro3 : TabsNeonStageSkyDesign.ProceduralDome;
+            enviroMood = (TabsEnviroSkyMood)Mathf.Clamp((int)enviroMood, 0, EnviroSkyMoodOptions.Length - 1);
+            neonHorizonTheme = Mathf.Clamp(neonHorizonTheme, 0, NeonHorizonThemeOptions.Length - 1);
+            neonHorizonColorPalette = Mathf.Clamp(neonHorizonColorPalette, 0, NeonHorizonColorPaletteOptions.Length - 1);
+            neonHorizonSkyLineColorPalette = Mathf.Clamp(neonHorizonSkyLineColorPalette, 0, NeonSkyLineColorPaletteOptions.Length - 1);
+            domeStarsCount = Mathf.Clamp(domeStarsCount, 0, 1200);
+            domeStarsBrightness = Mathf.Max(0f, domeStarsBrightness);
+            domeStarsTwinkleStrength = Mathf.Clamp01(domeStarsTwinkleStrength);
+            domeStarsTwinkleSpeed = Mathf.Max(0f, domeStarsTwinkleSpeed);
+            domeStarsSize = Mathf.Max(0.1f, domeStarsSize);
+            domeStarsSeed = Mathf.Clamp(domeStarsSeed, 0, 99999);
+            domeMountainFarOpacity = Mathf.Clamp01(domeMountainFarOpacity);
+            domeMountainMidOpacity = Mathf.Clamp01(domeMountainMidOpacity);
+            domeMountainNearOpacity = Mathf.Clamp01(domeMountainNearOpacity);
+        }
+
+        private static TabsBackgroundMode ParseBackgroundMode(TabsBackgroundMode mode)
+        {
+            return mode == TabsBackgroundMode.BlueSky || mode == TabsBackgroundMode.SolidColor
+                ? mode
+                : TabsBackgroundMode.NeonStage;
+        }
     }
 
     [Serializable]
@@ -916,6 +1089,11 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool showMainMenu;
     private bool mainMenuFlowActive;
     private int selectedMainMenuIndex;
+    private bool showMiniGames;
+    private int selectedMiniGameIndex;
+    private int selectedMiniGamePauseActionIndex;
+    private bool miniGameTextInputFocused;
+    private MiniGameManager miniGameManager;
     private bool showStartMenu;
     private bool showCharacterSelection;
     private bool characterSelectionOpenedFromStartup;
@@ -949,11 +1127,17 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool showTrackSelection;
     private bool showGlobalSettings;
     private bool showGlobalSettingsSelectionPopup;
+    private bool showBackgroundMoodSetter;
+    private bool backgroundMoodSetterEditingMainMenu;
+    private bool savingRuntimeSettingsMetadata;
     private int selectedGlobalSettingsTopIndex;
     private int selectedGlobalSettingsItemIndex;
+    private int selectedBackgroundMoodSettingIndex;
     private int selectedGlobalSettingsSelectionPopupIndex;
     private string activeGlobalSettingsCategory = string.Empty;
     private bool globalSettingsTransparentBackground;
+    private string backgroundMoodSetterStatusText = string.Empty;
+    private MainMenuBackgroundProfile mainMenuBackgroundProfile = new MainMenuBackgroundProfile();
     private bool showDiagnosticsConsentPopup;
     private bool diagnosticsConsentOpenBugReportOnApprove;
     private int selectedDiagnosticsConsentIndex;
@@ -1150,7 +1334,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private const float ArrowDoubleTapThreshold = 0.35f;
     private const float UiControllerAxisThreshold = 0.55f;
     private const float NoteByNoteTimeEpsilon = 0.0001f;
-    private const int MainMenuOptionCount = 8;
+    private const int MainMenuOptionCount = 9;
+    private const int MiniGameMenuOptionCount = 1;
+    private const int MiniGamePauseActionCount = 3;
     private const int StartMenuModeOptionCount = 2;
     private const int StartMenuGuitarSetupRowCount = 2;
     private const int StartMenuArcadeSetupRowCount = 3;
@@ -1332,7 +1518,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private List<RuntimeSettingSectionSnapshot> cachedRuntimeSettingsSnapshot = new List<RuntimeSettingSectionSnapshot>();
     private bool runtimeSettingsSnapshotDirty = true;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
-    private const int CurrentGlobalRuntimeSettingsVersion = 6;
+    private const int CurrentGlobalRuntimeSettingsVersion = 13;
     private int loadedGlobalRuntimeSettingsVersion = CurrentGlobalRuntimeSettingsVersion;
     private const int ArcadeControllerSlotCount = 8;
     private const int GlobalSettingsTopLevelCount = 14;
@@ -1370,6 +1556,7 @@ public class GuitarBridgeServer : MonoBehaviour
         public List<string> EnumOptions;
         public Action Activator;
         public ArcadeBindingCaptureKind BindingCaptureKind = ArcadeBindingCaptureKind.None;
+        public bool VisibleInGlobalSettings = true;
     }
 
     public enum ArcadeInputSourceMode
@@ -1419,6 +1606,96 @@ public class GuitarBridgeServer : MonoBehaviour
         "2"
     };
 
+    private static readonly string[] NeonHorizonThemeOptions =
+    {
+        "Custom",
+        "Neon Dusk",
+        "Sunset",
+        "Cthulhu",
+        "Deep Ocean",
+        "Royal Violet",
+        "Crimson Ember",
+        "Vaporwave Split",
+        "Event Horizon",
+        "Blue Singularity"
+    };
+
+    private static readonly string[] NeonHorizonColorPaletteOptions =
+    {
+        "Violet Pulse",
+        "Crimson Pulse",
+        "Cyan Aurora",
+        "Electric Violet",
+        "Amber Violet",
+        "Split Magenta Cyan",
+        "Sunset Gold",
+        "Cthulhu Glow",
+        "Deep Ocean",
+        "Event Horizon",
+        "Blue Singularity"
+    };
+
+    private static readonly string[] NeonSkyLineColorPaletteOptions =
+    {
+        "Deep Blue",
+        "Crimson Violet",
+        "Cyan Aurora",
+        "Electric Violet",
+        "Amber Violet",
+        "Split Magenta Cyan",
+        "Split Soft Violet Blue",
+        "Split Deep Teal Violet",
+        "Split Muted Indigo Rose",
+        "Sunset Dusk",
+        "Cthulhu Depth",
+        "Event Horizon",
+        "Blue Singularity"
+    };
+
+    private static readonly string[] NeonSkyLineStyleOptions =
+    {
+        "Side Waves",
+        "Horizon Wave Beams"
+    };
+
+    private static readonly string[] NeonStageSkyDesignOptions =
+    {
+        "Procedural Dome",
+        "Enviro 3"
+    };
+
+    private static readonly string[] EnviroSkyMoodOptions =
+    {
+        "Aurora Borealis",
+        "Violet Aurora Storm",
+        "Starry Cloud Night",
+        "Crimson Dusk",
+        "Galaxy Front",
+        "Cloudy Giant Moon",
+        "Golden Sunset",
+        "Dark Clouds",
+        "Silver Moon",
+        "Blood Moon Horror"
+    };
+
+    private static readonly string[] EnviroMoonModeOptions =
+    {
+        "Normal",
+        "Big",
+        "Giant",
+        "Off"
+    };
+
+    private static readonly string[] EnviroGroundModeOptions =
+    {
+        "Off",
+        "Flat Plane",
+        "Extended Plane",
+        "Distant Mountains"
+    };
+
+    private const KeyCode BackgroundMoodSetterKey = KeyCode.W;
+
     private enum ToneLabReturnContext
     {
         Pause,
@@ -1441,6 +1718,8 @@ public class GuitarBridgeServer : MonoBehaviour
         ExternalContentBootstrap.EnsureRuntimeContentReady();
         Debug.Log($"[GuitarBridgeServer] Using persistent content folder: {ExternalContentPaths.PersistentRoot}");
         Debug.Log($"[NotesDetector] Start() called on '{gameObject.name}'. autoLaunchNotesDetector={autoLaunchNotesDetector}, enabled={enabled}, activeInHierarchy={gameObject.activeInHierarchy}, platform={Application.platform}");
+        miniGameManager = new MiniGameManager();
+        miniGameManager.Initialize(ExternalContentPaths.PersistentRoot);
         isRunning = true;
         BuildNoteIndices();
         StartUdpThread();
@@ -1529,6 +1808,7 @@ public class GuitarBridgeServer : MonoBehaviour
         builder.AppendLine($"  isPaused: {isPaused}");
         builder.AppendLine($"  showMainMenu: {showMainMenu}");
         builder.AppendLine($"  mainMenuFlowActive: {mainMenuFlowActive}");
+        builder.AppendLine($"  showMiniGames: {showMiniGames}");
         builder.AppendLine($"  showStartMenu: {showStartMenu}");
         builder.AppendLine($"  showToneLab: {showToneLab}");
         builder.AppendLine($"  showTuner: {showTuner}");
@@ -1637,6 +1917,9 @@ public class GuitarBridgeServer : MonoBehaviour
             runtimeSettingsSnapshotDirty = true;
         }
 
+        HandleNeonHorizonThemeShortcut();
+        HandleBackgroundSecretShortcuts();
+
         bool shouldLogLoopCountdownFrame = Application.isEditor && loopRestartPauseRemainingSeconds > 0.0001f;
         long frameStartTicks = 0L;
         long sectionStartTicks = 0L;
@@ -1690,6 +1973,7 @@ public class GuitarBridgeServer : MonoBehaviour
         bool loopPreviewActive = showLoopSettings && loopSettingsPreviewPlaying;
         bool offsetHelperPreviewActive = showOffsetHelper && offsetHelperAdjusting && offsetHelperPreviewPlaying;
         bool loopGapActive = loopRestartPauseRemainingSeconds > 0.0001f;
+        bool miniGameActive = showMiniGames && miniGameManager != null && miniGameManager.IsAnyGameActive;
         float songTimeBeforeAdvance = songTimer;
 
         if (loopGapActive)
@@ -1704,7 +1988,7 @@ public class GuitarBridgeServer : MonoBehaviour
             sectionStartTicks = afterCountdownAdvanceTicks;
         }
 
-        if ((!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive)
+        if (!miniGameActive && (!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive)
         {
             audioSongTimer += Time.deltaTime * GetPlaybackSpeedScale();
             songTimer += Time.deltaTime * GetPlaybackSpeedScale();
@@ -1721,7 +2005,8 @@ public class GuitarBridgeServer : MonoBehaviour
             sectionStartTicks = afterTransportAdvanceTicks;
         }
 
-        ApplyNoteByNoteTransportGate(songTimeBeforeAdvance, loopPreviewActive, offsetHelperPreviewActive, loopGapActive);
+        if (!miniGameActive)
+            ApplyNoteByNoteTransportGate(songTimeBeforeAdvance, loopPreviewActive, offsetHelperPreviewActive, loopGapActive);
         if (shouldLogLoopCountdownFrame)
         {
             long afterNoteByNoteGateTicks = GetLoopCountdownTimestamp();
@@ -1766,7 +2051,16 @@ public class GuitarBridgeServer : MonoBehaviour
             sectionStartTicks = afterTrackReloadTicks;
         }
 
-        if (gameplayMode == GuitarGameplayMode.Guitar)
+        if (showMiniGames)
+        {
+            StopArcadeMidiInput();
+            if (!loopGapActive)
+            {
+                ParseDetectorState();
+                RefreshDetectorBackendStatus();
+            }
+        }
+        else if (gameplayMode == GuitarGameplayMode.Guitar)
         {
             StopArcadeMidiInput();
             if (!loopGapActive)
@@ -1793,6 +2087,16 @@ public class GuitarBridgeServer : MonoBehaviour
             sectionStartTicks = afterInputUpdateTicks;
         }
 
+        if (showMiniGames && miniGameManager != null && miniGameManager.IsAnyGameActive && !isPaused && !loopGapActive)
+        {
+            miniGameManager.Update(Time.unscaledDeltaTime, BuildLatestDetectorCombinedPitches());
+            if (miniGameManager.DetectorHintDirty)
+            {
+                MarkDetectorHintDirty();
+                miniGameManager.ClearDetectorHintDirty();
+            }
+        }
+
         if (isPaused)
             UpdateSessionScoreState();
         if (shouldLogLoopCountdownFrame)
@@ -1802,7 +2106,7 @@ public class GuitarBridgeServer : MonoBehaviour
             sectionStartTicks = afterSessionScoreTicks;
         }
 
-        if (!isPaused && !loopGapActive)
+        if (!isPaused && !loopGapActive && !showMiniGames)
         {
             if (gameplayMode == GuitarGameplayMode.Guitar)
             {
@@ -1846,7 +2150,7 @@ public class GuitarBridgeServer : MonoBehaviour
             sectionStartTicks = afterInputLevelTicks;
         }
 
-        if (gameplayMode == GuitarGameplayMode.Guitar && !loopGapActive)
+        if ((gameplayMode == GuitarGameplayMode.Guitar || showMiniGames) && !loopGapActive)
             SendDetectorHintPacketIfNeeded();
         if (shouldLogLoopCountdownFrame)
         {
@@ -2013,6 +2317,12 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (showMiniGames)
+        {
+            HandleMiniGamesControls();
+            return;
+        }
+
         if (showGameModes)
         {
             HandleGameModesControls();
@@ -2059,7 +2369,10 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             showGlobalSettings = !showGlobalSettings;
             if (showGlobalSettings)
+            {
                 globalSettingsTransparentBackground = false;
+                showBackgroundMoodSetter = false;
+            }
             else
                 CloseGlobalSettingsSelectionPopupFromUi();
             gameplayHudPreviewInMenus = false;
@@ -2106,6 +2419,12 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (showBackgroundMoodSetter)
+        {
+            HandleBackgroundMoodSetterControls();
+            return;
+        }
+
         if (showGlobalSettings)
         {
             HandleGlobalSettingsControls();
@@ -2140,6 +2459,12 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        if (Input.GetKeyDown(BackgroundMoodSetterKey) && CanOpenBackgroundMoodSetter())
+        {
+            OpenBackgroundMoodSetterFromUi();
+            return;
+        }
+
         if (IsUiPausePressed())
         {
             isPaused = !isPaused;
@@ -2152,6 +2477,7 @@ public class GuitarBridgeServer : MonoBehaviour
             showSongSelection = false;
             showTrackSelection = false;
             showGlobalSettings = false;
+            showBackgroundMoodSetter = false;
             showGameplayAudioPopup = false;
             gameplayAudioPopupOpenedWhilePaused = false;
             CloseGlobalSettingsSelectionPopupFromUi();
@@ -3295,6 +3621,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private bool ShouldPlaybackAudio(bool loopPreviewActive, bool offsetHelperPreviewActive, bool loopGapActive)
     {
+        if (showMiniGames)
+            return false;
+
         return ((!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive && !noteByNoteWaitingForMatch);
     }
 
@@ -3653,6 +3982,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showOffsetHelper = true;
         showSongSettings = false;
         showMainMenu = false;
+        showMiniGames = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
         showTrackSelection = false;
@@ -3761,10 +4091,148 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.X))
+        if (Input.GetKeyDown(KeyCode.M))
         {
             SetMainMenuSelectionFromUi(7);
+            OpenMiniGamesFromUi();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.X))
+        {
+            SetMainMenuSelectionFromUi(8);
             ExitGameFromUi();
+            return;
+        }
+    }
+
+    private void HandleMiniGamesControls()
+    {
+        bool fightClubActive = miniGameManager != null && miniGameManager.IsFightClubActive;
+        bool fightClubEnded = miniGameManager != null && miniGameManager.IsFightClubEnded;
+        bool fightClubSetupVisible = miniGameManager != null && miniGameManager.IsFightClubSetupVisible;
+        bool fightClubRunSettingsVisible = miniGameManager != null && miniGameManager.IsFightClubRunSettingsVisible;
+        if (fightClubRunSettingsVisible)
+        {
+            if (IsUiBackPressed() || IsUiPausePressed())
+            {
+                CloseFightClubRunSettingsFromUi();
+                return;
+            }
+
+            if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
+            {
+                ConfirmFightClubRunSettingsFromUi();
+                return;
+            }
+
+            return;
+        }
+
+        if (fightClubActive)
+        {
+            if (fightClubEnded)
+            {
+                if (IsUiBackPressed() || IsUiPausePressed())
+                {
+                    ExitFightClubMiniGameToSelectionFromUi();
+                    return;
+                }
+
+                if (Input.GetKeyDown(KeyCode.R))
+                {
+                    RestartFightClubMiniGameFromUi();
+                    return;
+                }
+
+                return;
+            }
+
+            if (isPaused)
+            {
+                if (IsUiBackPressed() || IsUiPausePressed())
+                {
+                    ResumeFightClubMiniGameFromUi();
+                    return;
+                }
+
+                if (IsUiUpPressed())
+                {
+                    MoveMiniGamePauseSelectionFromUi(-1);
+                    return;
+                }
+
+                if (IsUiDownPressed())
+                {
+                    MoveMiniGamePauseSelectionFromUi(1);
+                    return;
+                }
+
+                if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
+                {
+                    ActivateSelectedMiniGamePauseActionFromUi();
+                    return;
+                }
+
+                return;
+            }
+
+            if (IsUiBackPressed() || IsUiPausePressed())
+            {
+                PauseFightClubMiniGameFromUi();
+                return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                RestartFightClubMiniGameFromUi();
+                return;
+            }
+
+            return;
+        }
+
+        if (fightClubSetupVisible)
+        {
+            if (miniGameTextInputFocused)
+                return;
+
+            if (IsUiBackPressed() || Input.GetKeyDown(KeyCode.M))
+            {
+                CloseFightClubSetupFromUi();
+                return;
+            }
+
+            if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
+            {
+                StartConfiguredFightClubMiniGameFromUi();
+                return;
+            }
+
+            return;
+        }
+
+        if (IsUiBackPressed() || Input.GetKeyDown(KeyCode.M))
+        {
+            CloseMiniGamesFromUi();
+            return;
+        }
+
+        if (IsUiUpPressed())
+        {
+            MoveMiniGameSelectionFromUi(-1);
+            return;
+        }
+
+        if (IsUiDownPressed())
+        {
+            MoveMiniGameSelectionFromUi(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
+        {
+            ActivateSelectedMiniGameFromUi();
             return;
         }
     }
@@ -5049,6 +5517,45 @@ public class GuitarBridgeServer : MonoBehaviour
         if (IsUiSubmitPressed())
         {
             ActivateCurrentGlobalSettingsSelection();
+            return;
+        }
+    }
+
+    private void HandleBackgroundMoodSetterControls()
+    {
+        if (IsUiBackPressed())
+        {
+            CloseBackgroundMoodSetterFromUi();
+            return;
+        }
+
+        if (IsUiUpPressed())
+        {
+            MoveBackgroundMoodSetterSelection(-1);
+            return;
+        }
+
+        if (IsUiDownPressed())
+        {
+            MoveBackgroundMoodSetterSelection(1);
+            return;
+        }
+
+        if (IsUiLeftPressed())
+        {
+            AdjustCurrentBackgroundMoodSetting(-1);
+            return;
+        }
+
+        if (IsUiRightPressed())
+        {
+            AdjustCurrentBackgroundMoodSetting(1);
+            return;
+        }
+
+        if (IsUiSubmitPressed())
+        {
+            ActivateCurrentBackgroundMoodSetting();
             return;
         }
     }
@@ -6974,6 +7481,7 @@ public class GuitarBridgeServer : MonoBehaviour
         gameplayHudPreviewInMenus = false;
         showSongSettings = false;
         showMainMenu = false;
+        showMiniGames = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
         showTrackSelection = false;
@@ -7169,6 +7677,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
+        showBackgroundMoodSetter = false;
         showGameplayAudioPopup = false;
         gameplayAudioPopupOpenedWhilePaused = false;
         showGameModes = false;
@@ -8034,6 +8543,7 @@ public class GuitarBridgeServer : MonoBehaviour
                showGameModes ||
                showHeroModeSettings ||
                showNotesDetectorTestMenu ||
+               showMiniGames ||
                showTuner ||
                showToneLab ||
                showGeneratedAudioTrackSelectionPopup ||
@@ -8435,6 +8945,8 @@ public class GuitarBridgeServer : MonoBehaviour
         HideToneLabUi();
         ResetTransientMenuNavigationState();
         showNotesDetectorTestMenu = false;
+        showMiniGames = false;
+        miniGameManager?.StopFightClub();
         showStartMenu = false;
         showMultiplayerRhythmSetup = false;
         multiplayerRhythmModeActive = false;
@@ -8456,6 +8968,402 @@ public class GuitarBridgeServer : MonoBehaviour
         showStartupTuningReminder = false;
         resumeGameplayAfterStartupTuningReminder = false;
         SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void OpenMiniGamesFromUi()
+    {
+        CancelDeferredSongSelectionOpen();
+        showToneLab = false;
+        HideToneLabUi();
+        showTuner = false;
+        tunerResumeGameplayAfterSkip = false;
+        guitarTunerOverlay?.SetVisible(false);
+        ResetTransientMenuNavigationState();
+        showNotesDetectorTestMenu = false;
+        showNotesDetectorTestSelectionPopup = false;
+        showNotesDetectorRoutinePopup = false;
+        showStartMenu = false;
+        showCharacterSelection = false;
+        showMultiplayerRhythmSetup = false;
+        showSongSettings = false;
+        showSongSelection = false;
+        songSelectionSongConfirmed = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        showGameModes = false;
+        showHeroModeSettings = false;
+        showGameplayAudioPopup = false;
+        showMiniGames = true;
+        showMainMenu = false;
+        mainMenuFlowActive = true;
+        selectedMiniGameIndex = Mathf.Clamp(selectedMiniGameIndex, 0, MiniGameMenuOptionCount - 1);
+        isPaused = true;
+        SetSongEndState(false);
+        if (miniGameManager == null)
+        {
+            miniGameManager = new MiniGameManager();
+            miniGameManager.Initialize(ExternalContentPaths.PersistentRoot);
+        }
+
+        if (notesDetectorBackendMode != NotesDetectorBackendMode.NativeEmbeddedBridge)
+            SwitchNotesDetectorBackend(NotesDetectorBackendMode.NativeEmbeddedBridge);
+        else
+            StartConfiguredNotesDetectorBackend();
+
+        ResetLiveDetectorReadState();
+        RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true);
+        RefreshDetectorBackendStatus();
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseMiniGamesFromUi()
+    {
+        miniGameTextInputFocused = false;
+        miniGameManager?.StopFightClub();
+        miniGameManager?.CloseFightClubSetup();
+        showMiniGames = false;
+        showMainMenu = true;
+        mainMenuFlowActive = true;
+        selectedMainMenuIndex = 7;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = true;
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void SetMiniGameSelectionFromUi(int index)
+    {
+        selectedMiniGameIndex = Mathf.Clamp(index, 0, MiniGameMenuOptionCount - 1);
+    }
+
+    public void HoverMiniGameSelectionFromUi(int index)
+    {
+        SetMiniGameSelectionFromUi(index);
+    }
+
+    public void MoveMiniGameSelectionFromUi(int delta)
+    {
+        if (delta == 0 || MiniGameMenuOptionCount <= 0)
+            return;
+
+        int normalized = selectedMiniGameIndex;
+        if (normalized < 0 || normalized >= MiniGameMenuOptionCount)
+            normalized = 0;
+
+        normalized = (normalized + delta) % MiniGameMenuOptionCount;
+        if (normalized < 0)
+            normalized += MiniGameMenuOptionCount;
+
+        selectedMiniGameIndex = normalized;
+    }
+
+    public void ActivateSelectedMiniGameFromUi()
+    {
+        switch (Mathf.Clamp(selectedMiniGameIndex, 0, MiniGameMenuOptionCount - 1))
+        {
+            case 0:
+                OpenFightClubSetupFromUi();
+                break;
+        }
+    }
+
+    public void OpenFightClubSetupFromUi()
+    {
+        miniGameTextInputFocused = false;
+        if (!showMiniGames)
+            OpenMiniGamesFromUi();
+
+        miniGameManager?.OpenFightClubSetup();
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = true;
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void OpenFightClubSetupFromResultFromUi()
+    {
+        miniGameTextInputFocused = false;
+        miniGameManager?.StopFightClub();
+        OpenFightClubSetupFromUi();
+    }
+
+    public void CloseFightClubSetupFromUi()
+    {
+        miniGameTextInputFocused = false;
+        miniGameManager?.CloseFightClubSetup();
+        showMiniGames = true;
+        showMainMenu = false;
+        mainMenuFlowActive = true;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = true;
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void StartFightClubMiniGameFromUi()
+    {
+        if (!showMiniGames)
+            OpenMiniGamesFromUi();
+
+        miniGameManager?.StartFightClub();
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = false;
+        ResetLiveDetectorReadState();
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void StartConfiguredFightClubMiniGameFromUi()
+    {
+        miniGameTextInputFocused = false;
+        if (!showMiniGames)
+            OpenMiniGamesFromUi();
+
+        miniGameManager?.OpenFightClubRunSettings();
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = true;
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void StartFightClubRunFromSettingsUi()
+    {
+        miniGameTextInputFocused = false;
+        if (!showMiniGames)
+            OpenMiniGamesFromUi();
+
+        miniGameManager?.StartConfiguredFightClub();
+        if (miniGameManager == null || !miniGameManager.IsFightClubActive)
+        {
+            isPaused = true;
+            MarkDetectorHintDirty();
+            SyncAudioToSongTimer(playImmediately: false);
+            return;
+        }
+
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = false;
+        ResetLiveDetectorReadState();
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void ConfirmFightClubRunSettingsFromUi()
+    {
+        if (miniGameManager != null && miniGameManager.IsFightClubActive)
+        {
+            CloseFightClubRunSettingsFromUi();
+            return;
+        }
+
+        StartFightClubRunFromSettingsUi();
+    }
+
+    public void CloseFightClubRunSettingsFromUi()
+    {
+        miniGameTextInputFocused = false;
+        miniGameManager?.CloseFightClubRunSettings();
+        showMiniGames = true;
+        showMainMenu = false;
+        mainMenuFlowActive = miniGameManager == null || (!miniGameManager.IsFightClubActive && !miniGameManager.IsFightClubSetupVisible);
+        isPaused = miniGameManager == null || miniGameManager.IsFightClubActive || miniGameManager.IsFightClubSetupVisible || miniGameManager.IsFightClubRunSettingsVisible;
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void OpenFightClubRunSettingsFromPauseUi()
+    {
+        if (!showMiniGames || miniGameManager == null || !miniGameManager.IsFightClubActive)
+            return;
+
+        miniGameManager.OpenFightClubRunSettings();
+        isPaused = true;
+        selectedMiniGamePauseActionIndex = 0;
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CycleFightClubChordLeniencyFromUi(int delta)
+    {
+        miniGameManager?.CycleFightClubChordLeniency(delta);
+    }
+
+    public void AdjustFightClubBeatIntervalFromUi(float deltaSeconds)
+    {
+        miniGameManager?.AdjustFightClubBeatInterval(deltaSeconds);
+    }
+
+    public void AdjustFightClubCountdownFromUi(float deltaSeconds)
+    {
+        miniGameManager?.AdjustFightClubCountdown(deltaSeconds);
+    }
+
+    public void AdjustFightClubMaxFailedRoundsFromUi(int delta)
+    {
+        miniGameManager?.AdjustFightClubMaxFailedRounds(delta);
+    }
+
+    public void SetFightClubSetupRandomModeFromUi(bool enabled)
+    {
+        miniGameManager?.SetFightClubSetupRandomMode(enabled);
+    }
+
+    public void SelectFightClubSetupLevelFromUi(int index)
+    {
+        miniGameManager?.SelectFightClubSetupLevel(index);
+    }
+
+    public void SetFightClubSetupSourceModeFromUi(int mode)
+    {
+        miniGameManager?.SetFightClubSetupSourceMode(mode);
+    }
+
+    public void SetMiniGameTextInputFocusedFromUi(bool focused)
+    {
+        miniGameTextInputFocused = focused;
+    }
+
+    public void ToggleFightClubSetupGroupFromUi(string groupId)
+    {
+        miniGameManager?.ToggleFightClubSetupGroup(groupId);
+    }
+
+    public void SelectAllFightClubSetupGroupsFromUi()
+    {
+        miniGameManager?.SelectAllFightClubSetupGroups();
+    }
+
+    public void ToggleFightClubSetupChordFromUi(string chordId)
+    {
+        miniGameManager?.ToggleFightClubSetupChord(chordId);
+    }
+
+    public void AddCheckedFightClubChordsToPlayableFromUi()
+    {
+        miniGameManager?.AddCheckedFightClubChordsToPlayable();
+    }
+
+    public void RemoveFightClubPlayableChordFromUi(string chordId)
+    {
+        miniGameManager?.RemoveFightClubPlayableChord(chordId);
+    }
+
+    public void ClearFightClubPlayableChordsFromUi()
+    {
+        miniGameManager?.ClearFightClubPlayableChords();
+    }
+
+    public void ToggleFightClubSetupSongFromUi(string songKey)
+    {
+        miniGameManager?.ToggleFightClubSetupSong(songKey);
+    }
+
+    public void RestartFightClubMiniGameFromUi()
+    {
+        if (!showMiniGames)
+            return;
+
+        miniGameManager?.RestartFightClub();
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = false;
+        ResetLiveDetectorReadState();
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void PauseFightClubMiniGameFromUi()
+    {
+        if (!showMiniGames || miniGameManager == null || !miniGameManager.IsFightClubActive)
+            return;
+
+        isPaused = true;
+        selectedMiniGamePauseActionIndex = 0;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void ResumeFightClubMiniGameFromUi()
+    {
+        if (!showMiniGames || miniGameManager == null || !miniGameManager.IsFightClubActive)
+            return;
+
+        isPaused = false;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void ExitFightClubMiniGameToSelectionFromUi()
+    {
+        miniGameManager?.StopFightClub();
+        miniGameManager?.CloseFightClubSetup();
+        showMiniGames = true;
+        showMainMenu = false;
+        mainMenuFlowActive = true;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = true;
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void EndFightClubMiniGameFromUi()
+    {
+        if (!showMiniGames || miniGameManager == null || !miniGameManager.IsFightClubActive)
+            return;
+
+        miniGameManager.EndFightClub();
+        showMiniGames = true;
+        showMainMenu = false;
+        mainMenuFlowActive = false;
+        selectedMiniGamePauseActionIndex = 0;
+        isPaused = false;
+        MarkDetectorHintDirty();
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void SetMiniGamePauseSelectionFromUi(int index)
+    {
+        selectedMiniGamePauseActionIndex = Mathf.Clamp(index, 0, MiniGamePauseActionCount - 1);
+    }
+
+    public void MoveMiniGamePauseSelectionFromUi(int delta)
+    {
+        if (delta == 0 || MiniGamePauseActionCount <= 0)
+            return;
+
+        int normalized = selectedMiniGamePauseActionIndex;
+        if (normalized < 0 || normalized >= MiniGamePauseActionCount)
+            normalized = 0;
+
+        normalized = (normalized + delta) % MiniGamePauseActionCount;
+        if (normalized < 0)
+            normalized += MiniGamePauseActionCount;
+
+        selectedMiniGamePauseActionIndex = normalized;
+    }
+
+    public void ActivateSelectedMiniGamePauseActionFromUi()
+    {
+        switch (Mathf.Clamp(selectedMiniGamePauseActionIndex, 0, MiniGamePauseActionCount - 1))
+        {
+            case 0:
+                ResumeFightClubMiniGameFromUi();
+                break;
+            case 1:
+                OpenFightClubRunSettingsFromPauseUi();
+                break;
+            case 2:
+                EndFightClubMiniGameFromUi();
+                break;
+        }
     }
 
     public void StartFromMainMenuFromUi()
@@ -8480,6 +9388,7 @@ public class GuitarBridgeServer : MonoBehaviour
         SetSongEndState(false);
         showStartMenu = false;
         showMainMenu = false;
+        showMiniGames = false;
         mainMenuFlowActive = false;
         showSongSettings = false;
         showSongSelection = false;
@@ -8509,6 +9418,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showStartMenu = true;
         showCharacterSelection = false;
         showMainMenu = false;
+        showMiniGames = false;
         mainMenuFlowActive = true;
         showSongSettings = false;
         showSongSelection = false;
@@ -8708,6 +9618,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showMultiplayerRhythmSetup = true;
         showStartMenu = false;
         showMainMenu = false;
+        showMiniGames = false;
         mainMenuFlowActive = true;
         showSongSettings = false;
         showSongSelection = false;
@@ -8823,9 +9734,6 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void MoveMainMenuSelectionFromUi(int delta)
     {
-        if (MainMenuOptionCount <= 0)
-            return;
-
         if (delta == 0)
             return;
 
@@ -9118,6 +10026,9 @@ public class GuitarBridgeServer : MonoBehaviour
                 OpenToneLabFromUi();
                 break;
             case 7:
+                OpenMiniGamesFromUi();
+                break;
+            case 8:
                 ExitGameFromUi();
                 break;
         }
@@ -9135,6 +10046,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showToneLab = false;
         HideToneLabUi();
         showMainMenu = false;
+        showMiniGames = false;
         mainMenuFlowActive = false;
         showSongSettings = false;
         showSongSelection = false;
@@ -9831,6 +10743,7 @@ public class GuitarBridgeServer : MonoBehaviour
         tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
+        showMiniGames = false;
         if (!showMainMenu)
             mainMenuFlowActive = false;
         OpenSongSelectionMenu();
@@ -9871,6 +10784,8 @@ public class GuitarBridgeServer : MonoBehaviour
         showCharacterSelection = false;
         showNotesDetectorTestMenu = false;
         showNotesDetectorRoutinePopup = false;
+        showMiniGames = false;
+        miniGameManager?.StopFightClub();
         showTuner = false;
         tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
@@ -9950,6 +10865,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showGlobalSettings = false;
+        showBackgroundMoodSetter = false;
         showGameModes = false;
         showHeroModeSettings = false;
         showArrangementDifficultyPopup = false;
@@ -9976,12 +10892,14 @@ public class GuitarBridgeServer : MonoBehaviour
         selectedSongEndActionIndex = 0;
         songSelectionOpenedFromSongEnd = false;
         showMainMenu = false;
+        showMiniGames = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
         showSongSettings = false;
         showGlobalSettings = false;
+        showBackgroundMoodSetter = false;
         showGameplayAudioPopup = false;
         gameplayAudioPopupOpenedWhilePaused = false;
         showGameModes = false;
@@ -10020,6 +10938,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showToneLab = false;
         HideToneLabUi();
         showNotesDetectorTestMenu = false;
+        showMiniGames = false;
         gameplayHudPreviewInMenus = false;
         showSongSettings = true;
         showGeneratedAudioTrackSelectionPopup = false;
@@ -10048,11 +10967,13 @@ public class GuitarBridgeServer : MonoBehaviour
         tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
+        showMiniGames = false;
         gameplayHudPreviewInMenus = false;
         if (!showMainMenu)
             mainMenuFlowActive = false;
 
         showGlobalSettings = true;
+        showBackgroundMoodSetter = false;
         showGlobalSettingsSelectionPopup = false;
         globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
         selectedGlobalSettingsSelectionPopupIndex = 0;
@@ -10066,6 +10987,7 @@ public class GuitarBridgeServer : MonoBehaviour
         gameplayAudioPopupOpenedWhilePaused = false;
         showStartMenu = false;
         showMainMenu = false;
+        showMiniGames = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
@@ -10073,6 +10995,135 @@ public class GuitarBridgeServer : MonoBehaviour
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
         isPaused = true;
+    }
+
+    public void OpenBackgroundMoodSetterFromUi()
+    {
+        if (!CanOpenBackgroundMoodSetter())
+        {
+            backgroundMoodSetterStatusText = "OPEN A GAME OR MAIN MENU FIRST";
+            runtimeSettingsSnapshotDirty = true;
+            return;
+        }
+
+        bool editMainMenuBackground = CanOpenMainMenuBackgroundMoodSetter() && !CanOpenGameplayBackgroundMoodSetter();
+        backgroundMoodSetterStatusText = string.Empty;
+        backgroundMoodSetterEditingMainMenu = editMainMenuBackground;
+        showBackgroundMoodSetter = true;
+        selectedBackgroundMoodSettingIndex = 0;
+        showGlobalSettings = false;
+        showGlobalSettingsSelectionPopup = false;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
+        activeGlobalSettingsCategory = string.Empty;
+        showSongSettings = false;
+        showGameplayAudioPopup = false;
+        gameplayAudioPopupOpenedWhilePaused = false;
+        showGameModes = false;
+        showHeroModeSettings = false;
+        loopSettingsOpenedFromGameModes = false;
+        gameplayHudPreviewInMenus = false;
+        if (editMainMenuBackground)
+        {
+            showMainMenu = false;
+            mainMenuFlowActive = true;
+        }
+        else
+        {
+            mainMenuFlowActive = false;
+        }
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseBackgroundMoodSetterFromUi()
+    {
+        bool returnToMainMenu = backgroundMoodSetterEditingMainMenu;
+        showBackgroundMoodSetter = false;
+        backgroundMoodSetterEditingMainMenu = false;
+        selectedBackgroundMoodSettingIndex = 0;
+        if (returnToMainMenu)
+        {
+            showMainMenu = true;
+            mainMenuFlowActive = true;
+        }
+        SaveGlobalRuntimeSettingsMetadata();
+    }
+
+    public void HoverBackgroundMoodSettingFromUi(int index)
+    {
+        if (!showBackgroundMoodSetter)
+            return;
+
+        List<RuntimeSettingSnapshot> settings = GetBackgroundMoodSetterItems();
+        selectedBackgroundMoodSettingIndex = Mathf.Clamp(index, -1, Mathf.Max(-1, settings.Count - 1));
+    }
+
+    public void ActivateBackgroundMoodSettingFromUi(int index)
+    {
+        if (!showBackgroundMoodSetter)
+            return;
+
+        if (index < 0)
+        {
+            selectedBackgroundMoodSettingIndex = -1;
+            CloseBackgroundMoodSetterFromUi();
+            return;
+        }
+
+        List<RuntimeSettingSnapshot> settings = GetBackgroundMoodSetterItems();
+        selectedBackgroundMoodSettingIndex = Mathf.Clamp(index, -1, Mathf.Max(-1, settings.Count - 1));
+        ActivateCurrentBackgroundMoodSetting();
+    }
+
+    public void AdjustBackgroundMoodSettingFromUi(int index, int delta)
+    {
+        if (!showBackgroundMoodSetter)
+            return;
+
+        if (index < 0)
+        {
+            selectedBackgroundMoodSettingIndex = -1;
+            return;
+        }
+
+        List<RuntimeSettingSnapshot> settings = GetBackgroundMoodSetterItems();
+        selectedBackgroundMoodSettingIndex = Mathf.Clamp(index, -1, Mathf.Max(-1, settings.Count - 1));
+        AdjustCurrentBackgroundMoodSetting(delta);
+    }
+
+    private bool CanOpenBackgroundMoodSetter()
+    {
+        return CanOpenGameplayBackgroundMoodSetter() || CanOpenMainMenuBackgroundMoodSetter();
+    }
+
+    private bool CanOpenGameplayBackgroundMoodSetter()
+    {
+        return currentSongEntry != null &&
+               renderMode.UsesHighway3D() &&
+               !showMainMenu &&
+               !mainMenuFlowActive &&
+               !showStartMenu &&
+               !showCharacterSelection &&
+               !showSongSelection &&
+               !showTrackSelection &&
+               !showLibraryLoadingOverlay &&
+               !songHasEnded;
+    }
+
+    private bool CanOpenMainMenuBackgroundMoodSetter()
+    {
+        return mainMenuFlowActive &&
+               !showMainMenu &&
+               !showStartMenu &&
+               !showCharacterSelection &&
+               !showSongSelection &&
+               !showTrackSelection &&
+               !showLibraryLoadingOverlay &&
+               !showGlobalSettingsSelectionPopup &&
+               !showToneLab &&
+               !showTuner &&
+               !showMiniGames &&
+               !songHasEnded;
     }
 
     public void OpenPrimarySongSettingsToolFromUi()
@@ -10097,6 +11148,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showNotesDetectorTestMenu = false;
         showNotesDetectorTestSelectionPopup = false;
         showNotesDetectorRoutinePopup = false;
+        showMiniGames = false;
         showSongSettings = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -10134,6 +11186,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showNotesDetectorTestMenu = false;
         showNotesDetectorTestSelectionPopup = false;
         showNotesDetectorRoutinePopup = false;
+        showMiniGames = false;
         showSongSettings = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -10344,6 +11397,7 @@ public class GuitarBridgeServer : MonoBehaviour
         tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
+        showMiniGames = false;
         showSongSettings = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -17519,6 +18573,9 @@ private void OpenOrFocusToneLab()
 
     private string BuildDetectorHintPayload(float currentSongTime)
     {
+        if (TryBuildMiniGameHintPayload(out string miniGamePayload))
+            return miniGamePayload;
+
         if (TryBuildNotesDetectorTestHintPayload(currentSongTime, out string testPayload))
             return testPayload;
 
@@ -17526,12 +18583,71 @@ private void OpenOrFocusToneLab()
         BuildDetectorHintWindows(currentSongTime, windows);
 
         if (windows.Count == 0)
-            return $"SYNC|{currentSongTime.ToString("F3", CultureInfo.InvariantCulture)}";
+            return BuildDetectorSyncPayload(currentSongTime, clearWindows: true);
 
         if (notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge)
             return BuildNativeDetectorHintPayload(currentSongTime, windows);
 
         return BuildLegacyDetectorHintPayload(currentSongTime, windows);
+    }
+
+    private bool TryBuildMiniGameHintPayload(out string payload)
+    {
+        payload = null;
+        if (!showMiniGames || miniGameManager == null)
+            return false;
+
+        float hintTimelineTime = miniGameManager.DetectorTimelineTime;
+        MiniGameDetectorHintWindow[] miniGameWindows = miniGameManager.BuildDetectorHintWindows();
+        if (miniGameWindows == null || miniGameWindows.Length == 0)
+        {
+            payload = BuildDetectorSyncPayload(hintTimelineTime, clearWindows: true);
+            return true;
+        }
+
+        var windows = new List<DetectorHintWindow>(miniGameWindows.Length);
+        for (int i = 0; i < miniGameWindows.Length; i++)
+        {
+            MiniGameDetectorHintWindow source = miniGameWindows[i];
+            if (source.pitches == null || source.pitches.Length == 0 || source.endTime <= source.startTime)
+                continue;
+
+            DetectorHintExpectedNote[] expectedNotes = Array.Empty<DetectorHintExpectedNote>();
+            if (source.expectedNotes != null && source.expectedNotes.Length > 0)
+            {
+                expectedNotes = new DetectorHintExpectedNote[source.expectedNotes.Length];
+                for (int noteIndex = 0; noteIndex < source.expectedNotes.Length; noteIndex++)
+                {
+                    MiniGameExpectedNote expected = source.expectedNotes[noteIndex];
+                    expectedNotes[noteIndex] = new DetectorHintExpectedNote(
+                        expected.midi,
+                        expected.stringIndex,
+                        expected.fret,
+                        expected.openMidi,
+                        DetectorHintNoteFlags.None,
+                        expected.noteId,
+                        expected.chordId,
+                        expected.noteTime);
+                }
+            }
+
+            windows.Add(new DetectorHintWindow(
+                source.startTime,
+                source.endTime,
+                new HashSet<int>(source.pitches.Where(midi => midi >= 0)),
+                expectedNotes));
+        }
+
+        if (windows.Count == 0)
+        {
+            payload = BuildDetectorSyncPayload(hintTimelineTime, clearWindows: true);
+            return true;
+        }
+
+        payload = notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge
+            ? BuildNativeDetectorHintPayload(hintTimelineTime, windows)
+            : BuildLegacyDetectorHintPayload(hintTimelineTime, windows);
+        return true;
     }
 
     private string BuildLegacyDetectorHintPayload(float currentSongTime, List<DetectorHintWindow> windows)
@@ -17565,6 +18681,8 @@ private void OpenOrFocusToneLab()
         StringBuilder builder = new StringBuilder();
         builder.Append("HINT|");
         builder.Append(currentSongTime.ToString("F3", CultureInfo.InvariantCulture));
+        builder.Append("|VERIFIER=");
+        builder.Append(nativeExpectedNoteVerifierEnabled ? '1' : '0');
 
         for (int i = 0; i < windows.Count; i++)
         {
@@ -17654,13 +18772,13 @@ private void OpenOrFocusToneLab()
 
         if (!showNotesDetectorRoutinePopup)
         {
-            payload = BuildDetectorTestSyncPayload(hintTimelineTime);
+            payload = BuildDetectorSyncPayload(hintTimelineTime, clearWindows: true);
             return true;
         }
 
         if (notesDetectorRoutineStageIndex < 0 || notesDetectorRoutineStageIndex >= notesDetectorRoutineSteps.Count)
         {
-            payload = BuildDetectorTestSyncPayload(hintTimelineTime);
+            payload = BuildDetectorSyncPayload(hintTimelineTime, clearWindows: true);
             return true;
         }
 
@@ -17668,14 +18786,14 @@ private void OpenOrFocusToneLab()
         int[] expectedMidis = GetNotesDetectorRoutineExpectedMidis(currentStep);
         if (currentStep == null || currentStep.RequireSilence || expectedMidis.Length == 0)
         {
-            payload = BuildDetectorTestSyncPayload(hintTimelineTime);
+            payload = BuildDetectorSyncPayload(hintTimelineTime, clearWindows: true);
             return true;
         }
 
         string notesCsv = BuildDetectorHintMidiCsv(expectedMidis);
         if (string.IsNullOrWhiteSpace(notesCsv))
         {
-            payload = BuildDetectorTestSyncPayload(hintTimelineTime);
+            payload = BuildDetectorSyncPayload(hintTimelineTime, clearWindows: true);
             return true;
         }
 
@@ -17695,9 +18813,10 @@ private void OpenOrFocusToneLab()
         return NotesDetectorTestHintTimelineBaseSeconds + (stepBucket * NotesDetectorTestHintTimelineStepSeconds);
     }
 
-    private static string BuildDetectorTestSyncPayload(float hintTimelineTime)
+    private string BuildDetectorSyncPayload(float hintTimelineTime, bool clearWindows)
     {
-        return $"SYNC|{hintTimelineTime.ToString("F3", CultureInfo.InvariantCulture)}";
+        string command = clearWindows ? "SYNCCLEAR" : "SYNC";
+        return $"{command}|VERIFIER={(nativeExpectedNoteVerifierEnabled ? '1' : '0')}|{hintTimelineTime.ToString("F3", CultureInfo.InvariantCulture)}";
     }
 
     private void BuildDetectorHintWindows(float currentSongTime, List<DetectorHintWindow> output)
@@ -18706,6 +19825,9 @@ private void ParseDetectorPacket(string detectorPacket)
             showMainMenu = showMainMenu,
             mainMenuFlowActive = mainMenuFlowActive,
             selectedMainMenuIndex = selectedMainMenuIndex,
+            showMiniGames = showMiniGames,
+            selectedMiniGameIndex = selectedMiniGameIndex,
+            miniGameSnapshot = miniGameManager != null ? miniGameManager.BuildSnapshot(selectedMiniGameIndex, selectedMiniGamePauseActionIndex) : new MiniGameScreenSnapshot(),
             showStartMenu = showStartMenu,
             showCharacterSelection = showCharacterSelection,
             characterSelectionOpenedFromStartup = characterSelectionOpenedFromStartup,
@@ -18731,11 +19853,14 @@ private void ParseDetectorPacket(string detectorPacket)
             notesDetectorGameplayTestActive = notesDetectorGameplayTestActive,
             showNotesDetectorTestSelectionPopup = showNotesDetectorTestSelectionPopup,
             showGlobalSettings = showGlobalSettings,
+            showBackgroundMoodSetter = showBackgroundMoodSetter,
             songsFolderMenuValueLabel = GetSongsFolderMenuValueLabel(),
             effectsFolderMenuValueLabel = GetEffectsFolderMenuValueLabel(),
             selectedGlobalSettingsTopIndex = selectedGlobalSettingsTopIndex,
             selectedGlobalSettingsItemIndex = selectedGlobalSettingsItemIndex,
+            selectedBackgroundMoodSettingIndex = selectedBackgroundMoodSettingIndex,
             activeGlobalSettingsCategory = activeGlobalSettingsCategory,
+            backgroundMoodSetterStatusText = backgroundMoodSetterStatusText,
             globalSettingsTransparentBackground = globalSettingsTransparentBackground,
             showGlobalSettingsSelectionPopup = showGlobalSettingsSelectionPopup,
             globalSettingsSelectionPopupEyebrow = GetGlobalSettingsSelectionPopupEyebrow(),
@@ -18898,7 +20023,8 @@ private void ParseDetectorPacket(string detectorPacket)
             bugReportSentMessage = bugReportSentMessage,
             diagnosticsUploadEnabled = StringTheoryDiagnosticsUploadService.AutomaticUploadsEnabled,
             diagnosticsUploadEndpointConfigured = StringTheoryDiagnosticsUploadService.HasUploadEndpoint,
-            runtimeSettingsSections = BuildRuntimeSettingsSnapshot()
+            runtimeSettingsSections = BuildRuntimeSettingsSnapshot(),
+            backgroundMoodSetterSections = BuildBackgroundMoodSetterSections()
         };
     }
 
@@ -22716,7 +23842,19 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("mp.comboBadgeHorizontalOffset", "Visuals - Multiplayer", "Combo Badge Horizontal Offset", "Moves both multiplayer combo badges symmetrically toward or away from the highways.", -1.25f, 1.25f, 0.01f, () => multiplayerComboBadgeHorizontalOffset, v => multiplayerComboBadgeHorizontalOffset = v);
         RegisterFloatSetting("mp.comboBadgeVerticalOffset", "Visuals - Multiplayer", "Combo Badge Vertical Offset", "Moves both multiplayer combo badges up or down together.", -1.25f, 1.25f, 0.01f, () => multiplayerComboBadgeVerticalOffset, v => multiplayerComboBadgeVerticalOffset = v);
         RegisterFloatSetting("fx.judgeableDarkenMultiplier", "Visuals", "Judgeable Darken", "Darkens upcoming notes until they enter the hit window.", 1f, 8f, 0.1f, () => judgeableDarkenMultiplier, v => judgeableDarkenMultiplier = v);
-        RegisterEnumSetting("bg.mode", "Background", "Background Mode", "Switches between static and animated backgrounds.", new []{"SolidColor","Starfield","BlueSky","Space"}, () => tabBackgroundMode.ToString(), v => { if (Enum.TryParse(v, out TabsBackgroundMode mode)) tabBackgroundMode = mode; });
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = "bg.moodSetter",
+            Section = "Visuals",
+            Label = "Mood Setter",
+            Tooltip = "Opens the focused background mood controls. From the main menu it edits the menu background profile; in game it edits the gameplay profile.",
+            ValueType = "action",
+            Getter = () => CanOpenBackgroundMoodSetter() ? "OPEN" : "UNAVAILABLE",
+            Setter = null,
+            Activator = OpenBackgroundMoodSetterFromUi
+        });
+        RegisterEnumSetting("bg.mode", "Background", "Background Mode", "Switches between static and animated backgrounds.", new []{"SolidColor","BlueSky","NeonStage"}, () => SerializeBackgroundMode(GetBackgroundModeForContext(IsEditingMainMenuBackground)), v => SetBackgroundModeForCurrentContext(ParseBackgroundMode(v, GetBackgroundModeForContext(IsEditingMainMenuBackground))));
+        RegisterNeonHorizonRuntimeSettings();
         RegisterEnumSetting("bg.skyMood", "Background - Blue Sky", "Sky Mood", "Switches BlueSky mood grading between daytime, sunset, and midnight palettes.", new []{"Day","Sunset","Midnight"}, () => tabSkyMood.ToString(), v => { if (Enum.TryParse(v, out TabsSkyMood mood)) tabSkyMood = mood; });
         RegisterBoolSetting("bg.skyUseStage", "Background - Blue Sky", "Use Stage Backdrop", "Switches BlueSky mode between the sunset-cloud scene and a stylized stage backdrop.", () => tabSkyUseStageBackdrop, v => tabSkyUseStageBackdrop = v);
         RegisterBoolSetting("bg.skyStars", "Background - Blue Sky", "Static Sky Stars", "Adds non-moving stars behind clouds in BlueSky mode.", () => tabSkyStarsEnabled, v => tabSkyStarsEnabled = v);
@@ -22725,10 +23863,6 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterFloatSetting("bg.skyStarTwinkleStrength", "Background - Blue Sky", "Star Twinkle Strength", "How much brightness variation twinkling stars receive.", 0f, 0.6f, 0.01f, () => tabSkyStarTwinkleStrength, v => tabSkyStarTwinkleStrength = v);
         RegisterFloatSetting("bg.skyStarTwinkleSpeedMin", "Background - Blue Sky", "Star Twinkle Speed Min", "Minimum twinkle speed for twinkling stars.", 0.05f, 4f, 0.01f, () => tabSkyStarTwinkleSpeedMin, v => tabSkyStarTwinkleSpeedMin = v);
         RegisterFloatSetting("bg.skyStarTwinkleSpeedMax", "Background - Blue Sky", "Star Twinkle Speed Max", "Maximum twinkle speed for twinkling stars.", 0.05f, 4f, 0.01f, () => tabSkyStarTwinkleSpeedMax, v => tabSkyStarTwinkleSpeedMax = v);
-        RegisterEnumSetting("bg.starStyle", "Background - Starfield Core", "Star Style", "Visual style used for star sprites in the background.", new []{"SoftDots","Crystal","Neon"}, () => tabStarStyle.ToString(), v => { if (Enum.TryParse(v, out TabsStarStyle style)) tabStarStyle = style; });
-        RegisterIntSetting("bg.starSeed", "Background - Starfield Core", "Star Seed", "Changes the procedural star layout while keeping it deterministic.", 0, 99999, 1, () => tabStarSeed, v => tabStarSeed = v);
-        RegisterFloatSetting("bg.starDriftSpeed", "Background - Starfield Core", "Star Drift Speed", "Horizontal motion speed of star layers.", 0f, 2.5f, 0.01f, () => tabStarDriftSpeed, v => tabStarDriftSpeed = v);
-        RegisterBoolSetting("bg.shootingStars", "Background - Shooting Stars", "Shooting Stars", "Turns occasional shooting star streaks on or off.", () => tabShootingStarsEnabled, v => tabShootingStarsEnabled = v);
         RegisterFloatSetting("bg.skyCloudNearSpeed", "Background - Blue Sky", "Cloud Speed (Near)", "Horizontal drift speed for the nearest cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedNear, v => tabSkyCloudSpeedNear = v);
         RegisterFloatSetting("bg.skyCloudMidSpeed", "Background - Blue Sky", "Cloud Speed (Mid)", "Horizontal drift speed for the middle cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedMid, v => tabSkyCloudSpeedMid = v);
         RegisterFloatSetting("bg.skyCloudFarSpeed", "Background - Blue Sky", "Cloud Speed (Far)", "Horizontal drift speed for the far cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedFar, v => tabSkyCloudSpeedFar = v);
@@ -22782,6 +23916,1679 @@ private void ParseDetectorPacket(string detectorPacket)
         RegisterBoolSetting("highway.highlightFretBoundaries", "Highway 3D - Lanes", "Highlight Fret Boundaries", "Brightens fret metal boundaries when incoming notes are between them.", () => highwayHighlightFretBoundaries, v => highwayHighlightFretBoundaries = v);
         RegisterFloatSetting("highway.fretNumberYOffset", "Highway 3D - Layout", "Fret Number Y Offset", "Vertical offset for the Highway3D fret numbers.", -3f, 3f, 0.01f, () => highwayFretNumberYOffset, v => highwayFretNumberYOffset = v);
         RegisterFloatSetting("highway.fretNumberZOffset", "Highway 3D - Layout", "Fret Number Z Offset", "Depth offset for the Highway3D fret numbers relative to the strike line.", -3f, 3f, 0.01f, () => highwayFretNumberZOffset, v => highwayFretNumberZOffset = v);
+    }
+
+    private int GetNeonHorizonTheme(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.neonHorizonTheme : neonHorizonTheme;
+    }
+
+    private void ApplyNeonHorizonTheme(int themeIndex)
+    {
+        ApplyNeonHorizonTheme(themeIndex, false);
+    }
+
+    private void ApplyNeonHorizonTheme(int themeIndex, bool useMainMenuProfile)
+    {
+        int clampedTheme = Mathf.Clamp(themeIndex, 0, NeonHorizonThemeOptions.Length - 1);
+        if (useMainMenuProfile)
+            MainMenuBackground.neonHorizonTheme = clampedTheme;
+        else
+            neonHorizonTheme = clampedTheme;
+
+        switch (clampedTheme)
+        {
+            case 1: // Neon Dusk
+                ApplyNeonHorizonThemePreset(horizonPalette: 0, skyPalette: 0, unifiedSides: true, useMainMenuProfile: useMainMenuProfile);
+                break;
+            case 2: // Sunset
+                ApplyNeonHorizonThemePreset(horizonPalette: 6, skyPalette: 9, unifiedSides: true, useMainMenuProfile: useMainMenuProfile);
+                break;
+            case 3: // Cthulhu
+                ApplyNeonHorizonThemePreset(horizonPalette: 7, skyPalette: 10, unifiedSides: true, useMainMenuProfile: useMainMenuProfile);
+                break;
+            case 4: // Deep Ocean
+                ApplyNeonHorizonThemePreset(horizonPalette: 8, skyPalette: 2, unifiedSides: true, useMainMenuProfile: useMainMenuProfile);
+                break;
+            case 5: // Royal Violet
+                ApplyNeonHorizonThemePreset(horizonPalette: 3, skyPalette: 3, unifiedSides: true, useMainMenuProfile: useMainMenuProfile);
+                break;
+            case 6: // Crimson Ember
+                ApplyNeonHorizonThemePreset(horizonPalette: 1, skyPalette: 1, unifiedSides: true, useMainMenuProfile: useMainMenuProfile);
+                break;
+            case 7: // Vaporwave Split
+                ApplyNeonHorizonThemePreset(horizonPalette: 5, skyPalette: 5, unifiedSides: false, useMainMenuProfile: useMainMenuProfile);
+                break;
+            case 8: // Event Horizon
+                ApplyNeonHorizonThemePreset(horizonPalette: 9, skyPalette: 11, unifiedSides: false, useMainMenuProfile: useMainMenuProfile);
+                break;
+            case 9: // Blue Singularity
+                ApplyNeonHorizonThemePreset(horizonPalette: 10, skyPalette: 12, unifiedSides: true, useMainMenuProfile: useMainMenuProfile);
+                break;
+        }
+    }
+
+    private void ApplyNeonHorizonThemePreset(int horizonPalette, int skyPalette, bool unifiedSides)
+    {
+        ApplyNeonHorizonThemePreset(horizonPalette, skyPalette, unifiedSides, false);
+    }
+
+    private void ApplyNeonHorizonThemePreset(int horizonPalette, int skyPalette, bool unifiedSides, bool useMainMenuProfile)
+    {
+        int clampedHorizonPalette = Mathf.Clamp(horizonPalette, 0, NeonHorizonColorPaletteOptions.Length - 1);
+        int clampedSkyPalette = Mathf.Clamp(skyPalette, 0, NeonSkyLineColorPaletteOptions.Length - 1);
+        if (useMainMenuProfile)
+        {
+            MainMenuBackground.neonHorizonColorPalette = clampedHorizonPalette;
+            MainMenuBackground.neonHorizonSkyLineColorPalette = clampedSkyPalette;
+            MainMenuBackground.neonHorizonUseUnifiedSideColors = unifiedSides;
+        }
+        else
+        {
+            neonHorizonColorPalette = clampedHorizonPalette;
+            neonHorizonSkyLineColorPalette = clampedSkyPalette;
+            neonHorizonUseUnifiedSideColors = unifiedSides;
+        }
+    }
+
+    private void MarkNeonHorizonThemeCustom()
+    {
+        MarkNeonHorizonThemeCustom(false);
+    }
+
+    private void MarkNeonHorizonThemeCustom(bool useMainMenuProfile)
+    {
+        if (useMainMenuProfile)
+            MainMenuBackground.neonHorizonTheme = 0;
+        else
+            neonHorizonTheme = 0;
+    }
+
+    private void HandleNeonHorizonThemeShortcut()
+    {
+        if (!Input.GetKeyDown(KeyCode.Q))
+            return;
+
+        if (tabBackgroundMode != TabsBackgroundMode.NeonStage)
+            return;
+
+        if (ShouldSuppressNeonThemeShortcut())
+            return;
+
+        int nextTheme = neonHorizonTheme + 1;
+        if (nextTheme <= 0 || nextTheme >= NeonHorizonThemeOptions.Length)
+            nextTheme = 1;
+
+        ApplyNeonHorizonTheme(nextTheme);
+    }
+
+    private bool ShouldSuppressNeonThemeShortcut()
+    {
+        return showMainMenu ||
+               showStartMenu ||
+               showSongSelection ||
+               showTrackSelection ||
+               showSongSettings ||
+               showGlobalSettings ||
+               showBackgroundMoodSetter ||
+               showGlobalSettingsSelectionPopup ||
+               showSongSettingsTrackSelectionPopup ||
+               showTuner ||
+               showToneLab ||
+               showMiniGames ||
+               songHasEnded ||
+               isPaused;
+    }
+
+    private void HandleBackgroundSecretShortcuts()
+    {
+        bool toggleSkyPressed = Input.GetKeyDown(KeyCode.Alpha6) || Input.GetKeyDown(KeyCode.Keypad6);
+        bool cyclePresetPressed = Input.GetKeyDown(KeyCode.Alpha7) || Input.GetKeyDown(KeyCode.Keypad7);
+        if (!toggleSkyPressed && !cyclePresetPressed)
+            return;
+
+        if (ShouldSuppressBackgroundSecretShortcut())
+            return;
+
+        if (toggleSkyPressed)
+        {
+            tabBackgroundMode = TabsBackgroundMode.NeonStage;
+            neonStageSkyDesign = neonStageSkyDesign == TabsNeonStageSkyDesign.Enviro3
+                ? TabsNeonStageSkyDesign.ProceduralDome
+                : TabsNeonStageSkyDesign.Enviro3;
+            runtimeSettingsSnapshotDirty = true;
+            SaveGlobalRuntimeSettingsMetadata();
+            return;
+        }
+
+        tabBackgroundMode = TabsBackgroundMode.NeonStage;
+        if (neonStageSkyDesign == TabsNeonStageSkyDesign.Enviro3)
+        {
+            int nextMood = ((int)neonStageEnviroMood + 1) % EnviroSkyMoodOptions.Length;
+            neonStageEnviroMood = (TabsEnviroSkyMood)nextMood;
+            SyncLegacyEnviroGroundModeToCurrentMood();
+        }
+        else
+        {
+            int nextTheme = neonHorizonTheme + 1;
+            if (nextTheme <= 0 || nextTheme >= NeonHorizonThemeOptions.Length)
+                nextTheme = 1;
+            ApplyNeonHorizonTheme(nextTheme);
+        }
+
+        runtimeSettingsSnapshotDirty = true;
+        SaveGlobalRuntimeSettingsMetadata();
+    }
+
+    private bool ShouldSuppressBackgroundSecretShortcut()
+    {
+        return currentSongEntry == null ||
+               !renderMode.UsesHighway3D() ||
+               showMainMenu ||
+               mainMenuFlowActive ||
+               showStartMenu ||
+               showCharacterSelection ||
+               showSongSelection ||
+               showTrackSelection ||
+               showSongSettings ||
+               showGlobalSettings ||
+               showBackgroundMoodSetter ||
+               showGlobalSettingsSelectionPopup ||
+               showSongSettingsTrackSelectionPopup ||
+               showTuner ||
+               showToneLab ||
+               showMiniGames ||
+               songHasEnded;
+    }
+
+    private static TabsEnviroMoonMode[] CreateDefaultEnviroMoonModes()
+    {
+        return CreateEnviroMoonModeArray(
+            TabsEnviroMoonMode.Giant,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Giant,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Giant,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Giant);
+    }
+
+    private static TabsEnviroGroundMode[] CreateDefaultEnviroGroundModes()
+    {
+        return CreateEnviroGroundModeArray(
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains,
+            TabsEnviroGroundMode.Mountains);
+    }
+
+    private static bool[] CreateDefaultEnviroCloudEnabledValues()
+    {
+        return CreateBoolArray(false, true, false, true, false, false, true, true, true, true);
+    }
+
+    private static float[] CreateDefaultEnviroMountainOpacityValues()
+    {
+        float[] values = new float[EnviroSkyMoodOptions.Length];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = 1f;
+        return values;
+    }
+
+    private static float[] CreateDefaultEnviroMountainLayerOpacityValues(float defaultValue)
+    {
+        if (Mathf.Approximately(defaultValue, 0.34f))
+            return CreateFloatArray(0.39f, 0.34f, 0.34f, 0.34f, 0.34f, 0.59f, 0.34f, 0.34f, 0.34f, 0.34f);
+        if (Mathf.Approximately(defaultValue, 0.58f))
+            return CreateFloatArray(0.58f, 0.58f, 0.58f, 0.58f, 0.58f, 0.88f, 0.58f, 0.58f, 0.58f, 0.58f);
+        if (Mathf.Approximately(defaultValue, 0.96f))
+            return CreateFloatArray(0.96f, 0.96f, 0.96f, 0.96f, 0.96f, 1.00f, 0.96f, 0.96f, 0.96f, 0.96f);
+
+        float[] values = new float[EnviroSkyMoodOptions.Length];
+        float clampedDefault = Mathf.Clamp01(defaultValue);
+        for (int i = 0; i < values.Length; i++)
+            values[i] = clampedDefault;
+        return values;
+    }
+
+    private static float[] CreateDefaultEnviroSkyCameraPitchValues()
+    {
+        return CreateFloatArray(0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f);
+    }
+
+    private static float[] CreateDefaultEnviroStarAnimationValues()
+    {
+        float[] values = new float[EnviroSkyMoodOptions.Length];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = 1f;
+        return values;
+    }
+
+    private static float[] CreateDefaultEnviroStarDensityValues()
+    {
+        float[] values = new float[EnviroSkyMoodOptions.Length];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = 1f;
+        return values;
+    }
+
+    private static float[] CreateDefaultEnviroCloudModifierValues()
+    {
+        float[] values = new float[EnviroSkyMoodOptions.Length];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = 1f;
+        return values;
+    }
+
+    private static TabsEnviroMoonMode[] CreateDefaultMainMenuEnviroMoonModes()
+    {
+        return CreateEnviroMoonModeArray(
+            TabsEnviroMoonMode.Off,
+            TabsEnviroMoonMode.Off,
+            TabsEnviroMoonMode.Off,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Off,
+            TabsEnviroMoonMode.Off,
+            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Off,
+            TabsEnviroMoonMode.Normal);
+    }
+
+    private static TabsEnviroGroundMode[] CreateDefaultMainMenuEnviroGroundModes()
+    {
+        return CreateEnviroGroundModeArray(
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off,
+            TabsEnviroGroundMode.Off);
+    }
+
+    private static bool[] CreateDefaultMainMenuEnviroCloudEnabledValues()
+    {
+        return CreateBoolArray(true, true, true, false, true, true, true, true, true, true);
+    }
+
+    private static float[] CreateDefaultMainMenuEnviroCloudAmountValues()
+    {
+        return CreateFloatArray(1f, 1f, 0.95f, 1f, 1f, 0.5f, 1f, 1f, 1.05f, 1f);
+    }
+
+    private static float[] CreateDefaultMainMenuEnviroCloudThicknessValues()
+    {
+        return CreateFloatArray(1f, 1f, 1f, 1f, 1f, 1.2f, 1f, 1f, 0f, 1f);
+    }
+
+    private static float[] CreateDefaultMainMenuEnviroCloudConnectivityValues()
+    {
+        return CreateFloatArray(1f, 1f, 1.3f, 1f, 1f, 2f, 2f, 1f, 2f, 1f);
+    }
+
+    private static float[] CreateDefaultMainMenuEnviroCloudContrastValues()
+    {
+        return CreateFloatArray(1f, 1f, 2f, 1f, 1f, 1f, 2f, 1f, 2f, 1f);
+    }
+
+    private static float[] CreateDefaultMainMenuEnviroSkyCameraPitchValues()
+    {
+        return CreateFloatArray(18f, 18f, -18f, 0f, 0f, -18f, -18f, 0f, -18f, 0f);
+    }
+
+    private static TabsEnviroMoonMode[] CreateEnviroMoonModeArray(params TabsEnviroMoonMode[] source)
+    {
+        TabsEnviroMoonMode[] values = new TabsEnviroMoonMode[EnviroSkyMoodOptions.Length];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = i < source.Length ? source[i] : TabsEnviroMoonMode.Normal;
+        return values;
+    }
+
+    private static TabsEnviroGroundMode[] CreateEnviroGroundModeArray(params TabsEnviroGroundMode[] source)
+    {
+        TabsEnviroGroundMode[] values = new TabsEnviroGroundMode[EnviroSkyMoodOptions.Length];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = i < source.Length ? source[i] : TabsEnviroGroundMode.Off;
+        return values;
+    }
+
+    private static bool[] CreateBoolArray(params bool[] source)
+    {
+        bool[] values = new bool[EnviroSkyMoodOptions.Length];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = i < source.Length && source[i];
+        return values;
+    }
+
+    private static float[] CreateFloatArray(params float[] source)
+    {
+        float[] values = new float[EnviroSkyMoodOptions.Length];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = i < source.Length ? source[i] : 1f;
+        return values;
+    }
+
+    private bool IsEditingMainMenuBackground => !savingRuntimeSettingsMetadata && showBackgroundMoodSetter && backgroundMoodSetterEditingMainMenu;
+
+    private MainMenuBackgroundProfile MainMenuBackground
+    {
+        get
+        {
+            if (mainMenuBackgroundProfile == null)
+                mainMenuBackgroundProfile = new MainMenuBackgroundProfile();
+            mainMenuBackgroundProfile.Ensure();
+            return mainMenuBackgroundProfile;
+        }
+    }
+
+    private int CurrentEnviroMoodIndex => GetEnviroMoodIndex(IsEditingMainMenuBackground);
+
+    public TabsBackgroundMode GetBackgroundModeForContext(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.backgroundMode : tabBackgroundMode;
+    }
+
+    private void SetBackgroundModeForCurrentContext(TabsBackgroundMode mode)
+    {
+        TabsBackgroundMode clamped = mode == TabsBackgroundMode.BlueSky || mode == TabsBackgroundMode.SolidColor
+            ? mode
+            : TabsBackgroundMode.NeonStage;
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.backgroundMode = clamped;
+        else
+            tabBackgroundMode = clamped;
+    }
+
+    public TabsNeonStageSkyDesign GetNeonStageSkyDesign(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.skyDesign : neonStageSkyDesign;
+    }
+
+    private int GetNeonStageSkyDesignOptionIndex(bool useMainMenuProfile)
+    {
+        return GetNeonStageSkyDesign(useMainMenuProfile) == TabsNeonStageSkyDesign.Enviro3 ? 1 : 0;
+    }
+
+    private void SetNeonStageSkyDesignFromOptionIndex(int optionIndex, bool useMainMenuProfile)
+    {
+        TabsNeonStageSkyDesign value = optionIndex == 1
+            ? TabsNeonStageSkyDesign.Enviro3
+            : TabsNeonStageSkyDesign.ProceduralDome;
+        if (useMainMenuProfile)
+            MainMenuBackground.skyDesign = value;
+        else
+            neonStageSkyDesign = value;
+    }
+
+    public TabsEnviroSkyMood GetEnviroSkyMood(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroMood
+            : neonStageEnviroMood;
+    }
+
+    private void SetEnviroSkyMoodForCurrentContext(TabsEnviroSkyMood mood)
+    {
+        TabsEnviroSkyMood clamped = (TabsEnviroSkyMood)Mathf.Clamp((int)mood, 0, EnviroSkyMoodOptions.Length - 1);
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.enviroMood = clamped;
+        else
+        {
+            neonStageEnviroMood = clamped;
+            SyncLegacyEnviroGroundModeToCurrentMood();
+        }
+    }
+
+    private int GetEnviroMoodIndex(bool useMainMenuProfile)
+    {
+        return Mathf.Clamp((int)GetEnviroSkyMood(useMainMenuProfile), 0, EnviroSkyMoodOptions.Length - 1);
+    }
+
+    public bool GetNeonHorizonUseUnifiedSideColors(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.neonHorizonUseUnifiedSideColors : neonHorizonUseUnifiedSideColors;
+    }
+
+    private void SetNeonHorizonUseUnifiedSideColorsForCurrentContext(bool value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.neonHorizonUseUnifiedSideColors = value;
+        else
+            neonHorizonUseUnifiedSideColors = value;
+        MarkNeonHorizonThemeCustom(IsEditingMainMenuBackground);
+    }
+
+    public int GetNeonHorizonColorPalette(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.neonHorizonColorPalette : neonHorizonColorPalette;
+    }
+
+    private void SetNeonHorizonColorPaletteForCurrentContext(int value)
+    {
+        int clamped = Mathf.Clamp(value, 0, NeonHorizonColorPaletteOptions.Length - 1);
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.neonHorizonColorPalette = clamped;
+        else
+            neonHorizonColorPalette = clamped;
+        MarkNeonHorizonThemeCustom(IsEditingMainMenuBackground);
+    }
+
+    public int GetNeonHorizonSkyLineColorPalette(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.neonHorizonSkyLineColorPalette : neonHorizonSkyLineColorPalette;
+    }
+
+    private void SetNeonHorizonSkyLineColorPaletteForCurrentContext(int value)
+    {
+        int clamped = Mathf.Clamp(value, 0, NeonSkyLineColorPaletteOptions.Length - 1);
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.neonHorizonSkyLineColorPalette = clamped;
+        else
+            neonHorizonSkyLineColorPalette = clamped;
+        MarkNeonHorizonThemeCustom(IsEditingMainMenuBackground);
+    }
+
+    public bool GetEnviroHorizonEnabled(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.enviroHorizonEnabled : neonStageEnviroHorizonEnabled;
+    }
+
+    private void SetEnviroHorizonEnabledForCurrentContext(bool value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.enviroHorizonEnabled = value;
+        else
+            neonStageEnviroHorizonEnabled = value;
+    }
+
+    public bool GetDomeMountainsEnabled(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeMountainsEnabled : neonHorizonDomeMountainsEnabled;
+    }
+
+    private void SetDomeMountainsEnabledForCurrentContext(bool value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeMountainsEnabled = value;
+        else
+            neonHorizonDomeMountainsEnabled = value;
+    }
+
+    public float GetDomeMountainFarOpacity(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeMountainFarOpacity : neonHorizonDomeMountainFarOpacity;
+    }
+
+    private void SetDomeMountainFarOpacityForCurrentContext(float value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeMountainFarOpacity = Mathf.Clamp01(value);
+        else
+            neonHorizonDomeMountainFarOpacity = Mathf.Clamp01(value);
+    }
+
+    public float GetDomeMountainMidOpacity(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeMountainMidOpacity : neonHorizonDomeMountainMidOpacity;
+    }
+
+    private void SetDomeMountainMidOpacityForCurrentContext(float value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeMountainMidOpacity = Mathf.Clamp01(value);
+        else
+            neonHorizonDomeMountainMidOpacity = Mathf.Clamp01(value);
+    }
+
+    public float GetDomeMountainNearOpacity(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeMountainNearOpacity : neonHorizonDomeMountainNearOpacity;
+    }
+
+    private void SetDomeMountainNearOpacityForCurrentContext(float value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeMountainNearOpacity = Mathf.Clamp01(value);
+        else
+            neonHorizonDomeMountainNearOpacity = Mathf.Clamp01(value);
+    }
+
+    public bool GetDomeStarsEnabled(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeStarsEnabled : neonHorizonDomeStarsEnabled;
+    }
+
+    private void SetDomeStarsEnabledForCurrentContext(bool value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeStarsEnabled = value;
+        else
+            neonHorizonDomeStarsEnabled = value;
+    }
+
+    public int GetDomeStarsCount(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeStarsCount : neonHorizonDomeStarsCount;
+    }
+
+    private void SetDomeStarsCountForCurrentContext(int value)
+    {
+        int clamped = Mathf.Clamp(value, 0, 1200);
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeStarsCount = clamped;
+        else
+            neonHorizonDomeStarsCount = clamped;
+    }
+
+    public float GetDomeStarsBrightness(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeStarsBrightness : neonHorizonDomeStarsBrightness;
+    }
+
+    private void SetDomeStarsBrightnessForCurrentContext(float value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeStarsBrightness = Mathf.Max(0f, value);
+        else
+            neonHorizonDomeStarsBrightness = Mathf.Max(0f, value);
+    }
+
+    public float GetDomeStarsTwinkleStrength(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeStarsTwinkleStrength : neonHorizonDomeStarsTwinkleStrength;
+    }
+
+    private void SetDomeStarsTwinkleStrengthForCurrentContext(float value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeStarsTwinkleStrength = Mathf.Clamp01(value);
+        else
+            neonHorizonDomeStarsTwinkleStrength = Mathf.Clamp01(value);
+    }
+
+    public float GetDomeStarsTwinkleSpeed(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeStarsTwinkleSpeed : neonHorizonDomeStarsTwinkleSpeed;
+    }
+
+    private void SetDomeStarsTwinkleSpeedForCurrentContext(float value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeStarsTwinkleSpeed = Mathf.Max(0f, value);
+        else
+            neonHorizonDomeStarsTwinkleSpeed = Mathf.Max(0f, value);
+    }
+
+    public float GetDomeStarsSize(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeStarsSize : neonHorizonDomeStarsSize;
+    }
+
+    private void SetDomeStarsSizeForCurrentContext(float value)
+    {
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeStarsSize = Mathf.Max(0.1f, value);
+        else
+            neonHorizonDomeStarsSize = Mathf.Max(0.1f, value);
+    }
+
+    public int GetDomeStarsSeed(bool useMainMenuProfile)
+    {
+        return useMainMenuProfile ? MainMenuBackground.domeStarsSeed : neonHorizonDomeStarsSeed;
+    }
+
+    private void SetDomeStarsSeedForCurrentContext(int value)
+    {
+        int clamped = Mathf.Clamp(value, 0, 99999);
+        if (IsEditingMainMenuBackground)
+            MainMenuBackground.domeStarsSeed = clamped;
+        else
+            neonHorizonDomeStarsSeed = clamped;
+    }
+
+    public string GetBackgroundSignatureForContext(bool useMainMenuProfile)
+    {
+        if (!useMainMenuProfile)
+        {
+            return string.Join("|",
+                "game",
+                tabBackgroundMode,
+                tabSkyUseStageBackdrop,
+                neonStageSkyDesign,
+                neonStageEnviroMood,
+                neonHorizonTheme,
+                neonHorizonDomeStarsEnabled,
+                neonHorizonDomeStarsCount,
+                neonHorizonDomeMountainsEnabled);
+        }
+
+        MainMenuBackgroundProfile profile = MainMenuBackground;
+        return string.Join("|",
+            "menu",
+            profile.backgroundMode,
+            profile.skyDesign,
+            profile.enviroMood,
+            profile.neonHorizonTheme,
+            profile.domeStarsEnabled,
+            profile.domeStarsCount,
+            profile.domeMountainsEnabled);
+    }
+
+    private static int ClampEnviroMoodIndex(int moodIndex)
+    {
+        return Mathf.Clamp(moodIndex, 0, EnviroSkyMoodOptions.Length - 1);
+    }
+
+    private static string GetEnviroMoodSettingId(int moodIndex, string settingName)
+    {
+        return $"bg.neonHorizon.enviroMood.{ClampEnviroMoodIndex(moodIndex)}.{settingName}";
+    }
+
+    private string GetCurrentEnviroMoodSettingId(string settingName)
+    {
+        return GetEnviroMoodSettingId(CurrentEnviroMoodIndex, settingName);
+    }
+
+    private void EnsureEnviroMoodSettings()
+    {
+        EnsureEnviroMoonModes();
+        EnsureEnviroGroundModes();
+        neonStageEnviroCloudsEnabledByMood = EnsureBoolArray(neonStageEnviroCloudsEnabledByMood, true);
+        neonStageEnviroCloudAmountByMood = EnsureFloatArray(neonStageEnviroCloudAmountByMood, 1f, 0f, 2f);
+        neonStageEnviroCloudThicknessByMood = EnsureFloatArray(neonStageEnviroCloudThicknessByMood, 1f, 0f, 2f);
+        neonStageEnviroCloudConnectivityByMood = EnsureFloatArray(neonStageEnviroCloudConnectivityByMood, 1f, 0f, 2f);
+        neonStageEnviroCloudContrastByMood = EnsureFloatArray(neonStageEnviroCloudContrastByMood, 1f, 0f, 2f);
+        neonStageEnviroMountainOpacityByMood = EnsureFloatArray(neonStageEnviroMountainOpacityByMood, 1f, 0f, 1f);
+        neonStageEnviroMountainFarOpacityByMood = EnsureFloatArray(neonStageEnviroMountainFarOpacityByMood, GetDefaultEnviroMountainLayerOpacity(0), 0f, 1f);
+        neonStageEnviroMountainMidOpacityByMood = EnsureFloatArray(neonStageEnviroMountainMidOpacityByMood, GetDefaultEnviroMountainLayerOpacity(1), 0f, 1f);
+        neonStageEnviroMountainNearOpacityByMood = EnsureFloatArray(neonStageEnviroMountainNearOpacityByMood, GetDefaultEnviroMountainLayerOpacity(2), 0f, 1f);
+        neonStageEnviroSkyCameraPitchByMood = EnsureFloatArray(neonStageEnviroSkyCameraPitchByMood, 0f, -18f, 18f);
+        neonStageEnviroStarAnimationByMood = EnsureFloatArray(neonStageEnviroStarAnimationByMood, 1f, 0f, 2f);
+        neonStageEnviroStarDensityByMood = EnsureFloatArray(neonStageEnviroStarDensityByMood, 1f, 0f, 2f);
+    }
+
+    private void EnsureEnviroMoonModes()
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        if (neonStageEnviroMoonModeByMood != null && neonStageEnviroMoonModeByMood.Length == count)
+            return;
+
+        TabsEnviroMoonMode[] values = CreateDefaultEnviroMoonModes();
+        if (neonStageEnviroMoonModeByMood != null)
+        {
+            int copyCount = Mathf.Min(neonStageEnviroMoonModeByMood.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = (TabsEnviroMoonMode)Mathf.Clamp((int)neonStageEnviroMoonModeByMood[i], 0, EnviroMoonModeOptions.Length - 1);
+        }
+        neonStageEnviroMoonModeByMood = values;
+    }
+
+    private void EnsureEnviroGroundModes()
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        if (neonStageEnviroGroundModeByMood != null && neonStageEnviroGroundModeByMood.Length == count)
+        {
+            for (int i = 0; i < neonStageEnviroGroundModeByMood.Length; i++)
+                neonStageEnviroGroundModeByMood[i] = (TabsEnviroGroundMode)Mathf.Clamp((int)neonStageEnviroGroundModeByMood[i], 0, EnviroGroundModeOptions.Length - 1);
+            return;
+        }
+
+        TabsEnviroGroundMode[] values = CreateDefaultEnviroGroundModes();
+        if (neonStageEnviroGroundModeByMood != null)
+        {
+            int copyCount = Mathf.Min(neonStageEnviroGroundModeByMood.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = (TabsEnviroGroundMode)Mathf.Clamp((int)neonStageEnviroGroundModeByMood[i], 0, EnviroGroundModeOptions.Length - 1);
+        }
+        else if (neonStageEnviroGroundMode != TabsEnviroGroundMode.Off || neonStageEnviroGroundEnabled)
+        {
+            TabsEnviroGroundMode legacyMode = neonStageEnviroGroundMode != TabsEnviroGroundMode.Off
+                ? neonStageEnviroGroundMode
+                : TabsEnviroGroundMode.FlatPlane;
+            values[CurrentEnviroMoodIndex] = legacyMode;
+        }
+
+        neonStageEnviroGroundModeByMood = values;
+    }
+
+    private static TabsEnviroMoonMode[] EnsureEnviroMoonModeArray(TabsEnviroMoonMode[] source)
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        TabsEnviroMoonMode[] values = CreateDefaultEnviroMoonModes();
+        if (source != null)
+        {
+            int copyCount = Mathf.Min(source.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = (TabsEnviroMoonMode)Mathf.Clamp((int)source[i], 0, EnviroMoonModeOptions.Length - 1);
+        }
+        return values;
+    }
+
+    private static TabsEnviroMoonMode[] EnsureEnviroMoonModeArray(TabsEnviroMoonMode[] source, TabsEnviroMoonMode[] fallback)
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        TabsEnviroMoonMode[] values = fallback != null && fallback.Length == count
+            ? (TabsEnviroMoonMode[])fallback.Clone()
+            : CreateDefaultEnviroMoonModes();
+
+        if (source != null)
+        {
+            int copyCount = Mathf.Min(source.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = (TabsEnviroMoonMode)Mathf.Clamp((int)source[i], 0, EnviroMoonModeOptions.Length - 1);
+        }
+
+        return values;
+    }
+
+    private static TabsEnviroGroundMode[] EnsureEnviroGroundModeArray(TabsEnviroGroundMode[] source)
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        TabsEnviroGroundMode[] values = CreateDefaultEnviroGroundModes();
+        if (source != null)
+        {
+            int copyCount = Mathf.Min(source.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = (TabsEnviroGroundMode)Mathf.Clamp((int)source[i], 0, EnviroGroundModeOptions.Length - 1);
+        }
+        return values;
+    }
+
+    private static TabsEnviroGroundMode[] EnsureEnviroGroundModeArray(TabsEnviroGroundMode[] source, TabsEnviroGroundMode[] fallback)
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        TabsEnviroGroundMode[] values = fallback != null && fallback.Length == count
+            ? (TabsEnviroGroundMode[])fallback.Clone()
+            : CreateDefaultEnviroGroundModes();
+
+        if (source != null)
+        {
+            int copyCount = Mathf.Min(source.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = (TabsEnviroGroundMode)Mathf.Clamp((int)source[i], 0, EnviroGroundModeOptions.Length - 1);
+        }
+
+        return values;
+    }
+
+    private static bool[] EnsureBoolArray(bool[] source, bool defaultValue)
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        if (source != null && source.Length == count)
+            return source;
+
+        bool[] values = new bool[count];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = defaultValue;
+
+        if (source != null)
+        {
+            int copyCount = Mathf.Min(source.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = source[i];
+        }
+
+        return values;
+    }
+
+    private static bool[] EnsureBoolArray(bool[] source, bool[] fallback)
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        bool[] values = fallback != null && fallback.Length == count
+            ? (bool[])fallback.Clone()
+            : new bool[count];
+
+        if (source != null)
+        {
+            int copyCount = Mathf.Min(source.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = source[i];
+        }
+
+        return values;
+    }
+
+    private static float[] EnsureFloatArray(float[] source, float defaultValue, float min, float max)
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        if (source != null && source.Length == count)
+        {
+            for (int i = 0; i < source.Length; i++)
+                source[i] = Mathf.Clamp(source[i], min, max);
+            return source;
+        }
+
+        float[] values = new float[count];
+        for (int i = 0; i < values.Length; i++)
+            values[i] = defaultValue;
+
+        if (source != null)
+        {
+            int copyCount = Mathf.Min(source.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = Mathf.Clamp(source[i], min, max);
+        }
+
+        return values;
+    }
+
+    private static float[] EnsureFloatArray(float[] source, float[] fallback, float min, float max)
+    {
+        int count = EnviroSkyMoodOptions.Length;
+        float[] values = new float[count];
+
+        if (fallback != null)
+        {
+            int copyFallbackCount = Mathf.Min(fallback.Length, values.Length);
+            for (int i = 0; i < copyFallbackCount; i++)
+                values[i] = Mathf.Clamp(fallback[i], min, max);
+            for (int i = copyFallbackCount; i < values.Length; i++)
+                values[i] = Mathf.Clamp(1f, min, max);
+        }
+        else
+        {
+            for (int i = 0; i < values.Length; i++)
+                values[i] = Mathf.Clamp(1f, min, max);
+        }
+
+        if (source != null)
+        {
+            int copyCount = Mathf.Min(source.Length, values.Length);
+            for (int i = 0; i < copyCount; i++)
+                values[i] = Mathf.Clamp(source[i], min, max);
+        }
+
+        return values;
+    }
+
+    private TabsEnviroMoonMode GetEnviroMoonModeForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroMoonModeByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroMoonModeByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroMoonModeForMood(int moodIndex, TabsEnviroMoonMode mode)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroMoonModeByMood[ClampEnviroMoodIndex(moodIndex)] =
+                (TabsEnviroMoonMode)Mathf.Clamp((int)mode, 0, EnviroMoonModeOptions.Length - 1);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroMoonModeByMood[ClampEnviroMoodIndex(moodIndex)] =
+            (TabsEnviroMoonMode)Mathf.Clamp((int)mode, 0, EnviroMoonModeOptions.Length - 1);
+    }
+
+    private TabsEnviroGroundMode GetEnviroGroundModeForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroGroundModeByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroGroundModeByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroGroundModeForMood(int moodIndex, TabsEnviroGroundMode mode)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroGroundModeByMood[ClampEnviroMoodIndex(moodIndex)] =
+                (TabsEnviroGroundMode)Mathf.Clamp((int)mode, 0, EnviroGroundModeOptions.Length - 1);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        int clampedMoodIndex = ClampEnviroMoodIndex(moodIndex);
+        TabsEnviroGroundMode clampedMode = (TabsEnviroGroundMode)Mathf.Clamp((int)mode, 0, EnviroGroundModeOptions.Length - 1);
+        neonStageEnviroGroundModeByMood[clampedMoodIndex] = clampedMode;
+        if (clampedMoodIndex == CurrentEnviroMoodIndex)
+            SyncLegacyEnviroGroundModeToCurrentMood();
+    }
+
+    private float GetEnviroMountainOpacityForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroMountainOpacityByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroMountainOpacityByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroMountainOpacityForMood(int moodIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroMountainOpacityByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp01(value);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroMountainOpacityByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp01(value);
+    }
+
+    private static float GetDefaultEnviroMountainLayerOpacity(int layerIndex)
+    {
+        switch (Mathf.Clamp(layerIndex, 0, 2))
+        {
+            case 0: return 0.34f;
+            case 1: return 0.58f;
+            default: return 0.96f;
+        }
+    }
+
+    private float GetEnviroMountainLayerOpacityForMood(int moodIndex, int layerIndex)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            int clampedMoodIndex = ClampEnviroMoodIndex(moodIndex);
+            switch (Mathf.Clamp(layerIndex, 0, 2))
+            {
+                case 0: return MainMenuBackground.enviroMountainFarOpacityByMood[clampedMoodIndex];
+                case 1: return MainMenuBackground.enviroMountainMidOpacityByMood[clampedMoodIndex];
+                default: return MainMenuBackground.enviroMountainNearOpacityByMood[clampedMoodIndex];
+            }
+        }
+
+        EnsureEnviroMoodSettings();
+        int gameplayMoodIndex = ClampEnviroMoodIndex(moodIndex);
+        switch (Mathf.Clamp(layerIndex, 0, 2))
+        {
+            case 0: return neonStageEnviroMountainFarOpacityByMood[gameplayMoodIndex];
+            case 1: return neonStageEnviroMountainMidOpacityByMood[gameplayMoodIndex];
+            default: return neonStageEnviroMountainNearOpacityByMood[gameplayMoodIndex];
+        }
+    }
+
+    private void SetEnviroMountainLayerOpacityForMood(int moodIndex, int layerIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            int clampedMoodIndex = ClampEnviroMoodIndex(moodIndex);
+            float clampedValue = Mathf.Clamp01(value);
+            switch (Mathf.Clamp(layerIndex, 0, 2))
+            {
+                case 0:
+                    MainMenuBackground.enviroMountainFarOpacityByMood[clampedMoodIndex] = clampedValue;
+                    break;
+                case 1:
+                    MainMenuBackground.enviroMountainMidOpacityByMood[clampedMoodIndex] = clampedValue;
+                    break;
+                default:
+                    MainMenuBackground.enviroMountainNearOpacityByMood[clampedMoodIndex] = clampedValue;
+                    break;
+            }
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        int gameplayMoodIndex = ClampEnviroMoodIndex(moodIndex);
+        float gameplayValue = Mathf.Clamp01(value);
+        switch (Mathf.Clamp(layerIndex, 0, 2))
+        {
+            case 0:
+                neonStageEnviroMountainFarOpacityByMood[gameplayMoodIndex] = gameplayValue;
+                break;
+            case 1:
+                neonStageEnviroMountainMidOpacityByMood[gameplayMoodIndex] = gameplayValue;
+                break;
+            default:
+                neonStageEnviroMountainNearOpacityByMood[gameplayMoodIndex] = gameplayValue;
+                break;
+        }
+    }
+
+    private float GetEnviroSkyCameraPitchForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroSkyCameraPitchByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroSkyCameraPitchByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroSkyCameraPitchForMood(int moodIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroSkyCameraPitchByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, -18f, 18f);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroSkyCameraPitchByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, -18f, 18f);
+    }
+
+    private float GetEnviroStarAnimationForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroStarAnimationByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroStarAnimationByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroStarAnimationForMood(int moodIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroStarAnimationByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroStarAnimationByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+    }
+
+    private float GetEnviroStarDensityForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroStarDensityByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroStarDensityByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroStarDensityForMood(int moodIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroStarDensityByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroStarDensityByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+    }
+
+    private bool GetEnviroCloudsEnabledForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroCloudsEnabledByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroCloudsEnabledByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroCloudsEnabledForMood(int moodIndex, bool enabled)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroCloudsEnabledByMood[ClampEnviroMoodIndex(moodIndex)] = enabled;
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroCloudsEnabledByMood[ClampEnviroMoodIndex(moodIndex)] = enabled;
+    }
+
+    private float GetEnviroCloudAmountForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroCloudAmountByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroCloudAmountByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroCloudAmountForMood(int moodIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroCloudAmountByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroCloudAmountByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+    }
+
+    private float GetEnviroCloudThicknessForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroCloudThicknessByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroCloudThicknessByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroCloudThicknessForMood(int moodIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroCloudThicknessByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroCloudThicknessByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+    }
+
+    private float GetEnviroCloudConnectivityForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroCloudConnectivityByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroCloudConnectivityByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroCloudConnectivityForMood(int moodIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroCloudConnectivityByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroCloudConnectivityByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+    }
+
+    private float GetEnviroCloudContrastForMood(int moodIndex)
+    {
+        if (IsEditingMainMenuBackground)
+            return MainMenuBackground.enviroCloudContrastByMood[ClampEnviroMoodIndex(moodIndex)];
+
+        EnsureEnviroMoodSettings();
+        return neonStageEnviroCloudContrastByMood[ClampEnviroMoodIndex(moodIndex)];
+    }
+
+    private void SetEnviroCloudContrastForMood(int moodIndex, float value)
+    {
+        if (IsEditingMainMenuBackground)
+        {
+            MainMenuBackground.enviroCloudContrastByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+            return;
+        }
+
+        EnsureEnviroMoodSettings();
+        neonStageEnviroCloudContrastByMood[ClampEnviroMoodIndex(moodIndex)] = Mathf.Clamp(value, 0f, 2f);
+    }
+
+    public TabsEnviroMoonMode GetCurrentEnviroMoonMode(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroMoonModeByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroMoonModeForMood(GetEnviroMoodIndex(false));
+    }
+
+    public bool GetCurrentEnviroCloudsEnabled(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroCloudsEnabledByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroCloudsEnabledForMood(GetEnviroMoodIndex(false));
+    }
+
+    public float GetCurrentEnviroCloudAmount(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroCloudAmountByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroCloudAmountForMood(GetEnviroMoodIndex(false));
+    }
+
+    public float GetCurrentEnviroCloudThickness(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroCloudThicknessByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroCloudThicknessForMood(GetEnviroMoodIndex(false));
+    }
+
+    public float GetCurrentEnviroCloudConnectivity(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroCloudConnectivityByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroCloudConnectivityForMood(GetEnviroMoodIndex(false));
+    }
+
+    public float GetCurrentEnviroCloudContrast(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroCloudContrastByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroCloudContrastForMood(GetEnviroMoodIndex(false));
+    }
+
+    public TabsEnviroGroundMode GetCurrentEnviroGroundMode(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroGroundModeByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroGroundModeForMood(GetEnviroMoodIndex(false));
+    }
+
+    public float GetCurrentEnviroMountainOpacity(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroMountainOpacityByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroMountainOpacityForMood(GetEnviroMoodIndex(false));
+    }
+
+    public float GetCurrentEnviroMountainLayerOpacity(int layerIndex, bool useMainMenuProfile = false)
+    {
+        int moodIndex = GetEnviroMoodIndex(useMainMenuProfile);
+        if (!useMainMenuProfile)
+            return GetEnviroMountainLayerOpacityForMood(moodIndex, layerIndex);
+
+        switch (Mathf.Clamp(layerIndex, 0, 2))
+        {
+            case 0: return MainMenuBackground.enviroMountainFarOpacityByMood[moodIndex];
+            case 1: return MainMenuBackground.enviroMountainMidOpacityByMood[moodIndex];
+            default: return MainMenuBackground.enviroMountainNearOpacityByMood[moodIndex];
+        }
+    }
+
+    public float GetCurrentEnviroSkyCameraPitch(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroSkyCameraPitchByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroSkyCameraPitchForMood(GetEnviroMoodIndex(false));
+    }
+
+    public float GetCurrentEnviroStarAnimation(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroStarAnimationByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroStarAnimationForMood(GetEnviroMoodIndex(false));
+    }
+
+    public float GetCurrentEnviroStarDensity(bool useMainMenuProfile = false)
+    {
+        return useMainMenuProfile
+            ? MainMenuBackground.enviroStarDensityByMood[GetEnviroMoodIndex(true)]
+            : GetEnviroStarDensityForMood(GetEnviroMoodIndex(false));
+    }
+
+    private int GetEnviroGroundModeIndex()
+    {
+        return Mathf.Clamp((int)GetCurrentEnviroGroundMode(), 0, EnviroGroundModeOptions.Length - 1);
+    }
+
+    private void SetEnviroGroundMode(TabsEnviroGroundMode mode)
+    {
+        SetEnviroGroundModeForMood(CurrentEnviroMoodIndex, mode);
+    }
+
+    private void SyncLegacyEnviroGroundModeToCurrentMood()
+    {
+        neonStageEnviroGroundMode = GetCurrentEnviroGroundMode();
+        neonStageEnviroGroundEnabled = neonStageEnviroGroundMode != TabsEnviroGroundMode.Off;
+    }
+
+    private void RegisterNeonHorizonRuntimeSettings()
+    {
+        const string themeSection = "Background - Neon Theme";
+        const string section = "Background - Neon Horizon";
+        const string skyDesignSection = "Background - Neon Sky Design";
+        const string skySection = "Background - Neon Sky";
+        const string groundSection = "Background - Neon Ground";
+        const string starsSection = "Background - Dome Stars";
+        const string cloudSection = "Background - Neon Clouds";
+
+        RegisterEnumSetting("bg.neonHorizon.theme", themeSection, "Neon Theme", "Applies matching horizon and aurora palettes. Manual palette edits switch this back to Custom; selecting a theme again realigns both.", NeonHorizonThemeOptions, () => GetIndexedOption(NeonHorizonThemeOptions, GetNeonHorizonTheme(IsEditingMainMenuBackground)), value => ApplyNeonHorizonTheme(ParseIndexedOption(NeonHorizonThemeOptions, value, GetNeonHorizonTheme(IsEditingMainMenuBackground)), IsEditingMainMenuBackground));
+
+        RegisterEnumSetting("bg.neonHorizon.skyDesign", skyDesignSection, "Sky Design", "Switches Neon Stage between the procedural dome and Enviro 3 skies.", NeonStageSkyDesignOptions, () => GetIndexedOption(NeonStageSkyDesignOptions, GetNeonStageSkyDesignOptionIndex(IsEditingMainMenuBackground)), value => SetNeonStageSkyDesignFromOptionIndex(ParseIndexedOption(NeonStageSkyDesignOptions, value, GetNeonStageSkyDesignOptionIndex(IsEditingMainMenuBackground)), IsEditingMainMenuBackground));
+        RegisterEnumSetting("bg.neonHorizon.enviroMood", skyDesignSection, "Enviro Mood", "Selects the lightweight Enviro 3 sky mood when Sky Design is Enviro 3.", EnviroSkyMoodOptions, () => GetIndexedOption(EnviroSkyMoodOptions, GetEnviroMoodIndex(IsEditingMainMenuBackground)), value =>
+        {
+            SetEnviroSkyMoodForCurrentContext((TabsEnviroSkyMood)Mathf.Clamp(ParseIndexedOption(EnviroSkyMoodOptions, value, GetEnviroMoodIndex(IsEditingMainMenuBackground)), 0, EnviroSkyMoodOptions.Length - 1));
+        });
+        RegisterEnviroMoodPresetRuntimeSettings(skyDesignSection);
+        RegisterEnumSetting("bg.neonHorizon.enviroGroundMode", skyDesignSection, "Enviro Ground Legacy", "Legacy Enviro ground mode. Kept only to migrate older saved settings; use the mood-specific Enviro Ground row instead.", EnviroGroundModeOptions, () => GetIndexedOption(EnviroGroundModeOptions, GetEnviroGroundModeIndex()), value => SetEnviroGroundMode((TabsEnviroGroundMode)ParseEnviroGroundModeOption(value, GetEnviroGroundModeIndex())));
+        RegisterBoolSetting("bg.neonHorizon.enviroGround", skyDesignSection, "Enviro Ground Legacy", "Legacy Enviro ground toggle. Kept for older saved settings; use Enviro Ground mode instead.", () => GetEnviroGroundModeIndex() != 0, value =>
+        {
+            if (!value)
+            {
+                SetEnviroGroundMode(TabsEnviroGroundMode.Off);
+            }
+            else if (GetEnviroGroundModeIndex() == (int)TabsEnviroGroundMode.Off)
+            {
+                SetEnviroGroundMode(TabsEnviroGroundMode.FlatPlane);
+            }
+        });
+        RegisterBoolSetting("bg.neonHorizon.enviroHorizon", skyDesignSection, "Enviro Horizon", "Shows the Neon Stage horizon line at the far end of Enviro ground or mountains. It uses the shared horizon color settings.", () => GetEnviroHorizonEnabled(IsEditingMainMenuBackground), SetEnviroHorizonEnabledForCurrentContext);
+
+        RegisterBoolSetting("bg.neonHorizon.unifiedSideColors", skySection, "Unified Side Colors", "Uses a coherent dark-blue sky and purple horizon. When off, the aurora beams use a symmetrical lower-pink and upper-blue split.", () => GetNeonHorizonUseUnifiedSideColors(IsEditingMainMenuBackground), SetNeonHorizonUseUnifiedSideColorsForCurrentContext);
+        RegisterEnumSetting("bg.neonHorizon.skyLineStyle", skySection, "Sky Line Type", "Switches the animated sky lines between the original side waves and horizon-origin wave beams.", NeonSkyLineStyleOptions, () => GetIndexedOption(NeonSkyLineStyleOptions, neonHorizonSkyLineStyle), value => neonHorizonSkyLineStyle = ParseIndexedOption(NeonSkyLineStyleOptions, value, neonHorizonSkyLineStyle));
+        RegisterEnumSetting("bg.neonHorizon.skyLinePalette", skySection, "Sky Line Palette", "Color palette used by the animated sky lines and side wash.", NeonSkyLineColorPaletteOptions, () => GetIndexedOption(NeonSkyLineColorPaletteOptions, GetNeonHorizonSkyLineColorPalette(IsEditingMainMenuBackground)), value => SetNeonHorizonSkyLineColorPaletteForCurrentContext(ParseIndexedOption(NeonSkyLineColorPaletteOptions, value, GetNeonHorizonSkyLineColorPalette(IsEditingMainMenuBackground))));
+        RegisterFloatSetting("bg.neonHorizon.skyCoreBrightness", skySection, "White Core Brightness", "Brightness of the white light bloom at the center of the sky.", 0f, 4f, 0.01f, () => neonHorizonSkyCoreBrightness, v => neonHorizonSkyCoreBrightness = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyCoreSize", skySection, "White Core Size", "Width of the central white sky bloom before it falls into color.", 0.02f, 1f, 0.005f, () => neonHorizonSkyCoreSize, v => neonHorizonSkyCoreSize = Mathf.Clamp(v, 0.02f, 1f));
+        RegisterFloatSetting("bg.neonHorizon.skyCoreHeight", skySection, "White Core Height", "Vertical height of the central white sky bloom. Lower values prevent a visible vertical center column.", 0.02f, 1f, 0.005f, () => neonHorizonSkyCoreHeight, v => neonHorizonSkyCoreHeight = Mathf.Clamp(v, 0.02f, 1f));
+        RegisterFloatSetting("bg.neonHorizon.skyCoreXOffset", skySection, "White Core X Offset", "Fine-tunes the sky core alignment if camera perspective makes it look offset from the horizon center.", -0.50f, 0.50f, 0.005f, () => neonHorizonSkyCoreXOffset, v => neonHorizonSkyCoreXOffset = Mathf.Clamp(v, -0.50f, 0.50f));
+        RegisterFloatSetting("bg.neonHorizon.skyCoreFalloff", skySection, "White Core Falloff", "Controls how sharply the white sky core fades outward.", 0.1f, 12f, 0.05f, () => neonHorizonSkyCoreFalloff, v => neonHorizonSkyCoreFalloff = Mathf.Max(0.01f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyOutsideDarkness", skySection, "Outside Sky Darkness", "Darkens or lightens the sky outside the center bloom. Values above 1 are darker.", 0.05f, 20f, 0.01f, () => neonHorizonSkyOutsideDarkness, v => neonHorizonSkyOutsideDarkness = Mathf.Max(0.05f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyCorePurpleStrength", skySection, "Core Purple Strength", "Adds purple color around the white sky core as it fades outward.", 0f, 3f, 0.01f, () => neonHorizonSkyCorePurpleStrength, v => neonHorizonSkyCorePurpleStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyCorePurpleFalloff", skySection, "Core Purple Falloff", "Controls how quickly the purple halo fades away from the sky core.", 0.1f, 12f, 0.05f, () => neonHorizonSkyCorePurpleFalloff, v => neonHorizonSkyCorePurpleFalloff = Mathf.Max(0.01f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyAuroraRidgeStrength", skySection, "Aurora Ridge Strength", "Adds a white-blue ridge along the animated sky waves. It starts sharper near the horizon and blooms wider outward.", 0f, 8f, 0.05f, () => neonHorizonSkyAuroraRidgeStrength, v => neonHorizonSkyAuroraRidgeStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyAuroraRidgeWhiteFalloffPosition", skySection, "Aurora White Fade Position", "Where the aurora ridge stops being white and becomes the beam color. 0 removes the white ridge.", 0f, 1f, 0.01f, () => neonHorizonSkyAuroraRidgeWhiteFalloffPosition, v => neonHorizonSkyAuroraRidgeWhiteFalloffPosition = Mathf.Clamp01(v));
+        RegisterFloatSetting("bg.neonHorizon.skyAuroraRidgeWhiteFalloffSharpness", skySection, "Aurora White Fade Sharpness", "Controls whether the white ridge transitions gradually or sharply into the aurora color.", 0f, 1f, 0.01f, () => neonHorizonSkyAuroraRidgeWhiteFalloffSharpness, v => neonHorizonSkyAuroraRidgeWhiteFalloffSharpness = Mathf.Clamp01(v));
+        RegisterFloatSetting("bg.neonHorizon.skyAuroraWaveBumpiness", skySection, "Aurora Wave Bumps", "Controls how much the aurora beams meander left and right. Higher values make the waves less straight.", 0f, 3f, 0.01f, () => neonHorizonSkyAuroraWaveBumpiness, v => neonHorizonSkyAuroraWaveBumpiness = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyLineStrength", skySection, "Sky Line Strength", "Brightness of the animated neon wave lines in the sky.", 0f, 20f, 0.05f, () => neonHorizonSkyLineStrength, v => neonHorizonSkyLineStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyLineOpacity", skySection, "Sky Line Opacity", "Fades the animated aurora/sky lines without changing the sky core, horizon, dots, or floor.", 0f, 1f, 0.01f, () => neonHorizonSkyLineOpacity, v => neonHorizonSkyLineOpacity = Mathf.Clamp01(v));
+        RegisterFloatSetting("bg.neonHorizon.skyLineReflectionStrength", skySection, "Sky Line Catch Light", "Brightens small pockets near the start of the aurora beams so they feel lit by the horizon. 0 disables it.", 0f, 3f, 0.01f, () => neonHorizonSkyLineReflectionStrength, v => neonHorizonSkyLineReflectionStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.skyDotStrength", skySection, "Sky Dot Strength", "Brightness of the dotted side-light pattern in the sky.", 0f, 8f, 0.05f, () => neonHorizonSkyDotStrength, v => neonHorizonSkyDotStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.skySideWashStrength", skySection, "Sky Side Wash", "Brightness of the broad colored side glow in the sky.", 0f, 8f, 0.05f, () => neonHorizonSkySideWashStrength, v => neonHorizonSkySideWashStrength = Mathf.Max(0f, v));
+
+        RegisterBoolSetting("bg.neonHorizon.cloudsEnabled", cloudSection, "Clouds", "Adds subtle drifting theme-tinted clouds behind the highway.", () => neonHorizonCloudsEnabled, v => neonHorizonCloudsEnabled = v);
+        RegisterFloatSetting("bg.neonHorizon.cloudOpacity", cloudSection, "Cloud Opacity", "Opacity of the Neon Stage cloud layer.", 0f, 1f, 0.01f, () => neonHorizonCloudOpacity, v => neonHorizonCloudOpacity = Mathf.Clamp01(v));
+        RegisterFloatSetting("bg.neonHorizon.cloudSpeed", cloudSection, "Cloud Speed", "How quickly the Neon Stage clouds drift.", 0f, 2f, 0.01f, () => neonHorizonCloudSpeed, v => neonHorizonCloudSpeed = Mathf.Max(0f, v));
+
+        RegisterFloatSetting("bg.neonHorizon.distance", section, "Distance", "Moves the horizon line farther from or closer to the camera.", 20f, 400f, 1f, () => neonHorizonLineDistance, v => neonHorizonLineDistance = Mathf.Max(1f, v));
+        RegisterFloatSetting("bg.neonHorizon.y", section, "Line Y", "Vertical placement of the horizon line.", -8f, 10f, 0.05f, () => neonHorizonLineY, v => neonHorizonLineY = v);
+        RegisterFloatSetting("bg.neonHorizon.width", section, "Line Width", "World width of the horizon line quads.", 50f, 1200f, 5f, () => neonHorizonLineWidth, v => neonHorizonLineWidth = Mathf.Max(1f, v));
+        RegisterFloatSetting("bg.neonHorizon.glowHeight", section, "Glow Height", "World height of the soft horizon glow quad.", 0.05f, 8f, 0.05f, () => neonHorizonGlowBlurHeight, v => neonHorizonGlowBlurHeight = Mathf.Max(0.01f, v));
+        RegisterFloatSetting("bg.neonHorizon.coreHeight", section, "Core Height", "World height of the thin bright horizon core.", 0.005f, 0.5f, 0.005f, () => neonHorizonCoreLineHeight, v => neonHorizonCoreLineHeight = Mathf.Max(0.001f, v));
+        RegisterFloatSetting("bg.neonHorizon.coreYOffset", section, "Core Y Offset", "Vertical offset of the thin bright core relative to the soft glow.", -1f, 1f, 0.005f, () => neonHorizonCoreLineYOffset, v => neonHorizonCoreLineYOffset = v);
+        RegisterFloatSetting("bg.neonHorizon.floorOverlap", section, "Floor Overlap", "Small overlap used to remove a screen-space gap between the floor and horizon.", 0f, 1f, 0.005f, () => neonHorizonFloorHorizonOverlap, v => neonHorizonFloorHorizonOverlap = Mathf.Max(0f, v));
+
+        RegisterFloatSetting("bg.neonHorizon.groundDarkness", groundSection, "Ground Darkness", "Darkens or lightens the neon stage floor. Lower values are brighter; 1.0 keeps the authored look.", 0.05f, 4f, 0.01f, () => neonHorizonGroundDarkness, v => neonHorizonGroundDarkness = Mathf.Max(0.05f, v));
+        RegisterFloatSetting("bg.neonHorizon.groundGradientStart", groundSection, "Ground Gradient Start", "Moves where the floor starts lifting from near-black into the brighter horizon gradient. Higher values keep the floor darker for longer.", 0f, 0.99f, 0.01f, () => neonHorizonGroundGradientStart, v => neonHorizonGroundGradientStart = Mathf.Clamp(v, 0.01f, 0.99f));
+        RegisterFloatSetting("bg.neonHorizon.groundGradientBrightness", groundSection, "Ground Gradient Brightness", "Controls only how bright the far floor gradient becomes. It does not move where the gradient starts.", 0f, 10f, 0.01f, () => neonHorizonGroundGradientBrightness, v => neonHorizonGroundGradientBrightness = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.groundReflectivity", groundSection, "Ground Reflectivity", "Adds broad colored sheen from the far neon stage lights onto the floor. This is separate from Aurora Floor Reflection.", 0f, 5f, 0.01f, () => neonHorizonGroundReflectivity, v => neonHorizonGroundReflectivity = Mathf.Max(0f, v));
+        RegisterBoolSetting("bg.neonHorizon.floorAuroraReflection", groundSection, "Aurora Floor Reflection", "Shows soft mirrored aurora streaks on the floor.", () => neonHorizonFloorAuroraReflectionEnabled, v => neonHorizonFloorAuroraReflectionEnabled = v);
+        RegisterFloatSetting("bg.neonHorizon.floorAuroraReflectionStrength", groundSection, "Aurora Reflection Strength", "Brightness of the sharp mirrored aurora streaks on the floor. Independent from Ground Reflectivity.", 0f, 5f, 0.01f, () => neonHorizonFloorAuroraReflectionStrength, v => neonHorizonFloorAuroraReflectionStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.floorAuroraReflectionWidth", groundSection, "Aurora Reflection Width", "Width of each mirrored aurora streak on the floor.", 0.5f, 40f, 0.1f, () => neonHorizonFloorAuroraReflectionWidth, v => neonHorizonFloorAuroraReflectionWidth = Mathf.Max(0.5f, v));
+        RegisterFloatSetting("bg.neonHorizon.floorAuroraReflectionLength", groundSection, "Aurora Reflection Length", "How far each mirrored aurora streak stretches from the horizon toward the camera.", 0.05f, 1.5f, 0.01f, () => neonHorizonFloorAuroraReflectionLength, v => neonHorizonFloorAuroraReflectionLength = Mathf.Max(0.05f, v));
+
+        RegisterBoolSetting("bg.neonHorizon.domeStars.enabled", starsSection, "Dome Stars - Enabled", "Shows procedural twinkling stars behind the neon horizon.", () => GetDomeStarsEnabled(IsEditingMainMenuBackground), SetDomeStarsEnabledForCurrentContext);
+        RegisterIntSetting("bg.neonHorizon.domeStars.count", starsSection, "Dome Stars - Count", "Controls how many procedural stars are drawn in the dome sky.", 0, 1200, 10, () => GetDomeStarsCount(IsEditingMainMenuBackground), SetDomeStarsCountForCurrentContext);
+        RegisterFloatSetting("bg.neonHorizon.domeStars.brightness", starsSection, "Dome Stars - Brightness", "Controls star brightness.", 0f, 4f, 0.05f, () => GetDomeStarsBrightness(IsEditingMainMenuBackground), SetDomeStarsBrightnessForCurrentContext);
+        RegisterFloatSetting("bg.neonHorizon.domeStars.twinkleStrength", starsSection, "Dome Stars - Twinkle Strength", "Controls how much stars pulse over time.", 0f, 1f, 0.01f, () => GetDomeStarsTwinkleStrength(IsEditingMainMenuBackground), SetDomeStarsTwinkleStrengthForCurrentContext);
+        RegisterFloatSetting("bg.neonHorizon.domeStars.twinkleSpeed", starsSection, "Dome Stars - Twinkle Speed", "Controls how fast stars twinkle.", 0f, 5f, 0.05f, () => GetDomeStarsTwinkleSpeed(IsEditingMainMenuBackground), SetDomeStarsTwinkleSpeedForCurrentContext);
+        RegisterFloatSetting("bg.neonHorizon.domeStars.size", starsSection, "Dome Stars - Size", "Controls procedural star size.", 0.1f, 4f, 0.05f, () => GetDomeStarsSize(IsEditingMainMenuBackground), SetDomeStarsSizeForCurrentContext);
+        RegisterIntSetting("bg.neonHorizon.domeStars.seed", starsSection, "Dome Stars - Seed", "Changes the star placement pattern.", 0, 99999, 1, () => GetDomeStarsSeed(IsEditingMainMenuBackground), SetDomeStarsSeedForCurrentContext);
+        RegisterBoolSetting("bg.neonHorizon.domeMountains", groundSection, "Dome Mountains", "Adds the same distant layered mountain silhouettes behind the procedural dome horizon.", () => GetDomeMountainsEnabled(IsEditingMainMenuBackground), SetDomeMountainsEnabledForCurrentContext);
+        RegisterFloatSetting("bg.neonHorizon.domeMountainNearOpacity", groundSection, "Dome Near Mountain Opacity", "Controls the closest, darkest procedural-dome mountain layer.", 0f, 1f, 0.05f, () => GetDomeMountainNearOpacity(IsEditingMainMenuBackground), SetDomeMountainNearOpacityForCurrentContext);
+        RegisterFloatSetting("bg.neonHorizon.domeMountainMidOpacity", groundSection, "Dome Middle Mountain Opacity", "Controls the middle procedural-dome mountain layer.", 0f, 1f, 0.05f, () => GetDomeMountainMidOpacity(IsEditingMainMenuBackground), SetDomeMountainMidOpacityForCurrentContext);
+        RegisterFloatSetting("bg.neonHorizon.domeMountainFarOpacity", groundSection, "Dome Far Mountain Opacity", "Controls the farthest procedural-dome mountain layer.", 0f, 1f, 0.05f, () => GetDomeMountainFarOpacity(IsEditingMainMenuBackground), SetDomeMountainFarOpacityForCurrentContext);
+
+        RegisterEnumSetting("bg.neonHorizon.palette", section, "Line Palette", "Color palette used by the horizon line. Crimson Pulse gives a warm red option that still fits the dark blue stage.", NeonHorizonColorPaletteOptions, () => GetIndexedOption(NeonHorizonColorPaletteOptions, GetNeonHorizonColorPalette(IsEditingMainMenuBackground)), value => SetNeonHorizonColorPaletteForCurrentContext(ParseIndexedOption(NeonHorizonColorPaletteOptions, value, GetNeonHorizonColorPalette(IsEditingMainMenuBackground))));
+        RegisterFloatSetting("bg.neonHorizon.colorStrength", section, "Color Brightness", "HDR brightness multiplier for the horizon colors.", 0f, 4f, 0.05f, () => neonHorizonColorStrength, v => neonHorizonColorStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.colorSaturation", section, "Color Saturation", "Boosts magenta/cyan saturation without widening the pale center.", 0f, 4f, 0.05f, () => neonHorizonColorSaturation, v => neonHorizonColorSaturation = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.softGlow", section, "Soft Glow", "Intensity of the wide soft horizon layer.", 0f, 5f, 0.05f, () => neonHorizonSoftGlowIntensity, v => neonHorizonSoftGlowIntensity = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.coreGlow", section, "Core Glow", "Intensity of the thin bright horizon core.", 0f, 5f, 0.05f, () => neonHorizonCoreGlowIntensity, v => neonHorizonCoreGlowIntensity = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.softAlpha", section, "Soft Alpha", "Opacity of the wide soft horizon layer.", 0f, 1f, 0.01f, () => neonHorizonSoftAlpha, v => neonHorizonSoftAlpha = Mathf.Clamp01(v));
+        RegisterFloatSetting("bg.neonHorizon.coreAlpha", section, "Core Alpha", "Opacity of the thin bright horizon core.", 0f, 1f, 0.01f, () => neonHorizonCoreAlpha, v => neonHorizonCoreAlpha = Mathf.Clamp01(v));
+
+        RegisterFloatSetting("bg.neonHorizon.softBlurFalloff", section, "Soft Blur Falloff", "Higher values make the soft layer thinner vertically.", 0.1f, 120f, 0.1f, () => neonHorizonSoftBlurFalloff, v => neonHorizonSoftBlurFalloff = Mathf.Max(0.01f, v));
+        RegisterFloatSetting("bg.neonHorizon.coreBlurFalloff", section, "Core Blur Falloff", "Higher values make the core layer thinner vertically.", 0.1f, 120f, 0.1f, () => neonHorizonCoreBlurFalloff, v => neonHorizonCoreBlurFalloff = Mathf.Max(0.01f, v));
+        RegisterFloatSetting("bg.neonHorizon.softColorFalloff", section, "Soft Color Falloff", "Controls how the soft layer transitions from center to side colors.", 0.1f, 12f, 0.05f, () => neonHorizonSoftColorFalloff, v => neonHorizonSoftColorFalloff = Mathf.Max(0.01f, v));
+        RegisterFloatSetting("bg.neonHorizon.coreColorFalloff", section, "Core Color Falloff", "Controls how the core layer transitions from center to side colors.", 0.1f, 12f, 0.05f, () => neonHorizonCoreColorFalloff, v => neonHorizonCoreColorFalloff = Mathf.Max(0.01f, v));
+
+        RegisterFloatSetting("bg.neonHorizon.centerBlendWidth", section, "White Center Width", "How wide the pale center blend is before magenta/cyan take over.", 0f, 1f, 0.005f, () => neonHorizonCenterBlendWidth, v => neonHorizonCenterBlendWidth = Mathf.Clamp01(v));
+        RegisterFloatSetting("bg.neonHorizon.centerBlendFalloff", section, "White Center Falloff", "How quickly the pale center transitions into color.", 0.1f, 80f, 0.1f, () => neonHorizonCenterBlendFalloff, v => neonHorizonCenterBlendFalloff = Mathf.Max(0.01f, v));
+        RegisterFloatSetting("bg.neonHorizon.centerBlendStrength", section, "White Center Strength", "Strength of the pale center blend. Set to zero for no white center.", 0f, 1f, 0.005f, () => neonHorizonCenterBlendStrength, v => neonHorizonCenterBlendStrength = Mathf.Clamp01(v));
+
+        RegisterFloatSetting("bg.neonHorizon.softCoreWidth", section, "Soft Core Width", "Shader line width inside the wide soft horizon quad.", 0.001f, 0.3f, 0.001f, () => neonHorizonSoftCoreWidth, v => neonHorizonSoftCoreWidth = Mathf.Max(0.001f, v));
+        RegisterFloatSetting("bg.neonHorizon.softCoreSoftness", section, "Soft Core Softness", "Shader softness inside the wide soft horizon quad.", 0.001f, 0.3f, 0.001f, () => neonHorizonSoftCoreSoftness, v => neonHorizonSoftCoreSoftness = Mathf.Max(0.001f, v));
+        RegisterFloatSetting("bg.neonHorizon.coreWidth", section, "Core Width", "Shader line width inside the thin core quad.", 0.001f, 0.3f, 0.001f, () => neonHorizonCoreWidth, v => neonHorizonCoreWidth = Mathf.Max(0.001f, v));
+        RegisterFloatSetting("bg.neonHorizon.coreSoftness", section, "Core Softness", "Shader softness inside the thin core quad.", 0.001f, 0.3f, 0.001f, () => neonHorizonCoreSoftness, v => neonHorizonCoreSoftness = Mathf.Max(0.001f, v));
+        RegisterFloatSetting("bg.neonHorizon.softShimmer", section, "Soft Shimmer", "Animated shimmer amount on the soft horizon layer.", 0f, 0.2f, 0.001f, () => neonHorizonSoftShimmerStrength, v => neonHorizonSoftShimmerStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.coreShimmer", section, "Core Shimmer", "Animated shimmer amount on the core horizon layer.", 0f, 0.2f, 0.001f, () => neonHorizonCoreShimmerStrength, v => neonHorizonCoreShimmerStrength = Mathf.Max(0f, v));
+
+        RegisterFloatSetting("bg.neonHorizon.edgeBlurStrength", section, "Edge Blur Strength", "Adds a low-alpha haze around the horizon edges while keeping the core line narrow.", 0f, 80f, 0.1f, () => neonHorizonEdgeBlurStrength, v => neonHorizonEdgeBlurStrength = Mathf.Max(0f, v));
+        RegisterFloatSetting("bg.neonHorizon.edgeBlurStart", section, "Edge Blur Start", "Distance from the center where edge blur starts. Higher keeps the center sharp for longer.", 0f, 0.99f, 0.01f, () => neonHorizonEdgeBlurStart, v => neonHorizonEdgeBlurStart = Mathf.Clamp(v, 0f, 0.99f));
+        RegisterFloatSetting("bg.neonHorizon.edgeBlurSharpness", section, "Edge Blur Sharpness", "Controls how sharply the horizon switches from clean line to edge haze.", 0.1f, 24f, 0.05f, () => neonHorizonEdgeBlurSharpness, v => neonHorizonEdgeBlurSharpness = Mathf.Max(0.01f, v));
+        RegisterFloatSetting("bg.neonHorizon.curveDown", section, "Curve Down", "Bends the horizon and far floor edge down at the sides so the stage can feel less flat.", -25f, 25f, 0.05f, () => neonHorizonCurveDown, v => neonHorizonCurveDown = v);
+        RegisterFloatSetting("bg.neonHorizon.curveTowardCamera", section, "Curve Toward Camera", "Pulls the horizon and far floor sides toward the camera. Horizon and floor are curved together.", -120f, 120f, 0.5f, () => neonHorizonCurveTowardCamera, v => neonHorizonCurveTowardCamera = v);
+
+    }
+
+    private void RegisterEnviroMoodPresetRuntimeSettings(string section)
+    {
+        EnsureEnviroMoodSettings();
+        for (int moodIndex = 0; moodIndex < EnviroSkyMoodOptions.Length; moodIndex++)
+        {
+            int capturedMoodIndex = moodIndex;
+            RegisterEnumSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "moonMode"),
+                section,
+                "Enviro Moon",
+                "Overrides the moon for this Enviro 3 mood only. Normal keeps the mood-authored moon size and visibility.",
+                EnviroMoonModeOptions,
+                () => GetIndexedOption(EnviroMoonModeOptions, (int)GetEnviroMoonModeForMood(capturedMoodIndex)),
+                value => SetEnviroMoonModeForMood(capturedMoodIndex, (TabsEnviroMoonMode)Mathf.Clamp(ParseIndexedOption(EnviroMoonModeOptions, value, (int)GetEnviroMoonModeForMood(capturedMoodIndex)), 0, EnviroMoonModeOptions.Length - 1)));
+
+            RegisterEnumSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "groundMode"),
+                section,
+                "Enviro Ground",
+                "Chooses the ground treatment for this Enviro 3 mood only: none, a flat plane, an extended plane, or distant mountain silhouettes.",
+                EnviroGroundModeOptions,
+                () => GetIndexedOption(EnviroGroundModeOptions, (int)GetEnviroGroundModeForMood(capturedMoodIndex)),
+                value => SetEnviroGroundModeForMood(capturedMoodIndex, (TabsEnviroGroundMode)ParseEnviroGroundModeOption(value, (int)GetEnviroGroundModeForMood(capturedMoodIndex))));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "skyCameraPitch"),
+                section,
+                "Sky Camera Pitch",
+                "Tilts Enviro 3 sky and volumetric cloud sampling for this mood without rotating the gameplay camera. Positive values look higher into the sky.",
+                -18f,
+                18f,
+                0.5f,
+                () => GetEnviroSkyCameraPitchForMood(capturedMoodIndex),
+                value => SetEnviroSkyCameraPitchForMood(capturedMoodIndex, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "starAnimation"),
+                section,
+                "Star Animation",
+                "Boosts this mood's Enviro 3 star brightness and twinkle speed so the sky reads as more alive. 1 keeps the authored look.",
+                0f,
+                2f,
+                0.05f,
+                () => GetEnviroStarAnimationForMood(capturedMoodIndex),
+                value => SetEnviroStarAnimationForMood(capturedMoodIndex, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "starDensity"),
+                section,
+                "Star Density",
+                "Controls how many stars this Enviro 3 mood appears to have. 1 keeps the authored density; higher values add a denser procedural star layer.",
+                0f,
+                2f,
+                0.05f,
+                () => GetEnviroStarDensityForMood(capturedMoodIndex),
+                value => SetEnviroStarDensityForMood(capturedMoodIndex, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "mountainOpacity"),
+                section,
+                "Mountain Opacity Legacy",
+                "Legacy mountain opacity. New moods use the separate near, middle, and far mountain layer opacity controls.",
+                0f,
+                1f,
+                0.05f,
+                () => GetEnviroMountainOpacityForMood(capturedMoodIndex),
+                value => SetEnviroMountainOpacityForMood(capturedMoodIndex, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "mountainOpacityNear"),
+                section,
+                "Near Mountain Opacity",
+                "Controls the closest, darkest mountain layer for this Enviro 3 mood only.",
+                0f,
+                1f,
+                0.05f,
+                () => GetEnviroMountainLayerOpacityForMood(capturedMoodIndex, 2),
+                value => SetEnviroMountainLayerOpacityForMood(capturedMoodIndex, 2, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "mountainOpacityMid"),
+                section,
+                "Middle Mountain Opacity",
+                "Controls the middle mountain layer for this Enviro 3 mood only.",
+                0f,
+                1f,
+                0.05f,
+                () => GetEnviroMountainLayerOpacityForMood(capturedMoodIndex, 1),
+                value => SetEnviroMountainLayerOpacityForMood(capturedMoodIndex, 1, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "mountainOpacityFar"),
+                section,
+                "Far Mountain Opacity",
+                "Controls the farthest, softest mountain layer for this Enviro 3 mood only.",
+                0f,
+                1f,
+                0.05f,
+                () => GetEnviroMountainLayerOpacityForMood(capturedMoodIndex, 0),
+                value => SetEnviroMountainLayerOpacityForMood(capturedMoodIndex, 0, value));
+
+            RegisterBoolSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "clouds"),
+                section,
+                "Volumetric Clouds",
+                "Turns Enviro 3 volumetric clouds on or off for this mood only.",
+                () => GetEnviroCloudsEnabledForMood(capturedMoodIndex),
+                value => SetEnviroCloudsEnabledForMood(capturedMoodIndex, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "cloudAmount"),
+                section,
+                "Cloud Amount",
+                "Adds or removes Enviro 3 volumetric cloud coverage for this mood only.",
+                0f,
+                2f,
+                0.05f,
+                () => GetEnviroCloudAmountForMood(capturedMoodIndex),
+                value => SetEnviroCloudAmountForMood(capturedMoodIndex, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "cloudThickness"),
+                section,
+                "Cloud Thickness",
+                "Controls how dense and physically heavy this mood's Enviro 3 cloud volume feels.",
+                0f,
+                2f,
+                0.05f,
+                () => GetEnviroCloudThicknessForMood(capturedMoodIndex),
+                value => SetEnviroCloudThicknessForMood(capturedMoodIndex, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "cloudConnectivity"),
+                section,
+                "Cloud Connection",
+                "Moves this mood's Enviro 3 clouds between broken islands and more connected cloud banks.",
+                0f,
+                2f,
+                0.05f,
+                () => GetEnviroCloudConnectivityForMood(capturedMoodIndex),
+                value => SetEnviroCloudConnectivityForMood(capturedMoodIndex, value));
+
+            RegisterFloatSetting(
+                GetEnviroMoodSettingId(capturedMoodIndex, "cloudContrast"),
+                section,
+                "Cloud Contrast",
+                "Controls the split between bright moon/sun-lit edges and the darker cloud body for this mood.",
+                0f,
+                2f,
+                0.05f,
+                () => GetEnviroCloudContrastForMood(capturedMoodIndex),
+                value => SetEnviroCloudContrastForMood(capturedMoodIndex, value));
+        }
+    }
+
+    private static string GetIndexedOption(string[] options, int index)
+    {
+        if (options == null || options.Length == 0)
+            return string.Empty;
+
+        return options[Mathf.Clamp(index, 0, options.Length - 1)];
+    }
+
+    private static string SerializeBackgroundMode(TabsBackgroundMode mode)
+    {
+        switch (mode)
+        {
+            case TabsBackgroundMode.BlueSky:
+                return nameof(TabsBackgroundMode.BlueSky);
+            case TabsBackgroundMode.NeonStage:
+                return nameof(TabsBackgroundMode.NeonStage);
+            case TabsBackgroundMode.SolidColor:
+                return nameof(TabsBackgroundMode.SolidColor);
+            default:
+                return nameof(TabsBackgroundMode.NeonStage);
+        }
+    }
+
+    private static TabsBackgroundMode ParseBackgroundMode(string value, TabsBackgroundMode fallback)
+    {
+        if (Enum.TryParse(value, out TabsBackgroundMode mode))
+        {
+            switch (mode)
+            {
+                case TabsBackgroundMode.SolidColor:
+                case TabsBackgroundMode.BlueSky:
+                case TabsBackgroundMode.NeonStage:
+                    return mode;
+            }
+        }
+
+        return fallback == TabsBackgroundMode.SolidColor || fallback == TabsBackgroundMode.BlueSky || fallback == TabsBackgroundMode.NeonStage
+            ? fallback
+            : TabsBackgroundMode.NeonStage;
+    }
+
+    private int GetNeonStageSkyDesignOptionIndex()
+    {
+        return neonStageSkyDesign == TabsNeonStageSkyDesign.Enviro3 ? 1 : 0;
+    }
+
+    private void SetNeonStageSkyDesignFromOptionIndex(int optionIndex)
+    {
+        neonStageSkyDesign = optionIndex == 1
+            ? TabsNeonStageSkyDesign.Enviro3
+            : TabsNeonStageSkyDesign.ProceduralDome;
+    }
+
+    private static int ParseIndexedOption(string[] options, string value, int fallback)
+    {
+        if (options == null || options.Length == 0)
+            return 0;
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            for (int i = 0; i < options.Length; i++)
+            {
+                if (string.Equals(options[i], value, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+        }
+
+        return Mathf.Clamp(fallback, 0, options.Length - 1);
+    }
+
+    private static int ParseEnviroGroundModeOption(string value, int fallback)
+    {
+        string normalized = (value ?? string.Empty).Trim();
+        if (string.Equals(normalized, "FlatPlane", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Flat Plane", StringComparison.OrdinalIgnoreCase))
+            return (int)TabsEnviroGroundMode.FlatPlane;
+        if (string.Equals(normalized, "ExtendedPlane", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Extended Plane", StringComparison.OrdinalIgnoreCase))
+            return (int)TabsEnviroGroundMode.ExtendedPlane;
+        if (string.Equals(normalized, "Mountains", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(normalized, "Distant Mountains", StringComparison.OrdinalIgnoreCase))
+            return (int)TabsEnviroGroundMode.Mountains;
+        if (string.Equals(normalized, "Off", StringComparison.OrdinalIgnoreCase))
+            return (int)TabsEnviroGroundMode.Off;
+
+        return ParseIndexedOption(EnviroGroundModeOptions, normalized, fallback);
     }
 
     private static string SerializeRenderMode(GuitarRenderMode mode)
@@ -23008,10 +25815,30 @@ private void ParseDetectorPacket(string detectorPacket)
         if (definition == null || string.IsNullOrEmpty(definition.Id))
             return;
 
+        definition.VisibleInGlobalSettings = ShouldShowRuntimeSettingInGlobalSettings(definition.Id);
         runtimeSettingDefinitions.Add(definition);
         runtimeSettingById[definition.Id] = definition;
         runtimeSettingDefaultValues[definition.Id] = definition.Getter != null ? definition.Getter() : string.Empty;
         runtimeSettingsSnapshotDirty = true;
+    }
+
+    private static bool ShouldShowRuntimeSettingInGlobalSettings(string settingId)
+    {
+        if (string.IsNullOrWhiteSpace(settingId))
+            return true;
+
+        if (string.Equals(settingId, "bg.moodSetter", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (settingId.StartsWith("highway.background", StringComparison.OrdinalIgnoreCase) ||
+            settingId.StartsWith("highway.cloud", StringComparison.OrdinalIgnoreCase) ||
+            settingId.StartsWith("highway.star", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return true;
     }
 
     private static string SerializeArcadeInputSource(ArcadeInputSourceMode source)
@@ -23542,6 +26369,394 @@ private void ParseDetectorPacket(string detectorPacket)
             .ToList();
     }
 
+    private List<RuntimeSettingSectionSnapshot> BuildBackgroundMoodSetterSections()
+    {
+        List<RuntimeSettingSectionSnapshot> sections = new List<RuntimeSettingSectionSnapshot>();
+        bool editingMainMenu = IsEditingMainMenuBackground;
+        TabsBackgroundMode activeBackgroundMode = GetBackgroundModeForContext(editingMainMenu);
+        TabsNeonStageSkyDesign activeSkyDesign = GetNeonStageSkyDesign(editingMainMenu);
+
+        List<string> mainIds = new List<string> { "bg.mode" };
+        switch (activeBackgroundMode)
+        {
+            case TabsBackgroundMode.BlueSky:
+                mainIds.Add("bg.skyMood");
+                mainIds.Add("bg.skyUseStage");
+                break;
+            case TabsBackgroundMode.NeonStage:
+                mainIds.Add("bg.neonHorizon.skyDesign");
+                switch (activeSkyDesign)
+                {
+                    case TabsNeonStageSkyDesign.Enviro3:
+                        mainIds.Add("bg.neonHorizon.enviroMood");
+                        mainIds.Add(GetCurrentEnviroMoodSettingId("moonMode"));
+                        break;
+                    default:
+                        mainIds.Add("bg.neonHorizon.theme");
+                        break;
+                }
+                break;
+        }
+        AddBackgroundMoodSection(sections, "Mood", mainIds);
+
+        if (editingMainMenu && activeBackgroundMode != TabsBackgroundMode.NeonStage)
+            return sections;
+
+        switch (activeBackgroundMode)
+        {
+            case TabsBackgroundMode.SolidColor:
+                AddBackgroundMoodSection(sections, "Solid Color", new[]
+                {
+                    "highway.backgroundColorR",
+                    "highway.backgroundColorG",
+                    "highway.backgroundColorB",
+                    "highway.backgroundColorA"
+                });
+                break;
+            case TabsBackgroundMode.BlueSky:
+                AddBackgroundMoodSection(sections, "Sky", new[]
+                {
+                    "bg.skyStars",
+                    "bg.skyStarCount",
+                    "bg.skyStarTwinkleFraction",
+                    "bg.skyStarTwinkleStrength",
+                    "bg.skyStarTwinkleSpeedMin",
+                    "bg.skyStarTwinkleSpeedMax"
+                });
+                AddBackgroundMoodSection(sections, "Clouds", new[]
+                {
+                    "bg.skyCloudGlobalScale",
+                    "bg.skyCloudNearSpeed",
+                    "bg.skyCloudMidSpeed",
+                    "bg.skyCloudFarSpeed"
+                });
+                break;
+            case TabsBackgroundMode.NeonStage:
+                AddNeonStageMoodSetterSections(sections);
+                break;
+        }
+
+        if (!editingMainMenu)
+            AddBackgroundMoodSection(sections, "Highway Framing", BuildBackgroundMoodHighwayFramingIds());
+        return sections;
+    }
+
+    private void AddNeonStageMoodSetterSections(List<RuntimeSettingSectionSnapshot> sections)
+    {
+        if (sections == null)
+            return;
+
+        bool editingMainMenu = IsEditingMainMenuBackground;
+        TabsNeonStageSkyDesign activeSkyDesign = GetNeonStageSkyDesign(editingMainMenu);
+
+        switch (activeSkyDesign)
+        {
+            case TabsNeonStageSkyDesign.Enviro3:
+                List<string> enviro3Ids = new List<string>
+                {
+                    GetCurrentEnviroMoodSettingId("skyCameraPitch"),
+                    GetCurrentEnviroMoodSettingId("starAnimation"),
+                    GetCurrentEnviroMoodSettingId("starDensity"),
+                    GetCurrentEnviroMoodSettingId("groundMode")
+                };
+                if (GetCurrentEnviroGroundMode() == TabsEnviroGroundMode.Mountains)
+                {
+                    enviro3Ids.Add(GetCurrentEnviroMoodSettingId("mountainOpacityNear"));
+                    enviro3Ids.Add(GetCurrentEnviroMoodSettingId("mountainOpacityMid"));
+                    enviro3Ids.Add(GetCurrentEnviroMoodSettingId("mountainOpacityFar"));
+                }
+                enviro3Ids.Add("bg.neonHorizon.enviroHorizon");
+                AddBackgroundMoodSection(sections, "Enviro 3", enviro3Ids);
+                List<string> enviroCloudIds = new List<string>
+                {
+                    GetCurrentEnviroMoodSettingId("clouds")
+                };
+                if (GetEnviroCloudsEnabledForMood(CurrentEnviroMoodIndex))
+                {
+                    enviroCloudIds.Add(GetCurrentEnviroMoodSettingId("cloudAmount"));
+                    enviroCloudIds.Add(GetCurrentEnviroMoodSettingId("cloudThickness"));
+                    enviroCloudIds.Add(GetCurrentEnviroMoodSettingId("cloudConnectivity"));
+                    enviroCloudIds.Add(GetCurrentEnviroMoodSettingId("cloudContrast"));
+                }
+                AddBackgroundMoodSection(sections, "Enviro Clouds", enviroCloudIds);
+                if (!editingMainMenu && GetCurrentEnviroGroundMode() != TabsEnviroGroundMode.Off && GetEnviroHorizonEnabled(false))
+                    AddBackgroundMoodSection(sections, "Enviro Horizon", BuildBackgroundMoodHorizonIds(includeGeometry: true));
+                break;
+            default:
+                if (editingMainMenu)
+                {
+                    AddBackgroundMoodSection(sections, "Dome Theme", new[]
+                    {
+                        "bg.neonHorizon.unifiedSideColors",
+                        "bg.neonHorizon.skyLinePalette",
+                        "bg.neonHorizon.palette"
+                    });
+                    AddBackgroundMoodSection(sections, "Dome Stars", new[]
+                    {
+                        "bg.neonHorizon.domeStars.enabled",
+                        "bg.neonHorizon.domeStars.count",
+                        "bg.neonHorizon.domeStars.brightness",
+                        "bg.neonHorizon.domeStars.size",
+                        "bg.neonHorizon.domeStars.twinkleStrength",
+                        "bg.neonHorizon.domeStars.twinkleSpeed",
+                        "bg.neonHorizon.domeStars.seed"
+                    });
+                    List<string> menuDomeMountainIds = new List<string>
+                    {
+                        "bg.neonHorizon.domeMountains"
+                    };
+                    if (GetDomeMountainsEnabled(true))
+                    {
+                        menuDomeMountainIds.Add("bg.neonHorizon.domeMountainNearOpacity");
+                        menuDomeMountainIds.Add("bg.neonHorizon.domeMountainMidOpacity");
+                        menuDomeMountainIds.Add("bg.neonHorizon.domeMountainFarOpacity");
+                    }
+                    AddBackgroundMoodSection(sections, "Dome Mountains", menuDomeMountainIds);
+                    break;
+                }
+
+                AddBackgroundMoodSection(sections, "Dome Sky", new[]
+                {
+                    "bg.neonHorizon.unifiedSideColors",
+                    "bg.neonHorizon.skyLineStyle",
+                    "bg.neonHorizon.skyLinePalette",
+                    "bg.neonHorizon.skyLineStrength",
+                    "bg.neonHorizon.skyLineOpacity",
+                    "bg.neonHorizon.cloudsEnabled",
+                    "bg.neonHorizon.cloudOpacity",
+                    "bg.neonHorizon.cloudSpeed"
+                });
+                AddBackgroundMoodSection(sections, "Dome Stars", new[]
+                {
+                    "bg.neonHorizon.domeStars.enabled",
+                    "bg.neonHorizon.domeStars.count",
+                    "bg.neonHorizon.domeStars.brightness",
+                    "bg.neonHorizon.domeStars.size",
+                    "bg.neonHorizon.domeStars.twinkleStrength",
+                    "bg.neonHorizon.domeStars.twinkleSpeed",
+                    "bg.neonHorizon.domeStars.seed"
+                });
+                List<string> domeMountainIds = new List<string>
+                {
+                    "bg.neonHorizon.domeMountains"
+                };
+                if (GetDomeMountainsEnabled(false))
+                {
+                    domeMountainIds.Add("bg.neonHorizon.domeMountainNearOpacity");
+                    domeMountainIds.Add("bg.neonHorizon.domeMountainMidOpacity");
+                    domeMountainIds.Add("bg.neonHorizon.domeMountainFarOpacity");
+                }
+                AddBackgroundMoodSection(sections, "Dome Mountains", domeMountainIds);
+                AddBackgroundMoodSection(sections, "Ground", new[]
+                {
+                    "bg.neonHorizon.groundDarkness",
+                    "bg.neonHorizon.groundGradientStart",
+                    "bg.neonHorizon.groundGradientBrightness",
+                    "bg.neonHorizon.groundReflectivity",
+                    "bg.neonHorizon.floorAuroraReflection",
+                    "bg.neonHorizon.floorAuroraReflectionStrength",
+                    "bg.neonHorizon.floorAuroraReflectionWidth",
+                    "bg.neonHorizon.floorAuroraReflectionLength"
+                });
+                AddBackgroundMoodSection(sections, "Horizon", BuildBackgroundMoodHorizonIds(includeGeometry: true));
+                break;
+        }
+    }
+
+    private static IEnumerable<string> BuildBackgroundMoodHorizonIds(bool includeGeometry)
+    {
+        List<string> ids = new List<string>
+        {
+            "bg.neonHorizon.palette",
+            "bg.neonHorizon.colorStrength",
+            "bg.neonHorizon.colorSaturation",
+            "bg.neonHorizon.softGlow",
+            "bg.neonHorizon.coreGlow",
+            "bg.neonHorizon.softAlpha",
+            "bg.neonHorizon.coreAlpha"
+        };
+
+        if (includeGeometry)
+        {
+            ids.Add("bg.neonHorizon.distance");
+            ids.Add("bg.neonHorizon.y");
+            ids.Add("bg.neonHorizon.width");
+            ids.Add("bg.neonHorizon.glowHeight");
+            ids.Add("bg.neonHorizon.coreHeight");
+            ids.Add("bg.neonHorizon.floorOverlap");
+            ids.Add("bg.neonHorizon.curveDown");
+            ids.Add("bg.neonHorizon.curveTowardCamera");
+        }
+
+        return ids;
+    }
+
+    private IEnumerable<string> BuildBackgroundMoodHighwayFramingIds()
+    {
+        List<string> ids = new List<string>
+        {
+            "highway.backgroundDistance",
+            "highway.backgroundCenterY",
+            "highway.backgroundScale"
+        };
+
+        switch (tabBackgroundMode)
+        {
+            case TabsBackgroundMode.BlueSky:
+                ids.Add("highway.cloudYOffset");
+                ids.Add("highway.cloudScale");
+                ids.Add("highway.cloudSpread");
+                break;
+        }
+
+        return ids;
+    }
+
+    private void AddBackgroundMoodSection(List<RuntimeSettingSectionSnapshot> sections, string title, IEnumerable<string> settingIds)
+    {
+        if (sections == null || settingIds == null)
+            return;
+
+        List<RuntimeSettingSnapshot> settings = new List<RuntimeSettingSnapshot>();
+        foreach (string settingId in settingIds)
+        {
+            if (string.IsNullOrWhiteSpace(settingId) || !runtimeSettingById.TryGetValue(settingId, out RuntimeSettingDefinition definition))
+                continue;
+
+            RuntimeSettingSnapshot snapshot = CreateRuntimeSettingSnapshot(definition);
+            if (snapshot != null)
+                settings.Add(snapshot);
+        }
+
+        if (settings.Count == 0)
+            return;
+
+        sections.Add(new RuntimeSettingSectionSnapshot
+        {
+            title = title,
+            settings = settings
+        });
+    }
+
+    private List<RuntimeSettingSnapshot> GetBackgroundMoodSetterItems()
+    {
+        return BuildBackgroundMoodSetterSections()
+            .SelectMany(section => section?.settings ?? new List<RuntimeSettingSnapshot>())
+            .Where(setting => setting != null)
+            .ToList();
+    }
+
+    private void MoveBackgroundMoodSetterSelection(int delta)
+    {
+        List<RuntimeSettingSnapshot> settings = GetBackgroundMoodSetterItems();
+        int totalOptions = settings.Count + 1;
+        if (totalOptions <= 1)
+        {
+            selectedBackgroundMoodSettingIndex = -1;
+            return;
+        }
+
+        int currentSlot = Mathf.Clamp(selectedBackgroundMoodSettingIndex + 1, 0, totalOptions - 1);
+        int nextSlot = (currentSlot + delta + totalOptions) % totalOptions;
+        selectedBackgroundMoodSettingIndex = nextSlot - 1;
+    }
+
+    private void ActivateCurrentBackgroundMoodSetting()
+    {
+        if (selectedBackgroundMoodSettingIndex < 0)
+        {
+            CloseBackgroundMoodSetterFromUi();
+            return;
+        }
+
+        List<RuntimeSettingSnapshot> settings = GetBackgroundMoodSetterItems();
+        if (settings.Count == 0)
+            return;
+
+        RuntimeSettingSnapshot setting = settings[Mathf.Clamp(selectedBackgroundMoodSettingIndex, 0, settings.Count - 1)];
+        ActivateRuntimeSettingSnapshot(setting);
+    }
+
+    private void AdjustCurrentBackgroundMoodSetting(int delta)
+    {
+        if (delta == 0)
+            return;
+
+        if (selectedBackgroundMoodSettingIndex < 0)
+            return;
+
+        List<RuntimeSettingSnapshot> settings = GetBackgroundMoodSetterItems();
+        if (settings.Count == 0)
+            return;
+
+        RuntimeSettingSnapshot setting = settings[Mathf.Clamp(selectedBackgroundMoodSettingIndex, 0, settings.Count - 1)];
+        AdjustRuntimeSettingSnapshot(setting, delta);
+    }
+
+    private void ActivateRuntimeSettingSnapshot(RuntimeSettingSnapshot setting)
+    {
+        if (setting == null)
+            return;
+
+        if (runtimeSettingById.TryGetValue(setting.id, out RuntimeSettingDefinition definition) && definition.Activator != null &&
+            (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) || string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase)))
+        {
+            definition.Activator();
+        }
+        else if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
+        {
+            string nextValue = string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase) ? "false" : "true";
+            ApplyRuntimeSettingValue(setting.id, nextValue, saveMetadata: true);
+        }
+        else if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase) && setting.enumOptions != null && setting.enumOptions.Count > 0)
+        {
+            int currentIndex = setting.enumOptions.FindIndex(option => string.Equals(option, setting.value, StringComparison.OrdinalIgnoreCase));
+            if (currentIndex < 0)
+                currentIndex = 0;
+
+            int nextIndex = (currentIndex + 1) % setting.enumOptions.Count;
+            ApplyRuntimeSettingValue(setting.id, setting.enumOptions[nextIndex], saveMetadata: true);
+        }
+    }
+
+    private void AdjustRuntimeSettingSnapshot(RuntimeSettingSnapshot setting, int delta)
+    {
+        if (setting == null ||
+            string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplyRuntimeSettingValue(setting.id, delta > 0 ? "true" : "false", saveMetadata: true);
+            return;
+        }
+
+        if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase))
+        {
+            if (setting.enumOptions == null || setting.enumOptions.Count == 0)
+                return;
+
+            int currentIndex = setting.enumOptions.FindIndex(option => string.Equals(option, setting.value, StringComparison.OrdinalIgnoreCase));
+            if (currentIndex < 0)
+                currentIndex = 0;
+
+            int nextIndex = (currentIndex + delta + setting.enumOptions.Count) % setting.enumOptions.Count;
+            ApplyRuntimeSettingValue(setting.id, setting.enumOptions[nextIndex], saveMetadata: true);
+            return;
+        }
+
+        if (!float.TryParse(setting.value, NumberStyles.Float, CultureInfo.InvariantCulture, out float currentValue))
+            currentValue = setting.min;
+
+        float step = Mathf.Abs(setting.step) > 0.0001f ? setting.step : 1f;
+        float nextValue = Mathf.Clamp(currentValue + (delta * step), setting.min, setting.max);
+        string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase)
+            ? Mathf.RoundToInt(nextValue).ToString(CultureInfo.InvariantCulture)
+            : nextValue.ToString("0.###", CultureInfo.InvariantCulture);
+        ApplyRuntimeSettingValue(setting.id, serialized, saveMetadata: true);
+    }
+
     private static string GetGlobalSettingsCategoryFromTopIndex(int index)
     {
         switch (index)
@@ -23611,27 +26826,36 @@ private void ParseDetectorPacket(string detectorPacket)
             return cachedRuntimeSettingsSnapshot;
 
         cachedRuntimeSettingsSnapshot = runtimeSettingDefinitions
+            .Where(def => def != null && def.VisibleInGlobalSettings)
             .GroupBy(def => def.Section)
             .Select(group => new RuntimeSettingSectionSnapshot
             {
                 title = group.Key,
-                settings = group.Select(def => new RuntimeSettingSnapshot
-                {
-                    id = def.Id,
-                    label = def.Label,
-                    tooltip = def.Tooltip,
-                    valueType = def.ValueType,
-                    value = def.Getter != null ? def.Getter() : string.Empty,
-                    min = def.Min,
-                    max = def.Max,
-                    step = def.Step,
-                    enumOptions = def.EnumOptions != null ? new List<string>(def.EnumOptions) : new List<string>()
-                }).ToList()
+                settings = group.Select(CreateRuntimeSettingSnapshot).ToList()
             })
             .ToList();
 
         runtimeSettingsSnapshotDirty = false;
         return cachedRuntimeSettingsSnapshot;
+    }
+
+    private static RuntimeSettingSnapshot CreateRuntimeSettingSnapshot(RuntimeSettingDefinition definition)
+    {
+        if (definition == null)
+            return null;
+
+        return new RuntimeSettingSnapshot
+        {
+            id = definition.Id,
+            label = definition.Label,
+            tooltip = definition.Tooltip,
+            valueType = definition.ValueType,
+            value = definition.Getter != null ? definition.Getter() : string.Empty,
+            min = definition.Min,
+            max = definition.Max,
+            step = definition.Step,
+            enumOptions = definition.EnumOptions != null ? new List<string>(definition.EnumOptions) : new List<string>()
+        };
     }
 
     private void ApplyRuntimeSettingValue(string settingId, string serializedValue, bool saveMetadata)
@@ -23653,6 +26877,7 @@ private void ParseDetectorPacket(string detectorPacket)
             return;
 
         bool requiresSectionRebuild = settingId.StartsWith("tabs.tabSection", StringComparison.OrdinalIgnoreCase);
+        bool liveNeonHorizonSetting = settingId.StartsWith("bg.neonHorizon.", StringComparison.OrdinalIgnoreCase);
         bool requiresRendererRefresh =
             requiresSectionRebuild ||
             settingId.StartsWith("render.", StringComparison.OrdinalIgnoreCase) ||
@@ -23660,7 +26885,7 @@ private void ParseDetectorPacket(string detectorPacket)
             settingId.StartsWith("arcade.noteSpawn", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("arcade.resolvedHold", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("highway.", StringComparison.OrdinalIgnoreCase) ||
-            settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase) ||
+            (settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase) && !liveNeonHorizonSetting) ||
             settingId.StartsWith("layout.", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("fx.", StringComparison.OrdinalIgnoreCase);
 
@@ -23880,6 +27105,135 @@ private void ParseDetectorPacket(string detectorPacket)
             migrated = true;
         }
 
+        if (migratedVersion < 7)
+        {
+            if (!values.ContainsKey("bg.neonHorizon.enviroGroundMode"))
+            {
+                bool legacyGroundEnabled = MatchesRuntimeSettingValue(values, "bg.neonHorizon.enviroGround", "true");
+                SetRuntimeSettingMigrationValue(values, "bg.neonHorizon.enviroGroundMode", legacyGroundEnabled ? "Flat Plane" : "Off");
+                migrated = true;
+            }
+
+            migratedVersion = 7;
+        }
+
+        if (migratedVersion < 8)
+        {
+            string legacyGroundModeValue = null;
+            if (!values.TryGetValue("bg.neonHorizon.enviroGroundMode", out legacyGroundModeValue) || string.IsNullOrWhiteSpace(legacyGroundModeValue))
+            {
+                bool legacyGroundEnabled = MatchesRuntimeSettingValue(values, "bg.neonHorizon.enviroGround", "true");
+                legacyGroundModeValue = legacyGroundEnabled ? "Flat Plane" : "Off";
+            }
+
+            if (!values.TryGetValue("bg.neonHorizon.enviroMood", out string enviroMoodValue))
+                enviroMoodValue = null;
+
+            int currentMoodIndex = ParseIndexedOption(EnviroSkyMoodOptions, enviroMoodValue, 0);
+            string normalizedLegacyGroundMode = GetIndexedOption(EnviroGroundModeOptions, ParseEnviroGroundModeOption(legacyGroundModeValue, 0));
+
+            for (int i = 0; i < EnviroSkyMoodOptions.Length; i++)
+            {
+                string groundSettingId = GetEnviroMoodSettingId(i, "groundMode");
+                if (!values.ContainsKey(groundSettingId))
+                {
+                    SetRuntimeSettingMigrationValue(values, groundSettingId, i == currentMoodIndex ? normalizedLegacyGroundMode : "Off");
+                    migrated = true;
+                }
+
+                string opacitySettingId = GetEnviroMoodSettingId(i, "mountainOpacity");
+                if (!values.ContainsKey(opacitySettingId))
+                {
+                    SetRuntimeSettingMigrationValue(values, opacitySettingId, "1");
+                    migrated = true;
+                }
+            }
+
+            migratedVersion = 8;
+        }
+
+        if (migratedVersion < 9)
+        {
+            for (int i = 0; i < EnviroSkyMoodOptions.Length; i++)
+            {
+                string legacyOpacityId = GetEnviroMoodSettingId(i, "mountainOpacity");
+                float legacyOpacity = 1f;
+                if (values.TryGetValue(legacyOpacityId, out string legacyOpacityValue) &&
+                    float.TryParse(legacyOpacityValue, NumberStyles.Float, CultureInfo.InvariantCulture, out float parsedOpacity))
+                {
+                    legacyOpacity = Mathf.Clamp01(parsedOpacity);
+                }
+
+                string farOpacityId = GetEnviroMoodSettingId(i, "mountainOpacityFar");
+                if (!values.ContainsKey(farOpacityId))
+                {
+                    SetRuntimeSettingMigrationValue(values, farOpacityId, (GetDefaultEnviroMountainLayerOpacity(0) * legacyOpacity).ToString("0.###", CultureInfo.InvariantCulture));
+                    migrated = true;
+                }
+
+                string midOpacityId = GetEnviroMoodSettingId(i, "mountainOpacityMid");
+                if (!values.ContainsKey(midOpacityId))
+                {
+                    SetRuntimeSettingMigrationValue(values, midOpacityId, (GetDefaultEnviroMountainLayerOpacity(1) * legacyOpacity).ToString("0.###", CultureInfo.InvariantCulture));
+                    migrated = true;
+                }
+
+                string nearOpacityId = GetEnviroMoodSettingId(i, "mountainOpacityNear");
+                if (!values.ContainsKey(nearOpacityId))
+                {
+                    SetRuntimeSettingMigrationValue(values, nearOpacityId, (GetDefaultEnviroMountainLayerOpacity(2) * legacyOpacity).ToString("0.###", CultureInfo.InvariantCulture));
+                    migrated = true;
+                }
+            }
+
+            migratedVersion = 9;
+        }
+
+        if (migratedVersion < 10)
+        {
+            for (int i = 0; i < EnviroSkyMoodOptions.Length; i++)
+            {
+                string skyCameraPitchId = GetEnviroMoodSettingId(i, "skyCameraPitch");
+                if (!values.ContainsKey(skyCameraPitchId))
+                {
+                    SetRuntimeSettingMigrationValue(values, skyCameraPitchId, "0");
+                    migrated = true;
+                }
+            }
+
+            migratedVersion = 10;
+        }
+
+        if (migratedVersion < 12)
+        {
+            for (int i = 0; i < EnviroSkyMoodOptions.Length; i++)
+            {
+                string starAnimationId = GetEnviroMoodSettingId(i, "starAnimation");
+                if (!values.ContainsKey(starAnimationId))
+                {
+                    SetRuntimeSettingMigrationValue(values, starAnimationId, "1");
+                    migrated = true;
+                }
+            }
+
+            migratedVersion = 12;
+        }
+
+        if (migratedVersion < 13)
+        {
+            for (int i = 0; i < EnviroSkyMoodOptions.Length; i++)
+            {
+                string starDensityId = GetEnviroMoodSettingId(i, "starDensity");
+                if (!values.ContainsKey(starDensityId))
+                {
+                    SetRuntimeSettingMigrationValue(values, starDensityId, "1");
+                    migrated = true;
+                }
+            }
+
+            migratedVersion = 13;
+        }
+
         return migrated;
     }
 
@@ -23920,6 +27274,8 @@ private void ParseDetectorPacket(string detectorPacket)
             loadedGlobalRuntimeSettingsVersion = Mathf.Max(0, metadata?.settingsVersion ?? 0);
             selectedHighwayCharacter = ParseHighwayCharacterChoice(metadata?.selectedHighwayCharacterId);
             selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
+            mainMenuBackgroundProfile = metadata?.mainMenuBackgroundProfile ?? new MainMenuBackgroundProfile();
+            MainMenuBackground.Ensure();
 
             List<RuntimeSettingValueEntry> metadataValues = metadata?.values ?? new List<RuntimeSettingValueEntry>();
             foreach (RuntimeSettingValueEntry entry in metadataValues)
@@ -23984,10 +27340,10 @@ private void ParseDetectorPacket(string detectorPacket)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             int versionToSave = Mathf.Max(loadedGlobalRuntimeSettingsVersion, CurrentGlobalRuntimeSettingsVersion);
-            GlobalRuntimeSettingsMetadata metadata = new GlobalRuntimeSettingsMetadata
+            savingRuntimeSettingsMetadata = true;
+            List<RuntimeSettingValueEntry> values;
+            try
             {
-                settingsVersion = versionToSave,
-                selectedHighwayCharacterId = SerializeHighwayCharacterChoice(selectedHighwayCharacter),
                 values = runtimeSettingDefinitions
                     .Where(def => def != null && !IsSharedAudioRuntimeSettingId(def.Id))
                     .Select(def => new RuntimeSettingValueEntry
@@ -23995,7 +27351,19 @@ private void ParseDetectorPacket(string detectorPacket)
                         id = def.Id,
                         value = def.Getter != null ? def.Getter() : string.Empty
                     })
-                    .ToList()
+                    .ToList();
+            }
+            finally
+            {
+                savingRuntimeSettingsMetadata = false;
+            }
+
+            GlobalRuntimeSettingsMetadata metadata = new GlobalRuntimeSettingsMetadata
+            {
+                settingsVersion = versionToSave,
+                selectedHighwayCharacterId = SerializeHighwayCharacterChoice(selectedHighwayCharacter),
+                mainMenuBackgroundProfile = MainMenuBackground,
+                values = values
             };
 
             File.WriteAllText(path, JsonUtility.ToJson(metadata, true));

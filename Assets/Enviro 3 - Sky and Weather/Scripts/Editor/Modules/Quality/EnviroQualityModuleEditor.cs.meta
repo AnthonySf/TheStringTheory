@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: cc98e8b13297a35408322f655fe5abb6
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Scripts/Editor/Modules/Quality/EnviroQualityModuleEditor.cs
+  uploadId: 888564

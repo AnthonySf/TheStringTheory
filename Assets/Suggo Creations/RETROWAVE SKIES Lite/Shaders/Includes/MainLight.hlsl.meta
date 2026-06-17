@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: d8ff3a33b255abf4fb6d14d5cd8eccab
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 282063
+  packageName: RETROWAVE SKIES Lite - Dynamic Synthwave Skybox Asset Pack
+  packageVersion: 1.0.2
+  assetPath: Assets/Suggo Creations/RETROWAVE SKIES Lite/Shaders/Includes/MainLight.hlsl
+  uploadId: 887160

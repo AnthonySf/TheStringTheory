@@ -1,0 +1,309 @@
+Enviro 3.2.0
+
+----------------------------------------------------------------------------------
+v3.0.0			Initial release...
+----------------------------------------------------------------------------------
+v3.0.1
+
+* Added auto assignment of main camera. Leave camera field empty will show a CameraTag selection.
+* Fixed an issue and warning with compute buffer may not released correctly.
+* Fixed an issue where fog may not rendering correctly when volumetrics are deactivated.
+* Fixed some issue with gamma colorspace. (Linear colorspace recommended for realistic lighting!)
+* Fixed typo in Microsplat integration class name. It should show in components menu correctly now. (Thanks to erik!)
+* Some code restructuring for Enviro Manager. 
+----------------------------------------------------------------------------------
+v3.0.2
+
+* Fixed an issue in weather inspector when some modules not used.
+* Fixed errors when opening the Enviro prefab context from a non Enviro scene.
+* Fixed a possible error related to EnviroVolumetricFogLight.
+* Change in ChangeWeather functions to also change zone weather.
+----------------------------------------------------------------------------------
+v3.0.3
+ 
+* Added wind support. Please check the Environment module and clouds modules for settings.
+* Added support for "Audio Mixer Groups". You can assign a audio mixer group now for each sound effect in the audio module.
+* Added additional sky intensity curve in sky settings. Use this to change the intensity of sky based on sun position. 
+* Enviro will set the sky reflection intensity now based on the global reflection intensity in Built-in and URP and if Update Default Environment Reflections is activated.
+* Fixed an issue where Enviro Renderer component was added in URP / HDRP. This could lead to errors when opning prefabs in HDRP. Please remove the Enviro Renderer component from your main cameras!
+* Fixed an issue in Unity 2022 where clouds not rendering correctly in builds. (Camera Depth Texture Texel Size not auto set correctly in these cases)
+* Fixed some rendering issues with OpenGlCore. 
+* Fixed multiple issues in HDRP 12+.
+* Fixed error when opening the Envrio External Window in a non Enviro scene.
+----------------------------------------------------------------------------------
+v3.0.4
+* Added audio effect volume modifiers for each audio category for custom game logic.
+* Added define symbol for Enviro 3: ENVIRO_3 
+* Added assetPath string in EnviroHelper script. Change it when you move the Enviro folder to a different folder in your project.
+* Added new setting in HDRP to set the skyAmbient mode in your sky module. Set it to "Static" when you want to use static baked lighting.
+* Improved volumetric clouds blending. More improvements for this in next updates.
+* Improved volumetric clouds detail rendering. 
+* Fixed some artifacts with point and spot volumetric lights and fixed an issue with directional volumetrics are not blurred anymore. There will be more improvements in next updates!
+* Fixed a possible error with Effect Removal Zones.
+* Fixed possible error in metal api with compute buffers not set correctly.
+* Fixed an issue with fog/volumetrics in SPI rendering.
+* Fixed a bug in Enviro Manager inspector where Flat Clouds and Aurora buttons might be disabled even when not added to the configuration.
+* Fixed rain splash effect not working anymore.
+* Fixed small issue with sun disc in sky reflections.
+
+----------------------------------------------------------------------------------
+v3.0.5
+
+* Added feature to offset clouds position for floating point precision offset systems.
+* Added day night switch setting like in Enviro 2.
+* Added ChangeCamera function in EnviroManager to quickly change the camera in runtime.
+* Added setting to control how often the skybox ambient will be updated.
+* Added setting to update lighting not on every frame. Set it to "0" for every frame updates.
+* Added flat and cirrus clouds toggles to quality presets.
+* Added option in Aurora module to easily deactivated, also added this and steps setting to quality presets.
+* Added a sample UI for the sample scenes or your own scenes.  
+* Fixed an issue with the SetTimeOfDay function and values over 24.
+* Fixed possible flickering issues in HDRP related to reflection probe updates. (Workaround) (This actually might be a HDRP bug related to updating reflection probe/camera on demand together with directional light and sky exposure)
+* Fixed and reworked Event UI to correctly support assignement of scene objects.
+* Fixed issue where Enviro Effects rendering on all cameras in URP even those that are not assigned. (Fixes preview windows for example)
+* Fixed some issues with the HDRP lighting default settings.
+* Increased volumetric clouds "travel speed".
+ 
+----------------------------------------------------------------------------------
+v3.0.6
+
+* Fixed volumetrics lighting shader error in Unity 2022.2 / URP 14.
+* Fixed issues where certain settings not getting saved correctly.
+* Fixed an issue with Cirrus cloud color set to zero.
+* Fixed shader error in HDRP 15+ related to Unity changes.
+* Fixed multiple sources that could lead to flickering issues in HDRP.
+* Reworked and improved reflection probe handling. Reflections handled now in its own module. This change also fixed some issues related to reflections. 
+  Special thanks to fendercodes for their code changes and extensive debugging to improve Enviro! Please check out their game "Hobble": https://store.steampowered.com/app/1761840/Hobble/
+* Added functions to change weather based on index. 
+* Added ambient light intensity slider for volumetric clouds in weather types.
+* Added new setting for volumetric clouds to control the clouds density smoothness. 
+ 
+v3.0.7 
+* Added support for 2023.1+ URP.
+* Added support for WebGL. Unfortunately point/spot volumetrics and effect removal zones needed to be deactivated as structured buffers not supported in gles 3.0.
+* Added undo functionality to all settings that where missing this before. (For example weather presets and time)
+* Added stars twinkling effect.
+* Added a storm weather type.
+* Improved effect emission control to allow unlimited particle effects.
+* Improved weather particle shader to darken at night.
+* Fixed issue where EnviroHDRPSkyRenderer does not render the sky environmental cubemap in some cases.
+* Fixed artifacts in volumetric clouds on iOS.
+* Fixed issue where weather change in inspector not saved correctly.
+* Fixed possible compile error in URP related to volumetrics shader.
+* Fixed possible errors related to enviro events by removing the old events module preset. (Please also remove this folder in your project: Scripts -> Runtime -> Events -> Preset)
+* Fixed possible errors when time module is missing. 
+
+v3.0.7a
+* Fixed WAPI integration compile errors after last update.
+* Included improvements for positional accuracy of night sky from discord user hecubah. Thanks for the work!
+* Added fog color tint setting for fog module and weather types.
+
+v3.1.0
+* Added support for URP 16. 
+* Added cubical effect removal zones.
+* Added feature to offset fog for floating point precision offset systems and fixed visual bugs when offset volumetric clouds.
+* Added a new option to force skybox setup on loaded scenes.
+* Added global fog height and fog start distance settings, also improved the fog density calculations.
+* Added basic save and load function to save and load time and weather.
+* Added camera based qualities for URP and HDRP.
+* Added new ResetMatrix option for additional cameras that might help with reflection cameras.
+* Added helper function to more easily add additional cameras in runtime.
+* Added Unity fog support for built-in and URP.
+* Added sky color tint setting in sky and weather type controls.
+* Added option to disable and re-enable global reflections more easily.
+* Added list of all registered zones for overview and quick access.
+* Added default zone setting. This zone weather will be active when you are in no other zones.
+* Added seasonal probability for weather types in weather zones.
+* Added Photon PUN Integration.
+* Improved volumetric clouds wind animations.
+* Improved change weather command to work better with zones.
+* Improved mirror integration to support muiltiple zones.
+* Fixed and issue where time settings might not saved correctly.
+* Fixed issue with clouds shadows and floating point precision offset.
+* Fixed volumetric clouds shadows when camera is above clouds.
+* Fixed issues with HDRP environmental lighting is incorrect in additional cameras/reflection probes.
+* Fixed issues in HDRP that could lead to incorrect scene rendering after we exit the playmode.
+* Fixed issue related to cloud shadows in HDRP that could lead to pink builds.
+* Fixed blending artifacts in HDRP with volumetric clouds. 
+* Fixed issue with weather particle shader in iOS.
+* Fixed possible error related to custom rendered reflection probes. (Android)
+* Fixed error from weather module inspector when no enviro instance is in current active scene.
+* Fixed poor performance with MSAA enabled and volumetrics rendering.
+* Fixed issue with effect removal zones might registered multiple times that leads to poor performance.
+* Fixed issue with volumetric fog light might registered multiple times that leads to poor performance.
+* Fixed errors when building for Android/WebGL in URP.
+* Fixed shader errors from different renderpipeline shaders.
+
+v3.1.1
+* Fixed warning spam in 2022.3+ URP XR rendering.
+* Fixed an issue where volumetric clouds do not show in URP reflection probes/cameras.
+* Fixed issue in HDRP where sky exposure might not get set correctly.
+* Fixed shader warning about incorrect fallback in Enviro skybox shader.
+
+v3.1.2 
+* Fixed skybox ambient intensity not updating anymore.
+* Fixed issues with floating point offset system and volumetric clouds flickering.
+* Fixed issue with fog not rendering at higher camera height.
+* Fixed issue with volumetric clouds artifacts at certain angles when inside or above the raymarch volume.
+* Fixed multiple errors when XR modules are disabled/removed in Unity.
+* Improved performance of volumetric clouds. 
+* Improved depth blending of volumetric clouds. 
+* Improved overall lighting of volumetric clouds. You need some tweaks on your custom weather type settings aswell as clouds lighting will look different.
+* Improved zone weather changing. It's more likely that weather types will choosen that are not in first place in the list. 
+* Improved fog start distance with smoother transitions. 
+* Improved and fixed HDRP default settings. 
+
+v3.1.2a
+* Fixed an issue with effect removal zone cubical setting.
+* Fixed missing configuration in the prefab.
+
+v3.1.3
+* Added support for Unity 6 URP new render graph system. 
+* Added volumetric clouds blending feature for transparent shaders like water/ocean. 
+* Fixed issues with XR rendering from 3.1.2 changes. 
+* Fixed possible fog blending issues with fog density set to "0".
+* Fixed errors when inspecting Enviro Weather Zones in scene without Enviro Manager.
+
+v3.1.3a
+* Fixed shader build error in URP.
+* Fixed possible compile errors.
+* Support fix for UBER Shader 1.1.0 in Unity 6 HDRP.
+
+v3.1.4
+* Important fixes for volumetric clouds visual.
+* Fixed blue noise offset not working correctly anymore for volumetric clouds rendering results in poor quality rendering.
+* Improved volumetric clouds lod mip offset system.
+* Improved volumetric clouds powder effect.
+
+v3.1.5
+* Improved HDRP volumetric clouds renderer. That was needed to proper support the new clouds blending function with transparent material. (Crest 5 for example)
+* Few tweaks in the default settings.
+
+v3.1.6
+* Fixed moon volumetric lighting by adding new volumetric scattering curve to better control moon volumetric lighting scattering.
+* Fixed directional volumetric lighting in dual lighting mode.
+* Fixed incorrect fog when using floating point offset system on y-axes.
+* Fixed fog - volumetric clouds blending when using floating point offset system on y-axes. 
+* Fixed shader error on android that could lead to failing builds.
+* Added new "Depth Test" option in volumetric clouds module. Activate for best performance, but could produce tiny blending artifacts at leaves for example.
+* Added new field to assign a custom weather coverage texture for volumetric clouds.
+
+v3.1.7
+* Added a new optional weather follow transform setting.
+* Added active boolean in each module for stopping updates when needed.
+* Added shadow intensity setting in lighting and weather module.
+* Fixed weather type and quality type "Add" function.
+* Fixed volumetric clouds issue in new URP render graph implementation in Unity 6. (clouds stuttering when time progresses)
+* Fixed gc allocations in new URP render graph implementation in Unity 6.
+
+v3.2.0
+* Added VFX Graph support. Please activate in the Effects module when VFX Graph package is imported.
+* Added custom calender mode. Set how many month in a year and how many days a month has.
+* Added "simple" sky mode for lower end devices and/or better performance.
+* Added "simple" fog mode for lower end devices and/or better performance.
+* Added a new "activated" option in Enviro HDRP Renderer volume setting. Deactivate it for scene without Enviro to improve performance!
+* Added option to make ambient lighting changes be instant visible when not playing for easier tweaking.
+* Added particle emission rate modifier for quality/performance control.
+* Added snow and rain Visual Effect Graphs.
+* Impoved default snow particle effect. 
+* Couple of smaller code improvements.
+* Fixed small gc allocation in volumetric lighting mask rendering.
+* Fixed issue where all particle effects are playing for a couple frames after start.
+* Fixed blending issue with the ApplyClouds function for custom shaders.
+* Fixed URP17 new rendergraph custom fog / clouds blending functions for transparent shaders.
+* Fixed URP17 new rendergraph xr rendering issues.
+* Fixed possible command buffer error related to point/spot volumetric lighting in iOS metal.
+* Fixed fog and volumetric clouds exposure in HDRP reflection probes.
+
+
+v3.2.1
+* Added public weatherBlendProgress float to check the weather type blending progress.
+* Added improvements for lightings from community member Average.
+* Fixed shader error in gamma color space in URP 17+.
+* Fixed memory leak from volumetric clouds textures when switching cameras.
+* Fixed some deprecated API in Unity 6 and newer.
+* Fixed warnings related to non supported command buffers in URP/HDRP.
+* Fixed volumetric clouds blending with ApplyClouds method in HDRP.
+* Fixed visual effect graph setup and shadergraph for URP/HDRP 17.
+* Fixed volumetric clouds rendering in WebGL URP new rendergraph.
+* Fixed missing flat clouds density slider in weather types.
+* Fixed volumetric clouds blending with ApplyClouds when using a world anchor.
+* Fixed some issues related to APV baking in HDRP 17.
+
+v3.2.1a
+* Hotfix for compile error in lightning script.
+
+v3.2.2
+* Added date sync support to WAPI integration.
+* Fixed fog removal with very high fog density/height.
+* Fixed HDRP ambientColorTint gradient not working anymore.
+* Fixed unnacessary calculations in fog include. Thanks to Volodymyr for his report!
+* Fixed an issue with switching configurations when no time module is added.
+* Fixed issue with updating ambient lighting without time module.
+* Fixed small issue that prevented to use "prewarm" particle effects correctly.
+* Fixed clouds shadows blending issue.
+* Fixed custom calender season changes.
+* Fixed possible error when using Lighting module without Volumetric Clouds module.
+* Fixed small inspector error in lighting module inspector.
+
+v3.3.0 
+
+!!ATTENTION!! THIS UPDATE WILL BREAK OLD WEATHER TYPES! YOU WILL NEED TO ADJUST!!!
+
+* Rewritten and improved large parts of volumetric clouds lighting and shaping functions.
+* Rewritten weather control map noises.
+* Improved volumetric clouds atmospheric blending.
+* Improved volumetric clouds environmental lighting.
+* Added new noise textures for volumetric clouds.
+* Added optional lightning flashes in volumetric clouds.
+* Added a simple configuration updater. (You will see a button to update your old configs now)
+* Added directional soft shadows to flat clouds.
+* Added option to fog to block scattering through depth buffer.
+* Added new shader includes especially for HDRP to correctly apply exposured fog.
+* Added sky color exponent setting and mie scattering modifiers in weather types.
+* Moved HDRP effect rendering to custom pass. Rendering as custom post process is deprecated!
+* Removed reflection probe custom rendering support for URP. (No benefits using anymore)
+* Fixed possible issue related to destroy method used in audio and effect system. 
+* Fixed cloud shadows render order issue.
+* Fixed volumetric clouds not using simple mode sky colors.
+* Fixed volumetric clouds reprojection ghosting when changing fov in Unity 6.2+.
+* Fixed volumetric clouds third party shader blending in URP rendergraph compability mode.
+* Fixed Enviro objects that get instantiated on enable with don't save hide flags.
+* Fixed possible NaN pixel artifacts in volumetric lighting.
+* Fixed couple of shader warnings.
+* Fixed couple of warning related to deprecated api.
+* Fixed possible issue with reflection probe cubemap format not matching sky reflection texture format in < Unity 2021.
+* Changed HDRP lighting controls to use default sun/moon intensity curve + intensity multiplicator and seperate color gradients.
+* Increased HDRP fog attenuation distance slider max to up to 4000. 
+
+
+v3.3.1
+
+* Further improvements on clouds shadowing and lighting that should improve realism. 
+* Added new curl texture and improved curl noise sampling.
+* Improvements for lightning strikes effect.
+* Fixed single pass instanced xr volumetric clouds reprojection.
+* Fixed volume light dithering that was messed up with last patch and made effect look worse.
+* Fixed possible errors in HDRP 17+ on project start related to reflection probe update when cullingmask set to "Nothing".
+
+
+v3.3.2
+* Added easier way to fully disable enviro effect by just deactivating the Enviro Manager object. (You still would need to change skybox)
+* Added support for Unity 6.4+ URP where render compability mode got removed.
+* Fixed shader integration when Enviro is not active.
+* Fixed volumetric clouds rendering in URP 17+ rendergraph when cloud shadows enabled and viewed from above.
+* Fixed issue with GetDateInHours function for custom calender.
+* Fixed volumetric clouds rendering in PS4/5.
+* Fixed ambient intensity setting in weather types doing nothing in HDRP.
+* Fixed small issue where ambient and direct lighting will be changed in reflection probe updates even when option is deactivated.
+* Fixed issue related to global reflection probe tries to update on enable even when option is disabled.
+* Fixed possible NaN artifacts on some hardware.
+* Changed URP rendergraph injection point to BeforeTransparent -1 for better compability with third party assets.
+
+v3.3.2a
+* Fixed errors in Enviro Custom Pass HDRP when "Quality Module" is not used.
+* Fixed missing configuration asignment in the prefab.
+
+v3.3.2b
+* Fixed black screen issue in Unity 6.4 URP builds.
+* Fixed VFX Graph Effects.

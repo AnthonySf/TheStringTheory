@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: d6dc5023c0e5ec3499e40a42405af18f
+timeCreated: 1452690568
+licenseType: Store
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Includes/ParticlesInclude.cginc
+  uploadId: 888564

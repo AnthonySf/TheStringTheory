@@ -491,6 +491,9 @@ public sealed class GuitarGameplaySnapshot
     public bool showMainMenu;
     public bool mainMenuFlowActive;
     public int selectedMainMenuIndex;
+    public bool showMiniGames;
+    public int selectedMiniGameIndex;
+    public MiniGameScreenSnapshot miniGameSnapshot;
     public bool showStartMenu;
     public bool showCharacterSelection;
     public bool characterSelectionOpenedFromStartup;
@@ -639,6 +642,7 @@ public sealed class GuitarGameplaySnapshot
     public bool notesDetectorRoutineCompleted;
     public bool showStartupTuningReminder;
     public bool showGlobalSettings;
+    public bool showBackgroundMoodSetter;
     public bool showDiagnosticsConsentPopup;
     public int selectedDiagnosticsConsentIndex;
     public bool showBugReportScreen;
@@ -655,7 +659,9 @@ public sealed class GuitarGameplaySnapshot
     public string effectsFolderMenuValueLabel;
     public int selectedGlobalSettingsTopIndex;
     public int selectedGlobalSettingsItemIndex;
+    public int selectedBackgroundMoodSettingIndex;
     public string activeGlobalSettingsCategory;
+    public string backgroundMoodSetterStatusText;
     public bool globalSettingsTransparentBackground;
     public bool showGlobalSettingsSelectionPopup;
     public string globalSettingsSelectionPopupEyebrow;
@@ -668,6 +674,7 @@ public sealed class GuitarGameplaySnapshot
     public bool showGameplayHudPreviewInMenus;
     public bool showGameplayTimeline;
     public List<RuntimeSettingSectionSnapshot> runtimeSettingsSections;
+    public List<RuntimeSettingSectionSnapshot> backgroundMoodSetterSections;
 }
 
 public sealed class RuntimeSettingSectionSnapshot

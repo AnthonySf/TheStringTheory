@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 7e7c1a769b973414a8f6d1259e07df92
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - icon: {instanceID: 0}
+  executionOrder: 0
+  icon: {fileID: 2800000, guid: a186f8a87ca4f4d3aa864638ad5dfb65, type: 3}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 282063
+  packageName: RETROWAVE SKIES Lite - Dynamic Synthwave Skybox Asset Pack
+  packageVersion: 1.0.2
+  assetPath: Assets/Suggo Creations/RETROWAVE SKIES Lite/Readme Assets/Scripts/ReadmeLite.cs
+  uploadId: 887160

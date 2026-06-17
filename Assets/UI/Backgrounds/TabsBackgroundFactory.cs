@@ -1,23 +1,22 @@
 public static class TabsBackgroundFactory
 {
-    public static ITabsBackgroundEffect Create(GuitarBridgeServer owner, bool applyHighwayOverrides = false)
+    public static ITabsBackgroundEffect Create(GuitarBridgeServer owner, bool applyHighwayOverrides = false, bool useMainMenuProfile = false)
     {
         if (owner == null)
             return null;
 
-        switch (owner.tabBackgroundMode)
+        switch (owner.GetBackgroundModeForContext(useMainMenuProfile))
         {
             case GuitarBridgeServer.TabsBackgroundMode.BlueSky:
                 return owner.tabSkyUseStageBackdrop
                     ? new TabsStageBackground(applyHighwayOverrides)
                     : new TabsBlueSkyBackground(applyHighwayOverrides);
-            case GuitarBridgeServer.TabsBackgroundMode.Space:
-                return new TabsSpaceBackground(applyHighwayOverrides);
-            case GuitarBridgeServer.TabsBackgroundMode.Starfield:
-                return new TabsStarfieldBackground(applyHighwayOverrides);
+            case GuitarBridgeServer.TabsBackgroundMode.NeonStage:
+                return new TabsNeonStageBackground(applyHighwayOverrides, useMainMenuProfile);
             case GuitarBridgeServer.TabsBackgroundMode.SolidColor:
-            default:
                 return null;
+            default:
+                return new TabsNeonStageBackground(applyHighwayOverrides, useMainMenuProfile);
         }
     }
 }

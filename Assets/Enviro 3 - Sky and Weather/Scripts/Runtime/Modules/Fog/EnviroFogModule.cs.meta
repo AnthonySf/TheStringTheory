@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 4eacb969ef7bfec4ba69d66b0a873f2f
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Scripts/Runtime/Modules/Fog/EnviroFogModule.cs
+  uploadId: 888564

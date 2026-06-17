@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: f5beaef983462df4a944c521f9064a91
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Scripts/Runtime/Base/Renderer/EnviroURPRenderFeature.cs
+  uploadId: 888564

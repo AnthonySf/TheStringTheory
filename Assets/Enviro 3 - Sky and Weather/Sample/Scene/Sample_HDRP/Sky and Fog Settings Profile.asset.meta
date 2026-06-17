@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 325467248a9380142b95fcbe203d3cde
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 11400000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Sample/Scene/Sample_HDRP/Sky and Fog
+    Settings Profile.asset
+  uploadId: 888564

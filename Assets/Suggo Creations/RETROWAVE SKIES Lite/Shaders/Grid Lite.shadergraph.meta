@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: d74fa11638a8c1f40afcf08bafbadad0
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 625f186215c104763be7675aa2d941aa, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 282063
+  packageName: RETROWAVE SKIES Lite - Dynamic Synthwave Skybox Asset Pack
+  packageVersion: 1.0.2
+  assetPath: Assets/Suggo Creations/RETROWAVE SKIES Lite/Shaders/Grid Lite.shadergraph
+  uploadId: 887160

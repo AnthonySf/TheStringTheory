@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 176ffb534bb7268469c9671594b9f863
+ScriptedImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 2
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+  script: {fileID: 11500000, guid: 60072b568d64c40a485e0fc55012dc9f, type: 3}
+AssetOrigin:
+  serializedVersion: 1
+  productId: 282063
+  packageName: RETROWAVE SKIES Lite - Dynamic Synthwave Skybox Asset Pack
+  packageVersion: 1.0.2
+  assetPath: Assets/Suggo Creations/RETROWAVE SKIES Lite/Shaders/Subgraphs/Worldspace
+    UVs Lite.shadersubgraph
+  uploadId: 887160

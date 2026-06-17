@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: c2f1f84926178344e86b6d5fe65e258f
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Scripts/Runtime/Base/Renderer/EnviroHDRPRenderer.cs
+  uploadId: 888564

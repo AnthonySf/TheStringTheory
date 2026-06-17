@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: aac3497da77f54d45be34e36e73cd078
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Clouds/EnviroApplyShadows.shader
+  uploadId: 888564

@@ -1,0 +1,124 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5cbac6e678443724c9bd2baf5d564c1d, type: 3}
+  m_Name: Clear Sky
+  m_EditorClassIdentifier: 
+  showEditor: 0
+  showEffectControls: 0
+  showCloudControls: 0
+  showFlatCloudControls: 1
+  showFogControls: 0
+  showSkyControls: 1
+  showLightingControls: 0
+  showAuroraControls: 0
+  showEnvironmentControls: 0
+  showAudioControls: 0
+  showAmbientAudioControls: 0
+  showWeatherAudioControls: 0
+  showLightningControls: 0
+  cloudsOverride:
+    ambientLightIntensity: 1
+    coverage: -1
+    dilateCoverage: 0.5
+    dilateType: 0.5
+    typeModifier: 0.5
+    cloudTypeShaping: 1
+    scatteringIntensity: 1.56
+    multiScatterStrength: 0.5
+    multiScatterFalloff: 0.0084
+    ambientFloor: 0.02
+    lightningIntensity: 0.5
+    exposure: 1
+    silverLiningSpread: 0.8
+    silverLiningIntensity: 1
+    edgeHighlightStrength: 1
+    ligthAbsorbtion: 1
+    density: 0.3
+    densitySmoothness: 1
+    baseErosionIntensity: 0
+    baseNoiseMultiplier: 1
+    detailErosionIntensity: 0.3
+    detailNoiseMultiplier: 1
+    curlIntensity: 0.05
+    bottomShape: 0
+    midShape: 0
+    topShape: 0
+    topLayer: 0
+    rampShape: 1
+    baseNoiseUVMultiplier: 1
+    detailNoiseUVMultiplier: 1
+  flatCloudsOverride:
+    cirrusCloudsAlpha: 0.518
+    cirrusCloudsCoverage: 0.275
+    cirrusCloudsColorPower: 1.15
+    flatCloudsCoverage: 0
+    flatCloudsDensity: 1.24
+    flatCloudsLightIntensity: 1.05
+    flatCloudsAmbientIntensity: 1.8
+    flatCloudsShadowIntensity: 1
+    flatCloudsShadowSteps: 8
+  lightingOverride:
+    directLightIntensityModifier: 1.2
+    ambientIntensityModifier: 1
+    shadowIntensity: 1
+  skyOverride:
+    intensity: 1
+    mieScatteringMultiplier: 1
+    skyColorExponent: 1.2
+    skyColorTint: {r: 1, g: 1, b: 1, a: 1}
+  fogOverride:
+    fogDensity: 0.019
+    fogHeightFalloff: 0.0128
+    fogHeight: 0
+    fogDensity2: 0.012
+    fogHeightFalloff2: 0.0015
+    fogHeight2: 0
+    fogColorBlend: 1
+    fogColorMod: {r: 1, g: 1, b: 1, a: 1}
+    scattering: 0.045
+    extinction: 0.089
+    anistropy: 0.6
+    unityFogDensity: 0.002
+    unityFogStartDistance: 0
+    unityFogEndDistance: 1000
+  auroraOverride:
+    auroraIntensity: 0
+  effectsOverride:
+    effectsOverride: []
+  audioOverride:
+    ambientOverride:
+    - showEditor: 0
+      name: Day
+      volume: 1
+      spring: 0
+      summer: 0
+      autumn: 0
+      winter: 0
+    - showEditor: 0
+      name: Night
+      volume: 1
+      spring: 0
+      summer: 0
+      autumn: 0
+      winter: 0
+    weatherOverride: []
+  lightningOverride:
+    lightningStorm: 0
+    randomLightningDelay: 9.6
+  environmentOverride:
+    temperatureWeatherMod: 0
+    wetnessTarget: 0
+    snowTarget: 0
+    windDirectionX: 1
+    windDirectionY: 0
+    windSpeed: 0.25
+    windTurbulence: 0.25

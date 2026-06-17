@@ -1,0 +1,162 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4eacb969ef7bfec4ba69d66b0a873f2f, type: 3}
+  m_Name: Default Fog Preset
+  m_EditorClassIdentifier: 
+  showModuleInspector: 1
+  showSaveLoad: 0
+  active: 1
+  Settings:
+    volumetrics: 1
+    steps: 32
+    quality: 1
+    scattering: 0.28
+    scatteringMultiplier:
+      serializedVersion: 2
+      m_Curve:
+      - serializedVersion: 3
+        time: 0
+        value: 8
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      - serializedVersion: 3
+        time: 0.29862836
+        value: 7.1266994
+        inSlope: -7.9367094
+        outSlope: -7.9367094
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.1494251
+        outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 0.41374835
+        value: 1.9498584
+        inSlope: -5.9926996
+        outSlope: -5.9926996
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0.515421
+        outWeight: 0.33333334
+      - serializedVersion: 3
+        time: 1
+        value: 1
+        inSlope: 0
+        outSlope: 0
+        tangentMode: 0
+        weightedMode: 0
+        inWeight: 0
+        outWeight: 0
+      m_PreInfinity: 2
+      m_PostInfinity: 2
+      m_RotationOrder: 4
+    extinction: 0.02
+    anistropy: 0.19
+    maxRange: 1000
+    maxRangePointSpot: 100
+    noiseIntensity: 0
+    noiseScale: 0
+    windDirection: {x: 3.9, y: 0, z: 0}
+    noise: {fileID: 0}
+    ditheringTex: {fileID: 2800000, guid: 711e788cbc742bb439b3c7cad60651e3, type: 3}
+    fog: 1
+    fogQualityMode: 0
+    floatingPointOriginMod: {x: 0, y: 0, z: 0}
+    globalFogHeight: 0
+    fogDensity: 0.034
+    fogHeightFalloff: 0.0121
+    fogHeight: 0
+    fogDensity2: 0.412
+    fogHeightFalloff2: 0.0388
+    fogHeight2: 0
+    fogMaxOpacity: 1
+    startDistance: 0.01
+    fogColorBlend: 1
+    fogColorMod: {r: 1, g: 1, b: 1, a: 1}
+    blockScattering: 0
+    ambientColorGradient:
+      serializedVersion: 2
+      key0: {r: 0.23549305, g: 0.2427107, b: 0.7924528, a: 1}
+      key1: {r: 0.16073336, g: 0.22812635, b: 0.7924528, a: 1}
+      key2: {r: 0.35590956, g: 0.44551674, b: 0.5849056, a: 0}
+      key3: {r: 2.5796902, g: 2.651018, b: 2.8293376, a: 0}
+      key4: {r: 2.5796902, g: 2.651018, b: 2.8293376, a: 0}
+      key5: {r: 0, g: 0, b: 0, a: 0}
+      key6: {r: 0, g: 0, b: 0, a: 0}
+      key7: {r: 0, g: 0, b: 0, a: 0}
+      ctime0: 0
+      ctime1: 29491
+      ctime2: 33539
+      ctime3: 65535
+      ctime4: 65535
+      ctime5: 0
+      ctime6: 0
+      ctime7: 0
+      atime0: 0
+      atime1: 65535
+      atime2: 0
+      atime3: 0
+      atime4: 0
+      atime5: 0
+      atime6: 0
+      atime7: 0
+      m_Mode: 0
+      m_NumColorKeys: 4
+      m_NumAlphaKeys: 2
+    unityFog: 0
+    unityFogMode: 2
+    unityFogDensity: 0.002
+    unityFogStartDistance: 0
+    unityFogEndDistance: 1000
+    unityFogColor:
+      serializedVersion: 2
+      key0: {r: 0, g: 0, b: 0, a: 1}
+      key1: {r: 0.0146404365, g: 0.019780159, b: 0.066037714, a: 1}
+      key2: {r: 0.12589, g: 0.15198022, b: 0.38679248, a: 0}
+      key3: {r: 0.6415094, g: 0.39747813, b: 0.26326096, a: 0}
+      key4: {r: 0.53266287, g: 0.63567483, b: 0.8490566, a: 0}
+      key5: {r: 0.82702917, g: 0.8807278, b: 0.990566, a: 0}
+      key6: {r: 0, g: 0, b: 0, a: 0}
+      key7: {r: 0, g: 0, b: 0, a: 0}
+      ctime0: 0
+      ctime1: 9830
+      ctime2: 23130
+      ctime3: 32768
+      ctime4: 36430
+      ctime5: 65535
+      ctime6: 0
+      ctime7: 0
+      atime0: 0
+      atime1: 65535
+      atime2: 0
+      atime3: 0
+      atime4: 0
+      atime5: 0
+      atime6: 0
+      atime7: 0
+      m_Mode: 0
+      m_NumColorKeys: 6
+      m_NumAlphaKeys: 2
+  preset: {fileID: 0}
+  showFogControls: 0
+  showVolumetricsControls: 0
+  showUnityFogControls: 0
+  fogLights: []
+  customFogDensityModifer: 1
+  fogMat: {fileID: 0}
+  volumetricsMat: {fileID: 0}
+  blurMat: {fileID: 0}
+  blurMat2: {fileID: 0}
+  volumetricsRenderTexture: {fileID: 0}

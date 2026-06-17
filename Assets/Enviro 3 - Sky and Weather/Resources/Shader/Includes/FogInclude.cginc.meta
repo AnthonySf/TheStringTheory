@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: fa261f31cac9cc643a5ab48737979f2f
+timeCreated: 1452690568
+licenseType: Store
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Includes/FogInclude.cginc
+  uploadId: 888564

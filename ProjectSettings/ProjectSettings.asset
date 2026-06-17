@@ -835,7 +835,23 @@ PlayerSettings:
   webGLCloseOnQuit: 0
   webWasm2023: 0
   webEnableSubmoduleStrippingCompatibility: 0
-  scriptingDefineSymbols: {}
+  scriptingDefineSymbols:
+    Android: ENVIRO_3;ENVIRO_URP
+    EmbeddedLinux: ENVIRO_3;ENVIRO_URP
+    GameCoreScarlett: ENVIRO_3;ENVIRO_URP
+    GameCoreXboxOne: ENVIRO_3;ENVIRO_URP
+    Kepler: ENVIRO_3;ENVIRO_URP
+    LinuxHeadlessSimulation: ENVIRO_3;ENVIRO_URP
+    Nintendo Switch: ENVIRO_3;ENVIRO_URP
+    PS4: ENVIRO_3;ENVIRO_URP
+    PS5: ENVIRO_3;ENVIRO_URP
+    QNX: ENVIRO_3;ENVIRO_URP
+    ReservedCFE: ENVIRO_3;ENVIRO_URP
+    Standalone: ENVIRO_3;ENVIRO_URP
+    VisionOS: ENVIRO_3;ENVIRO_URP
+    WebGL: ENVIRO_3;ENVIRO_URP
+    XboxOne: ENVIRO_3;ENVIRO_URP
+    tvOS: ENVIRO_3;ENVIRO_URP
   additionalCompilerArguments: {}
   platformArchitecture: {}
   scriptingBackend:

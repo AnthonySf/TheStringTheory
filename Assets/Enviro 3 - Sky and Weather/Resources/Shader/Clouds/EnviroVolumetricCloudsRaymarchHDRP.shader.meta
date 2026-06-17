@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 83cb7b07c4a4dd24c91671effd1a1b09
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Clouds/EnviroVolumetricCloudsRaymarchHDRP.shader
+  uploadId: 888564

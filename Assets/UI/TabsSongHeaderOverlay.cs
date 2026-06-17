@@ -1666,6 +1666,8 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly List<MainMenuEntry> mainMenuEntries = new List<MainMenuEntry>();
 
+    private readonly MiniGamesScreenOverlay miniGamesScreenOverlay;
+
     private readonly VisualElement startMenuOverlay;
 
     private readonly VisualElement startMenuShell;
@@ -1759,6 +1761,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Button gameplayShortcutRestartButton;
     private readonly Button gameplayShortcutAudioButton;
     private readonly Button gameplayShortcutToneLabButton;
+    private readonly Button gameplayShortcutMoodSetterButton;
     private readonly Button gameplayShortcutLoopButton;
     private readonly Button gameplayShortcutOpenButton;
     private readonly Button gameplayShortcutSeekLeftButton;
@@ -1925,6 +1928,14 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label globalSettingsHelpLabel;
 
     private readonly List<GlobalSettingsMenuRow> globalSettingsMenuRows = new List<GlobalSettingsMenuRow>();
+    private readonly VisualElement backgroundMoodSetterOverlay;
+    private readonly VisualElement backgroundMoodSetterCard;
+    private readonly ScrollView backgroundMoodSetterScrollView;
+    private readonly Label backgroundMoodSetterTitleLabel;
+    private readonly Button backgroundMoodSetterCloseButton;
+    private readonly Label backgroundMoodSetterHintLabel;
+    private readonly List<GlobalSettingsMenuRow> backgroundMoodSetterRows = new List<GlobalSettingsMenuRow>();
+    private int lastBackgroundMoodSetterScrollIndex = int.MinValue;
 
     private readonly Dictionary<string, VisualElement> globalSettingInputs = new Dictionary<string, VisualElement>();
 
@@ -2297,6 +2308,7 @@ public sealed class TabsSongHeaderOverlay
     private string globalSettingsLayoutSignature = string.Empty;
 
     private Vector2 globalSettingsScrollOffset = Vector2.zero;
+    private Vector2 backgroundMoodSetterScrollOffset = Vector2.zero;
 
     private string globalSettingsFullscreenSignature = string.Empty;
 
@@ -2826,6 +2838,7 @@ public sealed class TabsSongHeaderOverlay
         gameplayShortcutRestartButton = CreateShortcutKeycapButton("Restart (R)", () => owner?.RetrySongFromUi());
         gameplayShortcutAudioButton = CreateShortcutKeycapButton("Audio (V)", () => owner?.OpenGameplayAudioPopupFromUi());
         gameplayShortcutToneLabButton = CreateShortcutKeycapButton("Tone Lab (T)", () => owner?.OpenToneLabFromUi());
+        gameplayShortcutMoodSetterButton = CreateShortcutKeycapButton("Mood Setter (W)", () => owner?.OpenBackgroundMoodSetterFromUi());
         gameplayShortcutLoopButton = CreateShortcutKeycapButton("Loop (L)", () => owner?.ToggleLoopFromUi());
         gameplayShortcutOpenButton = CreateShortcutKeycapButton("Open (Enter)", () => owner?.ActivateSelectedPauseActionFromUi());
         gameplayShortcutSeekLeftButton = CreateShortcutKeycapButton("Seek - (←)", () => owner?.SeekGameplayByStepFromUi(-1));
@@ -2837,6 +2850,7 @@ public sealed class TabsSongHeaderOverlay
         gameplayShortcutRow.Add(gameplayShortcutRestartButton);
         gameplayShortcutRow.Add(gameplayShortcutAudioButton);
         gameplayShortcutRow.Add(gameplayShortcutToneLabButton);
+        gameplayShortcutRow.Add(gameplayShortcutMoodSetterButton);
         gameplayShortcutLoopButton.tooltip = "Open loop mode";
         gameplayShortcutRow.Add(gameplayShortcutLoopButton);
         gameplayShortcutRow.Add(gameplayShortcutOpenButton);
@@ -4659,7 +4673,7 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorTestInputDeviceDropdown = new DropdownField();
         notesDetectorTestInputDeviceDropdown.choices = new List<string> { "Automatic" };
         notesDetectorTestInputDeviceDropdown.value = "Automatic";
-        notesDetectorTestInputDeviceDropdown.style.minWidth = 620f;
+        notesDetectorTestInputDeviceDropdown.style.minWidth = 720f;
         notesDetectorTestInputDeviceDropdown.style.height = 72f;
         notesDetectorTestInputDeviceDropdown.style.fontSize = 26f;
         notesDetectorTestInputDeviceDropdown.style.backgroundColor = new Color(0.06f, 0.07f, 0.09f, 0.98f);
@@ -4734,7 +4748,7 @@ public sealed class TabsSongHeaderOverlay
             text = "Refresh Devices"
         };
         notesDetectorRefreshDevicesButton.style.height = 72f;
-        notesDetectorRefreshDevicesButton.style.minWidth = 220f;
+        notesDetectorRefreshDevicesButton.style.minWidth = 250f;
         notesDetectorRefreshDevicesButton.style.paddingLeft = 16f;
         notesDetectorRefreshDevicesButton.style.paddingRight = 16f;
         notesDetectorRefreshDevicesButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
@@ -4760,7 +4774,7 @@ public sealed class TabsSongHeaderOverlay
             text = "Resampler: Filtered"
         };
         notesDetectorResamplerModeButton.style.height = 72f;
-        notesDetectorResamplerModeButton.style.minWidth = 240f;
+        notesDetectorResamplerModeButton.style.minWidth = 280f;
         notesDetectorResamplerModeButton.style.paddingLeft = 16f;
         notesDetectorResamplerModeButton.style.paddingRight = 16f;
         notesDetectorResamplerModeButton.style.marginLeft = 10f;
@@ -4930,7 +4944,7 @@ public sealed class TabsSongHeaderOverlay
         {
             int detectorActionIndex = i;
             notesDetectorTestActionButtons[i].RegisterCallback<MouseEnterEvent>(_ => owner?.HoverNotesDetectorTestSelectionFromUi(detectorActionIndex));
-            StyleNotesDetectorActionButton(notesDetectorTestActionButtons[i], 220f, 72f);
+            StyleNotesDetectorActionButton(notesDetectorTestActionButtons[i], 280f, 72f);
             notesDetectorTestActionButtons[i].style.marginRight = 12f;
             notesDetectorTestActionButtons[i].style.marginBottom = 12f;
             notesDetectorPrimaryButtonsRow.Add(notesDetectorTestActionButtons[i]);
@@ -4939,7 +4953,7 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorPresetDropdown = new DropdownField();
         notesDetectorPresetDropdown.choices = NativeDetectorSettingCatalog.BuildPresetLabels();
         notesDetectorPresetDropdown.value = notesDetectorPresetDropdown.choices.Count > 0 ? notesDetectorPresetDropdown.choices[0] : string.Empty;
-        StyleNotesDetectorDropdown(notesDetectorPresetDropdown, 280f);
+        StyleNotesDetectorDropdown(notesDetectorPresetDropdown, 360f);
         notesDetectorPresetDropdown.style.marginRight = 12f;
         notesDetectorPresetDropdown.style.marginBottom = 12f;
         notesDetectorPresetDropdown.RegisterValueChangedCallback(evt =>
@@ -4952,7 +4966,7 @@ public sealed class TabsSongHeaderOverlay
         });
         notesDetectorPrimaryButtonsRow.Add(notesDetectorPresetDropdown);
 
-        StyleNotesDetectorActionButton(notesDetectorSavePresetButton, 220f, 72f);
+        StyleNotesDetectorActionButton(notesDetectorSavePresetButton, 270f, 72f);
         notesDetectorSavePresetButton.style.marginRight = 22f;
         notesDetectorSavePresetButton.style.marginBottom = 12f;
         notesDetectorSavePresetButton.style.color = LibraryConfirmedSongColor;
@@ -4962,7 +4976,7 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorSavePresetButton.style.borderLeftColor = LibraryConfirmedSongColor;
         notesDetectorPrimaryButtonsRow.Add(notesDetectorSavePresetButton);
 
-        StyleNotesDetectorDropdown(notesDetectorTestInputDeviceDropdown, 500f);
+        StyleNotesDetectorDropdown(notesDetectorTestInputDeviceDropdown, 720f);
         notesDetectorTestInputDeviceDropdown.style.marginRight = 12f;
         notesDetectorTestInputDeviceDropdown.style.marginBottom = 12f;
 
@@ -4970,7 +4984,7 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorInputChannelDropdown.style.marginBottom = 12f;
 
         notesDetectorRefreshDevicesButton.style.height = 72f;
-        notesDetectorRefreshDevicesButton.style.minWidth = 220f;
+        notesDetectorRefreshDevicesButton.style.minWidth = 250f;
         notesDetectorRefreshDevicesButton.style.fontSize = 24f;
         notesDetectorRefreshDevicesButton.style.marginRight = 12f;
         notesDetectorRefreshDevicesButton.style.marginBottom = 12f;
@@ -5019,7 +5033,7 @@ public sealed class TabsSongHeaderOverlay
         notesDetectorSettingsHintLabel.style.marginBottom = 26f;
         notesDetectorSettingsScrollView.Add(notesDetectorSettingsHintLabel);
 
-        StyleNotesDetectorActionButton(notesDetectorAdvancedSettingsToggleButton, 320f, 66f);
+        StyleNotesDetectorActionButton(notesDetectorAdvancedSettingsToggleButton, 390f, 66f);
         notesDetectorAdvancedSettingsToggleButton.style.marginBottom = 24f;
         notesDetectorAdvancedSettingsToggleButton.style.alignSelf = Align.FlexStart;
         notesDetectorSettingsScrollView.Add(notesDetectorAdvancedSettingsToggleButton);
@@ -5885,11 +5899,11 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuOverlay.Clear();
 
-        mainMenuOverlay.style.alignItems = Align.Stretch;
+        mainMenuOverlay.style.alignItems = Align.Center;
 
         mainMenuOverlay.style.justifyContent = Justify.FlexStart;
 
-        mainMenuOverlay.style.paddingTop = 180f;
+        mainMenuOverlay.style.paddingTop = 84f;
 
         mainMenuOverlay.style.paddingLeft = 48f;
 
@@ -5935,13 +5949,13 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuShell.style.flexGrow = 1f;
 
-        mainMenuShell.style.maxWidth = 980f;
+        mainMenuShell.style.maxWidth = 560f;
 
         mainMenuShell.style.width = Length.Percent(100f);
 
-        mainMenuShell.style.alignSelf = Align.FlexStart;
+        mainMenuShell.style.alignSelf = Align.Center;
 
-        mainMenuShell.style.marginTop = 120f;
+        mainMenuShell.style.marginTop = 48f;
 
 
 
@@ -5967,21 +5981,21 @@ public sealed class TabsSongHeaderOverlay
 
         VisualElement mainMenuContentRail = new VisualElement();
 
-        mainMenuContentRail.style.paddingLeft = 78f;
+        mainMenuContentRail.style.paddingLeft = 0f;
 
-        mainMenuContentRail.style.alignItems = Align.FlexStart;
+        mainMenuContentRail.style.alignItems = Align.Center;
 
         mainMenuContentRail.style.width = Length.Percent(100f);
 
 
 
-        mainMenuEyebrowLabel = CreateLabel("INTERACTIVE MUSIC EXPERIENCE", 30f, new Color(0.66f, 0.86f, 1f, 0.98f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+        mainMenuEyebrowLabel = CreateLabel("INTERACTIVE MUSIC EXPERIENCE", 30f, new Color(0.66f, 0.86f, 1f, 0.98f), true, TextAnchor.MiddleCenter, useTitleFont: false);
 
         mainMenuEyebrowLabel.style.letterSpacing = 4.6f;
 
         mainMenuEyebrowLabel.style.marginLeft = 0f;
 
-        mainMenuEyebrowLabel.style.marginBottom = 28f;
+        mainMenuEyebrowLabel.style.marginBottom = 18f;
 
 
 
@@ -5989,9 +6003,9 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuBrandWrap.style.marginLeft = 0f;
 
-        mainMenuBrandWrap.style.marginBottom = 48f;
+        mainMenuBrandWrap.style.marginBottom = 28f;
 
-        mainMenuBrandWrap.style.alignItems = Align.FlexStart;
+        mainMenuBrandWrap.style.alignItems = Align.Center;
 
         sharedMainMenuWordmarkLogo = CreateMainMenuWordmarkLogo();
         mainMenuBrandWrap.Add(sharedMainMenuWordmarkLogo);
@@ -6028,11 +6042,13 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuNavColumn.style.width = Length.Percent(100f);
 
-        mainMenuNavColumn.style.maxWidth = 900f;
+        mainMenuNavColumn.style.maxWidth = 500f;
 
         mainMenuNavColumn.style.marginBottom = 0f;
 
-        mainMenuNavColumn.style.marginTop = 34f;
+        mainMenuNavColumn.style.marginTop = 78f;
+
+        mainMenuNavColumn.style.alignItems = Align.Center;
 
 
 
@@ -6049,6 +6065,8 @@ public sealed class TabsSongHeaderOverlay
         CreateMainMenuEntry("Tuner", string.Empty, new Color(0.34f, 0.98f, 0.72f, 1f), () => owner?.OpenTunerFromUi());
 
         CreateMainMenuEntry("Tone Lab", string.Empty, new Color(0.21f, 0.88f, 0.84f, 1f), () => owner?.OpenToneLabFromUi());
+
+        CreateMainMenuEntry("Mini Games", string.Empty, new Color(1f, 0.72f, 0.35f, 1f), () => owner?.OpenMiniGamesFromUi());
 
         CreateMainMenuEntry("Exit", string.Empty, new Color(0.96f, 0.46f, 0.55f, 1f), () => owner?.ExitGameFromUi());
 
@@ -6249,6 +6267,8 @@ public sealed class TabsSongHeaderOverlay
         mainMenuVersionLabel.style.unityFontDefinition = modernUiFontDefinition;
         mainMenuVersionLabel.pickingMode = PickingMode.Ignore;
         mainMenuOverlay.Add(mainMenuVersionLabel);
+
+        miniGamesScreenOverlay = new MiniGamesScreenOverlay(owner, bodyFontDefinition, logoFontDefinition, modernUiFontDefinition);
 
         startMenuOverlay = CreateFullscreenOverlay();
         startMenuOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.44f);
@@ -7675,6 +7695,105 @@ public sealed class TabsSongHeaderOverlay
         globalSettingsOverlay.Add(globalSettingsHelpLabel);
 
         globalSettingsOverlay.Add(globalSettingsCard);
+
+        backgroundMoodSetterOverlay = CreateFullscreenOverlay();
+        backgroundMoodSetterOverlay.style.backgroundColor = new Color(0f, 0f, 0f, 0.20f);
+        backgroundMoodSetterOverlay.style.justifyContent = Justify.FlexEnd;
+        backgroundMoodSetterOverlay.style.alignItems = Align.Center;
+        backgroundMoodSetterOverlay.style.paddingLeft = 34f;
+        backgroundMoodSetterOverlay.style.paddingRight = 34f;
+        backgroundMoodSetterOverlay.style.paddingBottom = 28f;
+        backgroundMoodSetterOverlay.style.paddingTop = 0f;
+
+        backgroundMoodSetterCard = new VisualElement();
+        backgroundMoodSetterCard.style.width = Length.Percent(94f);
+        backgroundMoodSetterCard.style.maxWidth = 1540f;
+        backgroundMoodSetterCard.style.minWidth = 980f;
+        backgroundMoodSetterCard.style.maxHeight = Length.Percent(70f);
+        backgroundMoodSetterCard.style.flexDirection = FlexDirection.Column;
+        backgroundMoodSetterCard.style.backgroundColor = new Color(0.006f, 0.007f, 0.012f, 0.88f);
+        backgroundMoodSetterCard.style.borderTopLeftRadius = 12f;
+        backgroundMoodSetterCard.style.borderTopRightRadius = 12f;
+        backgroundMoodSetterCard.style.borderBottomLeftRadius = 12f;
+        backgroundMoodSetterCard.style.borderBottomRightRadius = 12f;
+        backgroundMoodSetterCard.style.borderTopWidth = 2f;
+        backgroundMoodSetterCard.style.borderRightWidth = 2f;
+        backgroundMoodSetterCard.style.borderBottomWidth = 2f;
+        backgroundMoodSetterCard.style.borderLeftWidth = 2f;
+        Color moodBorderColor = new Color(1f, 1f, 1f, 0.90f);
+        backgroundMoodSetterCard.style.borderTopColor = moodBorderColor;
+        backgroundMoodSetterCard.style.borderRightColor = moodBorderColor;
+        backgroundMoodSetterCard.style.borderBottomColor = moodBorderColor;
+        backgroundMoodSetterCard.style.borderLeftColor = moodBorderColor;
+        backgroundMoodSetterCard.style.paddingLeft = 42f;
+        backgroundMoodSetterCard.style.paddingRight = 42f;
+        backgroundMoodSetterCard.style.paddingTop = 30f;
+        backgroundMoodSetterCard.style.paddingBottom = 24f;
+
+        VisualElement moodHeader = new VisualElement();
+        moodHeader.style.flexDirection = FlexDirection.Row;
+        moodHeader.style.alignItems = Align.Center;
+        moodHeader.style.justifyContent = Justify.SpaceBetween;
+        moodHeader.style.marginBottom = 22f;
+
+        VisualElement moodTitleColumn = new VisualElement();
+        moodTitleColumn.style.flexDirection = FlexDirection.Column;
+        moodTitleColumn.style.flexGrow = 1f;
+        backgroundMoodSetterTitleLabel = CreateLabel("Mood Setter", 58f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        backgroundMoodSetterTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        backgroundMoodSetterTitleLabel.style.letterSpacing = 0f;
+        backgroundMoodSetterTitleLabel.style.marginBottom = 0f;
+        moodTitleColumn.Add(backgroundMoodSetterTitleLabel);
+
+        backgroundMoodSetterCloseButton = new Button(() => owner?.CloseBackgroundMoodSetterFromUi()) { text = "Close" };
+        backgroundMoodSetterCloseButton.focusable = false;
+        backgroundMoodSetterCloseButton.style.height = 58f;
+        backgroundMoodSetterCloseButton.style.minWidth = 132f;
+        backgroundMoodSetterCloseButton.style.paddingLeft = 26f;
+        backgroundMoodSetterCloseButton.style.paddingRight = 26f;
+        backgroundMoodSetterCloseButton.style.fontSize = 28f;
+        backgroundMoodSetterCloseButton.style.unityFontDefinition = modernUiFontDefinition;
+        backgroundMoodSetterCloseButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+        backgroundMoodSetterCloseButton.style.backgroundColor = new Color(0f, 0f, 0f, 0.12f);
+        backgroundMoodSetterCloseButton.style.backgroundImage = StyleKeyword.None;
+        backgroundMoodSetterCloseButton.style.color = Color.white;
+        backgroundMoodSetterCloseButton.style.borderTopLeftRadius = 10f;
+        backgroundMoodSetterCloseButton.style.borderTopRightRadius = 10f;
+        backgroundMoodSetterCloseButton.style.borderBottomLeftRadius = 10f;
+        backgroundMoodSetterCloseButton.style.borderBottomRightRadius = 10f;
+        backgroundMoodSetterCloseButton.style.borderTopWidth = 1f;
+        backgroundMoodSetterCloseButton.style.borderRightWidth = 1f;
+        backgroundMoodSetterCloseButton.style.borderBottomWidth = 1f;
+        backgroundMoodSetterCloseButton.style.borderLeftWidth = 1f;
+        Color moodCloseBorder = new Color(1f, 1f, 1f, 0.74f);
+        backgroundMoodSetterCloseButton.style.borderTopColor = moodCloseBorder;
+        backgroundMoodSetterCloseButton.style.borderRightColor = moodCloseBorder;
+        backgroundMoodSetterCloseButton.style.borderBottomColor = moodCloseBorder;
+        backgroundMoodSetterCloseButton.style.borderLeftColor = moodCloseBorder;
+        backgroundMoodSetterCloseButton.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverBackgroundMoodSettingFromUi(-1));
+
+        moodHeader.Add(moodTitleColumn);
+        moodHeader.Add(backgroundMoodSetterCloseButton);
+        backgroundMoodSetterCard.Add(moodHeader);
+
+        backgroundMoodSetterScrollView = new ScrollView(ScrollViewMode.Vertical);
+        backgroundMoodSetterScrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+        backgroundMoodSetterScrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        backgroundMoodSetterScrollView.style.flexGrow = 1f;
+        backgroundMoodSetterScrollView.style.minHeight = 0f;
+        backgroundMoodSetterScrollView.style.marginTop = 4f;
+        ConfigureRuntimeScrollView(backgroundMoodSetterScrollView);
+        AttachWheelScrolling(backgroundMoodSetterScrollView, backgroundMoodSetterScrollView);
+        AttachWheelScrolling(backgroundMoodSetterScrollView.contentViewport, backgroundMoodSetterScrollView);
+        AttachWheelScrolling(backgroundMoodSetterScrollView.contentContainer, backgroundMoodSetterScrollView);
+        backgroundMoodSetterCard.Add(backgroundMoodSetterScrollView);
+
+        backgroundMoodSetterHintLabel = CreateLabel("↑/↓ select  •  ←/→ adjust  •  Enter toggle  •  Esc close", 24f, new Color(0.84f, 0.82f, 0.88f, 0.88f), false, TextAnchor.MiddleCenter, useTitleFont: false);
+        backgroundMoodSetterHintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        backgroundMoodSetterHintLabel.style.marginTop = 16f;
+        backgroundMoodSetterHintLabel.style.whiteSpace = WhiteSpace.Normal;
+        backgroundMoodSetterCard.Add(backgroundMoodSetterHintLabel);
+        backgroundMoodSetterOverlay.Add(backgroundMoodSetterCard);
 
         diagnosticsConsentOverlay = CreateFullscreenOverlay();
         diagnosticsConsentOverlay.style.justifyContent = Justify.Center;
@@ -10243,6 +10362,8 @@ public sealed class TabsSongHeaderOverlay
 
         root.Add(mainMenuOverlay);
 
+        root.Add(miniGamesScreenOverlay.RootElement);
+
         root.Add(startMenuOverlay);
 
         root.Add(characterSelectionOverlay);
@@ -10254,6 +10375,7 @@ public sealed class TabsSongHeaderOverlay
         root.Add(gameplayAudioPopupOverlay);
 
         root.Add(globalSettingsOverlay);
+        root.Add(backgroundMoodSetterOverlay);
 
         root.Add(diagnosticsConsentOverlay);
 
@@ -10737,17 +10859,18 @@ public sealed class TabsSongHeaderOverlay
         bool showToneLab = snapshot.showToneLab && !showEnd;
         bool showTuner = snapshot.showTuner && !showEnd && !showToneLab;
         bool showNotesDetectorTest = snapshot.showNotesDetectorTestMenu && !showEnd && !showToneLab && !showTuner;
-        bool showGameplayAudioPopup = snapshot.showGameplayAudioPopup && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest;
-        bool showCharacterSelection = snapshot.showCharacterSelection && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest;
+        bool showMiniGames = snapshot.showMiniGames && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest;
+        bool showGameplayAudioPopup = snapshot.showGameplayAudioPopup && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
+        bool showCharacterSelection = snapshot.showCharacterSelection && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
 
-        bool showStartMenu = snapshot.showStartMenu && !showCharacterSelection && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest;
-        bool showMultiplayerRhythmSetup = snapshot.showMultiplayerRhythmSetup && !showStartMenu && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest;
+        bool showStartMenu = snapshot.showStartMenu && !showCharacterSelection && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
+        bool showMultiplayerRhythmSetup = snapshot.showMultiplayerRhythmSetup && !showStartMenu && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
 
-        bool showLibraryLoading = snapshot.showLibraryLoadingOverlay && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest;
+        bool showLibraryLoading = snapshot.showLibraryLoadingOverlay && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
 
         SetWordmarkParentForLibraryLoading(showLibraryLoading);
 
-        bool showMainMenu = snapshot.showMainMenu && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest;
+        bool showMainMenu = snapshot.showMainMenu && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
 
         bool showLoopPausePopup = snapshot.showLoopPausePopup && !showEnd;
 
@@ -10765,24 +10888,26 @@ public sealed class TabsSongHeaderOverlay
         bool showBugReport = snapshot.showBugReportScreen && !showDiagnosticsConsent && !showEnd;
         bool showBugReportSent = snapshot.showBugReportSentPopup && !showDiagnosticsConsent && !showBugReport && !showEnd;
 
-        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showDiagnosticsConsent && !showBugReport && !showBugReportSent && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showBackgroundMoodSetter = snapshot.showBackgroundMoodSetter && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showGameplayAudioPopup;
 
-        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showGameplayAudioPopup;
+        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showDiagnosticsConsent && !showBugReport && !showBugReportSent && !showBackgroundMoodSetter && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+
+        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showGameplayAudioPopup;
         bool showSharedPauseSidebarBase = showPause || showGameModes || showSettings;
 
-        bool showSelection = snapshot.showSongSelection && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner;
+        bool showSelection = snapshot.showSongSelection && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames;
 
-        bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner;
+        bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames;
 
-        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showGameplayAudioPopup;
+        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showGameplayAudioPopup;
 
-        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
+        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
 
         bool isHighway3D = owner != null && owner.renderMode.UsesHighway3D();
         bool isHighway3DAndTabs = owner != null && owner.renderMode == GuitarRenderMode.Highway3DAndTabs;
         bool isTabsGameplay = owner != null && owner.renderMode.UsesTabHudLayout() && snapshot.gameplayMode == GuitarGameplayMode.Guitar;
 
-        bool showTechniqueLegend = isTabsGameplay && !IsAlphaTabTabsGameplayLayout() && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showGameplayAudioPopup && !showPause && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool showTechniqueLegend = isTabsGameplay && !IsAlphaTabTabsGameplayLayout() && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showGameplayAudioPopup && !showPause && !showBackgroundMoodSetter && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
 
 
@@ -10839,6 +10964,7 @@ public sealed class TabsSongHeaderOverlay
         arrangementDifficultyPopupOverlay.style.display = showArrangementDifficultyPopup ? DisplayStyle.Flex : DisplayStyle.None;
 
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
+        miniGamesScreenOverlay.Update(snapshot, showMiniGames);
 
         startMenuOverlay.style.display = showStartMenu ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -10868,6 +10994,14 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsOverlay.style.display = showGlobalSettings ? DisplayStyle.Flex : DisplayStyle.None;
         globalSettingsOverlay.style.backgroundColor = new Color(0.08f, 0.08f, 0.09f, snapshot.globalSettingsTransparentBackground ? 0f : 0.992f);
+        backgroundMoodSetterOverlay.style.display = showBackgroundMoodSetter ? DisplayStyle.Flex : DisplayStyle.None;
+        if (showBackgroundMoodSetter)
+            backgroundMoodSetterOverlay.BringToFront();
+        else
+        {
+            lastBackgroundMoodSetterScrollIndex = int.MinValue;
+            backgroundMoodSetterScrollOffset = Vector2.zero;
+        }
         diagnosticsConsentOverlay.style.display = showDiagnosticsConsent ? DisplayStyle.Flex : DisplayStyle.None;
         bugReportOverlay.style.display = showBugReport ? DisplayStyle.Flex : DisplayStyle.None;
         bugReportSentOverlay.style.display = showBugReportSent ? DisplayStyle.Flex : DisplayStyle.None;
@@ -10969,6 +11103,7 @@ public sealed class TabsSongHeaderOverlay
             && !showToneLab
             && !showTuner
             && !showNotesDetectorTest
+            && !showMiniGames
             && !showGameplayAudioPopup
             && !showMainMenu
             && !showStartMenu
@@ -10976,6 +11111,7 @@ public sealed class TabsSongHeaderOverlay
             && !showSelection
             && !showTrackSelection
             && !showGlobalSettings
+            && !showBackgroundMoodSetter
             && !showDiagnosticsConsent
             && !showBugReport
             && !showBugReportSent
@@ -10996,8 +11132,8 @@ public sealed class TabsSongHeaderOverlay
             else
             {
                 gameplayShortcutLabel.text = showPause
-                    ? $"Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
-                    : $"Esc pause  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab";
+                    ? $"Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  W Mood Setter  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
+                    : $"Esc pause  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  W Mood Setter";
             }
             gameplayShortcutLabel.style.display = DisplayStyle.None;
         }
@@ -11014,6 +11150,8 @@ public sealed class TabsSongHeaderOverlay
                 gameplayShortcutAudioButton.text = "Audio (V)";
             if (gameplayShortcutToneLabButton != null)
                 gameplayShortcutToneLabButton.text = "Tone Lab (T)";
+            if (gameplayShortcutMoodSetterButton != null)
+                gameplayShortcutMoodSetterButton.text = "Mood Setter (W)";
             if (gameplayShortcutLoopButton != null)
             {
                 gameplayShortcutLoopButton.text = snapshot.loopEnabled ? "Loop On (L)" : "Loop (L)";
@@ -11049,10 +11187,13 @@ public sealed class TabsSongHeaderOverlay
             && !showTrackSelection
 
             && !showGlobalSettings
+            && !showBackgroundMoodSetter
 
             && !showStartupTuningReminder
 
             && !showTuner
+
+            && !showMiniGames
 
             && !showLoopPausePopup;
 
@@ -11060,10 +11201,10 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        bool pauseLikeHudMenu = showPause || showSettings || showGlobalSettings || showGameModes || showHeroModeSettings || showDiagnosticsConsent || showBugReport || showBugReportSent;
+        bool pauseLikeHudMenu = showPause || showSettings || showGlobalSettings || showBackgroundMoodSetter || showGameModes || showHeroModeSettings || showDiagnosticsConsent || showBugReport || showBugReportSent;
         pauseLikeHudMenu = pauseLikeHudMenu || showGameplayAudioPopup;
         bool showGameplayHudPreviewInMenus = snapshot.showGameplayHudPreviewInMenus;
-        bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
+        bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showMiniGames || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
         bool detectorGameplayMinimalHud = snapshot.notesDetectorGameplayTestActive;
         highwayCharacterVisible = snapshot.showHighwayCharacter;
 
@@ -11087,6 +11228,7 @@ public sealed class TabsSongHeaderOverlay
                                            !showPause &&
                                            !showSettings &&
                                            !showGlobalSettings &&
+                                           !showBackgroundMoodSetter &&
                                            !showDiagnosticsConsent &&
                                            !showBugReport &&
                                            !showBugReportSent &&
@@ -11096,6 +11238,7 @@ public sealed class TabsSongHeaderOverlay
                                            !showToneLab &&
                                            !showTuner &&
                                            !showNotesDetectorTest &&
+                                           !showMiniGames &&
                                            !showOffsetHelper &&
                                            !showLoopSetup &&
                                            !showLoopPausePopup &&
@@ -11122,6 +11265,7 @@ public sealed class TabsSongHeaderOverlay
                                         !showToneLab &&
                                         !showTuner &&
                                         !showNotesDetectorTest &&
+                                        !showMiniGames &&
                                         !showOffsetHelper &&
                                         !snapshot.showStartupTuningReminder &&
                                         !snapshot.mainMenuFlowActive &&
@@ -11132,7 +11276,7 @@ public sealed class TabsSongHeaderOverlay
 
         UpdateControllerCursor(snapshot);
 
-        judgePopupLayer.style.display = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showOffsetHelper || showLoopSetup || showLoopPausePopup || showArrangementDifficultyPopup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || pauseLikeHudMenu ? DisplayStyle.None : DisplayStyle.Flex;
+        judgePopupLayer.style.display = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showMiniGames || showOffsetHelper || showLoopSetup || showLoopPausePopup || showArrangementDifficultyPopup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || pauseLikeHudMenu ? DisplayStyle.None : DisplayStyle.Flex;
 
         if (showPause || showSettings || showNotesDetectorTest || showGameModes || showHeroModeSettings)
 
@@ -11818,10 +11962,453 @@ public sealed class TabsSongHeaderOverlay
 
             UpdateGlobalSettings(snapshot);
 
+        if (showBackgroundMoodSetter)
+
+            UpdateBackgroundMoodSetter(snapshot);
+
         if (showGlobalSettings && snapshot.showGlobalSettingsSelectionPopup)
 
             UpdateGeneratedAudioTrackPopup(snapshot);
 
+    }
+
+    private void UpdateBackgroundMoodSetter(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null || backgroundMoodSetterOverlay == null || backgroundMoodSetterScrollView == null)
+            return;
+
+        if (backgroundMoodSetterHintLabel != null)
+            backgroundMoodSetterHintLabel.text = "↑/↓ select  •  ←/→ adjust  •  Enter apply/close  •  Esc close";
+
+        UpdateBackgroundMoodCloseButton(snapshot.selectedBackgroundMoodSettingIndex < 0);
+
+        backgroundMoodSetterScrollOffset = backgroundMoodSetterScrollView.scrollOffset;
+        backgroundMoodSetterScrollView.Clear();
+        backgroundMoodSetterRows.Clear();
+
+        List<RuntimeSettingSectionSnapshot> sections = snapshot.backgroundMoodSetterSections ?? new List<RuntimeSettingSectionSnapshot>();
+        int settingIndex = 0;
+        foreach (RuntimeSettingSectionSnapshot section in sections)
+        {
+            if (section?.settings == null || section.settings.Count == 0)
+                continue;
+
+            VisualElement sectionHeader = new VisualElement();
+            sectionHeader.style.flexDirection = FlexDirection.Row;
+            sectionHeader.style.alignItems = Align.Center;
+            sectionHeader.style.marginTop = settingIndex == 0 ? 0f : 22f;
+            sectionHeader.style.marginBottom = 12f;
+            sectionHeader.style.paddingLeft = 2f;
+            sectionHeader.style.paddingRight = 2f;
+            Label sectionLabel = CreateLabel(section.title ?? string.Empty, 26f, new Color(1.00f, 0.70f, 0.34f, 0.96f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+            sectionLabel.style.unityFontDefinition = modernUiFontDefinition;
+            sectionLabel.style.letterSpacing = 0f;
+            sectionLabel.style.marginRight = 18f;
+            VisualElement sectionLine = new VisualElement();
+            sectionLine.style.height = 1f;
+            sectionLine.style.flexGrow = 1f;
+            sectionLine.style.backgroundColor = new Color(1.00f, 0.70f, 0.34f, 0.28f);
+            sectionHeader.Add(sectionLabel);
+            sectionHeader.Add(sectionLine);
+            AttachWheelScrolling(sectionLabel, backgroundMoodSetterScrollView);
+            AttachWheelScrolling(sectionHeader, backgroundMoodSetterScrollView);
+            backgroundMoodSetterScrollView.Add(sectionHeader);
+
+            foreach (RuntimeSettingSnapshot setting in section.settings)
+            {
+                if (setting == null)
+                    continue;
+
+                AddBackgroundMoodSettingRow(backgroundMoodSetterScrollView, setting, settingIndex, settingIndex == snapshot.selectedBackgroundMoodSettingIndex);
+                settingIndex++;
+            }
+        }
+
+        backgroundMoodSetterScrollView.scrollOffset = backgroundMoodSetterScrollOffset;
+        EnsureBackgroundMoodSelectionVisible(snapshot.selectedBackgroundMoodSettingIndex);
+    }
+
+    private void UpdateBackgroundMoodCloseButton(bool isSelected)
+    {
+        if (backgroundMoodSetterCloseButton == null)
+            return;
+
+        Color borderColor = isSelected ? new Color(1f, 1f, 1f, 0.92f) : new Color(1f, 1f, 1f, 0.56f);
+        backgroundMoodSetterCloseButton.style.backgroundColor = isSelected ? new Color(0.052f, 0.056f, 0.066f, 0.86f) : new Color(0f, 0f, 0f, 0.12f);
+        backgroundMoodSetterCloseButton.style.color = isSelected ? Color.white : new Color(0.90f, 0.92f, 0.96f, 0.92f);
+        backgroundMoodSetterCloseButton.style.borderTopColor = borderColor;
+        backgroundMoodSetterCloseButton.style.borderRightColor = borderColor;
+        backgroundMoodSetterCloseButton.style.borderBottomColor = borderColor;
+        backgroundMoodSetterCloseButton.style.borderLeftColor = borderColor;
+        backgroundMoodSetterCloseButton.style.scale = isSelected ? new Scale(new Vector3(1.03f, 1.03f, 1f)) : new Scale(Vector3.one);
+    }
+
+    private void EnsureBackgroundMoodSelectionVisible(int selectedIndex)
+    {
+        if (backgroundMoodSetterScrollView == null)
+            return;
+
+        if (selectedIndex == lastBackgroundMoodSetterScrollIndex)
+            return;
+
+        lastBackgroundMoodSetterScrollIndex = selectedIndex;
+        if (selectedIndex < 0)
+        {
+            backgroundMoodSetterScrollView.schedule.Execute(() =>
+            {
+                if (backgroundMoodSetterScrollView == null)
+                    return;
+
+                backgroundMoodSetterScrollView.scrollOffset = Vector2.zero;
+                backgroundMoodSetterScrollOffset = backgroundMoodSetterScrollView.scrollOffset;
+            }).ExecuteLater(0);
+            return;
+        }
+
+        if (selectedIndex >= backgroundMoodSetterRows.Count)
+            return;
+
+        VisualElement selectedRow = backgroundMoodSetterRows[selectedIndex]?.row;
+        if (selectedRow == null)
+            return;
+
+        backgroundMoodSetterScrollView.schedule.Execute(() =>
+        {
+            if (backgroundMoodSetterScrollView == null || selectedRow.panel == null || backgroundMoodSetterScrollView.contentViewport == null || backgroundMoodSetterScrollView.contentContainer == null)
+                return;
+
+            backgroundMoodSetterScrollView.ScrollTo(selectedRow);
+
+            backgroundMoodSetterScrollView.schedule.Execute(() =>
+            {
+                if (backgroundMoodSetterScrollView == null || selectedRow.panel == null || backgroundMoodSetterScrollView.contentViewport == null || backgroundMoodSetterScrollView.contentContainer == null)
+                    return;
+
+                const float visibilityPadding = 24f;
+                Rect viewport = backgroundMoodSetterScrollView.contentViewport.worldBound;
+                Rect rowBounds = selectedRow.worldBound;
+                float currentOffset = backgroundMoodSetterScrollView.scrollOffset.y;
+                float targetOffset = currentOffset;
+
+                if (rowBounds.yMin < viewport.yMin + visibilityPadding)
+                {
+                    float delta = (viewport.yMin + visibilityPadding) - rowBounds.yMin;
+                    targetOffset = Mathf.Max(0f, currentOffset - delta);
+                }
+                else if (rowBounds.yMax > viewport.yMax - visibilityPadding)
+                {
+                    float delta = rowBounds.yMax - (viewport.yMax - visibilityPadding);
+                    targetOffset = Mathf.Max(0f, currentOffset + delta);
+                }
+
+                if (!Mathf.Approximately(targetOffset, currentOffset))
+                    backgroundMoodSetterScrollView.scrollOffset = new Vector2(backgroundMoodSetterScrollView.scrollOffset.x, targetOffset);
+
+                backgroundMoodSetterScrollOffset = backgroundMoodSetterScrollView.scrollOffset;
+            }).ExecuteLater(0);
+        }).ExecuteLater(0);
+    }
+
+    private void AddBackgroundMoodSettingRow(VisualElement parent, RuntimeSettingSnapshot setting, int index, bool isSelected)
+    {
+        if (parent == null || setting == null)
+            return;
+
+        string value = FormatGlobalSettingsValue(setting);
+        bool adjustable = !string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) &&
+                          !string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase);
+        string metaText = GetGlobalSettingMetaText(setting);
+        GlobalSettingsMenuRow row = CreateBackgroundMoodSettingRow(
+            setting.label,
+            value,
+            isSelected,
+            adjustable,
+            () => owner?.HoverBackgroundMoodSettingFromUi(index),
+            () => owner?.ActivateBackgroundMoodSettingFromUi(index),
+            adjustable ? (Action)(() => owner?.AdjustBackgroundMoodSettingFromUi(index, -1)) : null,
+            adjustable ? (Action)(() => owner?.AdjustBackgroundMoodSettingFromUi(index, 1)) : null,
+            metaText);
+
+        parent.Add(row.row);
+        backgroundMoodSetterRows.Add(row);
+    }
+
+    private GlobalSettingsMenuRow CreateBackgroundMoodSettingRow(string title, string value, bool isSelected, bool showArrows, Action onHover, Action onActivate, Action onLeft, Action onRight, string metaText)
+    {
+        VisualElement row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Column;
+        row.style.width = Length.Percent(100f);
+        row.style.marginBottom = 12f;
+        row.style.paddingLeft = 0f;
+        row.style.paddingRight = 0f;
+        row.style.paddingTop = 0f;
+        row.style.paddingBottom = 0f;
+        row.style.backgroundColor = isSelected ? new Color(0.052f, 0.056f, 0.066f, 0.84f) : new Color(0f, 0f, 0f, 0.30f);
+        row.style.borderTopLeftRadius = 12f;
+        row.style.borderTopRightRadius = 12f;
+        row.style.borderBottomLeftRadius = 12f;
+        row.style.borderBottomRightRadius = 12f;
+        row.style.borderTopWidth = 1f;
+        row.style.borderRightWidth = 1f;
+        row.style.borderBottomWidth = 1f;
+        row.style.borderLeftWidth = 1f;
+        row.style.translate = new Translate(0f, 0f);
+        row.style.transitionProperty = new List<StylePropertyName>
+        {
+            new StylePropertyName("background-color"),
+            new StylePropertyName("border-color")
+        };
+        row.style.transitionDuration = new List<TimeValue>
+        {
+            new TimeValue(120f, TimeUnit.Millisecond),
+            new TimeValue(120f, TimeUnit.Millisecond)
+        };
+        row.style.transitionTimingFunction = new List<EasingFunction>
+        {
+            new EasingFunction(EasingMode.EaseOutCubic),
+            new EasingFunction(EasingMode.EaseOutCubic)
+        };
+        Color rowBorderColor = isSelected ? new Color(1f, 1f, 1f, 0.88f) : new Color(1f, 1f, 1f, 0f);
+        row.style.borderTopColor = rowBorderColor;
+        row.style.borderRightColor = rowBorderColor;
+        row.style.borderBottomColor = rowBorderColor;
+        row.style.borderLeftColor = rowBorderColor;
+
+        VisualElement rowBody = new VisualElement();
+        rowBody.style.flexDirection = FlexDirection.Column;
+        rowBody.style.paddingLeft = 24f;
+        rowBody.style.paddingRight = 24f;
+        rowBody.style.paddingTop = 14f;
+        rowBody.style.paddingBottom = 14f;
+
+        VisualElement topLine = new VisualElement();
+        topLine.style.flexDirection = FlexDirection.Row;
+        topLine.style.alignItems = Align.Center;
+        topLine.style.justifyContent = Justify.SpaceBetween;
+        topLine.style.minHeight = 78f;
+
+        VisualElement accent = new VisualElement();
+        accent.style.position = Position.Absolute;
+        accent.style.left = 0f;
+        accent.style.top = 12f;
+        accent.style.bottom = 12f;
+        accent.style.width = 0f;
+        accent.style.backgroundColor = new Color(1f, 1f, 1f, 0f);
+        accent.style.borderTopRightRadius = 3f;
+        accent.style.borderBottomRightRadius = 3f;
+        row.Add(accent);
+
+        Button mainButton = new Button(() => onActivate?.Invoke());
+        mainButton.text = title ?? string.Empty;
+        mainButton.focusable = false;
+        mainButton.style.flexGrow = 1f;
+        mainButton.style.minHeight = 68f;
+        mainButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        mainButton.style.color = isSelected ? Color.white : new Color(0.86f, 0.91f, 0.95f, 0.96f);
+        mainButton.style.fontSize = 34f;
+        mainButton.style.unityFontDefinition = modernUiFontDefinition;
+        mainButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+        mainButton.style.unityTextAlign = TextAnchor.MiddleLeft;
+        mainButton.style.paddingLeft = 0f;
+        mainButton.style.paddingRight = 10f;
+        mainButton.style.borderTopWidth = 0f;
+        mainButton.style.borderRightWidth = 0f;
+        mainButton.style.borderBottomWidth = 0f;
+        mainButton.style.borderLeftWidth = 0f;
+        mainButton.style.backgroundImage = StyleKeyword.None;
+        mainButton.RegisterCallback<MouseEnterEvent>(_ => onHover?.Invoke());
+        AttachWheelScrolling(mainButton, backgroundMoodSetterScrollView);
+
+        VisualElement valueWrap = new VisualElement();
+        valueWrap.style.flexDirection = FlexDirection.Row;
+        valueWrap.style.alignItems = Align.Center;
+        valueWrap.style.justifyContent = Justify.FlexEnd;
+        valueWrap.style.minWidth = 410f;
+        valueWrap.style.paddingLeft = 6f;
+        valueWrap.style.paddingRight = 6f;
+        valueWrap.style.paddingTop = 0f;
+        valueWrap.style.paddingBottom = 0f;
+        valueWrap.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        valueWrap.style.borderTopLeftRadius = 10f;
+        valueWrap.style.borderTopRightRadius = 10f;
+        valueWrap.style.borderBottomLeftRadius = 10f;
+        valueWrap.style.borderBottomRightRadius = 10f;
+        valueWrap.style.borderTopWidth = 0f;
+        valueWrap.style.borderRightWidth = 0f;
+        valueWrap.style.borderBottomWidth = 0f;
+        valueWrap.style.borderLeftWidth = 0f;
+        Color valueBorderColor = new Color(1f, 1f, 1f, 0f);
+        valueWrap.style.borderTopColor = valueBorderColor;
+        valueWrap.style.borderRightColor = valueBorderColor;
+        valueWrap.style.borderBottomColor = valueBorderColor;
+        valueWrap.style.borderLeftColor = valueBorderColor;
+        valueWrap.RegisterCallback<MouseEnterEvent>(_ => onHover?.Invoke());
+        AttachWheelScrolling(valueWrap, backgroundMoodSetterScrollView);
+
+        Button leftButton = null;
+        Button rightButton = null;
+        if (showArrows)
+        {
+            leftButton = CreateGlobalSettingsArrowButton("\u2039", onLeft);
+            rightButton = CreateGlobalSettingsArrowButton("\u203A", onRight);
+            ApplyBackgroundMoodArrowStyle(leftButton);
+            ApplyBackgroundMoodArrowStyle(rightButton);
+            valueWrap.Add(leftButton);
+        }
+
+        Label valueLabel = CreateLabel(value, 30f, isSelected ? new Color(1.00f, 0.76f, 0.42f, 1f) : new Color(0.88f, 0.86f, 0.91f, 0.96f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        valueLabel.style.unityFontDefinition = modernUiFontDefinition;
+        valueLabel.style.minWidth = 230f;
+        valueLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
+        valueLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        valueLabel.RegisterCallback<MouseEnterEvent>(_ => onHover?.Invoke());
+        AttachWheelScrolling(valueLabel, backgroundMoodSetterScrollView);
+        valueWrap.Add(valueLabel);
+
+        if (showArrows)
+            valueWrap.Add(rightButton);
+
+        valueWrap.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (evt.button != 0)
+                return;
+
+            if (evt.target is VisualElement element)
+            {
+                if ((leftButton != null && (element == leftButton || leftButton.Contains(element))) ||
+                    (rightButton != null && (element == rightButton || rightButton.Contains(element))))
+                    return;
+            }
+
+            onActivate?.Invoke();
+            evt.StopPropagation();
+        });
+
+        topLine.Add(mainButton);
+        topLine.Add(valueWrap);
+        rowBody.Add(topLine);
+
+        Label metaLabel = null;
+        if (!string.IsNullOrWhiteSpace(metaText))
+        {
+            metaLabel = CreateLabel(metaText, 20f, new Color(0.76f, 0.74f, 0.80f, 0.88f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+            metaLabel.style.unityFontDefinition = modernUiFontDefinition;
+            metaLabel.style.whiteSpace = WhiteSpace.Normal;
+            metaLabel.style.marginTop = -4f;
+            metaLabel.style.marginBottom = 2f;
+            metaLabel.RegisterCallback<MouseEnterEvent>(_ => onHover?.Invoke());
+            AttachWheelScrolling(metaLabel, backgroundMoodSetterScrollView);
+            rowBody.Add(metaLabel);
+        }
+
+        row.Add(rowBody);
+
+        AttachWheelScrolling(row, backgroundMoodSetterScrollView);
+        ConfigureBackgroundMoodSettingRowHover(row, accent, mainButton, valueWrap, valueLabel, isSelected, onHover);
+
+        return new GlobalSettingsMenuRow
+        {
+            row = row,
+            titleLabel = null,
+            valueLabel = valueLabel,
+            leftButton = leftButton,
+            rightButton = rightButton,
+            metaLabel = metaLabel
+        };
+    }
+
+    private static void ApplyBackgroundMoodArrowStyle(Button button)
+    {
+        if (button == null)
+            return;
+
+        button.style.width = 54f;
+        button.style.height = 56f;
+        button.style.minWidth = 54f;
+        button.style.marginLeft = 6f;
+        button.style.marginRight = 6f;
+        button.style.paddingLeft = 0f;
+        button.style.paddingRight = 0f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 4f;
+        button.style.fontSize = 42f;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        button.style.color = new Color(1f, 1f, 1f, 0.86f);
+        button.style.borderTopWidth = 0f;
+        button.style.borderRightWidth = 0f;
+        button.style.borderBottomWidth = 0f;
+        button.style.borderLeftWidth = 0f;
+        button.style.backgroundImage = StyleKeyword.None;
+        button.style.transitionProperty = new List<StylePropertyName>
+        {
+            new StylePropertyName("color"),
+            new StylePropertyName("scale")
+        };
+        button.style.transitionDuration = new List<TimeValue>
+        {
+            new TimeValue(100f, TimeUnit.Millisecond),
+            new TimeValue(100f, TimeUnit.Millisecond)
+        };
+        button.style.transitionTimingFunction = new List<EasingFunction>
+        {
+            new EasingFunction(EasingMode.EaseOutCubic),
+            new EasingFunction(EasingMode.EaseOutCubic)
+        };
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.color = new Color(1.00f, 0.74f, 0.38f, 1f);
+            button.style.scale = new Scale(new Vector3(1.10f, 1.10f, 1f));
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.color = new Color(1f, 1f, 1f, 0.86f);
+            button.style.scale = new Scale(Vector3.one);
+        });
+    }
+
+    private static void ConfigureBackgroundMoodSettingRowHover(
+        VisualElement row,
+        VisualElement accent,
+        Button mainButton,
+        VisualElement valueWrap,
+        Label valueLabel,
+        bool isSelected,
+        Action onHover)
+    {
+        if (row == null || mainButton == null || valueWrap == null || valueLabel == null)
+            return;
+
+        void ApplyState(bool hovered)
+        {
+            bool focused = isSelected;
+            bool active = hovered || focused;
+            row.style.translate = new Translate(0f, 0f);
+            row.style.backgroundColor = active ? new Color(0.052f, 0.056f, 0.066f, 0.84f) : new Color(0f, 0f, 0f, 0.30f);
+            Color rowBorderColor = focused ? new Color(1f, 1f, 1f, 0.88f) : new Color(1f, 1f, 1f, 0f);
+            row.style.borderTopColor = rowBorderColor;
+            row.style.borderRightColor = rowBorderColor;
+            row.style.borderBottomColor = rowBorderColor;
+            row.style.borderLeftColor = rowBorderColor;
+            mainButton.style.color = active ? Color.white : new Color(0.86f, 0.91f, 0.95f, 0.96f);
+            valueLabel.style.color = active ? new Color(1.00f, 0.76f, 0.42f, 1f) : new Color(0.88f, 0.86f, 0.91f, 0.96f);
+            valueWrap.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            Color valueBorderColor = new Color(1f, 1f, 1f, 0f);
+            valueWrap.style.borderTopColor = valueBorderColor;
+            valueWrap.style.borderRightColor = valueBorderColor;
+            valueWrap.style.borderBottomColor = valueBorderColor;
+            valueWrap.style.borderLeftColor = valueBorderColor;
+            if (accent != null)
+                accent.style.backgroundColor = new Color(1f, 1f, 1f, 0f);
+        }
+
+        row.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            onHover?.Invoke();
+            ApplyState(true);
+        });
+        row.RegisterCallback<MouseLeaveEvent>(_ => ApplyState(false));
+        ApplyState(false);
     }
 
     private void UpdateDiagnosticsConsentPopup(GuitarGameplaySnapshot snapshot)
@@ -14161,8 +14748,8 @@ public sealed class TabsSongHeaderOverlay
     {
         string controls = GetArcadeFooterControlSummary();
         return showPause
-            ? $"{controls}  \u2022  Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
-            : $"{controls}  \u2022  Esc pause  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab";
+            ? $"{controls}  \u2022  Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  W Mood Setter  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
+            : $"{controls}  \u2022  Esc pause  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  W Mood Setter";
     }
 
     private string GetArcadeStartupPrimaryMessage()
@@ -23420,17 +24007,19 @@ public sealed class TabsSongHeaderOverlay
 
         button.text = string.Empty;
 
-        button.style.minHeight = 114f;
+        button.style.minHeight = 96f;
+
+        button.style.width = Length.Percent(100f);
 
         button.style.paddingLeft = 0f;
 
         button.style.paddingRight = 0f;
 
-        button.style.paddingTop = 16f;
+        button.style.paddingTop = 8f;
 
-        button.style.paddingBottom = 16f;
+        button.style.paddingBottom = 8f;
 
-        button.style.marginBottom = 18f;
+        button.style.marginBottom = 4f;
 
         button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
 
@@ -23450,7 +24039,7 @@ public sealed class TabsSongHeaderOverlay
 
         button.style.borderLeftWidth = 0f;
 
-        button.style.unityTextAlign = TextAnchor.MiddleLeft;
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
 
         button.RegisterCallback<MouseEnterEvent>(_ => owner?.HoverMainMenuSelectionFromUi(menuIndex));
 
@@ -23462,13 +24051,15 @@ public sealed class TabsSongHeaderOverlay
 
         row.style.alignItems = Align.Center;
 
+        row.style.justifyContent = Justify.Center;
+
 
 
         Label arrowLabel = CreateLabel("\u25B6", 54f, MainMenuSelectedColor, true, TextAnchor.MiddleCenter, useTitleFont: true);
 
-        arrowLabel.style.minWidth = 68f;
+        arrowLabel.style.minWidth = 38f;
 
-        arrowLabel.style.marginRight = 26f;
+        arrowLabel.style.marginRight = 10f;
 
         arrowLabel.style.opacity = 0f;
 
@@ -23476,21 +24067,27 @@ public sealed class TabsSongHeaderOverlay
 
         VisualElement textColumn = new VisualElement();
 
-        textColumn.style.flexGrow = 1f;
+        textColumn.style.flexGrow = 0f;
 
         textColumn.style.flexShrink = 1f;
 
+        textColumn.style.alignItems = Align.Center;
+
+        textColumn.style.minWidth = 360f;
 
 
-        Label titleLabel = CreateLabel(title, 52f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: true);
+
+        Label titleLabel = CreateLabel(title, 52f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: true);
 
         titleLabel.style.marginBottom = 0f;
 
         titleLabel.style.letterSpacing = 1.1f;
 
+        titleLabel.style.whiteSpace = WhiteSpace.NoWrap;
 
 
-        Label subtitleLabel = CreateLabel(subtitle, 22f, new Color(0.71f, 0.82f, 0.94f, 0.90f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+
+        Label subtitleLabel = CreateLabel(subtitle, 22f, new Color(0.71f, 0.82f, 0.94f, 0.90f), false, TextAnchor.MiddleCenter, useTitleFont: false);
 
         subtitleLabel.style.whiteSpace = WhiteSpace.Normal;
 
@@ -27355,9 +27952,17 @@ public sealed class TabsSongHeaderOverlay
 
         {
 
-            entry.button.style.minHeight = Mathf.Clamp(menuLayoutHeight * 0.145f, 108f, 148f);
+            entry.button.style.minHeight = Mathf.Clamp(menuLayoutHeight * 0.104f, 84f, 104f);
 
-            entry.arrowLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.062f, 48f, 70f);
+            entry.button.style.marginBottom = Mathf.Clamp(menuLayoutHeight * 0.004f, 2f, 5f);
+
+            entry.button.style.paddingTop = Mathf.Clamp(menuLayoutHeight * 0.004f, 4f, 8f);
+
+            entry.button.style.paddingBottom = Mathf.Clamp(menuLayoutHeight * 0.004f, 4f, 8f);
+
+            entry.arrowLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.060f, 48f, 68f);
+
+            entry.arrowLabel.style.minWidth = Mathf.Clamp(menuLayoutHeight * 0.044f, 36f, 52f);
 
             entry.titleLabel.style.fontSize = menuItemTitleSize;
 
@@ -28164,7 +28769,11 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuShell.style.flexDirection = FlexDirection.Row;
 
-        mainMenuShell.style.marginTop = (compactMainMenu ? 96f : 120f) * menuLayoutScale;
+        mainMenuShell.style.marginTop = (compactMainMenu ? 28f : 44f) * menuLayoutScale;
+
+        mainMenuShell.style.maxWidth = (compactMainMenu ? 500f : 560f) * menuLayoutScale;
+
+        mainMenuShell.style.alignSelf = Align.Center;
 
         mainMenuLeftColumn.style.paddingLeft = 0f;
 
@@ -28172,13 +28781,15 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuLeftColumn.style.marginBottom = 0f;
 
-        mainMenuOverlay.style.paddingLeft = (compactMainMenu ? 28f : 48f) * menuLayoutScale;
+        mainMenuOverlay.style.alignItems = Align.Center;
 
-        mainMenuOverlay.style.paddingRight = (compactMainMenu ? 20f : 32f) * menuLayoutScale; 
+        mainMenuOverlay.style.paddingLeft = (compactMainMenu ? 20f : 28f) * menuLayoutScale;
 
-        mainMenuOverlay.style.paddingTop = (compactMainMenu ? 126f : 180f) * menuLayoutScale;
+        mainMenuOverlay.style.paddingRight = (compactMainMenu ? 20f : 28f) * menuLayoutScale; 
 
-        mainMenuOverlay.style.paddingBottom = (compactMainMenu ? 22f : 36f) * menuLayoutScale;
+        mainMenuOverlay.style.paddingTop = (compactMainMenu ? 54f : 76f) * menuLayoutScale;
+
+        mainMenuOverlay.style.paddingBottom = (compactMainMenu ? 74f : 82f) * menuLayoutScale;
 
         mainMenuVersionLabel.style.right = (compactMainMenu ? 20f : 32f) * menuLayoutScale;
 
@@ -28202,7 +28813,9 @@ public sealed class TabsSongHeaderOverlay
 
             mainMenuRightColumn.style.width = 0f;
 
-            mainMenuNavColumn.style.maxWidth = 900f;
+            mainMenuNavColumn.style.maxWidth = 500f * menuLayoutScale;
+
+            mainMenuNavColumn.style.marginTop = Mathf.Clamp(menuLayoutHeight * 0.095f, 78f, 96f);
 
             mainMenuTitleLabel.style.maxWidth = StyleKeyword.None;
 
@@ -28218,7 +28831,9 @@ public sealed class TabsSongHeaderOverlay
 
             mainMenuRightColumn.style.width = 0f;
 
-            mainMenuNavColumn.style.maxWidth = 900f;
+            mainMenuNavColumn.style.maxWidth = 520f * menuLayoutScale;
+
+            mainMenuNavColumn.style.marginTop = Mathf.Clamp(menuLayoutHeight * 0.095f, 78f, 96f);
 
             mainMenuTitleLabel.style.maxWidth = 820f;
 
@@ -28388,7 +29003,7 @@ public sealed class TabsSongHeaderOverlay
                 gameplayShortcutRow.style.right = StyleKeyword.Auto;
                 gameplayShortcutRow.style.maxWidth = Mathf.Max(520f, menuLayoutWidth - (shortcutInset * 2f));
             }
-            foreach (Button button in new[] { gameplayShortcutPauseButton, gameplayShortcutRestartButton, gameplayShortcutAudioButton, gameplayShortcutToneLabButton, gameplayShortcutLoopButton, gameplayShortcutOpenButton, gameplayShortcutSeekLeftButton, gameplayShortcutSeekRightButton, gameplayShortcutPrevNoteButton, gameplayShortcutNextNoteButton })
+            foreach (Button button in new[] { gameplayShortcutPauseButton, gameplayShortcutRestartButton, gameplayShortcutAudioButton, gameplayShortcutToneLabButton, gameplayShortcutMoodSetterButton, gameplayShortcutLoopButton, gameplayShortcutOpenButton, gameplayShortcutSeekLeftButton, gameplayShortcutSeekRightButton, gameplayShortcutPrevNoteButton, gameplayShortcutNextNoteButton })
             {
                 if (button == null)
                     continue;

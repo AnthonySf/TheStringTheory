@@ -1,384 +1,964 @@
 {
-  "values": [
-    {
-      "id": "core.noteSpeed",
-      "value": "29.1"
-    },
-    {
-      "id": "core.invertStrings",
-      "value": "true"
-    },
-    {
-      "id": "core.forceStandardTuning",
-      "value": "true"
-    },
-    {
-      "id": "render.mode",
-      "value": "Highway3D"
-    },
-    {
-      "id": "timing.hitWindowEarly",
-      "value": "0.3"
-    },
-    {
-      "id": "timing.hitWindowLate",
-      "value": "0.25"
-    },
-    {
-      "id": "tabs.tabSectionDuration",
-      "value": "4.3"
-    },
-    {
-      "id": "tabs.tabSectionLengthMultiplier",
-      "value": "1.5"
-    },
-    {
-      "id": "layout.tabPanelGap",
-      "value": "0.4"
-    },
-    {
-      "id": "layout.tabPanelHeight",
-      "value": "4.2"
-    },
-    {
-      "id": "layout.tabLineSpacing",
-      "value": "0.53"
-    },
-    {
-      "id": "layout.tabNoteCircleDiameter",
-      "value": "1"
-    },
-    {
-      "id": "layout.tabNoteFontSize",
-      "value": "3.6"
-    },
-    {
-      "id": "layout.tabBackdropOpacity",
-      "value": "0.85"
-    },
-    {
-      "id": "layout.tabBackdropColorR",
-      "value": "0.02"
-    },
-    {
-      "id": "layout.tabBackdropColorG",
-      "value": "0.03"
-    },
-    {
-      "id": "layout.tabBackdropColorB",
-      "value": "0.06"
-    },
-    {
-      "id": "fx.characterDisplay",
-      "value": "Always"
-    },
-    {
-      "id": "fx.characterScale",
-      "value": "1"
-    },
-    {
-      "id": "fx.characterRigOffsetX",
-      "value": "-0.025"
-    },
-    {
-      "id": "fx.characterRigOffsetY",
-      "value": "0.005"
-    },
-    {
-      "id": "fx.characterOffsetX",
-      "value": "0.03"
-    },
-    {
-      "id": "fx.characterOffsetY",
-      "value": "0.045"
-    },
-    {
-      "id": "fx.characterFadeSoftness",
-      "value": "0.1"
-    },
-    {
-      "id": "fx.characterMovementEnabled",
-      "value": "true"
-    },
-    {
-      "id": "fx.characterMissColorEnabled",
-      "value": "true"
-    },
-    {
-      "id": "fx.characterMissParticlesEnabled",
-      "value": "false"
-    },
-    {
-      "id": "fx.characterPortalEnabled",
-      "value": "true"
-    },
-    {
-      "id": "fx.characterPortalSwirlsEnabled",
-      "value": "true"
-    },
-    {
-      "id": "fx.characterPortalBodyOpacity",
-      "value": "0.8"
-    },
-    {
-      "id": "fx.characterPortalEdgeColor",
-      "value": "Black"
-    },
-    {
-      "id": "fx.characterPortalSwirlColor",
-      "value": "Black"
-    },
-    {
-      "id": "fx.judgeableDarkenMultiplier",
-      "value": "1"
-    },
-    {
-      "id": "fx.showGameplayTimeline",
-      "value": "true"
-    },
-    {
-      "id": "fx.tabIdleFillDarken",
-      "value": "0.33"
-    },
-    {
-      "id": "bg.mode",
-      "value": "BlueSky"
-    },
-    {
-      "id": "bg.skyMood",
-      "value": "Midnight"
-    },
-    {
-      "id": "bg.skyUseStage",
-      "value": "false"
-    },
-    {
-      "id": "bg.skyStars",
-      "value": "true"
-    },
-    {
-      "id": "bg.skyStarCount",
-      "value": "500"
-    },
-    {
-      "id": "bg.skyStarTwinkleFraction",
-      "value": "0.83"
-    },
-    {
-      "id": "bg.skyStarTwinkleStrength",
-      "value": "0.6"
-    },
-    {
-      "id": "bg.skyStarTwinkleSpeedMin",
-      "value": "0.57"
-    },
-    {
-      "id": "bg.skyStarTwinkleSpeedMax",
-      "value": "1"
-    },
-    {
-      "id": "bg.starStyle",
-      "value": "SoftDots"
-    },
-    {
-      "id": "bg.starSeed",
-      "value": "1337"
-    },
-    {
-      "id": "bg.starDriftSpeed",
-      "value": "0.55"
-    },
-    {
-      "id": "bg.shootingStars",
-      "value": "true"
-    },
-    {
-      "id": "bg.skyCloudNearSpeed",
-      "value": "0.34"
-    },
-    {
-      "id": "bg.skyCloudMidSpeed",
-      "value": "0.2"
-    },
-    {
-      "id": "bg.skyCloudFarSpeed",
-      "value": "0.11"
-    },
-    {
-      "id": "bg.skyCloudGlobalScale",
-      "value": "3"
-    },
-    {
-      "id": "highway.totalFrets",
-      "value": "24"
-    },
-    {
-      "id": "highway.fretSpacing",
-      "value": "3.3"
-    },
-    {
-      "id": "highway.strikeLineZ",
-      "value": "-5"
-    },
-    {
-      "id": "highway.spawnZ",
-      "value": "180"
-    },
-    {
-      "id": "highway.defaultOpenAnchorFret",
-      "value": "2"
-    },
-    {
-      "id": "highway.hideOpenFretNumber",
-      "value": "true"
-    },
-    {
-      "id": "highway.cameraY",
-      "value": "16.85"
-    },
-    {
-      "id": "highway.cameraZ",
-      "value": "-18.2"
-    },
-    {
-      "id": "highway.cameraPitch",
-      "value": "26"
-    },
-    {
-      "id": "highway.lookaheadWindow",
-      "value": "5"
-    },
-    {
-      "id": "highway.cameraEngine",
-      "value": "Smart Lookahead"
-    },
-    {
-      "id": "highway.cameraFarClip",
-      "value": "5000"
-    },
-    {
-      "id": "highway.cameraMoveSpeed",
-      "value": "3"
-    },
-    {
-      "id": "highway.noteHeightScale",
-      "value": "1.35"
-    },
-    {
-      "id": "highway.resolvedHoldTime",
-      "value": "0.18"
-    },
-    {
-      "id": "highway.outlineThickness",
-      "value": "0.06"
-    },
-    {
-      "id": "highway.outlineDepth",
-      "value": "0.04"
-    },
-    {
-      "id": "highway.showApproachLine",
-      "value": "false"
-    },
-    {
-      "id": "highway.showLandingDot",
-      "value": "false"
-    },
-    {
-      "id": "highway.showHitNoteFeedbackBox",
-      "value": "true"
-    },
-    {
-      "id": "highway.showMissNoteFeedbackBox",
-      "value": "true"
-    },
-    {
-      "id": "highway.showMissFretFeedback",
-      "value": "false"
-    },
-    {
-      "id": "highway.showLaneFlashFeedback",
-      "value": "false"
-    },
-    {
-      "id": "highway.showFretLineScaleFeedback",
-      "value": "false"
-    },
-    {
-      "id": "highway.showHitFretLineFlashFeedback",
-      "value": "true"
-    },
-    {
-      "id": "highway.showMissFretLineFlashFeedback",
-      "value": "true"
-    },
-    {
-      "id": "highway.backgroundDistance",
-      "value": "100"
-    },
-    {
-      "id": "highway.backgroundCenterY",
-      "value": "-200"
-    },
-    {
-      "id": "highway.backgroundScale",
-      "value": "100"
-    },
-    {
-      "id": "highway.cloudYOffset",
-      "value": "6"
-    },
-    {
-      "id": "highway.starScale",
-      "value": "0.6"
-    },
-    {
-      "id": "highway.cloudScale",
-      "value": "0.75"
-    },
-    {
-      "id": "highway.starSpread",
-      "value": "0.6"
-    },
-    {
-      "id": "highway.cloudSpread",
-      "value": "0.42"
-    },
-    {
-      "id": "highway.backgroundColorR",
-      "value": "0.01"
-    },
-    {
-      "id": "highway.backgroundColorG",
-      "value": "0.015"
-    },
-    {
-      "id": "highway.backgroundColorB",
-      "value": "0.045"
-    },
-    {
-      "id": "highway.backgroundColorA",
-      "value": "1"
-    },
-    {
-      "id": "highway.laneGuideThickness",
-      "value": "0.14"
-    },
-    {
-      "id": "highway.laneGuideYOffset",
-      "value": "-1.84"
-    },
-    {
-      "id": "highway.highlightFretBoundaries",
-      "value": "false"
-    },
-    {
-      "id": "highway.fretNumberYOffset",
-      "value": "0.45"
-    },
-    {
-      "id": "highway.fretNumberZOffset",
-      "value": "0.12"
-    }
-  ]
+    "values":  [
+                   {
+                       "id":  "core.noteSpeed",
+                       "value":  "29.1"
+                   },
+                   {
+                       "id":  "core.invertStrings",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "core.forceStandardTuning",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "render.mode",
+                       "value":  "Highway3D"
+                   },
+                   {
+                       "id":  "timing.hitWindowEarly",
+                       "value":  "0.3"
+                   },
+                   {
+                       "id":  "timing.hitWindowLate",
+                       "value":  "0.25"
+                   },
+                   {
+                       "id":  "tabs.tabSectionDuration",
+                       "value":  "4.3"
+                   },
+                   {
+                       "id":  "tabs.tabSectionLengthMultiplier",
+                       "value":  "1.5"
+                   },
+                   {
+                       "id":  "layout.tabPanelGap",
+                       "value":  "0.4"
+                   },
+                   {
+                       "id":  "layout.tabPanelHeight",
+                       "value":  "4.2"
+                   },
+                   {
+                       "id":  "layout.tabLineSpacing",
+                       "value":  "0.53"
+                   },
+                   {
+                       "id":  "layout.tabNoteCircleDiameter",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "layout.tabNoteFontSize",
+                       "value":  "3.6"
+                   },
+                   {
+                       "id":  "layout.tabBackdropOpacity",
+                       "value":  "0.85"
+                   },
+                   {
+                       "id":  "layout.tabBackdropColorR",
+                       "value":  "0.02"
+                   },
+                   {
+                       "id":  "layout.tabBackdropColorG",
+                       "value":  "0.03"
+                   },
+                   {
+                       "id":  "layout.tabBackdropColorB",
+                       "value":  "0.06"
+                   },
+                   {
+                       "id":  "fx.characterDisplay",
+                       "value":  "Always"
+                   },
+                   {
+                       "id":  "fx.characterScale",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "fx.characterRigOffsetX",
+                       "value":  "-0.025"
+                   },
+                   {
+                       "id":  "fx.characterRigOffsetY",
+                       "value":  "0.005"
+                   },
+                   {
+                       "id":  "fx.characterOffsetX",
+                       "value":  "0.03"
+                   },
+                   {
+                       "id":  "fx.characterOffsetY",
+                       "value":  "0.045"
+                   },
+                   {
+                       "id":  "fx.characterFadeSoftness",
+                       "value":  "0.1"
+                   },
+                   {
+                       "id":  "fx.characterMovementEnabled",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "fx.characterMissColorEnabled",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "fx.characterMissParticlesEnabled",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "fx.characterPortalEnabled",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "fx.characterPortalSwirlsEnabled",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "fx.characterPortalBodyOpacity",
+                       "value":  "0.8"
+                   },
+                   {
+                       "id":  "fx.characterPortalEdgeColor",
+                       "value":  "Black"
+                   },
+                   {
+                       "id":  "fx.characterPortalSwirlColor",
+                       "value":  "Black"
+                   },
+                   {
+                       "id":  "fx.judgeableDarkenMultiplier",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "fx.showGameplayTimeline",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "fx.tabIdleFillDarken",
+                       "value":  "0.33"
+                   },
+                   {
+                       "id":  "bg.mode",
+                       "value":  "NeonStage"
+                   },
+                   {
+                       "id":  "bg.skyMood",
+                       "value":  "Midnight"
+                   },
+                   {
+                       "id":  "bg.skyUseStage",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.skyStars",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.skyStarCount",
+                       "value":  "500"
+                   },
+                   {
+                       "id":  "bg.skyStarTwinkleFraction",
+                       "value":  "0.83"
+                   },
+                   {
+                       "id":  "bg.skyStarTwinkleStrength",
+                       "value":  "0.6"
+                   },
+                   {
+                       "id":  "bg.skyStarTwinkleSpeedMin",
+                       "value":  "0.57"
+                   },
+                   {
+                       "id":  "bg.skyStarTwinkleSpeedMax",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.starStyle",
+                       "value":  "SoftDots"
+                   },
+                   {
+                       "id":  "bg.starSeed",
+                       "value":  "1337"
+                   },
+                   {
+                       "id":  "bg.starDriftSpeed",
+                       "value":  "0.55"
+                   },
+                   {
+                       "id":  "bg.shootingStars",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.skyCloudNearSpeed",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.skyCloudMidSpeed",
+                       "value":  "0.2"
+                   },
+                   {
+                       "id":  "bg.skyCloudFarSpeed",
+                       "value":  "0.11"
+                   },
+                   {
+                       "id":  "bg.skyCloudGlobalScale",
+                       "value":  "3"
+                   },
+                   {
+                       "id":  "highway.totalFrets",
+                       "value":  "24"
+                   },
+                   {
+                       "id":  "highway.fretSpacing",
+                       "value":  "3.3"
+                   },
+                   {
+                       "id":  "highway.strikeLineZ",
+                       "value":  "-5"
+                   },
+                   {
+                       "id":  "highway.spawnZ",
+                       "value":  "180"
+                   },
+                   {
+                       "id":  "highway.defaultOpenAnchorFret",
+                       "value":  "2"
+                   },
+                   {
+                       "id":  "highway.hideOpenFretNumber",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "highway.cameraY",
+                       "value":  "16.85"
+                   },
+                   {
+                       "id":  "highway.cameraZ",
+                       "value":  "-18.2"
+                   },
+                   {
+                       "id":  "highway.cameraPitch",
+                       "value":  "26"
+                   },
+                   {
+                       "id":  "highway.lookaheadWindow",
+                       "value":  "5"
+                   },
+                   {
+                       "id":  "highway.cameraEngine",
+                       "value":  "Smart Lookahead"
+                   },
+                   {
+                       "id":  "highway.cameraFarClip",
+                       "value":  "5000"
+                   },
+                   {
+                       "id":  "highway.cameraMoveSpeed",
+                       "value":  "3"
+                   },
+                   {
+                       "id":  "highway.noteHeightScale",
+                       "value":  "1.35"
+                   },
+                   {
+                       "id":  "highway.resolvedHoldTime",
+                       "value":  "0.18"
+                   },
+                   {
+                       "id":  "highway.outlineThickness",
+                       "value":  "0.06"
+                   },
+                   {
+                       "id":  "highway.outlineDepth",
+                       "value":  "0.04"
+                   },
+                   {
+                       "id":  "highway.showApproachLine",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "highway.showLandingDot",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "highway.showHitNoteFeedbackBox",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "highway.showMissNoteFeedbackBox",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "highway.showMissFretFeedback",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "highway.showLaneFlashFeedback",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "highway.showFretLineScaleFeedback",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "highway.showHitFretLineFlashFeedback",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "highway.showMissFretLineFlashFeedback",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "highway.backgroundDistance",
+                       "value":  "100"
+                   },
+                   {
+                       "id":  "highway.backgroundCenterY",
+                       "value":  "-200"
+                   },
+                   {
+                       "id":  "highway.backgroundScale",
+                       "value":  "100"
+                   },
+                   {
+                       "id":  "highway.cloudYOffset",
+                       "value":  "6"
+                   },
+                   {
+                       "id":  "highway.starScale",
+                       "value":  "0.6"
+                   },
+                   {
+                       "id":  "highway.cloudScale",
+                       "value":  "0.75"
+                   },
+                   {
+                       "id":  "highway.starSpread",
+                       "value":  "0.6"
+                   },
+                   {
+                       "id":  "highway.cloudSpread",
+                       "value":  "0.42"
+                   },
+                   {
+                       "id":  "highway.backgroundColorR",
+                       "value":  "0.01"
+                   },
+                   {
+                       "id":  "highway.backgroundColorG",
+                       "value":  "0.015"
+                   },
+                   {
+                       "id":  "highway.backgroundColorB",
+                       "value":  "0.045"
+                   },
+                   {
+                       "id":  "highway.backgroundColorA",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "highway.laneGuideThickness",
+                       "value":  "0.14"
+                   },
+                   {
+                       "id":  "highway.laneGuideYOffset",
+                       "value":  "-1.84"
+                   },
+                   {
+                       "id":  "highway.highlightFretBoundaries",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "highway.fretNumberYOffset",
+                       "value":  "0.45"
+                   },
+                   {
+                       "id":  "highway.fretNumberZOffset",
+                       "value":  "0.12"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroGround",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroGroundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroHorizon",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood",
+                       "value":  "Cloudy Giant Moon"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.clouds",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.moonMode",
+                       "value":  "Giant"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityFar",
+                       "value":  "0.39"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.clouds",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.moonMode",
+                       "value":  "Giant"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.clouds",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.clouds",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.moonMode",
+                       "value":  "Giant"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityFar",
+                       "value":  "0.59"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityMid",
+                       "value":  "0.88"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityNear",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.moonMode",
+                       "value":  "Giant"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyDesign",
+                       "value":  "Enviro 3"
+                   }
+               ]
 }

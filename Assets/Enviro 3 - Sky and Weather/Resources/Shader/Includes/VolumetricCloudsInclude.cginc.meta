@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 38c16a4885560c54fbc0504cd5019da4
+timeCreated: 1505167667
+licenseType: Store
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Includes/VolumetricCloudsInclude.cginc
+  uploadId: 888564

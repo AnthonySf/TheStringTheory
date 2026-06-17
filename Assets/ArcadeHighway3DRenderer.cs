@@ -362,14 +362,6 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         if (backgroundRoot == null || owner == null)
             return;
 
-        if (owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.Space)
-        {
-            backgroundRoot.transform.position = Vector3.zero;
-            backgroundRoot.transform.localRotation = Quaternion.identity;
-            backgroundRoot.transform.localScale = Vector3.one;
-            return;
-        }
-
         backgroundRoot.transform.position = new Vector3(
             Mathf.Max(0f, owner.TotalFrets * owner.FretSpacing * 0.5f),
             owner.highwayBackgroundCenterY,
@@ -1320,9 +1312,6 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
                     return new Color(0.03f, 0.05f, 0.10f, 1f);
             }
         }
-
-        if (owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.Space)
-            return owner.tabSpaceBackgroundColor;
 
         return owner.tabBackgroundColor;
     }

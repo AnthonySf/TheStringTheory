@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: ff01f3ead5b250a4f8337a15b15442ac
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Clouds/EnviroVolumetricCloudsBlend.shader
+  uploadId: 888564

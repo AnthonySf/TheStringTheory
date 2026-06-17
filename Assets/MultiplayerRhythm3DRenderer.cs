@@ -370,9 +370,6 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
             }
         }
 
-        if (owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.Space)
-            return owner.tabSpaceBackgroundColor;
-
         return owner.tabBackgroundColor;
     }
 
@@ -392,14 +389,6 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
     {
         if (backgroundRoot == null || owner == null)
             return;
-
-        if (owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.Space)
-        {
-            backgroundRoot.transform.position = Vector3.zero;
-            backgroundRoot.transform.localRotation = Quaternion.identity;
-            backgroundRoot.transform.localScale = Vector3.one;
-            return;
-        }
 
         backgroundRoot.transform.position = new Vector3(
             Mathf.Max(0f, owner.TotalFrets * owner.FretSpacing * 0.5f),

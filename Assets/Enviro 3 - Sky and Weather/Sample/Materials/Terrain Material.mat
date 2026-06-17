@@ -1,0 +1,268 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 6
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Terrain Material
+  m_Shader: {fileID: 10623, guid: 0000000000000000f000000000000000, type: 0}
+  m_ShaderKeywords: _ENVIROREMOVALZONES_ON _PUDDLES_ON _QUALITY_BALANCE _RAINEFFECT_ON
+    _RAIN_ON _SNOW_ON _SNOW_SSS_ON _SPLATCOUNT__4
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _AlbedoArray:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Control:
+        m_Texture: {fileID: -8948462593197366472, guid: d2e20f57acfcdd340aef6524820d8446, type: 2}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Control0:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Control1:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Control2:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Control3:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Diffuse:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Mask0:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Mask1:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Mask2:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Mask3:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MaskArray:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Normal0:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Normal1:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Normal2:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Normal3:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalArray:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalSAO:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _PerPixelNormal:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _PerTexProps:
+        m_Texture: {fileID: -470368815079777399, guid: 2e76901888c6ffc41a4cfa1ac7209cbd, type: 2}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _RainMask:
+        m_Texture: {fileID: 2800000, guid: db83d73a067c73a40addcda91cf410aa, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Snow:
+        m_Texture: {fileID: 2800000, guid: 63dba5a337ea04c4b840c0c3c80c4fd4, type: 3}
+        m_Scale: {x: 50, y: 50}
+        m_Offset: {x: 0, y: 0}
+    - _SnowAlbedo:
+        m_Texture: {fileID: 2800000, guid: 27b834a48f9909243ac06c6f3f8e209a, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _SnowBlendTex:
+        m_Texture: {fileID: 2800000, guid: 275f7334b25c94ff299627ea720661b4, type: 3}
+        m_Scale: {x: 1000, y: 1000}
+        m_Offset: {x: 0, y: 0}
+    - _SnowMask:
+        m_Texture: {fileID: 2800000, guid: f6a1524323f57554492c86586bdea3ab, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _SnowNormal:
+        m_Texture: {fileID: 2800000, guid: d3be6198ace0ba14cb05762000ca9853, type: 3}
+        m_Scale: {x: 50, y: 50}
+        m_Offset: {x: 0, y: 0}
+    - _SnowPacked:
+        m_Texture: {fileID: 2800000, guid: 238e30133334c1244bfd3d1295de8d9a, type: 3}
+        m_Scale: {x: 50, y: 50}
+        m_Offset: {x: 0, y: 0}
+    - _Splat0:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Splat1:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Splat2:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Splat3:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _StreamControl:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _TerrainHeightmapTexture:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _TerrainHolesTexture:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _TerrainNormalmapTexture:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _TextureSample0:
+        m_Texture: {fileID: 2800000, guid: d04d29c3051acd947b4074f55ba43358, type: 3}
+        m_Scale: {x: 100, y: 100}
+        m_Offset: {x: 0, y: 0}
+    - _WaveNormal:
+        m_Texture: {fileID: 2800000, guid: a27b6cd880f319446a44daf0b7fdb46d, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _WetnessNormal:
+        m_Texture: {fileID: 2800000, guid: d04d29c3051acd947b4074f55ba43358, type: 3}
+        m_Scale: {x: 100, y: 100}
+        m_Offset: {x: 0, y: 0}
+    - _texcoord:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Floats:
+    - _ASEOutlineWidth: 0
+    - _Contrast: 0.4
+    - _DisplacementStrength: 0.5
+    - _DistortionScale: 2000
+    - _DistortionStrength: 1.34
+    - _ENVIRO_RAIN_EFFECT: 0
+    - _EdgeLength: 5
+    - _EnablePerpixelNormals: 0
+    - _EnviroRemovalZones: 1
+    - _EnviroRemovalZones1: 0
+    - _Float2: -0.185
+    - _GlobalPorosity: 0.4
+    - _GlossyReflections: 1
+    - _HeightBlending: 0.25
+    - _HybridHeightBlendDistance: 300
+    - _Metallic0: 0
+    - _Metallic1: 0
+    - _Metallic2: 0
+    - _Metallic3: 0
+    - _PuddleCoverageNoise: 0.25
+    - _PuddleIntensity: 2
+    - _PuddleWaveIntensity: 1
+    - _PuddleWaveTiling: 0.1
+    - _Puddles: 1
+    - _Rain: 1
+    - _RainDistanceFade: 10
+    - _RainDropIntensity: 5
+    - _RainDropSpeed: 1
+    - _RainDropTiling: 0.5
+    - _RainEffect: 1
+    - _SSSDistortion: 0.9
+    - _SSSIntensity: 3
+    - _SSSScale: 0.5
+    - _Scale: 1
+    - _SlopePower: 6.07
+    - _Smoothness0: 0.15
+    - _Smoothness1: 0.179
+    - _Smoothness2: 0.115
+    - _Smoothness3: 0.163
+    - _SmoothnessWet: 0.402
+    - _SnowAmount: 2
+    - _SnowDisplacement: 0.25
+    - _SnowDisplacementStrength: 0.0017019518
+    - _SnowNormalIntensity: 1
+    - _SnowSmoothness: 1
+    - _SnowTiling: 100
+    - _Snow_SSS: 1
+    - _SpecularHighlights: 1
+    - _SplotchPower: 0.5
+    - _SplotchScale: 10000
+    - _SplotchSpasm: 0
+    - _SplotchSpeed: 1
+    - _TessMax: 25
+    - _TessMin: 10
+    - _TessPhongStrength: 0.342
+    - _TessValue: 9.5
+    - _TessellationFactor: 10
+    - _TessellationMaxDistance: 30
+    - _TessellationMinDistance: 10
+    - _Wetness: 0
+    - _WetnessBoost: 0.3
+    - __dirty: 0
+    m_Colors:
+    - _ASEOutlineColor: {r: 0, g: 0, b: 0, a: 0}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _LayerScaleOffset0: {r: 0.033333335, g: 0.033333335, b: 0, a: 0}
+    - _LayerScaleOffset1: {r: 0.033333335, g: 0.06666667, b: 0, a: 0}
+    - _LayerScaleOffset10: {r: 0, g: 0, b: 0, a: 0}
+    - _LayerScaleOffset11: {r: 0, g: 0, b: 0, a: 0}
+    - _LayerScaleOffset2: {r: 0.1, g: 0.1, b: 0, a: 0}
+    - _LayerScaleOffset3: {r: 0.05, g: 0.05, b: 0, a: 0}
+    - _LayerScaleOffset4: {r: 0, g: 0, b: 0, a: 0}
+    - _LayerScaleOffset5: {r: 0, g: 0, b: 0, a: 0}
+    - _LayerScaleOffset6: {r: 0, g: 0, b: 0, a: 0}
+    - _LayerScaleOffset7: {r: 0, g: 0, b: 0, a: 0}
+    - _LayerScaleOffset8: {r: 0, g: 0, b: 0, a: 0}
+    - _PuddleColor: {r: 1, g: 1, b: 1, a: 1}
+    - _RainFlowTiling: {r: 1, g: 1, b: 0, a: 0}
+    - _SnowTiling: {r: 50, g: 50, b: 0, a: 0}
+    - _TraxFXThresholds: {r: 0, g: 0, b: 0, a: 0}
+    - _TriplanarUVScale: {r: 1, g: 1, b: 0, a: 0}
+    - _UVScale: {r: 45, g: 45, b: 0, a: 0}
+    - _Vector3: {r: 0, g: 0, b: 0, a: 0}
+    - _WetnessParams: {r: 0, g: 1, b: 0, a: 0}
+  m_BuildTextureStacks: []

@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: c09c9a00373ba9c42936c5e990e2199b
+timeCreated: 1506388388
+licenseType: Store
+ShaderImporter:
+  defaultTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Sample/Shader/EnviroTransparentSurface.shader
+  uploadId: 888564

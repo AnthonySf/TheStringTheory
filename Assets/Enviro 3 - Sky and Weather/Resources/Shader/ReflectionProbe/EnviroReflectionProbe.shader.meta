@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 707d8faf84657f04a9c425ceb1e54b2e
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/ReflectionProbe/EnviroReflectionProbe.shader
+  uploadId: 888564

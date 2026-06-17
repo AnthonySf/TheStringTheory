@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 6e7ac1f0b8835dd49ae0c2334bb590a6
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Scripts/Runtime/Base/Renderer/EnviroHDRPCustomPass.cs
+  uploadId: 888564

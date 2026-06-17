@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 1575a50566010d44dab58feb9714c69a
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Fog/EnviroBilateralBlur.shader
+  uploadId: 888564

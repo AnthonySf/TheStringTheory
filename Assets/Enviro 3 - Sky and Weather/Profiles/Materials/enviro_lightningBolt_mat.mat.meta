@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 9849362974dea484d8abad04a0d80296
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Profiles/Materials/enviro_lightningBolt_mat.mat
+  uploadId: 888564

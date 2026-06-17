@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 0bd5bd4ff7f1acd408bcdb9e7901bb87
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Scripts/Editor/Modules/Effects/EnviroEffectsModuleEditor.cs
+  uploadId: 888564

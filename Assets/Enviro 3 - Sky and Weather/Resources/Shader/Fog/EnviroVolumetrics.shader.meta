@@ -1,0 +1,16 @@
+fileFormatVersion: 2
+guid: 1104191b0e8adc746b7bb747e1ea1a87
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Fog/EnviroVolumetrics.shader
+  uploadId: 888564

@@ -1,0 +1,17 @@
+fileFormatVersion: 2
+guid: 63a1fa02cae5fd54888169da9767c67a
+ShaderImporter:
+  externalObjects: {}
+  defaultTextures: []
+  nonModifiableTextures: []
+  preprocessorOverride: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 236601
+  packageName: Enviro 3 - Sky and Weather
+  packageVersion: 3.3.2b
+  assetPath: Assets/Enviro 3 - Sky and Weather/Resources/Shader/Blit/EnviroBlitTroughHDRP.shader
+  uploadId: 888564

@@ -1,0 +1,48 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7e7c1a769b973414a8f6d1259e07df92, type: 3}
+  m_Name: README
+  m_EditorClassIdentifier: 
+  icon: {fileID: 2800000, guid: f6e78cd981ce7c4449eaefda390b1c95, type: 3}
+  title: RETROWAVE SKIES Lite
+  sections:
+  - heading: Thank you for trying RETROWAVE SKIES Lite!
+    text: 
+    linkText: 
+    url: 
+  - heading: 
+    text: RETROWAVE SKIES is a dynamic and highly customizable Skybox Shader for
+      the <b>Universal 3D Render Pipeline (URP)</b> that'll instantly give your project
+      a unique retro neon look.
+    linkText: 
+    url: 
+  - heading: 
+    text: This is the <b>free version of RETROWAVE SKIES</b>, featuring 3 demo scenes,
+      the basic Skybox shader and the basic Grid shader.
+    linkText: 
+    url: 
+  - heading: Documentation
+    text: Be sure to check the documentation .pdf file. It includes <b>troubleshooting
+      guides</b> to help solve issues or learn more about the asset pack.
+    linkText: 
+    url: 
+  - heading: Ready to Upgrade?
+    text: Featuring inspiring preset content, more Skybox & Grid shader parameters,
+      3D models, cubemaps, textures, particle systems, music, and much more!
+    linkText: "<b>\u21D2 Get the full version of RETROWAVE SKIES!</b>"
+    url: https://assetstore.unity.com/packages/vfx/shaders/retrowave-skies-dynamic-synthwave-skybox-asset-pack-280818
+  - heading: Enjoying Retrowave Skies Lite?
+    text: Even if you are only using the free version, a <b>review</b> helps me out
+      a lot! ☆☆☆☆☆
+    linkText: "\u2023 Leave a review!"
+    url: https://assetstore.unity.com/packages/vfx/shaders/retrowave-skies-lite-dynamic-synthwave-skybox-asset-pack-282063#reviews
+  loadedLayout: 1

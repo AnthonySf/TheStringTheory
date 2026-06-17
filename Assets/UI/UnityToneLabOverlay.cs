@@ -1044,21 +1044,12 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             value => $"{value:F1} dB",
             settings => settings.global_input_trim_db,
             (settings, value) => settings.global_input_trim_db = value,
-            260f));
-
-        globalSettingsBar.Add(CreateCompactSliderField(
-            "Output Gain",
-            -12f,
-            12f,
-            value => $"{value:F1} dB",
-            settings => settings.global_output_gain_db,
-            (settings, value) => settings.global_output_gain_db = value,
-            260f));
+            280f));
 
         VisualElement volumeField = CreateSharedVolumeSliderField(
             "Guitar Volume",
             0f,
-            UnityToneLabRuntime.MaxMonitorVolumePercent,
+            100f,
             value => $"{value:F0}%",
             () => owner != null ? owner.GetSharedAudioGuitarVolumePercent() : runtime?.MonitorVolumePercent ?? 100f,
             value =>
@@ -1070,7 +1061,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             },
             out guitarVolumeSlider,
             out guitarVolumeValueLabel,
-            260f);
+            280f);
         volumeField.style.marginRight = 0f;
         globalSettingsBar.Add(volumeField);
 
@@ -1087,7 +1078,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             "Input Gain",
             -36f,
             36f,
-            value => $"{value:F1} dB",
+             value => $"{value:F1} dB",
             settings => settings.input_gain_db,
             (settings, value) => settings.input_gain_db = value,
             236f));
@@ -1480,7 +1471,14 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         advancedBufferHost.Add(advancedBufferDropdown);
         advancedAudioHost.Add(CreateSettingRow("Split Input/Output", out VisualElement advancedSplitHost));
         advancedSplitHost.Add(advancedSplitToggleButton);
-        advancedAudioHost.Add(CreateSettingHint("Use only when guitar input and headphones are on different audio devices, such as interface input plus USB headphones. Keep Backend on Auto for different driver types; turn Allow Fallback off if you want to force this route."));
+        Label advancedSplitHint = new Label("Use when guitar input and headphones are on different audio devices, such as an interface input with USB headphones.");
+        advancedSplitHint.style.color = new Color(0.74f, 0.82f, 0.94f, 0.82f);
+        advancedSplitHint.style.fontSize = 12f;
+        advancedSplitHint.style.marginLeft = 8f;
+        advancedSplitHint.style.marginTop = -4f;
+        advancedSplitHint.style.marginBottom = 8f;
+        advancedSplitHint.style.whiteSpace = WhiteSpace.Normal;
+        advancedAudioHost.Add(advancedSplitHint);
         advancedAudioHost.Add(CreateSettingRow("Allow Fallback", out VisualElement advancedFallbackHost));
         advancedFallbackHost.Add(advancedFallbackToggleButton);
         advancedAudioHost.Add(CreateSettingRow("Unified Output", out VisualElement advancedUnifiedHost));
@@ -1690,20 +1688,16 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         bool controllerMovementDetected = movement.sqrMagnitude >= 0.04f;
         bool controllerButtonPressed = WasAnyControllerUiButtonPressedThisFrame();
         bool primaryPressed = WasControllerPrimaryActionPressedThisFrame();
-        bool rightStickActivity = controllerCursorActive &&
-            ControllerCursorVisualUtility.ReadRightStickAxis().sqrMagnitude >= 0.04f;
-        bool wasHiddenByIdle = controllerCursorActive &&
-            Time.unscaledTime - controllerCursorLastActivityTime > ControllerCursorIdleHideSeconds;
-        bool controllerActivity = controllerMovementDetected || controllerButtonPressed || rightStickActivity;
+        bool controllerActivity = controllerMovementDetected || controllerButtonPressed || primaryPressed;
 
         if (controllerActivity)
         {
             bool wasInactive = !controllerCursorActive;
             controllerCursorActive = true;
             controllerCursorLastActivityTime = Time.unscaledTime;
+            ClearNativeUiFocusForControllerCursor();
             if (wasInactive)
-                ClearNativeUiFocusForControllerCursor();
-            controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
+                controllerCursorPanelPosition = SanitizeControllerCursorPosition(controllerCursorPanelPosition, panelSize);
         }
 
         if (!controllerCursorActive)
@@ -1745,7 +1739,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             DispatchControllerCursorMove(pickedTarget);
         lastControllerCursorTarget = pickedTarget;
 
-        if (!primaryPressed || wasHiddenByIdle)
+        if (!primaryPressed)
             return false;
 
         ClearNativeUiFocusForControllerCursor();
@@ -1767,6 +1761,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
     {
         controllerCursorActive = false;
         controllerCursorPointerMode = false;
+        controllerCursorLastActivityTime = float.NegativeInfinity;
         lastControllerCursorTarget = null;
         if (controllerCursor != null)
         {
@@ -5464,18 +5459,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         divider.style.marginBottom = 18f;
         divider.style.backgroundColor = new Color(1f, 1f, 1f, 0.16f);
         return divider;
-    }
-
-    private static Label CreateSettingHint(string text)
-    {
-        Label hint = new Label(text ?? string.Empty);
-        hint.style.color = new Color(0.62f, 0.67f, 0.74f, 0.92f);
-        hint.style.fontSize = 12f;
-        hint.style.whiteSpace = WhiteSpace.Normal;
-        hint.style.marginTop = -8f;
-        hint.style.marginBottom = 14f;
-        hint.style.marginLeft = 0f;
-        return hint;
     }
 
     private static Button CreateButton(string text, string classNames, Action onClick)
