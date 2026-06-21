@@ -754,6 +754,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private float detectorTimelineResetMinimumEventTime = float.NegativeInfinity;
     private float detectorTimelineResetMinimumEventTimeExpiresAt = -1f;
     private float smoothedInputLevel;
+    private float nextFightClubDetectorBridgeLogTime = -1f;
+    private string lastFightClubDetectorBridgePitchSignature = string.Empty;
+    private string lastFightClubDetectorBridgeHintSignature = string.Empty;
 
     public int midiTrackIndex = -1;
     private int currentLoadedTrackIndex = -999;
@@ -2182,7 +2185,10 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             if (showMiniGames && miniGameManager != null && miniGameManager.IsAnyGameActive && !isPaused && !loopGapActive)
             {
-                miniGameManager.Update(Time.unscaledDeltaTime, BuildLatestDetectorCombinedPitches());
+                miniGameManager.Update(
+                    Time.unscaledDeltaTime,
+                    BuildLatestDetectorCombinedPitches(),
+                    BuildLatestMiniGameDetectedPitchEvents());
                 if (miniGameManager.DetectorHintDirty)
                 {
                     MarkDetectorHintDirty();
@@ -5080,7 +5086,76 @@ public class GuitarBridgeServer : MonoBehaviour
             combinedPitches.UnionWith(ev.pitches);
         }
 
+        LogFightClubDetectorPitches(combinedPitches);
         return combinedPitches;
+    }
+
+    private MiniGameDetectedPitchEvent[] BuildLatestMiniGameDetectedPitchEvents()
+    {
+        if (!showMiniGames || miniGameManager == null || !miniGameManager.IsAnyGameActive)
+            return Array.Empty<MiniGameDetectedPitchEvent>();
+        if (recentNoteEvents == null || recentNoteEvents.Count == 0)
+            return Array.Empty<MiniGameDetectedPitchEvent>();
+
+        float observedCutoff = Time.unscaledTime - 1.35f;
+        float timelineNow = Mathf.Max(0f, miniGameManager.DetectorTimelineTime);
+        var events = new List<MiniGameDetectedPitchEvent>();
+        for (int i = recentNoteEvents.Count - 1; i >= 0; i--)
+        {
+            NoteEvent ev = recentNoteEvents[i];
+            if (ev == null)
+                continue;
+            if (ev.observedAtUnscaled < observedCutoff)
+                break;
+            if (ev.pitches == null || ev.pitches.Count == 0)
+                continue;
+            if (ev.time > timelineNow + 0.35f || ev.time < timelineNow - 2.5f)
+                continue;
+
+            events.Add(new MiniGameDetectedPitchEvent(ev.time, ev.pitches.ToArray()));
+        }
+
+        return events.Count > 0 ? events.ToArray() : Array.Empty<MiniGameDetectedPitchEvent>();
+    }
+
+    private void LogFightClubDetectorPitches(HashSet<int> combinedPitches)
+    {
+        if (!Application.isEditor || !showMiniGames || miniGameManager == null || !miniGameManager.IsFightClubActive)
+            return;
+
+        float now = Time.unscaledTime;
+        string signature = combinedPitches != null && combinedPitches.Count > 0 ? FormatMidiSetCsv(combinedPitches) : "--";
+        bool changed = !string.Equals(signature, lastFightClubDetectorBridgePitchSignature, StringComparison.Ordinal);
+        if (!changed && now < nextFightClubDetectorBridgeLogTime)
+            return;
+
+        lastFightClubDetectorBridgePitchSignature = signature;
+        nextFightClubDetectorBridgeLogTime = now + 0.35f;
+        string latest = latestDetectedPitches != null && latestDetectedPitches.Count > 0 ? FormatMidiSetCsv(latestDetectedPitches) : "--";
+        string recent = BuildRecentDetectorEventDebugSummary();
+        Debug.Log(
+            $"[FightClubDetectionBridge] pitches combined={signature} latestPacket={latest} latestEvent={latestEventNotesText ?? "--"} " +
+            $"recent={recent} inputLevel={latestParsedInputLevel.ToString("F2", CultureInfo.InvariantCulture)}");
+    }
+
+    private string BuildRecentDetectorEventDebugSummary()
+    {
+        if (recentNoteEvents == null || recentNoteEvents.Count == 0)
+            return "--";
+
+        float recentCutoff = Time.unscaledTime - NotesDetectorRoutineRecentEventHoldSeconds;
+        var parts = new List<string>();
+        for (int i = recentNoteEvents.Count - 1; i >= 0 && parts.Count < 4; i--)
+        {
+            NoteEvent ev = recentNoteEvents[i];
+            if (ev == null || ev.observedAtUnscaled < recentCutoff)
+                continue;
+
+            string pitches = ev.pitches != null && ev.pitches.Count > 0 ? FormatMidiSetCsv(ev.pitches) : "--";
+            parts.Add($"{ev.id}@{ev.time.ToString("F2", CultureInfo.InvariantCulture)}:{pitches}");
+        }
+
+        return parts.Count > 0 ? string.Join(";", parts) : "--";
     }
 
     private static bool TryGetNotesDetectorRoutineRowMidi(int rowIndexTopDown, string fretText, out int midi)
@@ -9410,6 +9485,16 @@ public class GuitarBridgeServer : MonoBehaviour
     public void AdjustFightClubCountdownFromUi(float deltaSeconds)
     {
         miniGameManager?.AdjustFightClubCountdown(deltaSeconds);
+    }
+
+    public void CycleFightClubChordCountFromUi(int delta)
+    {
+        miniGameManager?.CycleFightClubChordCount(delta);
+    }
+
+    public void ToggleFightClubPracticeModeFromUi()
+    {
+        miniGameManager?.ToggleFightClubPracticeMode();
     }
 
     public void AdjustFightClubMaxFailedRoundsFromUi(int delta)
@@ -19093,6 +19178,7 @@ private void OpenOrFocusToneLab()
         if (miniGameWindows == null || miniGameWindows.Length == 0)
         {
             payload = BuildDetectorSyncPayload(hintTimelineTime, clearWindows: true);
+            LogFightClubDetectorHint(hintTimelineTime, null, payload);
             return true;
         }
 
@@ -19132,13 +19218,43 @@ private void OpenOrFocusToneLab()
         if (windows.Count == 0)
         {
             payload = BuildDetectorSyncPayload(hintTimelineTime, clearWindows: true);
+            LogFightClubDetectorHint(hintTimelineTime, windows, payload);
             return true;
         }
 
         payload = notesDetectorBackendMode == NotesDetectorBackendMode.NativeEmbeddedBridge
             ? BuildNativeDetectorHintPayload(hintTimelineTime, windows)
             : BuildLegacyDetectorHintPayload(hintTimelineTime, windows);
+        LogFightClubDetectorHint(hintTimelineTime, windows, payload);
         return true;
+    }
+
+    private void LogFightClubDetectorHint(float hintTimelineTime, List<DetectorHintWindow> windows, string payload)
+    {
+        if (!Application.isEditor || !showMiniGames || miniGameManager == null || !miniGameManager.IsFightClubActive)
+            return;
+
+        float now = Time.unscaledTime;
+        string signature = payload ?? string.Empty;
+        bool changed = !string.Equals(signature, lastFightClubDetectorBridgeHintSignature, StringComparison.Ordinal);
+        if (!changed && now < nextFightClubDetectorBridgeLogTime)
+            return;
+
+        lastFightClubDetectorBridgeHintSignature = signature;
+        nextFightClubDetectorBridgeLogTime = now + 0.35f;
+        string summary = "--";
+        if (windows != null && windows.Count > 0)
+        {
+            summary = string.Join("; ", windows.Take(4).Select(window =>
+            {
+                string pitches = window.pitches != null && window.pitches.Count > 0 ? FormatMidiSetCsv(window.pitches) : "--";
+                return $"{window.startTime.ToString("F2", CultureInfo.InvariantCulture)}-{window.endTime.ToString("F2", CultureInfo.InvariantCulture)}:{pitches}";
+            }));
+        }
+
+        Debug.Log(
+            $"[FightClubDetectionBridge] hint t={hintTimelineTime.ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"windows={(windows?.Count ?? 0).ToString(CultureInfo.InvariantCulture)} backend={notesDetectorBackendMode} summary={summary} payload={payload}");
     }
 
     private string BuildLegacyDetectorHintPayload(float currentSongTime, List<DetectorHintWindow> windows)
@@ -19796,6 +19912,12 @@ private void OpenOrFocusToneLab()
 
     private float GetEstimatedNoteEventSongTime(float eventAge)
     {
+        if (showMiniGames && miniGameManager != null && miniGameManager.IsAnyGameActive)
+        {
+            float miniGameTimelineTime = Mathf.Max(0f, miniGameManager.DetectorTimelineTime);
+            return Mathf.Max(0f, miniGameTimelineTime - Mathf.Max(0f, eventAge));
+        }
+
         if (noteByNoteWaitingForMatch)
             return Mathf.Max(0f, noteByNoteWaitingNoteTime >= 0f ? noteByNoteWaitingNoteTime : songTimer);
 

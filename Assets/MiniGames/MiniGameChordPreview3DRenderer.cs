@@ -123,7 +123,8 @@ public sealed class MiniGameChordPreview3DRenderer
         ClearChildren();
 
         List<FightClubChordSnapshot> chords = snapshot.chords;
-        int count = Mathf.Min(3, chords.Count);
+        int count = Mathf.Min(FightClubRunSettings.MaxChordsPerRound, chords.Count);
+        float spacing = count >= FightClubRunSettings.MaxChordsPerRound ? 3.16f : ChordSpacing;
         for (int i = 0; i < count; i++)
         {
             FightClubChordSnapshot chord = chords[i];
@@ -132,9 +133,11 @@ public sealed class MiniGameChordPreview3DRenderer
 
             GameObject chordRoot = new GameObject("FightClubChord_" + i);
             chordRoot.transform.SetParent(root.transform, false);
-            chordRoot.transform.localPosition = new Vector3((i - ((count - 1) * 0.5f)) * ChordSpacing, 0f, 0f);
+            chordRoot.transform.localPosition = new Vector3((i - ((count - 1) * 0.5f)) * spacing, 0f, 0f);
             chordRoot.transform.localRotation = Quaternion.identity;
-            float scale = chord.active ? 1.08f : 0.96f;
+            float scale = count >= FightClubRunSettings.MaxChordsPerRound
+                ? chord.active ? 0.98f : 0.86f
+                : chord.active ? 1.08f : 0.96f;
             chordRoot.transform.localScale = new Vector3(scale, scale, scale);
 
             CreateChordPrompt(chordRoot.transform, chord, i);

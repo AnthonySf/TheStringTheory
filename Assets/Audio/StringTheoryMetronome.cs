@@ -60,14 +60,15 @@ public sealed class StringTheoryMetronome : MonoBehaviour
         double secondsPerBeat,
         StringTheoryMetronomeSound sound,
         int beatsPerBar = 4,
-        float volume = 0.78f)
+        float volume = 0.78f,
+        int initialBeatIndex = 0)
     {
         EnsureSources();
         this.secondsPerBeat = Math.Max(MinimumSecondsPerBeat, Math.Min(MaximumSecondsPerBeat, secondsPerBeat));
         this.sound = sound;
         this.beatsPerBar = Mathf.Clamp(beatsPerBar, 1, 16);
         this.volume = Mathf.Clamp01(volume);
-        beatIndex = 0;
+        beatIndex = Math.Max(0, initialBeatIndex);
         nextBeatDspTime = Math.Max(AudioSettings.dspTime + 0.01d, startDspTime);
         running = true;
         ScheduleDueBeats();

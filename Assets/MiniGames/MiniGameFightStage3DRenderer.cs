@@ -34,18 +34,20 @@ public sealed class MiniGameFightStage3DRenderer
     public const int StageUnityLayer = 29;
     public const int StageUnityLayerMask = 1 << StageUnityLayer;
 
-    private static readonly Color FloorColor = new Color(0.004f, 0.005f, 0.014f, 1f);
-    private static readonly Color HitTint = new Color(0.92f, 0.94f, 1f, 1f);
-    private static readonly Color MissTint = new Color(0.96f, 0.36f, 0.50f, 1f);
-    private static readonly Color MissPulseTint = new Color(1.0f, 0.52f, 0.66f, 1f);
-    private static readonly Color LeftSpotColor = new Color(0.62f, 0.72f, 1.00f, 1f);
-    private static readonly Color RightSpotColor = new Color(0.84f, 0.60f, 1.00f, 1f);
-    private static readonly Color LeftRimTint = new Color(0.30f, 0.86f, 1f, 0.025f);
-    private static readonly Color RightRimTint = new Color(1f, 0.42f, 0.92f, 0.025f);
+    private static readonly Color FloorColor = new Color(0.008f, 0.011f, 0.026f, 1f);
+    private static readonly Color FloorSpecularColor = new Color(0.20f, 0.24f, 0.42f, 1f);
+    private static readonly Color HitTint = new Color(0.94f, 0.95f, 1f, 1f);
+    private static readonly Color MissTint = new Color(0.88f, 0.42f, 0.56f, 1f);
+    private static readonly Color MissPulseTint = new Color(1.0f, 0.58f, 0.72f, 1f);
+    private static readonly Color LeftSpotColor = new Color(0.54f, 0.74f, 1.00f, 1f);
+    private static readonly Color RightSpotColor = new Color(0.92f, 0.56f, 1.00f, 1f);
+    private static readonly Color CenterSpotColor = new Color(0.30f, 0.40f, 0.86f, 1f);
+    private static readonly Color LeftRimTint = new Color(0.26f, 0.86f, 1f, 0.036f);
+    private static readonly Color RightRimTint = new Color(1f, 0.40f, 0.90f, 0.038f);
     private const float CharacterAlphaCutoff = 0.08f;
 
     private readonly GuitarBridgeServer owner;
-    private readonly int[] lastChordStatuses = { -1, -1, -1 };
+    private readonly int[] lastChordStatuses = { -1, -1, -1, -1 };
     private GameObject root;
     private Transform leftCharacter;
     private Transform rightCharacter;
@@ -190,8 +192,9 @@ public sealed class MiniGameFightStage3DRenderer
 
     private void CreateStageLighting(Transform parent)
     {
-        CreateStageSpotLight(parent, "FightClubLeftSpotlight", new Vector3(-6.85f, 5.35f, -3.45f), new Vector3(LeftCharacterBaseX - 0.12f, FloorY + 0.04f, 0.90f), LeftSpotColor, 2020.0f, 15.2f, 37f, castShadows: true);
-        CreateStageSpotLight(parent, "FightClubRightSpotlight", new Vector3(6.85f, 5.35f, -3.45f), new Vector3(RightCharacterBaseX + 0.12f, FloorY + 0.04f, 0.90f), RightSpotColor, 1960.0f, 15.2f, 37f, castShadows: true);
+        CreateStageSpotLight(parent, "FightClubLeftSpotlight", new Vector3(-6.85f, 5.45f, -3.65f), new Vector3(LeftCharacterBaseX - 0.10f, FloorY + 0.04f, 0.92f), LeftSpotColor, 2160.0f, 15.4f, 35f, castShadows: true);
+        CreateStageSpotLight(parent, "FightClubRightSpotlight", new Vector3(6.85f, 5.45f, -3.65f), new Vector3(RightCharacterBaseX + 0.10f, FloorY + 0.04f, 0.92f), RightSpotColor, 2080.0f, 15.4f, 35f, castShadows: true);
+        CreateStageSpotLight(parent, "FightClubCenterFloorWash", new Vector3(0f, 4.65f, -5.35f), new Vector3(0f, FloorY + 0.02f, 1.75f), CenterSpotColor, 420.0f, 18.0f, 68f, castShadows: false);
     }
 
     private static void CreateStageSpotLight(Transform parent, string name, Vector3 localPosition, Vector3 target, Color color, float intensity, float range, float spotAngle, bool castShadows)
@@ -213,7 +216,7 @@ public sealed class MiniGameFightStage3DRenderer
         light.spotAngle = spotAngle;
         light.innerSpotAngle = Mathf.Max(8f, spotAngle * 0.56f);
         light.shadows = castShadows ? LightShadows.Soft : LightShadows.None;
-        light.shadowStrength = castShadows ? 0.78f : 0f;
+        light.shadowStrength = castShadows ? 0.84f : 0f;
         light.shadowBias = 0.003f;
         light.shadowNormalBias = 0.006f;
         light.renderMode = LightRenderMode.ForcePixel;
@@ -981,9 +984,9 @@ public sealed class MiniGameFightStage3DRenderer
     {
         Material material = CreateLitMaterial();
         SetMaterialColor(material, FloorColor);
-        SetMaterialSmoothness(material, 0.18f);
+        SetMaterialSmoothness(material, 0.40f);
+        SetMaterialSpecular(material, FloorSpecularColor);
         ConfigureOpaqueMaterial(material, (int)RenderQueue.Geometry + 10);
-        DisableExtraLitResponse(material);
         return material;
     }
 
@@ -1313,6 +1316,21 @@ public sealed class MiniGameFightStage3DRenderer
             material.SetFloat("_EnvironmentReflections", 0f);
         if (material.HasProperty("_SpecColor"))
             material.SetColor("_SpecColor", Color.black);
+        if (material.HasProperty("_Metallic"))
+            material.SetFloat("_Metallic", 0f);
+    }
+
+    private static void SetMaterialSpecular(Material material, Color color)
+    {
+        if (material == null)
+            return;
+
+        if (material.HasProperty("_SpecularHighlights"))
+            material.SetFloat("_SpecularHighlights", 1f);
+        if (material.HasProperty("_EnvironmentReflections"))
+            material.SetFloat("_EnvironmentReflections", 0f);
+        if (material.HasProperty("_SpecColor"))
+            material.SetColor("_SpecColor", color);
         if (material.HasProperty("_Metallic"))
             material.SetFloat("_Metallic", 0f);
     }

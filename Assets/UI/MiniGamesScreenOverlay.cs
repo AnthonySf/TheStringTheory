@@ -55,6 +55,8 @@ public sealed class MiniGamesScreenOverlay
     private readonly Label runSettingsMetronomeSoundValueLabel;
     private readonly Label runSettingsChordInstrumentValueLabel;
     private readonly Label runSettingsCountdownValueLabel;
+    private readonly Label runSettingsChordCountValueLabel;
+    private readonly Label runSettingsPracticeModeValueLabel;
     private readonly Label runSettingsFailsValueLabel;
     private readonly Button runSettingsPrimaryButton;
 
@@ -91,6 +93,7 @@ public sealed class MiniGamesScreenOverlay
     private StringTheoryMetronome fightMetronome;
     private StringTheoryChordAudioPlayer fightChordAudioPlayer;
     private string fightMetronomeSignature = string.Empty;
+    private int lastFightMetronomeSyncSerial = -1;
     private int lastOpponentChordSoundSerial = -1;
 
     public MiniGamesScreenOverlay(
@@ -428,6 +431,18 @@ public sealed class MiniGamesScreenOverlay
             out runSettingsCountdownValueLabel,
             () => owner?.AdjustFightClubCountdownFromUi(-1f),
             () => owner?.AdjustFightClubCountdownFromUi(1f)));
+        runSettingsList.Add(CreateRunSettingRow(
+            "Chords Per Round",
+            "Four keeps the phrase locked to the 4-beat metronome. Three keeps rounds shorter.",
+            out runSettingsChordCountValueLabel,
+            () => owner?.CycleFightClubChordCountFromUi(-1),
+            () => owner?.CycleFightClubChordCountFromUi(1)));
+        runSettingsList.Add(CreateRunSettingRow(
+            "Practice Mode",
+            "Repeats missed sequences until every chord is right. Practice scores are not saved.",
+            out runSettingsPracticeModeValueLabel,
+            () => owner?.ToggleFightClubPracticeModeFromUi(),
+            () => owner?.ToggleFightClubPracticeModeFromUi()));
         runSettingsList.Add(CreateRunSettingRow(
             "Failed Rounds",
             "How many imperfect rounds end the run.",
@@ -775,14 +790,19 @@ public sealed class MiniGamesScreenOverlay
             int soundIndex = playSettingsMetronome ? runSettings.metronomeSoundIndex : fight.metronomeSoundIndex;
             StringTheoryMetronomeSound sound = StringTheoryMetronome.NormalizeSoundIndex(soundIndex);
             string signature = $"{beatInterval:0.000}|{(int)sound}";
+            int syncSerial = playSettingsMetronome ? -1 : fight.metronomeSyncSerial;
             bool restart = !string.Equals(signature, fightMetronomeSignature, StringComparison.Ordinal) ||
+                           (!playSettingsMetronome && syncSerial != lastFightMetronomeSyncSerial) ||
                            fightMetronome == null ||
                            !fightMetronome.IsRunning;
 
             if (restart)
             {
-                fightMetronome.StartMetronome(AudioSettings.dspTime + 0.03d, Mathf.Max(0.2f, beatInterval), sound, 4, 0.80f);
+                double startDspTime = GetFightMetronomeStartDspTime(playSettingsMetronome, fight, beatInterval);
+                int initialBeatIndex = GetFightMetronomeInitialBeatIndex(playSettingsMetronome, fight, beatInterval);
+                fightMetronome.StartMetronome(startDspTime, Mathf.Max(0.2f, beatInterval), sound, 4, 0.80f, initialBeatIndex);
                 fightMetronomeSignature = signature;
+                lastFightMetronomeSyncSerial = syncSerial;
             }
             else
             {
@@ -793,6 +813,7 @@ public sealed class MiniGamesScreenOverlay
         {
             fightMetronome.StopMetronome();
             fightMetronomeSignature = string.Empty;
+            lastFightMetronomeSyncSerial = -1;
         }
 
         if (!playRunMetronome || fight == null || !fight.opponentPreviewActive)
@@ -824,6 +845,50 @@ public sealed class MiniGamesScreenOverlay
         lastOpponentChordSoundSerial = fight.opponentChordSoundSerial;
     }
 
+    private static double GetFightMetronomeStartDspTime(
+        bool playSettingsMetronome,
+        FightClubMiniGameSnapshot fight,
+        float beatIntervalSeconds)
+    {
+        const double settingsLeadSeconds = 0.03d;
+        const double runLeadSeconds = 0.012d;
+        double now = AudioSettings.dspTime;
+        double beatInterval = Math.Max(0.2d, beatIntervalSeconds);
+        if (playSettingsMetronome || fight == null)
+            return now + settingsLeadSeconds;
+
+        double beatProgress = Math.Max(0d, Math.Min(1d, fight.beatProgress01));
+        double elapsedIntoBeat = beatInterval * beatProgress;
+        if (elapsedIntoBeat <= runLeadSeconds)
+            return now + runLeadSeconds;
+
+        double startDspTime = now - elapsedIntoBeat;
+        double earliestStart = now + runLeadSeconds;
+        while (startDspTime < earliestStart)
+            startDspTime += beatInterval;
+
+        return startDspTime;
+    }
+
+    private static int GetFightMetronomeInitialBeatIndex(
+        bool playSettingsMetronome,
+        FightClubMiniGameSnapshot fight,
+        float beatIntervalSeconds)
+    {
+        if (playSettingsMetronome || fight == null)
+            return 0;
+
+        const double runLeadSeconds = 0.012d;
+        double beatInterval = Math.Max(0.2d, beatIntervalSeconds);
+        double beatProgress = Math.Max(0d, Math.Min(1d, fight.beatProgress01));
+        double elapsedIntoBeat = beatInterval * beatProgress;
+        int beatIndex = Mathf.Clamp(fight.beatIndexInBar, 0, 3);
+        if (elapsedIntoBeat > runLeadSeconds)
+            beatIndex = (beatIndex + 1) % 4;
+
+        return beatIndex;
+    }
+
     private void EnsureFightAudio()
     {
         if (fightAudioRoot == null)
@@ -851,6 +916,7 @@ public sealed class MiniGamesScreenOverlay
             fightChordAudioPlayer.StopImmediately();
 
         fightMetronomeSignature = string.Empty;
+        lastFightMetronomeSyncSerial = -1;
         lastOpponentChordSoundSerial = -1;
     }
 
@@ -1762,7 +1828,9 @@ public sealed class MiniGamesScreenOverlay
         runSettingsBeatValueLabel.text = $"{bpm.ToString(CultureInfo.InvariantCulture)} BPM";
         runSettingsMetronomeSoundValueLabel.text = snapshot.metronomeSoundLabel ?? "Drums";
         runSettingsChordInstrumentValueLabel.text = snapshot.chordPreviewInstrumentLabel ?? "Electric";
-        runSettingsCountdownValueLabel.text = $"{Mathf.Clamp(Mathf.RoundToInt(snapshot.countdownSeconds), 1, 8).ToString(CultureInfo.InvariantCulture)} beats";
+        runSettingsCountdownValueLabel.text = $"{FightClubRunSettings.NormalizeCountdownBeats(snapshot.countdownSeconds).ToString(CultureInfo.InvariantCulture)} beats";
+        runSettingsChordCountValueLabel.text = $"{FightClubRunSettings.NormalizeChordCount(snapshot.chordCount).ToString(CultureInfo.InvariantCulture)} chords";
+        runSettingsPracticeModeValueLabel.text = snapshot.practiceMode ? "ON" : "OFF";
         runSettingsFailsValueLabel.text = Mathf.Clamp(snapshot.maxFailedRounds, 1, 10).ToString(CultureInfo.InvariantCulture);
         runSettingsPrimaryButton.text = snapshot.activeRun ? "Apply" : "Start Fight Club";
         runSettingsPrimaryButton.SetEnabled(snapshot.activeRun || snapshot.canStart);
@@ -1861,6 +1929,12 @@ public sealed class MiniGamesScreenOverlay
             $"Round {Mathf.Max(1, snapshot.round).ToString(CultureInfo.InvariantCulture)}  •  " +
             $"Streak {Mathf.Max(0, snapshot.streak).ToString(CultureInfo.InvariantCulture)}  •  " +
             $"Failed {Mathf.Max(0, snapshot.failedRounds).ToString(CultureInfo.InvariantCulture)}/{Mathf.Max(1, snapshot.maxFailedRounds).ToString(CultureInfo.InvariantCulture)}";
+        if (snapshot.practiceMode)
+        {
+            fightScoreDetailsLabel.text =
+                $"Round {Mathf.Max(1, snapshot.round).ToString(CultureInfo.InvariantCulture)}  |  Practice  |  Streak {Mathf.Max(0, snapshot.streak).ToString(CultureInfo.InvariantCulture)}";
+        }
+
         string countdownText = string.IsNullOrWhiteSpace(snapshot.countdownLabel) ? string.Empty : snapshot.countdownLabel;
         fightCountdownLabel.text = countdownText;
         bool bannerPrompt = countdownText.Length > 1;
@@ -2257,6 +2331,8 @@ public sealed class MiniGamesScreenOverlay
             snapshot.chordPreviewInstrumentIndex,
             snapshot.chordPreviewInstrumentLabel,
             snapshot.countdownSeconds.ToString("F1", CultureInfo.InvariantCulture),
+            snapshot.chordCount,
+            snapshot.practiceMode,
             snapshot.maxFailedRounds);
     }
 
