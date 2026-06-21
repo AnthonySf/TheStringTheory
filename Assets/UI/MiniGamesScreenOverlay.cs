@@ -13,6 +13,7 @@ public sealed class MiniGamesScreenOverlay
     private readonly FontDefinition titleFontDefinition;
     private readonly FontDefinition modernFontDefinition;
     private readonly MiniGameChordPreview3DRenderer chordPreviewRenderer;
+    private readonly MiniGameFightStage3DRenderer fightStageRenderer;
     private readonly List<Button> gameButtons = new List<Button>();
     private readonly List<Button> pauseButtons = new List<Button>();
 
@@ -51,6 +52,8 @@ public sealed class MiniGamesScreenOverlay
     private readonly Label runSettingsLeniencyValueLabel;
     private readonly Label runSettingsLeniencyDescriptionLabel;
     private readonly Label runSettingsBeatValueLabel;
+    private readonly Label runSettingsMetronomeSoundValueLabel;
+    private readonly Label runSettingsChordInstrumentValueLabel;
     private readonly Label runSettingsCountdownValueLabel;
     private readonly Label runSettingsFailsValueLabel;
     private readonly Button runSettingsPrimaryButton;
@@ -84,6 +87,11 @@ public sealed class MiniGamesScreenOverlay
     private static readonly Dictionary<string, Texture2D> setupSongArtworkTextureCache = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
     private static Texture2D setupPrimaryGradientTexture;
     private static Texture2D setupModeGradientTexture;
+    private GameObject fightAudioRoot;
+    private StringTheoryMetronome fightMetronome;
+    private StringTheoryChordAudioPlayer fightChordAudioPlayer;
+    private string fightMetronomeSignature = string.Empty;
+    private int lastOpponentChordSoundSerial = -1;
 
     public MiniGamesScreenOverlay(
         GuitarBridgeServer owner,
@@ -96,6 +104,7 @@ public sealed class MiniGamesScreenOverlay
         this.titleFontDefinition = titleFontDefinition;
         this.modernFontDefinition = modernFontDefinition;
         chordPreviewRenderer = new MiniGameChordPreview3DRenderer(owner);
+        fightStageRenderer = new MiniGameFightStage3DRenderer(owner);
 
         RootElement = CreateRoot();
 
@@ -396,14 +405,26 @@ public sealed class MiniGamesScreenOverlay
             () => owner?.CycleFightClubChordLeniencyFromUi(1),
             out runSettingsLeniencyDescriptionLabel));
         runSettingsList.Add(CreateRunSettingRow(
-            "Beat Time",
-            "Time between each chord in the three-chord round.",
+            "Tempo",
+            "BPM for the metronome, opponent demo, and player chord windows.",
             out runSettingsBeatValueLabel,
-            () => owner?.AdjustFightClubBeatIntervalFromUi(-0.05f),
-            () => owner?.AdjustFightClubBeatIntervalFromUi(0.05f)));
+            () => owner?.AdjustFightClubTempoFromUi(-5),
+            () => owner?.AdjustFightClubTempoFromUi(5)));
         runSettingsList.Add(CreateRunSettingRow(
-            "Start Countdown",
-            "Pause before each round starts.",
+            "Metronome",
+            "Sound used for the beat during setup and the run.",
+            out runSettingsMetronomeSoundValueLabel,
+            () => owner?.CycleFightClubMetronomeSoundFromUi(-1),
+            () => owner?.CycleFightClubMetronomeSoundFromUi(1)));
+        runSettingsList.Add(CreateRunSettingRow(
+            "Chord Sound",
+            "Instrument used when player 2 demonstrates a chord.",
+            out runSettingsChordInstrumentValueLabel,
+            () => owner?.CycleFightClubChordPreviewInstrumentFromUi(-1),
+            () => owner?.CycleFightClubChordPreviewInstrumentFromUi(1)));
+        runSettingsList.Add(CreateRunSettingRow(
+            "Count-In",
+            "How many beats count down before each player starts.",
             out runSettingsCountdownValueLabel,
             () => owner?.AdjustFightClubCountdownFromUi(-1f),
             () => owner?.AdjustFightClubCountdownFromUi(1f)));
@@ -456,22 +477,24 @@ public sealed class MiniGamesScreenOverlay
         titleStack.Add(fightTitleLabel);
         titleStack.Add(fightHintLabel);
 
-        fightScoreLabel = CreateLabel("0", 86f, new Color(0.66f, 0.94f, 1f, 1f), true, TextAnchor.MiddleCenter, false);
-        fightScoreLabel.style.unityFontDefinition = modernFontDefinition;
+        fightScoreLabel = CreateLabel("0", 108f, new Color(0.76f, 0.95f, 1f, 1f), true, TextAnchor.MiddleRight, false);
+        fightScoreLabel.style.unityFontDefinition = titleFontDefinition;
         fightScoreLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
         fightScoreLabel.style.whiteSpace = WhiteSpace.NoWrap;
         fightScoreLabel.style.marginBottom = 0f;
 
         fightScoreDetailsLabel = CreateLabel("Round 1  •  Streak 0  •  Failed 0/3", 24f, new Color(0.84f, 0.91f, 1f, 0.88f), true, TextAnchor.MiddleCenter, false);
         fightScoreDetailsLabel.style.unityFontDefinition = modernFontDefinition;
+        fightScoreDetailsLabel.style.fontSize = 30f;
+        fightScoreDetailsLabel.style.unityTextAlign = TextAnchor.MiddleRight;
         fightScoreDetailsLabel.style.whiteSpace = WhiteSpace.NoWrap;
 
         VisualElement fightScoreBlock = new VisualElement();
         fightScoreBlock.style.position = Position.Absolute;
-        fightScoreBlock.style.left = 0f;
-        fightScoreBlock.style.right = 0f;
-        fightScoreBlock.style.top = 26f;
-        fightScoreBlock.style.alignItems = Align.Center;
+        fightScoreBlock.style.right = 48f;
+        fightScoreBlock.style.top = 28f;
+        fightScoreBlock.style.width = 560f;
+        fightScoreBlock.style.alignItems = Align.FlexEnd;
         fightScoreBlock.style.justifyContent = Justify.FlexStart;
         fightScoreBlock.pickingMode = PickingMode.Ignore;
         fightScoreBlock.Add(fightScoreLabel);
@@ -483,10 +506,10 @@ public sealed class MiniGamesScreenOverlay
         fightCountdownLabel.style.position = Position.Absolute;
         fightCountdownLabel.style.left = 0f;
         fightCountdownLabel.style.right = 0f;
-        fightCountdownLabel.style.top = Length.Percent(15f);
-        fightCountdownLabel.style.height = 150f;
+        fightCountdownLabel.style.top = Length.Percent(38f);
+        fightCountdownLabel.style.height = 178f;
 
-        fightStatusLabel = CreateLabel(string.Empty, 32f, new Color(0.92f, 0.97f, 1f, 0.94f), true, TextAnchor.MiddleCenter, false);
+        fightStatusLabel = CreateLabel(string.Empty, 38f, new Color(0.92f, 0.97f, 1f, 0.94f), true, TextAnchor.MiddleCenter, false);
         fightStatusLabel.style.unityFontDefinition = modernFontDefinition;
         fightStatusLabel.style.position = Position.Absolute;
         fightStatusLabel.style.left = 0f;
@@ -672,6 +695,8 @@ public sealed class MiniGamesScreenOverlay
         if (!visible || snapshot == null)
         {
             chordPreviewRenderer.Hide();
+            fightStageRenderer.Hide();
+            StopFightAudio();
             return;
         }
 
@@ -724,7 +749,109 @@ public sealed class MiniGamesScreenOverlay
         UpdateFightHud(fightActive && !fightEnded && !runSettingsVisible, miniSnapshot.fightClub);
         UpdateFightEnd(fightEnded && !runSettingsVisible, miniSnapshot.fightClub);
         UpdatePauseSelection(miniSnapshot.selectedPauseActionIndex);
-        chordPreviewRenderer.Update(miniSnapshot.fightClub, visible && fightActive && !fightEnded && !runSettingsVisible);
+        bool showFightStage = visible && fightActive && !fightEnded && !runSettingsVisible;
+        fightStageRenderer.Update(miniSnapshot.fightClub, showFightStage);
+        chordPreviewRenderer.Update(miniSnapshot.fightClub, showFightStage);
+        UpdateFightAudio(snapshot, miniSnapshot, runSettingsVisible, fightActive, fightEnded);
+    }
+
+    private void UpdateFightAudio(
+        GuitarGameplaySnapshot gameplaySnapshot,
+        MiniGameScreenSnapshot miniSnapshot,
+        bool runSettingsVisible,
+        bool fightActive,
+        bool fightEnded)
+    {
+        FightClubRunSettingsSnapshot runSettings = miniSnapshot?.fightClubRunSettings;
+        FightClubMiniGameSnapshot fight = miniSnapshot?.fightClub;
+        bool playSettingsMetronome = runSettingsVisible && runSettings != null && runSettings.visible;
+        bool playRunMetronome = fightActive && !fightEnded && fight != null && !runSettingsVisible && !(gameplaySnapshot?.isPaused ?? false);
+
+        if (playSettingsMetronome || playRunMetronome)
+        {
+            EnsureFightAudio();
+            EnsureFightChordAudioPlayer();
+            float beatInterval = playSettingsMetronome ? runSettings.beatIntervalSeconds : fight.beatIntervalSeconds;
+            int soundIndex = playSettingsMetronome ? runSettings.metronomeSoundIndex : fight.metronomeSoundIndex;
+            StringTheoryMetronomeSound sound = StringTheoryMetronome.NormalizeSoundIndex(soundIndex);
+            string signature = $"{beatInterval:0.000}|{(int)sound}";
+            bool restart = !string.Equals(signature, fightMetronomeSignature, StringComparison.Ordinal) ||
+                           fightMetronome == null ||
+                           !fightMetronome.IsRunning;
+
+            if (restart)
+            {
+                fightMetronome.StartMetronome(AudioSettings.dspTime + 0.03d, Mathf.Max(0.2f, beatInterval), sound, 4, 0.80f);
+                fightMetronomeSignature = signature;
+            }
+            else
+            {
+                fightMetronome.Reconfigure(Mathf.Max(0.2f, beatInterval), sound, 4, 0.80f);
+            }
+        }
+        else if (fightMetronome != null && fightMetronome.IsRunning)
+        {
+            fightMetronome.StopMetronome();
+            fightMetronomeSignature = string.Empty;
+        }
+
+        if (!playRunMetronome || fight == null || !fight.opponentPreviewActive)
+            return;
+
+        if (fight.opponentChordSoundSerial == lastOpponentChordSoundSerial ||
+            fight.opponentChordSoundIndex < 0 ||
+            fight.chords == null ||
+            fight.opponentChordSoundIndex >= fight.chords.Count)
+        {
+            return;
+        }
+
+        FightClubChordSnapshot chord = fight.chords[fight.opponentChordSoundIndex];
+        if (chord?.expectedMidis == null || chord.expectedMidis.Length == 0)
+            return;
+
+        EnsureFightAudio();
+        EnsureFightChordAudioPlayer();
+        if (!fightChordAudioPlayer.IsReady)
+        {
+            lastOpponentChordSoundSerial = fight.opponentChordSoundSerial;
+            return;
+        }
+
+        fightChordAudioPlayer.PlayChord(
+            chord.expectedMidis,
+            StringTheoryChordAudioPlayer.NormalizeInstrumentIndex(fight.chordPreviewInstrumentIndex));
+        lastOpponentChordSoundSerial = fight.opponentChordSoundSerial;
+    }
+
+    private void EnsureFightAudio()
+    {
+        if (fightAudioRoot == null)
+        {
+            fightAudioRoot = new GameObject("FightClubAudio");
+            if (owner != null)
+                fightAudioRoot.transform.SetParent(owner.transform, false);
+        }
+
+        if (fightMetronome == null)
+            fightMetronome = fightAudioRoot.AddComponent<StringTheoryMetronome>();
+    }
+
+    private void EnsureFightChordAudioPlayer()
+    {
+        fightChordAudioPlayer ??= new StringTheoryChordAudioPlayer();
+        fightChordAudioPlayer.EnsureInitialized(fightAudioRoot != null ? fightAudioRoot.transform : owner?.transform);
+    }
+
+    private void StopFightAudio()
+    {
+        if (fightMetronome != null)
+            fightMetronome.StopMetronome();
+        if (fightChordAudioPlayer != null)
+            fightChordAudioPlayer.StopImmediately();
+
+        fightMetronomeSignature = string.Empty;
+        lastOpponentChordSoundSerial = -1;
     }
 
     private void RebuildSelectionList(MiniGameScreenSnapshot snapshot)
@@ -1631,8 +1758,11 @@ public sealed class MiniGamesScreenOverlay
             : "Set the rules for this Fight Club run.";
         runSettingsLeniencyValueLabel.text = snapshot.chordLeniencyLabel ?? "Normal";
         runSettingsLeniencyDescriptionLabel.text = snapshot.chordLeniencyDescription ?? string.Empty;
-        runSettingsBeatValueLabel.text = $"{Mathf.Clamp(snapshot.beatIntervalSeconds, 0.66f, 2.5f):0.00}s";
-        runSettingsCountdownValueLabel.text = $"{Mathf.Clamp(Mathf.RoundToInt(snapshot.countdownSeconds), 1, 8).ToString(CultureInfo.InvariantCulture)}s";
+        int bpm = Mathf.Clamp(snapshot.tempoBpm > 0 ? snapshot.tempoBpm : Mathf.RoundToInt(60f / Mathf.Clamp(snapshot.beatIntervalSeconds, 0.66f, 2.5f)), FightClubRunSettings.MinTempoBpm, FightClubRunSettings.MaxTempoBpm);
+        runSettingsBeatValueLabel.text = $"{bpm.ToString(CultureInfo.InvariantCulture)} BPM";
+        runSettingsMetronomeSoundValueLabel.text = snapshot.metronomeSoundLabel ?? "Drums";
+        runSettingsChordInstrumentValueLabel.text = snapshot.chordPreviewInstrumentLabel ?? "Electric";
+        runSettingsCountdownValueLabel.text = $"{Mathf.Clamp(Mathf.RoundToInt(snapshot.countdownSeconds), 1, 8).ToString(CultureInfo.InvariantCulture)} beats";
         runSettingsFailsValueLabel.text = Mathf.Clamp(snapshot.maxFailedRounds, 1, 10).ToString(CultureInfo.InvariantCulture);
         runSettingsPrimaryButton.text = snapshot.activeRun ? "Apply" : "Start Fight Club";
         runSettingsPrimaryButton.SetEnabled(snapshot.activeRun || snapshot.canStart);
@@ -1731,7 +1861,22 @@ public sealed class MiniGamesScreenOverlay
             $"Round {Mathf.Max(1, snapshot.round).ToString(CultureInfo.InvariantCulture)}  •  " +
             $"Streak {Mathf.Max(0, snapshot.streak).ToString(CultureInfo.InvariantCulture)}  •  " +
             $"Failed {Mathf.Max(0, snapshot.failedRounds).ToString(CultureInfo.InvariantCulture)}/{Mathf.Max(1, snapshot.maxFailedRounds).ToString(CultureInfo.InvariantCulture)}";
-        fightCountdownLabel.text = string.IsNullOrWhiteSpace(snapshot.countdownLabel) ? string.Empty : snapshot.countdownLabel;
+        string countdownText = string.IsNullOrWhiteSpace(snapshot.countdownLabel) ? string.Empty : snapshot.countdownLabel;
+        fightCountdownLabel.text = countdownText;
+        bool bannerPrompt = countdownText.Length > 1;
+        float countdownPulse = Mathf.Sin(Mathf.Clamp01(snapshot.beatProgress01) * Mathf.PI);
+        float countdownScale = string.IsNullOrEmpty(countdownText)
+            ? 1f
+            : bannerPrompt
+                ? Mathf.Lerp(0.92f, 1.04f, countdownPulse)
+                : Mathf.Lerp(0.88f, 1.08f, countdownPulse);
+        fightCountdownLabel.style.fontSize = bannerPrompt ? 76f : 132f;
+        fightCountdownLabel.style.opacity = string.IsNullOrEmpty(countdownText)
+            ? 0f
+            : bannerPrompt
+                ? Mathf.Lerp(0.72f, 1f, countdownPulse)
+                : 1f;
+        fightCountdownLabel.style.scale = new Scale(new Vector3(countdownScale, countdownScale, 1f));
         fightStatusLabel.text = string.IsNullOrWhiteSpace(snapshot.statusLabel) ? snapshot.phaseLabel : snapshot.statusLabel;
         beatFill.style.width = Length.Percent(Mathf.Clamp01(snapshot.beatProgress01) * 100f);
     }
@@ -2106,6 +2251,11 @@ public sealed class MiniGamesScreenOverlay
             snapshot.chordLeniencyLabel,
             snapshot.chordLeniencyDescription,
             snapshot.beatIntervalSeconds.ToString("F2", CultureInfo.InvariantCulture),
+            snapshot.tempoBpm,
+            snapshot.metronomeSoundIndex,
+            snapshot.metronomeSoundLabel,
+            snapshot.chordPreviewInstrumentIndex,
+            snapshot.chordPreviewInstrumentLabel,
             snapshot.countdownSeconds.ToString("F1", CultureInfo.InvariantCulture),
             snapshot.maxFailedRounds);
     }

@@ -2,9 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
 using UnityEngine.Rendering.Universal;
-#endif
 
 public sealed class GuitarTunerModelPreview
 {
@@ -27,7 +25,7 @@ public sealed class GuitarTunerModelPreview
     private const string BassMetallicTexturePath = "3d/IbanezJem/Bass/Guitar_Guitar_mat_Metallic";
     private const string BassRoughnessTexturePath = "3d/IbanezJem/Bass/Guitar_Guitar_mat_Roughness";
     private const string BassOcclusionTexturePath = "3d/IbanezJem/Bass/Guitar_Guitar_mat_Ambient_Occlusion";
-    private const int PreviewLayer = 30;
+    private const int PreviewLayer = 28;
     private const int TextureWidth = 768;
     private const int TextureHeight = 1024;
     private const float FadeStart = 0.70f;
@@ -81,6 +79,7 @@ public sealed class GuitarTunerModelPreview
     private Shader diagnosticShader;
     private readonly List<Material> ownedMaterials = new List<Material>();
     private readonly List<Mesh> ownedMeshes = new List<Mesh>();
+    private readonly List<Light> previewLights = new List<Light>();
     private readonly List<PegHighlightRenderer> pegHighlightRenderers = new List<PegHighlightRenderer>();
     private readonly List<DebugIslandMarkerState> debugIslandMarkerStates = new List<DebugIslandMarkerState>();
     private readonly List<DebugIslandMarker> debugIslandMarkers = new List<DebugIslandMarker>();
@@ -101,6 +100,15 @@ public sealed class GuitarTunerModelPreview
     private int activePegIndex = 0;
     private Color activePegColor = Color.white;
 
+#if UNITY_EDITOR
+    private static void TraceLightingStep(string reason)
+    {
+        StringTheoryLightingProbe.TraceStep(reason);
+    }
+#else
+    private static void TraceLightingStep(string reason) { }
+#endif
+
     public RenderTexture Texture => renderTexture;
     public bool IsReady => initialized && modelLoaded && renderTexture != null;
     public bool ShowDebugIslandLabels => DebugShowHeadstockIslandLabels;
@@ -108,24 +116,40 @@ public sealed class GuitarTunerModelPreview
 
     public void Initialize(Transform parent)
     {
+        TraceLightingStep("GuitarTunerModelPreview.Initialize enter");
         if (initialized)
+        {
+            TraceLightingStep("GuitarTunerModelPreview.Initialize exit already initialized");
             return;
+        }
 
+        TraceLightingStep("GuitarTunerModelPreview.Initialize before sceneRoot");
         sceneRoot = new GameObject("GuitarTunerModelPreviewScene");
         sceneRoot.hideFlags = HideFlags.DontSave;
         sceneRoot.transform.SetParent(parent, false);
         sceneRoot.transform.position = PreviewOrigin;
         sceneRoot.SetActive(false);
+        TraceLightingStep("GuitarTunerModelPreview.Initialize after sceneRoot");
 
         modelPivot = new GameObject("ModelPivot").transform;
         modelPivot.SetParent(sceneRoot.transform, false);
+        TraceLightingStep("GuitarTunerModelPreview.Initialize after modelPivot");
 
+        TraceLightingStep("GuitarTunerModelPreview.Initialize before EnsureRenderTexture");
         EnsureRenderTexture();
+        TraceLightingStep("GuitarTunerModelPreview.Initialize after EnsureRenderTexture");
+        TraceLightingStep("GuitarTunerModelPreview.Initialize before CreateCamera");
         CreateCamera();
+        TraceLightingStep("GuitarTunerModelPreview.Initialize after CreateCamera");
+        TraceLightingStep("GuitarTunerModelPreview.Initialize before CreateLights");
         CreateLights();
+        TraceLightingStep("GuitarTunerModelPreview.Initialize after CreateLights");
+        TraceLightingStep("GuitarTunerModelPreview.Initialize before LoadModel");
         LoadModel(GetModelDefinition(currentInstrument));
+        TraceLightingStep("GuitarTunerModelPreview.Initialize after LoadModel");
 
         initialized = true;
+        TraceLightingStep("GuitarTunerModelPreview.Initialize exit initialized");
     }
 
     public void SetInstrument(GuitarTunerInstrument instrument)
@@ -150,6 +174,8 @@ public sealed class GuitarTunerModelPreview
     {
         if (sceneRoot != null)
             sceneRoot.SetActive(visible && modelLoaded);
+
+        SetPreviewLightsEnabled(false);
     }
 
     public void SetActiveTuningPeg(int pegIndex, Color stringColor)
@@ -173,7 +199,15 @@ public sealed class GuitarTunerModelPreview
         ConfigureModelAndCamera(Mathf.Clamp01(introProgress));
         UpdateDebugIslandMarkers();
         UpdatePegHighlightMaterials();
-        previewCamera.Render();
+        SetPreviewLightsEnabled(true);
+        try
+        {
+            previewCamera.Render();
+        }
+        finally
+        {
+            SetPreviewLightsEnabled(false);
+        }
         ApplyOutputFade();
     }
 
@@ -208,6 +242,8 @@ public sealed class GuitarTunerModelPreview
             modelPivot = null;
             previewCamera = null;
         }
+
+        previewLights.Clear();
     }
 
     private void ClearLoadedModelResources()
@@ -255,11 +291,17 @@ public sealed class GuitarTunerModelPreview
     {
         if (cameraRenderTexture == null)
         {
+            TraceLightingStep("GuitarTunerModelPreview.EnsureRenderTexture before raw texture");
             cameraRenderTexture = CreatePreviewTexture("GuitarTunerHeadPreviewRaw", 4);
+            TraceLightingStep("GuitarTunerModelPreview.EnsureRenderTexture after raw texture");
         }
 
         if (renderTexture == null)
+        {
+            TraceLightingStep("GuitarTunerModelPreview.EnsureRenderTexture before output texture");
             renderTexture = CreatePreviewTexture("GuitarTunerHeadPreview", 1);
+            TraceLightingStep("GuitarTunerModelPreview.EnsureRenderTexture after output texture");
+        }
     }
 
     private static RenderTexture CreatePreviewTexture(string textureName, int antiAliasing)
@@ -279,11 +321,14 @@ public sealed class GuitarTunerModelPreview
 
     private void CreateCamera()
     {
+        TraceLightingStep("GuitarTunerModelPreview.CreateCamera enter");
         GameObject cameraObject = new GameObject("GuitarTunerModelPreviewCamera");
         cameraObject.hideFlags = HideFlags.DontSave;
         cameraObject.transform.SetParent(sceneRoot.transform, false);
+        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after GameObject");
 
         previewCamera = cameraObject.AddComponent<Camera>();
+        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after Camera component");
         previewCamera.enabled = false;
         previewCamera.orthographic = true;
         previewCamera.clearFlags = CameraClearFlags.SolidColor;
@@ -295,13 +340,19 @@ public sealed class GuitarTunerModelPreview
         previewCamera.allowMSAA = true;
         previewCamera.targetTexture = cameraRenderTexture != null ? cameraRenderTexture : renderTexture;
         previewCamera.stereoTargetEye = StereoTargetEyeMask.None;
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
+        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after camera properties");
         UniversalAdditionalCameraData cameraData = cameraObject.AddComponent<UniversalAdditionalCameraData>();
+        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after UniversalAdditionalCameraData");
         cameraData.renderType = CameraRenderType.Base;
         cameraData.renderPostProcessing = false;
         cameraData.requiresDepthTexture = false;
         cameraData.requiresColorTexture = false;
-#endif
+        cameraData.renderShadows = false;
+        cameraData.requiresDepthOption = CameraOverrideOption.Off;
+        cameraData.requiresColorOption = CameraOverrideOption.Off;
+        cameraData.allowXRRendering = false;
+        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after URP camera data properties");
+        TraceLightingStep("GuitarTunerModelPreview.CreateCamera exit");
     }
 
     private void ApplyOutputFade()
@@ -340,6 +391,7 @@ public sealed class GuitarTunerModelPreview
 
     private void CreateLights()
     {
+        TraceLightingStep("GuitarTunerModelPreview.CreateLights enter");
         CreateDirectionalLight(
             "GuitarTunerModelKeyLight",
             new Vector3(48f, -34f, 18f),
@@ -351,6 +403,7 @@ public sealed class GuitarTunerModelPreview
             new Vector3(-24f, 38f, -52f),
             new Color(0.28f, 0.96f, 0.82f, 1f),
             1.25f);
+        TraceLightingStep("GuitarTunerModelPreview.CreateLights exit");
     }
 
     private Light CreateDirectionalLight(string name, Vector3 eulerAngles, Color color, float intensity)
@@ -365,7 +418,24 @@ public sealed class GuitarTunerModelPreview
         light.color = color;
         light.intensity = intensity;
         light.cullingMask = 1 << PreviewLayer;
+        light.enabled = false;
+        previewLights.Add(light);
         return light;
+    }
+
+    private void SetPreviewLightsEnabled(bool enabled)
+    {
+        for (int i = previewLights.Count - 1; i >= 0; i--)
+        {
+            Light light = previewLights[i];
+            if (light == null)
+            {
+                previewLights.RemoveAt(i);
+                continue;
+            }
+
+            light.enabled = enabled;
+        }
     }
 
     private void LoadModel(ModelDefinition definition)

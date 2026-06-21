@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Profiling;
 using UnityEngine.Rendering;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -17,6 +18,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 #endif
     private const int Enviro3MoodCount = 10;
     private const int Enviro3MoonModeCount = 4;
+    private static readonly ProfilerMarker ApplyEnviro3MoodProfilerMarker = new ProfilerMarker("StringTheory.Background.Enviro3.ApplyMood");
     private static readonly Vector4 UnappliedEnviro3CloudModifiers = new Vector4(-999f, -999f, -999f, -999f);
     private static readonly int LightMatrixShaderId = Shader.PropertyToID("_LightMatrix");
     private static readonly int BaseColorShaderId = Shader.PropertyToID("_BaseColor");
@@ -842,6 +844,8 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
         root = new GameObject("TabsNeonStageBackground");
         root.transform.SetParent(parent, false);
+        TabsNeonStageBackgroundCleanupHook cleanupHook = root.AddComponent<TabsNeonStageBackgroundCleanupHook>();
+        cleanupHook.Initialize(this);
 
         domeObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         domeObject.name = "NeonStageDome";
@@ -1496,6 +1500,11 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
         skyboxCamera = null;
         originalCameraStateCaptured = false;
+    }
+
+    private void RestoreRuntimeRenderStateFromHook()
+    {
+        RestoreSkyboxOverride();
     }
 
     private void SetDomeVisible(bool visible)
@@ -2239,11 +2248,13 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
     private void ApplyEnviro3Mood(int moodIndex)
     {
-        moodIndex = Mathf.Clamp(moodIndex, 0, Enviro3MoodCount - 1);
-        switch ((GuitarBridgeServer.TabsEnviroSkyMood)moodIndex)
+        using (ApplyEnviro3MoodProfilerMarker.Auto())
         {
-            case GuitarBridgeServer.TabsEnviroSkyMood.GoldenSunset:
-                ApplyEnviro3Base(18.4f,
+            moodIndex = Mathf.Clamp(moodIndex, 0, Enviro3MoodCount - 1);
+            switch ((GuitarBridgeServer.TabsEnviroSkyMood)moodIndex)
+            {
+                case GuitarBridgeServer.TabsEnviroSkyMood.GoldenSunset:
+                    ApplyEnviro3Base(18.4f,
                     new Color(0.09f, 0.08f, 0.18f, 1f),
                     new Color(0.36f, 0.16f, 0.46f, 1f),
                     new Color(0.88f, 0.28f, 0.34f, 1f),
@@ -2256,10 +2267,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3FlatClouds(false, Color.black, 0f, 0f, 0f, 0f, 10f);
                 ApplyEnviro3VolumetricClouds(0.34f, 0.95f, 160f, 4000f, 5.3f, 0.62f,
                     new Color(1.28f, 0.58f, 0.28f, 1f), new Color(0.34f, 0.14f, 0.24f, 1f), 0.012f);
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.DarkClouds:
-                ApplyEnviro3Base(23.1f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.DarkClouds:
+                    ApplyEnviro3Base(23.1f,
                     new Color(0.010f, 0.014f, 0.020f, 1f),
                     new Color(0.030f, 0.036f, 0.050f, 1f),
                     new Color(0.060f, 0.070f, 0.088f, 1f),
@@ -2272,10 +2283,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3FlatClouds(false, Color.black, 0f, 0f, 0f, 0f, 10f);
                 ApplyEnviro3VolumetricClouds(0.58f, 1.35f, 140f, 3900f, 3.8f, 0.42f,
                     new Color(0.56f, 0.60f, 0.66f, 1f), new Color(0.05f, 0.06f, 0.07f, 1f), 0.016f);
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.CrimsonDusk:
-                ApplyEnviro3Base(23.25f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.CrimsonDusk:
+                    ApplyEnviro3Base(23.25f,
                     new Color(0.006f, 0.001f, 0.006f, 1f),
                     new Color(0.020f, 0.003f, 0.014f, 1f),
                     new Color(0.055f, 0.008f, 0.026f, 1f),
@@ -2287,10 +2298,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3Aurora(true, new Color(1.00f, 0.055f, 0.020f, 1f), 82f, 9.0f, 0.72f, 0.0042f, 0.0034f);
                 ApplyEnviro3FlatClouds(false, Color.black, 0f, 0f, 0f, 0f, 10f);
                 DisableEnviro3VolumetricClouds();
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.SilverMoon:
-                ApplyEnviro3Base(0.8f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.SilverMoon:
+                    ApplyEnviro3Base(0.8f,
                     new Color(0.010f, 0.014f, 0.038f, 1f),
                     new Color(0.032f, 0.046f, 0.095f, 1f),
                     new Color(0.070f, 0.090f, 0.160f, 1f),
@@ -2303,11 +2314,11 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3FlatClouds(false, Color.black, 0f, 0f, 0f, 0f, 10f);
                 ApplyEnviro3VolumetricClouds(0.30f, 0.84f, 260f, 5200f, 3.9f, 0.56f,
                     new Color(0.86f, 0.92f, 1.08f, 1f), new Color(0.12f, 0.15f, 0.25f, 1f), 0.006f);
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.AuroraBorealis:
-            default:
-                ApplyEnviro3Base(1.2f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.AuroraBorealis:
+                default:
+                    ApplyEnviro3Base(1.2f,
                     new Color(0.004f, 0.012f, 0.035f, 1f),
                     new Color(0.012f, 0.045f, 0.110f, 1f),
                     new Color(0.025f, 0.110f, 0.180f, 1f),
@@ -2321,10 +2332,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3VolumetricClouds(0.22f, 0.72f, 260f, 4300f, 3.35f, 0.36f,
                     new Color(0.78f, 0.62f, 1.10f, 1f), new Color(0.040f, 0.050f, 0.125f, 1f), 0.006f,
                     EnviroCloudArtStyle.Aurora);
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.BloodMoonHorror:
-                ApplyEnviro3Base(23.6f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.BloodMoonHorror:
+                    ApplyEnviro3Base(23.6f,
                     new Color(0.025f, 0.002f, 0.006f, 1f),
                     new Color(0.080f, 0.006f, 0.012f, 1f),
                     new Color(0.190f, 0.018f, 0.026f, 1f),
@@ -2338,10 +2349,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3VolumetricClouds(0.18f, 0.92f, 420f, 3600f, 2.65f, 0.30f,
                     new Color(0.72f, 0.07f, 0.045f, 1f), new Color(0.035f, 0.004f, 0.008f, 1f), 0.010f,
                     EnviroCloudArtStyle.Horror);
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.GalaxyFront:
-                ApplyEnviro3Base(0.45f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.GalaxyFront:
+                    ApplyEnviro3Base(0.45f,
                     new Color(0.001f, 0.002f, 0.012f, 1f),
                     new Color(0.006f, 0.006f, 0.040f, 1f),
                     new Color(0.030f, 0.012f, 0.100f, 1f),
@@ -2355,10 +2366,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3VolumetricClouds(0.28f, 0.82f, 360f, 5400f, 2.45f, 0.38f,
                     new Color(0.50f, 0.38f, 1.05f, 1f), new Color(0.012f, 0.014f, 0.060f, 1f), 0.002f,
                     EnviroCloudArtStyle.Galaxy);
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.StarryCloudNight:
-                ApplyEnviro3Base(0.6f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.StarryCloudNight:
+                    ApplyEnviro3Base(0.6f,
                     new Color(0.002f, 0.003f, 0.014f, 1f),
                     new Color(0.012f, 0.008f, 0.055f, 1f),
                     new Color(0.055f, 0.020f, 0.125f, 1f),
@@ -2371,10 +2382,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3FlatClouds(false, Color.black, 0f, 0f, 0f, 0f, 10f);
                 ApplyEnviro3VolumetricClouds(0.30f, 0.98f, 165f, 4300f, 4.85f, 0.48f,
                     new Color(0.56f, 0.70f, 1.26f, 1f), new Color(0.020f, 0.026f, 0.090f, 1f), 0.004f);
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.CloudyGiantMoon:
-                ApplyEnviro3Base(0.55f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.CloudyGiantMoon:
+                    ApplyEnviro3Base(0.55f,
                     new Color(0.002f, 0.003f, 0.014f, 1f),
                     new Color(0.010f, 0.010f, 0.052f, 1f),
                     new Color(0.045f, 0.018f, 0.115f, 1f),
@@ -2388,10 +2399,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3VolumetricClouds(0.54f, 1.32f, 145f, 4050f, 4.75f, 0.56f,
                     new Color(0.86f, 1.00f, 1.66f, 1f), new Color(0.022f, 0.032f, 0.115f, 1f), 0.004f,
                     EnviroCloudArtStyle.ThickMoonlit);
-                break;
+                    break;
 
-            case GuitarBridgeServer.TabsEnviroSkyMood.VioletAuroraStorm:
-                ApplyEnviro3Base(1.65f,
+                case GuitarBridgeServer.TabsEnviroSkyMood.VioletAuroraStorm:
+                    ApplyEnviro3Base(1.65f,
                     new Color(0.006f, 0.006f, 0.035f, 1f),
                     new Color(0.028f, 0.022f, 0.095f, 1f),
                     new Color(0.080f, 0.055f, 0.190f, 1f),
@@ -2405,15 +2416,16 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 ApplyEnviro3VolumetricClouds(0.30f, 0.94f, 230f, 4500f, 3.75f, 0.44f,
                     new Color(0.74f, 0.44f, 1.30f, 1f), new Color(0.040f, 0.030f, 0.150f, 1f), 0.005f,
                     EnviroCloudArtStyle.Aurora);
-                break;
-        }
+                    break;
+            }
 
-        if (enviro3Manager != null)
-        {
-            enviro3Manager.UpdateModules();
-            ApplyEnviro3CelestialOverrides();
-            if (enviro3Manager.Sky != null)
-                enviro3Manager.Sky.UpdateModule();
+            if (enviro3Manager != null)
+            {
+                enviro3Manager.UpdateModules();
+                ApplyEnviro3CelestialOverrides();
+                if (enviro3Manager.Sky != null)
+                    enviro3Manager.Sky.UpdateModule();
+            }
         }
     }
 
@@ -2554,6 +2566,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
         if (enviro3Manager.Sky.mySkyboxMat != null)
         {
+            RenderSettings.skybox = enviro3Manager.Sky.mySkyboxMat;
             enviro3Manager.Sky.mySkyboxMat.SetVector(EnviroSkyRotationShaderId, BuildEnviro3SkyRotationVector(skyRotationYaw));
             enviro3Manager.Sky.mySkyboxMat.SetVector(EnviroFloatingSkyFillShaderId, BuildEnviro3FloatingSkyFillVector());
             enviro3Manager.Sky.mySkyboxMat.SetColor(EnviroStageAuroraColorShaderId, enviro3StageAuroraColor);
@@ -3044,7 +3057,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         }
 
         if (enviro3Object != null)
+        {
+            enviro3Object.SetActive(false);
             Object.Destroy(enviro3Object);
+        }
 
         enviro3Object = null;
         enviro3Manager = null;
@@ -4784,5 +4800,26 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
         ownedTextures.Remove(texture);
         Object.Destroy(texture);
+    }
+
+    private sealed class TabsNeonStageBackgroundCleanupHook : MonoBehaviour
+    {
+        private TabsNeonStageBackground background;
+
+        public void Initialize(TabsNeonStageBackground owner)
+        {
+            background = owner;
+        }
+
+        private void OnDisable()
+        {
+            background?.RestoreRuntimeRenderStateFromHook();
+        }
+
+        private void OnDestroy()
+        {
+            background?.RestoreRuntimeRenderStateFromHook();
+            background = null;
+        }
     }
 }

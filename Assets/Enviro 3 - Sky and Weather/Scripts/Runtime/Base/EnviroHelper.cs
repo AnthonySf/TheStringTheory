@@ -73,7 +73,10 @@ namespace Enviro
             { 
                 //if (cam.hideFlags != HideFlags.None) return true;
 
-                if(cam.cameraType == CameraType.SceneView || cam.cameraType == CameraType.Reflection)
+                if(cam.cameraType == CameraType.SceneView)
+                   return !Application.isPlaying;
+
+                if(cam.cameraType == CameraType.Reflection)
                    return true;
 
                 if(cam == EnviroManager.instance.Camera)

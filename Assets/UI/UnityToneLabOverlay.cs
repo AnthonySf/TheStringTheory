@@ -7,9 +7,7 @@ using UnityEngine;
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
 using UnityEngine.Rendering.Universal;
-#endif
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
@@ -250,9 +248,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             cameraObject.transform.SetParent(transform, false);
             captureCamera = cameraObject.AddComponent<Camera>();
             captureCamera.enabled = false;
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
             cameraObject.AddComponent<UniversalAdditionalCameraData>();
-#endif
         }
 
         private bool RenderLiveCameraToSceneTexture()
@@ -276,9 +272,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             }
             if (UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline == null)
                 captureCamera.stereoTargetEye = StereoTargetEyeMask.None;
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
             SyncUniversalCameraSettings(sourceCamera, captureCamera);
-#endif
             captureCamera.Render();
             return true;
         }
@@ -342,7 +336,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             texture = null;
         }
 
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
         private static void SyncUniversalCameraSettings(Camera source, Camera destination)
         {
             if (source == null || destination == null)
@@ -368,7 +361,6 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             destinationData.volumeTrigger = sourceData.volumeTrigger;
             destinationData.allowXRRendering = false;
         }
-#endif
 
         private void OnDisable()
         {

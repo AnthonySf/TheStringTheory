@@ -14,14 +14,10 @@ using System.Text.RegularExpressions;
 using UnityEngine;
 
 using UnityEngine.Rendering;
-#if ENABLE_INPUT_SYSTEM
-using UnityEngine.InputSystem;
-#endif
-
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
-
 using UnityEngine.Rendering.Universal;
 
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
 #endif
 
 using UnityEngine.TextCore.Text;
@@ -622,11 +618,7 @@ public sealed class TabsSongHeaderOverlay
             if (UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline == null)
                 captureCamera.stereoTargetEye = StereoTargetEyeMask.None;
 
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
-
             SyncUniversalCameraSettings(sourceCamera, captureCamera);
-
-#endif
 
             captureCamera.Render();
 
@@ -824,11 +816,7 @@ public sealed class TabsSongHeaderOverlay
 
             captureCamera.enabled = false;
 
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
-
             cameraObject.AddComponent<UniversalAdditionalCameraData>();
-
-#endif
 
         }
 
@@ -950,8 +938,6 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-#if UNITY_RENDER_PIPELINE_UNIVERSAL
-
         private static void SyncUniversalCameraSettings(Camera source, Camera destination)
 
         {
@@ -1001,10 +987,6 @@ public sealed class TabsSongHeaderOverlay
             destinationData.allowXRRendering = false;
 
         }
-
-#endif
-
-
 
         private void OnDisable()
 
@@ -13463,7 +13445,12 @@ public sealed class TabsSongHeaderOverlay
             return;
 
         float duration = snapshot != null ? Mathf.Max(0f, snapshot.songDurationSeconds) : 0f;
-        bool loopTimelineVisible = snapshot != null && (snapshot.showLoopSettings || snapshot.loopEnabled);
+        bool suppressGameplayTimelineForMenu = snapshot != null &&
+            (snapshot.showSongSelection ||
+             snapshot.showTrackSelection ||
+             snapshot.showMainMenu ||
+             snapshot.mainMenuFlowActive);
+        bool loopTimelineVisible = snapshot != null && (snapshot.showLoopSettings || (snapshot.loopEnabled && !suppressGameplayTimelineForMenu));
         bool visible = snapshot != null && ((showGameplayShortcuts && snapshot.showGameplayTimeline) || loopTimelineVisible) && duration > 0.25f;
         gameplayTimelineContainer.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
         if (!visible)

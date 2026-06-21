@@ -55,10 +55,12 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private readonly HashSet<Texture2D> ownedCloudTextures = new HashSet<Texture2D>();
     private readonly HashSet<Texture2D> ownedStarTextures = new HashSet<Texture2D>();
     private readonly bool applyHighwayOverrides;
+    private readonly bool useMiniGameProfile;
     private const int StarSpriteRevision = 2;
     private int appliedStarSpriteRevision = -1;
 
     private GuitarBridgeServer owner;
+    private Camera renderCamera;
     private Material cloudEdgeGlowMaterial;
     private int loadedCloudSpriteCount;
     private GameObject root;
@@ -85,9 +87,15 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
     private const float HighwayCloudGlowOffsetY = 0f;
     private GuitarBridgeServer.TabsSkyMood appliedMood = (GuitarBridgeServer.TabsSkyMood)(-1);
 
-    public TabsBlueSkyBackground(bool applyHighwayOverrides = false)
+    public TabsBlueSkyBackground(bool applyHighwayOverrides = false, bool useMiniGameProfile = false)
     {
         this.applyHighwayOverrides = applyHighwayOverrides;
+        this.useMiniGameProfile = useMiniGameProfile;
+    }
+
+    public void SetRenderCamera(Camera camera)
+    {
+        renderCamera = camera;
     }
 
     public void Initialize(Transform parent, GuitarBridgeServer owner)
@@ -226,7 +234,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         float baseMaxY = Mathf.Max(owner.tabSkyMinY, owner.tabSkyMaxY);
 
         float cameraHalfHeight = Mathf.Max(owner.tabCameraSize, (baseMaxY - baseMinY) * 0.5f);
-        float cameraHalfWidth = cameraHalfHeight * Mathf.Max(1f, Camera.main != null ? Camera.main.aspect : 16f / 9f);
+        Camera camera = GetRenderCamera();
+        float cameraHalfWidth = cameraHalfHeight * Mathf.Max(1f, camera != null ? camera.aspect : 16f / 9f);
 
         float widthOverscan = applyHighwayOverrides ? CurvedSkyWidthOverscan : SkyWidthOverscan;
         width = Mathf.Max(baseWidth, cameraHalfWidth * 2f) * widthOverscan;
@@ -252,7 +261,8 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         float baseMaxY = Mathf.Max(owner.tabSkyMinY, owner.tabSkyMaxY);
 
         float cameraHalfHeight = Mathf.Max(owner.tabCameraSize, (baseMaxY - baseMinY) * 0.5f);
-        float cameraHalfWidth = cameraHalfHeight * Mathf.Max(1f, Camera.main != null ? Camera.main.aspect : 16f / 9f);
+        Camera camera = GetRenderCamera();
+        float cameraHalfWidth = cameraHalfHeight * Mathf.Max(1f, camera != null ? camera.aspect : 16f / 9f);
         float centerY = (baseMinY + baseMaxY) * 0.5f;
         float baseHalfHeight = Mathf.Max((baseMaxY - baseMinY) * 0.5f, cameraHalfHeight);
 
@@ -454,7 +464,7 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
     private void UpdateCameraFacingSprites()
     {
-        Camera camera = Camera.main;
+        Camera camera = GetRenderCamera();
         if (camera == null)
             return;
 
@@ -483,6 +493,11 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
             if (bandTransform != null)
                 bandTransform.rotation = planeRotation;
         }
+    }
+
+    private Camera GetRenderCamera()
+    {
+        return renderCamera != null ? renderCamera : Camera.main;
     }
 
     private void CreateLowerFillBand(float minY, float maxY, float z, float width)
@@ -872,7 +887,11 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
         if (hazeRenderers.Count > 0)
         {
             Color hazeColor;
-            if (applyHighwayOverrides && owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Midnight)
+            if (useMiniGameProfile)
+            {
+                hazeColor = new Color(0.16f, 0.23f, 0.42f, 0.055f);
+            }
+            else if (applyHighwayOverrides && owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Midnight)
             {
                 hazeColor = new Color(0.18f, 0.24f, 0.46f, 0.13f);
             }
@@ -898,7 +917,9 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
         if (warmGlowRenderers.Count > 0)
         {
-            Color glowColor = owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Midnight
+            Color glowColor = useMiniGameProfile
+                ? new Color(0.34f, 0.42f, 0.72f, 0.045f)
+                : owner.tabSkyMood == GuitarBridgeServer.TabsSkyMood.Midnight
                 ? new Color(1f, 0.43f, 0.22f, 0.14f)
                 : new Color(1f, 0.58f, 0.30f, 0.10f);
 
@@ -937,6 +958,14 @@ public sealed class TabsBlueSkyBackground : ITabsBackgroundEffect
 
     private void GetSkyColors(out Color top, out Color mid, out Color bottom)
     {
+        if (useMiniGameProfile)
+        {
+            top = new Color(0.006f, 0.008f, 0.021f, 1f);
+            mid = top;
+            bottom = top;
+            return;
+        }
+
         if (applyHighwayOverrides)
         {
             GetHighwaySkyColors(out top, out mid, out bottom);

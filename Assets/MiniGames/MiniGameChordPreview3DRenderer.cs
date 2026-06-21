@@ -8,9 +8,9 @@ using Object = UnityEngine.Object;
 public sealed class MiniGameChordPreview3DRenderer
 {
     private const string RootName = "MiniGameChordPreview3D";
-    private const float ChordSpacing = 5.35f;
-    private const float DiagramWidth = 3.05f;
-    private const float DiagramHeight = 3.65f;
+    private const float ChordSpacing = 3.62f;
+    private const float DiagramWidth = 2.70f;
+    private const float DiagramHeight = 3.16f;
     private const int VisibleFretCount = 4;
     private const float StringColumnCount = 5f;
     private const float FingerCircleDiameter = 0.48f;
@@ -18,7 +18,7 @@ public sealed class MiniGameChordPreview3DRenderer
     private const float NoteDepth = 0.12f;
     private const float FrameThickness = 0.045f;
     private const float CameraDistance = 12.4f;
-    private const float CameraYOffset = 0.18f;
+    private const float CameraYOffset = 4.34f;
 
     private readonly GuitarBridgeServer owner;
     private GameObject root;
@@ -134,7 +134,7 @@ public sealed class MiniGameChordPreview3DRenderer
             chordRoot.transform.SetParent(root.transform, false);
             chordRoot.transform.localPosition = new Vector3((i - ((count - 1) * 0.5f)) * ChordSpacing, 0f, 0f);
             chordRoot.transform.localRotation = Quaternion.identity;
-            float scale = chord.active ? 1.10f : 0.96f;
+            float scale = chord.active ? 1.08f : 0.96f;
             chordRoot.transform.localScale = new Vector3(scale, scale, scale);
 
             CreateChordPrompt(chordRoot.transform, chord, i);
@@ -191,8 +191,8 @@ public sealed class MiniGameChordPreview3DRenderer
         }
 
         CreateChordFrame(parent, left, right, bottom, top, frameColor, chord.active);
-        CreateChordNameLabel(parent, chord.name, left, top + 0.98f, frameColor);
-        CreateOrdinalLabel(parent, chord.status == 1 ? "HIT" : chord.status == 2 ? "MISS" : (chordIndex + 1).ToString(), right, bottom - 0.42f, frameColor);
+        CreateChordNameLabel(parent, chord.name, left, bottom - 0.42f, frameColor);
+        CreateOrdinalLabel(parent, chord.status == 1 ? "O" : chord.status == 2 ? "X" : (chordIndex + 1).ToString(), right, bottom - 0.42f, frameColor);
     }
 
     private static int GetBaseFret(int[] frets, List<FightClubBarreSnapshot> barres)
@@ -262,7 +262,7 @@ public sealed class MiniGameChordPreview3DRenderer
         }
 
         if (baseFret > 1)
-            CreateBaseFretLabel(parent, baseFret, left - 0.55f, top - (fretSpacing * 0.50f), frameColor);
+            CreateBaseFretLabel(parent, baseFret, left - 0.24f, top - (fretSpacing * 0.50f), frameColor);
     }
 
     private static float GetStringDiagramX(int stringIndex, float left, float right)
@@ -400,19 +400,19 @@ public sealed class MiniGameChordPreview3DRenderer
 
     private void CreateChordNameLabel(Transform parent, string text, float x, float y, Color color)
     {
-        TextMeshPro label = CreateText(parent, string.IsNullOrWhiteSpace(text) ? "--" : text.Trim(), 6.6f, Color.white, TextAlignmentOptions.Left);
+        TextMeshPro label = CreateText(parent, string.IsNullOrWhiteSpace(text) ? "--" : text.Trim(), 3.8f, Color.white, TextAlignmentOptions.Left);
         label.transform.localPosition = new Vector3(x, y, -0.06f);
         label.rectTransform.pivot = new Vector2(0f, 0.5f);
-        label.rectTransform.sizeDelta = new Vector2(12.0f, 3.2f);
+        label.rectTransform.sizeDelta = new Vector2(7.8f, 2.0f);
         ConfigureTextGlow(label, color);
     }
 
     private void CreateOrdinalLabel(Transform parent, string text, float x, float y, Color color)
     {
-        TextMeshPro label = CreateText(parent, text, 3.2f, color, TextAlignmentOptions.Right);
+        TextMeshPro label = CreateText(parent, text, 3.85f, color, TextAlignmentOptions.Right);
         label.transform.localPosition = new Vector3(x, y, -0.06f);
         label.rectTransform.pivot = new Vector2(1f, 0.5f);
-        label.rectTransform.sizeDelta = new Vector2(5.0f, 2.0f);
+        label.rectTransform.sizeDelta = new Vector2(2.3f, 2.0f);
         ConfigureTextGlow(label, color);
     }
 
@@ -427,9 +427,10 @@ public sealed class MiniGameChordPreview3DRenderer
 
     private void CreateBaseFretLabel(Transform parent, int baseFret, float x, float y, Color color)
     {
-        TextMeshPro label = CreateText(parent, baseFret.ToString() + "fr", 3.1f, new Color(0.90f, 0.96f, 1f, 0.90f), TextAlignmentOptions.Center);
+        TextMeshPro label = CreateText(parent, baseFret.ToString() + "fr", 2.65f, new Color(0.90f, 0.96f, 1f, 0.90f), TextAlignmentOptions.Right);
         label.transform.localPosition = new Vector3(x, y, -0.06f);
-        label.rectTransform.sizeDelta = new Vector2(4.0f, 1.8f);
+        label.rectTransform.pivot = new Vector2(1f, 0.5f);
+        label.rectTransform.sizeDelta = new Vector2(1.55f, 1.55f);
         ConfigureTextGlow(label, color);
     }
 

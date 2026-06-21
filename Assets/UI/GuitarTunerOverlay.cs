@@ -103,6 +103,15 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
     private float lastResponsiveLayoutHeight = -1f;
     private const float ControllerCursorIdleHideSeconds = 4f;
 
+#if UNITY_EDITOR
+    private static void TraceLightingStep(string reason)
+    {
+        StringTheoryLightingProbe.TraceStep(reason);
+    }
+#else
+    private static void TraceLightingStep(string reason) { }
+#endif
+
     private enum TunerNavigationKind
     {
         AutoMode,
@@ -134,23 +143,32 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
 
     public void Initialize(GuitarBridgeServer owner, GuitarTunerService tunerService)
     {
+        TraceLightingStep("GuitarTunerOverlay.Initialize enter");
         this.owner = owner;
         this.tunerService = tunerService;
 
         if (isBuilt)
+        {
+            TraceLightingStep("GuitarTunerOverlay.Initialize exit already built");
             return;
+        }
 
+        TraceLightingStep("GuitarTunerOverlay.Initialize before UIDocument");
         document = gameObject.GetComponent<UIDocument>();
         if (document == null)
             document = gameObject.AddComponent<UIDocument>();
+        TraceLightingStep("GuitarTunerOverlay.Initialize after UIDocument");
 
+        TraceLightingStep("GuitarTunerOverlay.Initialize before ResolvePanelSettings");
         panelSettings = ResolvePanelSettings();
         document.panelSettings = panelSettings;
+        TraceLightingStep("GuitarTunerOverlay.Initialize after ResolvePanelSettings");
 
         Font fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         fontDefinition = FontDefinition.FromFont(fallbackFont);
         Font titleFont = Resources.Load<Font>("MetalLord") ?? Resources.Load<Font>("Fonts/MetalLord") ?? fallbackFont;
         titleFontDefinition = FontDefinition.FromFont(titleFont);
+        TraceLightingStep("GuitarTunerOverlay.Initialize after fonts");
 
         VisualElement root = document.rootVisualElement;
         root.styleSheets.Clear();
@@ -158,14 +176,24 @@ public sealed class GuitarTunerOverlay : MonoBehaviour
         root.style.width = Length.Percent(100f);
         root.style.height = Length.Percent(100f);
         root.pickingMode = PickingMode.Ignore;
+        TraceLightingStep("GuitarTunerOverlay.Initialize after root style");
 
         modelPreview = new GuitarTunerModelPreview();
+        TraceLightingStep("GuitarTunerOverlay.Initialize before modelPreview.Initialize");
         modelPreview.Initialize(transform);
+        TraceLightingStep("GuitarTunerOverlay.Initialize after modelPreview.Initialize");
+        TraceLightingStep("GuitarTunerOverlay.Initialize before RefreshModelInstrument");
         RefreshModelInstrument();
+        TraceLightingStep("GuitarTunerOverlay.Initialize after RefreshModelInstrument");
 
+        TraceLightingStep("GuitarTunerOverlay.Initialize before BuildUi");
         BuildUi(root);
+        TraceLightingStep("GuitarTunerOverlay.Initialize after BuildUi");
+        TraceLightingStep("GuitarTunerOverlay.Initialize before SetVisible(false)");
         SetVisible(false);
+        TraceLightingStep("GuitarTunerOverlay.Initialize after SetVisible(false)");
         isBuilt = true;
+        TraceLightingStep("GuitarTunerOverlay.Initialize exit built");
     }
 
     public void SetVisible(bool visible)

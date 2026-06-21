@@ -104,6 +104,12 @@ public sealed class NativeNotesDetectorBridge
     private NativeDetectorSettingsData workingSettings = NativeDetectorSettingCatalog.CreateLevel2();
     private NativeDetectorResamplerMode preferredResamplerMode = NativeDetectorResamplerMode.Filtered;
     private string preferredInputChannelMode = SharedAudioInputChannelModes.Input1;
+    private readonly StringBuilder latestPacketBuffer = new StringBuilder(NativeBufferSize);
+    private readonly StringBuilder verifierVerdictsBuffer = new StringBuilder(NativeBufferSize);
+    private readonly StringBuilder deviceListBuffer = new StringBuilder(NativeBufferSize);
+    private readonly StringBuilder runtimeInfoBuffer = new StringBuilder(NativeBufferSize);
+    private readonly StringBuilder statusBuffer = new StringBuilder(NativeBufferSize);
+    private readonly StringBuilder errorBuffer = new StringBuilder(NativeBufferSize);
 
     [DllImport(NativeLibraryName, CallingConvention = CallingConvention.Cdecl)]
     private static extern int NativeDetector_Initialize(
@@ -818,9 +824,9 @@ public sealed class NativeNotesDetectorBridge
 
         try
         {
-            StringBuilder builder = new StringBuilder(NativeBufferSize);
-            if (NativeDetector_PollLatestPacket(builder, builder.Capacity) != 0)
-                return builder.ToString();
+            latestPacketBuffer.Clear();
+            if (NativeDetector_PollLatestPacket(latestPacketBuffer, latestPacketBuffer.Capacity) != 0)
+                return latestPacketBuffer.ToString();
         }
         catch (Exception ex)
         {
@@ -838,11 +844,11 @@ public sealed class NativeNotesDetectorBridge
 
         try
         {
-            StringBuilder builder = new StringBuilder(NativeBufferSize);
-            if (NativeDetector_PollVerifierVerdictsJson(builder, builder.Capacity) == 0)
+            verifierVerdictsBuffer.Clear();
+            if (NativeDetector_PollVerifierVerdictsJson(verifierVerdictsBuffer, verifierVerdictsBuffer.Capacity) == 0)
                 return Array.Empty<NativeDetectorVerifierVerdict>();
 
-            string json = builder.ToString();
+            string json = verifierVerdictsBuffer.ToString();
             if (string.IsNullOrWhiteSpace(json))
                 return Array.Empty<NativeDetectorVerifierVerdict>();
 
@@ -892,10 +898,10 @@ public sealed class NativeNotesDetectorBridge
 
         try
         {
-            StringBuilder builder = new StringBuilder(NativeBufferSize);
-            if (NativeDetector_ListInputDevicesJson(builder, builder.Capacity) != 0)
+            deviceListBuffer.Clear();
+            if (NativeDetector_ListInputDevicesJson(deviceListBuffer, deviceListBuffer.Capacity) != 0)
             {
-                string json = builder.ToString();
+                string json = deviceListBuffer.ToString();
                 NativeDetectorDeviceListPayload parsed = JsonUtility.FromJson<NativeDetectorDeviceListPayload>(json);
                 if (parsed != null)
                     cachedDevices = parsed;
@@ -923,10 +929,10 @@ public sealed class NativeNotesDetectorBridge
 
         try
         {
-            StringBuilder builder = new StringBuilder(NativeBufferSize);
-            if (NativeDetector_GetRuntimeInfoJson(builder, builder.Capacity) != 0)
+            runtimeInfoBuffer.Clear();
+            if (NativeDetector_GetRuntimeInfoJson(runtimeInfoBuffer, runtimeInfoBuffer.Capacity) != 0)
             {
-                string json = builder.ToString();
+                string json = runtimeInfoBuffer.ToString();
                 NativeDetectorRuntimeInfo parsed = JsonUtility.FromJson<NativeDetectorRuntimeInfo>(json);
                 if (parsed != null)
                     cachedRuntimeInfo = parsed;
@@ -951,13 +957,13 @@ public sealed class NativeNotesDetectorBridge
 
         try
         {
-            StringBuilder statusBuilder = new StringBuilder(NativeBufferSize);
-            if (NativeDetector_GetStatus(statusBuilder, statusBuilder.Capacity) != 0)
-                lastStatus = statusBuilder.ToString();
+            statusBuffer.Clear();
+            if (NativeDetector_GetStatus(statusBuffer, statusBuffer.Capacity) != 0)
+                lastStatus = statusBuffer.ToString();
 
-            StringBuilder errorBuilder = new StringBuilder(NativeBufferSize);
-            if (NativeDetector_GetLastError(errorBuilder, errorBuilder.Capacity) != 0)
-                lastError = errorBuilder.ToString();
+            errorBuffer.Clear();
+            if (NativeDetector_GetLastError(errorBuffer, errorBuffer.Capacity) != 0)
+                lastError = errorBuffer.ToString();
 
             NativeDetectorRuntimeInfo info = RefreshRuntimeInfo();
             if (info != null)
