@@ -43,6 +43,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly ProfilerMarker GetRenderSongTimeProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.GetRenderSongTime");
     private static readonly ProfilerMarker EnsureGameplayVisualsBuiltProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.EnsureGameplayVisualsBuilt");
     private static readonly ProfilerMarker OverlayUpdateProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.OverlayUpdate");
+    private static readonly ProfilerMarker EnsureBackgroundModeProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.EnsureBackgroundMode");
+    private static readonly ProfilerMarker ConfigureCameraProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.ConfigureCamera");
+    private static readonly ProfilerMarker UpdateBackgroundPlacementProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateBackgroundPlacement");
+    private static readonly ProfilerMarker SetGameplayVisualsVisibleProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.SetGameplayVisualsVisible");
+    private static readonly ProfilerMarker UpdateHighwayCharacterProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.UpdateHighwayCharacter");
+    private static readonly ProfilerMarker SetBackgroundEffectRenderCameraProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.SetBackgroundEffectRenderCamera");
+    private static readonly ProfilerMarker BackgroundEffectTickProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.BackgroundEffectTick");
+    private static readonly ProfilerMarker ApplyBackgroundRenderLayersProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.ApplyBackgroundRenderLayers");
 
 #if UNITY_EDITOR
     private static void TraceLightingStep(string reason)
@@ -365,6 +373,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private const bool DebugBendRibbonLogs = false;
     private static readonly string[] ChordPitchClassNames = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
     private string backgroundSignature = string.Empty;
+    private bool backgroundRenderLayersDirty = true;
+    private int backgroundRenderLayersAppliedRootChildCount = -1;
+    private string backgroundRenderLayersAppliedSignature = string.Empty;
+    private BackgroundProfile backgroundRenderLayersAppliedProfile = (BackgroundProfile)(-1);
     private static readonly int CurveP0ShaderId = Shader.PropertyToID("_CurveP0");
     private static readonly int CurveP1ShaderId = Shader.PropertyToID("_CurveP1");
     private static readonly int CurveP2ShaderId = Shader.PropertyToID("_CurveP2");
@@ -660,12 +672,18 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 #endif
             if (traceLightingRenderState)
                 TraceLightingStep("GuitarHighway3DRenderer.Render before EnsureBackgroundMode");
-            EnsureBackgroundMode(targetBackgroundProfile);
+            using (EnsureBackgroundModeProfilerMarker.Auto())
+            {
+                EnsureBackgroundMode(targetBackgroundProfile);
+            }
             if (traceLightingRenderState)
                 TraceLightingStep($"GuitarHighway3DRenderer.Render after EnsureBackgroundMode backgroundProfile={backgroundProfile}");
             if (traceLightingRenderState)
                 TraceLightingStep("GuitarHighway3DRenderer.Render before ConfigureCamera");
-            ConfigureCamera();
+            using (ConfigureCameraProfilerMarker.Auto())
+            {
+                ConfigureCamera();
+            }
             if (traceLightingRenderState)
                 TraceLightingStep("GuitarHighway3DRenderer.Render after ConfigureCamera");
             if (logLoopCountdownDetail)
@@ -683,7 +701,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             }
 
             if (!suppressGameplay)
-                UpdateBackgroundPlacement();
+            {
+                using (UpdateBackgroundPlacementProfilerMarker.Auto())
+                {
+                    UpdateBackgroundPlacement();
+                }
+            }
             if (logLoopCountdownDetail)
             {
                 long afterBackgroundPlacementTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -691,7 +714,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 phaseStartTicks = afterBackgroundPlacementTicks;
             }
 
-            SetGameplayVisualsVisible(!suppressGameplay);
+            using (SetGameplayVisualsVisibleProfilerMarker.Auto())
+            {
+                SetGameplayVisualsVisible(!suppressGameplay);
+            }
 
             if (!suppressGameplay)
             {
@@ -785,8 +811,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             if (showHighwayCharacter)
             {
-                UpdateHighwayCharacterPlacement();
-                UpdateHighwayCharacterAnimation(snapshot);
+                using (UpdateHighwayCharacterProfilerMarker.Auto())
+                {
+                    UpdateHighwayCharacterPlacement();
+                    UpdateHighwayCharacterAnimation(snapshot);
+                }
             }
             if (logLoopCountdownDetail)
             {
@@ -795,8 +824,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 phaseStartTicks = afterCharacterTicks;
             }
 
-            SetBackgroundEffectRenderCamera(GetBackgroundEffectRenderCamera(backgroundProfile));
-            backgroundEffect?.Tick(Time.deltaTime);
+            using (SetBackgroundEffectRenderCameraProfilerMarker.Auto())
+            {
+                SetBackgroundEffectRenderCamera(GetBackgroundEffectRenderCamera(backgroundProfile));
+            }
+            using (BackgroundEffectTickProfilerMarker.Auto())
+            {
+                backgroundEffect?.Tick(Time.deltaTime);
+            }
             ApplyBackgroundRenderLayers();
             if (logLoopCountdownDetail)
             {
@@ -1552,6 +1587,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         backgroundEffect?.Dispose();
         TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect after Dispose");
         backgroundProfile = profile;
+        backgroundRenderLayersDirty = true;
         if (profile == BackgroundProfile.MiniGames && !IsMiniGameEnviroSkyActive())
         {
             TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect before ConfigureMiniGameBackgroundCamera");
@@ -1576,7 +1612,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect before backgroundEffect.Initialize");
         backgroundEffect.Initialize(backgroundRoot.transform, owner);
         TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect after backgroundEffect.Initialize");
-        ApplyBackgroundRenderLayers();
+        ApplyBackgroundRenderLayers(force: true);
         TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect after ApplyBackgroundRenderLayers");
         if (profile == BackgroundProfile.MiniGames)
         {
@@ -1596,12 +1632,28 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         TraceLightingStep($"GuitarHighway3DRenderer.InitializeBackgroundEffect exit profile={profile}");
     }
 
-    private void ApplyBackgroundRenderLayers()
+    private void ApplyBackgroundRenderLayers(bool force = false)
     {
         if (backgroundRoot == null)
             return;
 
-        SetLayerRecursively(backgroundRoot, BackgroundLayer);
+        int rootChildCount = backgroundRoot.transform.childCount;
+        if (!force &&
+            !backgroundRenderLayersDirty &&
+            backgroundRenderLayersAppliedRootChildCount == rootChildCount &&
+            backgroundRenderLayersAppliedProfile == backgroundProfile &&
+            string.Equals(backgroundRenderLayersAppliedSignature, backgroundSignature, StringComparison.Ordinal))
+            return;
+
+        using (ApplyBackgroundRenderLayersProfilerMarker.Auto())
+        {
+            SetLayerRecursively(backgroundRoot, BackgroundLayer);
+        }
+
+        backgroundRenderLayersDirty = false;
+        backgroundRenderLayersAppliedRootChildCount = rootChildCount;
+        backgroundRenderLayersAppliedProfile = backgroundProfile;
+        backgroundRenderLayersAppliedSignature = backgroundSignature ?? string.Empty;
     }
 
     private Camera GetBackgroundEffectRenderCamera(BackgroundProfile profile)

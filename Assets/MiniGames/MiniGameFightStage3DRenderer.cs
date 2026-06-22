@@ -108,7 +108,9 @@ public sealed class MiniGameFightStage3DRenderer
         SetVisible(true);
         UpdateTriggers(snapshot);
         UpdateCharacterPose(snapshot);
+#if UNITY_EDITOR
         LogLightingDiagnosticOnce();
+#endif
     }
 
     public void Hide()

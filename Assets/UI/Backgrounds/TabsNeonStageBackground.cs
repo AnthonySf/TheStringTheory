@@ -18,7 +18,21 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 #endif
     private const int Enviro3MoodCount = 10;
     private const int Enviro3MoonModeCount = 4;
+    private static readonly ProfilerMarker TickProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.Tick");
+    private static readonly ProfilerMarker ApplyVisualStateProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.ApplyVisualState");
+    private static readonly ProfilerMarker RefreshFloorTexturesProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.RefreshFloorTextures");
+    private static readonly ProfilerMarker RebuildFloorBaseTextureProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.RebuildFloorBaseTexture");
+    private static readonly ProfilerMarker RebuildFloorGridTextureProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.RebuildFloorGridTexture");
+    private static readonly ProfilerMarker UpdatePlacementProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.UpdatePlacement");
+    private static readonly ProfilerMarker UpdateSkyDesignProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.UpdateSkyDesign");
+    private static readonly ProfilerMarker ApplyEnviro3SkyProfilerMarker = new ProfilerMarker("StringTheory.Background.Enviro3.ApplySky");
+    private static readonly ProfilerMarker ApplyEnviro3RenderSettingsProfilerMarker = new ProfilerMarker("StringTheory.Background.Enviro3.ApplyRenderSettings");
+    private static readonly ProfilerMarker Enviro3UpdateModulesProfilerMarker = new ProfilerMarker("StringTheory.Background.Enviro3.UpdateModules");
+    private static readonly ProfilerMarker Enviro3SkyUpdateModuleProfilerMarker = new ProfilerMarker("StringTheory.Background.Enviro3.SkyUpdateModule");
     private static readonly ProfilerMarker ApplyEnviro3MoodProfilerMarker = new ProfilerMarker("StringTheory.Background.Enviro3.ApplyMood");
+    private static readonly ProfilerMarker UpdateStagePlacementProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.UpdateStagePlacement");
+    private static readonly ProfilerMarker UpdateFloorPlacementProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.UpdateFloorPlacement");
+    private static readonly ProfilerMarker UpdateHorizonPlacementProfilerMarker = new ProfilerMarker("StringTheory.Background.NeonStage.UpdateHorizonPlacement");
     private static readonly Vector4 UnappliedEnviro3CloudModifiers = new Vector4(-999f, -999f, -999f, -999f);
     private static readonly int LightMatrixShaderId = Shader.PropertyToID("_LightMatrix");
     private static readonly int BaseColorShaderId = Shader.PropertyToID("_BaseColor");
@@ -271,14 +285,15 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
     private static readonly Color FloorGridRightColor = new Color(0.06f, 0.82f, 1.00f, 1f);
     private static readonly Color FloorGridCenterColor = new Color(0.08f, 0.26f, 1.00f, 1f);
 
-    // ===== Far stage light/reflection tuning =====
-    // These are cheap additive billboards placed near the horizon. They give the floor
-    // something obvious to catch when Ground Reflectivity is raised.
+    // ===== Far stage light tuning =====
+    // These are cheap additive billboards placed near the horizon.
     private const float FarLightDistanceOffset = 18f;
     private const float FarLightBaseHeight = 0.95f;
     private const float FarLightWidth = 15f;
     private const float FarLightHeight = 3.8f;
-    private const float FloorReflectedLightStrength = 0.155f;
+    // Floor reflections are deliberately disabled at runtime. The old reflective floor
+    // path rebuilt CPU textures when settings changed and caused large D3D12 stalls in builds.
+    private const float FloorReflectedLightStrength = 0f;
     // Dedicated mirrored aurora streaks. These are intentionally independent from
     // Ground Reflectivity, which only controls broad floor sheen.
     private const bool FloorAuroraReflectionLayerEnabled = false;
@@ -402,6 +417,19 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
     private Vector4 appliedEnviro3CloudModifiers = UnappliedEnviro3CloudModifiers;
     private float appliedEnviro3StarAnimation = -1f;
     private float appliedEnviro3StarDensity = -1f;
+    private bool enviro3RenderSettingsApplied;
+    private bool enviro3ShaderGlobalsApplied;
+    private float appliedEnviro3RenderSkyPitch = float.NaN;
+    private float appliedEnviro3RenderStarDensity = float.NaN;
+    private bool enviro3CelestialOverridesApplied;
+    private int appliedEnviro3CelestialMoonModeIndex = int.MinValue;
+    private bool appliedEnviro3CelestialHasMoonOverride;
+    private float appliedEnviro3CelestialMoonRotationX = float.NaN;
+    private float appliedEnviro3CelestialMoonRotationY = float.NaN;
+    private float appliedEnviro3CelestialSkyPitch = float.NaN;
+    private float appliedEnviro3CelestialSkyYaw = float.NaN;
+    private Color appliedEnviro3CelestialAuroraColor = Color.clear;
+    private Vector4 appliedEnviro3CelestialAuroraParams = UnappliedEnviro3CloudModifiers;
     private int cachedDomeStarsCount = -1;
     private int cachedDomeStarsSeed = int.MinValue;
     private float cachedDomeStarsSize = -1f;
@@ -422,49 +450,69 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         this.useMainMenuProfile = useMainMenuProfile;
     }
 
-    private float HorizonLineDistanceValue => owner != null ? owner.neonHorizonLineDistance : HorizonLineDistance;
-    private float HorizonLineYValue => owner != null ? owner.neonHorizonLineY : HorizonLineY;
-    private float HorizonLineWidthValue => owner != null ? owner.neonHorizonLineWidth : HorizonLineWidth;
-    private float HorizonGlowBlurHeightValue => owner != null ? owner.neonHorizonGlowBlurHeight : HorizonGlowBlurHeight;
-    private float HorizonCoreLineHeightValue => owner != null ? owner.neonHorizonCoreLineHeight : HorizonCoreLineHeight;
-    private float HorizonCoreLineYOffsetValue => owner != null ? owner.neonHorizonCoreLineYOffset : HorizonCoreLineYOffset;
-    private float FloorHorizonOverlapValue => owner != null ? owner.neonHorizonFloorHorizonOverlap : FloorHorizonOverlap;
-    private float SkyLineStrengthValue => owner != null ? owner.neonHorizonSkyLineStrength : SkyLineStrength;
-    private float SkyLineOpacityValue => owner != null ? owner.neonHorizonSkyLineOpacity : SkyLineOpacity;
-    private float SkyLineReflectionStrengthValue => owner != null ? owner.neonHorizonSkyLineReflectionStrength : SkyLineReflectionStrength;
-    private float SkyDotStrengthValue => owner != null ? owner.neonHorizonSkyDotStrength : SkyDotStrength;
-    private float SkySideWashStrengthValue => owner != null ? owner.neonHorizonSkySideWashStrength : SkySideWashStrength;
+    private static float FiniteOr(float value, float fallback)
+    {
+        return float.IsNaN(value) || float.IsInfinity(value) ? fallback : value;
+    }
+
+    private static float ClampFinite(float value, float min, float max, float fallback)
+    {
+        return Mathf.Clamp(FiniteOr(value, fallback), min, max);
+    }
+
+    private static float Clamp01Finite(float value, float fallback)
+    {
+        return Mathf.Clamp01(FiniteOr(value, fallback));
+    }
+
+    private static float MinFinite(float value, float min, float fallback)
+    {
+        return Mathf.Max(min, FiniteOr(value, fallback));
+    }
+
+    private float HorizonLineDistanceValue => MinFinite(owner != null ? owner.neonHorizonLineDistance : HorizonLineDistance, 1f, HorizonLineDistance);
+    private float HorizonLineYValue => FiniteOr(owner != null ? owner.neonHorizonLineY : HorizonLineY, HorizonLineY);
+    private float HorizonLineWidthValue => MinFinite(owner != null ? owner.neonHorizonLineWidth : HorizonLineWidth, 1f, HorizonLineWidth);
+    private float HorizonGlowBlurHeightValue => MinFinite(owner != null ? owner.neonHorizonGlowBlurHeight : HorizonGlowBlurHeight, 0.001f, HorizonGlowBlurHeight);
+    private float HorizonCoreLineHeightValue => MinFinite(owner != null ? owner.neonHorizonCoreLineHeight : HorizonCoreLineHeight, 0.001f, HorizonCoreLineHeight);
+    private float HorizonCoreLineYOffsetValue => FiniteOr(owner != null ? owner.neonHorizonCoreLineYOffset : HorizonCoreLineYOffset, HorizonCoreLineYOffset);
+    private float FloorHorizonOverlapValue => MinFinite(owner != null ? owner.neonHorizonFloorHorizonOverlap : FloorHorizonOverlap, 0f, FloorHorizonOverlap);
+    private float SkyLineStrengthValue => MinFinite(owner != null ? owner.neonHorizonSkyLineStrength : SkyLineStrength, 0f, SkyLineStrength);
+    private float SkyLineOpacityValue => Clamp01Finite(owner != null ? owner.neonHorizonSkyLineOpacity : SkyLineOpacity, SkyLineOpacity);
+    private float SkyLineReflectionStrengthValue => MinFinite(owner != null ? owner.neonHorizonSkyLineReflectionStrength : SkyLineReflectionStrength, 0f, SkyLineReflectionStrength);
+    private float SkyDotStrengthValue => MinFinite(owner != null ? owner.neonHorizonSkyDotStrength : SkyDotStrength, 0f, SkyDotStrength);
+    private float SkySideWashStrengthValue => MinFinite(owner != null ? owner.neonHorizonSkySideWashStrength : SkySideWashStrength, 0f, SkySideWashStrength);
     private bool UseUnifiedSideColorsValue => owner == null || owner.GetNeonHorizonUseUnifiedSideColors(useMainMenuProfile);
-    private float SkyCoreBrightnessValue => owner != null ? owner.neonHorizonSkyCoreBrightness : SkyCoreBrightness;
-    private float SkyCoreSizeValue => owner != null ? owner.neonHorizonSkyCoreSize : SkyCoreSize;
-    private float SkyCoreHeightValue => owner != null ? owner.neonHorizonSkyCoreHeight : SkyCoreHeight;
-    private float SkyCoreXOffsetValue => owner != null ? owner.neonHorizonSkyCoreXOffset : SkyCoreXOffset;
-    private float SkyCoreFalloffValue => owner != null ? owner.neonHorizonSkyCoreFalloff : SkyCoreFalloff;
-    private float SkyOutsideDarknessValue => owner != null ? owner.neonHorizonSkyOutsideDarkness : SkyOutsideDarkness;
-    private float SkyCorePurpleStrengthValue => owner != null ? owner.neonHorizonSkyCorePurpleStrength : SkyCorePurpleStrength;
-    private float SkyCorePurpleFalloffValue => owner != null ? owner.neonHorizonSkyCorePurpleFalloff : SkyCorePurpleFalloff;
-    private float SkyAuroraRidgeStrengthValue => owner != null ? owner.neonHorizonSkyAuroraRidgeStrength : SkyAuroraRidgeStrength;
-    private float SkyAuroraRidgeWhiteFalloffPositionValue => owner != null ? owner.neonHorizonSkyAuroraRidgeWhiteFalloffPosition : SkyAuroraRidgeWhiteFalloffPosition;
-    private float SkyAuroraRidgeWhiteFalloffSharpnessValue => owner != null ? owner.neonHorizonSkyAuroraRidgeWhiteFalloffSharpness : SkyAuroraRidgeWhiteFalloffSharpness;
-    private float SkyAuroraWaveBumpinessValue => owner != null ? owner.neonHorizonSkyAuroraWaveBumpiness : SkyAuroraWaveBumpiness;
+    private float SkyCoreBrightnessValue => MinFinite(owner != null ? owner.neonHorizonSkyCoreBrightness : SkyCoreBrightness, 0f, SkyCoreBrightness);
+    private float SkyCoreSizeValue => MinFinite(owner != null ? owner.neonHorizonSkyCoreSize : SkyCoreSize, 0.001f, SkyCoreSize);
+    private float SkyCoreHeightValue => FiniteOr(owner != null ? owner.neonHorizonSkyCoreHeight : SkyCoreHeight, SkyCoreHeight);
+    private float SkyCoreXOffsetValue => FiniteOr(owner != null ? owner.neonHorizonSkyCoreXOffset : SkyCoreXOffset, SkyCoreXOffset);
+    private float SkyCoreFalloffValue => MinFinite(owner != null ? owner.neonHorizonSkyCoreFalloff : SkyCoreFalloff, 0.001f, SkyCoreFalloff);
+    private float SkyOutsideDarknessValue => MinFinite(owner != null ? owner.neonHorizonSkyOutsideDarkness : SkyOutsideDarkness, 0f, SkyOutsideDarkness);
+    private float SkyCorePurpleStrengthValue => MinFinite(owner != null ? owner.neonHorizonSkyCorePurpleStrength : SkyCorePurpleStrength, 0f, SkyCorePurpleStrength);
+    private float SkyCorePurpleFalloffValue => MinFinite(owner != null ? owner.neonHorizonSkyCorePurpleFalloff : SkyCorePurpleFalloff, 0.001f, SkyCorePurpleFalloff);
+    private float SkyAuroraRidgeStrengthValue => MinFinite(owner != null ? owner.neonHorizonSkyAuroraRidgeStrength : SkyAuroraRidgeStrength, 0f, SkyAuroraRidgeStrength);
+    private float SkyAuroraRidgeWhiteFalloffPositionValue => FiniteOr(owner != null ? owner.neonHorizonSkyAuroraRidgeWhiteFalloffPosition : SkyAuroraRidgeWhiteFalloffPosition, SkyAuroraRidgeWhiteFalloffPosition);
+    private float SkyAuroraRidgeWhiteFalloffSharpnessValue => MinFinite(owner != null ? owner.neonHorizonSkyAuroraRidgeWhiteFalloffSharpness : SkyAuroraRidgeWhiteFalloffSharpness, 0.001f, SkyAuroraRidgeWhiteFalloffSharpness);
+    private float SkyAuroraWaveBumpinessValue => MinFinite(owner != null ? owner.neonHorizonSkyAuroraWaveBumpiness : SkyAuroraWaveBumpiness, 0f, SkyAuroraWaveBumpiness);
     private int HorizonColorPaletteValue => owner != null ? owner.GetNeonHorizonColorPalette(useMainMenuProfile) : 0;
     private int SkyLineColorPaletteValue => owner != null ? owner.GetNeonHorizonSkyLineColorPalette(useMainMenuProfile) : 0;
     private int SkyLineStyleValue => owner != null ? owner.neonHorizonSkyLineStyle : SkyLineStyle;
-    private float GroundDarknessValue => owner != null ? owner.neonHorizonGroundDarkness : 1f;
-    private float GroundGradientStartValue => owner != null ? owner.neonHorizonGroundGradientStart : FloorHorizonLiftStart;
-    private float GroundGradientBrightnessValue => owner != null ? owner.neonHorizonGroundGradientBrightness : 1f;
-    private float GroundReflectivityValue => owner != null ? owner.neonHorizonGroundReflectivity : 0f;
+    private float GroundDarknessValue => MinFinite(owner != null ? owner.neonHorizonGroundDarkness : 1f, 0.05f, 1f);
+    private float GroundGradientStartValue => ClampFinite(owner != null ? owner.neonHorizonGroundGradientStart : FloorHorizonLiftStart, 0.01f, 0.99f, FloorHorizonLiftStart);
+    private float GroundGradientBrightnessValue => MinFinite(owner != null ? owner.neonHorizonGroundGradientBrightness : 1f, 0f, 1f);
+    private float GroundReflectivityValue => 0f;
     private bool FloorAuroraReflectionEnabledValue => FloorAuroraReflectionLayerEnabled
         && (owner == null || owner.neonHorizonFloorAuroraReflectionEnabled);
     private float FloorAuroraReflectionStrengthValue => FloorAuroraReflectionEnabledValue
-        ? Mathf.Clamp(owner != null ? owner.neonHorizonFloorAuroraReflectionStrength : FloorAuroraReflectionStrength, 0f, 5.0f)
+        ? ClampFinite(owner != null ? owner.neonHorizonFloorAuroraReflectionStrength : FloorAuroraReflectionStrength, 0f, 5.0f, FloorAuroraReflectionStrength)
         : 0f;
-    private float FloorAuroraReflectionWidthValue => Mathf.Max(0.5f, owner != null ? owner.neonHorizonFloorAuroraReflectionWidth : FloorAuroraReflectionWidth);
-    private float FloorAuroraReflectionLengthValue => Mathf.Max(0.05f, owner != null ? owner.neonHorizonFloorAuroraReflectionLength : FloorAuroraReflectionLength);
+    private float FloorAuroraReflectionWidthValue => MinFinite(owner != null ? owner.neonHorizonFloorAuroraReflectionWidth : FloorAuroraReflectionWidth, 0.5f, FloorAuroraReflectionWidth);
+    private float FloorAuroraReflectionLengthValue => MinFinite(owner != null ? owner.neonHorizonFloorAuroraReflectionLength : FloorAuroraReflectionLength, 0.05f, FloorAuroraReflectionLength);
     private bool StageCloudsEnabledValue => StageCloudLayerEnabled
         && (owner == null || owner.neonHorizonCloudsEnabled);
-    private float StageCloudOpacityValue => Mathf.Clamp01(owner != null ? owner.neonHorizonCloudOpacity : StageCloudOpacity);
-    private float StageCloudSpeedValue => Mathf.Max(0f, owner != null ? owner.neonHorizonCloudSpeed : StageCloudSpeed);
+    private float StageCloudOpacityValue => Clamp01Finite(owner != null ? owner.neonHorizonCloudOpacity : StageCloudOpacity, StageCloudOpacity);
+    private float StageCloudSpeedValue => MinFinite(owner != null ? owner.neonHorizonCloudSpeed : StageCloudSpeed, 0f, StageCloudSpeed);
     private bool UseEnviro3SkyValue => owner != null
         && owner.GetNeonStageSkyDesign(useMainMenuProfile) == GuitarBridgeServer.TabsNeonStageSkyDesign.Enviro3;
     private int Enviro3MoodIndexValue => owner != null
@@ -474,13 +522,13 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         ? Mathf.Clamp((int)owner.GetCurrentEnviroMoonMode(useMainMenuProfile), 0, Enviro3MoonModeCount - 1)
         : (int)GuitarBridgeServer.TabsEnviroMoonMode.Normal;
     private bool Enviro3CloudsEnabledValue => owner == null || owner.GetCurrentEnviroCloudsEnabled(useMainMenuProfile);
-    private float Enviro3CloudAmountValue => Mathf.Clamp(owner != null ? owner.GetCurrentEnviroCloudAmount(useMainMenuProfile) : 1f, 0f, 2f);
-    private float Enviro3CloudThicknessValue => Mathf.Clamp(owner != null ? owner.GetCurrentEnviroCloudThickness(useMainMenuProfile) : 1f, 0f, 2f);
-    private float Enviro3CloudConnectivityValue => Mathf.Clamp(owner != null ? owner.GetCurrentEnviroCloudConnectivity(useMainMenuProfile) : 1f, 0f, 2f);
-    private float Enviro3CloudContrastValue => Mathf.Clamp(owner != null ? owner.GetCurrentEnviroCloudContrast(useMainMenuProfile) : 1f, 0f, 2f);
-    private float Enviro3SkyCameraPitchValue => Mathf.Clamp(owner != null ? owner.GetCurrentEnviroSkyCameraPitch(useMainMenuProfile) : 0f, -18f, 18f);
-    private float Enviro3StarAnimationValue => Mathf.Clamp(owner != null ? owner.GetCurrentEnviroStarAnimation(useMainMenuProfile) : 1f, 0f, 2f);
-    private float Enviro3StarDensityValue => Mathf.Clamp(owner != null ? owner.GetCurrentEnviroStarDensity(useMainMenuProfile) : 1f, 0f, 2f);
+    private float Enviro3CloudAmountValue => ClampFinite(owner != null ? owner.GetCurrentEnviroCloudAmount(useMainMenuProfile) : 1f, 0f, 2f, 1f);
+    private float Enviro3CloudThicknessValue => ClampFinite(owner != null ? owner.GetCurrentEnviroCloudThickness(useMainMenuProfile) : 1f, 0f, 2f, 1f);
+    private float Enviro3CloudConnectivityValue => ClampFinite(owner != null ? owner.GetCurrentEnviroCloudConnectivity(useMainMenuProfile) : 1f, 0f, 2f, 1f);
+    private float Enviro3CloudContrastValue => ClampFinite(owner != null ? owner.GetCurrentEnviroCloudContrast(useMainMenuProfile) : 1f, 0f, 2f, 1f);
+    private float Enviro3SkyCameraPitchValue => ClampFinite(owner != null ? owner.GetCurrentEnviroSkyCameraPitch(useMainMenuProfile) : 0f, -18f, 18f, 0f);
+    private float Enviro3StarAnimationValue => ClampFinite(owner != null ? owner.GetCurrentEnviroStarAnimation(useMainMenuProfile) : 1f, 0f, 2f, 1f);
+    private float Enviro3StarDensityValue => ClampFinite(owner != null ? owner.GetCurrentEnviroStarDensity(useMainMenuProfile) : 1f, 0f, 2f, 1f);
     private float GetEnviroMountainLayerOpacityValue(int layerIndex)
     {
         if (owner == null)
@@ -490,13 +538,13 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         {
             switch (Mathf.Clamp(layerIndex, 0, EnviroMountainSilhouetteLayerCount - 1))
             {
-                case 0: return Mathf.Clamp01(owner.GetDomeMountainFarOpacity(useMainMenuProfile));
-                case 1: return Mathf.Clamp01(owner.GetDomeMountainMidOpacity(useMainMenuProfile));
-                default: return Mathf.Clamp01(owner.GetDomeMountainNearOpacity(useMainMenuProfile));
+                case 0: return Clamp01Finite(owner.GetDomeMountainFarOpacity(useMainMenuProfile), GetMountainLayerValue(EnviroMountainLayerDefaultOpacities, layerIndex, 1f));
+                case 1: return Clamp01Finite(owner.GetDomeMountainMidOpacity(useMainMenuProfile), GetMountainLayerValue(EnviroMountainLayerDefaultOpacities, layerIndex, 1f));
+                default: return Clamp01Finite(owner.GetDomeMountainNearOpacity(useMainMenuProfile), GetMountainLayerValue(EnviroMountainLayerDefaultOpacities, layerIndex, 1f));
             }
         }
 
-        return Mathf.Clamp01(owner.GetCurrentEnviroMountainLayerOpacity(layerIndex, useMainMenuProfile));
+        return Clamp01Finite(owner.GetCurrentEnviroMountainLayerOpacity(layerIndex, useMainMenuProfile), GetMountainLayerValue(EnviroMountainLayerDefaultOpacities, layerIndex, 1f));
     }
     private GuitarBridgeServer.TabsEnviroGroundMode Enviro3GroundModeValue
     {
@@ -522,35 +570,35 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
     private bool DomeStarsEnabledValue => UseProceduralDomeValue
         && (owner == null || owner.GetDomeStarsEnabled(useMainMenuProfile));
     private int DomeStarsCountValue => Mathf.Clamp(owner != null ? owner.GetDomeStarsCount(useMainMenuProfile) : DomeStarsDefaultCount, 0, 1200);
-    private float DomeStarsBrightnessValue => Mathf.Max(0f, owner != null ? owner.GetDomeStarsBrightness(useMainMenuProfile) : DomeStarsDefaultBrightness);
-    private float DomeStarsTwinkleStrengthValue => Mathf.Clamp01(owner != null ? owner.GetDomeStarsTwinkleStrength(useMainMenuProfile) : DomeStarsDefaultTwinkleStrength);
-    private float DomeStarsTwinkleSpeedValue => Mathf.Max(0f, owner != null ? owner.GetDomeStarsTwinkleSpeed(useMainMenuProfile) : DomeStarsDefaultTwinkleSpeed);
-    private float DomeStarsSizeValue => Mathf.Max(0.1f, owner != null ? owner.GetDomeStarsSize(useMainMenuProfile) : DomeStarsDefaultSize);
+    private float DomeStarsBrightnessValue => MinFinite(owner != null ? owner.GetDomeStarsBrightness(useMainMenuProfile) : DomeStarsDefaultBrightness, 0f, DomeStarsDefaultBrightness);
+    private float DomeStarsTwinkleStrengthValue => Clamp01Finite(owner != null ? owner.GetDomeStarsTwinkleStrength(useMainMenuProfile) : DomeStarsDefaultTwinkleStrength, DomeStarsDefaultTwinkleStrength);
+    private float DomeStarsTwinkleSpeedValue => MinFinite(owner != null ? owner.GetDomeStarsTwinkleSpeed(useMainMenuProfile) : DomeStarsDefaultTwinkleSpeed, 0f, DomeStarsDefaultTwinkleSpeed);
+    private float DomeStarsSizeValue => MinFinite(owner != null ? owner.GetDomeStarsSize(useMainMenuProfile) : DomeStarsDefaultSize, 0.1f, DomeStarsDefaultSize);
     private int DomeStarsSeedValue => owner != null ? owner.GetDomeStarsSeed(useMainMenuProfile) : DomeStarsDefaultSeed;
-    private float HorizonColorStrengthValue => owner != null ? owner.neonHorizonColorStrength : HorizonColorStrength;
-    private float HorizonColorSaturationValue => owner != null ? owner.neonHorizonColorSaturation : HorizonColorSaturation;
-    private float HorizonSoftGlowIntensityValue => owner != null ? owner.neonHorizonSoftGlowIntensity : HorizonSoftGlowIntensity;
-    private float HorizonCoreGlowIntensityValue => owner != null ? owner.neonHorizonCoreGlowIntensity : HorizonCoreGlowIntensity;
-    private float HorizonSoftAlphaValue => owner != null ? owner.neonHorizonSoftAlpha : HorizonSoftAlpha;
-    private float HorizonCoreAlphaValue => owner != null ? owner.neonHorizonCoreAlpha : HorizonCoreAlpha;
-    private float HorizonSoftBlurFalloffValue => owner != null ? owner.neonHorizonSoftBlurFalloff : HorizonSoftBlurFalloff;
-    private float HorizonCoreBlurFalloffValue => owner != null ? owner.neonHorizonCoreBlurFalloff : HorizonCoreBlurFalloff;
-    private float HorizonSoftColorFalloffValue => owner != null ? owner.neonHorizonSoftColorFalloff : HorizonSoftColorFalloff;
-    private float HorizonCoreColorFalloffValue => owner != null ? owner.neonHorizonCoreColorFalloff : HorizonCoreColorFalloff;
-    private float HorizonCenterBlendWidthValue => owner != null ? owner.neonHorizonCenterBlendWidth : HorizonCenterBlendWidth;
-    private float HorizonCenterBlendFalloffValue => owner != null ? owner.neonHorizonCenterBlendFalloff : HorizonCenterBlendFalloff;
-    private float HorizonCenterBlendStrengthValue => owner != null ? owner.neonHorizonCenterBlendStrength : HorizonCenterBlendStrength;
-    private float HorizonSoftCoreWidthValue => owner != null ? owner.neonHorizonSoftCoreWidth : HorizonSoftCoreWidth;
-    private float HorizonSoftCoreSoftnessValue => owner != null ? owner.neonHorizonSoftCoreSoftness : HorizonSoftCoreSoftness;
-    private float HorizonCoreWidthValue => owner != null ? owner.neonHorizonCoreWidth : HorizonCoreWidth;
-    private float HorizonCoreSoftnessValue => owner != null ? owner.neonHorizonCoreSoftness : HorizonCoreSoftness;
-    private float HorizonSoftShimmerStrengthValue => owner != null ? owner.neonHorizonSoftShimmerStrength : HorizonSoftShimmerStrength;
-    private float HorizonCoreShimmerStrengthValue => owner != null ? owner.neonHorizonCoreShimmerStrength : HorizonCoreShimmerStrength;
-    private float HorizonEdgeBlurStrengthValue => owner != null ? owner.neonHorizonEdgeBlurStrength : HorizonEdgeBlurStrength;
-    private float HorizonEdgeBlurStartValue => owner != null ? owner.neonHorizonEdgeBlurStart : HorizonEdgeBlurStart;
-    private float HorizonEdgeBlurSharpnessValue => owner != null ? owner.neonHorizonEdgeBlurSharpness : HorizonEdgeBlurSharpness;
-    private float HorizonCurveDownValue => owner != null ? owner.neonHorizonCurveDown : HorizonCurveDown;
-    private float HorizonCurveTowardCameraValue => owner != null ? owner.neonHorizonCurveTowardCamera : HorizonCurveTowardCamera;
+    private float HorizonColorStrengthValue => MinFinite(owner != null ? owner.neonHorizonColorStrength : HorizonColorStrength, 0f, HorizonColorStrength);
+    private float HorizonColorSaturationValue => MinFinite(owner != null ? owner.neonHorizonColorSaturation : HorizonColorSaturation, 0f, HorizonColorSaturation);
+    private float HorizonSoftGlowIntensityValue => MinFinite(owner != null ? owner.neonHorizonSoftGlowIntensity : HorizonSoftGlowIntensity, 0f, HorizonSoftGlowIntensity);
+    private float HorizonCoreGlowIntensityValue => MinFinite(owner != null ? owner.neonHorizonCoreGlowIntensity : HorizonCoreGlowIntensity, 0f, HorizonCoreGlowIntensity);
+    private float HorizonSoftAlphaValue => Clamp01Finite(owner != null ? owner.neonHorizonSoftAlpha : HorizonSoftAlpha, HorizonSoftAlpha);
+    private float HorizonCoreAlphaValue => Clamp01Finite(owner != null ? owner.neonHorizonCoreAlpha : HorizonCoreAlpha, HorizonCoreAlpha);
+    private float HorizonSoftBlurFalloffValue => MinFinite(owner != null ? owner.neonHorizonSoftBlurFalloff : HorizonSoftBlurFalloff, 0.001f, HorizonSoftBlurFalloff);
+    private float HorizonCoreBlurFalloffValue => MinFinite(owner != null ? owner.neonHorizonCoreBlurFalloff : HorizonCoreBlurFalloff, 0.001f, HorizonCoreBlurFalloff);
+    private float HorizonSoftColorFalloffValue => MinFinite(owner != null ? owner.neonHorizonSoftColorFalloff : HorizonSoftColorFalloff, 0.001f, HorizonSoftColorFalloff);
+    private float HorizonCoreColorFalloffValue => MinFinite(owner != null ? owner.neonHorizonCoreColorFalloff : HorizonCoreColorFalloff, 0.001f, HorizonCoreColorFalloff);
+    private float HorizonCenterBlendWidthValue => MinFinite(owner != null ? owner.neonHorizonCenterBlendWidth : HorizonCenterBlendWidth, 0f, HorizonCenterBlendWidth);
+    private float HorizonCenterBlendFalloffValue => MinFinite(owner != null ? owner.neonHorizonCenterBlendFalloff : HorizonCenterBlendFalloff, 0.001f, HorizonCenterBlendFalloff);
+    private float HorizonCenterBlendStrengthValue => MinFinite(owner != null ? owner.neonHorizonCenterBlendStrength : HorizonCenterBlendStrength, 0f, HorizonCenterBlendStrength);
+    private float HorizonSoftCoreWidthValue => MinFinite(owner != null ? owner.neonHorizonSoftCoreWidth : HorizonSoftCoreWidth, 0.001f, HorizonSoftCoreWidth);
+    private float HorizonSoftCoreSoftnessValue => MinFinite(owner != null ? owner.neonHorizonSoftCoreSoftness : HorizonSoftCoreSoftness, 0.001f, HorizonSoftCoreSoftness);
+    private float HorizonCoreWidthValue => MinFinite(owner != null ? owner.neonHorizonCoreWidth : HorizonCoreWidth, 0.001f, HorizonCoreWidth);
+    private float HorizonCoreSoftnessValue => MinFinite(owner != null ? owner.neonHorizonCoreSoftness : HorizonCoreSoftness, 0.001f, HorizonCoreSoftness);
+    private float HorizonSoftShimmerStrengthValue => MinFinite(owner != null ? owner.neonHorizonSoftShimmerStrength : HorizonSoftShimmerStrength, 0f, HorizonSoftShimmerStrength);
+    private float HorizonCoreShimmerStrengthValue => MinFinite(owner != null ? owner.neonHorizonCoreShimmerStrength : HorizonCoreShimmerStrength, 0f, HorizonCoreShimmerStrength);
+    private float HorizonEdgeBlurStrengthValue => MinFinite(owner != null ? owner.neonHorizonEdgeBlurStrength : HorizonEdgeBlurStrength, 0f, HorizonEdgeBlurStrength);
+    private float HorizonEdgeBlurStartValue => Clamp01Finite(owner != null ? owner.neonHorizonEdgeBlurStart : HorizonEdgeBlurStart, HorizonEdgeBlurStart);
+    private float HorizonEdgeBlurSharpnessValue => MinFinite(owner != null ? owner.neonHorizonEdgeBlurSharpness : HorizonEdgeBlurSharpness, 0.001f, HorizonEdgeBlurSharpness);
+    private float HorizonCurveDownValue => FiniteOr(owner != null ? owner.neonHorizonCurveDown : HorizonCurveDown, HorizonCurveDown);
+    private float HorizonCurveTowardCameraValue => FiniteOr(owner != null ? owner.neonHorizonCurveTowardCamera : HorizonCurveTowardCamera, HorizonCurveTowardCamera);
 
     private sealed class CurvedMeshCache
     {
@@ -875,8 +923,15 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         if (root == null || owner == null)
             return;
 
-        ApplyVisualState();
-        UpdatePlacement();
+        using (TickProfilerMarker.Auto())
+        {
+            using (ApplyVisualStateProfilerMarker.Auto())
+            {
+                ApplyVisualState();
+            }
+
+            UpdatePlacement();
+        }
     }
 
     public void Dispose()
@@ -1131,6 +1186,9 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
     private void ApplyFloorReflectionMaterialState()
     {
+        if (!FloorAuroraReflectionLayerEnabled)
+            return;
+
         bool visible = FloorAuroraReflectionEnabledValue && FloorAuroraReflectionStrengthValue > 0.001f;
         GetSkyPalette(SkyLineColorPaletteValue, UseUnifiedSideColorsValue, out Color skyLeft, out Color skyRight, out Color skyHorizon);
         HorizonPaletteColors horizon = GetHorizonPalette(HorizonColorPaletteValue, UseUnifiedSideColorsValue);
@@ -1349,14 +1407,26 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
     private void UpdatePlacement()
     {
-        Camera camera = renderCameraOverride != null ? renderCameraOverride : Camera.main;
-        if (camera == null)
-            return;
+        using (UpdatePlacementProfilerMarker.Auto())
+        {
+            Camera camera = renderCameraOverride != null ? renderCameraOverride : Camera.main;
+            if (camera == null)
+                return;
 
-        UpdateSkyDesign(camera);
-        UpdateDomePlacement(camera);
-        if (applyHighwayOverrides)
-            UpdateStagePlacement(camera);
+            using (UpdateSkyDesignProfilerMarker.Auto())
+            {
+                UpdateSkyDesign(camera);
+            }
+
+            UpdateDomePlacement(camera);
+            if (applyHighwayOverrides)
+            {
+                using (UpdateStagePlacementProfilerMarker.Auto())
+                {
+                    UpdateStagePlacement(camera);
+                }
+            }
+        }
     }
 
     private void UpdateSkyDesign(Camera camera)
@@ -1488,6 +1558,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         originalRenderSettingsStateCaptured = false;
         originalRenderSettingsSkybox = null;
         originalRenderSettingsSun = null;
+        ResetEnviro3RenderSettingsCache();
     }
 
     private void RestoreCameraStateOnly()
@@ -2173,44 +2244,44 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
     private void ApplyEnviro3Sky(Camera camera, int moodIndex)
     {
-        CaptureSkyboxOverrideState(camera);
-        ConfigureEnviro3Camera(camera);
-        ApplyEnviro3RenderSettings();
-
-        Vector4 cloudModifiers = BuildEnviro3CloudModifierVector();
-        bool cloudsEnabled = Enviro3CloudsEnabledValue;
-        int moonModeIndex = Enviro3MoonModeIndexValue;
-        float starAnimation = Enviro3StarAnimationValue;
-        float starDensity = Enviro3StarDensityValue;
-        if (appliedEnviro3MoodIndex != moodIndex ||
-            appliedEnviro3MoonModeIndex != moonModeIndex ||
-            appliedEnviro3CloudsEnabled != cloudsEnabled ||
-            Mathf.Abs(appliedEnviro3StarAnimation - starAnimation) > 0.0001f ||
-            Mathf.Abs(appliedEnviro3StarDensity - starDensity) > 0.0001f ||
-            HasEnviro3CloudModifierChanged(cloudModifiers))
+        using (ApplyEnviro3SkyProfilerMarker.Auto())
         {
-            ApplyEnviro3Mood(moodIndex);
-            appliedEnviro3MoodIndex = moodIndex;
-            appliedEnviro3MoonModeIndex = moonModeIndex;
-            appliedEnviro3CloudsEnabled = cloudsEnabled;
-            appliedEnviro3CloudModifiers = cloudModifiers;
-            appliedEnviro3StarAnimation = starAnimation;
-            appliedEnviro3StarDensity = starDensity;
-        }
-        else if (enviro3Manager != null)
-        {
-            enviro3Manager.UpdateModules();
-        }
+            CaptureSkyboxOverrideState(camera);
+            ConfigureEnviro3Camera(camera);
+            ApplyEnviro3RenderSettings();
 
-        if (enviro3Manager != null)
-        {
-            ApplyEnviro3CelestialOverrides();
-            if (enviro3Manager.Sky != null)
-                enviro3Manager.Sky.UpdateModule();
-        }
+            Vector4 cloudModifiers = BuildEnviro3CloudModifierVector();
+            bool cloudsEnabled = Enviro3CloudsEnabledValue;
+            int moonModeIndex = Enviro3MoonModeIndexValue;
+            float starAnimation = Enviro3StarAnimationValue;
+            float starDensity = Enviro3StarDensityValue;
+            if (appliedEnviro3MoodIndex != moodIndex ||
+                appliedEnviro3MoonModeIndex != moonModeIndex ||
+                appliedEnviro3CloudsEnabled != cloudsEnabled ||
+                Mathf.Abs(appliedEnviro3StarAnimation - starAnimation) > 0.0001f ||
+                Mathf.Abs(appliedEnviro3StarDensity - starDensity) > 0.0001f ||
+                HasEnviro3CloudModifierChanged(cloudModifiers))
+            {
+                ApplyEnviro3Mood(moodIndex);
+                appliedEnviro3MoodIndex = moodIndex;
+                appliedEnviro3MoonModeIndex = moonModeIndex;
+                appliedEnviro3CloudsEnabled = cloudsEnabled;
+                appliedEnviro3CloudModifiers = cloudModifiers;
+                appliedEnviro3StarAnimation = starAnimation;
+                appliedEnviro3StarDensity = starDensity;
+            }
 
-        if (camera != null && camera.clearFlags != CameraClearFlags.Skybox)
-            camera.clearFlags = CameraClearFlags.Skybox;
+            if (enviro3Manager != null)
+            {
+                // EnviroManager.Update() already updates modules every frame. Only reapply our
+                // lightweight placement/material overrides here so Render() does not duplicate
+                // Enviro's full module update path.
+                ApplyEnviro3CelestialOverridesIfNeeded();
+            }
+
+            if (camera != null && camera.clearFlags != CameraClearFlags.Skybox)
+                camera.clearFlags = CameraClearFlags.Skybox;
+        }
     }
 
     private Vector4 BuildEnviro3CloudModifierVector()
@@ -2232,18 +2303,46 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
     private void ApplyEnviro3RenderSettings()
     {
-        RenderSettings.fog = false;
-        RenderSettings.ambientMode = AmbientMode.Skybox;
-        RenderSettings.ambientIntensity = 0.85f;
-        RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
-        RenderSettings.defaultReflectionResolution = 64;
-        RenderSettings.reflectionBounces = 1;
-        RenderSettings.reflectionIntensity = 0.35f;
-        RenderSettings.sun = null;
+        using (ApplyEnviro3RenderSettingsProfilerMarker.Auto())
+        {
+            bool renderSettingsChanged =
+                !enviro3RenderSettingsApplied ||
+                RenderSettings.fog ||
+                RenderSettings.ambientMode != AmbientMode.Skybox ||
+                !Mathf.Approximately(RenderSettings.ambientIntensity, 0.85f) ||
+                RenderSettings.defaultReflectionMode != DefaultReflectionMode.Skybox ||
+                RenderSettings.defaultReflectionResolution != 64 ||
+                RenderSettings.reflectionBounces != 1 ||
+                !Mathf.Approximately(RenderSettings.reflectionIntensity, 0.35f) ||
+                RenderSettings.sun != null;
 
-        Shader.SetGlobalMatrix(LightMatrixShaderId, Matrix4x4.Rotate(StageLightRotation));
-        Shader.SetGlobalFloat(EnviroStageSkyPitchShaderId, Enviro3SkyCameraPitchValue);
-        Shader.SetGlobalFloat(EnviroStageStarDensityShaderId, Mathf.Max(0f, Enviro3StarDensityValue - 1f));
+            if (renderSettingsChanged)
+            {
+                RenderSettings.fog = false;
+                RenderSettings.ambientMode = AmbientMode.Skybox;
+                RenderSettings.ambientIntensity = 0.85f;
+                RenderSettings.defaultReflectionMode = DefaultReflectionMode.Skybox;
+                RenderSettings.defaultReflectionResolution = 64;
+                RenderSettings.reflectionBounces = 1;
+                RenderSettings.reflectionIntensity = 0.35f;
+                RenderSettings.sun = null;
+                enviro3RenderSettingsApplied = true;
+            }
+
+            float skyPitch = Enviro3SkyCameraPitchValue;
+            float starDensity = Mathf.Max(0f, Enviro3StarDensityValue - 1f);
+            if (!enviro3ShaderGlobalsApplied ||
+                Mathf.Abs(appliedEnviro3RenderSkyPitch - skyPitch) > 0.0001f ||
+                Mathf.Abs(appliedEnviro3RenderStarDensity - starDensity) > 0.0001f)
+            {
+                Shader.SetGlobalMatrix(LightMatrixShaderId, Matrix4x4.Rotate(StageLightRotation));
+                Shader.SetGlobalFloat(EnviroStageSkyPitchShaderId, skyPitch);
+                Shader.SetGlobalFloat(EnviroStageStarDensityShaderId, starDensity);
+                appliedEnviro3RenderSkyPitch = skyPitch;
+                appliedEnviro3RenderStarDensity = starDensity;
+                enviro3ShaderGlobalsApplied = true;
+            }
+        }
     }
 
     private void ApplyEnviro3Mood(int moodIndex)
@@ -2421,10 +2520,19 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
             if (enviro3Manager != null)
             {
-                enviro3Manager.UpdateModules();
-                ApplyEnviro3CelestialOverrides();
+                using (Enviro3UpdateModulesProfilerMarker.Auto())
+                {
+                    enviro3Manager.UpdateModules();
+                }
                 if (enviro3Manager.Sky != null)
-                    enviro3Manager.Sky.UpdateModule();
+                {
+                    using (Enviro3SkyUpdateModuleProfilerMarker.Auto())
+                    {
+                        enviro3Manager.Sky.UpdateModule();
+                    }
+                }
+
+                ApplyEnviro3CelestialOverrides(force: true);
             }
         }
     }
@@ -2597,9 +2705,37 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         }
     }
 
-    private void ApplyEnviro3CelestialOverrides()
+    private void ApplyEnviro3CelestialOverridesIfNeeded()
+    {
+        if (!ShouldRefreshEnviro3CelestialOverrides())
+            return;
+
+        ApplyEnviro3CelestialOverrides();
+    }
+
+    private bool ShouldRefreshEnviro3CelestialOverrides()
+    {
+        if (!enviro3CelestialOverridesApplied)
+            return true;
+
+        float skyPitch = Enviro3SkyCameraPitchValue;
+        int moonModeIndex = Enviro3MoonModeIndexValue;
+        return appliedEnviro3CelestialMoonModeIndex != moonModeIndex ||
+               appliedEnviro3CelestialHasMoonOverride != enviro3HasMoonRotationOverride ||
+               Mathf.Abs(appliedEnviro3CelestialMoonRotationX - enviro3MoonRotationOverrideX) > 0.0001f ||
+               Mathf.Abs(appliedEnviro3CelestialMoonRotationY - enviro3MoonRotationOverrideY) > 0.0001f ||
+               Mathf.Abs(appliedEnviro3CelestialSkyPitch - skyPitch) > 0.0001f ||
+               Mathf.Abs(appliedEnviro3CelestialSkyYaw - enviro3SkyRotationYaw) > 0.0001f ||
+               appliedEnviro3CelestialAuroraColor != enviro3StageAuroraColor ||
+               appliedEnviro3CelestialAuroraParams != enviro3StageAuroraParams;
+    }
+
+    private void ApplyEnviro3CelestialOverrides(bool force = false)
     {
         if (enviro3Manager == null)
+            return;
+
+        if (!force && !ShouldRefreshEnviro3CelestialOverrides())
             return;
 
         if (enviro3HasMoonRotationOverride)
@@ -2620,6 +2756,16 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             enviro3Manager.Sky.mySkyboxMat.SetColor(EnviroStageAuroraColorShaderId, enviro3StageAuroraColor);
             enviro3Manager.Sky.mySkyboxMat.SetVector(EnviroStageAuroraParamsShaderId, enviro3StageAuroraParams);
         }
+
+        enviro3CelestialOverridesApplied = true;
+        appliedEnviro3CelestialMoonModeIndex = Enviro3MoonModeIndexValue;
+        appliedEnviro3CelestialHasMoonOverride = enviro3HasMoonRotationOverride;
+        appliedEnviro3CelestialMoonRotationX = enviro3MoonRotationOverrideX;
+        appliedEnviro3CelestialMoonRotationY = enviro3MoonRotationOverrideY;
+        appliedEnviro3CelestialSkyPitch = Enviro3SkyCameraPitchValue;
+        appliedEnviro3CelestialSkyYaw = enviro3SkyRotationYaw;
+        appliedEnviro3CelestialAuroraColor = enviro3StageAuroraColor;
+        appliedEnviro3CelestialAuroraParams = enviro3StageAuroraParams;
     }
 
     private void ApplyEnviro3MoonModePlacementOverride()
@@ -3070,6 +3216,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         appliedEnviro3CloudModifiers = UnappliedEnviro3CloudModifiers;
         appliedEnviro3StarAnimation = -1f;
         appliedEnviro3StarDensity = -1f;
+        ResetEnviro3RenderSettingsCache();
         enviro3StageAuroraColor = Color.black;
         enviro3StageAuroraParams = Vector4.zero;
         Shader.SetGlobalFloat("_Aurora", 0f);
@@ -3080,6 +3227,23 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         Shader.SetGlobalColor(EnviroStageAuroraColorShaderId, Color.black);
         Shader.SetGlobalVector(EnviroStageAuroraParamsShaderId, Vector4.zero);
         Shader.SetGlobalFloat(EnviroStageStarDensityShaderId, 0f);
+    }
+
+    private void ResetEnviro3RenderSettingsCache()
+    {
+        enviro3RenderSettingsApplied = false;
+        enviro3ShaderGlobalsApplied = false;
+        enviro3CelestialOverridesApplied = false;
+        appliedEnviro3RenderSkyPitch = float.NaN;
+        appliedEnviro3RenderStarDensity = float.NaN;
+        appliedEnviro3CelestialMoonModeIndex = int.MinValue;
+        appliedEnviro3CelestialHasMoonOverride = false;
+        appliedEnviro3CelestialMoonRotationX = float.NaN;
+        appliedEnviro3CelestialMoonRotationY = float.NaN;
+        appliedEnviro3CelestialSkyPitch = float.NaN;
+        appliedEnviro3CelestialSkyYaw = float.NaN;
+        appliedEnviro3CelestialAuroraColor = Color.clear;
+        appliedEnviro3CelestialAuroraParams = UnappliedEnviro3CloudModifiers;
     }
 
     private static void SetEnviroModuleActive(EnviroModule module, bool active)
@@ -3345,10 +3509,20 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             return;
 
         if (proceduralGroundVisible)
-            UpdateFloorPlacement(camera);
+        {
+            using (UpdateFloorPlacementProfilerMarker.Auto())
+            {
+                UpdateFloorPlacement(camera);
+            }
+        }
 
         if (proceduralHorizonVisible)
-            UpdateHorizonPlacement(camera);
+        {
+            using (UpdateHorizonPlacementProfilerMarker.Auto())
+            {
+                UpdateHorizonPlacement(camera);
+            }
+        }
 
         if (proceduralMountainVisible)
             UpdateEnviroMountainPlacement(camera);
@@ -3399,7 +3573,9 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         EnsureEnviroMountainLayerMaterials(StageRenderQueueBase + 2);
 
         farLightTexture = BuildFarLightTexture(96, 96);
-        floorReflectionTexture = BuildFloorReflectionTexture(96, 384);
+        if (FloorAuroraReflectionLayerEnabled)
+            floorReflectionTexture = BuildFloorReflectionTexture(96, 384);
+
         for (int i = 0; i < FarLightOffsets.Length; i++)
         {
             Renderer farLightRenderer;
@@ -3414,16 +3590,19 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 farLightRenderer.enabled = false;
             }
 
-            Renderer reflectionRenderer;
-            GameObject reflection = CreateQuad($"NeonStageFloorReflection{i + 1}", root.transform, out reflectionRenderer);
-            Material reflectionMaterial = CreateAdditiveTexturedMaterial(floorReflectionTexture, renderQueue: StageRenderQueueBase + 2, alphaAsColor: true);
-            floorReflectionObjects.Add(reflection);
-            floorReflectionRenderers.Add(reflectionRenderer);
-            floorReflectionMaterials.Add(reflectionMaterial);
-            if (reflectionRenderer != null)
+            if (FloorAuroraReflectionLayerEnabled && floorReflectionTexture != null)
             {
-                reflectionRenderer.sharedMaterial = reflectionMaterial;
-                reflectionRenderer.enabled = false;
+                Renderer reflectionRenderer;
+                GameObject reflection = CreateQuad($"NeonStageFloorReflection{i + 1}", root.transform, out reflectionRenderer);
+                Material reflectionMaterial = CreateAdditiveTexturedMaterial(floorReflectionTexture, renderQueue: StageRenderQueueBase + 2, alphaAsColor: true);
+                floorReflectionObjects.Add(reflection);
+                floorReflectionRenderers.Add(reflectionRenderer);
+                floorReflectionMaterials.Add(reflectionMaterial);
+                if (reflectionRenderer != null)
+                {
+                    reflectionRenderer.sharedMaterial = reflectionMaterial;
+                    reflectionRenderer.enabled = false;
+                }
             }
         }
 
@@ -3524,6 +3703,9 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         float curveDown,
         float curveTowardCamera)
     {
+        if (!FloorAuroraReflectionLayerEnabled)
+            return;
+
         bool visible = FloorAuroraReflectionEnabledValue && FloorAuroraReflectionStrengthValue > 0.001f;
         float width = FloorAuroraReflectionWidthValue;
         float length = Mathf.Clamp(floorDepth * FloorAuroraReflectionLengthValue, 12f, floorDepth * 0.82f);
@@ -3555,68 +3737,72 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
     private void RefreshFloorTexturesIfNeeded()
     {
-        if (!applyHighwayOverrides || floorMaterial == null || floorGridMaterial == null)
-            return;
-
-        float groundDarkness = Mathf.Max(0.05f, GroundDarknessValue);
-        float groundGradientStart = Mathf.Clamp(GroundGradientStartValue, 0.01f, 0.99f);
-        float groundGradientBrightness = Mathf.Max(0f, GroundGradientBrightnessValue);
-        float groundReflectivity = Mathf.Max(0f, GroundReflectivityValue);
-        bool floorAuroraReflectionEnabled = FloorAuroraReflectionEnabledValue;
-        float floorAuroraReflectionStrength = FloorAuroraReflectionStrengthValue;
-        float floorAuroraReflectionWidth = FloorAuroraReflectionWidthValue;
-        float floorAuroraReflectionLength = FloorAuroraReflectionLengthValue;
-        int horizonColorPalette = HorizonColorPaletteValue;
-        int skyLineColorPalette = SkyLineColorPaletteValue;
-        bool unifiedSideColors = UseUnifiedSideColorsValue;
-
-        bool baseChanged =
-            !Mathf.Approximately(groundDarkness, cachedGroundDarkness) ||
-            !Mathf.Approximately(groundGradientStart, cachedGroundGradientStart) ||
-            !Mathf.Approximately(groundGradientBrightness, cachedGroundGradientBrightness) ||
-            !Mathf.Approximately(groundReflectivity, cachedGroundReflectivity) ||
-            floorAuroraReflectionEnabled != cachedFloorAuroraReflectionEnabled ||
-            !Mathf.Approximately(floorAuroraReflectionStrength, cachedFloorAuroraReflectionStrength) ||
-            !Mathf.Approximately(floorAuroraReflectionWidth, cachedFloorAuroraReflectionWidth) ||
-            !Mathf.Approximately(floorAuroraReflectionLength, cachedFloorAuroraReflectionLength) ||
-            horizonColorPalette != cachedFloorHorizonColorPalette ||
-            skyLineColorPalette != cachedFloorSkyLineColorPalette ||
-            unifiedSideColors != cachedFloorUnifiedSideColors;
-        bool gridChanged =
-            !Mathf.Approximately(groundReflectivity, cachedGroundReflectivity);
-
-        if (!baseChanged && !gridChanged)
+        using (RefreshFloorTexturesProfilerMarker.Auto())
         {
-            return;
-        }
+            if (!applyHighwayOverrides || floorMaterial == null || floorGridMaterial == null)
+                return;
 
-        if (baseChanged)
-        {
-            DestroyOwnedTexture(floorTexture);
-            floorTexture = BuildFloorBaseTexture(256, 256);
-            floorMaterial.mainTexture = floorTexture;
-            floorMaterial.SetTexture("_MainTex", floorTexture);
-        }
+            if (!proceduralGroundVisible)
+                return;
 
-        if (gridChanged)
-        {
-            DestroyOwnedTexture(floorGridTexture);
-            floorGridTexture = BuildFloorGridTexture(512, 512);
-            floorGridMaterial.mainTexture = floorGridTexture;
-        }
+            float groundDarkness = GroundDarknessValue;
+            float groundGradientStart = GroundGradientStartValue;
+            float groundGradientBrightness = GroundGradientBrightnessValue;
+            float groundReflectivity = GroundReflectivityValue;
+            bool floorAuroraReflectionEnabled = false;
+            float floorAuroraReflectionStrength = 0f;
+            float floorAuroraReflectionWidth = FloorAuroraReflectionWidth;
+            float floorAuroraReflectionLength = FloorAuroraReflectionLength;
+            int horizonColorPalette = HorizonColorPaletteValue;
+            int skyLineColorPalette = SkyLineColorPaletteValue;
+            bool unifiedSideColors = UseUnifiedSideColorsValue;
 
-        CacheGroundControls(
-            groundDarkness,
-            groundGradientStart,
-            groundGradientBrightness,
-            groundReflectivity,
-            floorAuroraReflectionEnabled,
-            floorAuroraReflectionStrength,
-            floorAuroraReflectionWidth,
-            floorAuroraReflectionLength,
-            horizonColorPalette,
-            skyLineColorPalette,
-            unifiedSideColors);
+            bool baseChanged =
+                !Mathf.Approximately(groundDarkness, cachedGroundDarkness) ||
+                !Mathf.Approximately(groundGradientStart, cachedGroundGradientStart) ||
+                !Mathf.Approximately(groundGradientBrightness, cachedGroundGradientBrightness) ||
+                horizonColorPalette != cachedFloorHorizonColorPalette ||
+                skyLineColorPalette != cachedFloorSkyLineColorPalette ||
+                unifiedSideColors != cachedFloorUnifiedSideColors;
+            bool gridChanged = false;
+
+            if (!baseChanged && !gridChanged)
+                return;
+
+            if (baseChanged)
+            {
+                using (RebuildFloorBaseTextureProfilerMarker.Auto())
+                {
+                    DestroyOwnedTexture(floorTexture);
+                    floorTexture = BuildFloorBaseTexture(256, 256);
+                    floorMaterial.mainTexture = floorTexture;
+                    floorMaterial.SetTexture("_MainTex", floorTexture);
+                }
+            }
+
+            if (gridChanged)
+            {
+                using (RebuildFloorGridTextureProfilerMarker.Auto())
+                {
+                    DestroyOwnedTexture(floorGridTexture);
+                    floorGridTexture = BuildFloorGridTexture(512, 512);
+                    floorGridMaterial.mainTexture = floorGridTexture;
+                }
+            }
+
+            CacheGroundControls(
+                groundDarkness,
+                groundGradientStart,
+                groundGradientBrightness,
+                groundReflectivity,
+                floorAuroraReflectionEnabled,
+                floorAuroraReflectionStrength,
+                floorAuroraReflectionWidth,
+                floorAuroraReflectionLength,
+                horizonColorPalette,
+                skyLineColorPalette,
+                unifiedSideColors);
+        }
     }
 
     private void CacheGroundControls()
@@ -4458,7 +4644,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         float lowDarknessLift = Mathf.Pow(Mathf.Clamp01(1f - groundDarkness), 1.35f) * 0.035f;
         float gradientStart = Mathf.Clamp(GroundGradientStartValue, 0.01f, 0.99f);
         float gradientBrightness = Mathf.Max(0f, GroundGradientBrightnessValue);
-        float reflectivity = Mathf.Max(0f, GroundReflectivityValue);
+        float reflectivity = 0f;
         float gradientVisible = gradientBrightness <= 0.001f ? 0f : 1f;
         float gradientEnd = Mathf.Clamp(gradientStart + 0.24f, gradientStart + 0.025f, 0.995f);
         float midLiftEnd = gradientEnd;
@@ -4499,15 +4685,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
                 color += FloorCenterSheenColor * centerSheen * depthWeight * FloorCenterSheenStrength * reflectivity;
                 color += FloorHorizonSheenColor * horizonReflection * (FloorHorizonSheenStrength + edgeTint * 0.12f) * reflectivity;
-                Color reflectedLights = BuildFloorLightReflection(u, v) * reflectivity * FloorReflectedLightStrength;
-                Color reflectedAurora = BuildFloorAuroraReflection(u, v);
-
                 float vignette = 1f - Mathf.SmoothStep(0.72f, 1.0f, centered) * 0.30f;
                 color *= vignette * groundBrightness;
                 color += new Color(0.010f, 0.014f, 0.040f, 0f) * lowDarknessLift * surfaceFade;
                 color += FloorPostDarkGradientColor * postDarkGradient * gradientBrightness * FloorPostDarkGradientStrength * surfaceFade;
-                color += reflectedLights * Mathf.Lerp(0.45f, 1.0f, Mathf.Clamp01(groundBrightness));
-                color += reflectedAurora * Mathf.Lerp(0.45f, 1.0f, Mathf.Clamp01(groundBrightness));
                 float distanceAlpha = Mathf.Lerp(1f, surfaceFade, FloorDistanceFadeStrength);
                 color.a = Mathf.Clamp01(FloorBaseOpacity * distanceAlpha);
                 pixels[y * width + x] = color;
@@ -4718,8 +4899,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
     private Texture2D BuildFloorGridTexture(int width, int height)
     {
-        float reflectivity = Mathf.Max(0f, GroundReflectivityValue);
-        float reflectedLineStrength = FloorGridReflectionStrength + reflectivity * 0.22f;
+        float reflectedLineStrength = FloorGridReflectionStrength;
 
         Texture2D texture = CreateTexture(width, height);
         Color[] pixels = new Color[width * height];

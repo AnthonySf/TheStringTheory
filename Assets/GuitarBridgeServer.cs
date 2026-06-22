@@ -659,9 +659,14 @@ public class GuitarBridgeServer : MonoBehaviour
     private readonly List<int> chordMatchScratchConsumeKeys = new List<int>();
     private readonly List<int> chordMatchCandidateConsumeKeys = new List<int>();
     private readonly HashSet<int> guitarScoreEventTotalScratch = new HashSet<int>();
+    private readonly List<DetectorHintWindow> detectorHintWindowScratch = new List<DetectorHintWindow>(32);
     private List<GameplayNoteState> cachedGuitarScoreEventTotalSource;
     private int cachedGuitarScoreEventTotalSourceCount = -1;
     private int cachedGuitarScoreEventTotal = -1;
+    private List<GameplayNoteState> detectorHintSearchSource;
+    private int detectorHintSearchStartIndex;
+    private float detectorHintLastSearchSongTime = -1000000f;
+    private float detectorHintMaxNoteSpanSeconds = 2f;
 
     private List<NoteData> chartNotes = new List<NoteData>();
     private List<GameplayNoteState> noteStates = new List<GameplayNoteState>();
@@ -19155,7 +19160,7 @@ private void OpenOrFocusToneLab()
         if (TryBuildNotesDetectorTestHintPayload(currentSongTime, out string testPayload))
             return testPayload;
 
-        var windows = new List<DetectorHintWindow>();
+        List<DetectorHintWindow> windows = detectorHintWindowScratch;
         BuildDetectorHintWindows(currentSongTime, windows);
 
         if (windows.Count == 0)
@@ -19434,12 +19439,16 @@ private void OpenOrFocusToneLab()
 
         float minTime = currentSongTime - detectorHintLookbackSeconds;
         float maxTime = currentSongTime + detectorHintLookaheadSeconds;
+        int startIndex = GetDetectorHintSearchStartIndex(currentSongTime, minTime);
 
-        for (int i = 0; i < noteStates.Count; i++)
+        for (int i = startIndex; i < noteStates.Count; i++)
         {
             GameplayNoteState noteState = noteStates[i];
             if (noteState == null || noteState.result == GameplayNoteResult.Missed)
                 continue;
+
+            if (noteState.data.time > maxTime + 0.001f)
+                break;
 
             AppendDetectorHintWindowsForNote(noteState, minTime, maxTime, output);
         }
@@ -19456,6 +19465,79 @@ private void OpenOrFocusToneLab()
 
         if (output.Count > detectorHintMaxWindowsPerPacket)
             output.RemoveRange(detectorHintMaxWindowsPerPacket, output.Count - detectorHintMaxWindowsPerPacket);
+    }
+
+    private int GetDetectorHintSearchStartIndex(float currentSongTime, float minTime)
+    {
+        if (noteStates == null || noteStates.Count == 0)
+            return 0;
+
+        bool sourceChanged = !ReferenceEquals(detectorHintSearchSource, noteStates);
+        bool jumped = Mathf.Abs(currentSongTime - detectorHintLastSearchSongTime) >
+            Mathf.Max(1.0f, detectorHintLookbackSeconds + detectorHintLookaheadSeconds + 0.5f);
+
+        if (sourceChanged || jumped || currentSongTime < detectorHintLastSearchSongTime - 0.001f)
+        {
+            detectorHintSearchSource = noteStates;
+            if (sourceChanged)
+                detectorHintMaxNoteSpanSeconds = CalculateDetectorHintMaxNoteSpanSeconds();
+
+            float backtrackSeconds = Mathf.Max(
+                2f,
+                detectorHintMaxNoteSpanSeconds + detectorHintLookbackSeconds + detectorHintLookaheadSeconds + 0.25f);
+            detectorHintSearchStartIndex = FindDetectorHintLowerBound(minTime - backtrackSeconds);
+        }
+
+        detectorHintLastSearchSongTime = currentSongTime;
+        int index = Mathf.Clamp(detectorHintSearchStartIndex, 0, noteStates.Count);
+
+        while (index > 0 && GetDetectorHintOverallEnd(noteStates[index - 1]) >= minTime)
+            index--;
+
+        while (index < noteStates.Count && GetDetectorHintOverallEnd(noteStates[index]) < minTime)
+            index++;
+
+        detectorHintSearchStartIndex = index;
+        return index;
+    }
+
+    private int FindDetectorHintLowerBound(float noteTime)
+    {
+        if (noteStates == null || noteStates.Count == 0)
+            return 0;
+
+        int low = 0;
+        int high = noteStates.Count;
+        while (low < high)
+        {
+            int mid = low + ((high - low) / 2);
+            GameplayNoteState state = noteStates[mid];
+            float stateTime = state != null ? state.data.time : float.PositiveInfinity;
+            if (stateTime < noteTime)
+                low = mid + 1;
+            else
+                high = mid;
+        }
+
+        return Mathf.Max(0, low - 8);
+    }
+
+    private float CalculateDetectorHintMaxNoteSpanSeconds()
+    {
+        if (noteStates == null || noteStates.Count == 0)
+            return 2f;
+
+        float maxSpan = 0f;
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState noteState = noteStates[i];
+            if (noteState == null)
+                continue;
+
+            maxSpan = Mathf.Max(maxSpan, GetDetectorHintOverallEnd(noteState) - noteState.data.time);
+        }
+
+        return Mathf.Clamp(maxSpan, 2f, 60f);
     }
 
     private void MergeDetectorHintWindows(List<DetectorHintWindow> windows)
@@ -19518,6 +19600,25 @@ private void OpenOrFocusToneLab()
         }
 
         return true;
+    }
+
+    private float GetDetectorHintOverallEnd(GameplayNoteState noteState)
+    {
+        if (noteState == null)
+            return float.NegativeInfinity;
+
+        NoteData note = noteState.data;
+        float noteStart = note.time;
+        float noteEnd = note.time + Mathf.Max(0.05f, note.duration);
+        List<NoteTechniqueSegmentData> segments = note.techniqueSegments;
+        if (segments == null || segments.Count == 0)
+            return noteEnd;
+
+        float maxTechniqueEnd = noteStart;
+        for (int i = 0; i < segments.Count; i++)
+            maxTechniqueEnd = Mathf.Max(maxTechniqueEnd, note.time + Mathf.Max(segments[i].startOffset, segments[i].endOffset));
+
+        return Mathf.Max(noteEnd, maxTechniqueEnd);
     }
 
     private void AppendDetectorHintWindowsForNote(GameplayNoteState noteState, float rangeStart, float rangeEnd, List<DetectorHintWindow> output)

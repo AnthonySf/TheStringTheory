@@ -1770,6 +1770,7 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label gameplayTimelineHintLabel;
     private bool gameplayTimelineExpanded;
     private bool gameplayTimelineDragging;
+    private int gameplayTimelineDragPointerId = -1;
     private float gameplayTimelineDurationSeconds;
     private string gameplayTimelineSignature = string.Empty;
     private float gameplayTimelineLayoutBottom = 18f;
@@ -3052,11 +3053,13 @@ public sealed class TabsSongHeaderOverlay
         gameplayTimelineTrack.RegisterCallback<PointerMoveEvent>(HandleGameplayTimelinePointerMove);
         gameplayTimelineTrack.RegisterCallback<PointerUpEvent>(HandleGameplayTimelinePointerUp);
         gameplayTimelineTrack.RegisterCallback<PointerCancelEvent>(HandleGameplayTimelinePointerCancel);
+        gameplayTimelineTrack.RegisterCallback<PointerCaptureOutEvent>(HandleGameplayTimelinePointerCaptureOut);
         gameplayTimelineTrack.RegisterCallback<PointerLeaveEvent>(HandleGameplayTimelinePointerLeave);
         gameplayTimelineLabelsLayer.RegisterCallback<PointerDownEvent>(HandleGameplayTimelinePointerDown);
         gameplayTimelineLabelsLayer.RegisterCallback<PointerMoveEvent>(HandleGameplayTimelinePointerMove);
         gameplayTimelineLabelsLayer.RegisterCallback<PointerUpEvent>(HandleGameplayTimelinePointerUp);
         gameplayTimelineLabelsLayer.RegisterCallback<PointerCancelEvent>(HandleGameplayTimelinePointerCancel);
+        gameplayTimelineLabelsLayer.RegisterCallback<PointerCaptureOutEvent>(HandleGameplayTimelinePointerCaptureOut);
         gameplayTimelineLabelsLayer.RegisterCallback<PointerLeaveEvent>(HandleGameplayTimelinePointerLeave);
 
 
@@ -13455,7 +13458,7 @@ public sealed class TabsSongHeaderOverlay
         gameplayTimelineContainer.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
         if (!visible)
         {
-            gameplayTimelineDragging = false;
+            ClearGameplayTimelinePointerDrag(releaseCapture: true);
             gameplayTimelineExpanded = false;
             gameplayTimelineDurationSeconds = 0f;
             UpdateGameplayShortcutTimelineOffset(0f);
@@ -14524,6 +14527,7 @@ public sealed class TabsSongHeaderOverlay
         float localX = GetGameplayTimelinePointerLocalX(evt.position);
         UpdateGameplayTimelineHoverFromLocalX(localX);
         gameplayTimelineDragging = true;
+        gameplayTimelineDragPointerId = evt.pointerId;
         gameplayTimelineTrack?.CapturePointer(evt.pointerId);
         SeekGameplayTimelineFromLocalX(localX);
         evt.StopPropagation();
@@ -14564,20 +14568,46 @@ public sealed class TabsSongHeaderOverlay
             return;
         }
 
-        gameplayTimelineDragging = false;
+        ClearGameplayTimelinePointerDrag(evt.pointerId, releaseCapture: true);
         float localX = GetGameplayTimelinePointerLocalX(evt.position);
         UpdateGameplayTimelineHoverFromLocalX(localX);
-        gameplayTimelineTrack?.ReleasePointer(evt.pointerId);
         SeekGameplayTimelineFromLocalX(localX);
         evt.StopPropagation();
     }
 
     private void HandleGameplayTimelinePointerCancel(PointerCancelEvent evt)
     {
-        gameplayTimelineDragging = false;
+        ClearGameplayTimelinePointerDrag(evt?.pointerId ?? gameplayTimelineDragPointerId, releaseCapture: true);
         gameplayTimelineLoopDraggingMarker = 0;
-        if (evt != null)
-            gameplayTimelineTrack?.ReleasePointer(evt.pointerId);
+        UpdateGameplayTimelineLoopMarkerVisuals();
+    }
+
+    private void HandleGameplayTimelinePointerCaptureOut(PointerCaptureOutEvent evt)
+    {
+        int pointerId = evt != null ? evt.pointerId : gameplayTimelineDragPointerId;
+        ClearGameplayTimelinePointerDrag(pointerId, releaseCapture: false);
+        gameplayTimelineLoopDraggingMarker = 0;
+        UpdateGameplayTimelineLoopMarkerVisuals();
+    }
+
+    private void ClearGameplayTimelinePointerDrag(bool releaseCapture)
+    {
+        ClearGameplayTimelinePointerDrag(gameplayTimelineDragPointerId, releaseCapture);
+    }
+
+    private void ClearGameplayTimelinePointerDrag(int pointerId, bool releaseCapture)
+    {
+        gameplayTimelineDragging = false;
+        gameplayTimelineDragPointerId = -1;
+
+        if (!releaseCapture || pointerId < 0)
+            return;
+
+        if (gameplayTimelineTrack != null && gameplayTimelineTrack.HasPointerCapture(pointerId))
+            gameplayTimelineTrack.ReleasePointer(pointerId);
+
+        if (gameplayTimelineLabelsLayer != null && gameplayTimelineLabelsLayer.HasPointerCapture(pointerId))
+            gameplayTimelineLabelsLayer.ReleasePointer(pointerId);
     }
 
     private void HandleGameplayTimelinePointerLeave(PointerLeaveEvent evt)
