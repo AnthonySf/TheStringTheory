@@ -507,6 +507,10 @@ public sealed class MiniGameChordPreview3DRenderer
         material.renderQueue = (int)RenderQueue.Transparent + queueOffset;
         if (material.HasProperty("_ZWrite"))
             material.SetFloat("_ZWrite", 0f);
+        if (material.HasProperty("_Cull"))
+            material.SetFloat("_Cull", (float)CullMode.Off);
+        if (material.HasProperty("_CullMode"))
+            material.SetFloat("_CullMode", (float)CullMode.Off);
         if (alwaysOnTop)
         {
             if (material.HasProperty("_ZTestMode"))
@@ -518,7 +522,7 @@ public sealed class MiniGameChordPreview3DRenderer
 
     private Material CreatePreviewGlowMaterial(Color color, float intensity)
     {
-        Material material = owner != null ? owner.CreateSharedGlowMaterial(color, intensity) : null;
+        Material material = owner != null ? owner.CreateSharedTabsGlowMaterial(color, intensity) : null;
         if (IsBrokenMaterial(material))
             material = CreateFallbackMaterial(color);
         ApplyMaterialColor(material, color);
@@ -527,7 +531,7 @@ public sealed class MiniGameChordPreview3DRenderer
 
     private Material CreatePreviewTransparentMaterial(Color color, float intensity)
     {
-        Material material = owner != null ? owner.CreateSharedTransparentMaterial(color, intensity) : null;
+        Material material = owner != null ? owner.CreateSharedTabsTransparentMaterial(color, intensity) : null;
         if (IsBrokenMaterial(material))
             material = CreateFallbackMaterial(color);
         ApplyMaterialColor(material, color);
@@ -543,7 +547,11 @@ public sealed class MiniGameChordPreview3DRenderer
 
     private static Material CreateFallbackMaterial(Color color)
     {
-        Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+        Shader shader = Resources.Load<Shader>("Shaders/TabsTransparentUnlit");
+        if (shader == null)
+            shader = Resources.Load<Shader>("Shaders/TabsGlowUnlit");
+        if (shader == null)
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
         if (shader == null)
             shader = Shader.Find("Unlit/Color");
         if (shader == null)

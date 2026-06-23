@@ -52,14 +52,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private static readonly ProfilerMarker BackgroundEffectTickProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.BackgroundEffectTick");
     private static readonly ProfilerMarker ApplyBackgroundRenderLayersProfilerMarker = new ProfilerMarker("StringTheory.GuitarHighway3D.ApplyBackgroundRenderLayers");
 
-#if UNITY_EDITOR
-    private static void TraceLightingStep(string reason)
-    {
-        StringTheoryLightingProbe.TraceStep(reason);
-    }
-#else
-    private static void TraceLightingStep(string reason) { }
-#endif
 
     private const int MaxInactiveNoteViewCacheCount = 512;
     private const int MaxInactiveChordFrameCacheCount = 128;
@@ -168,7 +160,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private GameObject backgroundRoot;
     private BackgroundProfile backgroundProfile = BackgroundProfile.MainMenu;
 #if UNITY_EDITOR
-    private string lastLightingRenderStateSignature = string.Empty;
 #endif
     private TabsSongHeaderOverlay songHeaderOverlay;
     private int originalMainCameraCullingMask = -1;
@@ -521,7 +512,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
-        TraceLightingStep($"GuitarHighway3DRenderer.Initialize enter owner={owner != null} chartNotes={chartNotes?.Count ?? 0}");
         this.owner = owner;
         mainCamera = Camera.main;
         root = new GameObject("Highway3DRendererRoot");
@@ -539,21 +529,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         BuildChartCaches(chartNotes);
         BuildLaneHighlightChunks(chartNotes, sections);
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize before InitializeBackgroundCamera");
         InitializeBackgroundCamera();
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize after InitializeBackgroundCamera");
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize before InitializeBackgroundEffect MainMenu");
         InitializeBackgroundEffect(BackgroundProfile.MainMenu);
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize after InitializeBackgroundEffect MainMenu");
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize before InitializeHighwayCharacter");
         InitializeHighwayCharacter();
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize after InitializeHighwayCharacter");
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize before ConfigureCamera");
         ConfigureCamera();
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize after ConfigureCamera");
         songHeaderOverlay = new TabsSongHeaderOverlay(owner);
         gameplayBuilt = false;
-        TraceLightingStep("GuitarHighway3DRenderer.Initialize exit");
     }
 
     internal static Rect GetHighwayCharacterHudScreenRect(float screenWidth, float screenHeight)
@@ -659,33 +640,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
             BackgroundProfile targetBackgroundProfile = ResolveBackgroundProfile(snapshot);
             bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded || snapshot.showToneLab || snapshot.showTuner || snapshot.showMiniGames;
-#if UNITY_EDITOR
-            string lightingRenderStateSignature = $"{targetBackgroundProfile}|mainMenu={snapshot.showMainMenu}|mainFlow={snapshot.mainMenuFlowActive}|tone={snapshot.showToneLab}|tuner={snapshot.showTuner}|mini={snapshot.showMiniGames}|ended={snapshot.songEnded}|profile={backgroundProfile}|signature={backgroundSignature}";
-            bool traceLightingRenderState = !string.Equals(lastLightingRenderStateSignature, lightingRenderStateSignature, StringComparison.Ordinal);
-            if (traceLightingRenderState)
-            {
-                TraceLightingStep($"GuitarHighway3DRenderer.Render state change before setup {lightingRenderStateSignature}");
-                lastLightingRenderStateSignature = lightingRenderStateSignature;
-            }
-#else
-            const bool traceLightingRenderState = false;
-#endif
-            if (traceLightingRenderState)
-                TraceLightingStep("GuitarHighway3DRenderer.Render before EnsureBackgroundMode");
             using (EnsureBackgroundModeProfilerMarker.Auto())
             {
                 EnsureBackgroundMode(targetBackgroundProfile);
             }
-            if (traceLightingRenderState)
-                TraceLightingStep($"GuitarHighway3DRenderer.Render after EnsureBackgroundMode backgroundProfile={backgroundProfile}");
-            if (traceLightingRenderState)
-                TraceLightingStep("GuitarHighway3DRenderer.Render before ConfigureCamera");
             using (ConfigureCameraProfilerMarker.Auto())
             {
                 ConfigureCamera();
             }
-            if (traceLightingRenderState)
-                TraceLightingStep("GuitarHighway3DRenderer.Render after ConfigureCamera");
             if (logLoopCountdownDetail)
             {
                 long afterSetupTicks = System.Diagnostics.Stopwatch.GetTimestamp();
@@ -1583,37 +1545,27 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private void InitializeBackgroundEffect(BackgroundProfile profile)
     {
-        TraceLightingStep($"GuitarHighway3DRenderer.InitializeBackgroundEffect enter profile={profile} current={backgroundProfile} signature='{backgroundSignature}' nextSignature='{GetBackgroundSignature(profile)}'");
         backgroundEffect?.Dispose();
-        TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect after Dispose");
         backgroundProfile = profile;
         backgroundRenderLayersDirty = true;
         if (profile == BackgroundProfile.MiniGames && !IsMiniGameEnviroSkyActive())
         {
-            TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect before ConfigureMiniGameBackgroundCamera");
             ConfigureMiniGameBackgroundCamera();
-            TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect after ConfigureMiniGameBackgroundCamera");
         }
 
         GuitarBridgeServer.TabsBackgroundContext ownerContext = ToOwnerBackgroundContext(profile);
         bool applyHighwayOverrides = profile == BackgroundProfile.Gameplay;
-        TraceLightingStep($"GuitarHighway3DRenderer.InitializeBackgroundEffect before factory context={ownerContext} applyHighwayOverrides={applyHighwayOverrides}");
         backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides, ownerContext);
         backgroundSignature = GetBackgroundSignature(profile);
         SetBackgroundEffectRenderCamera(GetBackgroundEffectRenderCamera(profile));
-        TraceLightingStep($"GuitarHighway3DRenderer.InitializeBackgroundEffect after factory effect={backgroundEffect?.GetType().Name ?? "null"}");
 
         if (backgroundRoot == null || backgroundEffect == null)
         {
-            TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect exit missing root/effect");
             return;
         }
 
-        TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect before backgroundEffect.Initialize");
         backgroundEffect.Initialize(backgroundRoot.transform, owner);
-        TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect after backgroundEffect.Initialize");
         ApplyBackgroundRenderLayers(force: true);
-        TraceLightingStep("GuitarHighway3DRenderer.InitializeBackgroundEffect after ApplyBackgroundRenderLayers");
         if (profile == BackgroundProfile.MiniGames)
         {
             backgroundRoot.transform.localPosition = new Vector3(0f, 0.85f, 0f);
@@ -1629,7 +1581,6 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         else
             UpdateBackgroundPlacement();
 
-        TraceLightingStep($"GuitarHighway3DRenderer.InitializeBackgroundEffect exit profile={profile}");
     }
 
     private void ApplyBackgroundRenderLayers(bool force = false)
@@ -2103,9 +2054,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         if (backgroundEffect == null || profile != backgroundProfile || backgroundSignature != GetBackgroundSignature(profile))
         {
-            TraceLightingStep($"GuitarHighway3DRenderer.EnsureBackgroundMode changing from={backgroundProfile} to={profile} currentSignature='{backgroundSignature}' nextSignature='{GetBackgroundSignature(profile)}'");
             InitializeBackgroundEffect(profile);
-            TraceLightingStep($"GuitarHighway3DRenderer.EnsureBackgroundMode after InitializeBackgroundEffect profile={profile}");
         }
     }
 
@@ -2661,7 +2610,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             s.transform.SetParent(gameplayRoot.transform, false);
             s.transform.position = new Vector3(stringCenterX, GetStringY(i), owner.StrikeLineZ);
             s.transform.localScale = new Vector3(stringLength, 0.1f, 0.1f);
-            Material mat = owner.CreateSharedGlowMaterial(owner.GetStringColor(i), 0.9f);
+            Material mat = owner.CreateSharedGlowMaterial(GetStringDisplayColor(i), 0.9f);
             Renderer renderer = s.GetComponent<Renderer>();
             renderer.material = mat;
             renderer.enabled = i < activeStringCount;
@@ -4252,8 +4201,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         cube.transform.position = new Vector3(xPos, yPos, owner.SpawnZ);
         DisableFreshPrimitiveCollider(cube);
 
-        Material noteMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 0.8f);
-        ConfigureOverlayMaterial(noteMat, 120, true);
+        Color noteColor = GetStringDisplayColor(data.stringIdx);
+        Material noteMat = owner.CreateSharedTabsGlowMaterial(noteColor, 1.25f);
+        ConfigureForegroundGlowMaterial(noteMat, 120);
         cube.GetComponent<Renderer>().material = noteMat;
 
         GameObject textObj = null;
@@ -4284,7 +4234,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         tail.name = "Tail_" + data.id;
         tail.transform.SetParent(gameplayRoot.transform, false);
         DisableFreshPrimitiveCollider(tail);
-        Material tailMat = owner.CreateSharedTransparentMaterial(owner.GetStringColor(data.stringIdx) * 0.4f, 0.2f);
+        Color tailColor = noteColor;
+        tailColor.a = Mathf.Min(tailColor.a, 0.9f);
+        Material tailMat = owner.CreateSharedTabsTransparentMaterial(Color.Lerp(tailColor, Color.white, 0.1f), 1.25f);
         ConfigureOverlayMaterial(tailMat, 90, true);
         tail.GetComponent<Renderer>().material = tailMat;
         tail.SetActive(owner.highwayShowApproachLine);
@@ -4298,7 +4250,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             tether.name = "LaneTether_" + data.id;
             tether.transform.SetParent(gameplayRoot.transform, false);
             DisableFreshPrimitiveCollider(tether);
-            tetherMat = CreateNoteTetherMaterial(owner.GetStringColor(data.stringIdx));
+            tetherMat = CreateNoteTetherMaterial(noteColor);
             tetherRenderer = tether.GetComponent<Renderer>();
             tetherRenderer.material = tetherMat;
         }
@@ -4314,7 +4266,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             marker.transform.position = new Vector3(xPos, yPos, owner.StrikeLineZ);
             marker.transform.localScale = GetMarkerScale();
             DisableFreshPrimitiveCollider(marker);
-            markerMaterial = owner.CreateSharedTransparentMaterial(owner.GetStringColor(data.stringIdx), 1.1f);
+            Color markerColor = noteColor;
+            markerColor.a = Mathf.Min(markerColor.a, 0.95f);
+            markerMaterial = owner.CreateSharedTabsTransparentMaterial(markerColor, 1.1f);
             ConfigureOverlayMaterial(markerMaterial, 130, true);
             markerRenderer = marker.GetComponent<Renderer>();
             markerRenderer.material = markerMaterial;
@@ -4378,12 +4332,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             }
         }
 
-        GameObject outlineRoot = CreateNoteOutline(cube.transform.localScale, owner.GetStringColor(data.stringIdx));
+        GameObject outlineRoot = CreateNoteOutline(cube.transform.localScale, noteColor);
         outlineRoot.SetActive(false);
 
         GameObject resolvedFeedbackRoot = CreateResolvedFeedbackBody(
             cube.transform.localScale,
-            owner.GetStringColor(data.stringIdx),
+            noteColor,
             out Material resolvedFeedbackMaterial);
         resolvedFeedbackRoot.SetActive(false);
 
@@ -4456,7 +4410,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 legatoCurveRenderer.receiveShadows = false;
                 legatoCurveRenderer.lightProbeUsage = LightProbeUsage.Off;
                 legatoCurveRenderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
-                Material legatoMat = owner.CreateSharedGlowMaterial(owner.GetStringColor(data.stringIdx), 1.4f);
+                Color legatoColor = noteColor;
+                legatoColor.a = Mathf.Min(legatoColor.a, 0.96f);
+                Material legatoMat = owner.CreateSharedTabsTransparentMaterial(legatoColor, 1.15f);
                 ConfigureOverlayMaterial(legatoMat, 101, true);
                 legatoCurveRenderer.material = legatoMat;
                 legatoCurveMaterial = legatoMat;
@@ -4555,7 +4511,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 sustainRibbon = sustainRibbon,
                 sustainRibbonRenderer = sustainRibbonRenderer,
                 sustainRibbonPropertyBlock = sustainRibbonRenderer != null ? new MaterialPropertyBlock() : null,
-                baseColor = owner.GetStringColor(data.stringIdx),
+                baseColor = noteColor,
                 baseScale = cube.transform.localScale,
                 noteX = xPos,
                 noteY = yPos,
@@ -4756,8 +4712,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             !Mathf.Approximately(view.cachedNoteEmission, emission))
         {
             view.noteMaterial.color = finalColor;
+            if (view.noteMaterial.HasProperty("_Color"))
+                view.noteMaterial.SetColor("_Color", finalColor);
+            if (view.noteMaterial.HasProperty("_BaseColor"))
+                view.noteMaterial.SetColor("_BaseColor", finalColor);
             view.noteMaterial.EnableKeyword("_EMISSION");
-            view.noteMaterial.SetColor("_EmissionColor", finalColor * Mathf.Pow(2f, emission));
+            if (view.noteMaterial.HasProperty("_EmissionColor"))
+                view.noteMaterial.SetColor("_EmissionColor", finalColor * Mathf.Pow(2f, emission));
             view.cachedNoteColor = finalColor;
             view.cachedNoteEmission = emission;
             view.hasCachedNoteAppearance = true;
@@ -4798,7 +4759,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 {
                     float markerEmissionMultiplier = state.IsHit ? 2f : 0.8f;
                     view.markerMaterial.color = markerColor;
-                    view.markerMaterial.SetColor("_EmissionColor", markerColor * markerEmissionMultiplier);
+                    if (view.markerMaterial.HasProperty("_Color"))
+                        view.markerMaterial.SetColor("_Color", markerColor);
+                    if (view.markerMaterial.HasProperty("_BaseColor"))
+                        view.markerMaterial.SetColor("_BaseColor", markerColor);
+                    if (view.markerMaterial.HasProperty("_EmissionColor"))
+                        view.markerMaterial.SetColor("_EmissionColor", markerColor * markerEmissionMultiplier);
                     view.cachedMarkerColor = markerColor;
                     view.cachedMarkerEmissionMultiplier = markerEmissionMultiplier;
                     view.hasCachedMarkerColor = true;
@@ -5698,8 +5664,13 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (lineMat != null)
         {
             lineMat.color = lineColor;
+            if (lineMat.HasProperty("_Color"))
+                lineMat.SetColor("_Color", lineColor);
+            if (lineMat.HasProperty("_BaseColor"))
+                lineMat.SetColor("_BaseColor", lineColor);
             lineMat.EnableKeyword("_EMISSION");
-            lineMat.SetColor("_EmissionColor", Color.Lerp(view.baseColor, Color.white, 0.18f) * Mathf.Pow(2f, isResolved ? 0.55f : 1.35f));
+            if (lineMat.HasProperty("_EmissionColor"))
+                lineMat.SetColor("_EmissionColor", Color.Lerp(view.baseColor, Color.white, 0.18f) * Mathf.Pow(2f, isResolved ? 0.55f : 1.35f));
         }
 
         if (view.slideRibbon != null)
@@ -7306,7 +7277,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float backgroundWidth = Mathf.Max(0.16f, width - inset);
         float backgroundHeight = Mathf.Max(0.16f, height - inset);
         float backgroundDepth = 0.025f;
-        Material backgroundMat = owner.CreateSharedTransparentMaterial(new Color(0.18f, 0.20f, 0.24f, 0.42f), 0.08f);
+        Material backgroundMat = owner.CreateSharedTabsTransparentMaterial(new Color(0.18f, 0.20f, 0.24f, 0.42f), 0.08f);
         ConfigureOverlayMaterial(backgroundMat, 100, true);
         CreateFramePiece(parent, new Vector3(0f, 0f, 0.012f), new Vector3(backgroundWidth, backgroundHeight, backgroundDepth), backgroundMat);
     }
@@ -7324,7 +7295,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 continue;
 
             float localY = GetStringY(stringIndex) - centerY;
-            Color stringColor = owner.GetStringColor(stringIndex);
+            Color stringColor = GetStringDisplayColor(stringIndex);
             if (fret == 0)
             {
                 CreateArpeggioOpenStringDottedLine(parent, stringIndex, localY, width, stringColor);
@@ -7349,7 +7320,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         dottedRoot.transform.localRotation = Quaternion.identity;
         dottedRoot.transform.localScale = Vector3.one;
 
-        Material dashMat = owner.CreateSharedGlowMaterial(color, 0.8f);
+        Material dashMat = owner.CreateSharedTabsGlowMaterial(Color.Lerp(color, Color.white, 0.06f), 1.25f);
         ConfigureOverlayMaterial(dashMat, 120, true);
         float usableWidth = Mathf.Max(owner.FretSpacing * 1.2f, width - (owner.FretSpacing * 0.35f));
         float openHeight = GetScaledOpenHeight();
@@ -7384,7 +7355,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float thickness = Mathf.Clamp(Mathf.Min(width, height) * 0.16f, 0.045f, 0.085f);
         float insetHalfWidth = Mathf.Max(0f, (width - thickness) * 0.5f);
         float insetHalfHeight = Mathf.Max(0f, (height - thickness) * 0.5f);
-        Material outlineMat = owner.CreateSharedTransparentMaterial(new Color(color.r, color.g, color.b, 0.92f), 0.12f);
+        Material outlineMat = owner.CreateSharedTabsTransparentMaterial(new Color(color.r, color.g, color.b, 0.92f), 0.12f);
         ConfigureOverlayMaterial(outlineMat, 125, true);
 
         CreateFramePiece(outlineRoot.transform, new Vector3(0f, insetHalfHeight, 0f), new Vector3(width, thickness, depth), outlineMat);
@@ -9403,7 +9374,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float width = Mathf.Max(0.5f, rightX - leftX);
         parent.transform.position = new Vector3(centerX, centerY, owner.SpawnZ);
 
-        Material frameMat = owner.CreateSharedGlowMaterial(frameColorOverride ?? new Color(0.55f, 0.95f, 1f), frameGlowIntensity);
+        Material frameMat = owner.CreateSharedTabsGlowMaterial(frameColorOverride ?? new Color(0.55f, 0.95f, 1f), frameGlowIntensity);
+        ConfigureForegroundGlowMaterial(frameMat, 118);
         float halfW = width * 0.5f;
         float halfH = height * 0.5f;
 
@@ -9928,6 +9900,35 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         material.SetInt("_ZTest", (int)(renderOnTop ? CompareFunction.Always : CompareFunction.LessEqual));
     }
 
+    private static void ConfigureForegroundGlowMaterial(Material material, int renderQueueOffset)
+    {
+        if (material == null)
+            return;
+
+        material.renderQueue = (int)RenderQueue.Transparent + renderQueueOffset;
+        if (material.HasProperty("_Surface"))
+            material.SetFloat("_Surface", 0f);
+        if (material.HasProperty("_Blend"))
+            material.SetFloat("_Blend", 0f);
+        if (material.HasProperty("_AlphaClip"))
+            material.SetFloat("_AlphaClip", 0f);
+        if (material.HasProperty("_SrcBlend"))
+            material.SetInt("_SrcBlend", (int)BlendMode.One);
+        if (material.HasProperty("_DstBlend"))
+            material.SetInt("_DstBlend", (int)BlendMode.Zero);
+        if (material.HasProperty("_ZWrite"))
+            material.SetInt("_ZWrite", 0);
+        if (material.HasProperty("_Cull"))
+            material.SetInt("_Cull", (int)CullMode.Back);
+        if (material.HasProperty("_ZTest"))
+            material.SetInt("_ZTest", (int)CompareFunction.Always);
+
+        material.DisableKeyword("_ALPHABLEND_ON");
+        material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        material.DisableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.DisableKeyword("_ALPHATEST_ON");
+    }
+
     private void EnsureTechniqueRibbonResources()
     {
         if (techniqueRibbonMesh == null)
@@ -10214,6 +10215,27 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         int clampedString = Mathf.Clamp(stringIdx, 0, stringCount - 1);
         int row = owner.invertStrings ? ((stringCount - 1) - clampedString) : clampedString;
         return (row * GetStringLaneSpacing()) + GetStringLaneSpacing();
+    }
+
+    private Color GetStringDisplayColor(int stringIdx)
+    {
+        Color color = owner != null ? owner.GetStringColor(stringIdx) : Color.white;
+        Color.RGBToHSV(color, out float hue, out float saturation, out float value);
+
+        // The raw yellow lane is authored as gold. On small unlit foreground pieces it reads
+        // orange/brown, while the long string line reads yellow because bloom lifts it. Snap
+        // that narrow yellow/gold band to a cleaner display yellow without changing the real
+        // orange string lane.
+        value = Mathf.Max(value, 1f);
+        if (hue >= 0.10f && hue <= 0.18f)
+        {
+            hue = 0.158f;
+            saturation = Mathf.Min(Mathf.Max(saturation, 0.86f), 0.95f);
+        }
+
+        Color adjusted = Color.HSVToRGB(hue, saturation, value);
+        adjusted.a = color.a;
+        return adjusted;
     }
 
     private int GetRenderableStringCount()

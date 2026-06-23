@@ -421,11 +421,6 @@ public class GuitarBridgeServer : MonoBehaviour
     public float neonHorizonGroundDarkness = 1.0f;
     public float neonHorizonGroundGradientStart = 0.58f;
     public float neonHorizonGroundGradientBrightness = 1.0f;
-    public float neonHorizonGroundReflectivity = 0.0f;
-    public bool neonHorizonFloorAuroraReflectionEnabled = true;
-    public float neonHorizonFloorAuroraReflectionStrength = 1.35f;
-    public float neonHorizonFloorAuroraReflectionWidth = 17.0f;
-    public float neonHorizonFloorAuroraReflectionLength = 0.34f;
 
     [Header("Background - Dome Stars")]
     public bool neonHorizonDomeStarsEnabled = true;
@@ -1593,7 +1588,6 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool backgroundMoodSetterSnapshotDirty = true;
     private string cachedBackgroundMoodSetterSignature = string.Empty;
 #if UNITY_EDITOR
-    private int lightingTraceRenderFramesRemaining;
 #endif
     private float cachedSongDurationSeconds = -1f;
     private List<NoteData> cachedSongDurationChartNotes;
@@ -2282,52 +2276,22 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             using (UpdateSnapshotRenderProfilerMarker.Auto())
             {
-#if UNITY_EDITOR
-                bool traceRenderFrame = lightingTraceRenderFramesRemaining > 0;
-                if (traceRenderFrame)
-                    TraceLightingStep($"GuitarBridgeServer.Update render-frame begin remaining={lightingTraceRenderFramesRemaining} renderer={activeRenderer.GetType().Name} showMainMenu={showMainMenu} mainMenuFlowActive={mainMenuFlowActive} showTuner={showTuner} showMiniGames={showMiniGames} gameplayMode={gameplayMode} renderMode={renderMode}");
-#else
-                const bool traceRenderFrame = false;
-#endif
                 if (shouldLogLoopCountdownFrame)
                 {
                     long snapshotStartTicks = sectionStartTicks;
-                    if (traceRenderFrame)
-                        TraceLightingStep("GuitarBridgeServer.Update before BuildSnapshot");
                     snapshot = BuildSnapshot();
-                    if (traceRenderFrame)
-                        TraceLightingStep($"GuitarBridgeServer.Update after BuildSnapshot snapshot showMainMenu={snapshot.showMainMenu} mainMenuFlowActive={snapshot.mainMenuFlowActive} showTuner={snapshot.showTuner} showMiniGames={snapshot.showMiniGames} songEnded={snapshot.songEnded}");
                     long afterSnapshotTicks = GetLoopCountdownTimestamp();
                     snapshotBuildMs = GetLoopCountdownElapsedMilliseconds(snapshotStartTicks, afterSnapshotTicks);
-                    if (traceRenderFrame)
-                        TraceLightingStep("GuitarBridgeServer.Update before activeRenderer.Render");
                     activeRenderer.Render(snapshot);
-                    if (traceRenderFrame)
-                        TraceLightingStep("GuitarBridgeServer.Update after activeRenderer.Render");
                     long afterRenderTicks = GetLoopCountdownTimestamp();
                     renderMs = GetLoopCountdownElapsedMilliseconds(afterSnapshotTicks, afterRenderTicks);
                     sectionStartTicks = afterRenderTicks;
                 }
                 else
                 {
-                    if (traceRenderFrame)
-                        TraceLightingStep("GuitarBridgeServer.Update before BuildSnapshot");
                     GuitarGameplaySnapshot renderSnapshot = BuildSnapshot();
-                    if (traceRenderFrame)
-                        TraceLightingStep($"GuitarBridgeServer.Update after BuildSnapshot snapshot showMainMenu={renderSnapshot.showMainMenu} mainMenuFlowActive={renderSnapshot.mainMenuFlowActive} showTuner={renderSnapshot.showTuner} showMiniGames={renderSnapshot.showMiniGames} songEnded={renderSnapshot.songEnded}");
-                    if (traceRenderFrame)
-                        TraceLightingStep("GuitarBridgeServer.Update before activeRenderer.Render");
                     activeRenderer.Render(renderSnapshot);
-                    if (traceRenderFrame)
-                        TraceLightingStep("GuitarBridgeServer.Update after activeRenderer.Render");
                 }
-#if UNITY_EDITOR
-                if (traceRenderFrame)
-                {
-                    lightingTraceRenderFramesRemaining = Mathf.Max(0, lightingTraceRenderFramesRemaining - 1);
-                    TraceLightingStep($"GuitarBridgeServer.Update render-frame end remaining={lightingTraceRenderFramesRemaining}");
-                }
-#endif
             }
         }
 
@@ -9201,16 +9165,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void OpenMiniGamesFromUi()
     {
-        TraceLightingStep("GuitarBridgeServer.OpenMiniGamesFromUi enter");
-        ArmLightingRenderTrace("GuitarBridgeServer.OpenMiniGamesFromUi");
         CancelDeferredSongSelectionOpen();
-        TraceLightingStep("GuitarBridgeServer.OpenMiniGamesFromUi after CancelDeferredSongSelectionOpen");
         showToneLab = false;
         HideToneLabUi();
         showTuner = false;
         tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
-        TraceLightingStep("GuitarBridgeServer.OpenMiniGamesFromUi after hiding tuner/tone lab");
         ResetTransientMenuNavigationState();
         showNotesDetectorTestMenu = false;
         showNotesDetectorTestSelectionPopup = false;
@@ -9236,22 +9196,18 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             miniGameManager = new MiniGameManager();
             miniGameManager.Initialize(ExternalContentPaths.PersistentRoot);
-            TraceLightingStep("GuitarBridgeServer.OpenMiniGamesFromUi after MiniGameManager.Initialize");
         }
 
-        TraceLightingStep($"GuitarBridgeServer.OpenMiniGamesFromUi before detector backend mode={notesDetectorBackendMode}");
         if (notesDetectorBackendMode != NotesDetectorBackendMode.NativeEmbeddedBridge)
             SwitchNotesDetectorBackend(NotesDetectorBackendMode.NativeEmbeddedBridge);
         else
             StartConfiguredNotesDetectorBackend();
-        TraceLightingStep("GuitarBridgeServer.OpenMiniGamesFromUi after detector backend start");
 
         ResetLiveDetectorReadState();
         RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true);
         RefreshDetectorBackendStatus();
         MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.OpenMiniGamesFromUi exit");
     }
 
     public void CloseMiniGamesFromUi()
@@ -9307,25 +9263,19 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void OpenFightClubSetupFromUi()
     {
-        TraceLightingStep("GuitarBridgeServer.OpenFightClubSetupFromUi enter");
-        ArmLightingRenderTrace("GuitarBridgeServer.OpenFightClubSetupFromUi");
         miniGameTextInputFocused = false;
         if (!showMiniGames)
         {
-            TraceLightingStep("GuitarBridgeServer.OpenFightClubSetupFromUi before OpenMiniGamesFromUi");
             OpenMiniGamesFromUi();
-            TraceLightingStep("GuitarBridgeServer.OpenFightClubSetupFromUi after OpenMiniGamesFromUi");
         }
 
         miniGameManager?.OpenFightClubSetup();
-        TraceLightingStep("GuitarBridgeServer.OpenFightClubSetupFromUi after miniGameManager.OpenFightClubSetup");
         showMainMenu = false;
         mainMenuFlowActive = false;
         selectedMiniGamePauseActionIndex = 0;
         isPaused = true;
         MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.OpenFightClubSetupFromUi exit");
     }
 
     public void OpenFightClubSetupFromResultFromUi()
@@ -9350,17 +9300,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void StartFightClubMiniGameFromUi()
     {
-        TraceLightingStep("GuitarBridgeServer.StartFightClubMiniGameFromUi enter");
-        ArmLightingRenderTrace("GuitarBridgeServer.StartFightClubMiniGameFromUi");
         if (!showMiniGames)
         {
-            TraceLightingStep("GuitarBridgeServer.StartFightClubMiniGameFromUi before OpenMiniGamesFromUi");
             OpenMiniGamesFromUi();
-            TraceLightingStep("GuitarBridgeServer.StartFightClubMiniGameFromUi after OpenMiniGamesFromUi");
         }
 
         miniGameManager?.StartFightClub();
-        TraceLightingStep("GuitarBridgeServer.StartFightClubMiniGameFromUi after miniGameManager.StartFightClub");
         showMainMenu = false;
         mainMenuFlowActive = false;
         selectedMiniGamePauseActionIndex = 0;
@@ -9368,52 +9313,39 @@ public class GuitarBridgeServer : MonoBehaviour
         ResetLiveDetectorReadState();
         MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.StartFightClubMiniGameFromUi exit");
     }
 
     public void StartConfiguredFightClubMiniGameFromUi()
     {
-        TraceLightingStep("GuitarBridgeServer.StartConfiguredFightClubMiniGameFromUi enter");
-        ArmLightingRenderTrace("GuitarBridgeServer.StartConfiguredFightClubMiniGameFromUi");
         miniGameTextInputFocused = false;
         if (!showMiniGames)
         {
-            TraceLightingStep("GuitarBridgeServer.StartConfiguredFightClubMiniGameFromUi before OpenMiniGamesFromUi");
             OpenMiniGamesFromUi();
-            TraceLightingStep("GuitarBridgeServer.StartConfiguredFightClubMiniGameFromUi after OpenMiniGamesFromUi");
         }
 
         miniGameManager?.OpenFightClubRunSettings();
-        TraceLightingStep("GuitarBridgeServer.StartConfiguredFightClubMiniGameFromUi after miniGameManager.OpenFightClubRunSettings");
         showMainMenu = false;
         mainMenuFlowActive = false;
         selectedMiniGamePauseActionIndex = 0;
         isPaused = true;
         MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.StartConfiguredFightClubMiniGameFromUi exit");
     }
 
     public void StartFightClubRunFromSettingsUi()
     {
-        TraceLightingStep("GuitarBridgeServer.StartFightClubRunFromSettingsUi enter");
-        ArmLightingRenderTrace("GuitarBridgeServer.StartFightClubRunFromSettingsUi");
         miniGameTextInputFocused = false;
         if (!showMiniGames)
         {
-            TraceLightingStep("GuitarBridgeServer.StartFightClubRunFromSettingsUi before OpenMiniGamesFromUi");
             OpenMiniGamesFromUi();
-            TraceLightingStep("GuitarBridgeServer.StartFightClubRunFromSettingsUi after OpenMiniGamesFromUi");
         }
 
         miniGameManager?.StartConfiguredFightClub();
-        TraceLightingStep("GuitarBridgeServer.StartFightClubRunFromSettingsUi after miniGameManager.StartConfiguredFightClub");
         if (miniGameManager == null || !miniGameManager.IsFightClubActive)
         {
             isPaused = true;
             MarkDetectorHintDirty();
             SyncAudioToSongTimer(playImmediately: false);
-            TraceLightingStep("GuitarBridgeServer.StartFightClubRunFromSettingsUi exit inactive");
             return;
         }
 
@@ -9424,7 +9356,6 @@ public class GuitarBridgeServer : MonoBehaviour
         ResetLiveDetectorReadState();
         MarkDetectorHintDirty();
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.StartFightClubRunFromSettingsUi exit active");
     }
 
     public void ConfirmFightClubRunSettingsFromUi()
@@ -9661,43 +9592,20 @@ public class GuitarBridgeServer : MonoBehaviour
         }
     }
 
-#if UNITY_EDITOR
-    private static void TraceLightingStep(string reason)
-    {
-        StringTheoryLightingProbe.TraceStep(reason);
-    }
-
-    private void ArmLightingRenderTrace(string reason, int frameCount = 2)
-    {
-        lightingTraceRenderFramesRemaining = Mathf.Max(lightingTraceRenderFramesRemaining, frameCount);
-        TraceLightingStep($"{reason} armed render trace frames={lightingTraceRenderFramesRemaining}");
-    }
-#else
-    private static void TraceLightingStep(string reason) { }
-    private void ArmLightingRenderTrace(string reason, int frameCount = 2) { }
-#endif
 
     public void StartFromMainMenuFromUi()
     {
-        TraceLightingStep($"GuitarBridgeServer.StartFromMainMenuFromUi enter firstStartCompleted={firstStartCompleted}");
-        ArmLightingRenderTrace("GuitarBridgeServer.StartFromMainMenuFromUi");
         if (!firstStartCompleted)
         {
-            TraceLightingStep("GuitarBridgeServer.StartFromMainMenuFromUi before OpenStartMenuFromUi");
             OpenStartMenuFromUi();
-            TraceLightingStep("GuitarBridgeServer.StartFromMainMenuFromUi after OpenStartMenuFromUi");
             return;
         }
 
-        TraceLightingStep("GuitarBridgeServer.StartFromMainMenuFromUi before ContinueFromMainMenuFromUi");
         ContinueFromMainMenuFromUi();
-        TraceLightingStep("GuitarBridgeServer.StartFromMainMenuFromUi after ContinueFromMainMenuFromUi");
     }
 
     public void ContinueFromMainMenuFromUi()
     {
-        TraceLightingStep("GuitarBridgeServer.ContinueFromMainMenuFromUi enter");
-        ArmLightingRenderTrace("GuitarBridgeServer.ContinueFromMainMenuFromUi");
         CancelDeferredSongSelectionOpen();
         showToneLab = false;
         HideToneLabUi();
@@ -9718,14 +9626,11 @@ public class GuitarBridgeServer : MonoBehaviour
         showGameModes = false;
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
-        TraceLightingStep("GuitarBridgeServer.ContinueFromMainMenuFromUi before ShowStartupTuningReminder");
         ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
-        TraceLightingStep("GuitarBridgeServer.ContinueFromMainMenuFromUi after ShowStartupTuningReminder");
     }
 
     public void OpenStartMenuFromUi()
     {
-        TraceLightingStep("GuitarBridgeServer.OpenStartMenuFromUi enter");
         CancelDeferredSongSelectionOpen();
         showToneLab = false;
         HideToneLabUi();
@@ -9759,7 +9664,6 @@ public class GuitarBridgeServer : MonoBehaviour
         startMenuArcadeGamepadMode = selectedStartMenuArcadeInputIndex == 0 || arcadeGamepadMode;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.OpenStartMenuFromUi exit");
     }
 
     public void CloseStartMenuToMainMenuFromUi()
@@ -11132,12 +11036,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void ShowStartupTuningReminder(bool resumePlaybackAfterDismiss)
     {
-        TraceLightingStep($"GuitarBridgeServer.ShowStartupTuningReminder enter gameplayMode={gameplayMode} resume={resumePlaybackAfterDismiss}");
         if (gameplayMode == GuitarGameplayMode.Guitar)
         {
-            TraceLightingStep("GuitarBridgeServer.ShowStartupTuningReminder before OpenTunerBeforeSongStart");
             OpenTunerBeforeSongStart(resumePlaybackAfterDismiss);
-            TraceLightingStep("GuitarBridgeServer.ShowStartupTuningReminder after OpenTunerBeforeSongStart");
             return;
         }
 
@@ -11146,7 +11047,6 @@ public class GuitarBridgeServer : MonoBehaviour
         startupTuningReminderShownFrame = Time.frameCount;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.ShowStartupTuningReminder exit popup");
     }
 
     public void DismissStartupTuningReminderFromUi()
@@ -11466,20 +11366,13 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void OpenTunerFromUi()
     {
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi enter");
-        ArmLightingRenderTrace("GuitarBridgeServer.OpenTunerFromUi");
         CancelDeferredSongSelectionOpen();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after CancelDeferredSongSelectionOpen");
         EnsureToneLabRuntimeComponent();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after EnsureToneLabRuntimeComponent");
         EnsureGuitarTunerOverlayComponent();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after EnsureGuitarTunerOverlayComponent");
         tunerResumeGameplayAfterSkip = false;
         showTuner = true;
         RefreshTunerTargetsForCurrentContext();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after RefreshTunerTargetsForCurrentContext");
         guitarTunerService?.Reset();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after guitarTunerService.Reset");
         showToneLab = false;
         HideToneLabUi();
         showNotesDetectorTestMenu = false;
@@ -11504,30 +11397,20 @@ public class GuitarBridgeServer : MonoBehaviour
         mainMenuFlowActive = true;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after SyncAudioToSongTimer");
         unityToneLabRuntime?.StartBackgroundMonitoring();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after StartBackgroundMonitoring");
         RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(applyIfEligible: true);
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after RefreshToneLabSongTonePlaybackOverride");
         guitarTunerOverlay?.SetVisible(true);
-        TraceLightingStep("GuitarBridgeServer.OpenTunerFromUi after guitarTunerOverlay.SetVisible(true)");
     }
 
     private void OpenTunerBeforeSongStart(bool resumePlaybackAfterDismiss)
     {
-        TraceLightingStep($"GuitarBridgeServer.OpenTunerBeforeSongStart enter resume={resumePlaybackAfterDismiss}");
         CancelDeferredSongSelectionOpen();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after CancelDeferredSongSelectionOpen");
         EnsureToneLabRuntimeComponent();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after EnsureToneLabRuntimeComponent");
         EnsureGuitarTunerOverlayComponent();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after EnsureGuitarTunerOverlayComponent");
         tunerResumeGameplayAfterSkip = resumePlaybackAfterDismiss;
         showTuner = true;
         RefreshTunerTargetsFromActiveTrack();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after RefreshTunerTargetsFromActiveTrack");
         guitarTunerService?.Reset();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after guitarTunerService.Reset");
         showToneLab = false;
         HideToneLabUi();
         showNotesDetectorTestMenu = false;
@@ -11553,13 +11436,9 @@ public class GuitarBridgeServer : MonoBehaviour
         mainMenuFlowActive = false;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after SyncAudioToSongTimer");
         unityToneLabRuntime?.StartBackgroundMonitoring();
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after StartBackgroundMonitoring");
         RefreshToneLabSongTonePlaybackOverrideAfterExternalChange(applyIfEligible: true);
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after RefreshToneLabSongTonePlaybackOverride");
         guitarTunerOverlay?.SetVisible(true);
-        TraceLightingStep("GuitarBridgeServer.OpenTunerBeforeSongStart after guitarTunerOverlay.SetVisible(true)");
     }
 
     public void CloseTunerFromUi()
@@ -11847,32 +11726,22 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void EnsureGuitarTunerOverlayComponent()
     {
-        TraceLightingStep("GuitarBridgeServer.EnsureGuitarTunerOverlayComponent enter");
         EnsureGuitarTunerService();
-        TraceLightingStep("GuitarBridgeServer.EnsureGuitarTunerOverlayComponent after EnsureGuitarTunerService");
 
         if (guitarTunerOverlay != null)
         {
-            TraceLightingStep("GuitarBridgeServer.EnsureGuitarTunerOverlayComponent exit existing overlay");
             return;
         }
 
         Transform existingOverlay = transform.Find("GuitarTunerUI");
-        TraceLightingStep($"GuitarBridgeServer.EnsureGuitarTunerOverlayComponent after transform.Find existing={existingOverlay != null}");
         GameObject overlayHost = existingOverlay != null ? existingOverlay.gameObject : new GameObject("GuitarTunerUI");
-        TraceLightingStep("GuitarBridgeServer.EnsureGuitarTunerOverlayComponent after overlay GameObject");
         overlayHost.transform.SetParent(transform, false);
-        TraceLightingStep("GuitarBridgeServer.EnsureGuitarTunerOverlayComponent after SetParent");
         guitarTunerOverlay = overlayHost.GetComponent<GuitarTunerOverlay>();
-        TraceLightingStep($"GuitarBridgeServer.EnsureGuitarTunerOverlayComponent after GetComponent hasOverlay={guitarTunerOverlay != null}");
         if (guitarTunerOverlay == null)
         {
             guitarTunerOverlay = overlayHost.AddComponent<GuitarTunerOverlay>();
-            TraceLightingStep("GuitarBridgeServer.EnsureGuitarTunerOverlayComponent after AddComponent");
         }
-        TraceLightingStep("GuitarBridgeServer.EnsureGuitarTunerOverlayComponent before Initialize");
         guitarTunerOverlay.Initialize(this, guitarTunerService);
-        TraceLightingStep("GuitarBridgeServer.EnsureGuitarTunerOverlayComponent after Initialize");
     }
 
     private void SubmitToneLabRawInputToTuner(float[] input, int inputChannels, int frameCount, int sampleRate, string inputChannelMode)
@@ -21184,25 +21053,18 @@ private void OpenOrFocusToneLab()
         if (canReuseRenderer)
             return;
 
-        TraceLightingStep($"GuitarBridgeServer.EnsureRendererImpl changing desired={desiredRendererType?.Name ?? "null"} current={activeRenderer?.GetType().Name ?? "null"} renderMode={renderMode} gameplayMode={gameplayMode} showMiniGames={showMiniGames}");
 
         if (activeRenderer != null)
         {
-            TraceLightingStep($"GuitarBridgeServer.EnsureRendererImpl before DisposeRenderer current={activeRenderer.GetType().Name}");
             activeRenderer.DisposeRenderer();
-            TraceLightingStep("GuitarBridgeServer.EnsureRendererImpl after DisposeRenderer");
         }
 
         activeRenderer = CreateRendererForType(desiredRendererType);
-        TraceLightingStep($"GuitarBridgeServer.EnsureRendererImpl after CreateRendererForType new={activeRenderer?.GetType().Name ?? "null"}");
 
-        TraceLightingStep("GuitarBridgeServer.EnsureRendererImpl before activeRenderer.Initialize");
         activeRenderer.Initialize(this, chartNotes, tabSections);
-        TraceLightingStep("GuitarBridgeServer.EnsureRendererImpl after activeRenderer.Initialize");
         activeRendererMode = renderMode;
         activeRendererGameplayMode = gameplayMode;
         activeRendererWasMultiplayerRhythm = multiplayerRhythmModeActive;
-        TraceLightingStep("GuitarBridgeServer.EnsureRendererImpl exit new renderer");
     }
 
     private Type ResolveRendererType()
@@ -26534,11 +26396,6 @@ private void OpenOrFocusToneLab()
         RegisterFloatSetting("bg.neonHorizon.groundDarkness", groundSection, "Ground Darkness", "Darkens or lightens the neon stage floor. Lower values are brighter; 1.0 keeps the authored look.", 0.05f, 4f, 0.01f, () => neonHorizonGroundDarkness, v => neonHorizonGroundDarkness = Mathf.Max(0.05f, v));
         RegisterFloatSetting("bg.neonHorizon.groundGradientStart", groundSection, "Ground Gradient Start", "Moves where the floor starts lifting from near-black into the brighter horizon gradient. Higher values keep the floor darker for longer.", 0f, 0.99f, 0.01f, () => neonHorizonGroundGradientStart, v => neonHorizonGroundGradientStart = Mathf.Clamp(v, 0.01f, 0.99f));
         RegisterFloatSetting("bg.neonHorizon.groundGradientBrightness", groundSection, "Ground Gradient Brightness", "Controls only how bright the far floor gradient becomes. It does not move where the gradient starts.", 0f, 10f, 0.01f, () => neonHorizonGroundGradientBrightness, v => neonHorizonGroundGradientBrightness = Mathf.Max(0f, v));
-        RegisterFloatSetting("bg.neonHorizon.groundReflectivity", groundSection, "Ground Reflectivity", "Adds broad colored sheen from the far neon stage lights onto the floor. This is separate from Aurora Floor Reflection.", 0f, 5f, 0.01f, () => neonHorizonGroundReflectivity, v => neonHorizonGroundReflectivity = Mathf.Max(0f, v));
-        RegisterBoolSetting("bg.neonHorizon.floorAuroraReflection", groundSection, "Aurora Floor Reflection", "Shows soft mirrored aurora streaks on the floor.", () => neonHorizonFloorAuroraReflectionEnabled, v => neonHorizonFloorAuroraReflectionEnabled = v);
-        RegisterFloatSetting("bg.neonHorizon.floorAuroraReflectionStrength", groundSection, "Aurora Reflection Strength", "Brightness of the sharp mirrored aurora streaks on the floor. Independent from Ground Reflectivity.", 0f, 5f, 0.01f, () => neonHorizonFloorAuroraReflectionStrength, v => neonHorizonFloorAuroraReflectionStrength = Mathf.Max(0f, v));
-        RegisterFloatSetting("bg.neonHorizon.floorAuroraReflectionWidth", groundSection, "Aurora Reflection Width", "Width of each mirrored aurora streak on the floor.", 0.5f, 40f, 0.1f, () => neonHorizonFloorAuroraReflectionWidth, v => neonHorizonFloorAuroraReflectionWidth = Mathf.Max(0.5f, v));
-        RegisterFloatSetting("bg.neonHorizon.floorAuroraReflectionLength", groundSection, "Aurora Reflection Length", "How far each mirrored aurora streak stretches from the horizon toward the camera.", 0.05f, 1.5f, 0.01f, () => neonHorizonFloorAuroraReflectionLength, v => neonHorizonFloorAuroraReflectionLength = Mathf.Max(0.05f, v));
 
         RegisterBoolSetting("bg.neonHorizon.domeStars.enabled", starsSection, "Dome Stars - Enabled", "Shows procedural twinkling stars behind the neon horizon.", () => GetDomeStarsEnabled(IsEditingMainMenuBackground), SetDomeStarsEnabledForCurrentContext);
         RegisterIntSetting("bg.neonHorizon.domeStars.count", starsSection, "Dome Stars - Count", "Controls how many procedural stars are drawn in the dome sky.", 0, 1200, 10, () => GetDomeStarsCount(IsEditingMainMenuBackground), SetDomeStarsCountForCurrentContext);
@@ -27825,12 +27682,7 @@ private void OpenOrFocusToneLab()
                 {
                     "bg.neonHorizon.groundDarkness",
                     "bg.neonHorizon.groundGradientStart",
-                    "bg.neonHorizon.groundGradientBrightness",
-                    "bg.neonHorizon.groundReflectivity",
-                    "bg.neonHorizon.floorAuroraReflection",
-                    "bg.neonHorizon.floorAuroraReflectionStrength",
-                    "bg.neonHorizon.floorAuroraReflectionWidth",
-                    "bg.neonHorizon.floorAuroraReflectionLength"
+                    "bg.neonHorizon.groundGradientBrightness"
                 });
                 AddBackgroundMoodSection(sections, "Horizon", BuildBackgroundMoodHorizonIds(includeGeometry: true));
                 break;

@@ -291,17 +291,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
     private const float FarLightBaseHeight = 0.95f;
     private const float FarLightWidth = 15f;
     private const float FarLightHeight = 3.8f;
-    // Floor reflections are deliberately disabled at runtime. The old reflective floor
-    // path rebuilt CPU textures when settings changed and caused large D3D12 stalls in builds.
-    private const float FloorReflectedLightStrength = 0f;
-    // Dedicated mirrored aurora streaks. These are intentionally independent from
-    // Ground Reflectivity, which only controls broad floor sheen.
-    private const bool FloorAuroraReflectionLayerEnabled = false;
-    private const float FloorAuroraReflectionStrength = 1.35f;
-    private const float FloorAuroraReflectionWidth = 17.0f;
-    private const float FloorAuroraReflectionLength = 0.34f;
     private static readonly float[] FarLightOffsets = { -190f, -128f, -72f, 72f, 128f, 190f };
-    private static readonly float[] FloorReflectedLightU = { 0.12f, 0.26f, 0.39f, 0.61f, 0.74f, 0.88f };
     private static readonly Color[] FarLightColors =
     {
         new Color(2.20f, 0.06f, 3.20f, 0.55f),
@@ -351,16 +341,12 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
     private readonly List<GameObject> farLightObjects = new List<GameObject>();
     private readonly List<Material> farLightMaterials = new List<Material>();
     private readonly List<Renderer> farLightRenderers = new List<Renderer>();
-    private readonly List<GameObject> floorReflectionObjects = new List<GameObject>();
-    private readonly List<Material> floorReflectionMaterials = new List<Material>();
-    private readonly List<Renderer> floorReflectionRenderers = new List<Renderer>();
     private readonly List<StageCloud> stageClouds = new List<StageCloud>();
     private readonly CurvedMeshCache floorMeshCache = new CurvedMeshCache();
     private readonly CurvedMeshCache floorGridMeshCache = new CurvedMeshCache();
     private readonly CurvedMeshCache horizonMeshCache = new CurvedMeshCache();
     private readonly CurvedMeshCache horizonCoreMeshCache = new CurvedMeshCache();
     private Texture2D farLightTexture;
-    private Texture2D floorReflectionTexture;
     private Texture2D stageCloudTexture;
     private GameObject enviro3Prefab;
     private Enviro.EnviroVolumetricCloudsModule enviro3VolumetricCloudPreset;
@@ -398,11 +384,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
     private float cachedGroundDarkness = float.NaN;
     private float cachedGroundGradientStart = float.NaN;
     private float cachedGroundGradientBrightness = float.NaN;
-    private float cachedGroundReflectivity = float.NaN;
-    private bool cachedFloorAuroraReflectionEnabled;
-    private float cachedFloorAuroraReflectionStrength = float.NaN;
-    private float cachedFloorAuroraReflectionWidth = float.NaN;
-    private float cachedFloorAuroraReflectionLength = float.NaN;
     private int cachedFloorHorizonColorPalette = int.MinValue;
     private int cachedFloorSkyLineColorPalette = int.MinValue;
     private bool cachedFloorUnifiedSideColors;
@@ -440,10 +421,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
     private bool proceduralMountainVisible;
     private bool proceduralDecorVisible = true;
     private bool proceduralStageRenderedAfterSky;
-#if UNITY_EDITOR
-    private string lastHorizonRenderOrderTrace;
-#endif
-
     public TabsNeonStageBackground(bool applyHighwayOverrides = false, bool useMainMenuProfile = false)
     {
         this.applyHighwayOverrides = applyHighwayOverrides;
@@ -501,14 +478,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
     private float GroundDarknessValue => MinFinite(owner != null ? owner.neonHorizonGroundDarkness : 1f, 0.05f, 1f);
     private float GroundGradientStartValue => ClampFinite(owner != null ? owner.neonHorizonGroundGradientStart : FloorHorizonLiftStart, 0.01f, 0.99f, FloorHorizonLiftStart);
     private float GroundGradientBrightnessValue => MinFinite(owner != null ? owner.neonHorizonGroundGradientBrightness : 1f, 0f, 1f);
-    private float GroundReflectivityValue => 0f;
-    private bool FloorAuroraReflectionEnabledValue => FloorAuroraReflectionLayerEnabled
-        && (owner == null || owner.neonHorizonFloorAuroraReflectionEnabled);
-    private float FloorAuroraReflectionStrengthValue => FloorAuroraReflectionEnabledValue
-        ? ClampFinite(owner != null ? owner.neonHorizonFloorAuroraReflectionStrength : FloorAuroraReflectionStrength, 0f, 5.0f, FloorAuroraReflectionStrength)
-        : 0f;
-    private float FloorAuroraReflectionWidthValue => MinFinite(owner != null ? owner.neonHorizonFloorAuroraReflectionWidth : FloorAuroraReflectionWidth, 0.5f, FloorAuroraReflectionWidth);
-    private float FloorAuroraReflectionLengthValue => MinFinite(owner != null ? owner.neonHorizonFloorAuroraReflectionLength : FloorAuroraReflectionLength, 0.05f, FloorAuroraReflectionLength);
     private bool StageCloudsEnabledValue => StageCloudLayerEnabled
         && (owner == null || owner.neonHorizonCloudsEnabled);
     private float StageCloudOpacityValue => Clamp01Finite(owner != null ? owner.neonHorizonCloudOpacity : StageCloudOpacity, StageCloudOpacity);
@@ -982,11 +951,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             if (farLightMaterial != null)
                 Object.Destroy(farLightMaterial);
         }
-        foreach (Material floorReflectionMaterial in floorReflectionMaterials)
-        {
-            if (floorReflectionMaterial != null)
-                Object.Destroy(floorReflectionMaterial);
-        }
         foreach (StageCloud cloud in stageClouds)
         {
             if (cloud.Material != null)
@@ -1003,9 +967,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         farLightMaterials.Clear();
         farLightRenderers.Clear();
         farLightObjects.Clear();
-        floorReflectionMaterials.Clear();
-        floorReflectionRenderers.Clear();
-        floorReflectionObjects.Clear();
         enviroMountainTerrains.Clear();
         enviroMountainRenderers.Clear();
         enviroMountainSilhouetteMeshes.Clear();
@@ -1046,7 +1007,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         skyboxOverrideApplied = false;
         originalRenderSettingsStateCaptured = false;
         farLightTexture = null;
-        floorReflectionTexture = null;
         stageCloudTexture = null;
         domeObject = null;
         domeStarsObject = null;
@@ -1163,7 +1123,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             stageTime: stageTime);
 
         ApplyFarLightMaterialState();
-        ApplyFloorReflectionMaterialState();
         ApplyStageCloudMaterialState();
     }
 
@@ -1172,46 +1131,10 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         if (farLightMaterials.Count == 0)
             return;
 
-        float reflectivity = Mathf.Max(0f, GroundReflectivityValue);
-        float visibilityBoost = Mathf.Clamp(1f + reflectivity * 0.06f, 1f, 1.28f);
         for (int i = 0; i < farLightMaterials.Count; i++)
         {
             Color color = FarLightColors[i % FarLightColors.Length];
-            color.r *= visibilityBoost;
-            color.g *= visibilityBoost;
-            color.b *= visibilityBoost;
             ApplyTransparentMaterialColor(farLightMaterials[i], color);
-        }
-    }
-
-    private void ApplyFloorReflectionMaterialState()
-    {
-        if (!FloorAuroraReflectionLayerEnabled)
-            return;
-
-        bool visible = FloorAuroraReflectionEnabledValue && FloorAuroraReflectionStrengthValue > 0.001f;
-        GetSkyPalette(SkyLineColorPaletteValue, UseUnifiedSideColorsValue, out Color skyLeft, out Color skyRight, out Color skyHorizon);
-        HorizonPaletteColors horizon = GetHorizonPalette(HorizonColorPaletteValue, UseUnifiedSideColorsValue);
-        float strength = FloorAuroraReflectionStrengthValue;
-
-        for (int i = 0; i < floorReflectionRenderers.Count; i++)
-        {
-            if (floorReflectionRenderers[i] != null)
-                floorReflectionRenderers[i].enabled = visible;
-
-            if (i >= floorReflectionMaterials.Count || floorReflectionMaterials[i] == null)
-                continue;
-
-            bool right = i >= floorReflectionMaterials.Count / 2;
-            Color skySource = Color.Lerp(skyHorizon, right ? skyRight : skyLeft, 0.82f);
-            Color horizonSource = Color.Lerp(horizon.CoreLeft, horizon.CoreRight, right ? 0.90f : 0.10f);
-            Color color = Color.Lerp(skySource, horizonSource, 0.68f);
-            float energy = Mathf.Clamp01(strength / 2.5f);
-            color.r *= Mathf.Lerp(2.40f, 5.60f, energy);
-            color.g *= Mathf.Lerp(2.40f, 5.60f, energy);
-            color.b *= Mathf.Lerp(2.40f, 5.60f, energy);
-            color.a = Mathf.Clamp(0.62f + strength * 0.54f, 0f, 1.0f);
-            ApplyTransparentMaterialColor(floorReflectionMaterials[i], color);
         }
     }
 
@@ -3327,12 +3250,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         SetRendererVisible(horizonCoreRenderer, horizonVisible);
         SetEnviroMountainVisible(mountainVisible);
 
-        if (!groundVisible)
-        {
-            for (int i = 0; i < floorReflectionRenderers.Count; i++)
-                SetRendererVisible(floorReflectionRenderers[i], false);
-        }
-
         if (!decorVisible)
         {
             for (int i = 0; i < farLightRenderers.Count; i++)
@@ -3369,13 +3286,8 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
         for (int i = 0; i < farLightMaterials.Count; i++)
             ApplyMaterialRenderState(farLightMaterials[i], queueBase + 2, zTest);
-        for (int i = 0; i < floorReflectionMaterials.Count; i++)
-            ApplyMaterialRenderState(floorReflectionMaterials[i], queueBase + 2, zTest);
         for (int i = 0; i < stageClouds.Count; i++)
             ApplyMaterialRenderState(stageClouds[i].Material, queueBase + 1, zTest);
-#if UNITY_EDITOR
-        TraceHorizonRenderOrder(renderAfterSky, queueBase, horizonZTest);
-#endif
     }
 
     private static void ApplyMaterialRenderState(Material material, int renderQueue, int zTest)
@@ -3393,30 +3305,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         if (renderer != null)
             renderer.sortingOrder = sortingOrder;
     }
-
-#if UNITY_EDITOR
-    private void TraceHorizonRenderOrder(bool renderAfterSky, int queueBase, int horizonZTest)
-    {
-        int floorQueue = floorMaterial != null ? floorMaterial.renderQueue : -1;
-        int horizonQueue = horizonMaterial != null ? horizonMaterial.renderQueue : -1;
-        int horizonCoreQueue = horizonCoreMaterial != null ? horizonCoreMaterial.renderQueue : -1;
-        int floorOrder = floorRenderer != null ? floorRenderer.sortingOrder : int.MinValue;
-        int horizonOrder = horizonRenderer != null ? horizonRenderer.sortingOrder : int.MinValue;
-        int horizonCoreOrder = horizonCoreRenderer != null ? horizonCoreRenderer.sortingOrder : int.MinValue;
-        string trace =
-            $"{renderAfterSky}|{queueBase}|{floorQueue}|{horizonQueue}|{horizonCoreQueue}|" +
-            $"{floorOrder}|{horizonOrder}|{horizonCoreOrder}|{horizonZTest}";
-        if (trace == lastHorizonRenderOrderTrace)
-            return;
-
-        lastHorizonRenderOrderTrace = trace;
-        Debug.Log(
-            $"[TabsNeonStageBackground] Horizon render order mode={(renderAfterSky ? "Enviro" : "Dome")} " +
-            $"queueBase={queueBase} floorQueue={floorQueue} horizonQueue={horizonQueue} " +
-            $"horizonCoreQueue={horizonCoreQueue} floorOrder={floorOrder} " +
-            $"horizonOrder={horizonOrder} horizonCoreOrder={horizonCoreOrder} zTest={horizonZTest}");
-    }
-#endif
 
     private void ApplyEnviroMountainMaterialRenderState(int renderQueue, int zTest)
     {
@@ -3573,8 +3461,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         EnsureEnviroMountainLayerMaterials(StageRenderQueueBase + 2);
 
         farLightTexture = BuildFarLightTexture(96, 96);
-        if (FloorAuroraReflectionLayerEnabled)
-            floorReflectionTexture = BuildFloorReflectionTexture(96, 384);
 
         for (int i = 0; i < FarLightOffsets.Length; i++)
         {
@@ -3588,21 +3474,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             {
                 farLightRenderer.sharedMaterial = farLightMaterial;
                 farLightRenderer.enabled = false;
-            }
-
-            if (FloorAuroraReflectionLayerEnabled && floorReflectionTexture != null)
-            {
-                Renderer reflectionRenderer;
-                GameObject reflection = CreateQuad($"NeonStageFloorReflection{i + 1}", root.transform, out reflectionRenderer);
-                Material reflectionMaterial = CreateAdditiveTexturedMaterial(floorReflectionTexture, renderQueue: StageRenderQueueBase + 2, alphaAsColor: true);
-                floorReflectionObjects.Add(reflection);
-                floorReflectionRenderers.Add(reflectionRenderer);
-                floorReflectionMaterials.Add(reflectionMaterial);
-                if (reflectionRenderer != null)
-                {
-                    reflectionRenderer.sharedMaterial = reflectionMaterial;
-                    reflectionRenderer.enabled = false;
-                }
             }
         }
 
@@ -3679,8 +3550,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             floorGridObject.transform.localScale = Vector3.one;
             ApplyCurvedFloorMesh(floorGridMeshCache, floorWidth, floorDepth, rotation, forwardFlat, curveDown, curveTowardCamera);
         }
-
-        UpdateFloorReflectionPlacement(nearCenter, farCenter, rightAxis, depthAxis, normal, rotation, forwardFlat, floorDepth, curveDown, curveTowardCamera);
     }
 
     private float GetEffectiveHorizonLineDistance(float baseDistance)
@@ -3689,50 +3558,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         return UseEnviro3SkyValue && Enviro3ExtendedGroundEnabledValue
             ? baseDistance * EnviroExtendedFloorDistanceMultiplier
             : baseDistance;
-    }
-
-    private void UpdateFloorReflectionPlacement(
-        Vector3 nearCenter,
-        Vector3 farCenter,
-        Vector3 rightAxis,
-        Vector3 depthAxis,
-        Vector3 normal,
-        Quaternion rotation,
-        Vector3 forwardFlat,
-        float floorDepth,
-        float curveDown,
-        float curveTowardCamera)
-    {
-        if (!FloorAuroraReflectionLayerEnabled)
-            return;
-
-        bool visible = FloorAuroraReflectionEnabledValue && FloorAuroraReflectionStrengthValue > 0.001f;
-        float width = FloorAuroraReflectionWidthValue;
-        float length = Mathf.Clamp(floorDepth * FloorAuroraReflectionLengthValue, 12f, floorDepth * 0.82f);
-        float reflectionDistanceFromHorizon = length * 0.46f + Mathf.Max(0f, HorizonCurveTowardCameraValue) * 0.12f;
-
-        for (int i = 0; i < floorReflectionRenderers.Count; i++)
-        {
-            if (floorReflectionRenderers[i] != null)
-                floorReflectionRenderers[i].enabled = visible;
-
-            GameObject reflectionObject = i < floorReflectionObjects.Count ? floorReflectionObjects[i] : null;
-            if (reflectionObject == null)
-                continue;
-
-            float sideOffset = FarLightOffsets[i % FarLightOffsets.Length] * 0.22f;
-            float sideAmount = Mathf.Abs(sideOffset) / Mathf.Max(1f, Mathf.Abs(FarLightOffsets[FarLightOffsets.Length - 1]));
-            float localLength = length * Mathf.Lerp(1.10f, 1.42f, sideAmount);
-            float localWidth = Mathf.Max(12f, width * Mathf.Lerp(2.15f, 3.65f, sideAmount));
-            Vector3 center = farCenter
-                + rightAxis * sideOffset
-                - depthAxis * reflectionDistanceFromHorizon
-                + normal * 0.070f;
-
-            reflectionObject.transform.position = center;
-            reflectionObject.transform.rotation = rotation;
-            reflectionObject.transform.localScale = new Vector3(localWidth, localLength, 1f);
-        }
     }
 
     private void RefreshFloorTexturesIfNeeded()
@@ -3748,11 +3573,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             float groundDarkness = GroundDarknessValue;
             float groundGradientStart = GroundGradientStartValue;
             float groundGradientBrightness = GroundGradientBrightnessValue;
-            float groundReflectivity = GroundReflectivityValue;
-            bool floorAuroraReflectionEnabled = false;
-            float floorAuroraReflectionStrength = 0f;
-            float floorAuroraReflectionWidth = FloorAuroraReflectionWidth;
-            float floorAuroraReflectionLength = FloorAuroraReflectionLength;
             int horizonColorPalette = HorizonColorPaletteValue;
             int skyLineColorPalette = SkyLineColorPaletteValue;
             bool unifiedSideColors = UseUnifiedSideColorsValue;
@@ -3794,11 +3614,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 groundDarkness,
                 groundGradientStart,
                 groundGradientBrightness,
-                groundReflectivity,
-                floorAuroraReflectionEnabled,
-                floorAuroraReflectionStrength,
-                floorAuroraReflectionWidth,
-                floorAuroraReflectionLength,
                 horizonColorPalette,
                 skyLineColorPalette,
                 unifiedSideColors);
@@ -3811,11 +3626,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             Mathf.Max(0.05f, GroundDarknessValue),
             Mathf.Clamp(GroundGradientStartValue, 0.01f, 0.99f),
             Mathf.Max(0f, GroundGradientBrightnessValue),
-            Mathf.Max(0f, GroundReflectivityValue),
-            FloorAuroraReflectionEnabledValue,
-            FloorAuroraReflectionStrengthValue,
-            FloorAuroraReflectionWidthValue,
-            FloorAuroraReflectionLengthValue,
             HorizonColorPaletteValue,
             SkyLineColorPaletteValue,
             UseUnifiedSideColorsValue);
@@ -3825,11 +3635,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         float groundDarkness,
         float groundGradientStart,
         float groundGradientBrightness,
-        float groundReflectivity,
-        bool floorAuroraReflectionEnabled,
-        float floorAuroraReflectionStrength,
-        float floorAuroraReflectionWidth,
-        float floorAuroraReflectionLength,
         int horizonColorPalette,
         int skyLineColorPalette,
         bool unifiedSideColors)
@@ -3837,11 +3642,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         cachedGroundDarkness = groundDarkness;
         cachedGroundGradientStart = groundGradientStart;
         cachedGroundGradientBrightness = groundGradientBrightness;
-        cachedGroundReflectivity = groundReflectivity;
-        cachedFloorAuroraReflectionEnabled = floorAuroraReflectionEnabled;
-        cachedFloorAuroraReflectionStrength = floorAuroraReflectionStrength;
-        cachedFloorAuroraReflectionWidth = floorAuroraReflectionWidth;
-        cachedFloorAuroraReflectionLength = floorAuroraReflectionLength;
         cachedFloorHorizonColorPalette = horizonColorPalette;
         cachedFloorSkyLineColorPalette = skyLineColorPalette;
         cachedFloorUnifiedSideColors = unifiedSideColors;
@@ -4700,103 +4500,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         return texture;
     }
 
-    private static Color BuildFloorLightReflection(float u, float v)
-    {
-        float fromHorizon = Mathf.Clamp01(1f - v);
-        float startsBelowHorizon = Mathf.SmoothStep(0.002f, 0.055f, fromHorizon);
-        float lengthFade = Mathf.Exp(-fromHorizon * 4.15f);
-        float diesNearCamera = 1f - Mathf.SmoothStep(0.54f, 0.92f, fromHorizon);
-        float depthMask = startsBelowHorizon * lengthFade * diesNearCamera;
-        if (depthMask <= 0.0001f)
-            return Color.black;
-
-        Color reflected = Color.black;
-        for (int i = 0; i < FloorReflectedLightU.Length; i++)
-        {
-            float reflectedU = Mathf.Lerp(0.5f, FloorReflectedLightU[i], Mathf.Pow(v, 0.86f));
-            float streakWidth = Mathf.Lerp(0.006f, 0.034f, Mathf.Pow(fromHorizon, 0.74f));
-            float strip = Gaussian(u, reflectedU, streakWidth) * depthMask;
-            float core = Gaussian(u, reflectedU, streakWidth * 0.34f) * depthMask;
-            Color source = FarLightColors[i % FarLightColors.Length];
-            reflected += new Color(source.r, source.g, source.b, 0f) * (strip * 0.68f + core * 0.72f);
-        }
-
-        return reflected;
-    }
-
-    private Color BuildFloorAuroraReflection(float u, float v)
-    {
-        if (!FloorAuroraReflectionEnabledValue)
-            return Color.black;
-
-        float strength = FloorAuroraReflectionStrengthValue;
-        if (strength <= 0.0001f)
-            return Color.black;
-
-        float fromHorizon = Mathf.Clamp01(1f - v);
-        float length = Mathf.Max(0.05f, FloorAuroraReflectionLengthValue);
-        float startsBelowHorizon = Mathf.SmoothStep(0.002f, 0.045f, fromHorizon);
-        float fadesTowardCamera = 1f - Mathf.SmoothStep(length * 0.72f, length * 1.40f, fromHorizon);
-        float depth = fromHorizon / Mathf.Max(0.001f, length);
-        float depthMask = startsBelowHorizon * fadesTowardCamera * Mathf.Exp(-depth * 0.48f);
-        if (depthMask <= 0.0001f)
-            return Color.black;
-
-        GetSkyPalette(SkyLineColorPaletteValue, UseUnifiedSideColorsValue, out Color skyLeft, out Color skyRight, out Color skyHorizon);
-        HorizonPaletteColors horizon = GetHorizonPalette(HorizonColorPaletteValue, UseUnifiedSideColorsValue);
-        float depth01 = Mathf.Clamp01(depth);
-        float baseWidth = Mathf.Clamp(FloorAuroraReflectionWidthValue / Mathf.Max(1f, FloorWidth), 0.0015f, 0.080f);
-        Color reflected = Color.black;
-
-        for (int i = 0; i < FloorReflectedLightU.Length; i++)
-        {
-            float sourceU = FloorReflectedLightU[i];
-            bool right = sourceU >= 0.5f;
-            float sideAmount = Mathf.Abs((sourceU - 0.5f) * 2f);
-            float sideDirection = right ? 1f : -1f;
-
-            // Keep each reflection under its source light. The old center-pull made diagonal beams
-            // instead of mirrored water streaks.
-            float reflectedU = sourceU + sideDirection * depth01 * baseWidth * 1.55f;
-            reflectedU += Mathf.Sin(depth01 * 10.0f + i * 1.77f) * baseWidth * 0.20f;
-            reflectedU += Mathf.Sin(depth01 * 31.0f + i * 2.43f) * baseWidth * 0.050f;
-
-            float widthByDepth = baseWidth * Mathf.Lerp(0.16f, 1.22f, Mathf.Pow(depth01, 0.72f));
-            float strip = Gaussian(u, reflectedU, widthByDepth);
-            float core = Gaussian(u, reflectedU, Mathf.Max(0.0005f, widthByDepth * 0.30f));
-            float ripple = WaterReflectionRipple(u, depth01, i);
-
-            Color skySource = Color.Lerp(skyHorizon, right ? skyRight : skyLeft, 0.66f);
-            Color horizonSource = Color.Lerp(horizon.CoreLeft, horizon.CoreRight, right ? 0.82f : 0.18f);
-            Color source = Color.Lerp(skySource, horizonSource, 0.45f);
-            source.a = 0f;
-
-            float intensity = (strip * 0.30f + core * 1.38f) * depthMask * ripple * (0.68f + sideAmount * 0.32f);
-            reflected += source * intensity;
-        }
-
-        float centerWidth = baseWidth * Mathf.Lerp(0.24f, 1.06f, Mathf.Pow(depth01, 0.70f));
-        float centerCore = Gaussian(u, 0.5f, Mathf.Max(0.0005f, centerWidth * 0.28f));
-        float centerGlow = Gaussian(u, 0.5f, centerWidth);
-        float centerRipple = WaterReflectionRipple(u, depth01, 13);
-        Color centerColor = Color.Lerp(skyHorizon, horizon.CoreMid, 0.68f);
-        centerColor.a = 0f;
-        reflected += centerColor * (centerCore * 0.72f + centerGlow * 0.28f) * depthMask * centerRipple;
-
-        return reflected * strength * 0.95f;
-    }
-
-    private static float WaterReflectionRipple(float u, float depth, int seed)
-    {
-        float longRipple = 0.5f + 0.5f * Mathf.Sin(depth * 104f + seed * 2.17f);
-        float fineRipple = 0.5f + 0.5f * Mathf.Sin(depth * 271f + u * 31f + seed * 4.71f);
-        float brokenSurface = 0.5f + 0.5f * Mathf.Sin(depth * 57f + u * 93f + seed * 1.31f);
-        float ripple = Mathf.Pow(longRipple, 2.15f) * 0.58f
-            + Mathf.Pow(fineRipple, 3.20f) * 0.26f
-            + Mathf.Pow(brokenSurface, 5.0f) * 0.16f;
-        return Mathf.Lerp(0.34f, 1.0f, Mathf.Clamp01(ripple));
-    }
-
     private Texture2D BuildStageCloudTexture(int width, int height)
     {
         Texture2D texture = CreateTexture(width, height);
@@ -4857,37 +4560,6 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                 float horizontalGlow = Mathf.Pow(1f - Mathf.SmoothStep(0f, 1f, xDistance), 1.45f);
                 float core = Mathf.Pow(1f - Mathf.SmoothStep(0f, 0.30f, Mathf.Max(xDistance * 0.64f, yDistance)), 1.25f);
                 float alpha = Mathf.Clamp01(horizontalGlow * verticalGlow * 0.78f + core * 0.34f);
-                pixels[y * width + x] = new Color(1f, 1f, 1f, alpha);
-            }
-        }
-
-        texture.SetPixels(pixels);
-        texture.Apply();
-        return texture;
-    }
-
-    private Texture2D BuildFloorReflectionTexture(int width, int height)
-    {
-        Texture2D texture = CreateTexture(width, height);
-        Color[] pixels = new Color[width * height];
-        for (int y = 0; y < height; y++)
-        {
-            float v = y / Mathf.Max(1f, height - 1f);
-            float distanceFromHorizon = Mathf.Clamp01(1f - v);
-            float startsAtHorizon = 1f - Mathf.SmoothStep(0.0f, 0.020f, distanceFromHorizon);
-            float reflectedTail = Mathf.Exp(-distanceFromHorizon * 5.8f);
-            float bottomFade = 1f - Mathf.SmoothStep(0.64f, 1.0f, distanceFromHorizon);
-            float verticalMask = Mathf.Clamp01((startsAtHorizon * 0.80f + reflectedTail * 0.92f) * bottomFade);
-
-            for (int x = 0; x < width; x++)
-            {
-                float u = x / Mathf.Max(1f, width - 1f);
-                float centered = Mathf.Abs(u - 0.5f) * 2f;
-                float horizontalGlare = Mathf.Pow(1f - Mathf.SmoothStep(0.0f, 0.82f, centered), 3.1f);
-                float brightCore = Mathf.Pow(1f - Mathf.SmoothStep(0.0f, 0.17f, centered), 1.25f);
-                float longRipple = 0.58f + 0.42f * Mathf.Pow(0.5f + 0.5f * Mathf.Sin(distanceFromHorizon * 112.0f), 2.2f);
-                float brokenRipple = 0.70f + 0.30f * Mathf.Pow(0.5f + 0.5f * Mathf.Sin(u * 86.0f + distanceFromHorizon * 61.0f), 3.0f);
-                float alpha = Mathf.Clamp01(verticalMask * longRipple * brokenRipple * (horizontalGlare * 0.36f + brightCore * 0.92f));
                 pixels[y * width + x] = new Color(1f, 1f, 1f, alpha);
             }
         }

@@ -100,14 +100,6 @@ public sealed class GuitarTunerModelPreview
     private int activePegIndex = 0;
     private Color activePegColor = Color.white;
 
-#if UNITY_EDITOR
-    private static void TraceLightingStep(string reason)
-    {
-        StringTheoryLightingProbe.TraceStep(reason);
-    }
-#else
-    private static void TraceLightingStep(string reason) { }
-#endif
 
     public RenderTexture Texture => renderTexture;
     public bool IsReady => initialized && modelLoaded && renderTexture != null;
@@ -116,40 +108,26 @@ public sealed class GuitarTunerModelPreview
 
     public void Initialize(Transform parent)
     {
-        TraceLightingStep("GuitarTunerModelPreview.Initialize enter");
         if (initialized)
         {
-            TraceLightingStep("GuitarTunerModelPreview.Initialize exit already initialized");
             return;
         }
 
-        TraceLightingStep("GuitarTunerModelPreview.Initialize before sceneRoot");
         sceneRoot = new GameObject("GuitarTunerModelPreviewScene");
         sceneRoot.hideFlags = HideFlags.DontSave;
         sceneRoot.transform.SetParent(parent, false);
         sceneRoot.transform.position = PreviewOrigin;
         sceneRoot.SetActive(false);
-        TraceLightingStep("GuitarTunerModelPreview.Initialize after sceneRoot");
 
         modelPivot = new GameObject("ModelPivot").transform;
         modelPivot.SetParent(sceneRoot.transform, false);
-        TraceLightingStep("GuitarTunerModelPreview.Initialize after modelPivot");
 
-        TraceLightingStep("GuitarTunerModelPreview.Initialize before EnsureRenderTexture");
         EnsureRenderTexture();
-        TraceLightingStep("GuitarTunerModelPreview.Initialize after EnsureRenderTexture");
-        TraceLightingStep("GuitarTunerModelPreview.Initialize before CreateCamera");
         CreateCamera();
-        TraceLightingStep("GuitarTunerModelPreview.Initialize after CreateCamera");
-        TraceLightingStep("GuitarTunerModelPreview.Initialize before CreateLights");
         CreateLights();
-        TraceLightingStep("GuitarTunerModelPreview.Initialize after CreateLights");
-        TraceLightingStep("GuitarTunerModelPreview.Initialize before LoadModel");
         LoadModel(GetModelDefinition(currentInstrument));
-        TraceLightingStep("GuitarTunerModelPreview.Initialize after LoadModel");
 
         initialized = true;
-        TraceLightingStep("GuitarTunerModelPreview.Initialize exit initialized");
     }
 
     public void SetInstrument(GuitarTunerInstrument instrument)
@@ -291,16 +269,12 @@ public sealed class GuitarTunerModelPreview
     {
         if (cameraRenderTexture == null)
         {
-            TraceLightingStep("GuitarTunerModelPreview.EnsureRenderTexture before raw texture");
             cameraRenderTexture = CreatePreviewTexture("GuitarTunerHeadPreviewRaw", 4);
-            TraceLightingStep("GuitarTunerModelPreview.EnsureRenderTexture after raw texture");
         }
 
         if (renderTexture == null)
         {
-            TraceLightingStep("GuitarTunerModelPreview.EnsureRenderTexture before output texture");
             renderTexture = CreatePreviewTexture("GuitarTunerHeadPreview", 1);
-            TraceLightingStep("GuitarTunerModelPreview.EnsureRenderTexture after output texture");
         }
     }
 
@@ -321,14 +295,11 @@ public sealed class GuitarTunerModelPreview
 
     private void CreateCamera()
     {
-        TraceLightingStep("GuitarTunerModelPreview.CreateCamera enter");
         GameObject cameraObject = new GameObject("GuitarTunerModelPreviewCamera");
         cameraObject.hideFlags = HideFlags.DontSave;
         cameraObject.transform.SetParent(sceneRoot.transform, false);
-        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after GameObject");
 
         previewCamera = cameraObject.AddComponent<Camera>();
-        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after Camera component");
         previewCamera.enabled = false;
         previewCamera.orthographic = true;
         previewCamera.clearFlags = CameraClearFlags.SolidColor;
@@ -340,9 +311,7 @@ public sealed class GuitarTunerModelPreview
         previewCamera.allowMSAA = true;
         previewCamera.targetTexture = cameraRenderTexture != null ? cameraRenderTexture : renderTexture;
         previewCamera.stereoTargetEye = StereoTargetEyeMask.None;
-        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after camera properties");
         UniversalAdditionalCameraData cameraData = cameraObject.AddComponent<UniversalAdditionalCameraData>();
-        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after UniversalAdditionalCameraData");
         cameraData.renderType = CameraRenderType.Base;
         cameraData.renderPostProcessing = false;
         cameraData.requiresDepthTexture = false;
@@ -351,8 +320,6 @@ public sealed class GuitarTunerModelPreview
         cameraData.requiresDepthOption = CameraOverrideOption.Off;
         cameraData.requiresColorOption = CameraOverrideOption.Off;
         cameraData.allowXRRendering = false;
-        TraceLightingStep("GuitarTunerModelPreview.CreateCamera after URP camera data properties");
-        TraceLightingStep("GuitarTunerModelPreview.CreateCamera exit");
     }
 
     private void ApplyOutputFade()
@@ -391,7 +358,6 @@ public sealed class GuitarTunerModelPreview
 
     private void CreateLights()
     {
-        TraceLightingStep("GuitarTunerModelPreview.CreateLights enter");
         CreateDirectionalLight(
             "GuitarTunerModelKeyLight",
             new Vector3(48f, -34f, 18f),
@@ -403,7 +369,6 @@ public sealed class GuitarTunerModelPreview
             new Vector3(-24f, 38f, -52f),
             new Color(0.28f, 0.96f, 0.82f, 1f),
             1.25f);
-        TraceLightingStep("GuitarTunerModelPreview.CreateLights exit");
     }
 
     private Light CreateDirectionalLight(string name, Vector3 eulerAngles, Color color, float intensity)

@@ -5,15 +5,18 @@ Shader "Custom/TabsTransparentUnlit"
         _Color ("Color", Color) = (1, 1, 1, 1)
         _BaseColor ("Base Color", Color) = (1, 1, 1, 1)
         [HDR]_EmissionColor ("Emission Color", Color) = (0, 0, 0, 0)
+        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 0
+        [Enum(UnityEngine.Rendering.CompareFunction)] _ZTest ("Z Test", Float) = 4
+        [Enum(Off,0,On,1)] _ZWrite ("Z Write", Float) = 0
     }
 
     SubShader
     {
         Tags { "Queue" = "Transparent" "RenderType" = "Transparent" }
         Blend SrcAlpha OneMinusSrcAlpha
-        Cull Off
-        ZWrite Off
-        ZTest LEqual
+        Cull [_Cull]
+        ZWrite [_ZWrite]
+        ZTest [_ZTest]
 
         Pass
         {
@@ -53,9 +56,9 @@ Shader "Custom/TabsTransparentUnlit"
         Pass
         {
             Blend SrcAlpha One
-            Cull Off
+            Cull [_Cull]
             ZWrite Off
-            ZTest LEqual
+            ZTest [_ZTest]
 
             CGPROGRAM
             #pragma vertex vert
