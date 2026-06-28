@@ -328,9 +328,19 @@ internal static class AlphaTabGpScoreCache
                                 int midiNote = ResolveSoundingMidi(note);
                                 int stringIdx;
                                 int fret;
-                                bool isStringed = TryResolveStringPosition(note, out stringIdx, out fret);
-                                if (!isStringed)
-                                    ResolveFallbackStringPosition(trackContext.stringTuningPitches, midiNote, out stringIdx, out fret);
+                                bool isStringed;
+                                if (trackContext.isPercussion)
+                                {
+                                    stringIdx = MapPercussionMidiToLane(midiNote);
+                                    fret = midiNote;
+                                    isStringed = false;
+                                }
+                                else
+                                {
+                                    isStringed = TryResolveStringPosition(note, out stringIdx, out fret);
+                                    if (!isStringed)
+                                        ResolveFallbackStringPosition(trackContext.stringTuningPitches, midiNote, out stringIdx, out fret);
+                                }
 
                                 candidates.Add(new SourceCandidate
                                 {
@@ -587,6 +597,42 @@ internal static class AlphaTabGpScoreCache
         stringIdx = 0;
         int[] resolvedTuning = tuningPitches != null && tuningPitches.Length > 0 ? tuningPitches : GuitarStringBasePitches;
         fret = Mathf.Max(0, midiNote - resolvedTuning[0]);
+    }
+
+    private static int MapPercussionMidiToLane(int midiNote)
+    {
+        switch (midiNote)
+        {
+            case 35:
+            case 36:
+                return 0;
+            case 37:
+            case 38:
+            case 39:
+            case 40:
+                return 1;
+            case 42:
+            case 44:
+            case 46:
+                return 2;
+            case 41:
+            case 43:
+            case 45:
+            case 47:
+            case 48:
+            case 50:
+                return 3;
+            case 49:
+            case 51:
+            case 52:
+            case 53:
+            case 55:
+            case 57:
+            case 59:
+                return 4;
+            default:
+                return Mathf.Abs(midiNote) % 5;
+        }
     }
 
     private static bool TryMapMidiToGuitar(int[] tuningPitches, int midiPitch, out int stringIdx, out int fret)

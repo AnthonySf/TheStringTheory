@@ -175,13 +175,15 @@ public static class Gp5Loader
         {
             foreach (Gp5Note note in beat.notes.OrderBy(n => n.stringIdx))
             {
+                int stringIdx = track.isPercussionTrack ? MapPercussionMidiToLane(note.midi) : note.stringIdx;
+                int fret = track.isPercussionTrack ? note.midi : note.fret;
                 ParsedGpNote parsedNote = new ParsedGpNote
                 {
                     quarterPos = beat.startQuarter,
                     durationQuarter = Math.Max(0.03125, beat.durationQuarter * Math.Max(0.05, note.durationPercent)),
                     midi = note.midi,
-                    stringIdx = note.stringIdx,
-                    fret = note.fret,
+                    stringIdx = stringIdx,
+                    fret = fret,
                     note = GetNoteName(note.midi),
                     vibrato = beat.noteVibrato || beat.beatWideVibrato || note.isVibrato,
                     isMuted = note.isDead
@@ -196,6 +198,42 @@ public static class Gp5Loader
 
         LinkLegatoTransitions(parsed, beats);
         return parsed.OrderBy(note => note.quarterPos).ThenBy(note => note.stringIdx).ToList();
+    }
+
+    private static int MapPercussionMidiToLane(int midiNote)
+    {
+        switch (midiNote)
+        {
+            case 35:
+            case 36:
+                return 0;
+            case 37:
+            case 38:
+            case 39:
+            case 40:
+                return 1;
+            case 42:
+            case 44:
+            case 46:
+                return 2;
+            case 41:
+            case 43:
+            case 45:
+            case 47:
+            case 48:
+            case 50:
+                return 3;
+            case 49:
+            case 51:
+            case 52:
+            case 53:
+            case 55:
+            case 57:
+            case 59:
+                return 4;
+            default:
+                return Mathf.Abs(midiNote) % 5;
+        }
     }
 
     private static void LinkLegatoTransitions(List<ParsedGpNote> parsed, List<Gp5Beat> beats)

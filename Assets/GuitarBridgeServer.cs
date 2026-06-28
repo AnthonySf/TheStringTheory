@@ -1343,6 +1343,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private string selectedArcadeArrangementId = string.Empty;
     private ArcadeDifficulty selectedArcadeDifficulty = ArcadeDifficulty.Expert;
     private List<ArcadeNoteState> arcadeNoteStates = new List<ArcadeNoteState>();
+    private bool currentArrangementUsesDrumLaneMode;
     private bool multiplayerRhythmModeActive;
     private int multiplayerRhythmWinningPlayerIndex = -1;
     private readonly MultiplayerRhythmPlayerState[] multiplayerRhythmPlayers = new MultiplayerRhythmPlayerState[MultiplayerRhythmPlayerCount];
@@ -2156,7 +2157,7 @@ public class GuitarBridgeServer : MonoBehaviour
                     RefreshDetectorBackendStatus();
                 }
             }
-            else if (gameplayMode == GuitarGameplayMode.Guitar)
+            else if (IsActiveStringDetectorGameplay())
             {
                 StopArcadeMidiInput();
                 if (!loopGapActive)
@@ -2213,7 +2214,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             if (!isPaused && !loopGapActive && !showMiniGames && !showChartEditor)
             {
-                if (gameplayMode == GuitarGameplayMode.Guitar)
+                if (IsActiveStringDetectorGameplay())
                 {
                     PruneHistory();
                     UpdateGameplayStates();
@@ -2258,7 +2259,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         using (UpdateDetectorHintProfilerMarker.Auto())
         {
-            if ((gameplayMode == GuitarGameplayMode.Guitar || showMiniGames) && !showChartEditor && !loopGapActive)
+            if ((IsActiveStringDetectorGameplay() || showMiniGames) && !showChartEditor && !loopGapActive)
                 SendDetectorHintPacketIfNeeded();
         }
         if (shouldLogLoopCountdownFrame)
@@ -6030,6 +6031,54 @@ public class GuitarBridgeServer : MonoBehaviour
         return label.IndexOf("bass", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
+    private static bool IsDrumLikeTrackSummary(MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        if (summary == null)
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(summary.InstrumentType) &&
+            (summary.InstrumentType.IndexOf("drum", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             summary.InstrumentType.IndexOf("percussion", StringComparison.OrdinalIgnoreCase) >= 0))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrWhiteSpace(summary.Route) &&
+            (summary.Route.IndexOf("drum", StringComparison.OrdinalIgnoreCase) >= 0 ||
+             summary.Route.IndexOf("percussion", StringComparison.OrdinalIgnoreCase) >= 0))
+        {
+            return true;
+        }
+
+        string label = !string.IsNullOrWhiteSpace(summary.GroupDisplayName)
+            ? summary.GroupDisplayName
+            : !string.IsNullOrWhiteSpace(summary.Name)
+                ? summary.Name
+                : summary.PartId ?? string.Empty;
+        return label.IndexOf("drum", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               label.IndexOf("percussion", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private bool IsActiveDrumLaneGameplay()
+    {
+        return gameplayMode == GuitarGameplayMode.Guitar && currentArrangementUsesDrumLaneMode;
+    }
+
+    private bool IsActiveLaneBasedGameplay()
+    {
+        return gameplayMode == GuitarGameplayMode.Arcade || IsActiveDrumLaneGameplay();
+    }
+
+    private bool IsActiveStringDetectorGameplay()
+    {
+        return gameplayMode == GuitarGameplayMode.Guitar && !currentArrangementUsesDrumLaneMode;
+    }
+
+    private GuitarGameplayMode GetSnapshotGameplayMode()
+    {
+        return IsActiveDrumLaneGameplay() ? GuitarGameplayMode.Arcade : gameplayMode;
+    }
+
     private static int[] GetPreferredStandardTuningForTrack(MusicXmlLoader.MusicXmlPartSummary summary)
     {
         return IsBassLikeTrackSummary(summary)
@@ -7408,7 +7457,7 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         float resolvedBeforeLoopThreshold = restartTime - 0.0001f;
-        if (gameplayMode == GuitarGameplayMode.Arcade)
+        if (IsActiveLaneBasedGameplay())
         {
             if (arcadeNoteStates == null)
                 return;
@@ -7806,7 +7855,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private int GetHeroModeLostHeartCount()
     {
-        if (gameplayMode == GuitarGameplayMode.Arcade)
+        if (IsActiveLaneBasedGameplay())
             return GetArcadeHeroModeLostHeartCount();
 
         if (noteStates == null || noteStates.Count == 0)
@@ -11158,7 +11207,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void ShowStartupTuningReminder(bool resumePlaybackAfterDismiss)
     {
-        if (gameplayMode == GuitarGameplayMode.Guitar)
+        if (IsActiveStringDetectorGameplay())
         {
             OpenTunerBeforeSongStart(resumePlaybackAfterDismiss);
             return;
@@ -14165,7 +14214,7 @@ private void OpenOrFocusToneLab()
             return;
         }
 
-        if (gameplayMode == GuitarGameplayMode.Arcade)
+        if (IsActiveLaneBasedGameplay())
         {
             RebuildArcadeSessionProgressFromResolvedStates();
             return;
@@ -17269,6 +17318,9 @@ private void OpenOrFocusToneLab()
 
     private bool UsesArcadeKeyboardInput()
     {
+        if (IsActiveDrumLaneGameplay())
+            return true;
+
         return arcadeInputSource == ArcadeInputSourceMode.Keyboard ||
                arcadeInputSource == ArcadeInputSourceMode.KeyboardAndController ||
                arcadeInputSource == ArcadeInputSourceMode.All;
@@ -17410,7 +17462,16 @@ private void OpenOrFocusToneLab()
             return true;
         }
 
-        return TryMapCloneHeroMidiInputNote(midiNote, out lane, out isOpen);
+        if (TryMapCloneHeroMidiInputNote(midiNote, out lane, out isOpen))
+            return true;
+
+        if (TryMapGeneralMidiDrumInputNote(midiNote, out lane))
+        {
+            isOpen = false;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryMapCloneHeroMidiInputNote(int midiNote, out int lane, out bool isOpen)
@@ -17437,6 +17498,18 @@ private void OpenOrFocusToneLab()
         lane = -1;
         isOpen = false;
         return false;
+    }
+
+    private static bool TryMapGeneralMidiDrumInputNote(int midiNote, out int lane)
+    {
+        if (midiNote < 35 || midiNote > 87)
+        {
+            lane = -1;
+            return false;
+        }
+
+        lane = MapGeneralMidiDrumToLane(midiNote);
+        return true;
     }
 
     private void PruneArcadeInputHistory()
@@ -20431,7 +20504,7 @@ private void OpenOrFocusToneLab()
         if (backingClip != null)
             duration = Mathf.Max(duration, backingClip.length);
 
-        if (gameplayMode == GuitarGameplayMode.Arcade)
+        if (IsActiveLaneBasedGameplay())
             duration = Mathf.Max(duration, arcadeClipMaxLength);
 
         if (generatedAvailable)
@@ -20439,7 +20512,7 @@ private void OpenOrFocusToneLab()
 
         duration = Mathf.Max(duration, GetChartNotesEndTime(chartNotes));
 
-        if (gameplayMode == GuitarGameplayMode.Arcade)
+        if (IsActiveLaneBasedGameplay())
             duration = Mathf.Max(duration, GetArcadeNoteStatesEndTime(arcadeNoteStates));
 
         cachedSongDurationSeconds = Mathf.Max(0f, duration);
@@ -20847,7 +20920,9 @@ private void OpenOrFocusToneLab()
         bool buildGlobalSettingsPopupSnapshot = showGlobalSettingsSelectionPopup;
         bool buildNotesDetectorStatusSnapshot = buildNotesDetectorMenuSnapshot || notesDetectorGameplayTestActive;
         bool buildNotesDetectorTestListSnapshot = showNotesDetectorTestMenu || showNotesDetectorTestSelectionPopup;
-        bool buildArcadeArrangementLabelSnapshot = gameplayMode == GuitarGameplayMode.Arcade || pendingSongIsArcade || buildMultiplayerRhythmSnapshot;
+        GuitarGameplayMode snapshotGameplayMode = GetSnapshotGameplayMode();
+        bool snapshotIsLaneBased = snapshotGameplayMode == GuitarGameplayMode.Arcade;
+        bool buildArcadeArrangementLabelSnapshot = snapshotIsLaneBased || pendingSongIsArcade || buildMultiplayerRhythmSnapshot;
         string multiplayerRhythmPlayerOneSetupLabelSnapshot = string.Empty;
         string multiplayerRhythmPlayerTwoSetupLabelSnapshot = string.Empty;
         bool multiplayerRhythmSetupCanContinueSnapshot = false;
@@ -20887,7 +20962,7 @@ private void OpenOrFocusToneLab()
 
         return new GuitarGameplaySnapshot
         {
-            gameplayMode = gameplayMode,
+            gameplayMode = snapshotGameplayMode,
             multiplayerRhythmMode = multiplayerRhythmUiMode,
             showMultiplayerRhythmSetup = showMultiplayerRhythmSetup,
             multiplayerRhythmAvailableInputDevices = multiplayerDeviceLabels,
@@ -21121,10 +21196,10 @@ private void OpenOrFocusToneLab()
                 showSongSettingsTrackSelectionPopup ? selectedSongSettingsTrackSelectionIndex : GetResolvedSongSettingsTrackPopupIndex(),
                 0,
                 Mathf.Max(0, GetSongSettingsTrackPopupOptionCount() - 1)) : 0,
-            selectedTrackDisplayName = gameplayMode == GuitarGameplayMode.Arcade
+            selectedTrackDisplayName = snapshotIsLaneBased
                 ? $"{selectedArcadeArrangementDisplayNameSnapshot} {selectedArcadeDifficultyLabelSnapshot}"
                 : (showTrackSelection ? GetPendingSelectedTrackSummary()?.Name ?? GetTrackDisplayName(GetCurrentTrackOptionIndex()) : GetTrackDisplayName(GetCurrentTrackOptionIndex())),
-            selectedTrackTuningLabel = gameplayMode == GuitarGameplayMode.Arcade ? string.Empty : GetResolvedActiveTrackTuningLabel(),
+            selectedTrackTuningLabel = snapshotIsLaneBased ? string.Empty : GetResolvedActiveTrackTuningLabel(),
             trackSelectionHint = pendingSongIsArcade
                 ? "Arrangement: click row or Q/E. Difficulty: left/right or the X/H/M/E buttons."
                 : IsPendingArrangementDifficultySelectionActive() && PendingArrangementSelectionHasMultipleDifficulties()
@@ -21253,7 +21328,7 @@ private void OpenOrFocusToneLab()
     {
         if (multiplayerRhythmModeActive)
             return typeof(MultiplayerRhythm3DRenderer);
-        if (gameplayMode == GuitarGameplayMode.Arcade)
+        if (IsActiveLaneBasedGameplay())
             return typeof(ArcadeHighway3DRenderer);
 
         switch (renderMode)
@@ -21499,6 +21574,7 @@ private void OpenOrFocusToneLab()
         List<ArpeggioGuideData> loadedArpeggioGuides = new List<ArpeggioGuideData>();
         currentArcadeChart = new ArcadeChartData();
         arcadeNoteStates = new List<ArcadeNoteState>();
+        currentArrangementUsesDrumLaneMode = false;
         arcadeTotalChordCount = 0;
         currentArcadeArrangementSummaries.Clear();
         arcadeRecentInputEvents.Clear();
@@ -21567,6 +21643,9 @@ private void OpenOrFocusToneLab()
                         persistedSelectedMusicXmlPartId = GetPersistentArrangementPartId(persistedSelectedMusicXmlPartId, currentSongPartSummaries);
                     }
                     ApplyTrackSelectionPreference();
+                    currentArrangementUsesDrumLaneMode = IsDrumLikeTrackSummary(GetResolvedActiveTrackSummary());
+                    if (currentArrangementUsesDrumLaneMode)
+                        renderMode = GuitarRenderMode.Highway3D;
 
                     try
                     {
@@ -21620,7 +21699,14 @@ private void OpenOrFocusToneLab()
 
         InitializeSongMetadataAndAudio();
 
-        bool useDemo = gameplayMode == GuitarGameplayMode.Guitar &&
+        if (currentArrangementUsesDrumLaneMode)
+        {
+            loadedNotes ??= new List<NoteData>();
+            loadedArpeggioGuides = new List<ArpeggioGuideData>();
+            LoadDrumLaneArrangementContent(loadedNotes, GetResolvedActiveTrackSummary());
+        }
+
+        bool useDemo = IsActiveStringDetectorGameplay() &&
                        (useBuiltInDemoSong || (useDemoSongIfMidiMissing && (loadedNotes == null || loadedNotes.Count == 0)));
 
         // 2. Load the demo song if no MIDI was found
@@ -21631,7 +21717,7 @@ private void OpenOrFocusToneLab()
         }
 
         // 3. Fallback to random notes if absolutely everything fails
-        if (gameplayMode == GuitarGameplayMode.Guitar && (loadedNotes == null || loadedNotes.Count == 0))
+        if (IsActiveStringDetectorGameplay() && (loadedNotes == null || loadedNotes.Count == 0))
         {
             loadedNotes = new List<NoteData>();
             for (int i = 0; i < 50; i++)
@@ -21655,7 +21741,7 @@ private void OpenOrFocusToneLab()
         noteStates = chartNotes.Select(n => new GameplayNoteState(n)).ToList();
         
 
-        float songEndTime = gameplayMode == GuitarGameplayMode.Arcade && arcadeNoteStates != null && arcadeNoteStates.Count > 0
+        float songEndTime = IsActiveLaneBasedGameplay() && arcadeNoteStates != null && arcadeNoteStates.Count > 0
             ? GetArcadeNoteStatesEndTime(arcadeNoteStates)
             : chartNotes.Count > 0 ? GetChartNotesEndTime(chartNotes) : GetEffectiveTabSectionDuration();
         loopStartTime = Mathf.Clamp(loopStartTime, 0f, Mathf.Max(0f, songEndTime - 0.05f));
@@ -21810,6 +21896,258 @@ private void OpenOrFocusToneLab()
 
         if (activeRenderer is MultiplayerRhythm3DRenderer multiplayerRenderer)
             multiplayerRenderer.ResetRenderer(chartNotes, tabSections);
+    }
+
+    private void LoadDrumLaneArrangementContent(List<NoteData> sourceNotes, MusicXmlLoader.MusicXmlPartSummary activeTrack)
+    {
+        currentArcadeArrangementSummaries.Clear();
+        currentArcadePracticeSections.Clear();
+        currentArcadeChart = new ArcadeChartData
+        {
+            SourcePath = currentSongEntry?.PrimaryNotationPath ?? string.Empty,
+            LaneCount = 5
+        };
+        arcadeNoteStates = new List<ArcadeNoteState>();
+        arcadeTotalChordCount = 0;
+        arcadeRecentInputEvents.Clear();
+        activeArcadeSustains.Clear();
+        latestArcadeInputEventId = 0;
+        ResetArcadeCombo();
+        selectedArcadePracticeSectionIndex = 0;
+        arcadePracticeLoopStartSectionIndex = -1;
+        arcadePracticeLoopEndSectionIndex = -1;
+        selectedArcadeDifficulty = ArcadeDifficulty.Expert;
+
+        string arrangementId = !string.IsNullOrWhiteSpace(selectedMusicXmlPartId)
+            ? selectedMusicXmlPartId
+            : !string.IsNullOrWhiteSpace(activeTrack?.PartId)
+                ? activeTrack.PartId
+                : "drums";
+        string displayName = !string.IsNullOrWhiteSpace(activeTrack?.GroupDisplayName)
+            ? activeTrack.GroupDisplayName
+            : !string.IsNullOrWhiteSpace(activeTrack?.Name)
+                ? activeTrack.Name
+                : "Drums";
+
+        selectedArcadeArrangementId = arrangementId;
+        ArcadeArrangementSummary arrangement = new ArcadeArrangementSummary
+        {
+            ArrangementId = arrangementId,
+            DisplayName = displayName,
+            Instrument = ArcadeInstrument.Drums,
+            Difficulties = new List<ArcadeDifficulty> { ArcadeDifficulty.Expert }
+        };
+        currentArcadeArrangementSummaries.Add(arrangement.Clone());
+        currentArcadeChart.Arrangements.Add(arrangement.Clone());
+
+        currentArcadeChart.Notes = BuildDrumLaneNotes(sourceNotes);
+        currentArcadeChart.DurationSeconds = currentArcadeChart.Notes != null && currentArcadeChart.Notes.Count > 0
+            ? currentArcadeChart.Notes.Max(note => note.time + Mathf.Max(0.05f, note.duration))
+            : 0f;
+        arcadeNoteStates = currentArcadeChart.Notes != null
+            ? currentArcadeChart.Notes.Select(note => new ArcadeNoteState(note)).ToList()
+            : new List<ArcadeNoteState>();
+        arcadeTotalChordCount = CountArcadeChordGroups(arcadeNoteStates);
+
+        currentTrackBestArcadeScoreValue = currentTrackBestScoreValue;
+        currentTrackBestArcadeHeroScoreValue = currentTrackHeroBestScoreValue;
+        currentSongBestArcadeScoreValue = currentSongBestScoreValue;
+    }
+
+    private List<ArcadeNoteData> BuildDrumLaneNotes(List<NoteData> sourceNotes)
+    {
+        List<ArcadeNoteData> result = new List<ArcadeNoteData>(sourceNotes?.Count ?? 0);
+        if (sourceNotes == null || sourceNotes.Count == 0)
+            return result;
+
+        List<NoteData> ordered = sourceNotes
+            .OrderBy(note => note.time)
+            .ThenBy(note => note.chordId)
+            .ThenBy(note => note.stringIdx)
+            .ThenBy(note => note.fret)
+            .ToList();
+        Dictionary<int, int> sourceChordToLaneChord = new Dictionary<int, int>();
+        HashSet<string> emittedChordLanes = new HashSet<string>(StringComparer.Ordinal);
+        int nextChordId = 0;
+        int currentImplicitChordId = -1;
+        float currentImplicitChordTime = float.NegativeInfinity;
+
+        for (int i = 0; i < ordered.Count; i++)
+        {
+            NoteData note = ordered[i];
+            int chordId;
+            if (note.chordId >= 0)
+            {
+                if (!sourceChordToLaneChord.TryGetValue(note.chordId, out chordId))
+                {
+                    chordId = nextChordId++;
+                    sourceChordToLaneChord[note.chordId] = chordId;
+                }
+            }
+            else if (currentImplicitChordId >= 0 && Mathf.Abs(note.time - currentImplicitChordTime) <= Mathf.Max(0.001f, chordGroupWindow))
+            {
+                chordId = currentImplicitChordId;
+            }
+            else
+            {
+                chordId = nextChordId++;
+                currentImplicitChordId = chordId;
+                currentImplicitChordTime = note.time;
+            }
+
+            int lane = ResolveDrumLane(note);
+            string emittedKey = chordId.ToString(CultureInfo.InvariantCulture) + ":" + lane.ToString(CultureInfo.InvariantCulture);
+            if (!emittedChordLanes.Add(emittedKey))
+                continue;
+
+            int noteId = note.id >= 0 ? note.id : result.Count;
+            result.Add(new ArcadeNoteData(
+                noteId,
+                Mathf.Max(0f, note.time),
+                0f,
+                0f,
+                lane,
+                openNote: false,
+                hopoNote: false,
+                tapNote: true,
+                assignedChordId: chordId));
+        }
+
+        return result;
+    }
+
+    private int ResolveDrumLane(NoteData note)
+    {
+        string noteLabel = note.note ?? string.Empty;
+        if (TryResolveDrumLaneFromLabel(noteLabel, out int labelLane))
+            return labelLane;
+
+        if (note.fret >= 35 && note.fret <= 87)
+            return MapGeneralMidiDrumToLane(note.fret);
+
+        if (TryParseNoteNameToMidi(noteLabel, out int midi))
+            return MapGeneralMidiDrumToLane(midi);
+
+        if (note.stringIdx >= 0)
+            return Mathf.Clamp(note.stringIdx, 0, 4);
+
+        return Mathf.Abs(note.fret) % 5;
+    }
+
+    private static bool TryResolveDrumLaneFromLabel(string label, out int lane)
+    {
+        lane = -1;
+        if (string.IsNullOrWhiteSpace(label))
+            return false;
+
+        string normalized = label.Trim().ToLowerInvariant();
+        if (normalized.Contains("kick") || normalized.Contains("bass drum"))
+        {
+            lane = 0;
+            return true;
+        }
+
+        if (normalized.Contains("snare") || normalized.Contains("rim") || normalized.Contains("clap"))
+        {
+            lane = 1;
+            return true;
+        }
+
+        if (normalized.Contains("hat") || normalized.Contains("hihat") || normalized.Contains("hi-hat"))
+        {
+            lane = 2;
+            return true;
+        }
+
+        if (normalized.Contains("tom"))
+        {
+            lane = 3;
+            return true;
+        }
+
+        if (normalized.Contains("cymbal") ||
+            normalized.Contains("crash") ||
+            normalized.Contains("ride") ||
+            normalized.Contains("splash") ||
+            normalized.Contains("china"))
+        {
+            lane = 4;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static int MapGeneralMidiDrumToLane(int midi)
+    {
+        switch (midi)
+        {
+            case 35:
+            case 36:
+                return 0;
+            case 37:
+            case 38:
+            case 39:
+            case 40:
+                return 1;
+            case 42:
+            case 44:
+            case 46:
+                return 2;
+            case 41:
+            case 43:
+            case 45:
+            case 47:
+            case 48:
+            case 50:
+                return 3;
+            case 49:
+            case 51:
+            case 52:
+            case 53:
+            case 55:
+            case 57:
+            case 59:
+                return 4;
+            default:
+                return Mathf.Abs(midi) % 5;
+        }
+    }
+
+    private static bool TryParseNoteNameToMidi(string noteName, out int midi)
+    {
+        midi = -1;
+        if (string.IsNullOrWhiteSpace(noteName))
+            return false;
+
+        Match match = Regex.Match(noteName.Trim(), @"^([A-Ga-g])([#b]?)(-?\d+)$");
+        if (!match.Success)
+            return false;
+
+        int pitchClass;
+        switch (char.ToUpperInvariant(match.Groups[1].Value[0]))
+        {
+            case 'C': pitchClass = 0; break;
+            case 'D': pitchClass = 2; break;
+            case 'E': pitchClass = 4; break;
+            case 'F': pitchClass = 5; break;
+            case 'G': pitchClass = 7; break;
+            case 'A': pitchClass = 9; break;
+            case 'B': pitchClass = 11; break;
+            default: return false;
+        }
+
+        string accidental = match.Groups[2].Value;
+        if (accidental == "#")
+            pitchClass++;
+        else if (accidental == "b")
+            pitchClass--;
+
+        if (!int.TryParse(match.Groups[3].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int octave))
+            return false;
+
+        midi = Mathf.Clamp(((octave + 1) * 12) + ((pitchClass % 12) + 12) % 12, 0, 127);
+        return true;
     }
 
     private void EnsureBackingTrackSource()
@@ -24525,7 +24863,7 @@ private void OpenOrFocusToneLab()
         if (!ignoreCurrentlyResolvedNotes)
             return;
 
-        if (gameplayMode == GuitarGameplayMode.Arcade)
+        if (IsActiveLaneBasedGameplay())
         {
             if (arcadeNoteStates == null)
                 return;
@@ -24607,7 +24945,7 @@ private void OpenOrFocusToneLab()
             return;
         }
 
-        if (gameplayMode == GuitarGameplayMode.Arcade)
+        if (IsActiveLaneBasedGameplay())
         {
             UpdateArcadeSessionScoreState();
             return;
@@ -24734,6 +25072,12 @@ private void OpenOrFocusToneLab()
             return;
         }
 
+        if (IsActiveDrumLaneGameplay())
+        {
+            UpdateAndPersistDrumLaneBestScore();
+            return;
+        }
+
         if (scoreSaveInvalidated || loopEnabled || currentSongEntry == null || noteStates == null || noteStates.Count == 0 || string.IsNullOrEmpty(selectedMusicXmlPartId))
             return;
 
@@ -24766,6 +25110,54 @@ private void OpenOrFocusToneLab()
         UpsertTrackScore(songMetadata, selectedMusicXmlPartId, trackName, scoreValue, percent);
         currentSongBestScoreValue = GetHighestTrackScoreValue(songMetadata);
         currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
+        SaveSongMetadata();
+    }
+
+    private void UpdateAndPersistDrumLaneBestScore()
+    {
+        if (scoreSaveInvalidated ||
+            loopEnabled ||
+            currentSongEntry == null ||
+            arcadeNoteStates == null ||
+            arcadeNoteStates.Count == 0 ||
+            string.IsNullOrEmpty(selectedMusicXmlPartId))
+        {
+            return;
+        }
+
+        string trackName = GetTrackDisplayName(GetCurrentTrackOptionIndex());
+        int scoreValue = Mathf.Max(0, currentSessionArcadeScoreValue);
+        float percent = Mathf.Clamp(currentSessionScorePercent, 0f, 100f);
+        if (heroModeEnabled)
+        {
+            int heartsRemaining = GetCurrentHeroHeartsRemaining();
+            HeroScoreSummary currentHeroBest = GetStoredHeroTrackScoreSummary(songMetadata, selectedMusicXmlPartId);
+            if (!ShouldReplaceHeroBest(currentHeroBest, scoreValue, percent, heartsRemaining, heroModeHeartCount))
+                return;
+
+            currentTrackHeroBestScoreValue = scoreValue;
+            currentTrackHeroBestScorePercent = percent;
+            currentTrackHeroBestHeartsRemaining = heartsRemaining;
+            currentTrackHeroBestHeartsTotal = heroModeHeartCount;
+            currentTrackBestArcadeHeroScoreValue = scoreValue;
+            UpsertHeroTrackScore(songMetadata, selectedMusicXmlPartId, trackName, scoreValue, percent, heartsRemaining, heroModeHeartCount);
+            currentSongBestScoreValue = GetHighestTrackScoreValue(songMetadata);
+            currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
+            currentSongBestArcadeScoreValue = currentSongBestScoreValue;
+            SaveSongMetadata();
+            return;
+        }
+
+        if (scoreValue < currentTrackBestScoreValue || (scoreValue == currentTrackBestScoreValue && percent <= currentTrackBestScorePercent + 0.01f))
+            return;
+
+        currentTrackBestScoreValue = scoreValue;
+        currentTrackBestScorePercent = percent;
+        currentTrackBestArcadeScoreValue = scoreValue;
+        UpsertTrackScore(songMetadata, selectedMusicXmlPartId, trackName, scoreValue, percent);
+        currentSongBestScoreValue = GetHighestTrackScoreValue(songMetadata);
+        currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
+        currentSongBestArcadeScoreValue = currentSongBestScoreValue;
         SaveSongMetadata();
     }
 
