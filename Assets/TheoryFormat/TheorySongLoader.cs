@@ -6,7 +6,8 @@ using UnityEngine;
 
 public static class TheorySongLoader
 {
-    private const string ChartEditorPackageDirectoryName = "chart editor";
+    private const string LegacyTheoryPackageDirectoryName = "theory";
+    private const string LegacyChartEditorPackageDirectoryName = "chart editor";
 
     public static bool IsPackagePath(string filePath)
     {
@@ -265,17 +266,23 @@ public static class TheorySongLoader
 
     public static string FindPackageInDirectory(string directory, bool requireLoadable = false)
     {
+        return FindPackagesInDirectory(directory, requireLoadable).FirstOrDefault();
+    }
+
+    public static List<string> FindPackagesInDirectory(string directory, bool requireLoadable = false)
+    {
         if (!Directory.Exists(directory))
-            return null;
+            return new List<string>();
 
         List<string> candidates = new List<string>();
         AddPackageCandidates(directory, candidates);
-        AddPackageCandidates(Path.Combine(directory, ChartEditorPackageDirectoryName), candidates);
+        AddPackageCandidates(Path.Combine(directory, LegacyTheoryPackageDirectoryName), candidates);
+        AddPackageCandidates(Path.Combine(directory, LegacyChartEditorPackageDirectoryName), candidates);
 
         if (!requireLoadable)
-            return OrderPackageCandidates(candidates).FirstOrDefault();
+            return OrderPackageCandidates(candidates).ToList();
 
-        return OrderPackageCandidates(candidates).FirstOrDefault(IsLoadablePackage);
+        return OrderPackageCandidates(candidates).Where(IsLoadablePackage).ToList();
     }
 
     private static void AddPackageCandidates(string directory, List<string> candidates)

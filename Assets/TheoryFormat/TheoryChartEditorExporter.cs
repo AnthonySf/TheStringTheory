@@ -965,9 +965,7 @@ public static class TheoryChartEditorExporter
     {
         string title = project?.metadata?.title;
         string artist = project?.metadata?.artist;
-        string prefix = SanitizeFileName($"{FirstNonEmpty(artist, "Unknown")}_{FirstNonEmpty(title, "Chart")}");
-        string id = string.IsNullOrWhiteSpace(project?.projectId) ? Guid.NewGuid().ToString("N") : project.projectId;
-        return $"{prefix}_{id.Substring(0, Math.Min(8, id.Length))}";
+        return SanitizeFileName($"{FirstNonEmpty(artist, "Unknown")}_{FirstNonEmpty(title, "Chart")}");
     }
 
     private static string SanitizeIdentifier(string value)

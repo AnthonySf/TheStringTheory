@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -11,7 +10,8 @@ public static class ChartEditorProjectStore
     public const string ChartEditorSaveFolderName = "chart editor";
 
     private const string ProjectFolderName = "ChartEditorProjects";
-    private const string ExportFolderPrefix = "chart_editor_";
+    private const string ExportFolderPrefix = "song_";
+    private const string LegacyTheorySaveFolderName = "theory";
 
     public static string ProjectsDirectory => Path.Combine(ExternalContentPaths.PersistentRoot, ProjectFolderName);
 
@@ -37,9 +37,9 @@ public static class ChartEditorProjectStore
             ChartEditorRuntimeNoteSanitizer.SanitizeProjectNotes(project);
             ChartEditorTimingService.EnsureBeatMap(project, attachContentToBeatMap: true);
 
-            packagePath = !saveAs ? ResolveCurrentTheoryPackagePath(project) : string.Empty;
+            packagePath = !saveAs ? ResolveCurrentTheoryPackagePath(project, createDirectory: true) : string.Empty;
             if (string.IsNullOrWhiteSpace(packagePath))
-                packagePath = BuildDefaultTheoryPackagePath(project, forceNewFile: saveAs);
+                packagePath = BuildDefaultTheoryPackagePath(project);
 
             if (!TheoryChartEditorExporter.WriteProjectPackage(project, packagePath, out error))
                 return false;
@@ -76,7 +76,7 @@ public static class ChartEditorProjectStore
         {
             Directory.CreateDirectory(ProjectsDirectory);
             string path = string.IsNullOrWhiteSpace(project.savedProjectPath)
-                ? Path.Combine(ProjectsDirectory, $"{BuildProjectFileName(project)}{ProjectExtension}")
+                ? BuildAvailableFilePath(ProjectsDirectory, BuildProjectFileName(project), ProjectExtension)
                 : project.savedProjectPath;
 
             string directory = Path.GetDirectoryName(path);
@@ -96,7 +96,12 @@ public static class ChartEditorProjectStore
         }
     }
 
-    private static string ResolveCurrentTheoryPackagePath(ChartEditorProject project)
+    public static bool CanSaveCurrentTheoryPackageInPlace(ChartEditorProject project)
+    {
+        return !string.IsNullOrWhiteSpace(ResolveCurrentTheoryPackagePath(project, createDirectory: false));
+    }
+
+    private static string ResolveCurrentTheoryPackagePath(ChartEditorProject project, bool createDirectory)
     {
         if (project == null ||
             project.sourceKind != ChartEditorSourceKind.TheoryPackage ||
@@ -106,77 +111,66 @@ public static class ChartEditorProjectStore
         }
 
         string path = project.sourcePath;
+        if (IsLegacyAutoSavePackagePath(path))
+            return string.Empty;
+
         string directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
+        if (createDirectory && !string.IsNullOrWhiteSpace(directory))
             Directory.CreateDirectory(directory);
         return path;
     }
 
-    private static string BuildDefaultTheoryPackagePath(ChartEditorProject project, bool forceNewFile)
+    public static string GetTheoryPackageSaveDirectory(ChartEditorProject project, bool createDirectory = true)
     {
-        string directory = ResolveChartEditorPackageDirectory(project);
+        string directory = ResolveChartEditorPackageDirectory(createDirectory);
+        if (createDirectory && !string.IsNullOrWhiteSpace(directory))
+            Directory.CreateDirectory(directory);
+        return directory;
+    }
+
+    private static string BuildDefaultTheoryPackagePath(ChartEditorProject project)
+    {
+        string directory = ResolveChartEditorPackageDirectory(createDirectories: true);
         Directory.CreateDirectory(directory);
 
         string baseName = BuildProjectFileName(project);
-        if (forceNewFile)
-        {
-            string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
-            return BuildAvailableFilePath(directory, $"{baseName}_{stamp}", TheoryPackageFormat.Extension);
-        }
-
         return BuildAvailableFilePath(directory, baseName, TheoryPackageFormat.Extension);
     }
 
-    private static string ResolveChartEditorPackageDirectory(ChartEditorProject project)
+    private static string ResolveChartEditorPackageDirectory(bool createDirectories = true)
     {
-        string songDirectory = ResolveLibrarySongDirectory(project);
-        if (IsChartEditorSaveDirectory(songDirectory))
-            return songDirectory;
+        if (createDirectories)
+            Directory.CreateDirectory(ExternalContentPaths.PersistentSongsDirectory);
 
-        return Path.Combine(songDirectory, ChartEditorSaveFolderName);
+        return Path.Combine(ExternalContentPaths.PersistentSongsDirectory, ChartEditorSaveFolderName);
     }
 
-    private static string ResolveLibrarySongDirectory(ChartEditorProject project)
+    private static bool IsLegacyAutoSavePackagePath(string packagePath)
     {
-        string candidate = ResolveExistingLibraryDirectory(project?.sourceFolder);
-        if (!string.IsNullOrWhiteSpace(candidate))
-            return candidate;
+        if (string.IsNullOrWhiteSpace(packagePath))
+            return false;
 
-        string sourceDirectory = string.IsNullOrWhiteSpace(project?.sourcePath) ? string.Empty : Path.GetDirectoryName(project.sourcePath);
-        candidate = ResolveExistingLibraryDirectory(sourceDirectory);
-        if (!string.IsNullOrWhiteSpace(candidate))
-            return candidate;
+        string directory = Path.GetDirectoryName(packagePath);
+        if (string.IsNullOrWhiteSpace(directory))
+            return false;
 
-        Directory.CreateDirectory(ExternalContentPaths.PersistentSongsDirectory);
-        string folderName = SanitizeFileName($"{FirstNonEmpty(project?.metadata?.artist, "Unknown")}_{FirstNonEmpty(project?.metadata?.title, "Chart")}");
-        string fallback = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, folderName);
-        Directory.CreateDirectory(fallback);
-        return fallback;
-    }
-
-    private static string ResolveExistingLibraryDirectory(string directory)
-    {
-        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
-            return string.Empty;
-
-        string fullDirectory = Path.GetFullPath(directory);
         string songsRoot = Path.GetFullPath(ExternalContentPaths.PersistentSongsDirectory);
+        string fullDirectory = Path.GetFullPath(directory);
         if (!IsSameOrChildPath(songsRoot, fullDirectory))
-            return string.Empty;
+            return false;
 
-        if (IsChartEditorSaveDirectory(fullDirectory))
-            return fullDirectory;
+        string sharedDirectory = Path.GetFullPath(ResolveChartEditorPackageDirectory(createDirectories: false));
+        if (string.Equals(
+                sharedDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                fullDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
 
-        return fullDirectory;
-    }
-
-    private static bool IsChartEditorSaveDirectory(string directory)
-    {
-        return !string.IsNullOrWhiteSpace(directory) &&
-               string.Equals(
-                   Path.GetFileName(directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
-                   ChartEditorSaveFolderName,
-                   StringComparison.OrdinalIgnoreCase);
+        string folderName = Path.GetFileName(fullDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        return string.Equals(folderName, LegacyTheorySaveFolderName, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(folderName, ChartEditorSaveFolderName, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsSameOrChildPath(string parentPath, string childPath)
@@ -901,9 +895,7 @@ public static class ChartEditorProjectStore
     {
         string title = project?.metadata?.title;
         string artist = project?.metadata?.artist;
-        string prefix = SanitizeFileName($"{FirstNonEmpty(artist, "Unknown")}_{FirstNonEmpty(title, "Chart")}");
-        string id = string.IsNullOrWhiteSpace(project?.projectId) ? Guid.NewGuid().ToString("N") : project.projectId;
-        return $"{prefix}_{id.Substring(0, Math.Min(8, id.Length))}";
+        return SanitizeFileName($"{FirstNonEmpty(artist, "Unknown")}_{FirstNonEmpty(title, "Chart")}");
     }
 
     private static string BuildExportDirectoryName(ChartEditorProject project)

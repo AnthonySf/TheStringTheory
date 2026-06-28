@@ -49,6 +49,92 @@ public sealed class ChartEditorRoundTripTests
     }
 
     [Test]
+    public void SaveTheoryPackage_DefaultsToSharedChartEditorFolderUnderSongs()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        PrepareProjectForNoEditRoundTrip(project);
+
+        Assert.IsTrue(ChartEditorProjectStore.SaveTheoryPackage(project, saveAs: false, out string packagePath, out string saveError), saveError);
+
+        string packageDirectory = Path.GetDirectoryName(packagePath);
+        string expectedDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, ChartEditorProjectStore.ChartEditorSaveFolderName);
+        Assert.IsTrue(File.Exists(packagePath), "Saving a .theory package should create the package file.");
+        Assert.AreEqual(Path.GetFullPath(expectedDirectory), Path.GetFullPath(packageDirectory ?? string.Empty));
+        Assert.AreEqual("Unit_Test_Band_Round_Trip_Song.theory", Path.GetFileName(packagePath));
+        Assert.AreEqual(packagePath, project.sourcePath);
+    }
+
+    [Test]
+    public void SaveTheoryPackage_SaveAsUsesNumberedConflictSuffix()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        PrepareProjectForNoEditRoundTrip(project);
+
+        Assert.IsTrue(ChartEditorProjectStore.SaveTheoryPackage(project, saveAs: false, out string firstPackagePath, out string firstError), firstError);
+        Assert.IsTrue(ChartEditorProjectStore.SaveTheoryPackage(project, saveAs: true, out string secondPackagePath, out string secondError), secondError);
+
+        string expectedDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, ChartEditorProjectStore.ChartEditorSaveFolderName);
+        Assert.AreEqual(Path.GetFullPath(expectedDirectory), Path.GetFullPath(Path.GetDirectoryName(firstPackagePath) ?? string.Empty));
+        Assert.AreEqual(Path.GetFullPath(expectedDirectory), Path.GetFullPath(Path.GetDirectoryName(secondPackagePath) ?? string.Empty));
+        Assert.AreEqual("Unit_Test_Band_Round_Trip_Song.theory", Path.GetFileName(firstPackagePath));
+        Assert.AreEqual("Unit_Test_Band_Round_Trip_Song_2.theory", Path.GetFileName(secondPackagePath));
+        Assert.AreEqual(secondPackagePath, project.sourcePath);
+    }
+
+    [Test]
+    public void SaveTheoryPackage_RelocatesLegacyPerSongTheoryFolderToSharedChartEditorFolder()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        string legacyDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, "Old Song", "theory");
+        Directory.CreateDirectory(legacyDirectory);
+
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        PrepareProjectForNoEditRoundTrip(project);
+        Assert.IsTrue(TheoryChartEditorExporter.ExportProject(project, legacyDirectory, out string legacyPackagePath, out string exportError), exportError);
+
+        project.sourceKind = ChartEditorSourceKind.TheoryPackage;
+        project.sourcePath = legacyPackagePath;
+        project.sourceFolder = legacyDirectory;
+        Assert.IsTrue(ChartEditorProjectStore.SaveTheoryPackage(project, saveAs: false, out string savedPackagePath, out string saveError), saveError);
+
+        string expectedDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, ChartEditorProjectStore.ChartEditorSaveFolderName);
+        Assert.AreEqual(Path.GetFullPath(expectedDirectory), Path.GetFullPath(Path.GetDirectoryName(savedPackagePath) ?? string.Empty));
+        Assert.AreNotEqual(Path.GetFullPath(legacyPackagePath), Path.GetFullPath(savedPackagePath));
+    }
+
+    [Test]
+    public void LibraryScanner_FindsMultipleTheoryPackagesInSharedChartEditorFolder()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject first = CreateRoundTripProject(scope.RootPath);
+        PrepareProjectForNoEditRoundTrip(first);
+        Assert.IsTrue(ChartEditorProjectStore.SaveTheoryPackage(first, saveAs: false, out string firstPackagePath, out string firstError), firstError);
+
+        ChartEditorProject second = CreateRoundTripProject(scope.RootPath);
+        second.projectId = "chart_editor_second_project";
+        second.metadata.title = "Second Saved Song";
+        PrepareProjectForNoEditRoundTrip(second);
+        Assert.IsTrue(ChartEditorProjectStore.SaveTheoryPackage(second, saveAs: false, out string secondPackagePath, out string secondError), secondError);
+
+        string expectedDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, ChartEditorProjectStore.ChartEditorSaveFolderName);
+        Assert.AreEqual(Path.GetFullPath(expectedDirectory), Path.GetFullPath(Path.GetDirectoryName(firstPackagePath) ?? string.Empty));
+        Assert.AreEqual(Path.GetFullPath(expectedDirectory), Path.GetFullPath(Path.GetDirectoryName(secondPackagePath) ?? string.Empty));
+
+        SongLibraryService.ClearCache();
+        List<SongLibraryEntry> librarySongs = SongLibraryService.GetAvailableSongs(forceRefresh: true, refreshImports: false);
+        HashSet<string> discoveredPackages = new HashSet<string>(
+            librarySongs
+                .Where(song => song?.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage)
+                .Select(song => song.PrimaryNotationPath),
+            StringComparer.OrdinalIgnoreCase);
+
+        Assert.IsTrue(discoveredPackages.Contains(firstPackagePath), "The shared chart editor save folder should expose the first .theory package.");
+        Assert.IsTrue(discoveredPackages.Contains(secondPackagePath), "The shared chart editor save folder should expose the second .theory package.");
+    }
+
+    [Test]
     public void ExportWithoutEdits_TheoryPackageLoadsThroughRuntimeAndLibrary()
     {
         using ExternalContentRootScope scope = new ExternalContentRootScope();
@@ -60,6 +146,7 @@ public sealed class ChartEditorRoundTripTests
         Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(project, out string exportDirectory, out string packagePath, out string exportError), exportError);
         Assert.IsTrue(File.Exists(packagePath), "Export did not create a .theory package.");
         Assert.IsTrue(packagePath.EndsWith(TheoryPackageFormat.Extension, StringComparison.OrdinalIgnoreCase));
+        Assert.AreEqual("Unit_Test_Band_Round_Trip_Song.theory", Path.GetFileName(packagePath));
 
         Assert.IsTrue(SongNotationFacade.TryDetectKind(packagePath, out SongNotationSourceKind kind));
         Assert.AreEqual(SongNotationSourceKind.TheoryPackage, kind);
@@ -90,6 +177,34 @@ public sealed class ChartEditorRoundTripTests
         Assert.IsTrue(File.Exists(entry.Mp3Path), "The .theory library entry should expose cached audio for Unity playback.");
         Assert.IsTrue(File.Exists(entry.ArtworkPath), "The .theory library entry should expose cached cover art for the library UI.");
         Assert.AreEqual(exportDirectory, Path.GetDirectoryName(packagePath));
+    }
+
+    [Test]
+    public void LibraryScanner_FindsTheoryPackagesInsideNestedGroupingFolders()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        string nestedSongDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, "My Favorites", "Nested Song");
+        Directory.CreateDirectory(nestedSongDirectory);
+
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        project.sourceFolder = nestedSongDirectory;
+        project.sourcePath = Path.Combine(nestedSongDirectory, "source.gp");
+        AttachFixtureAudio(project, scope.RootPath);
+        AttachFixtureCover(project, scope.RootPath);
+        PrepareProjectForNoEditRoundTrip(project);
+
+        Assert.IsTrue(TheoryChartEditorExporter.ExportProject(project, nestedSongDirectory, out string packagePath, out string exportError), exportError);
+        Assert.AreEqual(nestedSongDirectory, Path.GetDirectoryName(packagePath));
+
+        SongLibraryService.ClearCache();
+        List<SongLibraryEntry> librarySongs = SongLibraryService.GetAvailableSongs(forceRefresh: true, refreshImports: false);
+        SongLibraryEntry entry = librarySongs.FirstOrDefault(song =>
+            song != null &&
+            string.Equals(song.PrimaryNotationPath, packagePath, StringComparison.OrdinalIgnoreCase));
+
+        Assert.IsNotNull(entry, "The library scanner should discover .theory packages below arbitrary grouping folders.");
+        Assert.AreEqual(Path.GetFullPath(nestedSongDirectory), Path.GetFullPath(entry.SongDirectory));
+        Assert.AreEqual(SongNotationSourceKind.TheoryPackage, entry.PrimaryNotationKind);
     }
 
     [Test]

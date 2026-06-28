@@ -1263,6 +1263,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private int arcadeComboCount;
     private int arcadeTotalChordCount;
     private const string SelectedSongDirectoryPrefsKey = "guitar_selected_song_directory";
+    private const string SelectedSongIdentityPrefsKey = "guitar_selected_song_identity";
     private const string SelectedSongLibraryTypePrefsKey = "guitar_selected_song_library_type";
     private const string HeroModeEnabledPrefsKey = "guitar_hero_mode_enabled";
     private const string HeroModeHeartCountPrefsKey = "guitar_hero_mode_heart_count";
@@ -1327,6 +1328,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private int openSongSelectionRequestId;
     private Coroutine songLibraryRefreshRoutine;
     private int songLibraryRefreshRequestId;
+    private bool pendingCurrentSongReloadFromChartEditorSave;
     private bool songSelectionOpenedFromSongEnd;
     private bool songSelectionOpenedFromMainMenu;
     private bool showStartupTuningReminder;
@@ -2433,6 +2435,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (showChartEditor)
         {
+            if (keyboardTextInputActive)
+                return;
+
             if (IsUiBackPressed() || IsUiPausePressed())
                 CloseChartEditorToMainMenuFromUi();
             return;
@@ -6378,7 +6383,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 entry.IsSong &&
                 currentSongEntry != null &&
                 entry.Song != null &&
-                string.Equals(entry.Song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase));
+                IsSameSongEntry(entry.Song, currentSongEntry));
         }
 
         selectedSongListIndex = selectedIndex >= 0 ? selectedIndex : 0;
@@ -6529,10 +6534,13 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             int currentIndex = availableSongs.FindIndex(song =>
                 song != null &&
-                string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase));
+                IsSameSongEntry(song, currentSongEntry));
 
             if (currentIndex >= 0)
+            {
                 selectedSongListIndex = currentIndex;
+                currentSongEntry = availableSongs[currentIndex];
+            }
         }
 
         if (selectedSongListIndex >= availableSongs.Count)
@@ -6762,8 +6770,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (entry == null)
             return false;
 
-        if (currentSongEntry != null &&
-            string.Equals(currentSongEntry.SongDirectory, entry.SongDirectory, StringComparison.OrdinalIgnoreCase))
+        if (currentSongEntry != null && IsSameSongEntry(currentSongEntry, entry))
         {
             return songMetadata != null ? songMetadata.favoriteInLibrary : entry.CachedFavoriteInLibrary;
         }
@@ -6776,8 +6783,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (entry == null)
             return default;
 
-        if (currentSongEntry != null &&
-            string.Equals(currentSongEntry.SongDirectory, entry.SongDirectory, StringComparison.OrdinalIgnoreCase))
+        if (currentSongEntry != null && IsSameSongEntry(currentSongEntry, entry))
         {
             return songMetadata != null
                 ? GetHighestHeroTrackScoreSummary(songMetadata)
@@ -6790,7 +6796,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private void RebuildDisplayedSongLibraryEntries()
     {
         SongLibraryBrowseEntry previousEntry = GetSelectedSongLibraryBrowseEntry();
-        string previousSongDirectory = previousEntry != null && previousEntry.IsSong ? previousEntry.Song?.SongDirectory : string.Empty;
+        string previousSongKey = previousEntry != null && previousEntry.IsSong ? GetSongEntryIdentityKey(previousEntry.Song) : string.Empty;
         string previousGroupKey = previousEntry != null && !previousEntry.IsSong ? previousEntry.GroupKey : string.Empty;
 
         displayedSongLibraryEntries.Clear();
@@ -6807,7 +6813,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 {
                     IsSong = true,
                     Song = song,
-                    GroupKey = song.SongDirectory,
+                    GroupKey = GetSongEntryIdentityKey(song),
                     DisplayName = song.DisplayName,
                     Subtitle = song.Subtitle ?? string.Empty,
                     ArtworkPath = song.ArtworkPath ?? string.Empty,
@@ -6833,7 +6839,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 {
                     IsSong = true,
                     Song = song,
-                    GroupKey = song.SongDirectory,
+                    GroupKey = GetSongEntryIdentityKey(song),
                     DisplayName = song.DisplayName,
                     Subtitle = song.Subtitle ?? string.Empty,
                     ArtworkPath = song.ArtworkPath ?? string.Empty,
@@ -6895,12 +6901,12 @@ public class GuitarBridgeServer : MonoBehaviour
             songLibraryBrowseScopeKey = string.Empty;
 
         int restoredIndex = -1;
-        if (!string.IsNullOrWhiteSpace(previousSongDirectory))
+        if (!string.IsNullOrWhiteSpace(previousSongKey))
         {
             restoredIndex = displayedSongLibraryEntries.FindIndex(entry =>
                 entry.IsSong &&
                 entry.Song != null &&
-                string.Equals(entry.Song.SongDirectory, previousSongDirectory, StringComparison.OrdinalIgnoreCase));
+                string.Equals(GetSongEntryIdentityKey(entry.Song), previousSongKey, StringComparison.OrdinalIgnoreCase));
         }
         else if (!string.IsNullOrWhiteSpace(previousGroupKey))
         {
@@ -6933,7 +6939,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         int songIndex = availableSongs.FindIndex(song =>
             song != null &&
-            string.Equals(song.SongDirectory, selectedEntry.Song.SongDirectory, StringComparison.OrdinalIgnoreCase));
+            IsSameSongEntry(song, selectedEntry.Song));
         SyncPendingTrackSelectionToSong(songIndex, preserveTrackIfPossible: true);
     }
 
@@ -6990,7 +6996,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             SongMetadata arcadeSelectedMetadata = LoadSongMetadataForEntry(selected);
             bool samePendingArcadeSong = pendingTrackSelectionSong != null &&
-                string.Equals(pendingTrackSelectionSong.SongDirectory, selected.SongDirectory, StringComparison.OrdinalIgnoreCase);
+                IsSameSongEntry(pendingTrackSelectionSong, selected);
             string previousArrangementId = preserveTrackIfPossible &&
                 samePendingArcadeSong &&
                 selectedTrackListIndex >= 0 &&
@@ -7031,7 +7037,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         SongMetadata selectedMetadata = LoadSongMetadataForEntry(selected);
         bool samePendingSong = pendingTrackSelectionSong != null &&
-            string.Equals(pendingTrackSelectionSong.SongDirectory, selected.SongDirectory, StringComparison.OrdinalIgnoreCase);
+            IsSameSongEntry(pendingTrackSelectionSong, selected);
         string previousPartId = string.Empty;
         if (preserveTrackIfPossible && samePendingSong)
         {
@@ -7199,49 +7205,16 @@ public class GuitarBridgeServer : MonoBehaviour
         multiplayerRhythmModeActive = false;
         pendingMultiplayerRhythmSongSelection = false;
 
-        bool isCurrentSong = currentSongEntry != null && string.Equals(currentSongEntry.SongDirectory, songEntry.SongDirectory, StringComparison.OrdinalIgnoreCase);
-        if (isCurrentSong)
-        {
-            showTrackSelection = false;
-            showSongSelection = false;
-            songSelectionSongConfirmed = false;
-            pendingTrackSelectionSong = null;
-            pendingTrackSelectionParts.Clear();
-            pendingArrangementTrackSelectionGroups.Clear();
-            pendingArcadeArrangementSummaries.Clear();
-
-            useAutoTrackSelection = false;
-            selectedMusicXmlPartId = selectedPartId ?? string.Empty;
-            UpdatePersistedTrackSelectionStateFromActiveSelection();
-            ApplyTrackSelectionPreference();
-            RefreshEffectiveAudioOffset();
-            SaveSongMetadata();
-
-            if (songSelectionOpenedFromSongEnd)
-            {
-                songSelectionOpenedFromSongEnd = false;
-                RetrySongFromUi();
-            }
-            else if (songSelectionOpenedFromMainMenu || mainMenuFlowActive)
-            {
-                showMainMenu = false;
-                mainMenuFlowActive = false;
-                songSelectionOpenedFromMainMenu = false;
-                ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
-            }
-            return;
-        }
-
         LoadSongFromEntry(songEntry, selectedPartId);
         showTrackSelection = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
         showMainMenu = false;
         mainMenuFlowActive = false;
-            pendingTrackSelectionSong = null;
-            pendingTrackSelectionParts.Clear();
-            pendingArrangementTrackSelectionGroups.Clear();
-            pendingArcadeArrangementSummaries.Clear();
+        pendingTrackSelectionSong = null;
+        pendingTrackSelectionParts.Clear();
+        pendingArrangementTrackSelectionGroups.Clear();
+        pendingArcadeArrangementSummaries.Clear();
     }
 
     private void LoadSongFromEntry(SongLibraryEntry entry, string preferredPartId = null)
@@ -7251,7 +7224,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             int selectedIndex = availableSongs.FindIndex(song =>
                 song != null &&
-                string.Equals(song.SongDirectory, entry.SongDirectory, StringComparison.OrdinalIgnoreCase));
+                IsSameSongEntry(song, entry));
             if (selectedIndex >= 0)
             {
                 selectedSongListIndex = selectedIndex;
@@ -7304,13 +7277,6 @@ public class GuitarBridgeServer : MonoBehaviour
         metadata.selectedArcadeArrangementId = selectedArcadeArrangementId;
         metadata.selectedArcadeDifficulty = ArcadeCloneHeroLoader.SerializeDifficulty(selectedArcadeDifficulty);
         SaveSongMetadata(metadata, metadataPath, metadataFileName);
-
-        bool isCurrentSong = currentSongEntry != null && string.Equals(currentSongEntry.SongDirectory, songEntry.SongDirectory, StringComparison.OrdinalIgnoreCase);
-        if (isCurrentSong)
-        {
-            LoadSongFromEntry(songEntry);
-            return;
-        }
 
         LoadSongFromEntry(songEntry);
         showTrackSelection = false;
@@ -9309,10 +9275,25 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: false);
     }
 
-    public void NotifyChartEditorLibraryChangedFromUi()
+    public void NotifyChartEditorLibraryChangedFromUi(string changedTheoryPackagePath = null)
     {
         SongLibraryService.ClearCache();
         BeginSongLibraryRefresh(refreshImports: false);
+
+        if (ShouldReloadCurrentSongAfterChartEditorSave(changedTheoryPackagePath))
+            pendingCurrentSongReloadFromChartEditorSave = true;
+    }
+
+    private bool ShouldReloadCurrentSongAfterChartEditorSave(string changedTheoryPackagePath)
+    {
+        if (currentSongEntry == null ||
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.TheoryPackage)
+        {
+            return false;
+        }
+
+        return string.IsNullOrWhiteSpace(changedTheoryPackagePath) ||
+               PathsMatch(currentSongEntry.PrimaryNotationPath, changedTheoryPackagePath);
     }
 
     public void CloseMiniGamesFromUi()
@@ -9732,7 +9713,6 @@ public class GuitarBridgeServer : MonoBehaviour
         showMainMenu = false;
         showMiniGames = false;
         showChartEditor = false;
-        mainMenuFlowActive = false;
         showSongSettings = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -9742,7 +9722,25 @@ public class GuitarBridgeServer : MonoBehaviour
         showGameModes = false;
         showHeroModeSettings = false;
         loopSettingsOpenedFromGameModes = false;
+        if (ReloadCurrentSongAfterChartEditorSaveIfNeeded())
+            return;
+
+        mainMenuFlowActive = false;
         ShowStartupTuningReminder(resumePlaybackAfterDismiss: true);
+    }
+
+    private bool ReloadCurrentSongAfterChartEditorSaveIfNeeded()
+    {
+        if (!pendingCurrentSongReloadFromChartEditorSave)
+            return false;
+
+        pendingCurrentSongReloadFromChartEditorSave = false;
+        if (currentSongEntry == null)
+            return false;
+
+        string preferredPartId = useAutoTrackSelection ? null : selectedMusicXmlPartId;
+        LoadSongFromEntry(currentSongEntry, preferredPartId);
+        return true;
     }
 
     public void OpenStartMenuFromUi()
@@ -11970,10 +11968,9 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
 
         SongLibraryEntry songEntry = entry.Song;
-        string toggledSongDirectory = songEntry.SongDirectory;
+        string toggledSongKey = GetSongEntryIdentityKey(songEntry);
         SongMetadata metadata;
-        bool isCurrentSong = currentSongEntry != null &&
-                             string.Equals(currentSongEntry.SongDirectory, songEntry.SongDirectory, StringComparison.OrdinalIgnoreCase);
+        bool isCurrentSong = currentSongEntry != null && IsSameSongEntry(currentSongEntry, songEntry);
         if (isCurrentSong)
         {
             metadata = songMetadata ?? new SongMetadata();
@@ -11991,13 +11988,13 @@ public class GuitarBridgeServer : MonoBehaviour
         SaveSongMetadata(metadata, BuildSongMetadataPath(songEntry), ResolveSongMetadataFileName(songEntry));
         RefreshAvailableSongs();
 
-        if (!string.IsNullOrWhiteSpace(toggledSongDirectory))
+        if (!string.IsNullOrWhiteSpace(toggledSongKey))
         {
             int toggledIndex = displayedSongLibraryEntries.FindIndex(displayedEntry =>
                 displayedEntry != null &&
                 displayedEntry.IsSong &&
                 displayedEntry.Song != null &&
-                string.Equals(displayedEntry.Song.SongDirectory, toggledSongDirectory, StringComparison.OrdinalIgnoreCase));
+                string.Equals(GetSongEntryIdentityKey(displayedEntry.Song), toggledSongKey, StringComparison.OrdinalIgnoreCase));
             if (toggledIndex >= 0)
             {
                 selectedSongListIndex = toggledIndex;
@@ -20625,8 +20622,7 @@ private void OpenOrFocusToneLab()
                     if (entry != null && entry.IsSong && entry.Song != null)
                     {
                         SongLibraryEntry song = entry.Song;
-                        bool isCurrentSong = currentSongEntry != null &&
-                                             string.Equals(currentSongEntry.SongDirectory, song.SongDirectory, StringComparison.OrdinalIgnoreCase);
+                        bool isCurrentSong = currentSongEntry != null && IsSameSongEntry(currentSongEntry, song);
                         availableSongFavorited.Add(isCurrentSong
                             ? (songMetadata != null ? songMetadata.favoriteInLibrary : song.CachedFavoriteInLibrary)
                             : song.CachedFavoriteInLibrary);
@@ -20704,7 +20700,7 @@ private void OpenOrFocusToneLab()
                 selectedLibrarySongMetadata =
                     selectedLibrarySongEntry != null &&
                     currentSongEntry != null &&
-                    string.Equals(selectedLibrarySongEntry.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase)
+                    IsSameSongEntry(selectedLibrarySongEntry, currentSongEntry)
                         ? songMetadata
                         : LoadSongMetadataForEntry(selectedLibrarySongEntry);
                 pendingArcadeArrangement = GetPendingSelectedArcadeArrangementSummary();
@@ -21076,7 +21072,7 @@ private void OpenOrFocusToneLab()
             selectedLibrarySongHasMidi = selectedLibrarySongEntry != null && !string.IsNullOrWhiteSpace(selectedLibrarySongEntry.MidiPath),
             selectedLibrarySongIsCurrent = selectedLibrarySongEntry != null &&
                                           currentSongEntry != null &&
-                                          string.Equals(selectedLibrarySongEntry.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase),
+                                          IsSameSongEntry(selectedLibrarySongEntry, currentSongEntry),
             showLibraryDifficultySelector = showLibraryDifficultySelector,
             libraryDifficultyLabels = libraryDifficultyLabels,
             libraryDifficultyAvailable = libraryDifficultyAvailable,
@@ -21518,10 +21514,21 @@ private void OpenOrFocusToneLab()
             RefreshAvailableSongs();
             currentSongPartSummaries.Clear();
 
-            if (currentSongEntry == null || !availableSongs.Any(song => string.Equals(song.SongDirectory, currentSongEntry.SongDirectory, StringComparison.OrdinalIgnoreCase)))
+            int currentAvailableIndex = currentSongEntry == null
+                ? -1
+                : availableSongs.FindIndex(song => IsSameSongEntry(song, currentSongEntry));
+            if (currentAvailableIndex >= 0)
             {
-                string preferredSongDirectory = LoadSelectedSongPreference();
+                currentSongEntry = availableSongs[currentAvailableIndex];
+            }
+            else
+            {
+                string preferredSongIdentity = LoadSelectedSongPreference();
+                string preferredSongDirectory = LoadSelectedSongDirectoryPreference();
                 currentSongEntry = availableSongs.FirstOrDefault(song =>
+                    !string.IsNullOrEmpty(preferredSongIdentity) &&
+                    string.Equals(GetSongEntryIdentityKey(song), preferredSongIdentity, StringComparison.OrdinalIgnoreCase))
+                    ?? availableSongs.FirstOrDefault(song =>
                     !string.IsNullOrEmpty(preferredSongDirectory) &&
                     string.Equals(song.SongDirectory, preferredSongDirectory, StringComparison.OrdinalIgnoreCase))
                     ?? availableSongs.FirstOrDefault();
@@ -22448,6 +22455,7 @@ private void OpenOrFocusToneLab()
                                      SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind);
         bool isArrangementCacheGuitarSong = currentSongEntry.LibraryType == SongLibraryType.Guitar &&
                                      currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache;
+        bool isTheoryPackageSong = currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage;
 
         if (isArrangementCacheGuitarSong &&
             (string.IsNullOrWhiteSpace(songPath) || !File.Exists(songPath)) &&
@@ -22460,9 +22468,25 @@ private void OpenOrFocusToneLab()
             currentSongEntry.Mp3Path = songPath;
         }
 
+        if (isTheoryPackageSong &&
+            (string.IsNullOrWhiteSpace(songPath) || !File.Exists(songPath)) &&
+            !string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) &&
+            TheorySongLoader.TryLoadManifest(currentSongEntry.PrimaryNotationPath, out TheorySongManifest theoryManifest) &&
+            TheoryPackageCache.TryCachePrimaryAudio(currentSongEntry.PrimaryNotationPath, theoryManifest, out string cachedTheoryAudioPath, out _) &&
+            !string.IsNullOrWhiteSpace(cachedTheoryAudioPath) &&
+            File.Exists(cachedTheoryAudioPath))
+        {
+            songPath = cachedTheoryAudioPath;
+            currentSongEntry.Mp3Path = songPath;
+        }
+
         bool arrangementCacheHasBackingTrack = isArrangementCacheGuitarSong &&
                                         !string.IsNullOrWhiteSpace(songPath) &&
                                         File.Exists(songPath);
+        bool theoryPackageHasOriginalMix = isTheoryPackageSong &&
+                                           !string.IsNullOrWhiteSpace(songPath) &&
+                                           File.Exists(songPath);
+        bool shouldUseOriginalMixByDefault = arrangementCacheHasBackingTrack || theoryPackageHasOriginalMix;
 
         string metadataPath = BuildSongMetadataPath(currentSongEntry);
         bool metadataExists = !string.IsNullOrWhiteSpace(metadataPath) && File.Exists(metadataPath);
@@ -22471,7 +22495,7 @@ private void OpenOrFocusToneLab()
         stemSmartDuckingEnabled = songMetadata.stemSmartDuckingEnabled;
         RefreshCurrentStemCacheState(songPath);
         SongPlaybackAudioMode loadedPlaybackAudioMode = songMetadata.playbackAudioMode;
-        if (arrangementCacheHasBackingTrack)
+        if (shouldUseOriginalMixByDefault)
             songMetadata.playbackAudioMode = SongPlaybackAudioMode.Mp3;
         selectedLoopBookmarkId = string.Empty;
         loopBookmarkRenameActive = false;
@@ -22565,10 +22589,10 @@ private void OpenOrFocusToneLab()
         currentTrackHeroBestScorePercent = currentHeroTrackBest.percent;
         currentTrackHeroBestHeartsRemaining = currentHeroTrackBest.heartsRemaining;
         currentTrackHeroBestHeartsTotal = currentHeroTrackBest.heartsTotal;
-        if ((isArrangementCacheGuitarSong &&
-             (arrangementCacheHasBackingTrack
-                 ? loadedPlaybackAudioMode != SongPlaybackAudioMode.Mp3 || !metadataExists
-                 : !metadataExists)) ||
+        bool shouldSavePlaybackAudioModeDefault = shouldUseOriginalMixByDefault
+            ? loadedPlaybackAudioMode != SongPlaybackAudioMode.Mp3 || !metadataExists
+            : isArrangementCacheGuitarSong && !metadataExists;
+        if (shouldSavePlaybackAudioModeDefault ||
             arrangementTrackSelectionNormalized)
         {
             songMetadata.selectedMusicXmlPartId = persistedSelectedMusicXmlPartId;
@@ -23333,7 +23357,7 @@ private void OpenOrFocusToneLab()
         if (entry == null)
             return 0f;
 
-        if (currentSongEntry != null && string.Equals(currentSongEntry.SongDirectory, entry.SongDirectory, StringComparison.OrdinalIgnoreCase))
+        if (currentSongEntry != null && IsSameSongEntry(currentSongEntry, entry))
             return entry.LibraryType == SongLibraryType.Arcade
                 ? Mathf.Max(0f, songMetadata != null ? currentSongBestArcadeScoreValue : entry.CachedBestArcadeScoreValue)
                 : Mathf.Clamp(songMetadata != null ? currentSongBestScorePercent : entry.CachedBestScorePercent, 0f, 100f);
@@ -24386,11 +24410,17 @@ private void OpenOrFocusToneLab()
             return;
 
         PlayerPrefs.SetString(SelectedSongDirectoryPrefsKey, entry.SongDirectory);
+        PlayerPrefs.SetString(SelectedSongIdentityPrefsKey, GetSongEntryIdentityKey(entry));
         PlayerPrefs.SetInt(SelectedSongLibraryTypePrefsKey, (int)entry.LibraryType);
         PlayerPrefs.Save();
     }
 
     private static string LoadSelectedSongPreference()
+    {
+        return PlayerPrefs.GetString(SelectedSongIdentityPrefsKey, string.Empty);
+    }
+
+    private static string LoadSelectedSongDirectoryPreference()
     {
         return PlayerPrefs.GetString(SelectedSongDirectoryPrefsKey, string.Empty);
     }
@@ -25025,8 +25055,10 @@ private void OpenOrFocusToneLab()
         cachedSongMetadataByPath[metadataPath] = CloneSongMetadata(metadata);
         cachedSongMetadataTicksByPath[metadataPath] = File.Exists(metadataPath) ? File.GetLastWriteTimeUtc(metadataPath).Ticks : -1L;
         string songDirectory = Path.GetDirectoryName(metadataPath);
+        string primaryNotationPath = FindPrimaryNotationPathForMetadataPath(metadataPath);
         SongLibraryService.UpdateCachedMetadataSummary(
             songDirectory,
+            primaryNotationPath,
             metadata.favoriteInLibrary,
             metadata.bestScoreValue,
             metadata.bestScorePercent,
@@ -25037,6 +25069,7 @@ private void OpenOrFocusToneLab()
             metadata.bestArcadeScoreValue);
         ApplyCachedSummaryToKnownSongEntries(
             songDirectory,
+            primaryNotationPath,
             metadata.favoriteInLibrary,
             metadata.bestScoreValue,
             metadata.bestScorePercent,
@@ -25049,6 +25082,7 @@ private void OpenOrFocusToneLab()
 
     private void ApplyCachedSummaryToKnownSongEntries(
         string songDirectory,
+        string primaryNotationPath,
         bool favoriteInLibrary,
         int bestScoreValue,
         float bestScorePercent,
@@ -25061,17 +25095,18 @@ private void OpenOrFocusToneLab()
         if (string.IsNullOrWhiteSpace(songDirectory))
             return;
 
-        ApplyCachedSummaryToSongEntry(currentSongEntry, songDirectory, favoriteInLibrary, bestScoreValue, bestScorePercent, heroBestScoreValue, heroBestScorePercent, heroBestHeartsRemaining, heroBestHeartsTotal, bestArcadeScoreValue);
-        ApplyCachedSummaryToSongEntry(pendingTrackSelectionSong, songDirectory, favoriteInLibrary, bestScoreValue, bestScorePercent, heroBestScoreValue, heroBestScorePercent, heroBestHeartsRemaining, heroBestHeartsTotal, bestArcadeScoreValue);
+        ApplyCachedSummaryToSongEntry(currentSongEntry, songDirectory, primaryNotationPath, favoriteInLibrary, bestScoreValue, bestScorePercent, heroBestScoreValue, heroBestScorePercent, heroBestHeartsRemaining, heroBestHeartsTotal, bestArcadeScoreValue);
+        ApplyCachedSummaryToSongEntry(pendingTrackSelectionSong, songDirectory, primaryNotationPath, favoriteInLibrary, bestScoreValue, bestScorePercent, heroBestScoreValue, heroBestScorePercent, heroBestHeartsRemaining, heroBestHeartsTotal, bestArcadeScoreValue);
         for (int i = 0; i < availableSongs.Count; i++)
         {
-            ApplyCachedSummaryToSongEntry(availableSongs[i], songDirectory, favoriteInLibrary, bestScoreValue, bestScorePercent, heroBestScoreValue, heroBestScorePercent, heroBestHeartsRemaining, heroBestHeartsTotal, bestArcadeScoreValue);
+            ApplyCachedSummaryToSongEntry(availableSongs[i], songDirectory, primaryNotationPath, favoriteInLibrary, bestScoreValue, bestScorePercent, heroBestScoreValue, heroBestScorePercent, heroBestHeartsRemaining, heroBestHeartsTotal, bestArcadeScoreValue);
         }
     }
 
     private static void ApplyCachedSummaryToSongEntry(
         SongLibraryEntry entry,
         string songDirectory,
+        string primaryNotationPath,
         bool favoriteInLibrary,
         int bestScoreValue,
         float bestScorePercent,
@@ -25084,6 +25119,12 @@ private void OpenOrFocusToneLab()
         if (entry == null || !PathsMatch(entry.SongDirectory, songDirectory))
             return;
 
+        if (!string.IsNullOrWhiteSpace(primaryNotationPath) &&
+            !PathsMatch(entry.PrimaryNotationPath, primaryNotationPath))
+        {
+            return;
+        }
+
         entry.CachedFavoriteInLibrary = favoriteInLibrary;
         entry.CachedBestScoreValue = Mathf.Max(0, bestScoreValue);
         entry.CachedBestScorePercent = Mathf.Clamp(bestScorePercent, 0f, 100f);
@@ -25094,9 +25135,88 @@ private void OpenOrFocusToneLab()
         entry.CachedBestArcadeScoreValue = Mathf.Max(0, bestArcadeScoreValue);
     }
 
+    private string FindPrimaryNotationPathForMetadataPath(string metadataPath)
+    {
+        if (string.IsNullOrWhiteSpace(metadataPath))
+            return string.Empty;
+
+        string normalizedMetadataPath = NormalizePathKey(metadataPath);
+        string primaryNotationPath = FindPrimaryNotationPathForMetadataPath(currentSongEntry, normalizedMetadataPath);
+        if (!string.IsNullOrWhiteSpace(primaryNotationPath))
+            return primaryNotationPath;
+
+        primaryNotationPath = FindPrimaryNotationPathForMetadataPath(pendingTrackSelectionSong, normalizedMetadataPath);
+        if (!string.IsNullOrWhiteSpace(primaryNotationPath))
+            return primaryNotationPath;
+
+        for (int i = 0; i < availableSongs.Count; i++)
+        {
+            primaryNotationPath = FindPrimaryNotationPathForMetadataPath(availableSongs[i], normalizedMetadataPath);
+            if (!string.IsNullOrWhiteSpace(primaryNotationPath))
+                return primaryNotationPath;
+        }
+
+        return InferTheoryPackagePathFromMetadataPath(metadataPath);
+    }
+
+    private static string FindPrimaryNotationPathForMetadataPath(SongLibraryEntry entry, string normalizedMetadataPath)
+    {
+        if (entry == null || string.IsNullOrWhiteSpace(normalizedMetadataPath))
+            return string.Empty;
+
+        string entryMetadataPath = BuildSongMetadataPath(entry);
+        return string.Equals(NormalizePathKey(entryMetadataPath), normalizedMetadataPath, StringComparison.OrdinalIgnoreCase)
+            ? entry.PrimaryNotationPath ?? string.Empty
+            : string.Empty;
+    }
+
+    private static string InferTheoryPackagePathFromMetadataPath(string metadataPath)
+    {
+        if (string.IsNullOrWhiteSpace(metadataPath))
+            return string.Empty;
+
+        string fileName = Path.GetFileName(metadataPath);
+        const string metadataSuffix = ".metadata.json";
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            !fileName.EndsWith(metadataSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        string directory = Path.GetDirectoryName(metadataPath);
+        string packageName = fileName.Substring(0, fileName.Length - metadataSuffix.Length);
+        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(packageName))
+            return string.Empty;
+
+        string packagePath = Path.Combine(directory, $"{packageName}.theory");
+        return File.Exists(packagePath) ? packagePath : string.Empty;
+    }
+
     private static bool PathsMatch(string a, string b)
     {
         return string.Equals(NormalizePathKey(a), NormalizePathKey(b), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetSongEntryIdentityKey(SongLibraryEntry entry)
+    {
+        if (entry == null)
+            return string.Empty;
+
+        string path = !string.IsNullOrWhiteSpace(entry.PrimaryNotationPath)
+            ? entry.PrimaryNotationPath
+            : !string.IsNullOrWhiteSpace(entry.ArcadeChartPath)
+                ? entry.ArcadeChartPath
+                : entry.SongDirectory;
+
+        return NormalizePathKey(path);
+    }
+
+    private static bool IsSameSongEntry(SongLibraryEntry a, SongLibraryEntry b)
+    {
+        string aKey = GetSongEntryIdentityKey(a);
+        string bKey = GetSongEntryIdentityKey(b);
+        return !string.IsNullOrWhiteSpace(aKey) &&
+               string.Equals(aKey, bKey, StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizePathKey(string path)

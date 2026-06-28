@@ -241,6 +241,11 @@ public sealed class ChartEditorOverlay
         public TextField endBendField;
     }
 
+    private sealed class SidebarExpansionAnimation
+    {
+        public bool collapsing;
+    }
+
     private static Texture2D resizeHorizontalCursorTexture;
     private static Texture2D resizeVerticalCursorTexture;
 
@@ -256,20 +261,36 @@ public sealed class ChartEditorOverlay
 
     private const float EditorFontScale = 1.35f;
     private const float SidebarWidth = 640f;
+    private const float SidebarSectionMarginX = 14f;
+    private const float SidebarSectionTopGap = 14f;
+    private const float SidebarSectionBottomGap = 10f;
+    private const float SidebarSectionHeaderHeight = 72f;
+    private const float SidebarSectionContentPaddingTop = 12f;
+    private const float SidebarSectionContentPaddingBottom = 14f;
+    private const float SidebarSectionAnimationSeconds = 0.20f;
+    private const float SidebarTrackRowHeight = 108f;
+    private const float SidebarTrackRowGap = 10f;
+    private const float SidebarListRowHeight = 52f;
+    private const float SidebarListRowGap = 8f;
+    private const int SidebarMaxSectionRows = 14;
+    private const string SidebarTracksKey = "tracks";
+    private const string SidebarSectionsKey = "sections";
+    private const string SidebarAnchorsKey = "anchors";
+    private const string SidebarProjectInfoKey = "project-info";
     private const float InspectorWidth = 700f;
     private const float TimelineLabelWidth = 250f;
-    private const float SectionBarHeight = 108f;
-    private const float WaveformTop = 112f;
+    private const float SectionBarHeight = 56f;
+    private const float WaveformTop = SectionBarHeight + 8f;
     private const float WaveformHeight = 220f;
     private const float WaveformRenderViewportPaddingMultiplier = 0.75f;
     private const float WaveformRenderMinimumPadding = 512f;
     private const float WaveformTextureMinimumPixelsPerLayoutPixel = 0.92f;
-    private const float NotesTop = 372f;
+    private const float NotesTop = WaveformTop + WaveformHeight + 40f;
     private const float ContextMenuWidth = 520f;
     private const float ContextSubmenuWidth = 500f;
     private const float ContextMenuRowHeight = 72f;
     private const float BeatMarkerHitWidth = 28f;
-    private const float AnchorPinTop = 326f;
+    private const float AnchorPinTop = WaveformTop + WaveformHeight - 6f;
     private const float AnchorPinSize = 46f;
     private const float SelectedTrackHeight = 690f;
     private const float SelectedTrackHeaderHeight = 0f;
@@ -397,6 +418,7 @@ public sealed class ChartEditorOverlay
     private VisualElement contextMenuElement;
     private VisualElement contextSubmenuElement;
     private VisualElement editPopupElement;
+    private VisualElement saveSuccessPopupElement;
     private double lastTapTempoRealtime = -1.0;
     private double tapTempoAverageIntervalSeconds;
     private bool marqueeSelecting;
@@ -405,9 +427,8 @@ public sealed class ChartEditorOverlay
     private bool marqueeMoved;
     private VisualElement marqueeTimeline;
     private VisualElement marqueeBox;
+    private readonly Dictionary<string, SidebarExpansionAnimation> sidebarExpansionAnimations = new Dictionary<string, SidebarExpansionAnimation>(StringComparer.OrdinalIgnoreCase);
     private bool sectionsExpanded;
-    private bool sectionsCollapseAnimating;
-    private bool sectionsAnimationPending;
     private bool tracksExpanded = true;
     private bool anchorsExpanded;
     private bool projectInfoExpanded;
@@ -659,6 +680,13 @@ public sealed class ChartEditorOverlay
         if (!show)
             return;
 
+        if (HandleOverlayKeyboardInput())
+        {
+            AdvancePlayback(Mathf.Max(0f, deltaTime));
+            UpdateHighwayPreview();
+            return;
+        }
+
         HandleKeyboardShortcuts();
         AdvancePlayback(Mathf.Max(0f, deltaTime));
         UpdateHighwayPreview();
@@ -668,6 +696,8 @@ public sealed class ChartEditorOverlay
     {
         HideContextMenu();
         HideEditPopup();
+        HideSaveSuccessPopup();
+        SetChartEditorKeyboardCaptureActive(false);
         ClearMarqueeSelection();
         StopPlayback();
         ResetEditorAudioCache();
@@ -679,10 +709,9 @@ public sealed class ChartEditorOverlay
         noteClipboard.Clear();
         selectedSectionId = null;
         selectedSyncPointId = null;
+        sidebarExpansionAnimations.Clear();
         tracksExpanded = true;
         sectionsExpanded = false;
-        sectionsCollapseAnimating = false;
-        sectionsAnimationPending = false;
         anchorsExpanded = false;
         projectInfoExpanded = false;
         timelineScrollOffset = Vector2.zero;
@@ -1563,289 +1592,462 @@ public sealed class ChartEditorOverlay
         panel.style.marginRight = 24f;
         panel.style.paddingLeft = 0f;
         panel.style.paddingRight = 0f;
-        panel.style.paddingTop = 0f;
-        panel.style.paddingBottom = 0f;
+        panel.style.paddingTop = 10f;
+        panel.style.paddingBottom = 22f;
         StylePanel(panel, new Color(0.050f, 0.058f, 0.070f, 0.99f), new Color(0.17f, 0.21f, 0.27f, 1f), 0f);
 
         List<ChartEditorTrackViewGroup> groups = BuildTrackViewGroups();
-        panel.Add(CreateTracksSidebarHeader(groups.Count));
-        if (tracksExpanded)
-        {
-            for (int i = 0; i < groups.Count; i++)
-            {
-                ChartEditorTrackViewGroup group = groups[i];
-                bool selected = group.ContainsSelected(project.selectedTrackId);
-                panel.Add(CreateTrackSidebarRow(group, selected));
-            }
-        }
-
-        panel.Add(CreateSectionsSidebarHeader());
-        if (project.sections != null && (sectionsExpanded || sectionsCollapseAnimating))
-            panel.Add(CreateAnimatedSectionsList());
-
-        panel.Add(CreateAnchorsSidebarHeader());
-        if (anchorsExpanded)
-            panel.Add(CreateAnchorsList());
+        int sectionCount = project.sections?.Count ?? 0;
+        int anchorCount = ChartEditorTimingService.GetAnchors(project).Count;
+        panel.Add(CreateCollapsibleSidebarSection(
+            SidebarTracksKey,
+            "TRACKS",
+            tracksExpanded,
+            ToggleTracksExpanded,
+            () => CreateTracksSidebarContent(groups),
+            EstimateTracksSidebarContentHeight(groups),
+            Mathf.Max(0, groups.Count).ToString(CultureInfo.InvariantCulture)));
+        panel.Add(CreateCollapsibleSidebarSection(
+            SidebarSectionsKey,
+            "SECTIONS",
+            sectionsExpanded,
+            ToggleSectionsExpanded,
+            CreateSectionsSidebarContent,
+            EstimateSectionsSidebarContentHeight(),
+            sectionCount > 0 ? sectionCount.ToString(CultureInfo.InvariantCulture) : string.Empty,
+            AddSectionAtCursor));
+        panel.Add(CreateCollapsibleSidebarSection(
+            SidebarAnchorsKey,
+            "ANCHORS",
+            anchorsExpanded,
+            ToggleAnchorsExpanded,
+            CreateAnchorsList,
+            EstimateAnchorsSidebarContentHeight(),
+            anchorCount > 0 ? anchorCount.ToString(CultureInfo.InvariantCulture) : string.Empty));
 
         currentWarnings = ChartEditorValidationService.BuildWarnings(project);
-        panel.Add(CreateSidebarHeader("Warnings", currentWarnings.Count > 0 ? currentWarnings.Count.ToString() : string.Empty));
-        if (currentWarnings.Count == 0)
-            panel.Add(CreateSidebarText("No issues detected.", new Color(0.54f, 0.90f, 0.68f, 0.95f)));
-        else
-        {
-            foreach (string warning in currentWarnings.Take(4))
-                panel.Add(CreateSidebarWarning(warning));
-        }
-
-        panel.Add(CreateProjectInfoSidebarHeader());
-        if (projectInfoExpanded)
-        {
-            panel.Add(CreateProjectInfoRow("Source", project.sourceKind.ToString()));
-            panel.Add(CreateProjectInfoRow("Audio", string.IsNullOrWhiteSpace(project.audio?.displayName) ? "None" : project.audio.displayName));
-            panel.Add(CreateProjectInfoRow("Length", FormatTime(project.DurationSeconds)));
-            panel.Add(CreateProjectInfoRow("Beat Map", $"{ChartEditorTimingService.GetBeatMarkers(project).Count} beats / {ChartEditorTimingService.GetAnchors(project).Count} anchors"));
-            panel.Add(CreateProjectInfoRow("Tempo", $"{ChartEditorTimingService.GetTempoAtBeat(project, ChartEditorTimingService.GetBeatPositionForAudioTime(project, project.cursorTimeSeconds)):0.###} BPM"));
-            panel.Add(CreateSidebarButton("Edit Song Info", ShowSongInfoPopup));
-            panel.Add(CreateSidebarButton("Beat Map Settings", ShowBeatMapSettingsPopup));
-            panel.Add(CreateSidebarButton("SynchTheory", ShowSynchTheoryPopup));
-            panel.Add(CreateSidebarButton("Add Anchor at Cursor", AddSyncPointAtCursor));
-        }
+        panel.Add(CreateStaticSidebarSection(
+            "WARNINGS",
+            currentWarnings.Count > 0 ? currentWarnings.Count.ToString(CultureInfo.InvariantCulture) : string.Empty,
+            CreateWarningsSidebarContent));
+        panel.Add(CreateSidebarActionButtons());
+        panel.Add(CreateCollapsibleSidebarSection(
+            SidebarProjectInfoKey,
+            "PROJECT INFO",
+            projectInfoExpanded,
+            ToggleProjectInfoExpanded,
+            CreateProjectInfoSidebarContent,
+            EstimateProjectInfoSidebarContentHeight()));
 
         return panel;
     }
 
-    private VisualElement CreateSidebarHeader(string title, string actionText, Action action = null)
+    private VisualElement CreateCollapsibleSidebarSection(
+        string animationKey,
+        string title,
+        bool expanded,
+        Action toggle,
+        Func<VisualElement> buildContent,
+        float fallbackContentHeight,
+        string metadata = null,
+        Action addAction = null)
+    {
+        VisualElement section = CreateSidebarSectionShell();
+        section.Add(CreateSidebarSectionHeader(title, metadata, true, expanded, toggle, addAction));
+
+        bool animating = sidebarExpansionAnimations.ContainsKey(animationKey);
+        if (expanded || animating)
+            section.Add(CreateSidebarAnimatedContent(animationKey, buildContent, fallbackContentHeight));
+
+        return section;
+    }
+
+    private VisualElement CreateStaticSidebarSection(string title, string metadata, Func<VisualElement> buildContent)
+    {
+        VisualElement section = CreateSidebarSectionShell();
+        section.Add(CreateSidebarSectionHeader(title, metadata, false, false, null, null));
+        section.Add(CreateSidebarStaticContent(buildContent));
+        return section;
+    }
+
+    private VisualElement CreateSidebarSectionShell()
+    {
+        VisualElement section = new VisualElement();
+        section.style.marginLeft = SidebarSectionMarginX;
+        section.style.marginRight = SidebarSectionMarginX;
+        section.style.marginTop = SidebarSectionTopGap;
+        section.style.marginBottom = SidebarSectionBottomGap;
+        section.style.overflow = Overflow.Hidden;
+        section.style.backgroundColor = new Color(0.044f, 0.052f, 0.066f, 0.92f);
+        SetRadius(section, 14f);
+        SetBorderWidth(section, 1f);
+        SetBorderColor(section, new Color(0.17f, 0.21f, 0.28f, 0.94f));
+        return section;
+    }
+
+    private VisualElement CreateSidebarSectionHeader(
+        string title,
+        string metadata,
+        bool collapsible,
+        bool expanded,
+        Action toggle,
+        Action addAction)
     {
         VisualElement row = new VisualElement();
-        row.style.height = 62f;
-        row.style.minHeight = 62f;
+        row.style.height = SidebarSectionHeaderHeight;
+        row.style.minHeight = SidebarSectionHeaderHeight;
         row.style.flexDirection = FlexDirection.Row;
         row.style.alignItems = Align.Center;
         row.style.justifyContent = Justify.SpaceBetween;
-        row.style.paddingLeft = 26f;
-        row.style.paddingRight = 22f;
-        row.style.borderTopWidth = 1f;
-        row.style.borderTopColor = new Color(0.14f, 0.17f, 0.22f, 1f);
+        row.style.paddingLeft = 18f;
+        row.style.paddingRight = 14f;
+        row.style.backgroundColor = new Color(0.030f, 0.037f, 0.050f, 0.34f);
 
-        Label label = CreateLabel(title.ToUpperInvariant(), 28f, new Color(0.90f, 0.94f, 0.98f, 1f), true, TextAnchor.MiddleLeft, false);
-        row.Add(label);
-        if (!string.IsNullOrWhiteSpace(actionText))
+        if (collapsible && toggle != null)
         {
-            if (action == null)
+            row.RegisterCallback<PointerDownEvent>(evt =>
             {
-                Label metadata = CreateLabel(actionText, 23f, new Color(0.74f, 0.80f, 0.90f, 0.95f), true, TextAnchor.MiddleRight, false);
-                metadata.style.minWidth = 42f;
-                metadata.style.unityTextAlign = TextAnchor.MiddleRight;
-                row.Add(metadata);
-            }
-            else
-            {
-                Button actionButton = new Button(action) { text = actionText };
-                actionButton.focusable = false;
-                actionButton.style.width = 54f;
-                actionButton.style.height = 42f;
-                actionButton.style.fontSize = UiFont(27f);
-                actionButton.style.unityFontDefinition = bodyFont;
-                actionButton.style.unityFontStyleAndWeight = FontStyle.Bold;
-                StyleIconPillButton(actionButton, new Color(0.82f, 0.90f, 1f, 1f));
-                row.Add(actionButton);
-            }
+                if (evt.button != 0)
+                    return;
+
+                toggle();
+                evt.StopPropagation();
+            });
         }
-
-        return row;
-    }
-
-    private VisualElement CreateSectionsSidebarHeader()
-    {
-        VisualElement row = new VisualElement();
-        row.style.height = 62f;
-        row.style.minHeight = 62f;
-        row.style.flexDirection = FlexDirection.Row;
-        row.style.alignItems = Align.Center;
-        row.style.justifyContent = Justify.SpaceBetween;
-        row.style.paddingLeft = 26f;
-        row.style.paddingRight = 22f;
-        row.style.borderTopWidth = 1f;
-        row.style.borderTopColor = new Color(0.14f, 0.17f, 0.22f, 1f);
-        row.RegisterCallback<PointerDownEvent>(evt =>
-        {
-            if (evt.button != 0)
-                return;
-
-            ToggleSectionsExpanded();
-            evt.StopPropagation();
-        });
-
-        Label label = CreateLabel("SECTIONS", 28f, new Color(0.90f, 0.94f, 0.98f, 1f), true, TextAnchor.MiddleLeft, false);
-        row.Add(label);
-
-        VisualElement actions = new VisualElement();
-        actions.style.flexDirection = FlexDirection.Row;
-        actions.style.alignItems = Align.Center;
-
-        Button expand = CreateSmallSidebarIconButton(sectionsExpanded ? "Hide" : "Show", ToggleSectionsExpanded);
-        Button add = CreateSmallSidebarIconButton("+", AddSectionAtCursor);
-        actions.Add(expand);
-        actions.Add(add);
-        row.Add(actions);
-        return row;
-    }
-
-    private VisualElement CreateTracksSidebarHeader(int count)
-    {
-        return CreateExpandableSidebarHeader(
-            "TRACKS",
-            tracksExpanded,
-            ToggleTracksExpanded,
-            Mathf.Max(0, count).ToString(CultureInfo.InvariantCulture));
-    }
-
-    private VisualElement CreateAnchorsSidebarHeader()
-    {
-        VisualElement row = CreateExpandableSidebarHeader(
-            "ANCHORS",
-            anchorsExpanded,
-            ToggleAnchorsExpanded,
-            ChartEditorTimingService.GetAnchors(project).Count.ToString(CultureInfo.InvariantCulture));
-
-        VisualElement actions = new VisualElement();
-        actions.style.flexDirection = FlexDirection.Row;
-        actions.style.alignItems = Align.Center;
-        Button expand = CreateSmallSidebarIconButton(anchorsExpanded ? "Hide" : "Show", ToggleAnchorsExpanded);
-        Button add = CreateSmallSidebarIconButton("+", AddSyncPointAtCursor);
-        actions.Add(expand);
-        actions.Add(add);
-        row.Add(actions);
-        return row;
-    }
-
-    private VisualElement CreateProjectInfoSidebarHeader()
-    {
-        return CreateExpandableSidebarHeader("PROJECT INFO", projectInfoExpanded, ToggleProjectInfoExpanded);
-    }
-
-    private VisualElement CreateExpandableSidebarHeader(string title, bool expanded, Action toggle, string metadata = null)
-    {
-        VisualElement row = new VisualElement();
-        row.style.height = 62f;
-        row.style.minHeight = 62f;
-        row.style.flexDirection = FlexDirection.Row;
-        row.style.alignItems = Align.Center;
-        row.style.justifyContent = Justify.SpaceBetween;
-        row.style.paddingLeft = 26f;
-        row.style.paddingRight = 22f;
-        row.style.borderTopWidth = 1f;
-        row.style.borderTopColor = new Color(0.14f, 0.17f, 0.22f, 1f);
-        row.RegisterCallback<PointerDownEvent>(evt =>
-        {
-            if (evt.button != 0)
-                return;
-
-            toggle?.Invoke();
-            evt.StopPropagation();
-        });
 
         VisualElement labelGroup = new VisualElement();
         labelGroup.style.flexDirection = FlexDirection.Row;
         labelGroup.style.alignItems = Align.Center;
-        Label chevron = CreateLabel(expanded ? "v" : ">", 26f, new Color(0.72f, 0.78f, 0.88f, 1f), true, TextAnchor.MiddleLeft, false);
-        chevron.style.width = 28f;
-        labelGroup.Add(chevron);
-        Label label = CreateLabel(title, 28f, new Color(0.90f, 0.94f, 0.98f, 1f), true, TextAnchor.MiddleLeft, false);
+        labelGroup.style.flexGrow = 1f;
+        labelGroup.style.minWidth = 0f;
+        labelGroup.Add(CreateSidebarGripIcon());
+
+        Label label = CreateLabel(title.ToUpperInvariant(), 20f, new Color(0.88f, 0.92f, 0.98f, 0.98f), true, TextAnchor.MiddleLeft, false);
+        label.style.whiteSpace = WhiteSpace.NoWrap;
         labelGroup.Add(label);
-        if (!string.IsNullOrWhiteSpace(metadata))
-        {
-            Label count = CreateLabel(metadata, 23f, new Color(0.74f, 0.80f, 0.90f, 0.95f), true, TextAnchor.MiddleLeft, false);
-            count.style.marginLeft = 12f;
-            labelGroup.Add(count);
-        }
+
+        if (collapsible && !string.IsNullOrWhiteSpace(metadata))
+            labelGroup.Add(CreateSidebarMetadataPill(metadata));
 
         row.Add(labelGroup);
+
+        VisualElement actions = new VisualElement();
+        actions.style.flexDirection = FlexDirection.Row;
+        actions.style.alignItems = Align.Center;
+        actions.style.flexShrink = 0f;
+
+        if (addAction != null)
+            actions.Add(CreateSidebarSectionActionButton("+", addAction, 48f));
+
+        if (collapsible && toggle != null)
+            actions.Add(CreateSidebarSectionActionButton(expanded ? "Hide  v" : "Show  >", toggle, 104f));
+        else if (!string.IsNullOrWhiteSpace(metadata))
+            actions.Add(CreateSidebarSectionMetadataButton(metadata));
+
+        row.Add(actions);
         return row;
     }
 
-    private Button CreateSmallSidebarIconButton(string text, Action action)
+    private VisualElement CreateSidebarGripIcon()
+    {
+        VisualElement icon = new VisualElement();
+        icon.style.width = 30f;
+        icon.style.height = 30f;
+        icon.style.marginRight = 12f;
+        icon.style.flexDirection = FlexDirection.Column;
+        icon.style.alignItems = Align.Center;
+        icon.style.justifyContent = Justify.Center;
+        icon.style.flexShrink = 0f;
+
+        for (int rowIndex = 0; rowIndex < 3; rowIndex++)
+        {
+            VisualElement dotRow = new VisualElement();
+            dotRow.style.flexDirection = FlexDirection.Row;
+            dotRow.style.height = 7f;
+            for (int column = 0; column < 3; column++)
+            {
+                VisualElement dot = new VisualElement();
+                dot.style.width = 4f;
+                dot.style.height = 4f;
+                dot.style.marginLeft = 2f;
+                dot.style.marginRight = 2f;
+                dot.style.backgroundColor = new Color(0.58f, 0.64f, 0.72f, 0.88f);
+                SetRadius(dot, 999f);
+                dotRow.Add(dot);
+            }
+
+            icon.Add(dotRow);
+        }
+
+        return icon;
+    }
+
+    private VisualElement CreateSidebarMetadataPill(string text)
+    {
+        Label pill = CreateLabel(text, 17f, new Color(0.68f, 0.74f, 0.84f, 0.92f), true, TextAnchor.MiddleCenter, false);
+        pill.style.height = 30f;
+        pill.style.minWidth = 34f;
+        pill.style.marginLeft = 12f;
+        pill.style.paddingLeft = 10f;
+        pill.style.paddingRight = 10f;
+        pill.style.backgroundColor = new Color(0.090f, 0.105f, 0.132f, 0.62f);
+        SetRadius(pill, 8f);
+        SetBorderWidth(pill, 1f);
+        SetBorderColor(pill, new Color(0.20f, 0.24f, 0.31f, 0.76f));
+        return pill;
+    }
+
+    private Button CreateSidebarSectionActionButton(string text, Action action, float width)
     {
         Button button = new Button(action) { text = text };
         button.focusable = false;
-        button.style.width = text.Length > 1 ? 92f : 54f;
+        button.style.width = width;
         button.style.height = 42f;
         button.style.marginLeft = 8f;
-        button.style.fontSize = UiFont(26f);
+        button.style.fontSize = UiFont(text.Length > 1 ? 17f : 24f);
         button.style.unityFontDefinition = bodyFont;
         button.style.unityFontStyleAndWeight = FontStyle.Bold;
-        StyleIconPillButton(button, new Color(0.82f, 0.90f, 1f, 1f));
+        StyleSidebarSectionButton(button, new Color(0.78f, 0.84f, 0.94f, 0.96f));
         button.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
         return button;
     }
 
-    private void ToggleSectionsExpanded()
+    private VisualElement CreateSidebarSectionMetadataButton(string text)
     {
-        if (sectionsExpanded)
+        Label label = CreateLabel(text, 17f, new Color(0.72f, 0.78f, 0.88f, 0.96f), true, TextAnchor.MiddleCenter, false);
+        label.style.width = 48f;
+        label.style.height = 42f;
+        label.style.marginLeft = 8f;
+        label.style.backgroundColor = new Color(0.058f, 0.068f, 0.086f, 0.70f);
+        SetRadius(label, 8f);
+        SetBorderWidth(label, 1f);
+        SetBorderColor(label, new Color(0.18f, 0.22f, 0.29f, 0.90f));
+        return label;
+    }
+
+    private static void StyleSidebarSectionButton(Button button, Color textColor)
+    {
+        if (button == null)
+            return;
+
+        SetRadius(button, 8f);
+        SetBorderWidth(button, 1f);
+        ApplySidebarSectionButtonState(button, textColor, false);
+        button.RegisterCallback<MouseEnterEvent>(_ => ApplySidebarSectionButtonState(button, textColor, true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => ApplySidebarSectionButtonState(button, textColor, false));
+        button.style.paddingLeft = 0f;
+        button.style.paddingRight = 0f;
+    }
+
+    private static void ApplySidebarSectionButtonState(Button button, Color textColor, bool hover)
+    {
+        if (button == null)
+            return;
+
+        button.style.backgroundColor = hover
+            ? new Color(0.100f, 0.116f, 0.146f, 0.94f)
+            : new Color(0.058f, 0.068f, 0.086f, 0.70f);
+        button.style.color = hover ? Color.white : textColor;
+        SetBorderColor(button, hover
+            ? new Color(0.42f, 0.48f, 0.58f, 0.92f)
+            : new Color(0.18f, 0.22f, 0.29f, 0.92f));
+        button.style.opacity = hover ? 1f : 0.96f;
+        button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
+    }
+
+    private VisualElement CreateSidebarStaticContent(Func<VisualElement> buildContent)
+    {
+        VisualElement clip = new VisualElement();
+        clip.style.paddingTop = SidebarSectionContentPaddingTop;
+        clip.style.paddingBottom = SidebarSectionContentPaddingBottom;
+        clip.style.borderTopWidth = 1f;
+        clip.style.borderTopColor = new Color(0.12f, 0.15f, 0.20f, 0.88f);
+
+        VisualElement content = buildContent?.Invoke();
+        if (content != null)
+            clip.Add(content);
+
+        return clip;
+    }
+
+    private VisualElement CreateSidebarAnimatedContent(string animationKey, Func<VisualElement> buildContent, float fallbackContentHeight)
+    {
+        VisualElement clip = new VisualElement();
+        clip.style.overflow = Overflow.Hidden;
+        clip.style.minHeight = 0f;
+        clip.style.borderTopWidth = 1f;
+        clip.style.borderTopColor = new Color(0.12f, 0.15f, 0.20f, 0.88f);
+
+        VisualElement inner = new VisualElement();
+        inner.style.paddingTop = SidebarSectionContentPaddingTop;
+        inner.style.paddingBottom = SidebarSectionContentPaddingBottom;
+        VisualElement content = buildContent?.Invoke();
+        if (content != null)
+            inner.Add(content);
+        clip.Add(inner);
+
+        if (!sidebarExpansionAnimations.TryGetValue(animationKey, out SidebarExpansionAnimation animation))
         {
-            sectionsExpanded = false;
-            sectionsCollapseAnimating = true;
-        }
-        else
-        {
-            sectionsExpanded = true;
-            sectionsCollapseAnimating = false;
+            clip.style.height = StyleKeyword.Auto;
+            clip.style.opacity = 1f;
+            return clip;
         }
 
-        sectionsAnimationPending = true;
-        Rebuild();
+        float fallbackTargetHeight = Mathf.Max(1f, fallbackContentHeight);
+        clip.style.height = animation.collapsing ? fallbackTargetHeight : 0f;
+        clip.style.opacity = animation.collapsing ? 1f : 0f;
+
+        float fromHeight = animation.collapsing ? fallbackTargetHeight : 0f;
+        float toHeight = animation.collapsing ? 0f : fallbackTargetHeight;
+        float fromOpacity = animation.collapsing ? 1f : 0f;
+        float toOpacity = animation.collapsing ? 0f : 1f;
+        clip.style.height = fromHeight;
+        clip.style.opacity = fromOpacity;
+        AnimateElementHeightAndOpacity(clip, fromHeight, toHeight, fromOpacity, toOpacity, SidebarSectionAnimationSeconds, () =>
+        {
+            if (sidebarExpansionAnimations.TryGetValue(animationKey, out SidebarExpansionAnimation current) && ReferenceEquals(current, animation))
+                sidebarExpansionAnimations.Remove(animationKey);
+
+            if (animation.collapsing)
+            {
+                Rebuild();
+                return;
+            }
+
+            clip.style.height = StyleKeyword.Auto;
+            clip.style.opacity = 1f;
+        });
+        return clip;
+    }
+
+    private VisualElement CreateSidebarActionButtons()
+    {
+        VisualElement section = CreateSidebarSectionShell();
+        section.style.paddingTop = 12f;
+        section.style.paddingBottom = 12f;
+        section.Add(CreateSidebarButton("Beat Map Settings", ShowBeatMapSettingsPopup));
+        section.Add(CreateSidebarButton("SynchTheory", ShowSynchTheoryPopup));
+        return section;
+    }
+
+    private VisualElement CreateTracksSidebarContent(List<ChartEditorTrackViewGroup> groups)
+    {
+        VisualElement container = new VisualElement();
+        if (groups == null || groups.Count == 0)
+        {
+            container.Add(CreateSidebarText("No tracks yet.", new Color(0.70f, 0.74f, 0.82f, 0.92f)));
+            return container;
+        }
+
+        for (int i = 0; i < groups.Count; i++)
+        {
+            ChartEditorTrackViewGroup group = groups[i];
+            bool selected = group.ContainsSelected(project.selectedTrackId);
+            container.Add(CreateTrackSidebarRow(group, selected));
+        }
+
+        return container;
+    }
+
+    private VisualElement CreateSectionsSidebarContent()
+    {
+        VisualElement container = new VisualElement();
+        if (project.sections == null || project.sections.Count == 0)
+        {
+            container.Add(CreateSidebarText("No sections yet.", new Color(0.70f, 0.74f, 0.82f, 0.92f)));
+            return container;
+        }
+
+        int sectionIndex = 0;
+        foreach (ChartEditorSection section in project.sections.Take(SidebarMaxSectionRows))
+            container.Add(CreateSectionSidebarRow(section, sectionIndex++));
+        return container;
+    }
+
+    private VisualElement CreateWarningsSidebarContent()
+    {
+        VisualElement container = new VisualElement();
+        if (currentWarnings.Count == 0)
+        {
+            container.Add(CreateSidebarText("No issues detected.", new Color(0.54f, 0.90f, 0.68f, 0.95f)));
+            return container;
+        }
+
+        foreach (string warning in currentWarnings.Take(4))
+            container.Add(CreateSidebarWarning(warning));
+        return container;
+    }
+
+    private VisualElement CreateProjectInfoSidebarContent()
+    {
+        VisualElement container = new VisualElement();
+        container.Add(CreateProjectInfoRow("Source", project.sourceKind.ToString()));
+        container.Add(CreateProjectInfoRow("Audio", string.IsNullOrWhiteSpace(project.audio?.displayName) ? "None" : project.audio.displayName));
+        container.Add(CreateProjectInfoRow("Length", FormatTime(project.DurationSeconds)));
+        container.Add(CreateProjectInfoRow("Beat Map", $"{ChartEditorTimingService.GetBeatMarkers(project).Count} beats / {ChartEditorTimingService.GetAnchors(project).Count} anchors"));
+        container.Add(CreateProjectInfoRow("Tempo", $"{ChartEditorTimingService.GetTempoAtBeat(project, ChartEditorTimingService.GetBeatPositionForAudioTime(project, project.cursorTimeSeconds)):0.###} BPM"));
+        container.Add(CreateSidebarButton("Edit Song Info", ShowSongInfoPopup));
+        return container;
+    }
+
+    private static float EstimateTracksSidebarContentHeight(List<ChartEditorTrackViewGroup> groups)
+    {
+        int count = groups?.Count ?? 0;
+        return EstimateSidebarContentHeight(count, SidebarTrackRowHeight + SidebarTrackRowGap);
+    }
+
+    private float EstimateSectionsSidebarContentHeight()
+    {
+        int count = project.sections == null ? 0 : Mathf.Min(project.sections.Count, SidebarMaxSectionRows);
+        return EstimateSidebarContentHeight(count, SidebarListRowHeight + SidebarListRowGap);
+    }
+
+    private float EstimateAnchorsSidebarContentHeight()
+    {
+        int count = ChartEditorTimingService.GetAnchors(project).Count;
+        return EstimateSidebarContentHeight(count, SidebarListRowHeight + SidebarListRowGap);
+    }
+
+    private static float EstimateProjectInfoSidebarContentHeight()
+    {
+        return SidebarSectionContentPaddingTop + SidebarSectionContentPaddingBottom + 5f * 74f + 86f;
+    }
+
+    private static float EstimateSidebarContentHeight(int rowCount, float rowStride)
+    {
+        float contentHeight = rowCount <= 0 ? 48f : rowCount * rowStride;
+        return SidebarSectionContentPaddingTop + SidebarSectionContentPaddingBottom + contentHeight;
+    }
+
+    private void ToggleSectionsExpanded()
+    {
+        ToggleSidebarSectionExpanded(SidebarSectionsKey, ref sectionsExpanded);
     }
 
     private void ToggleTracksExpanded()
     {
-        tracksExpanded = !tracksExpanded;
-        Rebuild();
+        ToggleSidebarSectionExpanded(SidebarTracksKey, ref tracksExpanded);
     }
 
     private void ToggleAnchorsExpanded()
     {
-        anchorsExpanded = !anchorsExpanded;
-        Rebuild();
+        ToggleSidebarSectionExpanded(SidebarAnchorsKey, ref anchorsExpanded);
     }
 
     private void ToggleProjectInfoExpanded()
     {
-        projectInfoExpanded = !projectInfoExpanded;
-        Rebuild();
+        ToggleSidebarSectionExpanded(SidebarProjectInfoKey, ref projectInfoExpanded);
     }
 
-    private VisualElement CreateAnimatedSectionsList()
+    private void ToggleSidebarSectionExpanded(string animationKey, ref bool expanded)
     {
-        VisualElement container = new VisualElement();
-        container.style.overflow = Overflow.Hidden;
-        int visibleCount = project.sections == null ? 0 : Mathf.Min(project.sections.Count, 14);
-        float targetHeight = visibleCount * 58f;
-        float startHeight = sectionsAnimationPending
-            ? sectionsCollapseAnimating ? targetHeight : 0f
-            : sectionsExpanded ? targetHeight : 0f;
-        float endHeight = sectionsCollapseAnimating ? 0f : targetHeight;
-        container.style.height = startHeight;
-        container.style.minHeight = 0f;
-
-        if (project.sections != null)
+        bool wasExpanded = expanded;
+        expanded = !expanded;
+        sidebarExpansionAnimations[animationKey] = new SidebarExpansionAnimation
         {
-            int sectionIndex = 0;
-            foreach (ChartEditorSection section in project.sections.Take(14))
-                container.Add(CreateSectionSidebarRow(section, sectionIndex++));
-        }
-
-        if (sectionsAnimationPending)
-            AnimateElementHeight(container, startHeight, endHeight, 0.18f, () =>
-            {
-                sectionsAnimationPending = false;
-                if (sectionsCollapseAnimating)
-                {
-                    sectionsCollapseAnimating = false;
-                    Rebuild();
-                }
-            });
-
-        return container;
+            collapsing = wasExpanded
+        };
+        Rebuild();
     }
 
     private VisualElement CreateAnchorsList()
@@ -1880,6 +2082,31 @@ public sealed class ChartEditorOverlay
         }).Every(16).Until(() => done);
     }
 
+    private static void AnimateElementHeightAndOpacity(
+        VisualElement element,
+        float fromHeight,
+        float toHeight,
+        float fromOpacity,
+        float toOpacity,
+        float durationSeconds,
+        Action onComplete)
+    {
+        float startTime = Time.unscaledTime;
+        bool done = false;
+        element.schedule.Execute(() =>
+        {
+            float t = durationSeconds <= 0f ? 1f : Mathf.Clamp01((Time.unscaledTime - startTime) / durationSeconds);
+            float eased = 1f - Mathf.Pow(1f - t, 3f);
+            element.style.height = Mathf.Lerp(fromHeight, toHeight, eased);
+            element.style.opacity = Mathf.Lerp(fromOpacity, toOpacity, eased);
+            if (t >= 1f)
+            {
+                done = true;
+                onComplete?.Invoke();
+            }
+        }).Every(16).Until(() => done);
+    }
+
     private VisualElement CreateTrackSidebarRow(ChartEditorTrackViewGroup group, bool selected)
     {
         ChartEditorTrack track = group?.activeTrack;
@@ -1899,15 +2126,15 @@ public sealed class ChartEditorOverlay
             SelectTrackGroup(group);
             evt.StopPropagation();
         });
-        row.style.height = 108f;
-        row.style.minHeight = 108f;
+        row.style.height = SidebarTrackRowHeight;
+        row.style.minHeight = SidebarTrackRowHeight;
         row.style.flexDirection = FlexDirection.Row;
         row.style.alignItems = Align.Center;
         row.style.paddingLeft = 24f;
         row.style.paddingRight = 22f;
         row.style.marginLeft = 16f;
         row.style.marginRight = 16f;
-        row.style.marginBottom = 8f;
+        row.style.marginBottom = SidebarTrackRowGap;
         row.style.backgroundColor = selected ? new Color(0.070f, 0.078f, 0.096f, 0.72f) : new Color(0f, 0f, 0f, 0f);
         SetRadius(row, 10f);
         SetBorderWidth(row, selected ? 2f : 0f);
@@ -1961,15 +2188,15 @@ public sealed class ChartEditorOverlay
             SeekAndRevealTime(section.startTimeSeconds, syncAudio: true, rebuild: true);
             evt.StopPropagation();
         });
-        row.style.height = 52f;
-        row.style.minHeight = 52f;
+        row.style.height = SidebarListRowHeight;
+        row.style.minHeight = SidebarListRowHeight;
         row.style.flexDirection = FlexDirection.Row;
         row.style.alignItems = Align.Center;
         row.style.paddingLeft = 30f;
         row.style.paddingRight = 24f;
         row.style.marginLeft = 12f;
         row.style.marginRight = 12f;
-        row.style.marginBottom = 6f;
+        row.style.marginBottom = SidebarListRowGap;
         row.style.backgroundColor = string.Equals(selectedSectionId, section?.id, StringComparison.OrdinalIgnoreCase)
             ? new Color(0.080f, 0.070f, 0.110f, 0.94f)
             : new Color(0.040f, 0.047f, 0.058f, 0.48f);
@@ -2017,15 +2244,15 @@ public sealed class ChartEditorOverlay
             SeekAndRevealTime(anchor.audioTimeSeconds, syncAudio: true, rebuild: true);
             evt.StopPropagation();
         });
-        row.style.height = 52f;
-        row.style.minHeight = 52f;
+        row.style.height = SidebarListRowHeight;
+        row.style.minHeight = SidebarListRowHeight;
         row.style.flexDirection = FlexDirection.Row;
         row.style.alignItems = Align.Center;
         row.style.paddingLeft = 30f;
         row.style.paddingRight = 24f;
         row.style.marginLeft = 12f;
         row.style.marginRight = 12f;
-        row.style.marginBottom = 6f;
+        row.style.marginBottom = SidebarListRowGap;
         row.style.backgroundColor = selected
             ? new Color(0.080f, 0.070f, 0.110f, 0.94f)
             : new Color(0.040f, 0.047f, 0.058f, 0.48f);
@@ -2075,8 +2302,7 @@ public sealed class ChartEditorOverlay
         button.style.paddingLeft = 22f;
         button.style.paddingRight = 18f;
         button.style.unityFontDefinition = bodyFont;
-        StyleSoftButton(button, new Color(0.78f, 0.84f, 0.94f, 1f));
-        SetRadius(button, 11f);
+        StyleSidebarActionButton(button);
 
         Label label = CreateLabel(text, 23f, new Color(0.91f, 0.94f, 0.98f, 1f), true, TextAnchor.MiddleLeft, false);
         label.style.flexGrow = 1f;
@@ -2087,6 +2313,33 @@ public sealed class ChartEditorOverlay
         button.Add(label);
         button.Add(actionLabel);
         return button;
+    }
+
+    private static void StyleSidebarActionButton(Button button)
+    {
+        if (button == null)
+            return;
+
+        SetRadius(button, 10f);
+        SetBorderWidth(button, 1f);
+        ApplySidebarActionButtonState(button, false);
+        button.RegisterCallback<MouseEnterEvent>(_ => ApplySidebarActionButtonState(button, true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => ApplySidebarActionButtonState(button, false));
+    }
+
+    private static void ApplySidebarActionButtonState(Button button, bool hover)
+    {
+        if (button == null)
+            return;
+
+        button.style.backgroundColor = hover
+            ? new Color(0.082f, 0.096f, 0.124f, 0.94f)
+            : new Color(0.048f, 0.058f, 0.074f, 0.74f);
+        SetBorderColor(button, hover
+            ? new Color(0.33f, 0.39f, 0.50f, 0.92f)
+            : new Color(0.18f, 0.22f, 0.29f, 0.88f));
+        button.style.opacity = hover ? 1f : 0.96f;
+        button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
     }
 
     private Label CreateSidebarText(string text, Color color)
@@ -2987,6 +3240,7 @@ public sealed class ChartEditorOverlay
         contextMenuElement = overlay;
         RootElement.Add(contextMenuElement);
         contextMenuElement.BringToFront();
+        SetChartEditorKeyboardCaptureActive(true);
     }
 
     private void HideContextMenu()
@@ -2997,6 +3251,7 @@ public sealed class ChartEditorOverlay
 
         contextMenuElement.RemoveFromHierarchy();
         contextMenuElement = null;
+        UpdateChartEditorKeyboardCaptureState();
     }
 
     private void ShowContextSubmenu(VisualElement parentButton, ContextMenuItem[] items)
@@ -3021,6 +3276,7 @@ public sealed class ChartEditorOverlay
         contextSubmenuElement = menu;
         contextMenuElement.Add(contextSubmenuElement);
         contextSubmenuElement.BringToFront();
+        SetChartEditorKeyboardCaptureActive(true);
     }
 
     private VisualElement CreateContextMenuSurface(float width)
@@ -3033,13 +3289,7 @@ public sealed class ChartEditorOverlay
         menu.style.paddingRight = 12f;
         menu.style.paddingTop = 12f;
         menu.style.paddingBottom = 12f;
-        menu.style.backgroundColor = new Color(0.022f, 0.026f, 0.034f, 0.99f);
-        SetRadius(menu, 14f);
-        SetBorderWidth(menu, 1f);
-        SetToneLabBorder(menu,
-            new Color(0.34f, 0.36f, 0.40f, 0.88f),
-            new Color(0.18f, 0.20f, 0.24f, 0.95f),
-            new Color(0.10f, 0.12f, 0.15f, 0.98f));
+        StylePopupPanel(menu, new Color(0.022f, 0.026f, 0.034f, 0.99f), 14f);
         return menu;
     }
 
@@ -3222,6 +3472,60 @@ public sealed class ChartEditorOverlay
     {
         contextSubmenuElement?.RemoveFromHierarchy();
         contextSubmenuElement = null;
+    }
+
+    private bool HandleOverlayKeyboardInput()
+    {
+        if (!Input.GetKeyDown(KeyCode.Escape))
+            return false;
+
+        if (contextSubmenuElement != null)
+        {
+            HideContextSubmenu();
+            UpdateChartEditorKeyboardCaptureState();
+            ResetArrowRepeat();
+            return true;
+        }
+
+        if (contextMenuElement != null)
+        {
+            HideContextMenu();
+            ResetArrowRepeat();
+            return true;
+        }
+
+        if (editPopupElement != null)
+        {
+            HideEditPopup();
+            ResetArrowRepeat();
+            return true;
+        }
+
+        return false;
+    }
+
+    private void RegisterTextFieldKeyboardCapture(TextField field)
+    {
+        if (field == null)
+            return;
+
+        field.RegisterCallback<FocusInEvent>(_ => SetChartEditorKeyboardCaptureActive(true), TrickleDown.TrickleDown);
+        field.RegisterCallback<FocusOutEvent>(_ => UpdateChartEditorKeyboardCaptureState(), TrickleDown.TrickleDown);
+        field.RegisterCallback<DetachFromPanelEvent>(_ => UpdateChartEditorKeyboardCaptureState());
+    }
+
+    private void SetChartEditorKeyboardCaptureActive(bool active)
+    {
+        owner?.SetKeyboardTextInputActiveFromUi(active);
+    }
+
+    private void UpdateChartEditorKeyboardCaptureState()
+    {
+        bool active = editPopupElement != null ||
+                      contextMenuElement != null ||
+                      contextSubmenuElement != null ||
+                      IsTextFieldFocused();
+        owner?.SetKeyboardTextInputActiveFromUi(active);
     }
 
     private void SelectTrackGroup(ChartEditorTrackViewGroup group)
@@ -3550,13 +3854,7 @@ public sealed class ChartEditorOverlay
         panel.style.paddingRight = 42f;
         panel.style.paddingTop = 38f;
         panel.style.paddingBottom = 34f;
-        panel.style.backgroundColor = new Color(0.030f, 0.036f, 0.048f, 0.995f);
-        SetRadius(panel, 16f);
-        SetBorderWidth(panel, 1f);
-        SetToneLabBorder(panel,
-            new Color(0.36f, 0.38f, 0.42f, 0.88f),
-            new Color(0.20f, 0.22f, 0.26f, 0.95f),
-            new Color(0.12f, 0.13f, 0.16f, 1f));
+        StylePopupPanel(panel, new Color(0.030f, 0.036f, 0.048f, 0.995f), 16f);
         panel.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
 
         VisualElement header = new VisualElement();
@@ -3865,6 +4163,7 @@ public sealed class ChartEditorOverlay
         editPopupElement = overlay;
         RootElement.Add(editPopupElement);
         editPopupElement.BringToFront();
+        SetChartEditorKeyboardCaptureActive(true);
     }
 
     private Label CreateTechniqueSettingsSectionLabel(string text)
@@ -4830,14 +5129,19 @@ public sealed class ChartEditorOverlay
         TextField albumField = CreatePopupTextField("Album", project.metadata.album ?? string.Empty);
         TextField genreField = CreatePopupTextField("Genre", project.metadata.genre ?? string.Empty);
         TextField yearField = CreatePopupTextField("Year", project.metadata.year ?? string.Empty);
+        string coverImagePath = project.metadata.coverImagePath ?? string.Empty;
+        VisualElement coverField = CreateCoverImagePicker(
+            () => coverImagePath,
+            value => coverImagePath = value ?? string.Empty);
 
-        ShowEditPopup("Song Info", new VisualElement[] { titleField, artistField, albumField, genreField, yearField }, () =>
+        ShowEditPopup("Song Info", new VisualElement[] { titleField, artistField, albumField, genreField, yearField, coverField }, () =>
         {
             project.metadata.title = titleField.value?.Trim() ?? string.Empty;
             project.metadata.artist = artistField.value?.Trim() ?? string.Empty;
             project.metadata.album = albumField.value?.Trim() ?? string.Empty;
             project.metadata.genre = genreField.value?.Trim() ?? string.Empty;
             project.metadata.year = yearField.value?.Trim() ?? string.Empty;
+            project.metadata.coverImagePath = coverImagePath?.Trim() ?? string.Empty;
             project.dirty = true;
             HideEditPopup();
             Rebuild();
@@ -5050,7 +5354,7 @@ public sealed class ChartEditorOverlay
         panel.style.paddingRight = 34f;
         panel.style.paddingTop = 30f;
         panel.style.paddingBottom = 30f;
-        StylePanel(panel, new Color(0.030f, 0.036f, 0.048f, 1f), new Color(0.24f, 0.27f, 0.32f, 0.95f), 16f);
+        StylePopupPanel(panel, new Color(0.030f, 0.036f, 0.048f, 1f), 16f);
         panel.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
 
         Label titleLabel = CreateLabel(title, 32f, Color.white, true, TextAnchor.MiddleLeft, false);
@@ -5081,6 +5385,7 @@ public sealed class ChartEditorOverlay
         editPopupElement = overlay;
         RootElement.Add(editPopupElement);
         editPopupElement.BringToFront();
+        SetChartEditorKeyboardCaptureActive(true);
 
         if (firstField != null)
             firstField.schedule.Execute(() =>
@@ -5097,6 +5402,7 @@ public sealed class ChartEditorOverlay
 
         editPopupElement.RemoveFromHierarchy();
         editPopupElement = null;
+        UpdateChartEditorKeyboardCaptureState();
     }
 
     private TextField CreatePopupTextField(string label, string value)
@@ -5108,6 +5414,128 @@ public sealed class ChartEditorOverlay
         field.style.fontSize = UiFont(24f);
         field.style.unityFontDefinition = bodyFont;
         StyleTextField(field);
+        RegisterTextFieldKeyboardCapture(field);
+        return field;
+    }
+
+    private VisualElement CreateCoverImagePicker(Func<string> getPath, Action<string> setPath)
+    {
+        VisualElement field = new VisualElement();
+        field.style.marginBottom = 14f;
+        field.style.paddingLeft = 16f;
+        field.style.paddingRight = 16f;
+        field.style.paddingTop = 14f;
+        field.style.paddingBottom = 14f;
+        field.style.backgroundColor = new Color(0.018f, 0.022f, 0.030f, 0.98f);
+        SetRadius(field, 11f);
+        SetBorderWidth(field, 1f);
+        SetBorderColor(field, new Color(0.24f, 0.27f, 0.33f, 0.95f));
+
+        Label label = CreateLabel("Image", 17f, new Color(0.72f, 0.78f, 0.88f, 1f), true, TextAnchor.MiddleLeft, false);
+        label.style.marginBottom = 10f;
+        field.Add(label);
+
+        VisualElement row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.Center;
+
+        VisualElement preview = new VisualElement();
+        preview.style.width = 96f;
+        preview.style.height = 96f;
+        preview.style.minWidth = 96f;
+        preview.style.minHeight = 96f;
+        preview.style.flexShrink = 0f;
+        preview.style.backgroundColor = new Color(0.010f, 0.013f, 0.018f, 1f);
+        SetRadius(preview, 10f);
+        SetBorderWidth(preview, 1f);
+        SetBorderColor(preview, new Color(0.26f, 0.29f, 0.35f, 0.95f));
+        row.Add(preview);
+
+        VisualElement details = new VisualElement();
+        details.style.flexGrow = 1f;
+        details.style.marginLeft = 18f;
+        details.style.minWidth = 0f;
+
+        Label pathLabel = CreateLabel(string.Empty, 19f, new Color(0.86f, 0.90f, 0.96f, 1f), false, TextAnchor.MiddleLeft, false);
+        pathLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        details.Add(pathLabel);
+
+        VisualElement actions = new VisualElement();
+        actions.style.flexDirection = FlexDirection.Row;
+        actions.style.marginTop = 12f;
+
+        Texture2D previewTexture = null;
+
+        void ReleasePreviewTexture()
+        {
+            if (previewTexture == null)
+                return;
+
+            UnityEngine.Object.Destroy(previewTexture);
+            previewTexture = null;
+        }
+
+        void Refresh()
+        {
+            ReleasePreviewTexture();
+
+            string path = getPath?.Invoke() ?? string.Empty;
+            pathLabel.text = string.IsNullOrWhiteSpace(path) ? "No image selected" : Path.GetFileName(path);
+            preview.style.backgroundImage = StyleKeyword.None;
+
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                return;
+
+            try
+            {
+                Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+                {
+                    hideFlags = HideFlags.HideAndDontSave,
+                    filterMode = FilterMode.Bilinear,
+                    wrapMode = TextureWrapMode.Clamp
+                };
+
+                if (!texture.LoadImage(File.ReadAllBytes(path)))
+                {
+                    UnityEngine.Object.Destroy(texture);
+                    return;
+                }
+
+                previewTexture = texture;
+                preview.style.backgroundImage = new StyleBackground(previewTexture);
+            }
+            catch
+            {
+                ReleasePreviewTexture();
+                preview.style.backgroundImage = StyleKeyword.None;
+            }
+        }
+
+        Button choose = CreateCompactButton("Choose Image", () =>
+        {
+            if (!ChartEditorFilePicker.TryPickImageFile(out string path))
+                return;
+
+            setPath?.Invoke(path);
+            Refresh();
+        });
+        choose.style.marginLeft = 0f;
+
+        Button clear = CreateCompactButton("Clear", () =>
+        {
+            setPath?.Invoke(string.Empty);
+            Refresh();
+        });
+        clear.style.marginLeft = 10f;
+
+        actions.Add(choose);
+        actions.Add(clear);
+        details.Add(actions);
+        row.Add(details);
+        field.Add(row);
+        field.RegisterCallback<DetachFromPanelEvent>(_ => ReleasePreviewTexture());
+
+        Refresh();
         return field;
     }
 
@@ -5339,8 +5767,9 @@ public sealed class ChartEditorOverlay
             block.style.height = SectionBarHeight;
             block.style.width = width;
             block.style.minWidth = 150f;
-            block.style.fontSize = UiFont(28f);
+            block.style.fontSize = UiFont(19f);
             block.style.unityFontDefinition = bodyFont;
+            block.style.unityFontStyleAndWeight = FontStyle.Bold;
             block.style.backgroundColor = SectionColor(Mathf.Abs(section.name?.GetHashCode() ?? 0));
             block.style.color = Color.white;
             block.style.borderTopWidth = 0f;
@@ -10138,23 +10567,29 @@ public sealed class ChartEditorOverlay
         panel.style.paddingRight = 34f;
         panel.style.paddingTop = 32f;
         panel.style.paddingBottom = 32f;
-        StylePanel(panel, new Color(0.030f, 0.036f, 0.048f, 1f), new Color(0.24f, 0.27f, 0.32f, 0.95f), 18f);
+        StylePopupPanel(panel, new Color(0.030f, 0.036f, 0.048f, 1f), 18f);
         panel.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
 
-        Label title = CreateLabel("Save Chart", 36f, Color.white, true, TextAnchor.MiddleLeft, false);
-        title.style.marginBottom = 12f;
-        panel.Add(title);
+        string saveFolder = ResolveTheoryPackageSaveDirectoryForPopup(saveAs: false);
+        string newPackageFolder = ResolveTheoryPackageSaveDirectoryForPopup(saveAs: true);
 
-        string currentTarget = project.sourceKind == ChartEditorSourceKind.TheoryPackage &&
-                               TheoryPackageFormat.IsPackagePath(project.sourcePath)
-            ? project.sourcePath
-            : "A new .theory package will be created under this song's chart editor folder.";
-        Label detail = CreateSmallText(
-            $"Saves the playable song data, beat map, anchors, note techniques, generated playback data, tones, audio references/assets, and chart editor state.\n\nCurrent target:\n{currentTarget}",
-            new Color(0.78f, 0.84f, 0.92f, 0.96f));
-        detail.style.whiteSpace = WhiteSpace.Normal;
-        detail.style.marginBottom = 22f;
-        panel.Add(detail);
+        VisualElement header = new VisualElement();
+        header.style.flexDirection = FlexDirection.Row;
+        header.style.alignItems = Align.Center;
+        header.style.justifyContent = Justify.SpaceBetween;
+        header.style.marginBottom = 22f;
+
+        Label title = CreateLabel("Save Chart", 36f, Color.white, true, TextAnchor.MiddleLeft, false);
+        header.Add(title);
+
+        Button openFolder = CreateCompactButton("Open Save Folder", () => OpenTheoryPackageSaveFolder(saveFolder));
+        openFolder.style.minWidth = 218f;
+        openFolder.style.height = 50f;
+        openFolder.style.fontSize = UiFont(18f);
+        openFolder.style.marginLeft = 18f;
+        openFolder.style.marginRight = 0f;
+        header.Add(openFolder);
+        panel.Add(header);
 
         VisualElement choices = new VisualElement();
         choices.style.flexDirection = FlexDirection.Column;
@@ -10162,13 +10597,11 @@ public sealed class ChartEditorOverlay
 
         Button save = CreateSaveOptionButton(
             "Save .theory",
-            project.sourceKind == ChartEditorSourceKind.TheoryPackage && TheoryPackageFormat.IsPackagePath(project.sourcePath)
-                ? "Update the current package used by this editor session."
-                : "Create a package in the song folder's chart editor subfolder.",
+            BuildSavedUnderSubtitle(saveFolder),
             () => SaveTheoryPackage(saveAs: false));
         Button saveAs = CreateSaveOptionButton(
             "Save As New .theory",
-            "Create a new package without overwriting the current one.",
+            BuildSavedUnderSubtitle(newPackageFolder),
             () => SaveTheoryPackage(saveAs: true));
         choices.Add(save);
         choices.Add(saveAs);
@@ -10185,24 +10618,113 @@ public sealed class ChartEditorOverlay
         editPopupElement = overlay;
         RootElement.Add(editPopupElement);
         editPopupElement.BringToFront();
+        SetChartEditorKeyboardCaptureActive(true);
     }
 
     private Button CreateSaveOptionButton(string title, string subtitle, Action action)
     {
-        Button button = new Button(action);
+        Button button = new Button(action) { text = string.Empty };
+        button.focusable = false;
         button.style.width = Length.Percent(100f);
         button.style.minHeight = 96f;
         button.style.marginBottom = 14f;
-        button.style.paddingLeft = 22f;
+        button.style.paddingLeft = 24f;
         button.style.paddingRight = 22f;
-        button.style.paddingTop = 14f;
-        button.style.paddingBottom = 14f;
-        button.style.unityTextAlign = TextAnchor.MiddleLeft;
-        button.text = $"{title}\n{subtitle}";
-        StyleSoftButton(button, new Color(0.56f, 0.38f, 0.92f, 1f));
-        button.style.fontSize = 22f;
-        button.style.whiteSpace = WhiteSpace.Normal;
+        button.style.paddingTop = 18f;
+        button.style.paddingBottom = 18f;
+        button.style.flexDirection = FlexDirection.Column;
+        button.style.alignItems = Align.FlexStart;
+        button.style.justifyContent = Justify.Center;
+        button.style.unityFontDefinition = bodyFont;
+        SetRadius(button, 12f);
+        SetBorderWidth(button, 1f);
+        ApplySaveOptionButtonState(button, false);
+        button.RegisterCallback<MouseEnterEvent>(_ => ApplySaveOptionButtonState(button, true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => ApplySaveOptionButtonState(button, false));
+
+        VisualElement textColumn = new VisualElement();
+        textColumn.style.flexGrow = 1f;
+        textColumn.style.minWidth = 0f;
+        Label titleLabel = CreateLabel(title, 25f, Color.white, true, TextAnchor.MiddleLeft, false);
+        titleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        Label subtitleLabel = CreateLabel(subtitle, 19f, new Color(0.70f, 0.78f, 0.90f, 0.96f), false, TextAnchor.MiddleLeft, false);
+        subtitleLabel.style.whiteSpace = WhiteSpace.Normal;
+        subtitleLabel.style.marginTop = 5f;
+        textColumn.Add(titleLabel);
+        textColumn.Add(subtitleLabel);
+        button.Add(textColumn);
         return button;
+    }
+
+    private static void ApplySaveOptionButtonState(Button button, bool hover)
+    {
+        if (button == null)
+            return;
+
+        button.style.backgroundColor = hover
+            ? new Color(0.070f, 0.080f, 0.104f, 0.98f)
+            : new Color(0.044f, 0.052f, 0.068f, 0.96f);
+        SetBorderColor(button, hover
+            ? new Color(0.42f, 0.32f, 0.66f, 0.96f)
+            : new Color(0.18f, 0.22f, 0.30f, 0.96f));
+        button.style.opacity = hover ? 1f : 0.98f;
+        button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
+    }
+
+    private string ResolveTheoryPackageSaveDirectoryForPopup(bool saveAs)
+    {
+        if (!saveAs &&
+            project?.sourceKind == ChartEditorSourceKind.TheoryPackage &&
+            TheoryPackageFormat.IsPackagePath(project.sourcePath) &&
+            ChartEditorProjectStore.CanSaveCurrentTheoryPackageInPlace(project))
+        {
+            string currentDirectory = Path.GetDirectoryName(project.sourcePath);
+            if (!string.IsNullOrWhiteSpace(currentDirectory))
+                return currentDirectory;
+        }
+
+        try
+        {
+            return ChartEditorProjectStore.GetTheoryPackageSaveDirectory(project, createDirectory: false);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[ChartEditor] Could not resolve .theory save folder: {ex.Message}");
+            return string.Empty;
+        }
+    }
+
+    private static string BuildSavedUnderSubtitle(string folderPath)
+    {
+        return $"Saved under {BuildFolderBreadcrumb(folderPath)}";
+    }
+
+    private static string BuildFolderBreadcrumb(string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+            return "song folder";
+
+        string trimmed = folderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string leaf = Path.GetFileName(trimmed);
+        if (string.IsNullOrWhiteSpace(leaf))
+            return trimmed;
+
+        string parent = Path.GetFileName(Path.GetDirectoryName(trimmed) ?? string.Empty);
+        return string.IsNullOrWhiteSpace(parent) ? leaf : $"{parent} > {leaf}";
+    }
+
+    private void OpenTheoryPackageSaveFolder(string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+            folderPath = ResolveTheoryPackageSaveDirectoryForPopup(saveAs: false);
+
+        if (StringTheoryPlatform.TryOpenFolder(folderPath, out string error))
+        {
+            SetStatus("Opened save folder.");
+            return;
+        }
+
+        SetStatus(error);
     }
 
     private void SaveTheoryPackage(bool saveAs)
@@ -10210,20 +10732,56 @@ public sealed class ChartEditorOverlay
         if (ChartEditorProjectStore.SaveTheoryPackage(project, saveAs, out string packagePath, out string error))
         {
             HideEditPopup();
-            owner?.NotifyChartEditorLibraryChangedFromUi();
+            owner?.NotifyChartEditorLibraryChangedFromUi(packagePath);
             SetStatus(saveAs ? $"Saved new .theory chart: {packagePath}" : $"Saved .theory chart: {packagePath}");
             Rebuild();
+            ShowSaveSuccessPopup();
             return;
         }
 
         SetStatus(error);
     }
 
+    private void ShowSaveSuccessPopup()
+    {
+        HideSaveSuccessPopup();
+        if (RootElement == null)
+            return;
+
+        VisualElement popup = new VisualElement();
+        popup.style.position = Position.Absolute;
+        popup.style.right = 32f;
+        popup.style.bottom = 88f;
+        popup.style.paddingLeft = 22f;
+        popup.style.paddingRight = 22f;
+        popup.style.paddingTop = 14f;
+        popup.style.paddingBottom = 14f;
+        StylePopupPanel(popup, new Color(0.030f, 0.040f, 0.052f, 0.98f), 12f);
+        popup.pickingMode = PickingMode.Ignore;
+
+        Label label = CreateLabel("Save successful", 20f, Color.white, true, TextAnchor.MiddleCenter, false);
+        popup.Add(label);
+
+        saveSuccessPopupElement = popup;
+        RootElement.Add(saveSuccessPopupElement);
+        saveSuccessPopupElement.BringToFront();
+        saveSuccessPopupElement.schedule.Execute(HideSaveSuccessPopup).StartingIn(1800);
+    }
+
+    private void HideSaveSuccessPopup()
+    {
+        if (saveSuccessPopupElement == null)
+            return;
+
+        saveSuccessPopupElement.RemoveFromHierarchy();
+        saveSuccessPopupElement = null;
+    }
+
     private void ExportProject()
     {
         if (ChartEditorProjectStore.ExportPlayableProject(project, out string exportDirectory, out string theoryPackagePath, out string error))
         {
-            owner?.NotifyChartEditorLibraryChangedFromUi();
+            owner?.NotifyChartEditorLibraryChangedFromUi(theoryPackagePath);
             SetStatus($"Exported .theory chart: {theoryPackagePath}");
             Rebuild();
         }
@@ -11840,6 +12398,7 @@ public sealed class ChartEditorOverlay
         field.style.unityFontDefinition = bodyFont;
         field.style.fontSize = UiFont(24f);
         StyleTextField(field);
+        RegisterTextFieldKeyboardCapture(field);
         field.RegisterValueChangedCallback(evt => onChange?.Invoke(evt.newValue ?? string.Empty));
         return field;
     }
@@ -12048,6 +12607,17 @@ public sealed class ChartEditorOverlay
             Color.Lerp(border, Color.white, 0.18f),
             border,
             Color.Lerp(border, Color.black, 0.42f));
+    }
+
+    private static void StylePopupPanel(VisualElement element, Color background, float radius = 16f)
+    {
+        if (element == null)
+            return;
+
+        element.style.backgroundColor = background;
+        SetRadius(element, radius);
+        SetBorderWidth(element, 1f);
+        SetBorderColor(element, new Color(1f, 1f, 1f, 0.34f));
     }
 
     private static void SetElementCursor(VisualElement element, ChartEditorCursorKind cursor)

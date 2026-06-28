@@ -45,7 +45,9 @@ public sealed class SongLibraryEntry
 public static class SongLibraryService
 {
     private const string SongDefinitionFileName = "song.json";
-    private const int SongLibraryCacheVersion = 10;
+    private const int SongLibraryCacheVersion = 11;
+    private const int MaxSongDirectoryDiscoveryDepth = 12;
+    private const string LegacyTheoryPackageFolderName = "theory";
 
     [Serializable]
     private sealed class SongLibraryCacheManifest
@@ -137,6 +139,7 @@ public static class SongLibraryService
 
     public static void UpdateCachedMetadataSummary(
         string songDirectory,
+        string primaryNotationPath,
         bool favoriteInLibrary,
         int bestScoreValue,
         float bestScorePercent,
@@ -150,14 +153,24 @@ public static class SongLibraryService
             return;
 
         string normalizedSongDirectory = NormalizeSongDirectoryKey(songDirectory);
+        string normalizedPrimaryNotationPath = NormalizeSongDirectoryKey(primaryNotationPath);
         EnsureSessionCacheLoadedForUpdates();
 
         bool updated = false;
         for (int i = 0; i < sessionCachedEntries.Count; i++)
         {
             SongLibraryEntry entry = sessionCachedEntries[i];
-            if (entry == null || !string.Equals(NormalizeSongDirectoryKey(entry.SongDirectory), normalizedSongDirectory, StringComparison.OrdinalIgnoreCase))
+            if (entry == null ||
+                !string.Equals(NormalizeSongDirectoryKey(entry.SongDirectory), normalizedSongDirectory, StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedPrimaryNotationPath) &&
+                !string.Equals(NormalizeSongDirectoryKey(entry.PrimaryNotationPath), normalizedPrimaryNotationPath, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
 
             ApplyCachedMetadataSummary(
                 entry,
@@ -279,31 +292,31 @@ public static class SongLibraryService
             });
         }
 
-        string[] songDirectories = Directory.GetDirectories(ExternalContentPaths.PersistentSongsDirectory)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        List<string> songDirectories = DiscoverSongDirectories(ExternalContentPaths.PersistentSongsDirectory);
 
-        if (songDirectories.Length == 0)
+        if (songDirectories.Count == 0)
         {
             progress?.Invoke(100f, "Library refresh complete.");
             return entries;
         }
 
-        for (int i = 0; i < songDirectories.Length; i++)
+        for (int i = 0; i < songDirectories.Count; i++)
         {
             string songDirectory = songDirectories[i];
-            if (TryBuildEntry(songDirectory, out SongLibraryEntry discovered))
+            List<SongLibraryEntry> discoveredEntries = BuildEntriesForDirectory(songDirectory);
+            for (int entryIndex = 0; entryIndex < discoveredEntries.Count; entryIndex++)
             {
+                SongLibraryEntry discovered = discoveredEntries[entryIndex];
                 PopulateCachedLibrarySummary(discovered);
                 entries.Add(discovered);
             }
 
-            float scanRatio = (i + 1) / (float)songDirectories.Length;
+            float scanRatio = (i + 1) / (float)songDirectories.Count;
             float baseProgress = refreshImports ? 85f : 0f;
             float remainingProgress = refreshImports ? 15f : 100f;
             progress?.Invoke(
                 baseProgress + (scanRatio * remainingProgress),
-                $"Scanning songs... {i + 1}/{songDirectories.Length}");
+                $"Scanning songs... {i + 1}/{songDirectories.Count}");
         }
 
         progress?.Invoke(100f, "Library refresh complete.");
@@ -347,6 +360,107 @@ public static class SongLibraryService
                Directory.GetDirectories(songsDirectory).Length > 0;
     }
 
+    private static List<string> DiscoverSongDirectories(string songsDirectory)
+    {
+        List<string> discovered = new List<string>();
+        if (string.IsNullOrWhiteSpace(songsDirectory) || !Directory.Exists(songsDirectory))
+            return discovered;
+
+        HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (string directory in EnumerateChildDirectoriesSafe(songsDirectory))
+            DiscoverSongDirectoriesRecursive(directory, depth: 1, discovered, seen);
+
+        discovered.Sort((a, b) => string.Compare(a, b, StringComparison.OrdinalIgnoreCase));
+        return discovered;
+    }
+
+    private static void DiscoverSongDirectoriesRecursive(
+        string directory,
+        int depth,
+        List<string> discovered,
+        HashSet<string> seen)
+    {
+        if (string.IsNullOrWhiteSpace(directory) ||
+            discovered == null ||
+            seen == null ||
+            depth > MaxSongDirectoryDiscoveryDepth ||
+            !Directory.Exists(directory) ||
+            ShouldSkipLibraryDiscoveryDirectory(directory))
+        {
+            return;
+        }
+
+        if (DirectoryContainsSongEntryPoint(directory))
+        {
+            string fullPath = Path.GetFullPath(directory);
+            if (seen.Add(fullPath))
+                discovered.Add(fullPath);
+            return;
+        }
+
+        foreach (string childDirectory in EnumerateChildDirectoriesSafe(directory))
+            DiscoverSongDirectoriesRecursive(childDirectory, depth + 1, discovered, seen);
+    }
+
+    private static IEnumerable<string> EnumerateChildDirectoriesSafe(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            return Enumerable.Empty<string>();
+
+        try
+        {
+            return Directory.GetDirectories(directory)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[SongLibraryService] Failed to inspect song subfolders in '{directory}': {ex.Message}");
+            return Enumerable.Empty<string>();
+        }
+    }
+
+    private static bool ShouldSkipLibraryDiscoveryDirectory(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory))
+            return true;
+
+        try
+        {
+            FileAttributes attributes = File.GetAttributes(directory);
+            return (attributes & FileAttributes.System) != 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool DirectoryContainsSongEntryPoint(string directory)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            return false;
+
+        if (!string.IsNullOrWhiteSpace(TheorySongLoader.FindPackageInDirectory(directory, requireLoadable: true)))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(ArrangementCacheSongLoader.FindManifestInDirectory(directory)))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(FindPreferredGpNotation(directory)))
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(FindFirstFile(directory, "*.musicxml")) ||
+            !string.IsNullOrWhiteSpace(FindFirstFile(directory, "*.xml")))
+        {
+            return true;
+        }
+
+        string arcadeChartPath = FindCloneHeroChartFile(directory);
+        return !string.IsNullOrWhiteSpace(arcadeChartPath) &&
+               File.Exists(Path.Combine(directory, "song.ini"));
+    }
+
     private static void SaveCacheManifest(IReadOnlyList<SongLibraryEntry> entries)
     {
         string cachePath = ExternalContentPaths.PersistentSongLibraryCachePath;
@@ -378,20 +492,35 @@ public static class SongLibraryService
         if (cachedEntries == null)
             return normalizedEntries;
 
-        HashSet<string> seenSongDirectories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> seenSongKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < cachedEntries.Count; i++)
         {
             if (!TryNormalizeCachedEntry(cachedEntries[i], out SongLibraryEntry normalized))
                 continue;
 
-            if (!seenSongDirectories.Add(normalized.SongDirectory ?? string.Empty))
+            string identityKey = BuildSongEntryIdentityKey(normalized);
+            if (!seenSongKeys.Add(identityKey))
                 continue;
 
             normalizedEntries.Add(normalized);
         }
 
-        normalizedEntries.Sort((a, b) => string.Compare(a?.SongDirectory ?? string.Empty, b?.SongDirectory ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+        normalizedEntries.Sort((a, b) => string.Compare(BuildSongEntryIdentityKey(a), BuildSongEntryIdentityKey(b), StringComparison.OrdinalIgnoreCase));
         return normalizedEntries;
+    }
+
+    private static string BuildSongEntryIdentityKey(SongLibraryEntry entry)
+    {
+        if (entry == null)
+            return string.Empty;
+
+        string path = !string.IsNullOrWhiteSpace(entry.PrimaryNotationPath)
+            ? entry.PrimaryNotationPath
+            : !string.IsNullOrWhiteSpace(entry.ArcadeChartPath)
+                ? entry.ArcadeChartPath
+                : entry.SongDirectory;
+
+        return NormalizeSongDirectoryKey(path);
     }
 
     private static bool TryNormalizeCachedEntry(SongLibraryEntry entry, out SongLibraryEntry normalized)
@@ -576,15 +705,13 @@ public static class SongLibraryService
             return string.Empty;
 
         StringBuilder builder = new StringBuilder();
-        string[] songDirectories = Directory.GetDirectories(songsDirectory)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        List<string> songDirectories = DiscoverSongDirectories(songsDirectory);
 
-        for (int i = 0; i < songDirectories.Length; i++)
+        for (int i = 0; i < songDirectories.Count; i++)
         {
             string directory = songDirectories[i];
             builder.Append("dir:");
-            builder.Append(Path.GetFileName(directory));
+            builder.Append(GetRelativePath(songsDirectory, directory).Replace('\\', '/'));
             builder.Append('|');
 
             AppendDirectorySignatureFiles(builder, directory);
@@ -616,6 +743,10 @@ public static class SongLibraryService
         string chartEditorDirectory = Path.Combine(directory, ChartEditorProjectStore.ChartEditorSaveFolderName);
         if (Directory.Exists(chartEditorDirectory))
             AppendLibrarySignatureFilesInDirectory(builder, directory, chartEditorDirectory);
+
+        string legacyTheoryDirectory = Path.Combine(directory, LegacyTheoryPackageFolderName);
+        if (Directory.Exists(legacyTheoryDirectory))
+            AppendLibrarySignatureFilesInDirectory(builder, directory, legacyTheoryDirectory);
 
         string cacheDirectory = Path.Combine(directory, RocksmithCachedSongFormat.ContentDirectoryName);
         if (Directory.Exists(cacheDirectory))
@@ -946,14 +1077,40 @@ public static class SongLibraryService
         return false;
     }
 
-    private static bool TryBuildEntry(string songDirectory, out SongLibraryEntry entry)
+    private static List<SongLibraryEntry> BuildEntriesForDirectory(string songDirectory)
+    {
+        List<SongLibraryEntry> entries = new List<SongLibraryEntry>();
+        if (string.IsNullOrWhiteSpace(songDirectory) || !Directory.Exists(songDirectory))
+            return entries;
+
+        List<string> theoryPackagePaths = TheorySongLoader.FindPackagesInDirectory(songDirectory, requireLoadable: true);
+        if (theoryPackagePaths.Count > 0)
+        {
+            for (int i = 0; i < theoryPackagePaths.Count; i++)
+            {
+                if (TryBuildEntry(songDirectory, out SongLibraryEntry theoryEntry, theoryPackagePaths[i]))
+                    entries.Add(theoryEntry);
+            }
+
+            return entries;
+        }
+
+        if (TryBuildEntry(songDirectory, out SongLibraryEntry entry))
+            entries.Add(entry);
+
+        return entries;
+    }
+
+    private static bool TryBuildEntry(string songDirectory, out SongLibraryEntry entry, string preferredTheoryPackagePath = null)
     {
         entry = null;
 
         string mp3Path = FindFirstFile(songDirectory, "*.mp3")
                          ?? FindFirstFile(songDirectory, "*.wav")
                          ?? FindFirstFile(songDirectory, "*.ogg");
-        string theoryPackagePath = TheorySongLoader.FindPackageInDirectory(songDirectory, requireLoadable: true);
+        string theoryPackagePath = !string.IsNullOrWhiteSpace(preferredTheoryPackagePath)
+            ? preferredTheoryPackagePath
+            : TheorySongLoader.FindPackageInDirectory(songDirectory, requireLoadable: true);
         string arrangementCacheManifestPath = ArrangementCacheSongLoader.FindManifestInDirectory(songDirectory);
         string arcadeChartPath = FindCloneHeroChartFile(songDirectory);
         string arcadeSongIniPath = Path.Combine(songDirectory, "song.ini");
@@ -1022,7 +1179,7 @@ public static class SongLibraryService
         if (primaryNotationKind == SongNotationSourceKind.TheoryPackage &&
             TheorySongLoader.TryLoadManifest(primaryNotationPath, out TheorySongManifest theoryManifest))
         {
-            string theoryMetadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
+            string theoryMetadataPath = BuildTheoryMetadataPath(primaryNotationPath, songDirectory);
             string cachedAudioPath = mp3Path;
             if (TheoryPackageCache.TryCachePrimaryAudio(primaryNotationPath, theoryManifest, out string extractedAudioPath, out string audioCacheError))
                 cachedAudioPath = extractedAudioPath;
@@ -1121,6 +1278,16 @@ public static class SongLibraryService
         };
 
         return true;
+    }
+
+    private static string BuildTheoryMetadataPath(string packagePath, string fallbackDirectory)
+    {
+        string packageDirectory = string.IsNullOrWhiteSpace(packagePath) ? string.Empty : Path.GetDirectoryName(packagePath);
+        string packageName = string.IsNullOrWhiteSpace(packagePath) ? string.Empty : Path.GetFileNameWithoutExtension(packagePath);
+        if (!string.IsNullOrWhiteSpace(packageDirectory) && !string.IsNullOrWhiteSpace(packageName))
+            return Path.Combine(packageDirectory, $"{packageName}.metadata.json");
+
+        return Path.Combine(fallbackDirectory, ExternalContentPaths.SongMetadataFileName);
     }
 
     private static string FindFirstFile(string directory, string pattern)
