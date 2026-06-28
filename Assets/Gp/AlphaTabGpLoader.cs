@@ -43,6 +43,8 @@ internal static class AlphaTabGpLoader
                 Index = track.index,
                 PartId = track.partId,
                 Name = track.name,
+                InstrumentType = InferGpInstrumentType(track),
+                Route = InferGpRoute(track),
                 NoteCount = noteCount,
                 TabCount = tabCount,
                 Score = score,
@@ -756,6 +758,76 @@ internal static class AlphaTabGpLoader
             score -= 120;
 
         return score;
+    }
+
+    private static string InferGpInstrumentType(AlphaTabGpTrackContext track)
+    {
+        if (track == null)
+            return string.Empty;
+
+        string text = $"{track.name} {track.shortName}".ToLowerInvariant();
+        if (track.isPercussion || ContainsAny(text, "drum", "percussion", "kit"))
+            return "drums";
+        if (ContainsAny(text, "bass"))
+            return "bass";
+        if (ContainsAny(text, "piano", "keyboard", "keys", "synth"))
+            return "piano";
+        if (ContainsAny(text, "vocal", "voice", "lyric", "choir"))
+            return "vocals";
+        if (ContainsAny(text, "guitar", "lead", "rhythm", "solo", "slash"))
+            return "guitar";
+
+        if (track.stringTuningPitches != null && track.stringTuningPitches.Length > 0)
+            return track.stringTuningPitches.Length <= 4 ? "bass" : "guitar";
+        if (track.midiProgram >= 32 && track.midiProgram <= 39)
+            return "bass";
+        if (track.midiProgram >= 24 && track.midiProgram <= 31)
+            return "guitar";
+        if (track.midiProgram >= 0 && track.midiProgram <= 7)
+            return "piano";
+        if (track.midiProgram == 52 || track.midiProgram == 53)
+            return "vocals";
+
+        return string.Empty;
+    }
+
+    private static string InferGpRoute(AlphaTabGpTrackContext track)
+    {
+        string instrumentType = InferGpInstrumentType(track);
+        if (string.Equals(instrumentType, "drums", StringComparison.OrdinalIgnoreCase))
+            return "Drums";
+        if (string.Equals(instrumentType, "bass", StringComparison.OrdinalIgnoreCase))
+            return "Bass";
+        if (string.Equals(instrumentType, "piano", StringComparison.OrdinalIgnoreCase))
+            return "Piano";
+        if (string.Equals(instrumentType, "vocals", StringComparison.OrdinalIgnoreCase))
+            return "Vocals";
+        if (string.Equals(instrumentType, "guitar", StringComparison.OrdinalIgnoreCase))
+        {
+            string text = $"{track?.name} {track?.shortName}".ToLowerInvariant();
+            if (ContainsAny(text, "rhythm"))
+                return "Rhythm";
+            return "Lead";
+        }
+
+        return string.Empty;
+    }
+
+    private static bool ContainsAny(string text, params string[] needles)
+    {
+        if (string.IsNullOrWhiteSpace(text) || needles == null)
+            return false;
+
+        for (int i = 0; i < needles.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(needles[i]) &&
+                text.IndexOf(needles[i], StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string GetNoteName(int midiNote)

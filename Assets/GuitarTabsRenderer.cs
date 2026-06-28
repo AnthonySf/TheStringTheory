@@ -730,7 +730,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         private GameObject BuildTechniqueTunnel(NoteData note, TabSectionData section, float x, float y, List<Renderer> extraRenderers, HashSet<Renderer> fillExtraRenderers, List<TextMeshPro> extraTexts)
         {
-            bool hasTechnique = note.technique != NoteTechnique.None;
+            bool hasTechnique = HasExplicitTechnique(note);
             bool hasSustain = note.duration > 0.05f;
             if (!hasTechnique && !hasSustain)
                 return null;
@@ -796,11 +796,12 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             CreateCapsulePiece(root.transform, new Vector3(-(innerWidth * 0.5f) + innerRadius, 0f, -0.015f), new Vector3(innerRadius, depth * 0.28f, innerRadius), PrimitiveType.Cylinder, fillColor, 0.2f, extraRenderers, fillExtraRenderers);
             CreateCapsulePiece(root.transform, new Vector3((innerWidth * 0.5f) - innerRadius, 0f, -0.015f), new Vector3(innerRadius, depth * 0.28f, innerRadius), PrimitiveType.Cylinder, fillColor, 0.2f, extraRenderers, fillExtraRenderers);
 
-            if (note.technique == NoteTechnique.Slide)
+            if (HasSlideTechnique(note))
                 CreateSlideDirectionLine(root.transform, width, height, depth, note, extraRenderers);
 
             string glyph = GetTechniqueGlyph(note);
-            if (!string.IsNullOrEmpty(glyph) && note.technique != NoteTechnique.Bend && note.technique != NoteTechnique.Vibrato)
+            bool glyphIsRenderedByTechniqueShape = glyph == "^" || glyph == "~";
+            if (!string.IsNullOrEmpty(glyph) && !glyphIsRenderedByTechniqueShape)
             {
                 GameObject glyphObj = new GameObject($"TechniqueGlyph_{note.id}");
                 glyphObj.transform.SetParent(root.transform, false);
@@ -912,11 +913,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
 
         private void AddCornerTechniqueGlyph(Transform noteRoot, NoteData note, List<TextMeshPro> extraTexts)
         {
-            if (note.technique != NoteTechnique.Vibrato)
-                return;
-
-            string glyph = GetTechniqueGlyph(note);
-            if (string.IsNullOrEmpty(glyph))
+            if (!HasVibratoTechnique(note))
                 return;
 
             GameObject glyphObj = new GameObject($"NoteCornerTechnique_{note.id}");
@@ -927,7 +924,7 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
             glyphObj.transform.localPosition = new Vector3(xOffset, yOffset, -0.09f);
 
             TextMeshPro glyphText = glyphObj.AddComponent<TextMeshPro>();
-            glyphText.text = glyph;
+            glyphText.text = "~";
             glyphText.fontSize = owner.tabTechniqueGlyphFontSize * 1.52f;
             glyphText.alignment = TextAlignmentOptions.Center;
             glyphText.color = owner.tabTechniqueGlyphColor;
@@ -1001,8 +998,63 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
                 case NoteTechnique.Vibrato:
                     return "~";
                 default:
+                    if (HasSlideTechnique(note))
+                        return note.slideTargetFret >= 0 && note.slideTargetFret < note.fret ? "\\" : "/";
+                    if (HasBendTechnique(note))
+                        return "^";
+                    if (HasVibratoTechnique(note))
+                        return "~";
                     return string.Empty;
             }
+        }
+
+        private static bool HasExplicitTechnique(NoteData note)
+        {
+            return note.technique != NoteTechnique.None ||
+                   note.slideTargetFret >= 0 ||
+                   HasBendTechnique(note) ||
+                   HasAnyTechniqueSegment(note);
+        }
+
+        private static bool HasSlideTechnique(NoteData note)
+        {
+            return note.technique == NoteTechnique.Slide ||
+                   note.slideTargetFret >= 0 ||
+                   HasTechniqueSegment(note, NoteTechniqueSegmentType.Slide);
+        }
+
+        private static bool HasBendTechnique(NoteData note)
+        {
+            return note.technique == NoteTechnique.Bend ||
+                   Mathf.Abs(note.bendStep) > 0.01f ||
+                   note.bendPreBend ||
+                   note.bendRelease ||
+                   HasTechniqueSegment(note, NoteTechniqueSegmentType.Bend);
+        }
+
+        private static bool HasVibratoTechnique(NoteData note)
+        {
+            return note.technique == NoteTechnique.Vibrato ||
+                   HasTechniqueSegment(note, NoteTechniqueSegmentType.Vibrato);
+        }
+
+        private static bool HasAnyTechniqueSegment(NoteData note)
+        {
+            return note.techniqueSegments != null && note.techniqueSegments.Count > 0;
+        }
+
+        private static bool HasTechniqueSegment(NoteData note, NoteTechniqueSegmentType type)
+        {
+            if (note.techniqueSegments == null)
+                return false;
+
+            for (int i = 0; i < note.techniqueSegments.Count; i++)
+            {
+                if (note.techniqueSegments[i].type == type)
+                    return true;
+            }
+
+            return false;
         }
 
         public void ClearAndHide()

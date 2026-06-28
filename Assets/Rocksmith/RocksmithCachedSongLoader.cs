@@ -92,6 +92,8 @@ public static class RocksmithCachedSongLoader
                 Index = i,
                 PartId = arrangement.partId ?? string.Empty,
                 Name = string.IsNullOrWhiteSpace(arrangement.displayName) ? arrangement.route ?? $"Arrangement {i + 1}" : arrangement.displayName,
+                InstrumentType = InstrumentTypeForRoute(arrangement.route),
+                Route = arrangement.route ?? string.Empty,
                 GroupId = arrangement.arrangementGroupId ?? arrangement.partId ?? string.Empty,
                 GroupDisplayName = string.IsNullOrWhiteSpace(arrangement.arrangementDisplayName)
                     ? (string.IsNullOrWhiteSpace(arrangement.route) ? arrangement.displayName : arrangement.route)
@@ -132,25 +134,8 @@ public static class RocksmithCachedSongLoader
         for (int i = 0; i < part.notes.Count; i++)
         {
             RocksmithCachedNoteData source = part.notes[i];
-            List<NoteTechniqueSegmentData> segments = null;
-            if (source.techniqueSegments != null && source.techniqueSegments.Count > 0)
-            {
-                segments = new List<NoteTechniqueSegmentData>(source.techniqueSegments.Count);
-                for (int segmentIndex = 0; segmentIndex < source.techniqueSegments.Count; segmentIndex++)
-                {
-                    RocksmithCachedTechniqueSegmentData segment = source.techniqueSegments[segmentIndex];
-                    segments.Add(new NoteTechniqueSegmentData(
-                        (NoteTechniqueSegmentType)Mathf.Clamp(segment.type, 0, (int)NoteTechniqueSegmentType.Vibrato),
-                        segment.startOffset,
-                        segment.endOffset,
-                        segment.startFret,
-                        segment.endFret,
-                        segment.startBend,
-                        segment.endBend));
-                }
-            }
-
-            segments = NormalizeRocksmithTechniqueSegments(source, segments);
+            List<NoteTechniqueSegmentData> segments = BuildNormalizedTechniqueSegments(source);
+            NoteTechnique primaryTechnique = ResolveRuntimePrimaryTechnique(source);
 
             notes.Add(new NoteData(
                 source.id,
@@ -160,7 +145,7 @@ public static class RocksmithCachedSongLoader
                 source.fret,
                 source.note,
                 source.chordId,
-                (NoteTechnique)Mathf.Clamp(source.technique, 0, (int)NoteTechnique.Vibrato),
+                primaryTechnique,
                 source.slideTargetFret,
                 source.bendStep,
                 source.isLegato,
@@ -177,6 +162,21 @@ public static class RocksmithCachedSongLoader
 
         NormalizeRocksmithLegatoTransitions(notes);
         return notes;
+    }
+
+    private static NoteTechnique ResolveRuntimePrimaryTechnique(RocksmithCachedNoteData source)
+    {
+        if (source == null)
+            return NoteTechnique.None;
+
+        // Hammer-on and pull-off are attack semantics. Slide, bend, and vibrato can
+        // still be carried by their dedicated fields/segments on the same note.
+        if (source.isHammerOn)
+            return NoteTechnique.HammerOn;
+        if (source.isPullOff)
+            return NoteTechnique.PullOff;
+
+        return (NoteTechnique)Mathf.Clamp(source.technique, (int)NoteTechnique.None, (int)NoteTechnique.Vibrato);
     }
 
     public static bool TryLoadArrangementPart(
@@ -234,10 +234,37 @@ public static class RocksmithCachedSongLoader
         return guides;
     }
 
+    public static List<NoteTechniqueSegmentData> BuildNormalizedTechniqueSegments(RocksmithCachedNoteData source)
+    {
+        List<NoteTechniqueSegmentData> segments = null;
+        if (source?.techniqueSegments != null && source.techniqueSegments.Count > 0)
+        {
+            segments = new List<NoteTechniqueSegmentData>(source.techniqueSegments.Count);
+            for (int segmentIndex = 0; segmentIndex < source.techniqueSegments.Count; segmentIndex++)
+            {
+                RocksmithCachedTechniqueSegmentData segment = source.techniqueSegments[segmentIndex];
+                if (segment == null)
+                    continue;
+
+                segments.Add(new NoteTechniqueSegmentData(
+                    (NoteTechniqueSegmentType)Mathf.Clamp(segment.type, 0, (int)NoteTechniqueSegmentType.Vibrato),
+                    segment.startOffset,
+                    segment.endOffset,
+                    segment.startFret,
+                    segment.endFret,
+                    segment.startBend,
+                    segment.endBend));
+            }
+        }
+
+        return NormalizeRocksmithTechniqueSegments(source, segments);
+    }
+
     private static List<NoteTechniqueSegmentData> NormalizeRocksmithTechniqueSegments(
         RocksmithCachedNoteData source,
         List<NoteTechniqueSegmentData> segments)
     {
+        segments = EnsureFlagTechniqueSegments(source, segments);
         bool wantsBendVisual =
             source != null &&
             ((NoteTechnique)Mathf.Clamp(source.technique, 0, (int)NoteTechnique.Vibrato) == NoteTechnique.Bend ||
@@ -254,6 +281,43 @@ public static class RocksmithCachedSongLoader
             return RemoveFlatSustainUnderExpressiveSegments(segments);
 
         return RemoveFlatSustainUnderExpressiveSegments(BuildFallbackBendTechniqueSegments(source, segments));
+    }
+
+    private static List<NoteTechniqueSegmentData> EnsureFlagTechniqueSegments(
+        RocksmithCachedNoteData source,
+        List<NoteTechniqueSegmentData> segments)
+    {
+        if (source == null || !source.hasVibrato || HasTechniqueSegment(segments, NoteTechniqueSegmentType.Vibrato))
+            return segments;
+
+        List<NoteTechniqueSegmentData> result = segments != null
+            ? new List<NoteTechniqueSegmentData>(segments)
+            : new List<NoteTechniqueSegmentData>();
+        float duration = Mathf.Max(0.05f, source.duration);
+        int fret = Mathf.Max(0, source.fret);
+        result.Add(new NoteTechniqueSegmentData(
+            NoteTechniqueSegmentType.Vibrato,
+            0f,
+            duration,
+            fret,
+            fret,
+            0f,
+            0f));
+        return result;
+    }
+
+    private static bool HasTechniqueSegment(List<NoteTechniqueSegmentData> segments, NoteTechniqueSegmentType type)
+    {
+        if (segments == null)
+            return false;
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            if (segments[i].type == type)
+                return true;
+        }
+
+        return false;
     }
 
     private static bool HasRenderableBendTechniqueSegments(List<NoteTechniqueSegmentData> segments)
@@ -292,8 +356,12 @@ public static class RocksmithCachedSongLoader
             for (int i = 0; i < existingSegments.Count; i++)
             {
                 NoteTechniqueSegmentData segment = existingSegments[i];
-                if (segment.type == NoteTechniqueSegmentType.Slide && segment.endOffset > segment.startOffset + 0.0001f)
+                if ((segment.type == NoteTechniqueSegmentType.Slide ||
+                     segment.type == NoteTechniqueSegmentType.Vibrato) &&
+                    segment.endOffset > segment.startOffset + 0.0001f)
+                {
                     result.Add(segment);
+                }
             }
         }
 
@@ -388,7 +456,12 @@ public static class RocksmithCachedSongLoader
         RocksmithCachedNoteData source,
         List<NoteTechniqueSegmentData> existingSegments)
     {
+        List<RocksmithCachedBendPointData> points = source.bendPoints
+            .Where(point => point != null)
+            .OrderBy(point => point.timeSeconds)
+            .ToList();
         List<NoteTechniqueSegmentData> result = new List<NoteTechniqueSegmentData>();
+        float duration = Mathf.Max(source.duration, source.bendVisualDuration, 0.12f);
         if (existingSegments != null)
         {
             for (int i = 0; i < existingSegments.Count; i++)
@@ -403,6 +476,25 @@ public static class RocksmithCachedSongLoader
                 if ((segment.type == NoteTechniqueSegmentType.Sustain || segment.type == NoteTechniqueSegmentType.Vibrato) &&
                     (Mathf.Abs(segment.startBend) > 0.01f || Mathf.Abs(segment.endBend) > 0.01f))
                 {
+                    if (segment.type == NoteTechniqueSegmentType.Vibrato)
+                    {
+                        float startOffset = Mathf.Clamp(segment.startOffset, 0f, duration);
+                        float endOffset = Mathf.Clamp(segment.endOffset, 0f, duration);
+                        float targetBend = Mathf.Max(Mathf.Abs(segment.startBend), Mathf.Abs(segment.endBend));
+                        startOffset = Mathf.Max(startOffset, FindFirstBendPointOffsetAtOrAbove(points, targetBend, duration));
+                        if (endOffset > startOffset + 0.0001f)
+                        {
+                            result.Add(new NoteTechniqueSegmentData(
+                                NoteTechniqueSegmentType.Vibrato,
+                                startOffset,
+                                endOffset,
+                                segment.startFret,
+                                segment.endFret,
+                                segment.startBend,
+                                segment.endBend));
+                        }
+                    }
+
                     continue;
                 }
 
@@ -410,14 +502,9 @@ public static class RocksmithCachedSongLoader
             }
         }
 
-        List<RocksmithCachedBendPointData> points = source.bendPoints
-            .Where(point => point != null)
-            .OrderBy(point => point.timeSeconds)
-            .ToList();
         if (points.Count == 0)
             return BuildFallbackBendTechniqueSegments(source, result);
 
-        float duration = Mathf.Max(source.duration, source.bendVisualDuration, 0.12f);
         int fret = source.fret;
         bool startsWithPreBend = source.bendPreBend ||
                                  (points[0].timeSeconds <= 0.001f && Mathf.Abs(points[0].step) > 0.01f);
@@ -477,12 +564,34 @@ public static class RocksmithCachedSongLoader
         return result;
     }
 
+    private static float FindFirstBendPointOffsetAtOrAbove(
+        IReadOnlyList<RocksmithCachedBendPointData> points,
+        float targetBend,
+        float duration)
+    {
+        if (points == null || points.Count == 0 || targetBend <= 0.01f)
+            return 0f;
+
+        for (int i = 0; i < points.Count; i++)
+        {
+            RocksmithCachedBendPointData point = points[i];
+            if (point == null)
+                continue;
+
+            if (Mathf.Abs(point.step) >= targetBend - 0.01f)
+                return Mathf.Clamp(point.timeSeconds, 0f, duration);
+        }
+
+        return 0f;
+    }
+
     private static List<NoteTechniqueSegmentData> RemoveFlatSustainUnderExpressiveSegments(List<NoteTechniqueSegmentData> segments)
     {
         if (segments == null || segments.Count == 0)
             return segments;
 
         List<(float start, float end)> expressiveSpans = null;
+        List<(float start, float end)> nonSustainExpressiveSpans = null;
         for (int i = 0; i < segments.Count; i++)
         {
             NoteTechniqueSegmentData segment = segments[i];
@@ -516,33 +625,19 @@ public static class RocksmithCachedSongLoader
             {
                 expressiveSpans ??= new List<(float start, float end)>();
                 expressiveSpans.Add((segment.startOffset, segment.endOffset));
+                if (segment.type != NoteTechniqueSegmentType.Sustain)
+                {
+                    nonSustainExpressiveSpans ??= new List<(float start, float end)>();
+                    nonSustainExpressiveSpans.Add((segment.startOffset, segment.endOffset));
+                }
             }
         }
 
         if (expressiveSpans == null || expressiveSpans.Count == 0)
             return segments;
 
-        expressiveSpans.Sort((left, right) => left.start.CompareTo(right.start));
-        List<(float start, float end)> mergedExpressiveSpans = new List<(float start, float end)>(expressiveSpans.Count);
-        for (int i = 0; i < expressiveSpans.Count; i++)
-        {
-            (float start, float end) span = expressiveSpans[i];
-            if (mergedExpressiveSpans.Count == 0)
-            {
-                mergedExpressiveSpans.Add(span);
-                continue;
-            }
-
-            (float currentStart, float currentEnd) = mergedExpressiveSpans[mergedExpressiveSpans.Count - 1];
-            if (span.start <= currentEnd + 0.0001f)
-            {
-                mergedExpressiveSpans[mergedExpressiveSpans.Count - 1] = (currentStart, Mathf.Max(currentEnd, span.end));
-            }
-            else
-            {
-                mergedExpressiveSpans.Add(span);
-            }
-        }
+        List<(float start, float end)> mergedExpressiveSpans = MergeTechniqueSpans(expressiveSpans);
+        List<(float start, float end)> mergedNonSustainExpressiveSpans = MergeTechniqueSpans(nonSustainExpressiveSpans);
 
         List<NoteTechniqueSegmentData> filtered = new List<NoteTechniqueSegmentData>(segments.Count + mergedExpressiveSpans.Count);
         for (int i = 0; i < segments.Count; i++)
@@ -553,8 +648,22 @@ public static class RocksmithCachedSongLoader
                 Mathf.Abs(segment.startBend) <= 0.01f &&
                 Mathf.Abs(segment.endBend) <= 0.01f &&
                 segment.endOffset > segment.startOffset + 0.0001f;
+            bool isConstantBentSustain =
+                segment.type == NoteTechniqueSegmentType.Sustain &&
+                Mathf.Abs(segment.startBend - segment.endBend) <= 0.01f &&
+                (Mathf.Abs(segment.startBend) > 0.01f || Mathf.Abs(segment.endBend) > 0.01f) &&
+                segment.endOffset > segment.startOffset + 0.0001f;
 
-            if (!isFlatSustain)
+            if (!isFlatSustain && !isConstantBentSustain)
+            {
+                filtered.Add(segment);
+                continue;
+            }
+
+            List<(float start, float end)> spans = isFlatSustain
+                ? mergedExpressiveSpans
+                : mergedNonSustainExpressiveSpans;
+            if (spans == null || spans.Count == 0)
             {
                 filtered.Add(segment);
                 continue;
@@ -562,9 +671,9 @@ public static class RocksmithCachedSongLoader
 
             float cursor = segment.startOffset;
             bool emittedSplit = false;
-            for (int spanIndex = 0; spanIndex < mergedExpressiveSpans.Count; spanIndex++)
+            for (int spanIndex = 0; spanIndex < spans.Count; spanIndex++)
             {
-                (float spanStart, float spanEnd) = mergedExpressiveSpans[spanIndex];
+                (float spanStart, float spanEnd) = spans[spanIndex];
                 if (spanEnd <= cursor + 0.0001f)
                     continue;
                 if (spanStart >= segment.endOffset - 0.0001f)
@@ -578,8 +687,8 @@ public static class RocksmithCachedSongLoader
                         Mathf.Min(spanStart, segment.endOffset),
                         segment.startFret,
                         segment.endFret,
-                        0f,
-                        0f));
+                        segment.startBend,
+                        segment.endBend));
                     emittedSplit = true;
                 }
 
@@ -599,8 +708,8 @@ public static class RocksmithCachedSongLoader
                     segment.endOffset,
                     segment.startFret,
                     segment.endFret,
-                    0f,
-                    0f));
+                    segment.startBend,
+                    segment.endBend));
                 emittedSplit = true;
             }
 
@@ -610,7 +719,36 @@ public static class RocksmithCachedSongLoader
             }
         }
 
-        return filtered;
+        return filtered
+            .OrderBy(segment => segment.startOffset)
+            .ThenBy(segment => segment.endOffset)
+            .ToList();
+    }
+
+    private static List<(float start, float end)> MergeTechniqueSpans(List<(float start, float end)> spans)
+    {
+        if (spans == null || spans.Count == 0)
+            return null;
+
+        spans.Sort((left, right) => left.start.CompareTo(right.start));
+        List<(float start, float end)> merged = new List<(float start, float end)>(spans.Count);
+        for (int i = 0; i < spans.Count; i++)
+        {
+            (float start, float end) span = spans[i];
+            if (merged.Count == 0)
+            {
+                merged.Add(span);
+                continue;
+            }
+
+            (float currentStart, float currentEnd) = merged[merged.Count - 1];
+            if (span.start <= currentEnd + 0.0001f)
+                merged[merged.Count - 1] = (currentStart, Mathf.Max(currentEnd, span.end));
+            else
+                merged.Add(span);
+        }
+
+        return merged;
     }
 
     private static void NormalizeRocksmithLegatoTransitions(List<NoteData> notes)
@@ -727,7 +865,7 @@ public static class RocksmithCachedSongLoader
                 channel = Mathf.Clamp(nextChannel, 0, 15),
                 bank = -1,
                 preset = part.generatedPart != null ? part.generatedPart.sourceMidiProgram : 29,
-                isDrum = false,
+                isDrum = part.generatedPart != null && part.generatedPart.isDrum,
                 label = part.displayName,
                 sourcePartId = part.partId,
                 sourcePartName = part.displayName,
@@ -1069,6 +1207,24 @@ public static class RocksmithCachedSongLoader
         if (route.IndexOf("bass", StringComparison.OrdinalIgnoreCase) >= 0)
             return 1000;
         return 0;
+    }
+
+    private static string InstrumentTypeForRoute(string route)
+    {
+        if (string.IsNullOrWhiteSpace(route))
+            return string.Empty;
+
+        if (route.IndexOf("bass", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "bass";
+        if (route.IndexOf("drum", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "drums";
+        if (route.IndexOf("vocal", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "vocals";
+        if (route.IndexOf("piano", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            route.IndexOf("keys", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            route.IndexOf("keyboard", StringComparison.OrdinalIgnoreCase) >= 0)
+            return "piano";
+        return "guitar";
     }
 
     private static string ResolveStoredPath(string baseDirectory, string storedPath)

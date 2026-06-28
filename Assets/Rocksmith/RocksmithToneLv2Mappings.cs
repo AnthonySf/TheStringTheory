@@ -445,15 +445,6 @@ internal static class RocksmithToneLv2Mappings
                 ("CABSWITCH", 1f));
         }
 
-        if (highGain || gain >= 0.74f || ContainsAny(text, "dsl", "mesa", "rect", "5150", "engl", "orange", "ad50", "metal"))
-        {
-            return CreateLv2Slot(GxSuperSonic, "GxSuperSonic",
-                ("GAIN", Mathf.Clamp01(gain)),
-                ("BASS", Mathf.Clamp01(bass)),
-                ("TREBLE", Mathf.Clamp01((treble * 0.72f) + (presence * 0.28f))),
-                ("VOLUME", Mathf.Clamp01(Mathf.Lerp(0.25f, 0.58f, volume))));
-        }
-
         if (ContainsAny(text, "plexi", "marshall", "gb", "brit", "jcm", "tw40"))
         {
             return CreateLv2Slot(GxPlexi, "GxPlexi",
@@ -478,6 +469,15 @@ internal static class RocksmithToneLv2Mappings
                 ("TREBLE", Mathf.Clamp01(treble)),
                 ("VIBE", 0f),
                 ("VOLUME", Mathf.Clamp01(Mathf.Lerp(0.28f, 0.62f, volume))));
+        }
+
+        if (highGain || gain >= 0.74f || ContainsAny(text, "dsl", "mesa", "rect", "5150", "engl", "orange", "ad50", "metal"))
+        {
+            return CreateLv2Slot(GxSuperSonic, "GxSuperSonic",
+                ("GAIN", Mathf.Clamp01(gain)),
+                ("BASS", Mathf.Clamp01(bass)),
+                ("TREBLE", Mathf.Clamp01((treble * 0.72f) + (presence * 0.28f))),
+                ("VOLUME", Mathf.Clamp01(Mathf.Lerp(0.25f, 0.58f, volume))));
         }
 
         return CreateLv2Slot(GxBlueAmp, "GxBlueAmp",

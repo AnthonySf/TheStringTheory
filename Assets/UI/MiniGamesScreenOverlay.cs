@@ -26,10 +26,12 @@ public sealed class MiniGamesScreenOverlay
 
     private readonly VisualElement setupRoot;
     private readonly VisualElement setupModeChoiceRoot;
+    private readonly VisualElement setupArcadeSummaryRoot;
     private readonly VisualElement setupRandomSummaryRoot;
     private readonly ScrollView setupLevelsList;
     private readonly VisualElement setupManualWorkspace;
     private readonly Label setupStatusLabel;
+    private readonly Button setupArcadeButton;
     private readonly Button setupRandomButton;
     private readonly Button setupManualButton;
     private readonly Button setupCatalogButton;
@@ -57,6 +59,7 @@ public sealed class MiniGamesScreenOverlay
     private readonly Label runSettingsCountdownValueLabel;
     private readonly Label runSettingsChordCountValueLabel;
     private readonly Label runSettingsPracticeModeValueLabel;
+    private readonly Label runSettingsShowMissedNotesValueLabel;
     private readonly Label runSettingsFailsValueLabel;
     private readonly Button runSettingsPrimaryButton;
 
@@ -89,6 +92,7 @@ public sealed class MiniGamesScreenOverlay
     private static readonly Dictionary<string, Texture2D> setupSongArtworkTextureCache = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
     private static Texture2D setupPrimaryGradientTexture;
     private static Texture2D setupModeGradientTexture;
+    private static Texture2D setupModeInactiveBorderTexture;
     private GameObject fightAudioRoot;
     private StringTheoryMetronome fightMetronome;
     private StringTheoryChordAudioPlayer fightChordAudioPlayer;
@@ -203,24 +207,57 @@ public sealed class MiniGamesScreenOverlay
         setupModeChoiceRoot = new VisualElement();
         setupModeChoiceRoot.style.flexDirection = FlexDirection.Row;
         setupModeChoiceRoot.style.alignSelf = Align.Center;
-        setupModeChoiceRoot.style.width = Length.Percent(64f);
-        setupModeChoiceRoot.style.minWidth = 1240f;
-        setupModeChoiceRoot.style.maxWidth = 1880f;
+        setupModeChoiceRoot.style.width = Length.Percent(74f);
+        setupModeChoiceRoot.style.minWidth = 1580f;
+        setupModeChoiceRoot.style.maxWidth = 2140f;
         setupModeChoiceRoot.style.marginTop = 2f;
         setupModeChoiceRoot.style.marginBottom = 22f;
         setupModeChoiceRoot.style.flexShrink = 0f;
+        setupArcadeButton = CreateSetupModeButton(
+            "Arcade",
+            "Arcade run with a growing randomized chord pool.",
+            () => owner?.SetFightClubSetupModeFromUi((int)FightClubSetupMode.Arcade));
+        setupArcadeButton.style.marginRight = 14f;
         setupRandomButton = CreateSetupModeButton(
             "Levels",
             "Sequential chord drills that unlock as you improve.",
-            () => owner?.SetFightClubSetupRandomModeFromUi(true));
-        setupRandomButton.style.marginRight = 22f;
+            () => owner?.SetFightClubSetupModeFromUi((int)FightClubSetupMode.Levels));
+        setupRandomButton.style.marginLeft = 14f;
+        setupRandomButton.style.marginRight = 14f;
         setupManualButton = CreateSetupModeButton(
             "Manual Selection",
             "Build a chord pool from groups or song chords.",
-            () => owner?.SetFightClubSetupRandomModeFromUi(false));
-        setupManualButton.style.marginLeft = 22f;
+            () => owner?.SetFightClubSetupModeFromUi((int)FightClubSetupMode.Manual));
+        setupManualButton.style.marginLeft = 14f;
+        setupModeChoiceRoot.Add(setupArcadeButton);
         setupModeChoiceRoot.Add(setupRandomButton);
         setupModeChoiceRoot.Add(setupManualButton);
+
+        setupArcadeSummaryRoot = CreateSetupPanel();
+        setupArcadeSummaryRoot.style.alignSelf = Align.Center;
+        setupArcadeSummaryRoot.style.width = Length.Percent(70f);
+        setupArcadeSummaryRoot.style.minWidth = 0f;
+        setupArcadeSummaryRoot.style.maxWidth = 1700f;
+        setupArcadeSummaryRoot.style.flexGrow = 1f;
+        setupArcadeSummaryRoot.style.minHeight = 0f;
+        setupArcadeSummaryRoot.style.maxHeight = Length.Percent(78f);
+        setupArcadeSummaryRoot.style.justifyContent = Justify.Center;
+        setupArcadeSummaryRoot.style.alignItems = Align.Center;
+        setupArcadeSummaryRoot.style.paddingLeft = 68f;
+        setupArcadeSummaryRoot.style.paddingRight = 68f;
+        Label arcadeTitle = CreateLabel("Arcade", 76f, Color.white, true, TextAnchor.MiddleCenter, false);
+        arcadeTitle.style.unityFontDefinition = modernFontDefinition;
+        arcadeTitle.style.marginBottom = 16f;
+        Label arcadeText = CreateLabel("Starts with a tiny set of basic open chords, then adds one or two new chords every few rounds until the whole catalog is active.", 38f, new Color(0.82f, 0.88f, 0.96f, 0.86f), false, TextAnchor.MiddleCenter, false);
+        arcadeText.style.unityFontDefinition = modernFontDefinition;
+        arcadeText.style.whiteSpace = WhiteSpace.Normal;
+        arcadeText.style.maxWidth = 1280f;
+        arcadeText.style.marginBottom = 18f;
+        Label arcadeHighScore = CreateLabel("Survive until you miss too many rounds.", 32f, new Color(0.56f, 0.95f, 1f, 0.76f), true, TextAnchor.MiddleCenter, false);
+        arcadeHighScore.style.unityFontDefinition = modernFontDefinition;
+        setupArcadeSummaryRoot.Add(arcadeTitle);
+        setupArcadeSummaryRoot.Add(arcadeText);
+        setupArcadeSummaryRoot.Add(arcadeHighScore);
 
         setupRandomSummaryRoot = CreateSetupPanel();
         setupRandomSummaryRoot.style.alignSelf = Align.Center;
@@ -354,6 +391,7 @@ public sealed class MiniGamesScreenOverlay
 
         setupRoot.Add(setupHeader);
         setupRoot.Add(setupModeChoiceRoot);
+        setupRoot.Add(setupArcadeSummaryRoot);
         setupRoot.Add(setupRandomSummaryRoot);
         setupRoot.Add(setupManualWorkspace);
         setupRoot.Add(setupFooter);
@@ -443,6 +481,12 @@ public sealed class MiniGamesScreenOverlay
             out runSettingsPracticeModeValueLabel,
             () => owner?.ToggleFightClubPracticeModeFromUi(),
             () => owner?.ToggleFightClubPracticeModeFromUi()));
+        runSettingsList.Add(CreateRunSettingRow(
+            "Show Missed Notes",
+            "Outlines the expected chord notes that were absent when a chord fails.",
+            out runSettingsShowMissedNotesValueLabel,
+            () => owner?.ToggleFightClubShowMissedNotesFromUi(),
+            () => owner?.ToggleFightClubShowMissedNotesFromUi()));
         runSettingsList.Add(CreateRunSettingRow(
             "Failed Rounds",
             "How many imperfect rounds end the run.",
@@ -998,19 +1042,27 @@ public sealed class MiniGamesScreenOverlay
             return;
 
         currentSetupSnapshot = snapshot;
+        FightClubSetupMode setupMode = GetSetupMode(snapshot);
+        bool arcadeMode = setupMode == FightClubSetupMode.Arcade;
+        bool levelMode = setupMode == FightClubSetupMode.Levels;
+        bool manualMode = setupMode == FightClubSetupMode.Manual;
         bool songMode = snapshot.sourceMode == 1;
-        StyleSetupModeButton(setupRandomButton, snapshot.randomMode);
-        StyleSetupModeButton(setupManualButton, !snapshot.randomMode);
+        StyleSetupModeButton(setupArcadeButton, arcadeMode);
+        StyleSetupModeButton(setupRandomButton, levelMode);
+        StyleSetupModeButton(setupManualButton, manualMode);
         StyleSetupButton(setupCatalogButton, !songMode);
         StyleSetupButton(setupSongsButton, songMode);
-        setupStatusLabel.text = snapshot.statusLabel ?? string.Empty;
+        string setupStatus = snapshot.statusLabel ?? string.Empty;
+        setupStatusLabel.text = setupStatus;
+        setupStatusLabel.style.display = string.IsNullOrWhiteSpace(setupStatus) ? DisplayStyle.None : DisplayStyle.Flex;
         setupStartButton.SetEnabled(snapshot.canStart);
         StyleSetupPrimaryButton(setupStartButton, snapshot.canStart);
-        bool canAdd = snapshot.availableChords != null && snapshot.availableChords.Exists(chord => chord != null && chord.selected);
+        bool canAdd = manualMode && snapshot.availableChords != null && snapshot.availableChords.Exists(chord => chord != null && chord.selected);
         setupAddButton.SetEnabled(canAdd);
         StyleSetupAddButton(setupAddButton, canAdd);
-        setupRandomSummaryRoot.style.display = snapshot.randomMode ? DisplayStyle.Flex : DisplayStyle.None;
-        setupManualWorkspace.style.display = snapshot.randomMode ? DisplayStyle.None : DisplayStyle.Flex;
+        setupArcadeSummaryRoot.style.display = arcadeMode ? DisplayStyle.Flex : DisplayStyle.None;
+        setupRandomSummaryRoot.style.display = levelMode ? DisplayStyle.Flex : DisplayStyle.None;
+        setupManualWorkspace.style.display = manualMode ? DisplayStyle.Flex : DisplayStyle.None;
         setupGroupsList.style.display = songMode ? DisplayStyle.None : DisplayStyle.Flex;
         setupSongsList.style.display = songMode ? DisplayStyle.Flex : DisplayStyle.None;
         setupSongSearchRoot.style.display = songMode ? DisplayStyle.Flex : DisplayStyle.None;
@@ -1069,7 +1121,11 @@ public sealed class MiniGamesScreenOverlay
         }
 
         setupPlayableList.Clear();
-        if (snapshot.randomMode)
+        if (arcadeMode)
+        {
+            setupPlayableList.Add(CreateSetupEmptyLabel("Arcade grows its chord pool automatically."));
+        }
+        else if (levelMode)
         {
             setupPlayableList.Add(CreateSetupEmptyLabel("Levels mode uses the selected level's chord pool."));
         }
@@ -1082,6 +1138,18 @@ public sealed class MiniGamesScreenOverlay
         {
             setupPlayableList.Add(CreateSetupEmptyLabel("Add chords here before starting."));
         }
+    }
+
+    private static FightClubSetupMode GetSetupMode(FightClubSetupSnapshot snapshot)
+    {
+        if (snapshot == null)
+            return FightClubSetupMode.Arcade;
+
+        if (snapshot.mode == (int)FightClubSetupMode.Levels)
+            return FightClubSetupMode.Levels;
+        if (snapshot.mode == (int)FightClubSetupMode.Manual)
+            return FightClubSetupMode.Manual;
+        return FightClubSetupMode.Arcade;
     }
 
     private Button CreateSetupGroupRow(FightClubChordGroupSnapshot group)
@@ -1604,30 +1672,46 @@ public sealed class MiniGamesScreenOverlay
         button.focusable = false;
         button.style.flexGrow = 1f;
         button.style.flexBasis = 0f;
-        button.style.height = 138f;
-        button.style.paddingLeft = 46f;
-        button.style.paddingRight = 46f;
-        button.style.paddingTop = 22f;
-        button.style.paddingBottom = 20f;
+        button.style.height = 148f;
+        button.style.paddingLeft = 2f;
+        button.style.paddingRight = 2f;
+        button.style.paddingTop = 2f;
+        button.style.paddingBottom = 2f;
         button.style.marginLeft = 0f;
         button.style.marginRight = 0f;
         button.style.justifyContent = Justify.Center;
         button.style.alignItems = Align.Stretch;
-        SetRadius(button, 12f);
+        button.style.overflow = Overflow.Hidden;
+        SetRadius(button, 16f);
+
+        VisualElement inner = new VisualElement { name = "setup-mode-inner" };
+        inner.style.flexGrow = 1f;
+        inner.style.flexDirection = FlexDirection.Row;
+        inner.style.justifyContent = Justify.FlexStart;
+        inner.style.alignItems = Align.Center;
+        inner.style.paddingLeft = 30f;
+        inner.style.paddingRight = 30f;
+        inner.style.paddingTop = 18f;
+        inner.style.paddingBottom = 18f;
+        SetRadius(inner, 12f);
 
         VisualElement column = new VisualElement();
         column.style.flexDirection = FlexDirection.Column;
         column.style.justifyContent = Justify.Center;
         column.style.alignItems = Align.FlexStart;
+        column.style.flexGrow = 1f;
+        column.style.minWidth = 0f;
 
-        Label titleLabel = CreateLabel(title, 42f, Color.white, true, TextAnchor.MiddleLeft, false);
+        Label titleLabel = CreateLabel(title, 44f, Color.white, true, TextAnchor.MiddleLeft, false);
+        titleLabel.name = "setup-mode-title";
         titleLabel.style.unityFontDefinition = modernFontDefinition;
         titleLabel.style.whiteSpace = WhiteSpace.NoWrap;
         titleLabel.style.overflow = Overflow.Hidden;
         titleLabel.style.textOverflow = TextOverflow.Ellipsis;
-        titleLabel.style.marginBottom = 8f;
+        titleLabel.style.marginBottom = 9f;
 
         Label subtitleLabel = CreateLabel(subtitle ?? string.Empty, 25f, new Color(0.80f, 0.88f, 0.96f, 0.86f), false, TextAnchor.MiddleLeft, false);
+        subtitleLabel.name = "setup-mode-subtitle";
         subtitleLabel.style.unityFontDefinition = modernFontDefinition;
         subtitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
         subtitleLabel.style.overflow = Overflow.Hidden;
@@ -1635,9 +1719,19 @@ public sealed class MiniGamesScreenOverlay
 
         column.Add(titleLabel);
         column.Add(subtitleLabel);
-        button.Add(column);
-        button.RegisterCallback<MouseEnterEvent>(_ => button.style.scale = new Scale(new Vector3(1.012f, 1.012f, 1f)));
+        inner.Add(column);
+        button.Add(inner);
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.scale = new Scale(new Vector3(1.018f, 1.018f, 1f));
+            button.style.opacity = 1f;
+        });
         button.RegisterCallback<MouseLeaveEvent>(_ => button.style.scale = new Scale(Vector3.one));
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            bool isSelected = button.userData is bool selectedState && selectedState;
+            button.style.opacity = isSelected ? 1f : 0.94f;
+        });
         StyleSetupModeButton(button, false);
         return button;
     }
@@ -1647,10 +1741,27 @@ public sealed class MiniGamesScreenOverlay
         if (button == null)
             return;
 
-        button.style.backgroundImage = selected ? new StyleBackground(GetSetupModeGradientTexture()) : StyleKeyword.None;
-        button.style.backgroundColor = selected ? new Color(0.02f, 0.20f, 0.26f, 0.86f) : new Color(0.004f, 0.014f, 0.030f, 0.58f);
-        button.style.opacity = selected ? 1f : 0.84f;
-        SetBorder(button, selected ? new Color(0.38f, 0.95f, 1f, 0.94f) : new Color(0.68f, 0.78f, 0.94f, 0.32f), 2f);
+        button.userData = selected;
+        VisualElement inner = button.Q<VisualElement>("setup-mode-inner");
+        Label titleLabel = button.Q<Label>("setup-mode-title");
+        Label subtitleLabel = button.Q<Label>("setup-mode-subtitle");
+
+        button.style.backgroundImage = new StyleBackground(selected ? GetSetupPrimaryGradientTexture() : GetSetupModeInactiveBorderTexture());
+        button.style.backgroundColor = selected ? new Color(0.14f, 0.72f, 0.86f, 0.96f) : new Color(1f, 0.42f, 0.12f, 0.88f);
+        button.style.opacity = selected ? 1f : 0.94f;
+        SetBorder(button, selected ? new Color(0.72f, 1f, 0.98f, 0.90f) : new Color(1f, 0.62f, 0.22f, 0.74f), selected ? 1.25f : 1f);
+
+        if (inner != null)
+        {
+            inner.style.backgroundImage = selected ? new StyleBackground(GetSetupModeGradientTexture()) : StyleKeyword.None;
+            inner.style.backgroundColor = selected ? new Color(0.02f, 0.16f, 0.23f, 0.86f) : new Color(0.018f, 0.016f, 0.026f, 0.92f);
+            SetBorder(inner, selected ? new Color(0.82f, 1f, 0.96f, 0.18f) : new Color(1f, 0.55f, 0.20f, 0.16f), 0.5f);
+        }
+
+        if (titleLabel != null)
+            titleLabel.style.color = selected ? Color.white : new Color(1f, 0.92f, 0.82f, 0.96f);
+        if (subtitleLabel != null)
+            subtitleLabel.style.color = selected ? new Color(0.78f, 0.96f, 1f, 0.88f) : new Color(1f, 0.72f, 0.46f, 0.78f);
     }
 
     private Button CreateSetupPrimaryButton(string text, Action action)
@@ -1775,9 +1886,17 @@ public sealed class MiniGamesScreenOverlay
     private static Texture2D GetSetupModeGradientTexture()
     {
         if (setupModeGradientTexture == null)
-            setupModeGradientTexture = CreateGradientTexture("FightClubSetupModeGradient", new Color(0.05f, 0.48f, 0.52f, 0.94f), new Color(0.13f, 0.25f, 0.50f, 0.94f));
+            setupModeGradientTexture = CreateGradientTexture("FightClubSetupModeGradient", new Color(0.02f, 0.34f, 0.42f, 0.96f), new Color(0.23f, 0.12f, 0.48f, 0.96f));
 
         return setupModeGradientTexture;
+    }
+
+    private static Texture2D GetSetupModeInactiveBorderTexture()
+    {
+        if (setupModeInactiveBorderTexture == null)
+            setupModeInactiveBorderTexture = CreateGradientTexture("FightClubSetupModeInactiveBorderGradient", new Color(1f, 0.62f, 0.16f, 0.96f), new Color(1f, 0.22f, 0.34f, 0.92f));
+
+        return setupModeInactiveBorderTexture;
     }
 
     private static Texture2D CreateGradientTexture(string name, Color left, Color right)
@@ -1831,6 +1950,7 @@ public sealed class MiniGamesScreenOverlay
         runSettingsCountdownValueLabel.text = $"{FightClubRunSettings.NormalizeCountdownBeats(snapshot.countdownSeconds).ToString(CultureInfo.InvariantCulture)} beats";
         runSettingsChordCountValueLabel.text = $"{FightClubRunSettings.NormalizeChordCount(snapshot.chordCount).ToString(CultureInfo.InvariantCulture)} chords";
         runSettingsPracticeModeValueLabel.text = snapshot.practiceMode ? "ON" : "OFF";
+        runSettingsShowMissedNotesValueLabel.text = snapshot.showMissedNotes ? "ON" : "OFF";
         runSettingsFailsValueLabel.text = Mathf.Clamp(snapshot.maxFailedRounds, 1, 10).ToString(CultureInfo.InvariantCulture);
         runSettingsPrimaryButton.text = snapshot.activeRun ? "Apply" : "Start Fight Club";
         runSettingsPrimaryButton.SetEnabled(snapshot.activeRun || snapshot.canStart);
@@ -1992,7 +2112,7 @@ public sealed class MiniGamesScreenOverlay
             : new Color(0.66f, 0.94f, 1f, 1f);
 
         endStatsGrid.Clear();
-        endStatsGrid.Add(CreateEndStatCard(snapshot.highScoreEnabled ? "Level Best" : "Run Score", snapshot.highScoreEnabled ? Mathf.Max(snapshot.highScore, snapshot.score).ToString("N0", CultureInfo.InvariantCulture) : snapshot.score.ToString("N0", CultureInfo.InvariantCulture), new Color(0.62f, 0.92f, 1f, 1f)));
+        endStatsGrid.Add(CreateEndStatCard(snapshot.highScoreEnabled ? snapshot.highScoreLabel : "Run Score", snapshot.highScoreEnabled ? Mathf.Max(snapshot.highScore, snapshot.score).ToString("N0", CultureInfo.InvariantCulture) : snapshot.score.ToString("N0", CultureInfo.InvariantCulture), new Color(0.62f, 0.92f, 1f, 1f)));
         endStatsGrid.Add(CreateEndStatCard("Hits", hits.ToString("N0", CultureInfo.InvariantCulture), new Color(0.58f, 1f, 0.78f, 1f)));
         endStatsGrid.Add(CreateEndStatCard("Misses", misses.ToString("N0", CultureInfo.InvariantCulture), new Color(1f, 0.50f, 0.46f, 1f)));
         endStatsGrid.Add(CreateEndStatCard("Failed Rounds", $"{Mathf.Max(0, snapshot.failedRounds).ToString(CultureInfo.InvariantCulture)}/{Mathf.Max(1, snapshot.maxFailedRounds).ToString(CultureInfo.InvariantCulture)}", new Color(1f, 0.73f, 0.40f, 1f)));
@@ -2257,6 +2377,8 @@ public sealed class MiniGamesScreenOverlay
         var parts = new List<string>
         {
             snapshot.visible.ToString(),
+            snapshot.mode.ToString(CultureInfo.InvariantCulture),
+            snapshot.arcadeMode.ToString(),
             snapshot.randomMode.ToString(),
             snapshot.sourceMode.ToString(),
             snapshot.canStart.ToString(),
@@ -2333,6 +2455,7 @@ public sealed class MiniGamesScreenOverlay
             snapshot.countdownSeconds.ToString("F1", CultureInfo.InvariantCulture),
             snapshot.chordCount,
             snapshot.practiceMode,
+            snapshot.showMissedNotes,
             snapshot.maxFailedRounds);
     }
 

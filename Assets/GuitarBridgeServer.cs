@@ -1134,6 +1134,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool mainMenuFlowActive;
     private int selectedMainMenuIndex;
     private bool showMiniGames;
+    private bool showChartEditor;
     private int selectedMiniGameIndex;
     private int selectedMiniGamePauseActionIndex;
     private bool miniGameTextInputFocused;
@@ -1387,7 +1388,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private const float ArrowDoubleTapThreshold = 0.35f;
     private const float UiControllerAxisThreshold = 0.55f;
     private const float NoteByNoteTimeEpsilon = 0.0001f;
-    private const int MainMenuOptionCount = 9;
+    private const int MainMenuOptionCount = 10;
     private const int MiniGameMenuOptionCount = 1;
     private const int MiniGamePauseActionCount = 3;
     private const int StartMenuModeOptionCount = 2;
@@ -1891,6 +1892,7 @@ public class GuitarBridgeServer : MonoBehaviour
         builder.AppendLine($"  showMainMenu: {showMainMenu}");
         builder.AppendLine($"  mainMenuFlowActive: {mainMenuFlowActive}");
         builder.AppendLine($"  showMiniGames: {showMiniGames}");
+        builder.AppendLine($"  showChartEditor: {showChartEditor}");
         builder.AppendLine($"  showStartMenu: {showStartMenu}");
         builder.AppendLine($"  showToneLab: {showToneLab}");
         builder.AppendLine($"  showTuner: {showTuner}");
@@ -2132,7 +2134,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         if (gameplayMode == GuitarGameplayMode.Guitar && midiTrackIndex != currentLoadedTrackIndex)
-            LoadTestSong(preservePauseUiState: isPaused || showMainMenu || showSongSettings || showSongSelection || showTrackSelection || showGlobalSettings || showLoopPausePopup);
+            LoadTestSong(preservePauseUiState: isPaused || showMainMenu || showChartEditor || showSongSettings || showSongSelection || showTrackSelection || showGlobalSettings || showLoopPausePopup);
         UpdateToneLabSongTonePlaybackOverride();
         if (shouldLogLoopCountdownFrame)
         {
@@ -2207,7 +2209,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         using (UpdateGameplayStateProfilerMarker.Auto())
         {
-            if (!isPaused && !loopGapActive && !showMiniGames)
+            if (!isPaused && !loopGapActive && !showMiniGames && !showChartEditor)
             {
                 if (gameplayMode == GuitarGameplayMode.Guitar)
                 {
@@ -2254,7 +2256,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         using (UpdateDetectorHintProfilerMarker.Auto())
         {
-            if ((gameplayMode == GuitarGameplayMode.Guitar || showMiniGames) && !loopGapActive)
+            if ((gameplayMode == GuitarGameplayMode.Guitar || showMiniGames) && !showChartEditor && !loopGapActive)
                 SendDetectorHintPacketIfNeeded();
         }
         if (shouldLogLoopCountdownFrame)
@@ -2426,6 +2428,13 @@ public class GuitarBridgeServer : MonoBehaviour
         if (showNotesDetectorTestMenu)
         {
             HandleNotesDetectorTestControls();
+            return;
+        }
+
+        if (showChartEditor)
+        {
+            if (IsUiBackPressed() || IsUiPausePressed())
+                CloseChartEditorToMainMenuFromUi();
             return;
         }
 
@@ -2855,7 +2864,7 @@ public class GuitarBridgeServer : MonoBehaviour
             showSongSelection ||
             gameplayMode != GuitarGameplayMode.Guitar ||
             currentSongEntry == null ||
-            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache ||
+            !SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind) ||
             string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) ||
             songMetadata == null)
         {
@@ -3014,19 +3023,22 @@ public class GuitarBridgeServer : MonoBehaviour
         cachedSongToneMappingPartId = partId;
         cachedSongToneMappingNotationPath = notationPath;
 
-        RocksmithCachedArrangementPart part = null;
-        if (!string.IsNullOrWhiteSpace(partId))
-            ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(currentSongEntry.PrimaryNotationPath, partId, out _, out part);
-        if (part == null)
-            ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(currentSongEntry.PrimaryNotationPath, arrangementKey, out _, out part);
-
         cachedSongToneMappingLoaded = true;
-        if (part?.tones == null)
+        if (!TryLoadToneMappingToneData(
+                currentSongEntry,
+                arrangementKey,
+                partId,
+                activeSummary,
+                out RocksmithCachedArrangementToneData toneData,
+                out string arrangementRoute) ||
+            toneData == null)
+        {
             return false;
+        }
 
-        cachedSongToneMappingToneData = part.tones;
-        cachedSongToneMappingArrangementRoute = part.route ?? activeSummary?.Name ?? activeSummary?.GroupDisplayName ?? string.Empty;
-        cachedSongToneMappingChanges = BuildSortedToneChanges(part.tones);
+        cachedSongToneMappingToneData = toneData;
+        cachedSongToneMappingArrangementRoute = arrangementRoute ?? activeSummary?.Name ?? activeSummary?.GroupDisplayName ?? string.Empty;
+        cachedSongToneMappingChanges = BuildSortedToneChanges(toneData);
         return true;
     }
 
@@ -3356,7 +3368,7 @@ public class GuitarBridgeServer : MonoBehaviour
             return $"arcade::{selectedArcadeArrangementId?.Trim() ?? string.Empty}";
 
         if (currentSongEntry != null &&
-            currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache &&
+            SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind) &&
             !string.IsNullOrWhiteSpace(selectedMusicXmlPartId))
         {
             string groupId = GetArrangementGroupId(GetResolvedActiveTrackSummary());
@@ -3372,7 +3384,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (gameplayMode == GuitarGameplayMode.Arcade)
             return GetSelectedArcadeArrangementDisplayName();
 
-        if (currentSongEntry != null && currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache)
+        if (currentSongEntry != null && SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind))
         {
             MusicXmlLoader.MusicXmlPartSummary activeSummary = GetResolvedActiveTrackSummary();
             if (activeSummary != null)
@@ -3733,7 +3745,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private bool ShouldPlaybackAudio(bool loopPreviewActive, bool offsetHelperPreviewActive, bool loopGapActive)
     {
-        if (showMiniGames)
+        if (showMiniGames || showChartEditor)
             return false;
 
         return ((!isPaused || loopPreviewActive || offsetHelperPreviewActive) && !loopGapActive && !noteByNoteWaitingForMatch);
@@ -4097,6 +4109,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showSongSettings = false;
         showMainMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
         showTrackSelection = false;
@@ -4205,16 +4218,23 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
-        if (Input.GetKeyDown(KeyCode.M))
+        if (Input.GetKeyDown(KeyCode.E))
         {
             SetMainMenuSelectionFromUi(7);
+            OpenChartEditorFromUi();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.M))
+        {
+            SetMainMenuSelectionFromUi(8);
             OpenMiniGamesFromUi();
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.X))
         {
-            SetMainMenuSelectionFromUi(8);
+            SetMainMenuSelectionFromUi(9);
             ExitGameFromUi();
             return;
         }
@@ -5989,6 +6009,14 @@ public class GuitarBridgeServer : MonoBehaviour
         if (summary.StringTuningPitches != null && summary.StringTuningPitches.Length > 0 && summary.StringTuningPitches.Length <= 4)
             return true;
 
+        if (!string.IsNullOrWhiteSpace(summary.InstrumentType) &&
+            summary.InstrumentType.IndexOf("bass", StringComparison.OrdinalIgnoreCase) >= 0)
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(summary.Route) &&
+            summary.Route.IndexOf("bass", StringComparison.OrdinalIgnoreCase) >= 0)
+            return true;
+
         string label = !string.IsNullOrWhiteSpace(summary.GroupDisplayName)
             ? summary.GroupDisplayName
             : !string.IsNullOrWhiteSpace(summary.Name)
@@ -6095,9 +6123,15 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         return gameplayMode == GuitarGameplayMode.Guitar &&
                currentSongEntry != null &&
-               currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache &&
+               SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind) &&
                currentSongPartSummaries != null &&
                currentSongPartSummaries.Any(summary => summary != null && summary.HasDifficultyVariants);
+    }
+
+    private static bool SupportsArrangementTrackGroups(SongNotationSourceKind kind)
+    {
+        return kind == SongNotationSourceKind.ArrangementCache ||
+               kind == SongNotationSourceKind.TheoryPackage;
     }
 
     private List<ArrangementTrackSelectionGroup> GetCurrentArrangementTrackSelectionGroups()
@@ -6627,6 +6661,8 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             case SongNotationSourceKind.ArrangementCache:
                 return "RS";
+            case SongNotationSourceKind.TheoryPackage:
+                return "THEORY";
             case SongNotationSourceKind.Gp5:
                 return "GP";
             case SongNotationSourceKind.MusicXml:
@@ -8737,6 +8773,7 @@ public class GuitarBridgeServer : MonoBehaviour
                showHeroModeSettings ||
                showNotesDetectorTestMenu ||
                showMiniGames ||
+               showChartEditor ||
                showTuner ||
                showToneLab ||
                showGeneratedAudioTrackSelectionPopup ||
@@ -9139,6 +9176,7 @@ public class GuitarBridgeServer : MonoBehaviour
         ResetTransientMenuNavigationState();
         showNotesDetectorTestMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         miniGameManager?.StopFightClub();
         showStartMenu = false;
         showMultiplayerRhythmSetup = false;
@@ -9175,6 +9213,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showNotesDetectorTestMenu = false;
         showNotesDetectorTestSelectionPopup = false;
         showNotesDetectorRoutinePopup = false;
+        showChartEditor = false;
         showStartMenu = false;
         showCharacterSelection = false;
         showMultiplayerRhythmSetup = false;
@@ -9210,6 +9249,72 @@ public class GuitarBridgeServer : MonoBehaviour
         SyncAudioToSongTimer(playImmediately: false);
     }
 
+    public void OpenChartEditorFromUi()
+    {
+        CancelDeferredSongSelectionOpen();
+        showToneLab = false;
+        HideToneLabUi();
+        showTuner = false;
+        tunerResumeGameplayAfterSkip = false;
+        guitarTunerOverlay?.SetVisible(false);
+        ResetTransientMenuNavigationState();
+        showNotesDetectorTestMenu = false;
+        showNotesDetectorTestSelectionPopup = false;
+        showNotesDetectorRoutinePopup = false;
+        showMiniGames = false;
+        miniGameTextInputFocused = false;
+        miniGameManager?.StopFightClub();
+        showStartMenu = false;
+        showCharacterSelection = false;
+        showMultiplayerRhythmSetup = false;
+        multiplayerRhythmModeActive = false;
+        multiplayerRhythmWinningPlayerIndex = -1;
+        pendingMultiplayerRhythmSongSelection = false;
+        returnToMultiplayerRhythmSetupFromSongSelection = false;
+        showSongSettings = false;
+        showSongSelection = false;
+        songSelectionSongConfirmed = false;
+        showTrackSelection = false;
+        showGlobalSettings = false;
+        showGameModes = false;
+        showHeroModeSettings = false;
+        showGameplayAudioPopup = false;
+        showGeneratedAudioTrackSelectionPopup = false;
+        showSongSettingsTrackSelectionPopup = false;
+        showArrangementDifficultyPopup = false;
+        showOffsetHelper = false;
+        showLoopSettings = false;
+        showLoopPausePopup = false;
+        showBackgroundMoodSetter = false;
+        showChartEditor = true;
+        showMainMenu = false;
+        mainMenuFlowActive = true;
+        selectedMainMenuIndex = 7;
+        isPaused = true;
+        SetSongEndState(false);
+        songSelectionOpenedFromSongEnd = false;
+        songSelectionOpenedFromMainMenu = false;
+        showStartupTuningReminder = false;
+        resumeGameplayAfterStartupTuningReminder = false;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void CloseChartEditorToMainMenuFromUi()
+    {
+        showChartEditor = false;
+        showMainMenu = true;
+        mainMenuFlowActive = true;
+        selectedMainMenuIndex = 7;
+        isPaused = true;
+        SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void NotifyChartEditorLibraryChangedFromUi()
+    {
+        SongLibraryService.ClearCache();
+        BeginSongLibraryRefresh(refreshImports: false);
+    }
+
     public void CloseMiniGamesFromUi()
     {
         miniGameTextInputFocused = false;
@@ -9218,7 +9323,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showMiniGames = false;
         showMainMenu = true;
         mainMenuFlowActive = true;
-        selectedMainMenuIndex = 7;
+        selectedMainMenuIndex = 8;
         selectedMiniGamePauseActionIndex = 0;
         isPaused = true;
         MarkDetectorHintDirty();
@@ -9433,6 +9538,11 @@ public class GuitarBridgeServer : MonoBehaviour
         miniGameManager?.ToggleFightClubPracticeMode();
     }
 
+    public void ToggleFightClubShowMissedNotesFromUi()
+    {
+        miniGameManager?.ToggleFightClubShowMissedNotes();
+    }
+
     public void AdjustFightClubMaxFailedRoundsFromUi(int delta)
     {
         miniGameManager?.AdjustFightClubMaxFailedRounds(delta);
@@ -9441,6 +9551,11 @@ public class GuitarBridgeServer : MonoBehaviour
     public void SetFightClubSetupRandomModeFromUi(bool enabled)
     {
         miniGameManager?.SetFightClubSetupRandomMode(enabled);
+    }
+
+    public void SetFightClubSetupModeFromUi(int mode)
+    {
+        miniGameManager?.SetFightClubSetupMode(mode);
     }
 
     public void SelectFightClubSetupLevelFromUi(int index)
@@ -9616,6 +9731,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showStartMenu = false;
         showMainMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         mainMenuFlowActive = false;
         showSongSettings = false;
         showSongSelection = false;
@@ -9646,6 +9762,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showCharacterSelection = false;
         showMainMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         mainMenuFlowActive = true;
         showSongSettings = false;
         showSongSelection = false;
@@ -9846,6 +9963,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showStartMenu = false;
         showMainMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         mainMenuFlowActive = true;
         showSongSettings = false;
         showSongSelection = false;
@@ -10253,9 +10371,12 @@ public class GuitarBridgeServer : MonoBehaviour
                 OpenToneLabFromUi();
                 break;
             case 7:
-                OpenMiniGamesFromUi();
+                OpenChartEditorFromUi();
                 break;
             case 8:
+                OpenMiniGamesFromUi();
+                break;
+            case 9:
                 ExitGameFromUi();
                 break;
         }
@@ -10274,6 +10395,7 @@ public class GuitarBridgeServer : MonoBehaviour
         HideToneLabUi();
         showMainMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         mainMenuFlowActive = false;
         showSongSettings = false;
         showSongSelection = false;
@@ -10971,6 +11093,7 @@ public class GuitarBridgeServer : MonoBehaviour
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         if (!showMainMenu)
             mainMenuFlowActive = false;
         OpenSongSelectionMenu();
@@ -11012,6 +11135,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showNotesDetectorTestMenu = false;
         showNotesDetectorRoutinePopup = false;
         showMiniGames = false;
+        showChartEditor = false;
         miniGameManager?.StopFightClub();
         showTuner = false;
         tunerResumeGameplayAfterSkip = false;
@@ -11120,6 +11244,7 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionOpenedFromSongEnd = false;
         showMainMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         mainMenuFlowActive = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -11166,6 +11291,7 @@ public class GuitarBridgeServer : MonoBehaviour
         HideToneLabUi();
         showNotesDetectorTestMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         gameplayHudPreviewInMenus = false;
         showSongSettings = true;
         showGeneratedAudioTrackSelectionPopup = false;
@@ -11195,6 +11321,7 @@ public class GuitarBridgeServer : MonoBehaviour
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         gameplayHudPreviewInMenus = false;
         if (!showMainMenu)
             mainMenuFlowActive = false;
@@ -11215,6 +11342,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showStartMenu = false;
         showMainMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
@@ -11353,6 +11481,7 @@ public class GuitarBridgeServer : MonoBehaviour
                !showToneLab &&
                !showTuner &&
                !showMiniGames &&
+               !showChartEditor &&
                !songHasEnded;
     }
 
@@ -11379,6 +11508,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showNotesDetectorTestSelectionPopup = false;
         showNotesDetectorRoutinePopup = false;
         showMiniGames = false;
+        showChartEditor = false;
         showSongSettings = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -11417,6 +11547,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showNotesDetectorTestSelectionPopup = false;
         showNotesDetectorRoutinePopup = false;
         showMiniGames = false;
+        showChartEditor = false;
         showSongSettings = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -11628,6 +11759,7 @@ public class GuitarBridgeServer : MonoBehaviour
         guitarTunerOverlay?.SetVisible(false);
         showNotesDetectorTestMenu = false;
         showMiniGames = false;
+        showChartEditor = false;
         showSongSettings = false;
         showSongSelection = false;
         songSelectionSongConfirmed = false;
@@ -12150,7 +12282,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         return pendingTrackSelectionSong != null &&
                pendingTrackSelectionSong.LibraryType == SongLibraryType.Guitar &&
-               pendingTrackSelectionSong.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache &&
+               SupportsArrangementTrackGroups(pendingTrackSelectionSong.PrimaryNotationKind) &&
                pendingArrangementTrackSelectionGroups.Count > 0;
     }
 
@@ -12272,7 +12404,7 @@ public class GuitarBridgeServer : MonoBehaviour
         pendingArrangementTrackSelectionGroups.Clear();
         if (pendingTrackSelectionSong == null ||
             pendingTrackSelectionSong.LibraryType != SongLibraryType.Guitar ||
-            pendingTrackSelectionSong.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache ||
+            !SupportsArrangementTrackGroups(pendingTrackSelectionSong.PrimaryNotationKind) ||
             pendingTrackSelectionParts.Count == 0)
         {
             return;
@@ -12408,7 +12540,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         return gameplayMode == GuitarGameplayMode.Guitar &&
                currentSongEntry != null &&
-               currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache &&
+               SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind) &&
                GetCurrentArrangementDifficultyVariants().Count > 1;
     }
 
@@ -13247,6 +13379,8 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        TryCacheCurrentTheoryPackageEmbeddedStems(currentStemSourceAudioPath);
+
         if (StemSeparationService.TryLoadValidManifest(currentStemSourceAudioPath, out StemCacheManifest manifest))
         {
             currentStemManifest = manifest;
@@ -13258,6 +13392,56 @@ public class GuitarBridgeServer : MonoBehaviour
             stemMixPlaybackEnabled = false;
             currentStemStatusMessage = "Generate stems to unlock per-instrument mixing.";
         }
+    }
+
+    private bool TryCacheCurrentTheoryPackageEmbeddedStems(string sourceAudioPath)
+    {
+        if (currentSongEntry == null ||
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.TheoryPackage ||
+            string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) ||
+            string.IsNullOrWhiteSpace(sourceAudioPath) ||
+            !File.Exists(sourceAudioPath))
+        {
+            return false;
+        }
+
+        return TheorySongLoader.TryLoadManifest(currentSongEntry.PrimaryNotationPath, out TheorySongManifest theoryManifest) &&
+               TheoryPackageCache.TryCacheEmbeddedStems(currentSongEntry.PrimaryNotationPath, theoryManifest, sourceAudioPath, out _, out _);
+    }
+
+    private bool TryEmbedCurrentTheoryPackageGeneratedStems(string sourceAudioPath, out string error)
+    {
+        error = string.Empty;
+        if (currentSongEntry == null ||
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.TheoryPackage ||
+            string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) ||
+            string.IsNullOrWhiteSpace(sourceAudioPath) ||
+            !File.Exists(sourceAudioPath))
+        {
+            return false;
+        }
+
+        if (!StemSeparationService.TryLoadValidManifest(sourceAudioPath, out StemCacheManifest stemManifest))
+        {
+            error = "Generated stems were not found after stem generation completed.";
+            return false;
+        }
+
+        if (string.Equals(stemManifest.provider, "theory-package", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        bool embedded = TheoryPackageIO.TryEmbedStemCache(currentSongEntry.PrimaryNotationPath, stemManifest, sourceAudioPath, out error);
+        if (embedded)
+        {
+            SongLibraryService.ClearCache();
+            currentStemStatusMessage = "Stems saved into .theory package.";
+        }
+        else if (!string.IsNullOrWhiteSpace(error))
+        {
+            currentStemStatusMessage = $"Stems generated, but could not update .theory package: {error}";
+        }
+
+        return embedded;
     }
 
     private void RestoreStemMixerSettingsFromMetadata()
@@ -13322,6 +13506,7 @@ public class GuitarBridgeServer : MonoBehaviour
         stemGenerationWasRunning = false;
         if (status.state == StemGenerationState.Succeeded)
         {
+            TryEmbedCurrentTheoryPackageGeneratedStems(currentStemSourceAudioPath, out _);
             RefreshCurrentStemCacheState(currentStemSourceAudioPath);
             StemSeparationService.MarkStatusConsumed(currentStemSourceAudioPath);
             if (currentStemManifest != null && IsStemMixPlaybackReady())
@@ -13857,7 +14042,7 @@ private void OpenOrFocusToneLab()
 
     public void RequestTimelineSeek(float targetTime)
     {
-        if (showMainMenu || showStartMenu || showSongSelection || showTrackSelection || songHasEnded || showTuner)
+        if (showMainMenu || showStartMenu || showSongSelection || showTrackSelection || showChartEditor || songHasEnded || showTuner)
             return;
 
         float duration = GetSongDurationSeconds();
@@ -20810,6 +20995,7 @@ private void OpenOrFocusToneLab()
             mainMenuFlowActive = mainMenuFlowActive,
             selectedMainMenuIndex = selectedMainMenuIndex,
             showMiniGames = showMiniGames,
+            showChartEditor = showChartEditor,
             selectedMiniGameIndex = selectedMiniGameIndex,
             miniGameSnapshot = showMiniGames && miniGameManager != null ? miniGameManager.BuildSnapshot(selectedMiniGameIndex, selectedMiniGamePauseActionIndex) : EmptyMiniGameScreenSnapshot,
             showStartMenu = showStartMenu,
@@ -21274,6 +21460,7 @@ private void OpenOrFocusToneLab()
         bool wasPaused = isPaused;
         bool wasShowingSongSettings = showSongSettings;
         bool wasShowingMainMenu = showMainMenu;
+        bool wasShowingChartEditor = showChartEditor;
         bool wasMainMenuFlowActive = mainMenuFlowActive;
         bool wasShowingSongSelection = showSongSelection;
         bool wasShowingTrackSelection = showTrackSelection;
@@ -21304,6 +21491,7 @@ private void OpenOrFocusToneLab()
         playbackSpeedPercent = 100f;
         showSongSettings = preservePauseUiState ? wasShowingSongSettings : false;
         showMainMenu = preservePauseUiState ? wasShowingMainMenu : showMainMenu;
+        showChartEditor = preservePauseUiState ? wasShowingChartEditor : false;
         mainMenuFlowActive = preservePauseUiState ? wasMainMenuFlowActive : showMainMenu;
         showSongSelection = preservePauseUiState ? wasShowingSongSelection : false;
         showTrackSelection = preservePauseUiState ? wasShowingTrackSelection : false;
@@ -21365,7 +21553,7 @@ private void OpenOrFocusToneLab()
 
                     currentSongPartSummaries.AddRange(GetPartSummariesWithFallback(currentSongEntry));
                     if (!useAutoTrackSelection &&
-                        currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache &&
+                        SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind) &&
                         !string.IsNullOrWhiteSpace(selectedMusicXmlPartId))
                     {
                         selectedMusicXmlPartId = GetPersistentArrangementPartId(selectedMusicXmlPartId, currentSongPartSummaries);
@@ -22256,6 +22444,8 @@ private void OpenOrFocusToneLab()
 
         string songPath = currentSongEntry.Mp3Path;
         currentSongFileName = ResolveSongMetadataFileName(currentSongEntry);
+        bool isArrangementGroupGuitarSong = currentSongEntry.LibraryType == SongLibraryType.Guitar &&
+                                     SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind);
         bool isArrangementCacheGuitarSong = currentSongEntry.LibraryType == SongLibraryType.Guitar &&
                                      currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache;
 
@@ -22345,7 +22535,7 @@ private void OpenOrFocusToneLab()
         selectedMusicXmlPartId = persistedSelectedMusicXmlPartId;
         bool arrangementTrackSelectionNormalized = false;
         if (!useAutoTrackSelection &&
-            isArrangementCacheGuitarSong &&
+            isArrangementGroupGuitarSong &&
             !string.IsNullOrWhiteSpace(selectedMusicXmlPartId))
         {
             string normalizedSelectedPartId = GetPersistentArrangementPartId(selectedMusicXmlPartId, currentSongPartSummaries);
@@ -23221,7 +23411,7 @@ private void OpenOrFocusToneLab()
 
         SongMetadata metadata = LoadSongMetadataForEntry(entry);
 
-        bool isArrangementDifficultySong = entry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache &&
+        bool isArrangementDifficultySong = SupportsArrangementTrackGroups(entry.PrimaryNotationKind) &&
                                          summaries.Any(summary => summary != null && summary.HasDifficultyVariants);
         if (isArrangementDifficultySong)
         {
@@ -23241,7 +23431,7 @@ private void OpenOrFocusToneLab()
     public List<ToneLabSongMappingSongSnapshot> GetToneLabSongMappingSongsForUi()
     {
         return SongLibraryService.GetAvailableSongs()
-            .Where(entry => entry != null && entry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache)
+            .Where(entry => entry != null && SupportsArrangementTrackGroups(entry.PrimaryNotationKind))
             .OrderBy(entry => entry.DisplayName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .Select(entry => new ToneLabSongMappingSongSnapshot
             {
@@ -23262,7 +23452,7 @@ private void OpenOrFocusToneLab()
         arrangementKey = string.Empty;
 
         if (currentSongEntry == null ||
-            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache)
+            !SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind))
         {
             return false;
         }
@@ -23276,7 +23466,7 @@ private void OpenOrFocusToneLab()
     public List<ToneLabSongMappingArrangementSnapshot> GetToneLabSongMappingArrangementsForUi(string songKey)
     {
         SongLibraryEntry entry = FindToneLabMappingSongEntry(songKey);
-        if (entry == null || entry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache)
+        if (entry == null || !SupportsArrangementTrackGroups(entry.PrimaryNotationKind))
             return new List<ToneLabSongMappingArrangementSnapshot>();
 
         List<MusicXmlLoader.MusicXmlPartSummary> summaries = GetPartSummariesWithFallback(entry);
@@ -23290,8 +23480,14 @@ private void OpenOrFocusToneLab()
                     .ThenByDescending(summary => summary.NoteCount)
                     .FirstOrDefault();
                 string arrangementKey = group.Key ?? preferred?.PartId ?? string.Empty;
-                RocksmithCachedArrangementPart part = LoadToneMappingArrangementPart(entry, arrangementKey);
-                List<string> toneNames = GetRocksmithToneNames(part?.tones);
+                TryLoadToneMappingToneData(
+                    entry,
+                    arrangementKey,
+                    preferred?.PartId ?? string.Empty,
+                    preferred,
+                    out RocksmithCachedArrangementToneData toneData,
+                    out _);
+                List<string> toneNames = GetRocksmithToneNames(toneData);
                 return new ToneLabSongMappingArrangementSnapshot
                 {
                     songKey = BuildToneLabSongMappingSongKey(entry),
@@ -23314,8 +23510,13 @@ private void OpenOrFocusToneLab()
         if (entry == null || string.IsNullOrWhiteSpace(arrangementKey))
             return new List<ToneLabSongToneMappingSnapshot>();
 
-        RocksmithCachedArrangementPart part = LoadToneMappingArrangementPart(entry, arrangementKey);
-        RocksmithCachedArrangementToneData toneData = part?.tones;
+        TryLoadToneMappingToneData(
+            entry,
+            arrangementKey,
+            string.Empty,
+            null,
+            out RocksmithCachedArrangementToneData toneData,
+            out string arrangementRoute);
         List<string> toneNames = GetRocksmithToneNames(toneData);
         SongMetadata metadata = LoadSongMetadataForEntry(entry);
 
@@ -23327,7 +23528,7 @@ private void OpenOrFocusToneLab()
             bool automaticMapping = false;
             if (string.IsNullOrWhiteSpace(presetId))
             {
-                presetId = ResolveAutomaticTonePresetId(toneName, part?.route ?? arrangementKey, toneData);
+                presetId = ResolveAutomaticTonePresetId(toneName, string.IsNullOrWhiteSpace(arrangementRoute) ? arrangementKey : arrangementRoute, toneData);
                 automaticMapping = !string.IsNullOrWhiteSpace(presetId);
             }
 
@@ -23396,9 +23597,14 @@ private void OpenOrFocusToneLab()
         if (entry == null || string.IsNullOrWhiteSpace(arrangementKey) || string.IsNullOrWhiteSpace(toneName))
             return string.Empty;
 
-        RocksmithCachedArrangementPart part = LoadToneMappingArrangementPart(entry, arrangementKey);
-        RocksmithCachedArrangementToneData toneData = part?.tones;
-        string automaticPresetId = ResolveAutomaticTonePresetId(toneName, part?.route ?? arrangementKey, toneData);
+        TryLoadToneMappingToneData(
+            entry,
+            arrangementKey,
+            string.Empty,
+            null,
+            out RocksmithCachedArrangementToneData toneData,
+            out string arrangementRoute);
+        string automaticPresetId = ResolveAutomaticTonePresetId(toneName, string.IsNullOrWhiteSpace(arrangementRoute) ? arrangementKey : arrangementRoute, toneData);
         if (string.IsNullOrWhiteSpace(automaticPresetId))
             return string.Empty;
 
@@ -23427,6 +23633,10 @@ private void OpenOrFocusToneLab()
         if (entry == null)
             return string.Empty;
 
+        string notationPath = NormalizeToneLabSongMappingPath(entry.PrimaryNotationPath);
+        if (!string.IsNullOrWhiteSpace(notationPath))
+            return $"{entry.PrimaryNotationKind}|{notationPath}";
+
         return NormalizeToneLabSongMappingPath(entry.SongDirectory);
     }
 
@@ -23436,9 +23646,14 @@ private void OpenOrFocusToneLab()
         if (string.IsNullOrWhiteSpace(normalizedKey))
             return null;
 
-        return SongLibraryService.GetAvailableSongs()
-            .FirstOrDefault(entry => entry != null &&
-                                     string.Equals(BuildToneLabSongMappingSongKey(entry), normalizedKey, StringComparison.OrdinalIgnoreCase));
+        List<SongLibraryEntry> songs = SongLibraryService.GetAvailableSongs();
+        SongLibraryEntry exactEntry = songs.FirstOrDefault(entry => entry != null &&
+            string.Equals(BuildToneLabSongMappingSongKey(entry), normalizedKey, StringComparison.OrdinalIgnoreCase));
+        if (exactEntry != null)
+            return exactEntry;
+
+        return songs.FirstOrDefault(entry => entry != null &&
+            string.Equals(NormalizeToneLabSongMappingPath(entry.SongDirectory), normalizedKey, StringComparison.OrdinalIgnoreCase));
     }
 
     private static string NormalizeToneLabSongMappingPath(string path)
@@ -23497,6 +23712,207 @@ private void OpenOrFocusToneLab()
         }
 
         return names;
+    }
+
+    private bool TryLoadToneMappingToneData(
+        SongLibraryEntry entry,
+        string arrangementKey,
+        string partId,
+        MusicXmlLoader.MusicXmlPartSummary summary,
+        out RocksmithCachedArrangementToneData toneData,
+        out string arrangementRoute)
+    {
+        toneData = null;
+        arrangementRoute = string.Empty;
+        if (entry == null || string.IsNullOrWhiteSpace(entry.PrimaryNotationPath) || string.IsNullOrWhiteSpace(arrangementKey))
+            return false;
+
+        if (entry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache)
+        {
+            RocksmithCachedArrangementPart part = null;
+            if (!string.IsNullOrWhiteSpace(partId))
+                ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(entry.PrimaryNotationPath, partId, out _, out part);
+            if (part == null)
+                ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(entry.PrimaryNotationPath, arrangementKey, out _, out part);
+
+            toneData = part?.tones;
+            arrangementRoute = part?.route ?? summary?.Name ?? summary?.GroupDisplayName ?? string.Empty;
+            return toneData != null;
+        }
+
+        if (entry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage)
+        {
+            TheoryArrangementSummary loadedSummary = null;
+            TheoryArrangementData arrangement = null;
+            if (!string.IsNullOrWhiteSpace(partId))
+                TheorySongLoader.TryLoadArrangementByPartId(entry.PrimaryNotationPath, partId, out loadedSummary, out arrangement);
+            if (arrangement == null)
+                TheorySongLoader.TryLoadArrangementByGroupId(entry.PrimaryNotationPath, arrangementKey, out loadedSummary, out arrangement);
+
+            toneData = ToCachedToneData(arrangement?.tones);
+            arrangementRoute = arrangement?.route ?? loadedSummary?.route ?? summary?.Name ?? summary?.GroupDisplayName ?? string.Empty;
+            return toneData != null;
+        }
+
+        return false;
+    }
+
+    private static RocksmithCachedArrangementToneData ToCachedToneData(TheoryToneData source)
+    {
+        if (source == null)
+            return null;
+
+        RocksmithCachedArrangementToneData result = new RocksmithCachedArrangementToneData
+        {
+            baseToneName = source.baseToneName ?? string.Empty,
+            changes = new List<RocksmithCachedToneChangeData>(),
+            definitions = new List<RocksmithCachedToneDefinitionData>()
+        };
+
+        if (source.changes != null)
+        {
+            for (int i = 0; i < source.changes.Count; i++)
+            {
+                TheoryToneChangeData change = source.changes[i];
+                if (change == null)
+                    continue;
+
+                result.changes.Add(new RocksmithCachedToneChangeData
+                {
+                    timeSeconds = Mathf.Max(0f, change.timeSeconds),
+                    toneName = change.toneName ?? string.Empty,
+                    toneId = change.toneId
+                });
+            }
+        }
+
+        if (source.definitions != null)
+        {
+            for (int i = 0; i < source.definitions.Count; i++)
+            {
+                TheoryToneDefinitionData definition = source.definitions[i];
+                if (definition == null)
+                    continue;
+
+                result.definitions.Add(new RocksmithCachedToneDefinitionData
+                {
+                    name = definition.name ?? string.Empty,
+                    key = definition.key ?? string.Empty,
+                    rawJson = BuildToneLabPresetJson(definition.preset, definition.name, definition.key),
+                    preferredPresetName = FirstNonEmpty(definition.fallback?.preferredPresetName, definition.preset?.presetName, definition.name, definition.key),
+                    fallbackSearchText = BuildToneFallbackSearchText(definition.fallback?.searchText, definition.name, definition.key)
+                });
+            }
+        }
+
+        return result;
+    }
+
+    private static string BuildToneLabPresetJson(TheoryTonePresetData source, string fallbackName, string fallbackKey)
+    {
+        UnityToneLabRuntime.ToneLabPreset preset = ToUnityToneLabPreset(source, fallbackName, fallbackKey);
+        return preset?.pedal_chain != null && preset.pedal_chain.Count > 0
+            ? JsonUtility.ToJson(preset, false)
+            : string.Empty;
+    }
+
+    private static UnityToneLabRuntime.ToneLabPreset ToUnityToneLabPreset(TheoryTonePresetData source, string fallbackName, string fallbackKey)
+    {
+        if (source == null)
+            return null;
+
+        UnityToneLabRuntime.ToneLabPreset preset = new UnityToneLabRuntime.ToneLabPreset
+        {
+            preset_id = string.IsNullOrWhiteSpace(source.presetId)
+                ? BuildNeutralTonePresetId(fallbackName, fallbackKey)
+                : source.presetId,
+            preset_name = string.IsNullOrWhiteSpace(source.presetName)
+                ? FirstNonEmpty(fallbackName, fallbackKey, "Tone")
+                : source.presetName,
+            input_gain_db = source.inputGainDb,
+            output_gain_db = source.outputGainDb,
+            pedal_chain = new List<UnityToneLabRuntime.ToneLabPedalSlot>()
+        };
+
+        if (source.pedalChain != null)
+        {
+            for (int i = 0; i < source.pedalChain.Count; i++)
+            {
+                TheoryTonePedalSlotData slot = source.pedalChain[i];
+                if (slot == null)
+                    continue;
+
+                UnityToneLabRuntime.ToneLabPedalType pedalType = UnityToneLabRuntime.ToneLabPedalType.Amp;
+                if (!string.IsNullOrWhiteSpace(slot.pedalType))
+                    Enum.TryParse(slot.pedalType, ignoreCase: true, out pedalType);
+
+                preset.pedal_chain.Add(new UnityToneLabRuntime.ToneLabPedalSlot
+                {
+                    pedal_instance_id = slot.instanceId ?? string.Empty,
+                    pedal_type = pedalType,
+                    descriptor_id = slot.descriptorId ?? string.Empty,
+                    enabled = slot.enabled,
+                    settings_json = slot.settingsJson ?? string.Empty
+                });
+            }
+        }
+
+        return preset;
+    }
+
+    private static string BuildNeutralTonePresetId(string name, string key)
+    {
+        string seed = FirstNonEmpty(name, key, "tone");
+        char[] chars = seed.Trim().ToLowerInvariant().ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (!char.IsLetterOrDigit(chars[i]))
+                chars[i] = '_';
+        }
+
+        string normalized = new string(chars).Trim('_');
+        return string.IsNullOrWhiteSpace(normalized) ? "tone" : $"tone_{normalized}";
+    }
+
+    private static string BuildToneFallbackSearchText(params string[] values)
+    {
+        if (values == null)
+            return string.Empty;
+
+        List<string> tokens = new List<string>();
+        for (int i = 0; i < values.Length; i++)
+        {
+            string value = values[i];
+            if (string.IsNullOrWhiteSpace(value))
+                continue;
+
+            string trimmed = value.Trim();
+            if (tokens.Any(existing => string.Equals(existing, trimmed, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            tokens.Add(trimmed);
+        }
+
+        return string.Join(" ", tokens);
+    }
+
+    private static string BuildGeneratedTonePresetName(string toneName)
+    {
+        return string.IsNullOrWhiteSpace(toneName) ? "Imported Tone" : toneName.Trim();
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null)
+            return string.Empty;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(values[i]))
+                return values[i].Trim();
+        }
+
+        return string.Empty;
     }
 
     private RocksmithCachedArrangementPart LoadToneMappingArrangementPart(SongLibraryEntry entry, string arrangementKey)
@@ -23625,11 +24041,30 @@ private void OpenOrFocusToneLab()
 
     private string ResolveAutomaticTonePresetId(string toneName, string arrangementRoute, RocksmithCachedArrangementToneData toneData)
     {
-        string rawToneJson = GetToneDefinitionRawJson(toneData, toneName);
+        RocksmithCachedToneDefinitionData definition = GetToneDefinition(toneData, toneName);
+        string rawToneJson = definition?.rawJson ?? string.Empty;
+        if (TryResolveGeneratedToneLabPresetId(toneName, arrangementRoute, rawToneJson, out string toneLabPresetId))
+            return toneLabPresetId;
+
         if (TryResolveGeneratedRocksmithTonePresetId(toneName, arrangementRoute, rawToneJson, out string generatedPresetId))
             return generatedPresetId;
 
-        string presetName = ResolveAutomaticTonePresetName(toneName, arrangementRoute, rawToneJson);
+        string preferredPresetId = FindToneLabPresetIdByName(definition?.preferredPresetName);
+        if (!string.IsNullOrWhiteSpace(preferredPresetId))
+            return preferredPresetId;
+
+        string presetName = ResolveAutomaticTonePresetName(
+            toneName,
+            arrangementRoute,
+            BuildToneFallbackSearchText(definition?.fallbackSearchText, rawToneJson));
+        if (string.IsNullOrWhiteSpace(presetName))
+            return string.Empty;
+
+        return FindToneLabPresetIdByName(presetName);
+    }
+
+    private string FindToneLabPresetIdByName(string presetName)
+    {
         if (string.IsNullOrWhiteSpace(presetName))
             return string.Empty;
 
@@ -23637,7 +24072,7 @@ private void OpenOrFocusToneLab()
         if (unityToneLabRuntime == null)
             return string.Empty;
 
-        return unityToneLabRuntime.FindPresetIdByName(presetName);
+        return unityToneLabRuntime.FindPresetIdByName(presetName.Trim());
     }
 
     private bool TryResolveGeneratedRocksmithTonePresetId(
@@ -23666,6 +24101,81 @@ private void OpenOrFocusToneLab()
         return true;
     }
 
+    private bool TryResolveGeneratedToneLabPresetId(
+        string toneName,
+        string arrangementRoute,
+        string presetJson,
+        out string presetId)
+    {
+        presetId = string.Empty;
+        if (string.IsNullOrWhiteSpace(presetJson))
+            return false;
+
+        UnityToneLabRuntime.ToneLabPreset preset;
+        try
+        {
+            preset = JsonUtility.FromJson<UnityToneLabRuntime.ToneLabPreset>(presetJson);
+        }
+        catch
+        {
+            return false;
+        }
+
+        if (preset == null || preset.pedal_chain == null || preset.pedal_chain.Count == 0)
+            return false;
+
+        EnsureGeneratedToneExternalPedalLibraryReady();
+        if (!AreToneLabPresetPedalsAvailable(preset))
+            return false;
+
+        preset.preset_id = string.IsNullOrWhiteSpace(preset.preset_id)
+            ? BuildNeutralTonePresetId(toneName, arrangementRoute)
+            : preset.preset_id.Trim();
+        preset.preset_name = string.IsNullOrWhiteSpace(preset.preset_name)
+            ? BuildGeneratedTonePresetName(toneName)
+            : preset.preset_name.Trim();
+
+        generatedRocksmithTonePresetCache[preset.preset_id] = preset;
+        presetId = preset.preset_id;
+        return true;
+    }
+
+    private static bool AreToneLabPresetPedalsAvailable(UnityToneLabRuntime.ToneLabPreset preset)
+    {
+        if (preset?.pedal_chain == null || preset.pedal_chain.Count == 0)
+            return false;
+
+        for (int i = 0; i < preset.pedal_chain.Count; i++)
+        {
+            UnityToneLabRuntime.ToneLabPedalSlot slot = preset.pedal_chain[i];
+            if (slot == null)
+                continue;
+
+            if (slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin ||
+                slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.NamModel)
+            {
+                if (string.IsNullOrWhiteSpace(slot.descriptor_id) ||
+                    !ToneLabPedalRegistry.HasDescriptor(slot.descriptor_id))
+                {
+                    return false;
+                }
+
+                continue;
+            }
+
+            try
+            {
+                ToneLabPedalRegistry.GetDescriptor(slot.pedal_type);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private void EnsureGeneratedToneExternalPedalLibraryReady()
     {
         if (generatedToneExternalPedalLibraryReady)
@@ -23687,14 +24197,18 @@ private void OpenOrFocusToneLab()
 
     private static string GetToneDefinitionRawJson(RocksmithCachedArrangementToneData toneData, string toneName)
     {
-        if (toneData?.definitions == null || string.IsNullOrWhiteSpace(toneName))
-            return string.Empty;
+        return GetToneDefinition(toneData, toneName)?.rawJson ?? string.Empty;
+    }
 
-        RocksmithCachedToneDefinitionData definition = toneData.definitions.FirstOrDefault(candidate =>
+    private static RocksmithCachedToneDefinitionData GetToneDefinition(RocksmithCachedArrangementToneData toneData, string toneName)
+    {
+        if (toneData?.definitions == null || string.IsNullOrWhiteSpace(toneName))
+            return null;
+
+        return toneData.definitions.FirstOrDefault(candidate =>
             candidate != null &&
             (string.Equals(candidate.name ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(candidate.key ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase)));
-        return definition?.rawJson ?? string.Empty;
     }
 
     private static string ResolveAutomaticTonePresetName(string toneName, string arrangementRoute, string rawToneJson)
@@ -23849,7 +24363,9 @@ private void OpenOrFocusToneLab()
         if (summary == null)
             return int.MinValue;
 
-        string name = !string.IsNullOrWhiteSpace(summary.GroupDisplayName) ? summary.GroupDisplayName : summary.Name;
+        string name = !string.IsNullOrWhiteSpace(summary.Route)
+            ? summary.Route
+            : !string.IsNullOrWhiteSpace(summary.GroupDisplayName) ? summary.GroupDisplayName : summary.Name;
         if (string.IsNullOrWhiteSpace(name))
             return summary.Score;
 
@@ -25064,6 +25580,7 @@ private void OpenOrFocusToneLab()
                showTuner ||
                showToneLab ||
                showMiniGames ||
+               showChartEditor ||
                songHasEnded ||
                isPaused;
     }
@@ -25161,6 +25678,7 @@ private void OpenOrFocusToneLab()
                showTuner ||
                showToneLab ||
                showMiniGames ||
+               showChartEditor ||
                songHasEnded;
     }
 
@@ -26744,7 +27262,8 @@ private void OpenOrFocusToneLab()
         if (currentSongEntry == null)
             return false;
 
-        if (currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache &&
+        if ((currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache ||
+             currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage) &&
             !string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) &&
             File.Exists(currentSongEntry.PrimaryNotationPath))
         {
@@ -28915,11 +29434,16 @@ private void OpenOrFocusToneLab()
         sections = null;
         duration = 0f;
         if (currentSongEntry == null ||
-            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache ||
             string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath))
         {
             return false;
         }
+
+        if (currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage)
+            return TryGetCurrentTheoryTimelineSections(out sections, out duration);
+
+        if (currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache)
+            return false;
 
         if (TryGetCurrentArrangementCachePart(out RocksmithCachedArrangementPart selectedPart) &&
             selectedPart?.timing?.sections != null &&
@@ -28951,6 +29475,123 @@ private void OpenOrFocusToneLab()
         }
 
         return false;
+    }
+
+    private bool TryGetCurrentTheoryTimelineSections(out List<RocksmithCachedSectionData> sections, out float duration)
+    {
+        sections = null;
+        duration = 0f;
+        if (currentSongEntry == null ||
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.TheoryPackage ||
+            string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) ||
+            !TheorySongLoader.TryLoadManifest(currentSongEntry.PrimaryNotationPath, out TheorySongManifest manifest) ||
+            manifest?.arrangements == null ||
+            manifest.arrangements.Count == 0)
+        {
+            return false;
+        }
+
+        if (TryLoadTheoryTimelineArrangement(manifest, ResolveCurrentTheoryArrangementIndex(manifest), out TheoryArrangementData selectedArrangement) &&
+            TryConvertTheoryTimelineSections(selectedArrangement, manifest.durationSeconds, out sections, out duration))
+        {
+            return true;
+        }
+
+        for (int i = 0; i < manifest.arrangements.Count; i++)
+        {
+            if (TryLoadTheoryTimelineArrangement(manifest, i, out TheoryArrangementData candidate) &&
+                TryConvertTheoryTimelineSections(candidate, manifest.durationSeconds, out sections, out duration))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private int ResolveCurrentTheoryArrangementIndex(TheorySongManifest manifest)
+    {
+        if (manifest?.arrangements == null || manifest.arrangements.Count == 0)
+            return -1;
+
+        MusicXmlLoader.MusicXmlPartSummary activeSummary = GetResolvedActiveTrackSummary();
+        if (activeSummary != null && activeSummary.Index >= 0 && activeSummary.Index < manifest.arrangements.Count)
+            return activeSummary.Index;
+
+        string selectedPartId = selectedMusicXmlPartId ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(selectedPartId))
+        {
+            for (int i = 0; i < manifest.arrangements.Count; i++)
+            {
+                TheoryArrangementSummary summary = manifest.arrangements[i];
+                if (summary == null)
+                    continue;
+
+                if (string.Equals(summary.arrangementId ?? string.Empty, selectedPartId, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(summary.groupId ?? string.Empty, selectedPartId, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(manifest.defaultArrangementId))
+        {
+            for (int i = 0; i < manifest.arrangements.Count; i++)
+            {
+                if (string.Equals(manifest.arrangements[i]?.arrangementId ?? string.Empty, manifest.defaultArrangementId, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+        }
+
+        return 0;
+    }
+
+    private bool TryLoadTheoryTimelineArrangement(TheorySongManifest manifest, int arrangementIndex, out TheoryArrangementData arrangement)
+    {
+        arrangement = null;
+        if (manifest?.arrangements == null ||
+            arrangementIndex < 0 ||
+            arrangementIndex >= manifest.arrangements.Count)
+        {
+            return false;
+        }
+
+        return TheoryPackageIO.TryReadArrangement(currentSongEntry.PrimaryNotationPath, manifest.arrangements[arrangementIndex], out arrangement, out _);
+    }
+
+    private static bool TryConvertTheoryTimelineSections(
+        TheoryArrangementData arrangement,
+        float manifestDuration,
+        out List<RocksmithCachedSectionData> sections,
+        out float duration)
+    {
+        sections = null;
+        duration = 0f;
+        if (arrangement?.timing?.sections == null || arrangement.timing.sections.Count == 0)
+            return false;
+
+        List<RocksmithCachedSectionData> converted = new List<RocksmithCachedSectionData>();
+        for (int i = 0; i < arrangement.timing.sections.Count; i++)
+        {
+            TheorySectionData source = arrangement.timing.sections[i];
+            if (source == null || source.timeSeconds < 0f)
+                continue;
+
+            converted.Add(new RocksmithCachedSectionData
+            {
+                name = source.name,
+                number = source.number,
+                timeSeconds = source.timeSeconds
+            });
+        }
+
+        if (converted.Count == 0)
+            return false;
+
+        sections = converted;
+        duration = Mathf.Max(0f, manifestDuration, arrangement.durationSeconds);
+        return true;
     }
 
     private struct Gp5TimelineTempoPoint

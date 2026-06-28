@@ -53,9 +53,13 @@ public static class Gp5Loader
                 Index = i,
                 PartId = track.partId,
                 Name = string.IsNullOrWhiteSpace(track.name) ? $"Track {i + 1}" : track.name,
+                InstrumentType = InferGpInstrumentType(track),
+                Route = InferGpRoute(track),
                 NoteCount = noteCount,
                 TabCount = tabCount,
-                Score = score
+                Score = score,
+                StringTuningPitches = GetTrackTuningPitches(track),
+                TuningDisplayName = StringTuningUtils.FormatTuningDisplayName(GetTrackTuningPitches(track))
             });
         }
 
@@ -527,6 +531,79 @@ public static class Gp5Loader
         if (lower.Contains("vocal")) score -= 200;
         if (lower.Contains("piano")) score -= 100;
         return score;
+    }
+
+    private static string InferGpInstrumentType(Gp5Track track)
+    {
+        if (track == null)
+            return string.Empty;
+
+        string text = track.name ?? string.Empty;
+        if (track.isPercussionTrack || ContainsAny(text, "drum", "percussion", "kit"))
+            return "drums";
+        if (ContainsAny(text, "bass"))
+            return "bass";
+        if (ContainsAny(text, "piano", "keyboard", "keys", "synth"))
+            return "piano";
+        if (ContainsAny(text, "vocal", "voice", "lyric", "choir"))
+            return "vocals";
+        if (ContainsAny(text, "guitar", "lead", "rhythm", "solo", "slash"))
+            return "guitar";
+
+        int[] tuning = GetTrackTuningPitches(track);
+        if (tuning != null && tuning.Length > 0)
+            return tuning.Length <= 4 ? "bass" : "guitar";
+        if (track.sourceMidiProgram >= 32 && track.sourceMidiProgram <= 39)
+            return "bass";
+        if (track.sourceMidiProgram >= 24 && track.sourceMidiProgram <= 31)
+            return "guitar";
+        if (track.sourceMidiProgram >= 0 && track.sourceMidiProgram <= 7)
+            return "piano";
+        if (track.sourceMidiProgram == 52 || track.sourceMidiProgram == 53)
+            return "vocals";
+
+        return string.Empty;
+    }
+
+    private static string InferGpRoute(Gp5Track track)
+    {
+        string instrumentType = InferGpInstrumentType(track);
+        if (string.Equals(instrumentType, "drums", StringComparison.OrdinalIgnoreCase))
+            return "Drums";
+        if (string.Equals(instrumentType, "bass", StringComparison.OrdinalIgnoreCase))
+            return "Bass";
+        if (string.Equals(instrumentType, "piano", StringComparison.OrdinalIgnoreCase))
+            return "Piano";
+        if (string.Equals(instrumentType, "vocals", StringComparison.OrdinalIgnoreCase))
+            return "Vocals";
+        if (string.Equals(instrumentType, "guitar", StringComparison.OrdinalIgnoreCase))
+            return ContainsAny(track?.name, "rhythm") ? "Rhythm" : "Lead";
+
+        return string.Empty;
+    }
+
+    private static int[] GetTrackTuningPitches(Gp5Track track)
+    {
+        return track?.stringsHighToLow != null && track.stringsHighToLow.Length > 0
+            ? track.stringsHighToLow.Reverse().ToArray()
+            : null;
+    }
+
+    private static bool ContainsAny(string text, params string[] needles)
+    {
+        if (string.IsNullOrWhiteSpace(text) || needles == null)
+            return false;
+
+        for (int i = 0; i < needles.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(needles[i]) &&
+                text.IndexOf(needles[i], StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string GetNoteName(int midi)

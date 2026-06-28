@@ -27,11 +27,20 @@ public sealed class MiniGameScreenSnapshot
     public FightClubMiniGameSnapshot fightClub = new FightClubMiniGameSnapshot();
 }
 
+public enum FightClubSetupMode
+{
+    Arcade = 0,
+    Levels = 1,
+    Manual = 2
+}
+
 [Serializable]
 public sealed class FightClubSetupSnapshot
 {
     public bool visible;
-    public bool randomMode = true;
+    public int mode = (int)FightClubSetupMode.Arcade;
+    public bool arcadeMode = true;
+    public bool randomMode;
     public int selectedLevelIndex;
     public int sourceMode;
     public bool canStart = true;
@@ -72,6 +81,7 @@ public sealed class FightClubRunSettingsSnapshot
     public float countdownSeconds = 3f;
     public int chordCount = FightClubRunSettings.DefaultChordsPerRound;
     public bool practiceMode;
+    public bool showMissedNotes;
     public int maxFailedRounds = 3;
     public int metronomeSoundIndex = (int)StringTheoryMetronomeSound.Drums;
     public string metronomeSoundLabel = "Drums";
@@ -117,6 +127,7 @@ public sealed class FightClubMiniGameSnapshot
     public bool ended;
     public bool endedByLoss;
     public bool highScoreEnabled;
+    public string highScoreLabel = "Best";
     public string title = "Fight Club";
     public string phaseLabel = "Ready";
     public string statusLabel = "Select Start";
@@ -152,6 +163,7 @@ public sealed class FightClubChordSnapshot
     public int[] fretsLowToHigh = Array.Empty<int>();
     public int[] fingersLowToHigh = Array.Empty<int>();
     public int[] expectedMidis = Array.Empty<int>();
+    public int[] missedMidis = Array.Empty<int>();
     public List<FightClubBarreSnapshot> barres = new List<FightClubBarreSnapshot>();
     public int status;
     public bool active;
@@ -243,6 +255,7 @@ public sealed class FightClubRunSettings
     public float countdownSeconds = 3f;
     public int chordCount = DefaultChordsPerRound;
     public bool practiceMode;
+    public bool showMissedNotes;
     public int maxFailedRounds = 3;
     public int metronomeSoundIndex = (int)StringTheoryMetronomeSound.Drums;
     public int chordPreviewInstrumentIndex = (int)StringTheoryChordPreviewInstrument.ElectricGuitar;
@@ -261,6 +274,7 @@ public sealed class FightClubRunSettings
             countdownSeconds = NormalizeCountdownBeats(countdownSeconds),
             chordCount = NormalizeChordCount(chordCount),
             practiceMode = practiceMode,
+            showMissedNotes = showMissedNotes,
             maxFailedRounds = Mathf.Clamp(maxFailedRounds, 1, 10),
             metronomeSoundIndex = (int)StringTheoryMetronome.NormalizeSoundIndex(metronomeSoundIndex),
             chordPreviewInstrumentIndex = (int)StringTheoryChordAudioPlayer.NormalizeInstrumentIndex(chordPreviewInstrumentIndex)
@@ -378,7 +392,7 @@ public sealed class MiniGameManager
     private string savePath = string.Empty;
     private bool fightClubSetupVisible;
     private bool fightClubRunSettingsVisible;
-    private bool fightClubRandomMode = true;
+    private FightClubSetupMode fightClubSetupMode = FightClubSetupMode.Arcade;
     private int fightClubSetupSourceMode;
     private int fightClubSelectedLevelIndex;
     private readonly HashSet<string> fightClubSelectedGroupIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -427,7 +441,7 @@ public sealed class MiniGameManager
             id = "fight-club",
             title = "Fight Club",
             subtitle = "Play three chords on the beat. Each round gets tighter.",
-            highScore = 0,
+            highScore = Mathf.Max(0, saveData?.fightClub?.highScore ?? 0),
             selected = selectedIndex == 0
         });
 
@@ -437,7 +451,7 @@ public sealed class MiniGameManager
     public void StartFightClub()
     {
         fightClub.SetHighScore(0);
-        fightClub.Start(FightClubChordCatalog.Chords, -1, null, GetFightClubRunSettings());
+        fightClub.Start(FightClubChordCatalog.Chords, -1, null, GetFightClubRunSettings(), FightClubSetupMode.Manual);
         fightClubSetupVisible = false;
         fightClubRunSettingsVisible = false;
     }
@@ -447,10 +461,7 @@ public sealed class MiniGameManager
         fightClubSetupVisible = true;
         fightClubRunSettingsVisible = false;
         if (fightClubPlayableChordIds.Count == 0)
-        {
-            fightClubRandomMode = true;
             fightClubSetupSourceMode = 0;
-        }
     }
 
     public void CloseFightClubSetup()
@@ -557,6 +568,14 @@ public sealed class MiniGameManager
         ApplyFightClubSettingsToActiveRun();
     }
 
+    public void ToggleFightClubShowMissedNotes()
+    {
+        EnsureFightClubSaveShape();
+        saveData.fightClub.settings.showMissedNotes = !saveData.fightClub.settings.showMissedNotes;
+        Save();
+        ApplyFightClubSettingsToActiveRun();
+    }
+
     public void AdjustFightClubMaxFailedRounds(int delta)
     {
         EnsureFightClubSaveShape();
@@ -576,8 +595,18 @@ public sealed class MiniGameManager
 
     public void SetFightClubSetupRandomMode(bool enabled)
     {
-        fightClubRandomMode = enabled;
-        if (!enabled && fightClubPlayableChordIds.Count == 0 && fightClubCheckedChordIds.Count == 0)
+        SetFightClubSetupMode(enabled ? FightClubSetupMode.Levels : FightClubSetupMode.Manual);
+    }
+
+    public void SetFightClubSetupMode(int mode)
+    {
+        SetFightClubSetupMode(NormalizeFightClubSetupMode(mode));
+    }
+
+    private void SetFightClubSetupMode(FightClubSetupMode mode)
+    {
+        fightClubSetupMode = mode;
+        if (mode == FightClubSetupMode.Manual && fightClubPlayableChordIds.Count == 0 && fightClubCheckedChordIds.Count == 0)
         {
             FightClubChordGroupDefinition firstGroup = FightClubChordCatalog.Groups.FirstOrDefault();
             if (firstGroup != null)
@@ -598,7 +627,7 @@ public sealed class MiniGameManager
 
         fightClubSelectedLevelIndex = clamped;
         saveData.fightClub.selectedLevelIndex = fightClubSelectedLevelIndex;
-        fightClubRandomMode = true;
+        fightClubSetupMode = FightClubSetupMode.Levels;
         Save();
     }
 
@@ -631,7 +660,7 @@ public sealed class MiniGameManager
         }
 
         fightClubSetupSourceMode = 0;
-        fightClubRandomMode = false;
+        fightClubSetupMode = FightClubSetupMode.Manual;
     }
 
     public void SelectAllFightClubSetupGroups()
@@ -647,7 +676,7 @@ public sealed class MiniGameManager
         }
 
         fightClubSetupSourceMode = 0;
-        fightClubRandomMode = false;
+        fightClubSetupMode = FightClubSetupMode.Manual;
     }
 
     public void ToggleFightClubSetupChord(string chordId)
@@ -659,7 +688,7 @@ public sealed class MiniGameManager
         if (!fightClubCheckedChordIds.Add(chord.Id))
             fightClubCheckedChordIds.Remove(chord.Id);
 
-        fightClubRandomMode = false;
+        fightClubSetupMode = FightClubSetupMode.Manual;
     }
 
     public void AddCheckedFightClubChordsToPlayable()
@@ -672,7 +701,7 @@ public sealed class MiniGameManager
         }
 
         if (added)
-            fightClubRandomMode = false;
+            fightClubSetupMode = FightClubSetupMode.Manual;
     }
 
     public void RemoveFightClubPlayableChord(string chordId)
@@ -681,13 +710,13 @@ public sealed class MiniGameManager
             fightClubPlayableChordIds.Remove(chordId.Trim());
 
         if (fightClubPlayableChordIds.Count == 0)
-            fightClubRandomMode = true;
+            fightClubSetupMode = FightClubSetupMode.Manual;
     }
 
     public void ClearFightClubPlayableChords()
     {
         fightClubPlayableChordIds.Clear();
-        fightClubRandomMode = true;
+        fightClubSetupMode = FightClubSetupMode.Manual;
     }
 
     public void ToggleFightClubSetupSong(string songKey)
@@ -714,14 +743,19 @@ public sealed class MiniGameManager
         }
 
         fightClubSetupSourceMode = 1;
-        fightClubRandomMode = false;
+        fightClubSetupMode = FightClubSetupMode.Manual;
     }
 
     public void StartConfiguredFightClub()
     {
         int activeLevelIndex = -1;
         FightClubChordDefinition[] pool;
-        if (fightClubRandomMode)
+        IReadOnlyDictionary<string, int> transitionWeights = null;
+        if (fightClubSetupMode == FightClubSetupMode.Arcade)
+        {
+            pool = FightClubChordCatalog.Chords;
+        }
+        else if (fightClubSetupMode == FightClubSetupMode.Levels)
         {
             FightClubLevelDefinition level = GetSelectedFightClubLevel();
             pool = FightClubChordCatalog.ResolveIds(level?.ChordIds);
@@ -730,13 +764,14 @@ public sealed class MiniGameManager
         else
         {
             pool = FightClubChordCatalog.ResolveIds(fightClubPlayableChordIds);
+            transitionWeights = BuildFightClubSelectedSongTransitionProfile(pool);
         }
 
         if (pool.Length == 0)
             return;
 
-        fightClub.SetHighScore(activeLevelIndex >= 0 ? GetFightClubLevelHighScore(activeLevelIndex) : 0);
-        fightClub.Start(pool, activeLevelIndex, fightClubRandomMode ? null : BuildFightClubSelectedSongTransitionProfile(pool), GetFightClubRunSettings());
+        fightClub.SetHighScore(fightClubSetupMode == FightClubSetupMode.Arcade ? Mathf.Max(0, saveData.fightClub.highScore) : activeLevelIndex >= 0 ? GetFightClubLevelHighScore(activeLevelIndex) : 0);
+        fightClub.Start(pool, activeLevelIndex, transitionWeights, GetFightClubRunSettings(), fightClubSetupMode);
         fightClubSetupVisible = false;
         fightClubRunSettingsVisible = false;
     }
@@ -765,8 +800,9 @@ public sealed class MiniGameManager
     {
         CaptureFightClubScore();
         int activeLevelIndex = fightClub.ActiveLevelIndex;
-        fightClub.SetHighScore(activeLevelIndex >= 0 ? GetFightClubLevelHighScore(activeLevelIndex) : 0);
-        fightClub.Start(null, activeLevelIndex, null, GetFightClubRunSettings());
+        FightClubSetupMode activeSetupMode = fightClub.ActiveSetupMode;
+        fightClub.SetHighScore(activeSetupMode == FightClubSetupMode.Arcade ? Mathf.Max(0, saveData.fightClub.highScore) : activeLevelIndex >= 0 ? GetFightClubLevelHighScore(activeLevelIndex) : 0);
+        fightClub.Start(null, activeLevelIndex, null, GetFightClubRunSettings(), activeSetupMode);
         Save();
     }
 
@@ -802,6 +838,14 @@ public sealed class MiniGameManager
             return;
 
         int activeLevelIndex = fightClub.ActiveLevelIndex;
+        if (fightClub.ActiveSetupMode == FightClubSetupMode.Arcade)
+        {
+            saveData.fightClub.highScore = Mathf.Max(saveData.fightClub.highScore, fightClub.Score);
+            saveData.fightClub.bestStreak = Mathf.Max(saveData.fightClub.bestStreak, fightClub.BestStreak);
+            saveData.fightClub.lastScore = fightClub.Score;
+            return;
+        }
+
         if (activeLevelIndex >= 0)
         {
             FightClubLevelScoreSaveData levelScore = GetFightClubLevelScoreData(activeLevelIndex, create: true);
@@ -821,7 +865,9 @@ public sealed class MiniGameManager
         var snapshot = new FightClubSetupSnapshot
         {
             visible = fightClubSetupVisible,
-            randomMode = fightClubRandomMode,
+            mode = (int)fightClubSetupMode,
+            arcadeMode = fightClubSetupMode == FightClubSetupMode.Arcade,
+            randomMode = fightClubSetupMode == FightClubSetupMode.Levels,
             selectedLevelIndex = fightClubSelectedLevelIndex,
             sourceMode = fightClubSetupSourceMode
         };
@@ -892,12 +938,10 @@ public sealed class MiniGameManager
             }
         }
 
-        snapshot.canStart = fightClubRandomMode || snapshot.playableChords.Count > 0;
-        snapshot.statusLabel = fightClubRandomMode
-            ? GetSelectedLevelStatusLabel()
-            : snapshot.playableChords.Count > 0
-                ? $"{snapshot.playableChords.Count.ToString(CultureInfo.InvariantCulture)} chords ready."
-                : "Add at least one chord to start.";
+        snapshot.canStart = fightClubSetupMode == FightClubSetupMode.Arcade ||
+                            fightClubSetupMode == FightClubSetupMode.Levels ||
+                            snapshot.playableChords.Count > 0;
+        snapshot.statusLabel = GetFightClubSetupStatusLabel(snapshot.playableChords.Count);
         return snapshot;
     }
 
@@ -917,6 +961,7 @@ public sealed class MiniGameManager
             countdownSeconds = settings.countdownSeconds,
             chordCount = settings.chordCount,
             practiceMode = settings.practiceMode,
+            showMissedNotes = settings.showMissedNotes,
             maxFailedRounds = settings.maxFailedRounds,
             metronomeSoundIndex = settings.metronomeSoundIndex,
             metronomeSoundLabel = StringTheoryMetronome.GetSoundLabel(settings.GetMetronomeSound()),
@@ -927,7 +972,33 @@ public sealed class MiniGameManager
 
     private bool CanStartConfiguredFightClub()
     {
-        return fightClubRandomMode || fightClubPlayableChordIds.Count > 0;
+        return fightClubSetupMode == FightClubSetupMode.Arcade ||
+               fightClubSetupMode == FightClubSetupMode.Levels ||
+               fightClubPlayableChordIds.Count > 0;
+    }
+
+    private string GetFightClubSetupStatusLabel(int playableChordCount)
+    {
+        switch (fightClubSetupMode)
+        {
+            case FightClubSetupMode.Arcade:
+                return string.Empty;
+            case FightClubSetupMode.Levels:
+                return GetSelectedLevelStatusLabel();
+            default:
+                return playableChordCount > 0
+                    ? $"{playableChordCount.ToString(CultureInfo.InvariantCulture)} chords ready."
+                    : "Add at least one chord to start.";
+        }
+    }
+
+    private static FightClubSetupMode NormalizeFightClubSetupMode(int mode)
+    {
+        if (mode <= (int)FightClubSetupMode.Arcade)
+            return FightClubSetupMode.Arcade;
+        if (mode == (int)FightClubSetupMode.Levels)
+            return FightClubSetupMode.Levels;
+        return FightClubSetupMode.Manual;
     }
 
     private FightClubLevelDefinition GetSelectedFightClubLevel()
@@ -1230,6 +1301,7 @@ public sealed class MiniGameManager
             countdownSeconds = saveData.fightClub.settings.countdownSeconds,
             chordCount = saveData.fightClub.settings.chordCount,
             practiceMode = saveData.fightClub.settings.practiceMode,
+            showMissedNotes = saveData.fightClub.settings.showMissedNotes,
             maxFailedRounds = saveData.fightClub.settings.maxFailedRounds,
             metronomeSoundIndex = saveData.fightClub.settings.metronomeSoundIndex,
             chordPreviewInstrumentIndex = saveData.fightClub.settings.chordPreviewInstrumentIndex
@@ -1370,6 +1442,7 @@ public sealed class MiniGameManager
         public float countdownSeconds = 3f;
         public int chordCount = FightClubRunSettings.DefaultChordsPerRound;
         public bool practiceMode;
+        public bool showMissedNotes;
         public int maxFailedRounds = 3;
         public int metronomeSoundIndex = (int)StringTheoryMetronomeSound.Drums;
         public int chordPreviewInstrumentIndex = (int)StringTheoryChordPreviewInstrument.ElectricGuitar;
@@ -1409,11 +1482,20 @@ public sealed class FightClubMiniGame
     private const float MinimumBeatIntervalSeconds = 0.66f;
     private const float DetectorResultGraceSeconds = 0.85f;
     private const int MiniGameNoteIdBase = 8000000;
+    private const int ArcadeRoundsPerExpansion = 3;
+    private const int ArcadeMinimumInitialChords = 1;
+    private const int ArcadeMaximumInitialChords = 3;
+    private const int ArcadeMinimumExpansionChords = 1;
+    private const int ArcadeMaximumExpansionChords = 2;
     private static readonly int[] StandardTuning = { 40, 45, 50, 55, 59, 64 };
+    private static readonly string[] ArcadeBasicChordNames = { "C", "A", "G", "E", "D", "Am", "Em" };
     private static readonly FightClubChordDefinition[] ChordLibrary = FightClubChordCatalog.Chords;
     private FightClubChordDefinition[] activeChordPool = ChordLibrary;
     private Dictionary<string, int> activeTransitionWeights = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     private FightClubRunSettings activeSettings = FightClubRunSettings.CreateDefault();
+    private FightClubSetupMode activeSetupMode = FightClubSetupMode.Manual;
+    private FightClubChordDefinition[] arcadeChordDeck = Array.Empty<FightClubChordDefinition>();
+    private readonly List<int> arcadeUnlockSteps = new List<int>();
 
     private readonly FightClubChordRun[] currentRound = new FightClubChordRun[FightClubRunSettings.MaxChordsPerRound];
     private readonly string[] previousRoundChordIds = new string[FightClubRunSettings.MaxChordsPerRound];
@@ -1438,6 +1520,7 @@ public sealed class FightClubMiniGame
     private float nextDetectionDebugLogTime = -1f;
     private int lastDetectionDebugChordIndex = -999;
     private string lastDetectionDebugSignature = string.Empty;
+    private static string detectionDebugLogPath = string.Empty;
 
     public bool IsActive => phase != Phase.Idle;
     public bool IsEnded => phase == Phase.Ended;
@@ -1450,6 +1533,7 @@ public sealed class FightClubMiniGame
     public int BestStreak { get; private set; }
     public int Misses { get; private set; }
     public int ActiveLevelIndex { get; private set; } = -1;
+    public FightClubSetupMode ActiveSetupMode => activeSetupMode;
 
     public void SetHighScore(int highScore)
     {
@@ -1460,19 +1544,32 @@ public sealed class FightClubMiniGame
         IEnumerable<FightClubChordDefinition> chordPool = null,
         int activeLevelIndex = -1,
         IReadOnlyDictionary<string, int> transitionWeights = null,
-        FightClubRunSettings runSettings = null)
+        FightClubRunSettings runSettings = null,
+        FightClubSetupMode setupMode = FightClubSetupMode.Manual)
     {
         activeSettings = (runSettings ?? FightClubRunSettings.CreateDefault()).Clone();
-        if (chordPool != null)
-            activeChordPool = NormalizeChordPool(chordPool);
-        else if (activeChordPool == null || activeChordPool.Length == 0)
-            activeChordPool = ChordLibrary;
-        if (transitionWeights != null)
-            activeTransitionWeights = transitionWeights
-                .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value > 0)
-                .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
-        else if (chordPool != null)
+        activeSetupMode = NormalizeSetupMode(setupMode);
+        if (activeSetupMode == FightClubSetupMode.Arcade)
+        {
+            activeChordPool = NormalizeChordPool(chordPool ?? ChordLibrary);
             activeTransitionWeights.Clear();
+            ResetArcadeProgression(activeChordPool);
+        }
+        else
+        {
+            arcadeChordDeck = Array.Empty<FightClubChordDefinition>();
+            arcadeUnlockSteps.Clear();
+            if (chordPool != null)
+                activeChordPool = NormalizeChordPool(chordPool);
+            else if (activeChordPool == null || activeChordPool.Length == 0)
+                activeChordPool = ChordLibrary;
+            if (transitionWeights != null)
+                activeTransitionWeights = transitionWeights
+                    .Where(pair => !string.IsNullOrWhiteSpace(pair.Key) && pair.Value > 0)
+                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+            else if (chordPool != null)
+                activeTransitionWeights.Clear();
+        }
         ActiveLevelIndex = activeLevelIndex;
         Score = 0;
         Streak = 0;
@@ -1488,6 +1585,13 @@ public sealed class FightClubMiniGame
         lastOpponentSoundIndex = -1;
         Array.Clear(previousRoundChordIds, 0, previousRoundChordIds.Length);
         statusLabel = "Get ready";
+        ResetDetectionDebugLog();
+        WriteDetectionDebugLog(
+            $"START mode={activeSetupMode} level={activeLevelIndex.ToString(CultureInfo.InvariantCulture)} " +
+            $"tempo={activeSettings.GetTempoBpm().ToString(CultureInfo.InvariantCulture)}bpm beat={GetBeatInterval().ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"leniency={activeSettings.GetLeniencyLabel()} early={activeSettings.GetEarlyWindowSeconds().ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"late={activeSettings.GetLateWindowSeconds().ToString("F3", CultureInfo.InvariantCulture)} grace={DetectorResultGraceSeconds.ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"chordsPerRound={GetActiveChordCount().ToString(CultureInfo.InvariantCulture)} practice={activeSettings.practiceMode} showMissedNotes={activeSettings.showMissedNotes}");
         BeginRoundIntro();
     }
 
@@ -1496,10 +1600,18 @@ public sealed class FightClubMiniGame
         activeSettings = (runSettings ?? FightClubRunSettings.CreateDefault()).Clone();
         metronomeSyncSerial++;
         detectorHintDirty = true;
+        WriteDetectionDebugLog(
+            $"SETTINGS phase={phase} round={round.ToString(CultureInfo.InvariantCulture)} " +
+            $"tempo={activeSettings.GetTempoBpm().ToString(CultureInfo.InvariantCulture)}bpm beat={GetBeatInterval().ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"leniency={activeSettings.GetLeniencyLabel()} early={activeSettings.GetEarlyWindowSeconds().ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"late={activeSettings.GetLateWindowSeconds().ToString("F3", CultureInfo.InvariantCulture)} grace={DetectorResultGraceSeconds.ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"practice={activeSettings.practiceMode} showMissedNotes={activeSettings.showMissedNotes}");
     }
 
     public void Stop()
     {
+        WriteDetectionDebugLog(
+            $"STOP phase={phase} round={round.ToString(CultureInfo.InvariantCulture)} score={Score.ToString(CultureInfo.InvariantCulture)} misses={Misses.ToString(CultureInfo.InvariantCulture)}");
         phase = Phase.Idle;
         ActiveLevelIndex = -1;
         phaseTime = 0f;
@@ -1524,6 +1636,9 @@ public sealed class FightClubMiniGame
         endedByLoss = loss;
         statusLabel = loss ? "Game over" : "Run ended";
         detectorHintDirty = true;
+        WriteDetectionDebugLog(
+            $"END loss={loss} round={round.ToString(CultureInfo.InvariantCulture)} score={Score.ToString(CultureInfo.InvariantCulture)} " +
+            $"misses={Misses.ToString(CultureInfo.InvariantCulture)} failedRounds={failedRounds.ToString(CultureInfo.InvariantCulture)}");
     }
 
     public void Update(float deltaTime, HashSet<int> detectedPitches, MiniGameDetectedPitchEvent[] detectedEvents = null)
@@ -1599,7 +1714,8 @@ public sealed class FightClubMiniGame
             failedRounds = failedRounds,
             maxFailedRounds = activeSettings.maxFailedRounds,
             practiceMode = activeSettings.practiceMode,
-            highScoreEnabled = ActiveLevelIndex >= 0 && !activeSettings.practiceMode,
+            highScoreEnabled = (activeSetupMode == FightClubSetupMode.Arcade || ActiveLevelIndex >= 0) && !activeSettings.practiceMode,
+            highScoreLabel = activeSetupMode == FightClubSetupMode.Arcade ? "Best" : "Level Best",
             ended = phase == Phase.Ended,
             endedByLoss = endedByLoss,
             activeChordIndex = activeChordIndex,
@@ -1624,7 +1740,9 @@ public sealed class FightClubMiniGame
 
             int visualStatus = run.Status;
             float targetTime = i * GetBeatInterval();
-            bool visualActive = i == activeChordIndex && phase == Phase.Playing && roundTime >= targetTime;
+            float windowStart = targetTime - activeSettings.GetEarlyWindowSeconds();
+            float windowEnd = targetTime + activeSettings.GetLateWindowSeconds();
+            bool visualActive = i == activeChordIndex && phase == Phase.Playing && roundTime >= windowStart && roundTime <= windowEnd;
             if (phase == Phase.OpponentPreview && opponentPreviewEnabled)
             {
                 int previewIndex = GetOpponentPreviewChordIndex();
@@ -1641,6 +1759,9 @@ public sealed class FightClubMiniGame
                 fretsLowToHigh = (int[])run.Definition.FretsLowToHigh.Clone(),
                 fingersLowToHigh = (int[])run.Definition.FingersLowToHigh.Clone(),
                 expectedMidis = run.ExpectedMidis,
+                missedMidis = activeSettings.showMissedNotes && run.Status == 2 && run.MissedMidis != null
+                    ? (int[])run.MissedMidis.Clone()
+                    : Array.Empty<int>(),
                 barres = run.Definition.GetBarres(),
                 status = visualStatus,
                 active = visualActive
@@ -1713,6 +1834,9 @@ public sealed class FightClubMiniGame
         GenerateRound();
         statusLabel = $"Round {round.ToString(CultureInfo.InvariantCulture)}";
         detectorHintDirty = true;
+        WriteDetectionDebugLog(
+            $"ROUND_INTRO round={round.ToString(CultureInfo.InvariantCulture)} carry={carryTime.ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"phase={phase} chords={FormatRoundChordDebug()}");
     }
 
     private void BeginOpponentCountdown(float carryTime = 0f)
@@ -1732,6 +1856,9 @@ public sealed class FightClubMiniGame
         opponentChordSoundIndex = -1;
         lastOpponentSoundIndex = -1;
         statusLabel = "Player 2";
+        WriteDetectionDebugLog(
+            $"OPPONENT_PREVIEW_START round={round.ToString(CultureInfo.InvariantCulture)} carry={carryTime.ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"duration={GetOpponentPreviewDuration().ToString("F3", CultureInfo.InvariantCulture)} interval={GetOpponentPreviewChordInterval().ToString("F3", CultureInfo.InvariantCulture)}");
         UpdateOpponentPreviewSoundCue();
         detectorHintDirty = true;
     }
@@ -1743,6 +1870,8 @@ public sealed class FightClubMiniGame
         activeChordIndex = -1;
         statusLabel = "Your turn";
         detectorHintDirty = true;
+        WriteDetectionDebugLog(
+            $"PLAYER_INTRO round={round.ToString(CultureInfo.InvariantCulture)} carry={carryTime.ToString("F3", CultureInfo.InvariantCulture)}");
     }
 
     private void BeginPlayerCountdown(float carryTime = 0f)
@@ -1791,6 +1920,11 @@ public sealed class FightClubMiniGame
         lastOpponentSoundIndex = previewIndex;
         opponentChordSoundIndex = previewIndex;
         opponentChordSoundSerial++;
+        FightClubChordRun run = previewIndex >= 0 && previewIndex < currentRound.Length ? currentRound[previewIndex] : null;
+        WriteDetectionDebugLog(
+            $"OPPONENT_CUE round={round.ToString(CultureInfo.InvariantCulture)} chord={previewIndex.ToString(CultureInfo.InvariantCulture)} " +
+            $"phaseTime={phaseTime.ToString("F3", CultureInfo.InvariantCulture)} serial={opponentChordSoundSerial.ToString(CultureInfo.InvariantCulture)} " +
+            $"name={run?.Definition?.Name ?? "--"} expected={FormatMidiDebug(run?.ExpectedMidis)}");
     }
 
     private int GetOpponentPreviewChordIndex()
@@ -1847,6 +1981,9 @@ public sealed class FightClubMiniGame
         activeWindowPitches.Clear();
         statusLabel = "On beat";
         detectorHintDirty = true;
+        WriteDetectionDebugLog(
+            $"PLAYER_ROUND_START round={round.ToString(CultureInfo.InvariantCulture)} carry={carryTime.ToString("F3", CultureInfo.InvariantCulture)} " +
+            $"roundTime={roundTime.ToString("F3", CultureInfo.InvariantCulture)} beat={GetBeatInterval().ToString("F3", CultureInfo.InvariantCulture)}");
     }
 
     private void FinishRound(float carryTime = 0f)
@@ -1874,6 +2011,9 @@ public sealed class FightClubMiniGame
         statusLabel = lastRoundWasPerfect
             ? "Perfect round"
             : $"{Mathf.Max(0, activeSettings.maxFailedRounds - failedRounds).ToString(CultureInfo.InvariantCulture)} failed rounds left";
+        WriteDetectionDebugLog(
+            $"ROUND_COMPLETE round={round.ToString(CultureInfo.InvariantCulture)} perfect={lastRoundWasPerfect} failedRounds={failedRounds.ToString(CultureInfo.InvariantCulture)} " +
+            $"carry={carryTime.ToString("F3", CultureInfo.InvariantCulture)} score={Score.ToString(CultureInfo.InvariantCulture)}");
         round++;
         detectorHintDirty = true;
     }
@@ -1890,6 +2030,8 @@ public sealed class FightClubMiniGame
         activeWindowPitches.Clear();
         statusLabel = "Try again";
         detectorHintDirty = true;
+        WriteDetectionDebugLog(
+            $"PRACTICE_RETRY round={round.ToString(CultureInfo.InvariantCulture)} carry={carryTime.ToString("F3", CultureInfo.InvariantCulture)}");
     }
 
     private void ResetCurrentRoundForReplay()
@@ -1902,7 +2044,10 @@ public sealed class FightClubMiniGame
                 continue;
 
             if (i < chordCount)
+            {
                 run.Status = 0;
+                run.MissedMidis = Array.Empty<int>();
+            }
         }
 
         lastRoundWasPerfect = true;
@@ -1911,8 +2056,18 @@ public sealed class FightClubMiniGame
     private void GenerateRound()
     {
         int chordCount = GetActiveChordCount();
-        int maxDifficulty = Mathf.Clamp(1 + ((round - 1) / 2), 1, 5);
-        FightClubChordDefinition[] pool = activeChordPool != null && activeChordPool.Length > 0 ? activeChordPool : ChordLibrary;
+        int maxDifficulty;
+        FightClubChordDefinition[] pool;
+        if (activeSetupMode == FightClubSetupMode.Arcade)
+        {
+            pool = GetArcadeRoundPool(out maxDifficulty);
+        }
+        else
+        {
+            maxDifficulty = Mathf.Clamp(1 + ((round - 1) / 2), 1, 5);
+            pool = activeChordPool != null && activeChordPool.Length > 0 ? activeChordPool : ChordLibrary;
+        }
+
         List<FightClubChordDefinition> candidates = BuildRoundCandidates(pool, maxDifficulty, chordCount);
         FightClubChordDefinition[] selectedRound = SelectRoundSequence(candidates, maxDifficulty, chordCount);
 
@@ -1931,6 +2086,151 @@ public sealed class FightClubMiniGame
         }
 
         lastRoundWasPerfect = true;
+    }
+
+    private FightClubChordDefinition[] GetArcadeRoundPool(out int maxDifficulty)
+    {
+        if (arcadeChordDeck == null || arcadeChordDeck.Length == 0)
+            ResetArcadeProgression(activeChordPool != null && activeChordPool.Length > 0 ? activeChordPool : ChordLibrary);
+
+        int unlockedCount = GetArcadeUnlockedChordCount();
+        FightClubChordDefinition[] pool = arcadeChordDeck
+            .Take(unlockedCount)
+            .Where(chord => chord != null)
+            .ToArray();
+        if (pool.Length == 0)
+            pool = ChordLibrary.Take(Mathf.Max(1, GetActiveChordCount())).ToArray();
+
+        maxDifficulty = Mathf.Clamp(pool.Max(chord => chord?.Difficulty ?? 1), 1, 5);
+        return pool;
+    }
+
+    private int GetArcadeUnlockedChordCount()
+    {
+        if (arcadeChordDeck == null || arcadeChordDeck.Length == 0)
+            return 0;
+
+        if (arcadeUnlockSteps.Count == 0)
+            BuildArcadeUnlockSteps(Mathf.Min(ArcadeMaximumInitialChords, arcadeChordDeck.Length));
+
+        int stage = Mathf.Max(0, (round - 1) / ArcadeRoundsPerExpansion);
+        int unlocked = 0;
+        for (int i = 0; i <= stage && i < arcadeUnlockSteps.Count; i++)
+            unlocked += arcadeUnlockSteps[i];
+
+        if (stage >= arcadeUnlockSteps.Count)
+            unlocked = arcadeChordDeck.Length;
+
+        return Mathf.Clamp(unlocked, 1, arcadeChordDeck.Length);
+    }
+
+    private void ResetArcadeProgression(FightClubChordDefinition[] sourcePool)
+    {
+        FightClubChordDefinition[] normalizedPool = NormalizeChordPool(sourcePool);
+        var deck = new List<FightClubChordDefinition>(normalizedPool.Length);
+        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var basicChords = new List<FightClubChordDefinition>();
+        var availableById = normalizedPool.ToDictionary(chord => chord.Id, StringComparer.OrdinalIgnoreCase);
+
+        for (int i = 0; i < ArcadeBasicChordNames.Length; i++)
+        {
+            FightClubChordDefinition chord = FightClubChordCatalog.FindByName(ArcadeBasicChordNames[i]);
+            if (chord != null && availableById.ContainsKey(chord.Id))
+                basicChords.Add(chord);
+        }
+
+        if (basicChords.Count == 0)
+            basicChords = normalizedPool.Where(chord => chord.Difficulty <= 1).ToList();
+        ShuffleList(basicChords);
+
+        int initialMax = Mathf.Min(ArcadeMaximumInitialChords, basicChords.Count);
+        int initialCount = initialMax > 0
+            ? random.Next(ArcadeMinimumInitialChords, initialMax + 1)
+            : Mathf.Min(1, normalizedPool.Length);
+
+        for (int i = 0; i < basicChords.Count; i++)
+        {
+            if (i >= initialCount)
+                break;
+            AddArcadeDeckChord(deck, usedIds, basicChords[i]);
+        }
+
+        for (int i = initialCount; i < basicChords.Count; i++)
+            AddArcadeDeckChord(deck, usedIds, basicChords[i]);
+
+        for (int difficulty = 1; difficulty <= 5; difficulty++)
+        {
+            List<FightClubChordDefinition> band = normalizedPool
+                .Where(chord => chord != null && chord.Difficulty == difficulty && !usedIds.Contains(chord.Id))
+                .ToList();
+            ShuffleList(band);
+            for (int i = 0; i < band.Count; i++)
+                AddArcadeDeckChord(deck, usedIds, band[i]);
+        }
+
+        List<FightClubChordDefinition> remaining = normalizedPool
+            .Where(chord => chord != null && !usedIds.Contains(chord.Id))
+            .OrderBy(chord => chord.Difficulty)
+            .ThenBy(chord => chord.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        for (int i = 0; i < remaining.Count; i++)
+            AddArcadeDeckChord(deck, usedIds, remaining[i]);
+
+        arcadeChordDeck = deck.Count > 0 ? deck.ToArray() : ChordLibrary.Take(Mathf.Max(1, GetActiveChordCount())).ToArray();
+        BuildArcadeUnlockSteps(initialCount);
+    }
+
+    private void BuildArcadeUnlockSteps(int initialCount)
+    {
+        arcadeUnlockSteps.Clear();
+        if (arcadeChordDeck == null || arcadeChordDeck.Length == 0)
+            return;
+
+        int unlocked = Mathf.Clamp(initialCount, 1, arcadeChordDeck.Length);
+        arcadeUnlockSteps.Add(unlocked);
+        while (unlocked < arcadeChordDeck.Length)
+        {
+            int addCount = random.Next(ArcadeMinimumExpansionChords, ArcadeMaximumExpansionChords + 1);
+            addCount = Mathf.Min(addCount, arcadeChordDeck.Length - unlocked);
+            arcadeUnlockSteps.Add(addCount);
+            unlocked += addCount;
+        }
+    }
+
+    private static void AddArcadeDeckChord(List<FightClubChordDefinition> deck, HashSet<string> usedIds, FightClubChordDefinition chord)
+    {
+        if (deck == null || usedIds == null || chord == null || string.IsNullOrWhiteSpace(chord.Id))
+            return;
+
+        if (usedIds.Add(chord.Id))
+            deck.Add(chord);
+    }
+
+    private void ShuffleList<T>(List<T> values)
+    {
+        if (values == null)
+            return;
+
+        for (int i = values.Count - 1; i > 0; i--)
+        {
+            int swapIndex = random.Next(i + 1);
+            T temp = values[i];
+            values[i] = values[swapIndex];
+            values[swapIndex] = temp;
+        }
+    }
+
+    private static FightClubSetupMode NormalizeSetupMode(FightClubSetupMode setupMode)
+    {
+        switch (setupMode)
+        {
+            case FightClubSetupMode.Levels:
+                return FightClubSetupMode.Levels;
+            case FightClubSetupMode.Manual:
+                return FightClubSetupMode.Manual;
+            default:
+                return FightClubSetupMode.Arcade;
+        }
     }
 
     private static List<FightClubChordDefinition> BuildRoundCandidates(FightClubChordDefinition[] pool, int maxDifficulty, int chordCount)
@@ -2506,7 +2806,7 @@ public sealed class FightClubMiniGame
             else if (roundTime > resolveEnd)
             {
                 LogDetectionMissWindowExpired(run, i, targetTime, windowStart, windowEnd, resolveEnd, detectedPitches, detectedEvents);
-                MarkChordMiss(run);
+                MarkChordMiss(run, i, detectedPitches, detectedEvents, windowStart, resolveEnd);
                 activeChordIndex = -1;
                 activeWindowPitches.Clear();
                 detectorHintDirty = true;
@@ -2586,6 +2886,7 @@ public sealed class FightClubMiniGame
 
     private void MarkChordHit(FightClubChordRun run)
     {
+        run.MissedMidis = Array.Empty<int>();
         LogDetectionResult("HIT", run);
         run.Status = 1;
         AddChordResult(run.Definition, hit: true);
@@ -2599,8 +2900,17 @@ public sealed class FightClubMiniGame
         statusLabel = "Hit";
     }
 
-    private void MarkChordMiss(FightClubChordRun run)
+    private void MarkChordMiss(
+        FightClubChordRun run,
+        int chordIndex,
+        HashSet<int> detectedPitches,
+        MiniGameDetectedPitchEvent[] detectedEvents,
+        float windowStart,
+        float resolveEnd)
     {
+        run.MissedMidis = GetMissingChordMidis(
+            run,
+            BuildMissFeedbackPitches(run, chordIndex, detectedPitches, detectedEvents, windowStart, resolveEnd));
         LogDetectionResult("MISS", run);
         run.Status = 2;
         AddChordResult(run.Definition, hit: false);
@@ -2608,6 +2918,58 @@ public sealed class FightClubMiniGame
         Misses++;
         lastRoundWasPerfect = false;
         statusLabel = "Miss";
+    }
+
+    private HashSet<int> BuildMissFeedbackPitches(
+        FightClubChordRun run,
+        int chordIndex,
+        HashSet<int> detectedPitches,
+        MiniGameDetectedPitchEvent[] detectedEvents,
+        float windowStart,
+        float resolveEnd)
+    {
+        var feedbackPitches = new HashSet<int>();
+        bool sourceIsActiveChord = activeChordIndex == chordIndex;
+        if (sourceIsActiveChord)
+            feedbackPitches.UnionWith(activeWindowPitches);
+        if (sourceIsActiveChord && detectedPitches != null && detectedPitches.Count > 0)
+            feedbackPitches.UnionWith(detectedPitches);
+
+        if (detectedEvents != null && detectedEvents.Length > 0)
+        {
+            const float timeEpsilon = 0.0001f;
+            for (int i = 0; i < detectedEvents.Length; i++)
+            {
+                MiniGameDetectedPitchEvent detectedEvent = detectedEvents[i];
+                if (detectedEvent.pitches == null || detectedEvent.pitches.Length == 0)
+                    continue;
+                if (detectedEvent.time + timeEpsilon < windowStart || detectedEvent.time - timeEpsilon > resolveEnd)
+                    continue;
+
+                feedbackPitches.UnionWith(detectedEvent.pitches);
+            }
+        }
+
+        WriteDetectionDebugLog(
+            $"MISS_FEEDBACK round={round.ToString(CultureInfo.InvariantCulture)} chord={chordIndex.ToString(CultureInfo.InvariantCulture)} " +
+            $"name={run?.Definition?.Name ?? "--"} observed={FormatMidiDebug(feedbackPitches)} sourceActive={sourceIsActiveChord}");
+        return feedbackPitches;
+    }
+
+    private int[] GetMissingChordMidis(FightClubChordRun run, HashSet<int> observedPitches)
+    {
+        if (run == null || run.ExpectedMidis == null || run.ExpectedMidis.Length == 0)
+            return Array.Empty<int>();
+
+        var missing = new List<int>();
+        for (int i = 0; i < run.ExpectedMidis.Length; i++)
+        {
+            int expected = run.ExpectedMidis[i];
+            if (observedPitches == null || !observedPitches.Contains(expected))
+                missing.Add(expected);
+        }
+
+        return missing.Count > 0 ? missing.ToArray() : Array.Empty<int>();
     }
 
     private void LogDetectionWindow(
@@ -2622,14 +2984,15 @@ public sealed class FightClubMiniGame
         int matched,
         int required)
     {
-        if (!Application.isEditor || run == null)
+        if (run == null)
             return;
 
         string incoming = FormatMidiDebug(detectedPitches);
         string accumulated = FormatMidiDebug(activeWindowPitches);
         string expected = FormatMidiDebug(run.ExpectedMidis);
+        string missing = FormatMissingMidiDebug(run);
         string signature =
-            $"{round}:{chordIndex}:{run.Status}:{matched}:{required}:{incoming}:{accumulated}";
+            $"{round}:{chordIndex}:{run.Status}:{matched}:{required}:{incoming}:{accumulated}:{missing}";
         bool chordChanged = chordIndex != lastDetectionDebugChordIndex;
         bool stateChanged = !string.Equals(signature, lastDetectionDebugSignature, StringComparison.Ordinal);
         float now = Time.unscaledTime;
@@ -2639,12 +3002,14 @@ public sealed class FightClubMiniGame
         lastDetectionDebugChordIndex = chordIndex;
         lastDetectionDebugSignature = signature;
         nextDetectionDebugLogTime = now + 0.25f;
-        Debug.Log(
-            $"[FightClubDetection] window round={round.ToString(CultureInfo.InvariantCulture)} chord={chordIndex.ToString(CultureInfo.InvariantCulture)} " +
+        WriteDetectionDebugLog(
+            $"WINDOW round={round.ToString(CultureInfo.InvariantCulture)} chord={chordIndex.ToString(CultureInfo.InvariantCulture)} " +
             $"name={run.Definition?.Name ?? "--"} roundTime={roundTime.ToString("F3", CultureInfo.InvariantCulture)} " +
             $"target={targetTime.ToString("F3", CultureInfo.InvariantCulture)} window={windowStart.ToString("F3", CultureInfo.InvariantCulture)}-{windowEnd.ToString("F3", CultureInfo.InvariantCulture)} " +
-            $"resolveEnd={resolveEnd.ToString("F3", CultureInfo.InvariantCulture)} expected={expected} incoming={incoming} timed={FormatDetectorEventsDebug(run, detectedEvents, windowStart, windowEnd)} " +
+            $"resolveEnd={resolveEnd.ToString("F3", CultureInfo.InvariantCulture)} expected={expected} incoming={incoming} includedEvents={FormatDetectorEventsDebug(run, detectedEvents, windowStart, windowEnd)} " +
+            $"recentEvents={FormatDetectorEventsTrace(run, detectedEvents, targetTime, windowStart, windowEnd)} " +
             $"accumulated={accumulated} matched={matched.ToString(CultureInfo.InvariantCulture)}/{(run.ExpectedMidis?.Length ?? 0).ToString(CultureInfo.InvariantCulture)} " +
+            $"missing={missing} " +
             $"required={required.ToString(CultureInfo.InvariantCulture)} leniency={activeSettings.GetLeniencyLabel()}");
     }
 
@@ -2658,25 +3023,27 @@ public sealed class FightClubMiniGame
         HashSet<int> detectedPitches,
         MiniGameDetectedPitchEvent[] detectedEvents)
     {
-        if (!Application.isEditor || run == null)
+        if (run == null)
             return;
 
-        Debug.Log(
-            $"[FightClubDetection] expired round={round.ToString(CultureInfo.InvariantCulture)} chord={chordIndex.ToString(CultureInfo.InvariantCulture)} " +
+        WriteDetectionDebugLog(
+            $"EXPIRED round={round.ToString(CultureInfo.InvariantCulture)} chord={chordIndex.ToString(CultureInfo.InvariantCulture)} " +
             $"name={run.Definition?.Name ?? "--"} roundTime={roundTime.ToString("F3", CultureInfo.InvariantCulture)} " +
             $"target={targetTime.ToString("F3", CultureInfo.InvariantCulture)} window={windowStart.ToString("F3", CultureInfo.InvariantCulture)}-{windowEnd.ToString("F3", CultureInfo.InvariantCulture)} " +
             $"resolveEnd={resolveEnd.ToString("F3", CultureInfo.InvariantCulture)} expected={FormatMidiDebug(run.ExpectedMidis)} incoming={FormatMidiDebug(detectedPitches)} " +
-            $"timed={FormatDetectorEventsDebug(run, detectedEvents, windowStart, windowEnd)} accumulated={FormatMidiDebug(activeWindowPitches)}");
+            $"includedEvents={FormatDetectorEventsDebug(run, detectedEvents, windowStart, windowEnd)} recentEvents={FormatDetectorEventsTrace(run, detectedEvents, targetTime, windowStart, windowEnd)} " +
+            $"accumulated={FormatMidiDebug(activeWindowPitches)} missing={FormatMissingMidiDebug(run)}");
     }
 
     private void LogDetectionResult(string result, FightClubChordRun run)
     {
-        if (!Application.isEditor || run == null)
+        if (run == null)
             return;
 
-        Debug.Log(
-            $"[FightClubDetection] {result} round={round.ToString(CultureInfo.InvariantCulture)} " +
-            $"name={run.Definition?.Name ?? "--"} expected={FormatMidiDebug(run.ExpectedMidis)} accumulated={FormatMidiDebug(activeWindowPitches)} score={Score.ToString(CultureInfo.InvariantCulture)}");
+        WriteDetectionDebugLog(
+            $"{result} round={round.ToString(CultureInfo.InvariantCulture)} " +
+            $"name={run.Definition?.Name ?? "--"} expected={FormatMidiDebug(run.ExpectedMidis)} accumulated={FormatMidiDebug(activeWindowPitches)} " +
+            $"missing={FormatMidiDebug(run.MissedMidis)} score={Score.ToString(CultureInfo.InvariantCulture)}");
     }
 
     private static string FormatMidiDebug(IEnumerable<int> pitches)
@@ -2714,6 +3081,148 @@ public sealed class FightClubMiniGame
         }
 
         return parts.Count > 0 ? string.Join(";", parts) : "--";
+    }
+
+    private string FormatDetectorEventsTrace(FightClubChordRun run, MiniGameDetectedPitchEvent[] detectedEvents, float targetTime, float windowStart, float windowEnd)
+    {
+        if (detectedEvents == null || detectedEvents.Length == 0)
+            return "--";
+
+        var parts = new List<string>();
+        const float timeEpsilon = 0.0001f;
+        for (int i = 0; i < detectedEvents.Length && parts.Count < 8; i++)
+        {
+            MiniGameDetectedPitchEvent detectedEvent = detectedEvents[i];
+            if (detectedEvent.pitches == null || detectedEvent.pitches.Length == 0)
+                continue;
+
+            bool eventLandsInWindow = detectedEvent.time + timeEpsilon >= windowStart && detectedEvent.time - timeEpsilon <= windowEnd;
+            int eventMatches = CountDetectorEventMatches(run, detectedEvent);
+            bool eventMatchesChord = eventMatches >= GetRequiredChordMatchCount(run);
+            string marker = eventLandsInWindow
+                ? eventMatchesChord ? "in+match" : "in"
+                : eventMatchesChord ? "matchOutside" : "outside";
+            float delta = detectedEvent.time - targetTime;
+            parts.Add(
+                $"{marker}@{detectedEvent.time.ToString("F3", CultureInfo.InvariantCulture)}" +
+                $" dt={delta.ToString("+0.000;-0.000;0.000", CultureInfo.InvariantCulture)}" +
+                $" hit={eventMatches.ToString(CultureInfo.InvariantCulture)}/{(run?.ExpectedMidis?.Length ?? 0).ToString(CultureInfo.InvariantCulture)}:{FormatMidiDebug(detectedEvent.pitches)}");
+        }
+
+        return parts.Count > 0 ? string.Join(";", parts) : "--";
+    }
+
+    private int CountDetectorEventMatches(FightClubChordRun run, MiniGameDetectedPitchEvent detectedEvent)
+    {
+        if (run == null || run.ExpectedMidis == null || run.ExpectedMidis.Length == 0 ||
+            detectedEvent.pitches == null || detectedEvent.pitches.Length == 0)
+            return 0;
+
+        int matched = 0;
+        for (int i = 0; i < run.ExpectedMidis.Length; i++)
+        {
+            int expected = run.ExpectedMidis[i];
+            for (int j = 0; j < detectedEvent.pitches.Length; j++)
+            {
+                if (detectedEvent.pitches[j] != expected)
+                    continue;
+
+                matched++;
+                break;
+            }
+        }
+
+        return matched;
+    }
+
+    private string FormatMissingMidiDebug(FightClubChordRun run)
+    {
+        if (run == null || run.ExpectedMidis == null || run.ExpectedMidis.Length == 0)
+            return "--";
+
+        var missing = new List<int>();
+        for (int i = 0; i < run.ExpectedMidis.Length; i++)
+        {
+            int expected = run.ExpectedMidis[i];
+            if (!activeWindowPitches.Contains(expected))
+                missing.Add(expected);
+        }
+
+        return FormatMidiDebug(missing);
+    }
+
+    private string FormatRoundChordDebug()
+    {
+        int chordCount = GetActiveChordCount();
+        var parts = new List<string>();
+        for (int i = 0; i < chordCount && i < currentRound.Length; i++)
+        {
+            FightClubChordRun run = currentRound[i];
+            if (run == null)
+                continue;
+
+            float targetTime = i * GetBeatInterval();
+            float windowStart = targetTime - activeSettings.GetEarlyWindowSeconds();
+            float windowEnd = targetTime + activeSettings.GetLateWindowSeconds();
+            parts.Add(
+                $"{i.ToString(CultureInfo.InvariantCulture)}:{run.Definition?.Name ?? "--"}" +
+                $" expected={FormatMidiDebug(run.ExpectedMidis)}" +
+                $" target={targetTime.ToString("F3", CultureInfo.InvariantCulture)}" +
+                $" window={windowStart.ToString("F3", CultureInfo.InvariantCulture)}-{windowEnd.ToString("F3", CultureInfo.InvariantCulture)}");
+        }
+
+        return parts.Count > 0 ? string.Join(" | ", parts) : "--";
+    }
+
+    private static string GetDetectionDebugLogPath()
+    {
+        if (!string.IsNullOrWhiteSpace(detectionDebugLogPath))
+            return detectionDebugLogPath;
+
+        string root = Application.isEditor ? Directory.GetCurrentDirectory() : Application.persistentDataPath;
+        if (string.IsNullOrWhiteSpace(root))
+            root = Application.temporaryCachePath;
+        if (string.IsNullOrWhiteSpace(root))
+            root = ".";
+
+        detectionDebugLogPath = Path.Combine(root, "fightclub_detection_debug.log");
+        return detectionDebugLogPath;
+    }
+
+    private static void ResetDetectionDebugLog()
+    {
+        try
+        {
+            string path = GetDetectionDebugLogPath();
+            string directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            File.WriteAllText(
+                path,
+                $"Fight Club detection debug log started {DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture)}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
+    }
+
+    private static void WriteDetectionDebugLog(string message)
+    {
+        try
+        {
+            string path = GetDetectionDebugLogPath();
+            string directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrWhiteSpace(directory))
+                Directory.CreateDirectory(directory);
+
+            File.AppendAllText(
+                path,
+                $"{DateTime.Now.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture)} {message}{Environment.NewLine}");
+        }
+        catch
+        {
+        }
     }
 
     private void AddChordResult(FightClubChordDefinition chord, bool hit)
@@ -2866,6 +3375,7 @@ public sealed class FightClubMiniGame
         private readonly int chordIndex;
         private readonly int roundIndex;
         public int Status;
+        public int[] MissedMidis = Array.Empty<int>();
 
         public FightClubChordRun(FightClubChordDefinition definition, int chordIndex, int roundIndex)
         {

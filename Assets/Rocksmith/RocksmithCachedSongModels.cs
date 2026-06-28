@@ -98,6 +98,8 @@ public sealed class RocksmithCachedToneDefinitionData
     public string name;
     public string key;
     public string rawJson;
+    public string preferredPresetName;
+    public string fallbackSearchText;
 }
 
 [Serializable]

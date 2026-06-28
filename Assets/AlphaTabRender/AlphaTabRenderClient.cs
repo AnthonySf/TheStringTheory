@@ -194,8 +194,314 @@ public static class AlphaTabSourceResolver
             resolved.resolvedNotationPath = RocksmithAlphaTabGpSourceBuilder.GetOrCreate(normalizedPath, resolved.logicalTrackIndex);
             resolved.resolvedTrackIndex = 0;
         }
+        else if (TheoryPackageFormat.IsPackagePath(normalizedPath))
+        {
+            resolved.resolvedNotationPath = TheoryAlphaTabGpSourceBuilder.GetOrCreate(normalizedPath, resolved.logicalTrackIndex);
+            resolved.resolvedTrackIndex = 0;
+        }
 
         return resolved;
+    }
+}
+
+public static class TheoryAlphaTabGpSourceBuilder
+{
+    private const string CacheFolderName = "TheorySources";
+    private const string ExportVersion = "alphatex_v1";
+
+    public static string GetOrCreate(string packagePath, int arrangementIndex)
+    {
+        if (string.IsNullOrWhiteSpace(packagePath))
+            throw new ArgumentException("Theory package path was empty.", nameof(packagePath));
+
+        string normalizedPackagePath = Path.GetFullPath(packagePath);
+        if (!TheoryPackageIO.TryReadManifest(normalizedPackagePath, out TheorySongManifest manifest, out string manifestError) || manifest == null)
+            throw new InvalidOperationException($"Failed to load theory package '{normalizedPackagePath}': {manifestError}");
+
+        int resolvedIndex = ResolveArrangementIndex(manifest, arrangementIndex);
+        if (resolvedIndex < 0 || resolvedIndex >= manifest.arrangements.Count)
+            throw new InvalidOperationException($"Failed to resolve theory arrangement {arrangementIndex} from '{normalizedPackagePath}'.");
+
+        TheoryArrangementSummary theorySummary = manifest.arrangements[resolvedIndex];
+        if (!TheoryPackageIO.TryReadArrangement(normalizedPackagePath, theorySummary, out TheoryArrangementData theoryArrangement, out string arrangementError) ||
+            theoryArrangement == null)
+        {
+            throw new InvalidOperationException($"Failed to load theory arrangement {resolvedIndex} from '{normalizedPackagePath}': {arrangementError}");
+        }
+
+        RocksmithCachedSongManifest convertedManifest = ToCachedManifest(manifest, normalizedPackagePath);
+        RocksmithCachedArrangementSummary convertedSummary = ToCachedSummary(theorySummary, resolvedIndex);
+        RocksmithCachedArrangementPart convertedPart = ToCachedPart(theoryArrangement, convertedSummary, manifest.durationSeconds);
+
+        string cacheDirectory = Path.Combine(
+            ExternalContentPaths.PersistentAlphaTabRenderCacheDirectory,
+            CacheFolderName,
+            ComputeCacheKey(normalizedPackagePath, theorySummary?.arrangementId, theorySummary?.entry));
+        Directory.CreateDirectory(cacheDirectory);
+
+        string fileBaseName = TheoryPackageFormat.SanitizeEntryFileName(theorySummary?.arrangementId, $"arrangement_{resolvedIndex.ToString(CultureInfo.InvariantCulture)}");
+        string outputGpPath = Path.Combine(cacheDirectory, $"{fileBaseName}.alphatex");
+        long sourceTicks = File.GetLastWriteTimeUtc(normalizedPackagePath).Ticks;
+        long outputTicks = File.Exists(outputGpPath) ? File.GetLastWriteTimeUtc(outputGpPath).Ticks : 0L;
+        if (outputTicks >= sourceTicks && File.Exists(outputGpPath))
+            return outputGpPath;
+
+        RocksmithAlphaTabGpWriter.Write(outputGpPath, convertedManifest, convertedSummary, convertedPart);
+        return outputGpPath;
+    }
+
+    private static int ResolveArrangementIndex(TheorySongManifest manifest, int requestedIndex)
+    {
+        if (manifest?.arrangements == null || manifest.arrangements.Count == 0)
+            return -1;
+
+        if (requestedIndex >= 0 && requestedIndex < manifest.arrangements.Count)
+            return requestedIndex;
+
+        if (!string.IsNullOrWhiteSpace(manifest.defaultArrangementId))
+        {
+            for (int i = 0; i < manifest.arrangements.Count; i++)
+            {
+                if (string.Equals(manifest.arrangements[i]?.arrangementId ?? string.Empty, manifest.defaultArrangementId, StringComparison.OrdinalIgnoreCase))
+                    return i;
+            }
+        }
+
+        return 0;
+    }
+
+    private static RocksmithCachedSongManifest ToCachedManifest(TheorySongManifest source, string packagePath)
+    {
+        FileInfo info = new FileInfo(packagePath);
+        return new RocksmithCachedSongManifest
+        {
+            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            sourcePsarcPath = string.Empty,
+            sourcePsarcLastWriteUtcTicks = info.LastWriteTimeUtc.Ticks,
+            importedAtUtcTicks = ResolveManifestTimestamp(source),
+            displayName = source.title ?? string.Empty,
+            artist = source.artist ?? string.Empty,
+            album = source.album ?? string.Empty,
+            subtitle = source.subtitle ?? string.Empty,
+            durationSeconds = Mathf.Max(0f, source.durationSeconds),
+            difficultyRating = Mathf.Clamp(source.difficultyRating, 0, 5),
+            arrangements = new List<RocksmithCachedArrangementSummary>()
+        };
+    }
+
+    private static long ResolveManifestTimestamp(TheorySongManifest source)
+    {
+        if (source == null)
+            return 0L;
+        return source.modifiedAtUtcTicks > 0 ? source.modifiedAtUtcTicks : source.createdAtUtcTicks;
+    }
+
+    private static RocksmithCachedArrangementSummary ToCachedSummary(TheoryArrangementSummary source, int index)
+    {
+        string partId = string.IsNullOrWhiteSpace(source?.arrangementId)
+            ? $"arrangement_{index.ToString(CultureInfo.InvariantCulture)}"
+            : source.arrangementId;
+        return new RocksmithCachedArrangementSummary
+        {
+            partId = partId,
+            displayName = source?.displayName ?? partId,
+            route = source?.route ?? string.Empty,
+            arrangementGroupId = string.IsNullOrWhiteSpace(source?.groupId) ? partId : source.groupId,
+            arrangementDisplayName = string.IsNullOrWhiteSpace(source?.groupDisplayName) ? source?.displayName ?? partId : source.groupDisplayName,
+            difficultyLabel = source?.difficultyLabel ?? string.Empty,
+            difficultyUiIndex = source?.difficultyUiIndex ?? -1,
+            hasDifficultyVariants = source?.hasDifficultyVariants ?? false,
+            partFilePath = source?.entry ?? string.Empty,
+            noteCount = Mathf.Max(0, source?.noteCount ?? 0),
+            tabCount = Mathf.Max(0, source?.tabCount ?? 0),
+            score = Mathf.Max(0, source?.score ?? 0),
+            difficultyRating = Mathf.Clamp(source?.difficultyRating ?? 0, 0, 5),
+            tuningPitches = source?.tuningPitches != null ? (int[])source.tuningPitches.Clone() : null,
+            tuningDisplayName = source?.tuningDisplayName ?? string.Empty
+        };
+    }
+
+    private static RocksmithCachedArrangementPart ToCachedPart(
+        TheoryArrangementData source,
+        RocksmithCachedArrangementSummary summary,
+        float manifestDuration)
+    {
+        RocksmithCachedArrangementPart part = new RocksmithCachedArrangementPart
+        {
+            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            partId = source.arrangementId ?? summary.partId,
+            displayName = source.displayName ?? summary.displayName,
+            route = source.route ?? summary.route,
+            arrangementGroupId = string.IsNullOrWhiteSpace(source.groupId) ? summary.arrangementGroupId : source.groupId,
+            arrangementDisplayName = string.IsNullOrWhiteSpace(source.groupDisplayName) ? summary.arrangementDisplayName : source.groupDisplayName,
+            difficultyLabel = source.difficultyLabel ?? summary.difficultyLabel,
+            difficultyUiIndex = source.difficultyUiIndex,
+            hasDifficultyVariants = source.hasDifficultyVariants,
+            durationSeconds = Mathf.Max(0f, source.durationSeconds, manifestDuration),
+            difficultyRating = Mathf.Clamp(source.difficultyRating, 0, 5),
+            tuningPitches = source.tuningPitches != null ? (int[])source.tuningPitches.Clone() : null,
+            tuningDisplayName = source.tuningDisplayName ?? string.Empty,
+            timing = ToCachedTiming(source.timing),
+            generatedPart = ToCachedGeneratedPart(source.generatedPart, source),
+            notes = ToCachedNotes(source.notes),
+            arpeggioGuides = ToCachedArpeggioGuides(source.arpeggioGuides),
+            generatedNotes = new List<RocksmithCachedGeneratedNoteEvent>()
+        };
+
+        return part;
+    }
+
+    private static RocksmithCachedArrangementTimingData ToCachedTiming(TheoryTimingData source)
+    {
+        return new RocksmithCachedArrangementTimingData
+        {
+            averageTempoBpm = Mathf.Max(1f, source?.averageTempoBpm ?? 120f),
+            capo = Mathf.Max(0, source?.capo ?? 0),
+            ebeats = source?.beats?
+                .Where(beat => beat != null && beat.timeSeconds >= 0f)
+                .OrderBy(beat => beat.timeSeconds)
+                .Select(beat => new RocksmithCachedEbeatData
+                {
+                    timeSeconds = Mathf.Max(0f, beat.timeSeconds),
+                    measure = beat.measure
+                })
+                .ToList() ?? new List<RocksmithCachedEbeatData>(),
+            sections = source?.sections?
+                .Where(section => section != null && section.timeSeconds >= 0f)
+                .OrderBy(section => section.timeSeconds)
+                .Select(section => new RocksmithCachedSectionData
+                {
+                    name = section.name ?? string.Empty,
+                    number = section.number,
+                    timeSeconds = Mathf.Max(0f, section.timeSeconds)
+                })
+                .ToList() ?? new List<RocksmithCachedSectionData>()
+        };
+    }
+
+    private static RocksmithCachedGeneratedPartInfo ToCachedGeneratedPart(TheoryGeneratedPartInfo source, TheoryArrangementData arrangement)
+    {
+        if (source == null)
+            return null;
+
+        return new RocksmithCachedGeneratedPartInfo
+        {
+            partId = source.partId ?? arrangement?.arrangementId ?? string.Empty,
+            displayName = source.displayName ?? arrangement?.displayName ?? string.Empty,
+            instrumentName = source.instrumentName ?? arrangement?.route ?? string.Empty,
+            sourceMidiChannel = source.sourceMidiChannel,
+            sourceMidiProgram = source.sourceMidiProgram,
+            preferredBank = source.preferredBank,
+            isDrum = source.isDrum,
+            isGuitarFamily = source.isGuitarFamily,
+            isExplicitHarmonicPart = source.isExplicitHarmonicPart
+        };
+    }
+
+    private static List<RocksmithCachedNoteData> ToCachedNotes(List<TheoryNoteData> source)
+    {
+        return source?
+            .Where(note => note != null)
+            .OrderBy(note => note.time)
+            .ThenBy(note => note.stringIndex)
+            .Select(ToCachedNote)
+            .ToList() ?? new List<RocksmithCachedNoteData>();
+    }
+
+    private static RocksmithCachedNoteData ToCachedNote(TheoryNoteData source)
+    {
+        return new RocksmithCachedNoteData
+        {
+            id = source.id,
+            time = Mathf.Max(0f, source.time),
+            duration = Mathf.Max(0f, source.duration),
+            stringIdx = Mathf.Max(0, source.stringIndex),
+            fret = Mathf.Max(0, source.fret),
+            note = source.noteName ?? string.Empty,
+            chordId = source.chordId,
+            chordName = source.chordName ?? string.Empty,
+            technique = Mathf.Clamp(source.primaryTechnique, (int)NoteTechnique.None, (int)NoteTechnique.Vibrato),
+            slideTargetFret = source.slideTargetFret,
+            bendStep = source.bendStep,
+            bendVisualStartTime = source.bendVisualStartTime,
+            bendVisualDuration = source.bendVisualDuration,
+            bendPreBend = source.bendPreBend,
+            bendRelease = source.bendRelease,
+            isMuted = source.muted,
+            isPalmMute = source.palmMute,
+            isFretHandMute = source.fretHandMute,
+            isHarmonic = source.harmonic,
+            isAccent = source.accent,
+            isTap = source.tap,
+            isTremolo = source.tremolo,
+            isPinchHarmonic = source.pinchHarmonic,
+            isHammerOn = source.hammerOn,
+            isPullOff = source.pullOff,
+            isHopo = source.hopo || source.hammerOn || source.pullOff,
+            hasVibrato = source.vibrato,
+            vibratoStrength = source.vibratoStrength,
+            maxBend = Mathf.Max(source.maxBend, source.bendStep),
+            isLegato = source.legato || source.hammerOn || source.pullOff,
+            requiresPluck = source.requiresPluck,
+            linkedFromNoteId = source.linkedFromNoteId,
+            bendPoints = source.bendPoints?
+                .Where(point => point != null)
+                .Select(point => new RocksmithCachedBendPointData
+                {
+                    timeSeconds = point.timeSeconds,
+                    step = point.step
+                })
+                .ToList() ?? new List<RocksmithCachedBendPointData>(),
+            techniqueSegments = source.techniqueSegments?
+                .Where(segment => segment != null)
+                .Select(segment => new RocksmithCachedTechniqueSegmentData
+                {
+                    type = segment.type,
+                    startOffset = segment.startOffset,
+                    endOffset = segment.endOffset,
+                    startFret = segment.startFret,
+                    endFret = segment.endFret,
+                    startBend = segment.startBend,
+                    endBend = segment.endBend
+                })
+                .ToList() ?? new List<RocksmithCachedTechniqueSegmentData>()
+        };
+    }
+
+    private static List<RocksmithCachedArpeggioGuideData> ToCachedArpeggioGuides(List<TheoryArpeggioGuideData> source)
+    {
+        return source?
+            .Where(guide => guide != null)
+            .Select(guide => new RocksmithCachedArpeggioGuideData
+            {
+                id = guide.id,
+                startTime = Mathf.Max(0f, guide.startTime),
+                endTime = Mathf.Max(guide.startTime, guide.endTime),
+                chordName = guide.chordName ?? string.Empty,
+                stringFrets = guide.stringFrets != null ? (int[])guide.stringFrets.Clone() : null
+            })
+            .ToList() ?? new List<RocksmithCachedArpeggioGuideData>();
+    }
+
+    private static string ComputeCacheKey(string packagePath, string arrangementId, string arrangementEntry)
+    {
+        FileInfo info = new FileInfo(packagePath);
+        string input = string.Join("|", new[]
+        {
+            ExportVersion,
+            info.FullName,
+            info.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture),
+            info.Length.ToString(CultureInfo.InvariantCulture),
+            arrangementId ?? string.Empty,
+            arrangementEntry ?? string.Empty
+        });
+
+        using SHA256 sha256 = SHA256.Create();
+        byte[] hashBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(input));
+        StringBuilder builder = new StringBuilder(hashBytes.Length * 2);
+        for (int i = 0; i < hashBytes.Length; i++)
+            builder.Append(hashBytes[i].ToString("x2", CultureInfo.InvariantCulture));
+        return builder.ToString();
     }
 }
 
@@ -1437,6 +1743,9 @@ public static class RocksmithMusicXmlWriter
             return false;
 
         if (note.technique == (int)NoteTechnique.Vibrato)
+            return true;
+
+        if (note.hasVibrato)
             return true;
 
         if (note.techniqueSegments == null)

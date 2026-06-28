@@ -18,6 +18,12 @@ public static class SongNotationFacade
         }
 
         string extension = Path.GetExtension(filePath)?.ToLowerInvariant() ?? string.Empty;
+        if (extension == TheoryPackageFormat.Extension)
+        {
+            kind = SongNotationSourceKind.TheoryPackage;
+            return true;
+        }
+
         if (extension == ".musicxml" || extension == ".xml")
         {
             kind = SongNotationSourceKind.MusicXml;
@@ -41,6 +47,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.TheoryPackage:
+                return TheorySongLoader.GetPartSummaries(filePath);
             case SongNotationSourceKind.ArrangementCache:
                 return ArrangementCacheSongLoader.GetPartSummaries(filePath);
             case SongNotationSourceKind.Gp5:
@@ -56,6 +64,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.TheoryPackage:
+                return TheorySongLoader.LoadSong(filePath, targetPartIndex);
             case SongNotationSourceKind.ArrangementCache:
                 return ArrangementCacheSongLoader.LoadSong(filePath, targetPartIndex);
             case SongNotationSourceKind.Gp5:
@@ -71,6 +81,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.TheoryPackage:
+                return TheorySongLoader.LoadArpeggioGuides(filePath, targetPartIndex);
             case SongNotationSourceKind.ArrangementCache:
                 return ArrangementCacheSongLoader.LoadArpeggioGuides(filePath, targetPartIndex);
             default:
@@ -82,6 +94,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.TheoryPackage:
+                return TheorySongLoader.LoadGeneratedArrangement(filePath);
             case SongNotationSourceKind.ArrangementCache:
                 return ArrangementCacheSongLoader.LoadGeneratedArrangement(filePath);
             case SongNotationSourceKind.Gp5:
@@ -97,6 +111,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.TheoryPackage:
+                return TheorySongLoader.TryReadDisplayName(filePath);
             case SongNotationSourceKind.ArrangementCache:
                 return ArrangementCacheSongLoader.TryReadDisplayName(filePath);
             case SongNotationSourceKind.Gp5:
@@ -112,6 +128,8 @@ public static class SongNotationFacade
     {
         switch (kind)
         {
+            case SongNotationSourceKind.TheoryPackage:
+                return TheorySongLoader.TryReadArtist(filePath);
             case SongNotationSourceKind.ArrangementCache:
                 return ArrangementCacheSongLoader.TryReadArtist(filePath);
             case SongNotationSourceKind.Gp5:

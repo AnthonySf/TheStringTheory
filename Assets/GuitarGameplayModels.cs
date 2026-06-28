@@ -492,6 +492,7 @@ public sealed class GuitarGameplaySnapshot
     public bool mainMenuFlowActive;
     public int selectedMainMenuIndex;
     public bool showMiniGames;
+    public bool showChartEditor;
     public int selectedMiniGameIndex;
     public MiniGameScreenSnapshot miniGameSnapshot;
     public bool showStartMenu;

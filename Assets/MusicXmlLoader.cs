@@ -13,6 +13,8 @@ public static class MusicXmlLoader
         public int Index;
         public string PartId;
         public string Name;
+        public string InstrumentType;
+        public string Route;
         public string GroupId;
         public string GroupDisplayName;
         public string DifficultyLabel;
@@ -31,6 +33,8 @@ public static class MusicXmlLoader
                 Index = Index,
                 PartId = PartId,
                 Name = Name,
+                InstrumentType = InstrumentType,
+                Route = Route,
                 GroupId = GroupId,
                 GroupDisplayName = GroupDisplayName,
                 DifficultyLabel = DifficultyLabel,
@@ -97,6 +101,16 @@ public static class MusicXmlLoader
         public float endBend;
     }
 
+    private sealed class MusicXmlPartDescriptor
+    {
+        public string id;
+        public string name;
+        public string instrumentName;
+        public string instrumentSound;
+        public int midiProgram = -1;
+        public int midiChannel = -1;
+    }
+
     public static List<NoteData> LoadMusicXmlSong(string filePath, int targetPartIndex = -1)
     {
         if (!File.Exists(filePath))
@@ -115,7 +129,7 @@ public static class MusicXmlLoader
                 return null;
             }
 
-            Dictionary<string, string> partNames = ReadPartNames(root);
+            Dictionary<string, MusicXmlPartDescriptor> partDescriptors = ReadPartDescriptors(root);
             List<XElement> parts = root.Elements().Where(e => e.Name.LocalName == "part").ToList();
 
             if (parts.Count == 0)
@@ -124,7 +138,7 @@ public static class MusicXmlLoader
                 return null;
             }
 
-            List<MusicXmlPartSummary> summaries = BuildPartSummaries(parts, partNames);
+            List<MusicXmlPartSummary> summaries = BuildPartSummaries(parts, partDescriptors);
 
             int chosenPartIndex = (targetPartIndex >= 0 && targetPartIndex < parts.Count)
                 ? targetPartIndex
@@ -132,7 +146,7 @@ public static class MusicXmlLoader
 
             XElement chosenPart = parts[chosenPartIndex];
             string chosenPartId = Attr(chosenPart, "id");
-            string chosenPartName = partNames.ContainsKey(chosenPartId) ? partNames[chosenPartId] : $"Part {chosenPartIndex}";
+            string chosenPartName = ResolvePartDisplayName(partDescriptors, chosenPartId, chosenPartIndex);
 
             Debug.Log($"MusicXML selected part: {chosenPartIndex} ('{chosenPartName}')");
 
@@ -198,9 +212,9 @@ public static class MusicXmlLoader
             if (root == null)
                 return new List<MusicXmlPartSummary>();
 
-            Dictionary<string, string> partNames = ReadPartNames(root);
+            Dictionary<string, MusicXmlPartDescriptor> partDescriptors = ReadPartDescriptors(root);
             List<XElement> parts = root.Elements().Where(e => e.Name.LocalName == "part").ToList();
-            return BuildPartSummaries(parts, partNames);
+            return BuildPartSummaries(parts, partDescriptors);
         }
         catch (Exception ex)
         {
@@ -209,9 +223,9 @@ public static class MusicXmlLoader
         }
     }
 
-    private static Dictionary<string, string> ReadPartNames(XElement root)
+    private static Dictionary<string, MusicXmlPartDescriptor> ReadPartDescriptors(XElement root)
     {
-        var result = new Dictionary<string, string>();
+        var result = new Dictionary<string, MusicXmlPartDescriptor>();
 
         XElement partList = root.Elements().FirstOrDefault(e => e.Name.LocalName == "part-list");
         if (partList == null)
@@ -220,15 +234,27 @@ public static class MusicXmlLoader
         foreach (XElement scorePart in partList.Elements().Where(e => e.Name.LocalName == "score-part"))
         {
             string id = Attr(scorePart, "id");
-            string name = ChildValue(scorePart, "part-name");
             if (!string.IsNullOrEmpty(id))
-                result[id] = string.IsNullOrEmpty(name) ? id : name;
+            {
+                XElement scoreInstrument = scorePart.Elements().FirstOrDefault(e => e.Name.LocalName == "score-instrument");
+                XElement midiInstrument = scorePart.Elements().FirstOrDefault(e => e.Name.LocalName == "midi-instrument");
+                int midiProgram = ParseInt(ChildValue(midiInstrument, "midi-program"), -1);
+                result[id] = new MusicXmlPartDescriptor
+                {
+                    id = id,
+                    name = FirstNonEmpty(ChildValue(scorePart, "part-name"), id),
+                    instrumentName = ChildValue(scoreInstrument, "instrument-name"),
+                    instrumentSound = ChildValue(scoreInstrument, "instrument-sound"),
+                    midiProgram = NormalizeMusicXmlMidiProgram(midiProgram),
+                    midiChannel = ParseInt(ChildValue(midiInstrument, "midi-channel"), -1)
+                };
+            }
         }
 
         return result;
     }
 
-    private static List<MusicXmlPartSummary> BuildPartSummaries(List<XElement> parts, Dictionary<string, string> partNames)
+    private static List<MusicXmlPartSummary> BuildPartSummaries(List<XElement> parts, Dictionary<string, MusicXmlPartDescriptor> partDescriptors)
     {
         var summaries = new List<MusicXmlPartSummary>();
 
@@ -236,7 +262,9 @@ public static class MusicXmlLoader
         {
             XElement part = parts[i];
             string id = Attr(part, "id");
-            string name = partNames.ContainsKey(id) ? partNames[id] : $"Part {i}";
+            MusicXmlPartDescriptor descriptor = null;
+            partDescriptors?.TryGetValue(id, out descriptor);
+            string name = FirstNonEmpty(descriptor?.name, $"Part {i}");
             string lower = name.ToLowerInvariant();
 
             int score = 0;
@@ -273,11 +301,15 @@ public static class MusicXmlLoader
             if (lower.Contains("piano")) score -= 100;
 
             int[] tuningPitches = ParsePartTuningPitches(part);
+            string instrumentType = InferMusicXmlInstrumentType(descriptor, name, tuningPitches, tabCount);
+            string route = InferMusicXmlRoute(descriptor, name, tuningPitches, tabCount, instrumentType);
             summaries.Add(new MusicXmlPartSummary
             {
                 Index = i,
                 PartId = id,
                 Name = name,
+                InstrumentType = instrumentType,
+                Route = route,
                 NoteCount = noteCount,
                 TabCount = tabCount,
                 Score = score,
@@ -290,6 +322,124 @@ public static class MusicXmlLoader
             Debug.Log($"MusicXML part {summary.Index}: '{summary.Name}' noteCount={summary.NoteCount} tabCount={summary.TabCount} score={summary.Score}");
 
         return summaries;
+    }
+
+    private static string ResolvePartDisplayName(Dictionary<string, MusicXmlPartDescriptor> partDescriptors, string partId, int fallbackIndex)
+    {
+        return partDescriptors != null &&
+               !string.IsNullOrWhiteSpace(partId) &&
+               partDescriptors.TryGetValue(partId, out MusicXmlPartDescriptor descriptor)
+            ? FirstNonEmpty(descriptor?.name, $"Part {fallbackIndex}")
+            : $"Part {fallbackIndex}";
+    }
+
+    private static int NormalizeMusicXmlMidiProgram(int midiProgram)
+    {
+        if (midiProgram <= 0)
+            return midiProgram;
+
+        return Mathf.Clamp(midiProgram - 1, 0, 127);
+    }
+
+    private static string InferMusicXmlInstrumentType(
+        MusicXmlPartDescriptor descriptor,
+        string partName,
+        int[] tuningPitches,
+        int tabCount)
+    {
+        string text = BuildInstrumentSearchText(partName, descriptor);
+        if (ContainsAny(text, "drum", "percussion", "kit"))
+            return "drums";
+        if (ContainsAny(text, "bass"))
+            return "bass";
+        if (ContainsAny(text, "piano", "keyboard", "keys", "synth"))
+            return "piano";
+        if (ContainsAny(text, "vocal", "voice", "lyric", "choir"))
+            return "vocals";
+        if (ContainsAny(text, "guitar", "lead", "rhythm", "tab"))
+            return "guitar";
+
+        if (descriptor != null)
+        {
+            if (descriptor.midiChannel == 10)
+                return "drums";
+            if (descriptor.midiProgram >= 32 && descriptor.midiProgram <= 39)
+                return "bass";
+            if (descriptor.midiProgram >= 24 && descriptor.midiProgram <= 31)
+                return "guitar";
+            if (descriptor.midiProgram >= 0 && descriptor.midiProgram <= 7)
+                return "piano";
+            if (descriptor.midiProgram == 52 || descriptor.midiProgram == 53)
+                return "vocals";
+        }
+
+        if (tuningPitches != null && tuningPitches.Length > 0)
+            return tuningPitches.Length <= 4 ? "bass" : "guitar";
+        if (tabCount > 0)
+            return "guitar";
+
+        return string.Empty;
+    }
+
+    private static string InferMusicXmlRoute(
+        MusicXmlPartDescriptor descriptor,
+        string partName,
+        int[] tuningPitches,
+        int tabCount,
+        string instrumentType)
+    {
+        string text = BuildInstrumentSearchText(partName, descriptor);
+        if (string.Equals(instrumentType, "drums", StringComparison.OrdinalIgnoreCase))
+            return "Drums";
+        if (string.Equals(instrumentType, "bass", StringComparison.OrdinalIgnoreCase))
+            return "Bass";
+        if (string.Equals(instrumentType, "piano", StringComparison.OrdinalIgnoreCase))
+            return "Piano";
+        if (string.Equals(instrumentType, "vocals", StringComparison.OrdinalIgnoreCase))
+            return "Vocals";
+        if (string.Equals(instrumentType, "guitar", StringComparison.OrdinalIgnoreCase))
+        {
+            if (ContainsAny(text, "rhythm", "rythm"))
+                return "Rhythm";
+            return "Lead";
+        }
+
+        if (tuningPitches != null && tuningPitches.Length > 0)
+            return tuningPitches.Length <= 4 ? "Bass" : "Lead";
+        if (tabCount > 0)
+            return "Lead";
+
+        return string.Empty;
+    }
+
+    private static string BuildInstrumentSearchText(string partName, MusicXmlPartDescriptor descriptor)
+    {
+        return string.Join(" ",
+            new[]
+            {
+                partName,
+                descriptor?.instrumentName,
+                descriptor?.instrumentSound
+            }
+            .Where(value => !string.IsNullOrWhiteSpace(value)))
+            .ToLowerInvariant();
+    }
+
+    private static bool ContainsAny(string text, params string[] needles)
+    {
+        if (string.IsNullOrWhiteSpace(text) || needles == null)
+            return false;
+
+        for (int i = 0; i < needles.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(needles[i]) &&
+                text.IndexOf(needles[i], StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static int ChooseBestPart(List<MusicXmlPartSummary> summaries)
@@ -1754,14 +1904,34 @@ public static class MusicXmlLoader
 
     private static string Attr(XElement e, string attrName)
     {
+        if (e == null)
+            return string.Empty;
+
         XAttribute a = e.Attribute(attrName);
         return a != null ? a.Value : "";
     }
 
     private static string ChildValue(XElement e, string childName)
     {
+        if (e == null)
+            return string.Empty;
+
         XElement child = e.Elements().FirstOrDefault(x => x.Name.LocalName == childName);
         return child != null ? child.Value : "";
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null)
+            return string.Empty;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(values[i]))
+                return values[i].Trim();
+        }
+
+        return string.Empty;
     }
 
     private static int ParseInt(string s, int fallback)

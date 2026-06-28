@@ -1650,6 +1650,8 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly MiniGamesScreenOverlay miniGamesScreenOverlay;
 
+    private readonly ChartEditorOverlay chartEditorOverlay;
+
     private readonly VisualElement startMenuOverlay;
 
     private readonly VisualElement startMenuShell;
@@ -6051,6 +6053,8 @@ public sealed class TabsSongHeaderOverlay
 
         CreateMainMenuEntry("Tone Lab", string.Empty, new Color(0.21f, 0.88f, 0.84f, 1f), () => owner?.OpenToneLabFromUi());
 
+        CreateMainMenuEntry("Chart Editor", string.Empty, new Color(0.72f, 0.52f, 1f, 1f), () => owner?.OpenChartEditorFromUi());
+
         CreateMainMenuEntry("Mini Games", string.Empty, new Color(1f, 0.72f, 0.35f, 1f), () => owner?.OpenMiniGamesFromUi());
 
         CreateMainMenuEntry("Exit", string.Empty, new Color(0.96f, 0.46f, 0.55f, 1f), () => owner?.ExitGameFromUi());
@@ -6254,6 +6258,7 @@ public sealed class TabsSongHeaderOverlay
         mainMenuOverlay.Add(mainMenuVersionLabel);
 
         miniGamesScreenOverlay = new MiniGamesScreenOverlay(owner, bodyFontDefinition, logoFontDefinition, modernUiFontDefinition);
+        chartEditorOverlay = new ChartEditorOverlay(owner, modernUiFontDefinition, logoFontDefinition);
 
         startMenuOverlay = CreateFullscreenOverlay();
         startMenuOverlay.style.backgroundColor = new Color(0.01f, 0.02f, 0.05f, 0.44f);
@@ -10348,6 +10353,7 @@ public sealed class TabsSongHeaderOverlay
         root.Add(mainMenuOverlay);
 
         root.Add(miniGamesScreenOverlay.RootElement);
+        root.Add(chartEditorOverlay.RootElement);
 
         root.Add(startMenuOverlay);
 
@@ -10845,17 +10851,18 @@ public sealed class TabsSongHeaderOverlay
         bool showTuner = snapshot.showTuner && !showEnd && !showToneLab;
         bool showNotesDetectorTest = snapshot.showNotesDetectorTestMenu && !showEnd && !showToneLab && !showTuner;
         bool showMiniGames = snapshot.showMiniGames && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest;
-        bool showGameplayAudioPopup = snapshot.showGameplayAudioPopup && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
-        bool showCharacterSelection = snapshot.showCharacterSelection && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
+        bool showChartEditor = snapshot.showChartEditor && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
+        bool showGameplayAudioPopup = snapshot.showGameplayAudioPopup && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
+        bool showCharacterSelection = snapshot.showCharacterSelection && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
 
-        bool showStartMenu = snapshot.showStartMenu && !showCharacterSelection && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
-        bool showMultiplayerRhythmSetup = snapshot.showMultiplayerRhythmSetup && !showStartMenu && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
+        bool showStartMenu = snapshot.showStartMenu && !showCharacterSelection && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
+        bool showMultiplayerRhythmSetup = snapshot.showMultiplayerRhythmSetup && !showStartMenu && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
 
-        bool showLibraryLoading = snapshot.showLibraryLoadingOverlay && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
+        bool showLibraryLoading = snapshot.showLibraryLoadingOverlay && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
 
         SetWordmarkParentForLibraryLoading(showLibraryLoading);
 
-        bool showMainMenu = snapshot.showMainMenu && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames;
+        bool showMainMenu = snapshot.showMainMenu && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
 
         bool showLoopPausePopup = snapshot.showLoopPausePopup && !showEnd;
 
@@ -10873,26 +10880,26 @@ public sealed class TabsSongHeaderOverlay
         bool showBugReport = snapshot.showBugReportScreen && !showDiagnosticsConsent && !showEnd;
         bool showBugReportSent = snapshot.showBugReportSentPopup && !showDiagnosticsConsent && !showBugReport && !showEnd;
 
-        bool showBackgroundMoodSetter = snapshot.showBackgroundMoodSetter && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showGameplayAudioPopup;
+        bool showBackgroundMoodSetter = snapshot.showBackgroundMoodSetter && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showGameplayAudioPopup;
 
-        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showDiagnosticsConsent && !showBugReport && !showBugReportSent && !showBackgroundMoodSetter && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showDiagnosticsConsent && !showBugReport && !showBugReportSent && !showBackgroundMoodSetter && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
 
-        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showGameplayAudioPopup;
+        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showGameplayAudioPopup;
         bool showSharedPauseSidebarBase = showPause || showGameModes || showSettings;
 
-        bool showSelection = snapshot.showSongSelection && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames;
+        bool showSelection = snapshot.showSongSelection && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor;
 
-        bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames;
+        bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor;
 
-        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showGameplayAudioPopup;
+        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showGameplayAudioPopup;
 
-        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
+        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
 
         bool isHighway3D = owner != null && owner.renderMode.UsesHighway3D();
         bool isHighway3DAndTabs = owner != null && owner.renderMode == GuitarRenderMode.Highway3DAndTabs;
         bool isTabsGameplay = owner != null && owner.renderMode.UsesTabHudLayout() && snapshot.gameplayMode == GuitarGameplayMode.Guitar;
 
-        bool showTechniqueLegend = isTabsGameplay && !IsAlphaTabTabsGameplayLayout() && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showGameplayAudioPopup && !showPause && !showBackgroundMoodSetter && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool showTechniqueLegend = isTabsGameplay && !IsAlphaTabTabsGameplayLayout() && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor && !showGameplayAudioPopup && !showPause && !showBackgroundMoodSetter && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
 
 
@@ -10950,6 +10957,7 @@ public sealed class TabsSongHeaderOverlay
 
         mainMenuOverlay.style.display = showMainMenu ? DisplayStyle.Flex : DisplayStyle.None;
         miniGamesScreenOverlay.Update(snapshot, showMiniGames);
+        chartEditorOverlay.Update(Time.unscaledDeltaTime, showChartEditor);
 
         startMenuOverlay.style.display = showStartMenu ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -11089,6 +11097,7 @@ public sealed class TabsSongHeaderOverlay
             && !showTuner
             && !showNotesDetectorTest
             && !showMiniGames
+            && !showChartEditor
             && !showGameplayAudioPopup
             && !showMainMenu
             && !showStartMenu
@@ -11179,6 +11188,7 @@ public sealed class TabsSongHeaderOverlay
             && !showTuner
 
             && !showMiniGames
+            && !showChartEditor
 
             && !showLoopPausePopup;
 
@@ -11189,7 +11199,7 @@ public sealed class TabsSongHeaderOverlay
         bool pauseLikeHudMenu = showPause || showSettings || showGlobalSettings || showBackgroundMoodSetter || showGameModes || showHeroModeSettings || showDiagnosticsConsent || showBugReport || showBugReportSent;
         pauseLikeHudMenu = pauseLikeHudMenu || showGameplayAudioPopup;
         bool showGameplayHudPreviewInMenus = snapshot.showGameplayHudPreviewInMenus;
-        bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showMiniGames || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
+        bool hideGameplayHudCards = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showMiniGames || showChartEditor || showOffsetHelper || showLoopSetup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || (pauseLikeHudMenu && !showGameplayHudPreviewInMenus);
         bool detectorGameplayMinimalHud = snapshot.notesDetectorGameplayTestActive;
         highwayCharacterVisible = snapshot.showHighwayCharacter;
 
@@ -11224,6 +11234,7 @@ public sealed class TabsSongHeaderOverlay
                                            !showTuner &&
                                            !showNotesDetectorTest &&
                                            !showMiniGames &&
+                                           !showChartEditor &&
                                            !showOffsetHelper &&
                                            !showLoopSetup &&
                                            !showLoopPausePopup &&
@@ -11251,6 +11262,7 @@ public sealed class TabsSongHeaderOverlay
                                         !showTuner &&
                                         !showNotesDetectorTest &&
                                         !showMiniGames &&
+                                        !showChartEditor &&
                                         !showOffsetHelper &&
                                         !snapshot.showStartupTuningReminder &&
                                         !snapshot.mainMenuFlowActive &&
@@ -11261,7 +11273,7 @@ public sealed class TabsSongHeaderOverlay
 
         UpdateControllerCursor(snapshot);
 
-        judgePopupLayer.style.display = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showMiniGames || showOffsetHelper || showLoopSetup || showLoopPausePopup || showArrangementDifficultyPopup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || pauseLikeHudMenu ? DisplayStyle.None : DisplayStyle.Flex;
+        judgePopupLayer.style.display = snapshot.mainMenuFlowActive || showSelection || showTrackSelection || showEnd || showToneLab || showTuner || showNotesDetectorTest || showMiniGames || showChartEditor || showOffsetHelper || showLoopSetup || showLoopPausePopup || showArrangementDifficultyPopup || showMultiplayerRhythmSetup || showDiagnosticsConsent || showBugReport || showBugReportSent || pauseLikeHudMenu ? DisplayStyle.None : DisplayStyle.Flex;
 
         if (showPause || showSettings || showNotesDetectorTest || showGameModes || showHeroModeSettings)
 
@@ -13452,6 +13464,7 @@ public sealed class TabsSongHeaderOverlay
             (snapshot.showSongSelection ||
              snapshot.showTrackSelection ||
              snapshot.showMainMenu ||
+             snapshot.showChartEditor ||
              snapshot.mainMenuFlowActive);
         bool loopTimelineVisible = snapshot != null && (snapshot.showLoopSettings || (snapshot.loopEnabled && !suppressGameplayTimelineForMenu));
         bool visible = snapshot != null && ((showGameplayShortcuts && snapshot.showGameplayTimeline) || loopTimelineVisible) && duration > 0.25f;

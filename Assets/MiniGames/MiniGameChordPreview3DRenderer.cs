@@ -19,6 +19,8 @@ public sealed class MiniGameChordPreview3DRenderer
     private const float FrameThickness = 0.045f;
     private const float CameraDistance = 12.4f;
     private const float CameraYOffset = 4.34f;
+    private static readonly int[] StandardTuning = { 40, 45, 50, 55, 59, 64 };
+    private static readonly Color MissedNoteOutlineColor = new Color(1f, 0.88f, 0.16f, 0.96f);
 
     private readonly GuitarBridgeServer owner;
     private GameObject root;
@@ -179,18 +181,27 @@ public sealed class MiniGameChordPreview3DRenderer
                 continue;
             }
 
+            bool missed = IsMissedMidi(chord, GetStringFretMidi(stringIndex, fret));
             if (fret == 0)
             {
                 CreateStringMarker(parent, "0", stringIndex, x, top + 0.36f, frameColor);
+                if (missed)
+                    CreateMissedNoteOutline(parent, new Vector3(x, top + 0.36f, -0.002f), FingerCircleDiameter * 1.10f, FingerCircleDiameter * 0.92f);
                 continue;
             }
 
-            if (IsCoveredByBarre(chord.barres, fret, stringIndex, finger))
-                continue;
-
             int displayFret = Mathf.Clamp(fret - baseFret, 0, VisibleFretCount - 1);
             float y = top - ((displayFret + 0.5f) * fretSpacing);
+            if (IsCoveredByBarre(chord.barres, fret, stringIndex, finger))
+            {
+                if (missed)
+                    CreateMissedNoteOutline(parent, new Vector3(x, y, -0.004f), FingerCircleDiameter * 1.12f, FingerCircleDiameter * 1.12f);
+                continue;
+            }
+
             CreateFingerCircle(parent, stringIndex, finger, x, y, FingerCircleDiameter, chord.active);
+            if (missed)
+                CreateMissedNoteOutline(parent, new Vector3(x, y, -0.004f), FingerCircleDiameter * 1.18f, FingerCircleDiameter * 1.18f);
         }
 
         CreateChordFrame(parent, left, right, bottom, top, frameColor, chord.active);
@@ -273,6 +284,28 @@ public sealed class MiniGameChordPreview3DRenderer
         return left + ((stringIndex / StringColumnCount) * (right - left));
     }
 
+    private static int GetStringFretMidi(int stringIndex, int fret)
+    {
+        if (stringIndex < 0 || stringIndex >= StandardTuning.Length || fret < 0)
+            return -1;
+
+        return StandardTuning[stringIndex] + fret;
+    }
+
+    private static bool IsMissedMidi(FightClubChordSnapshot chord, int midi)
+    {
+        if (midi < 0 || chord?.missedMidis == null || chord.missedMidis.Length == 0)
+            return false;
+
+        for (int i = 0; i < chord.missedMidis.Length; i++)
+        {
+            if (chord.missedMidis[i] == midi)
+                return true;
+        }
+
+        return false;
+    }
+
     private void CreateBarres(Transform parent, List<FightClubBarreSnapshot> barres, int baseFret, float left, float right, float top, float fretSpacing, bool active)
     {
         if (barres == null)
@@ -348,6 +381,11 @@ public sealed class MiniGameChordPreview3DRenderer
         CreateFramePiece(parent, center + new Vector3(0f, -height * 0.5f, 0f), new Vector3(width, 0.034f, NoteDepth * 0.55f), outlineMat, "MiniGameNoteOutlineBottom");
         CreateFramePiece(parent, center + new Vector3(-width * 0.5f, 0f, 0f), new Vector3(0.034f, height, NoteDepth * 0.55f), outlineMat, "MiniGameNoteOutlineLeft");
         CreateFramePiece(parent, center + new Vector3(width * 0.5f, 0f, 0f), new Vector3(0.034f, height, NoteDepth * 0.55f), outlineMat, "MiniGameNoteOutlineRight");
+    }
+
+    private void CreateMissedNoteOutline(Transform parent, Vector3 center, float width, float height)
+    {
+        CreateNoteOutline(parent, center, width, height, MissedNoteOutlineColor);
     }
 
     private void CreateChordFrame(Transform parent, float left, float right, float bottom, float top, Color color, bool active)
@@ -639,8 +677,9 @@ public sealed class MiniGameChordPreview3DRenderer
             FightClubChordSnapshot chord = snapshot.chords[i];
             string frets = chord?.fretsLowToHigh == null ? string.Empty : string.Join(",", chord.fretsLowToHigh);
             string fingers = chord?.fingersLowToHigh == null ? string.Empty : string.Join(",", chord.fingersLowToHigh);
+            string missed = chord?.missedMidis == null ? string.Empty : string.Join(",", chord.missedMidis);
             string barres = BuildBarreSignature(chord?.barres);
-            parts.Add($"{chord?.name}:{frets}:{fingers}:{barres}:{chord?.status}:{chord?.active}");
+            parts.Add($"{chord?.name}:{frets}:{fingers}:{missed}:{barres}:{chord?.status}:{chord?.active}");
         }
 
         return string.Join("|", parts);
