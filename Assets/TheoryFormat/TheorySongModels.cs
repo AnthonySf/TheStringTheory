@@ -43,6 +43,9 @@ public sealed class TheoryImportProvenance
 {
     public string sourceType;
     public string sourceDisplayName;
+    public string sourcePath;
+    public long sourceLastWriteUtcTicks;
+    public long sourceSizeBytes;
     public long importedAtUtcTicks;
     public string converterName;
     public string converterVersion;

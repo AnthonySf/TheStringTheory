@@ -506,6 +506,12 @@ public sealed class GuitarGameplaySnapshot
     public string libraryLoadingStatusText;
     public float libraryLoadingProgressPercent;
     public bool libraryLoadingShowsProgress;
+    public bool showLibraryImportPopup;
+    public List<string> libraryImportCandidateNames;
+    public List<string> libraryImportCandidateSubtitles;
+    public List<string> libraryImportCandidateKindLabels;
+    public List<bool> libraryImportCandidateSelected;
+    public string libraryImportPopupStatusText;
     public int selectedStartMenuStepIndex;
     public int selectedStartMenuModeIndex;
     public int selectedStartMenuArcadeSetupIndex;

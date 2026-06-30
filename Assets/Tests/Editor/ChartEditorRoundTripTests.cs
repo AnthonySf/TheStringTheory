@@ -642,7 +642,7 @@ public sealed class ChartEditorRoundTripTests
     }
 
     [Test]
-    public void ExportWithEditedNotes_InvalidatesPreservedGeneratedPlaybackEvents()
+    public void ExportWithEditedNotes_RegeneratesGeneratedPlaybackFromEditedChartNotes()
     {
         using ExternalContentRootScope scope = new ExternalContentRootScope();
         ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
@@ -658,8 +658,12 @@ public sealed class ChartEditorRoundTripTests
 
         GeneratedPlaybackArrangement compatibility = SongNotationFacade.LoadGeneratedArrangement(manifestPath, SongNotationSourceKind.ArrangementCache);
         GeneratedPlaybackArrangement theory = SongNotationFacade.LoadGeneratedArrangement(packagePath, SongNotationSourceKind.TheoryPackage);
-        Assert.AreEqual(0, compatibility.notes.Count, "Edited notes should not keep stale compatibility generated playback events.");
-        Assert.AreEqual(0, theory.notes.Count, "Edited notes should not keep stale .theory generated playback events.");
+        Assert.Greater(compatibility.notes.Count, 0, "Edited notes should produce regenerated compatibility generated playback events.");
+        Assert.Greater(theory.notes.Count, 0, "Edited notes should produce regenerated .theory generated playback events.");
+        Assert.IsTrue(compatibility.notes.Any(note => Math.Abs(note.startTimeSeconds - (float)project.tracks[0].notes[0].timeSeconds) <= 0.001f),
+            "Compatibility generated playback should reflect the edited chart note timing.");
+        Assert.IsTrue(theory.notes.Any(note => Math.Abs(note.startTimeSeconds - (float)project.tracks[0].notes[0].timeSeconds) <= 0.001f),
+            ".theory generated playback should reflect the edited chart note timing.");
     }
 
     [Test]
@@ -795,14 +799,26 @@ public sealed class ChartEditorRoundTripTests
         Assert.AreEqual(ChartEditorSourceKind.ArrangementCache, project.sourceKind);
         Assert.AreEqual("Import Translation Song", project.metadata.title);
         Assert.AreEqual("Unit Test Band", project.metadata.artist);
-        Assert.AreEqual(1, project.tracks.Count, "Only the full difficulty arrangement should be imported for a track group.");
+        Assert.AreEqual(2, project.tracks.Count, "All difficulty variants should be imported for a track group.");
         Assert.AreEqual(2, project.sections.Count, "Cached arrangement sections should be imported into the editor.");
         Assert.IsTrue(project.beatMap.beatMarkers.Any(marker => marker != null && marker.isAnchor && Approximately(marker.audioTimeSeconds, 0.0)));
         Assert.IsTrue(project.beatMap.beatMarkers.Any(marker => marker != null && marker.isAnchor && Approximately(marker.audioTimeSeconds, 2.0)));
 
-        ChartEditorTrack track = project.tracks[0];
+        ChartEditorTrack easyTrack = project.tracks.FirstOrDefault(candidate => candidate.id == "lead_easy");
+        Assert.IsNotNull(easyTrack, "Easy arrangement variant should be imported.");
+        Assert.AreEqual("1", easyTrack.difficultyLabel);
+        Assert.AreEqual(1, easyTrack.difficultyUiIndex);
+        Assert.AreEqual("lead", easyTrack.arrangementGroupId);
+        Assert.IsTrue(easyTrack.hasDifficultyVariants);
+
+        ChartEditorTrack track = project.tracks.FirstOrDefault(candidate => candidate.id == "lead_full");
+        Assert.IsNotNull(track, "Full arrangement variant should be imported.");
         Assert.AreEqual("lead_full", track.id);
         Assert.AreEqual(ChartEditorTrackRole.LeadGuitar, track.role);
+        Assert.AreEqual("lead", track.arrangementGroupId);
+        Assert.AreEqual("Full", track.difficultyLabel);
+        Assert.AreEqual(0, track.difficultyUiIndex);
+        Assert.IsTrue(track.hasDifficultyVariants);
         Assert.AreEqual("E Standard", track.tuning.displayName);
         CollectionAssert.AreEqual(new[] { 40, 45, 50, 55, 59, 64 }, track.tuning.stringPitches);
         Assert.AreEqual(7, track.notes.Count);
@@ -858,12 +874,15 @@ public sealed class ChartEditorRoundTripTests
         Assert.IsTrue(palmMute.palmMute);
 
         Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(project, out string exportDirectory, out string exportError), exportError);
-        RocksmithCachedArrangementPart exported = ReadSingleExportedArrangementPart(exportDirectory);
+        RocksmithCachedArrangementPart exported = ReadExportedArrangementPart(exportDirectory, "lead_full");
 
         Assert.AreEqual("lead_full", exported.partId);
         Assert.AreEqual("Lead Guitar", exported.displayName);
         Assert.AreEqual("Lead", exported.route);
+        Assert.AreEqual("lead", exported.arrangementGroupId);
         Assert.AreEqual("Full", exported.difficultyLabel);
+        Assert.AreEqual(0, exported.difficultyUiIndex);
+        Assert.IsTrue(exported.hasDifficultyVariants);
         Assert.AreEqual("E Standard", exported.tuningDisplayName);
         CollectionAssert.AreEqual(new[] { 40, 45, 50, 55, 59, 64 }, exported.tuningPitches);
         Assert.AreEqual(7, exported.notes.Count);
@@ -919,6 +938,134 @@ public sealed class ChartEditorRoundTripTests
         RocksmithCachedNoteData exportedPalmMute = FindCachedNote(exported, 507);
         Assert.IsTrue(exportedPalmMute.isMuted);
         Assert.IsTrue(exportedPalmMute.isPalmMute);
+    }
+
+    [Test]
+    public void HeadlessTheoryConversion_FromCachedArrangement_WritesValidatedPackageWithDifficultiesAndPlayback()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        string manifestPath = WriteCachedArrangementFixture(scope.RootPath);
+        string outputPath = Path.Combine(scope.RootPath, "converted.theory");
+
+        Assert.IsTrue(ChartEditorTheoryConversionService.ConvertToTheoryPackage(new ChartEditorTheoryConversionRequest
+        {
+            sourcePath = manifestPath,
+            outputPackagePath = outputPath,
+            overwriteExisting = true,
+            validatePackage = true,
+            requireAudio = true
+        }, out ChartEditorTheoryConversionResult result, out string conversionError), conversionError);
+
+        Assert.IsTrue(File.Exists(result.packagePath), "Headless conversion did not write a .theory package.");
+        Assert.IsTrue(result.packageWasWritten);
+        Assert.AreEqual(ChartEditorSourceKind.ArrangementCache, result.sourceKind);
+        Assert.AreEqual(SongNotationSourceKind.ArrangementCache, result.sourceNotationKind);
+        Assert.AreEqual(2, result.project.tracks.Count, "Headless conversion should keep every difficulty variant.");
+
+        Assert.IsTrue(TheorySongLoader.TryLoadManifest(result.packagePath, out TheorySongManifest manifest));
+        Assert.AreEqual(2, manifest.arrangements.Count);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(manifest.primaryAudioEntry));
+        Assert.IsTrue(TheoryPackageIO.EntryExists(result.packagePath, manifest.primaryAudioEntry), "Converted package should embed playback audio.");
+
+        TheoryArrangementSummary easySummary = manifest.arrangements.FirstOrDefault(summary => summary.arrangementId == "lead_easy");
+        TheoryArrangementSummary fullSummary = manifest.arrangements.FirstOrDefault(summary => summary.arrangementId == "lead_full");
+        Assert.IsNotNull(easySummary, "Converted package lost the easy difficulty.");
+        Assert.IsNotNull(fullSummary, "Converted package lost the full difficulty.");
+        Assert.AreEqual("lead", easySummary.groupId);
+        Assert.AreEqual("1", easySummary.difficultyLabel);
+        Assert.AreEqual(1, easySummary.difficultyUiIndex);
+        Assert.IsTrue(easySummary.hasDifficultyVariants);
+        Assert.AreEqual("lead", fullSummary.groupId);
+        Assert.AreEqual("Full", fullSummary.difficultyLabel);
+        Assert.AreEqual(0, fullSummary.difficultyUiIndex);
+        Assert.IsTrue(fullSummary.hasDifficultyVariants);
+
+        Assert.IsTrue(TheoryPackageIO.TryReadArrangement(result.packagePath, easySummary, out TheoryArrangementData easyArrangement, out string easyError), easyError);
+        Assert.IsTrue(TheoryPackageIO.TryReadArrangement(result.packagePath, fullSummary, out TheoryArrangementData fullArrangement, out string fullError), fullError);
+        Assert.AreEqual(1, easyArrangement.notes.Count);
+        Assert.AreEqual(7, fullArrangement.notes.Count);
+        Assert.Greater(easyArrangement.generatedNotes.Count, 0, "Converted easy difficulty should include generated playback events.");
+        Assert.Greater(fullArrangement.generatedNotes.Count, 0, "Converted full difficulty should include generated playback events.");
+
+        GeneratedPlaybackArrangement generated = SongNotationFacade.LoadGeneratedArrangement(result.packagePath, SongNotationSourceKind.TheoryPackage);
+        Assert.IsNotNull(generated);
+        Assert.Greater(generated.notes.Count, 0, "Runtime generated playback loader should read the converted package.");
+    }
+
+    [Test]
+    public void LibraryTheoryConversion_DefaultsToSongsRootNotChartEditorFolder()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        Directory.CreateDirectory(ExternalContentPaths.PersistentSongsDirectory);
+        string manifestPath = WriteCachedArrangementFixture(ExternalContentPaths.PersistentSongsDirectory);
+
+        Assert.IsTrue(ChartEditorTheoryConversionService.ConvertLibrarySourceToTheoryPackage(new ChartEditorTheoryConversionRequest
+        {
+            sourcePath = manifestPath,
+            validatePackage = true,
+            requireAudio = true
+        }, out ChartEditorTheoryConversionResult result, out string conversionError), conversionError);
+
+        string songsRoot = Path.GetFullPath(ExternalContentPaths.PersistentSongsDirectory);
+        string packageDirectory = Path.GetFullPath(Path.GetDirectoryName(result.packagePath) ?? string.Empty);
+        string sourceDirectory = Path.GetFullPath(Path.GetDirectoryName(manifestPath) ?? string.Empty);
+        string chartEditorDirectory = Path.GetFullPath(Path.Combine(ExternalContentPaths.PersistentSongsDirectory, ChartEditorProjectStore.ChartEditorSaveFolderName));
+
+        Assert.AreEqual(songsRoot, packageDirectory, "Library conversion should write the .theory package directly under the user's Songs folder.");
+        Assert.AreNotEqual(sourceDirectory, packageDirectory, "Library conversion should not hide the .theory package in the imported song's source subfolder.");
+        Assert.IsFalse(packageDirectory.StartsWith(chartEditorDirectory + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase));
+        Assert.IsFalse(string.Equals(packageDirectory, chartEditorDirectory, StringComparison.OrdinalIgnoreCase));
+
+        SongLibraryService.ClearCache();
+        List<SongLibraryEntry> librarySongs = SongLibraryService.GetAvailableSongs(forceRefresh: true, refreshImports: false);
+        Assert.IsTrue(
+            librarySongs.Any(entry => entry != null &&
+                                      string.Equals(Path.GetFullPath(entry.PrimaryNotationPath ?? string.Empty), Path.GetFullPath(result.packagePath), StringComparison.OrdinalIgnoreCase)),
+            "Library scanner should discover .theory packages written directly under the user's Songs folder.");
+    }
+
+    [Test]
+    public void LibraryTheoryConversion_RejectsChartEditorOutputFolder()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        string manifestPath = WriteCachedArrangementFixture(scope.RootPath);
+        string chartEditorDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, ChartEditorProjectStore.ChartEditorSaveFolderName);
+
+        Assert.IsFalse(ChartEditorTheoryConversionService.ConvertLibrarySourceToTheoryPackage(new ChartEditorTheoryConversionRequest
+        {
+            sourcePath = manifestPath,
+            outputDirectory = chartEditorDirectory,
+            validatePackage = true,
+            requireAudio = true
+        }, out _, out string conversionError), "Library conversion should not write into the chart editor save folder.");
+
+        StringAssert.Contains("chart editor", conversionError.ToLowerInvariant());
+        Assert.IsFalse(Directory.Exists(chartEditorDirectory) &&
+                       Directory.GetFiles(chartEditorDirectory, $"*{TheoryPackageFormat.Extension}", SearchOption.AllDirectories).Length > 0,
+            "Rejected library conversion should not leave .theory packages in the chart editor folder.");
+    }
+
+    [Test]
+    public void HeadlessTheoryConversion_ExistingTheoryWithoutOutput_ReturnsExistingValidatedPackage()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        AttachFixtureAudio(project, scope.RootPath);
+        PrepareProjectForNoEditRoundTrip(project);
+        Assert.IsTrue(TheoryChartEditorExporter.ExportProject(project, scope.RootPath, out string packagePath, out string exportError), exportError);
+
+        Assert.IsTrue(ChartEditorTheoryConversionService.ConvertToTheoryPackage(new ChartEditorTheoryConversionRequest
+        {
+            sourcePath = packagePath,
+            validatePackage = true,
+            requireAudio = true
+        }, out ChartEditorTheoryConversionResult result, out string conversionError), conversionError);
+
+        Assert.AreEqual(Path.GetFullPath(packagePath), result.packagePath);
+        Assert.IsTrue(result.sourceAlreadyTheoryPackage);
+        Assert.IsFalse(result.packageWasWritten);
+        Assert.AreEqual(ChartEditorSourceKind.TheoryPackage, result.sourceKind);
+        Assert.AreEqual(SongNotationSourceKind.TheoryPackage, result.sourceNotationKind);
     }
 
     [Test]
@@ -1158,12 +1305,12 @@ public sealed class ChartEditorRoundTripTests
         Assert.IsNotNull(project, "Import did not return a chart editor project.");
         Assert.AreEqual("November Rain", project.metadata.title);
         Assert.AreEqual("Guns N' Roses", project.metadata.artist);
-        Assert.AreEqual(3, project.tracks.Count, "Only full-difficulty bass, lead, and rhythm tracks should be imported.");
+        Assert.GreaterOrEqual(project.tracks.Count, 3, "At least full-difficulty bass, lead, and rhythm tracks should be imported.");
         Assert.AreEqual(26, project.sections.Count, "November Rain sections should be imported from the real cached arrangement.");
         Assert.GreaterOrEqual(project.beatMap.beatMarkers.Count(marker => marker != null && marker.isAnchor), 100, "November Rain beat/downbeat anchors should be imported.");
 
         Dictionary<string, ChartEditorTrack> importedTracksByRoute = project.tracks
-            .Where(track => track != null)
+            .Where(track => track != null && IsFullDifficultyTrack(track))
             .ToDictionary(track => RouteKeyForTrack(track), track => track, StringComparer.OrdinalIgnoreCase);
         CollectionAssert.AreEquivalent(sourcePartsByRoute.Keys.ToArray(), importedTracksByRoute.Keys.ToArray());
 
@@ -1821,6 +1968,18 @@ public sealed class ChartEditorRoundTripTests
 
         RocksmithCachedArrangementPart part = JsonUtility.FromJson<RocksmithCachedArrangementPart>(File.ReadAllText(files[0]));
         Assert.IsNotNull(part, "Exported arrangement JSON could not be parsed.");
+        return part;
+    }
+
+    private static RocksmithCachedArrangementPart ReadExportedArrangementPart(string exportDirectory, string partId)
+    {
+        string arrangementsDirectory = Path.Combine(exportDirectory, "arrangements");
+        Assert.IsTrue(Directory.Exists(arrangementsDirectory), "Export did not create an arrangements directory.");
+
+        string partPath = Path.Combine(arrangementsDirectory, $"{partId}.rs2part.json");
+        Assert.IsTrue(File.Exists(partPath), $"Export did not create arrangement chart file '{partId}'.");
+        RocksmithCachedArrangementPart part = JsonUtility.FromJson<RocksmithCachedArrangementPart>(File.ReadAllText(partPath));
+        Assert.IsNotNull(part, $"Exported arrangement JSON '{partId}' could not be parsed.");
         return part;
     }
 
@@ -2483,6 +2642,9 @@ public sealed class ChartEditorRoundTripTests
         Dictionary<string, RocksmithCachedArrangementPart> parts = new Dictionary<string, RocksmithCachedArrangementPart>(StringComparer.OrdinalIgnoreCase);
         foreach (RocksmithCachedArrangementSummary summary in manifest.arrangements.Where(summary => summary != null))
         {
+            if (!IsFullDifficultySummary(summary))
+                continue;
+
             string route = RouteKey(summary.route);
             string partPath = Path.IsPathRooted(summary.partFilePath)
                 ? summary.partFilePath
@@ -2504,6 +2666,15 @@ public sealed class ChartEditorRoundTripTests
 
         return summary.difficultyUiIndex == 0 ||
                string.Equals(summary.difficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsFullDifficultyTrack(ChartEditorTrack track)
+    {
+        if (track == null)
+            return false;
+
+        return track.difficultyUiIndex == 0 ||
+               string.Equals(track.difficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string RouteKeyForTrack(ChartEditorTrack track)

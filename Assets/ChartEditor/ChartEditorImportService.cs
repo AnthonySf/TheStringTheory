@@ -87,7 +87,7 @@ public static class ChartEditorImportService
         project.metadata.defaultArrangementId = manifest.defaultArrangementId ?? string.Empty;
         project.audio = BuildAudioInfo(audioPath, manifest.durationSeconds);
 
-        List<MusicXmlLoader.MusicXmlPartSummary> selectedSummaries = SelectFullDifficultySummaries(TheorySongLoader.GetPartSummaries(packagePath));
+        List<MusicXmlLoader.MusicXmlPartSummary> selectedSummaries = OrderImportedSummaries(TheorySongLoader.GetPartSummaries(packagePath));
         for (int i = 0; i < selectedSummaries.Count; i++)
         {
             MusicXmlLoader.MusicXmlPartSummary summary = selectedSummaries[i];
@@ -228,7 +228,7 @@ public static class ChartEditorImportService
         project.metadata.coverImagePath = manifest.artworkPath ?? string.Empty;
         project.audio = BuildAudioInfo(manifest.audioPath, manifest.durationSeconds);
 
-        List<MusicXmlLoader.MusicXmlPartSummary> summaries = SelectFullDifficultySummaries(ArrangementCacheSongLoader.GetPartSummaries(manifestPath));
+        List<MusicXmlLoader.MusicXmlPartSummary> summaries = OrderImportedSummaries(ArrangementCacheSongLoader.GetPartSummaries(manifestPath));
         for (int i = 0; i < summaries.Count; i++)
         {
             MusicXmlLoader.MusicXmlPartSummary summary = summaries[i];
@@ -269,7 +269,7 @@ public static class ChartEditorImportService
         project.metadata.artist = SongNotationFacade.TryReadCreator(notationPath, kind) ?? string.Empty;
         project.audio = BuildAudioInfo(audioPath, 0f);
 
-        List<MusicXmlLoader.MusicXmlPartSummary> summaries = SelectFullDifficultySummaries(SongNotationFacade.GetPartSummaries(notationPath, kind));
+        List<MusicXmlLoader.MusicXmlPartSummary> summaries = OrderImportedSummaries(SongNotationFacade.GetPartSummaries(notationPath, kind));
         if (summaries == null || summaries.Count == 0)
         {
             summaries = new List<MusicXmlLoader.MusicXmlPartSummary>
@@ -285,12 +285,13 @@ public static class ChartEditorImportService
             };
         }
 
+        GeneratedPlaybackArrangement generatedArrangement = SongNotationFacade.LoadGeneratedArrangement(notationPath, kind);
         for (int i = 0; i < summaries.Count; i++)
         {
             MusicXmlLoader.MusicXmlPartSummary summary = summaries[i];
             int partIndex = summary?.Index ?? i;
             List<NoteData> notes = SongNotationFacade.LoadSong(notationPath, kind, partIndex) ?? new List<NoteData>();
-            project.tracks.Add(BuildTrack(summary, notes));
+            project.tracks.Add(BuildTrack(summary, notes, generatedArrangement));
         }
 
         if (kind == SongNotationSourceKind.Gp5)
@@ -331,9 +332,11 @@ public static class ChartEditorImportService
     private static void FinishProject(ChartEditorProject project)
     {
         project.EnsureDefaults();
-        KeepFullDifficultyTracksOnly(project);
-        if (project.tracks.Count > 0)
-            project.selectedTrackId = project.tracks[0].id;
+        bool hasValidSelection = !string.IsNullOrWhiteSpace(project.selectedTrackId) &&
+                                 project.tracks.Any(track => track != null &&
+                                                             string.Equals(track.id, project.selectedTrackId, StringComparison.OrdinalIgnoreCase));
+        if (!hasValidSelection && project.tracks.Count > 0)
+            project.selectedTrackId = SelectDefaultImportedTrack(project)?.id ?? project.tracks[0].id;
 
         if (project.sections.Count == 0)
             BuildFallbackSections(project);
@@ -360,52 +363,51 @@ public static class ChartEditorImportService
         }
     }
 
-    public static void KeepFullDifficultyTracksOnly(ChartEditorProject project)
+    private static List<MusicXmlLoader.MusicXmlPartSummary> OrderImportedSummaries(List<MusicXmlLoader.MusicXmlPartSummary> summaries)
     {
-        if (project?.tracks == null || project.tracks.Count <= 1)
-            return;
-
-        project.tracks = project.tracks
-            .Where(track => track != null)
-            .GroupBy(GetFullDifficultyTrackGroupKey, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group
-                .OrderByDescending(track => track.notes?.Count ?? 0)
-                .ThenBy(track => track.displayName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-                .First())
-            .Where(track => track != null)
-            .ToList();
-
-        if (!project.tracks.Any(track => string.Equals(track.id, project.selectedTrackId, StringComparison.OrdinalIgnoreCase)))
-            project.selectedTrackId = project.tracks.Count > 0 ? project.tracks[0].id : string.Empty;
-    }
-
-    private static List<MusicXmlLoader.MusicXmlPartSummary> SelectFullDifficultySummaries(List<MusicXmlLoader.MusicXmlPartSummary> summaries)
-    {
-        summaries ??= new List<MusicXmlLoader.MusicXmlPartSummary>();
-        if (summaries.Count <= 1)
-            return summaries.Where(summary => summary != null).ToList();
-
-        return summaries
+        return (summaries ?? new List<MusicXmlLoader.MusicXmlPartSummary>())
             .Where(summary => summary != null)
-            .GroupBy(GetFullDifficultySummaryGroupKey, StringComparer.OrdinalIgnoreCase)
-            .Select(group => group
-                .OrderBy(summary => IsFullDifficultySummary(summary) ? 0 : 1)
-                .ThenBy(summary => summary.DifficultyUiIndex < 0 ? int.MaxValue : summary.DifficultyUiIndex)
-                .ThenByDescending(summary => summary.NoteCount)
-                .ThenByDescending(summary => summary.TabCount)
-                .ThenByDescending(summary => summary.Score)
-                .First())
-            .Where(summary => summary != null)
+            .OrderBy(summary => GetFullDifficultySummaryGroupKey(summary), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(ResolveDifficultyUiIndex)
+            .ThenByDescending(summary => summary.NoteCount)
+            .ThenBy(summary => summary.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private static bool IsFullDifficultySummary(MusicXmlLoader.MusicXmlPartSummary summary)
+    private static ChartEditorTrack SelectDefaultImportedTrack(ChartEditorProject project)
+    {
+        return project?.tracks?
+            .Where(track => track != null)
+            .OrderBy(track => string.IsNullOrWhiteSpace(track.arrangementGroupId) ? track.id ?? string.Empty : track.arrangementGroupId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(ResolveDifficultyUiIndex)
+            .ThenByDescending(track => track.notes?.Count ?? 0)
+            .FirstOrDefault();
+    }
+
+    private static int ResolveDifficultyUiIndex(MusicXmlLoader.MusicXmlPartSummary summary)
     {
         if (summary == null)
-            return false;
+            return int.MaxValue;
+        if (summary.DifficultyUiIndex >= 0)
+            return summary.DifficultyUiIndex;
+        if (string.Equals(summary.DifficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        return int.TryParse(summary.DifficultyLabel, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+            ? Mathf.Max(0, parsed)
+            : int.MaxValue;
+    }
 
-        return summary.DifficultyUiIndex == 0 ||
-               string.Equals(summary.DifficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase);
+    private static int ResolveDifficultyUiIndex(ChartEditorTrack track)
+    {
+        if (track == null)
+            return int.MaxValue;
+        if (track.difficultyUiIndex >= 0)
+            return track.difficultyUiIndex;
+        if (string.Equals(track.difficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        return int.TryParse(track.difficultyLabel, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+            ? Mathf.Max(0, parsed)
+            : int.MaxValue;
     }
 
     private static string GetFullDifficultySummaryGroupKey(MusicXmlLoader.MusicXmlPartSummary summary)
@@ -422,14 +424,6 @@ public static class ChartEditorImportService
         return $"{NormalizeTrackKey(summary.GroupDisplayName)}|{NormalizeTrackKey(summary.Name)}|{NormalizeTrackKey(summary.TuningDisplayName)}";
     }
 
-    private static string GetFullDifficultyTrackGroupKey(ChartEditorTrack track)
-    {
-        if (track == null)
-            return string.Empty;
-
-        return $"{track.role}|{NormalizeTrackKey(track.displayName)}|{NormalizeTrackKey(track.tuning?.displayName)}";
-    }
-
     private static string NormalizeTrackKey(string value)
     {
         return string.IsNullOrWhiteSpace(value)
@@ -437,24 +431,37 @@ public static class ChartEditorImportService
             : new string(value.Trim().ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
     }
 
-    private static ChartEditorTrack BuildTrack(MusicXmlLoader.MusicXmlPartSummary summary, List<NoteData> sourceNotes)
+    private static ChartEditorTrack BuildTrack(
+        MusicXmlLoader.MusicXmlPartSummary summary,
+        List<NoteData> sourceNotes,
+        GeneratedPlaybackArrangement generatedArrangement = null)
     {
         string importedName = FirstNonEmpty(summary?.GroupDisplayName, summary?.Name, "Track");
         ChartEditorTrackRole role = ResolveRole(summary, summary?.Route, summary?.InstrumentType, summary?.GroupDisplayName, summary?.Name);
+        GeneratedPlaybackPartInfo generatedPart = ResolveGeneratedPlaybackPart(generatedArrangement, summary);
         ChartEditorTrack track = new ChartEditorTrack
         {
             id = FirstNonEmpty(summary?.PartId, summary?.GroupId, Guid.NewGuid().ToString("N")),
             importedName = importedName,
             displayName = importedName,
             role = role,
+            arrangementGroupId = FirstNonEmpty(summary?.GroupId, summary?.PartId),
+            arrangementGroupDisplayName = FirstNonEmpty(summary?.GroupDisplayName, summary?.Name, importedName),
+            arrangementRoute = summary?.Route ?? string.Empty,
+            arrangementInstrumentType = summary?.InstrumentType ?? string.Empty,
+            difficultyLabel = NormalizeDifficultyLabel(summary?.DifficultyLabel, summary?.DifficultyUiIndex ?? -1),
+            difficultyUiIndex = NormalizeDifficultyUiIndex(summary?.DifficultyUiIndex ?? -1, summary?.DifficultyLabel),
+            hasDifficultyVariants = summary?.HasDifficultyVariants ?? false,
             colorHex = ColorForRole(role),
             tuning = new ChartEditorTuningInfo
             {
                 displayName = summary?.TuningDisplayName ?? string.Empty,
                 stringPitches = summary?.StringTuningPitches != null ? (int[])summary.StringTuningPitches.Clone() : null
             },
+            generatedPart = FromGeneratedPlaybackPart(generatedPart, FirstNonEmpty(summary?.PartId, summary?.GroupId), importedName, role),
             notes = new List<ChartEditorNote>(),
-            arpeggioGuides = new List<ChartEditorArpeggioGuide>()
+            arpeggioGuides = new List<ChartEditorArpeggioGuide>(),
+            generatedNotes = FromGeneratedPlaybackNotes(generatedArrangement, summary, generatedPart)
         };
 
         sourceNotes ??= new List<NoteData>();
@@ -487,6 +494,13 @@ public static class ChartEditorImportService
             importedName = importedName,
             displayName = importedName,
             role = role,
+            arrangementGroupId = FirstNonEmpty(summary?.GroupId, part?.arrangementGroupId, summary?.PartId, part?.partId),
+            arrangementGroupDisplayName = FirstNonEmpty(summary?.GroupDisplayName, part?.arrangementDisplayName, summary?.Name, importedName),
+            arrangementRoute = FirstNonEmpty(part?.route, summary?.Route),
+            arrangementInstrumentType = summary?.InstrumentType ?? string.Empty,
+            difficultyLabel = NormalizeDifficultyLabel(FirstNonEmpty(summary?.DifficultyLabel, part?.difficultyLabel), summary?.DifficultyUiIndex ?? part?.difficultyUiIndex ?? -1),
+            difficultyUiIndex = NormalizeDifficultyUiIndex(summary?.DifficultyUiIndex ?? part?.difficultyUiIndex ?? -1, FirstNonEmpty(summary?.DifficultyLabel, part?.difficultyLabel)),
+            hasDifficultyVariants = (summary?.HasDifficultyVariants ?? false) || (part?.hasDifficultyVariants ?? false),
             colorHex = ColorForRole(role),
             tuning = new ChartEditorTuningInfo
             {
@@ -554,6 +568,13 @@ public static class ChartEditorImportService
             importedName = importedName,
             displayName = importedName,
             role = role,
+            arrangementGroupId = FirstNonEmpty(summary?.GroupId, arrangement?.groupId, arrangement?.arrangementId),
+            arrangementGroupDisplayName = FirstNonEmpty(summary?.GroupDisplayName, arrangement?.groupDisplayName, summary?.Name, importedName),
+            arrangementRoute = FirstNonEmpty(arrangement?.route, summary?.Route),
+            arrangementInstrumentType = FirstNonEmpty(arrangement?.instrumentType, summary?.InstrumentType),
+            difficultyLabel = NormalizeDifficultyLabel(FirstNonEmpty(summary?.DifficultyLabel, arrangement?.difficultyLabel), summary?.DifficultyUiIndex ?? arrangement?.difficultyUiIndex ?? -1),
+            difficultyUiIndex = NormalizeDifficultyUiIndex(summary?.DifficultyUiIndex ?? arrangement?.difficultyUiIndex ?? -1, FirstNonEmpty(summary?.DifficultyLabel, arrangement?.difficultyLabel)),
+            hasDifficultyVariants = (summary?.HasDifficultyVariants ?? false) || (arrangement?.hasDifficultyVariants ?? false),
             colorHex = ColorForRole(role),
             tuning = new ChartEditorTuningInfo
             {
@@ -915,6 +936,29 @@ public static class ChartEditorImportService
         };
     }
 
+    private static ChartEditorGeneratedPartInfo FromGeneratedPlaybackPart(
+        GeneratedPlaybackPartInfo source,
+        string fallbackPartId,
+        string fallbackName,
+        ChartEditorTrackRole role)
+    {
+        if (source == null)
+            return CreateDefaultGeneratedPart(fallbackPartId, fallbackName, role);
+
+        return new ChartEditorGeneratedPartInfo
+        {
+            partId = source.partId ?? fallbackPartId,
+            displayName = source.displayName ?? fallbackName,
+            instrumentName = source.instrumentName ?? InstrumentNameForRole(role),
+            sourceMidiChannel = source.sourceMidiChannel,
+            sourceMidiProgram = source.sourceMidiProgram,
+            preferredBank = source.preferredBank,
+            isDrum = source.isDrum,
+            isGuitarFamily = source.isGuitarFamily,
+            isExplicitHarmonicPart = source.isExplicitHarmonicPart
+        };
+    }
+
     private static ChartEditorGeneratedPartInfo CreateDefaultGeneratedPart(
         string fallbackPartId,
         string fallbackName,
@@ -1051,6 +1095,133 @@ public static class ChartEditorImportService
         }
 
         return result;
+    }
+
+    private static GeneratedPlaybackPartInfo ResolveGeneratedPlaybackPart(
+        GeneratedPlaybackArrangement arrangement,
+        MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        if (arrangement?.parts == null || arrangement.parts.Count == 0)
+            return null;
+
+        HashSet<string> candidateIds = BuildGeneratedPlaybackCandidateIds(summary, null);
+        GeneratedPlaybackPartInfo byId = arrangement.parts.FirstOrDefault(part =>
+            part != null && candidateIds.Contains(part.partId ?? string.Empty));
+        if (byId != null)
+            return byId;
+
+        string displayName = FirstNonEmpty(summary?.GroupDisplayName, summary?.Name);
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            GeneratedPlaybackPartInfo byName = arrangement.parts.FirstOrDefault(part =>
+                part != null &&
+                (string.Equals(part.displayName ?? string.Empty, displayName, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(part.instrumentName ?? string.Empty, displayName, StringComparison.OrdinalIgnoreCase)));
+            if (byName != null)
+                return byName;
+        }
+
+        return arrangement.parts.Count == 1 ? arrangement.parts[0] : null;
+    }
+
+    private static List<ChartEditorGeneratedNoteEvent> FromGeneratedPlaybackNotes(
+        GeneratedPlaybackArrangement arrangement,
+        MusicXmlLoader.MusicXmlPartSummary summary,
+        GeneratedPlaybackPartInfo generatedPart)
+    {
+        List<ChartEditorGeneratedNoteEvent> result = new List<ChartEditorGeneratedNoteEvent>();
+        if (arrangement?.notes == null || arrangement.notes.Count == 0)
+            return result;
+
+        HashSet<string> candidateIds = BuildGeneratedPlaybackCandidateIds(summary, generatedPart);
+        HashSet<int> candidateChannels = BuildGeneratedPlaybackCandidateChannels(arrangement, candidateIds);
+        bool includeAll = arrangement.parts != null && arrangement.parts.Count == 1 && candidateChannels.Count == 0;
+
+        for (int i = 0; i < arrangement.notes.Count; i++)
+        {
+            GeneratedPlaybackNoteEvent note = arrangement.notes[i];
+            if (note == null)
+                continue;
+
+            bool idMatch = candidateIds.Contains(note.partId ?? string.Empty);
+            bool channelMatch = candidateChannels.Contains(note.channel);
+            if (!includeAll && !idMatch && !channelMatch)
+                continue;
+
+            result.Add(CloneGeneratedNote(
+                note.startTimeSeconds,
+                note.durationSeconds,
+                note.pitchPreRollSeconds,
+                note.midiNote,
+                note.velocity,
+                note.channel,
+                string.IsNullOrWhiteSpace(note.partId) ? generatedPart?.partId : note.partId,
+                string.IsNullOrWhiteSpace(note.partName) ? generatedPart?.displayName : note.partName,
+                (int)note.techniqueVariant,
+                (int)note.legatoTransitionKind,
+                note.attackVelocityScale,
+                note.vibratoDepthSemitones,
+                note.vibratoRateHz,
+                note.vibratoDelayNormalized,
+                note.vibratoFadeNormalized,
+                note.pitchBendRangeSemitones,
+                note.pitchCurve?.Select(point => point == null
+                    ? null
+                    : new ChartEditorGeneratedPitchPoint
+                    {
+                        normalizedTime = point.normalizedTime,
+                        semitoneOffset = point.semitoneOffset
+                    })));
+        }
+
+        return result;
+    }
+
+    private static HashSet<string> BuildGeneratedPlaybackCandidateIds(
+        MusicXmlLoader.MusicXmlPartSummary summary,
+        GeneratedPlaybackPartInfo generatedPart)
+    {
+        HashSet<string> ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddCandidateId(ids, summary?.PartId);
+        AddCandidateId(ids, summary?.GroupId);
+        AddCandidateId(ids, summary?.Name);
+        AddCandidateId(ids, summary?.GroupDisplayName);
+        AddCandidateId(ids, generatedPart?.partId);
+        AddCandidateId(ids, generatedPart?.displayName);
+        return ids;
+    }
+
+    private static HashSet<int> BuildGeneratedPlaybackCandidateChannels(
+        GeneratedPlaybackArrangement arrangement,
+        HashSet<string> candidateIds)
+    {
+        HashSet<int> channels = new HashSet<int>();
+        if (arrangement?.channelAssignments == null || candidateIds == null || candidateIds.Count == 0)
+            return channels;
+
+        for (int i = 0; i < arrangement.channelAssignments.Count; i++)
+        {
+            GeneratedPlaybackChannelAssignment channel = arrangement.channelAssignments[i];
+            if (channel == null)
+                continue;
+
+            if (candidateIds.Contains(channel.sourcePartId ?? string.Empty) ||
+                candidateIds.Contains(channel.sourcePartName ?? string.Empty) ||
+                candidateIds.Contains(channel.label ?? string.Empty))
+            {
+                channels.Add(channel.channel);
+            }
+        }
+
+        return channels;
+    }
+
+    private static void AddCandidateId(HashSet<string> ids, string value)
+    {
+        if (ids == null || string.IsNullOrWhiteSpace(value))
+            return;
+
+        ids.Add(value.Trim());
     }
 
     private static ChartEditorGeneratedNoteEvent CloneGeneratedNote(
@@ -2045,6 +2216,30 @@ public static class ChartEditorImportService
         }
     }
 
+    private static string NormalizeDifficultyLabel(string difficultyLabel, int difficultyUiIndex)
+    {
+        if (!string.IsNullOrWhiteSpace(difficultyLabel))
+            return difficultyLabel.Trim();
+        if (difficultyUiIndex == 0)
+            return "Full";
+        if (difficultyUiIndex > 0)
+            return difficultyUiIndex.ToString(CultureInfo.InvariantCulture);
+        return "Full";
+    }
+
+    private static int NormalizeDifficultyUiIndex(int difficultyUiIndex, string difficultyLabel)
+    {
+        if (difficultyUiIndex >= 0)
+            return difficultyUiIndex;
+
+        string label = difficultyLabel?.Trim();
+        if (string.Equals(label, "Full", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        if (int.TryParse(label, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            return Mathf.Max(0, parsed);
+        return 0;
+    }
+
     private static ChartEditorTrackRole GuessRole(string name)
     {
         if (TryGuessRole(name, out ChartEditorTrackRole role))
@@ -2259,6 +2454,488 @@ public static class ChartEditorImportService
             this.timeSeconds = timeSeconds;
             this.index = index;
         }
+    }
+}
+
+public static class ChartEditorTheoryConversionService
+{
+    public static bool ConvertLibrarySourceToTheoryPackage(
+        string sourcePath,
+        string audioPath,
+        out ChartEditorTheoryConversionResult result,
+        out string error)
+    {
+        return ConvertLibrarySourceToTheoryPackage(new ChartEditorTheoryConversionRequest
+        {
+            sourcePath = sourcePath,
+            audioPath = audioPath
+        }, out result, out error);
+    }
+
+    public static bool ConvertLibrarySourceToTheoryPackage(
+        ChartEditorTheoryConversionRequest request,
+        out ChartEditorTheoryConversionResult result,
+        out string error)
+    {
+        if (request == null)
+        {
+            result = null;
+            error = "Theory conversion request is missing.";
+            return false;
+        }
+
+        ChartEditorTheoryConversionRequest libraryRequest = new ChartEditorTheoryConversionRequest
+        {
+            sourcePath = request.sourcePath,
+            audioPath = request.audioPath,
+            outputDirectory = request.outputDirectory,
+            outputPackagePath = request.outputPackagePath,
+            overwriteExisting = request.overwriteExisting,
+            validatePackage = request.validatePackage,
+            requireAudio = request.requireAudio,
+            returnExistingTheoryPackage = request.returnExistingTheoryPackage,
+            useLibrarySongsDirectory = true,
+            rejectChartEditorOutputDirectory = true
+        };
+
+        return ConvertToTheoryPackage(libraryRequest, out result, out error);
+    }
+
+    public static bool ConvertToTheoryPackage(
+        string sourcePath,
+        string audioPath,
+        string outputPackagePath,
+        out ChartEditorTheoryConversionResult result,
+        out string error)
+    {
+        return ConvertToTheoryPackage(new ChartEditorTheoryConversionRequest
+        {
+            sourcePath = sourcePath,
+            audioPath = audioPath,
+            outputPackagePath = outputPackagePath
+        }, out result, out error);
+    }
+
+    public static bool ConvertToTheoryPackage(
+        ChartEditorTheoryConversionRequest request,
+        out ChartEditorTheoryConversionResult result,
+        out string error)
+    {
+        result = new ChartEditorTheoryConversionResult();
+        error = string.Empty;
+
+        if (request == null)
+        {
+            error = "Theory conversion request is missing.";
+            return false;
+        }
+
+        string sourcePath = request.sourcePath?.Trim();
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            error = "Theory conversion source path is empty.";
+            return false;
+        }
+
+        bool sourceIsFile = File.Exists(sourcePath);
+        bool sourceIsDirectory = Directory.Exists(sourcePath);
+        if (!sourceIsFile && !sourceIsDirectory)
+        {
+            error = "Theory conversion source was not found.";
+            return false;
+        }
+
+        bool sourceIsTheoryPackage = sourceIsFile && TheoryPackageFormat.IsPackagePath(sourcePath);
+        if (sourceIsTheoryPackage &&
+            request.returnExistingTheoryPackage &&
+            string.IsNullOrWhiteSpace(request.outputPackagePath) &&
+            string.IsNullOrWhiteSpace(request.outputDirectory))
+        {
+            result.packagePath = Path.GetFullPath(sourcePath);
+            result.sourceKind = ChartEditorSourceKind.TheoryPackage;
+            result.sourceNotationKind = SongNotationSourceKind.TheoryPackage;
+            result.sourceAlreadyTheoryPackage = true;
+            result.packageWasWritten = false;
+            if (request.validatePackage &&
+                !ValidateTheoryPackage(result.packagePath, null, request.requireAudio, result.warnings, out error))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        if (!ImportSource(request, sourceIsFile, sourceIsDirectory, out ChartEditorImportResult importResult, out error))
+            return false;
+
+        ChartEditorProject project = importResult?.project;
+        if (project == null)
+        {
+            error = "Theory conversion import did not return a project.";
+            return false;
+        }
+
+        project.EnsureDefaults();
+        result.project = project;
+        result.sourceKind = project.sourceKind;
+        result.sourceNotationKind = ResolveSourceNotationKind(sourcePath, sourceIsFile, project.sourceKind);
+        if (importResult?.warnings != null)
+            result.warnings.AddRange(importResult.warnings.Where(warning => !string.IsNullOrWhiteSpace(warning)));
+
+        if (project.tracks == null || project.tracks.Count == 0)
+        {
+            error = "Theory conversion source contains no playable tracks.";
+            return false;
+        }
+
+        if (request.requireAudio && !HasUsableAudio(project))
+        {
+            error = "Theory conversion requires audio, but the imported source has no usable audio file.";
+            return false;
+        }
+
+        string packagePath = ResolveOutputPackagePath(project, sourcePath, sourceIsDirectory, request);
+        if (string.IsNullOrWhiteSpace(packagePath))
+        {
+            error = "Theory conversion output path could not be resolved.";
+            return false;
+        }
+
+        if (request.rejectChartEditorOutputDirectory && IsInChartEditorSaveDirectory(packagePath))
+        {
+            error = "Library .theory conversion cannot write into the chart editor save folder.";
+            return false;
+        }
+
+        if (File.Exists(packagePath) && !request.overwriteExisting)
+        {
+            error = $"Theory conversion output already exists: {packagePath}";
+            return false;
+        }
+
+        if (!TheoryChartEditorExporter.WriteProjectPackage(project, packagePath, out error))
+            return false;
+
+        result.packagePath = Path.GetFullPath(packagePath);
+        result.packageWasWritten = true;
+        result.sourceAlreadyTheoryPackage = sourceIsTheoryPackage;
+
+        if (request.validatePackage &&
+            !ValidateTheoryPackage(result.packagePath, project, request.requireAudio, result.warnings, out error))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    public static bool ValidateTheoryPackage(
+        string packagePath,
+        ChartEditorProject sourceProject,
+        bool requireAudio,
+        List<string> warnings,
+        out string error)
+    {
+        error = string.Empty;
+        warnings ??= new List<string>();
+
+        if (!TheoryPackageIO.TryReadManifest(packagePath, out TheorySongManifest manifest, out error))
+            return false;
+
+        if (manifest.arrangements == null || manifest.arrangements.Count == 0)
+        {
+            error = "Converted .theory package has no arrangements.";
+            return false;
+        }
+
+        if (requireAudio)
+        {
+            string audioEntry = FirstNonEmpty(
+                manifest.primaryAudioEntry,
+                manifest.audio?.FirstOrDefault(asset => asset != null && asset.defaultForPlayback)?.entry);
+            if (string.IsNullOrWhiteSpace(audioEntry) || !TheoryPackageIO.EntryExists(packagePath, audioEntry))
+            {
+                error = "Converted .theory package is missing embedded playback audio.";
+                return false;
+            }
+        }
+
+        List<ChartEditorTrack> sourceTracks = sourceProject?.tracks?
+            .Where(track => track != null)
+            .ToList();
+        if (sourceTracks != null && manifest.arrangements.Count != sourceTracks.Count)
+        {
+            error = $"Converted .theory package has {manifest.arrangements.Count} arrangements, expected {sourceTracks.Count}.";
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(manifest.defaultArrangementId) &&
+            !manifest.arrangements.Any(summary => string.Equals(summary?.arrangementId ?? string.Empty, manifest.defaultArrangementId, StringComparison.OrdinalIgnoreCase)))
+        {
+            error = "Converted .theory package default arrangement id does not reference an exported arrangement.";
+            return false;
+        }
+
+        HashSet<string> arrangementIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int playableArrangementCount = 0;
+        for (int i = 0; i < manifest.arrangements.Count; i++)
+        {
+            TheoryArrangementSummary summary = manifest.arrangements[i];
+            if (summary == null)
+            {
+                error = $"Converted .theory package has a missing arrangement summary at index {i}.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(summary.arrangementId))
+            {
+                error = $"Converted .theory package has an arrangement with no id at index {i}.";
+                return false;
+            }
+
+            if (!arrangementIds.Add(summary.arrangementId))
+            {
+                error = $"Converted .theory package has duplicate arrangement id '{summary.arrangementId}'.";
+                return false;
+            }
+
+            if (!TheoryPackageIO.TryReadArrangement(packagePath, summary, out TheoryArrangementData arrangement, out error))
+                return false;
+
+            int exportedNoteCount = arrangement.notes?.Count ?? 0;
+            if (exportedNoteCount > 0)
+            {
+                playableArrangementCount++;
+                if ((arrangement.generatedNotes?.Count ?? 0) == 0)
+                {
+                    error = $"Converted .theory package is missing generated playback events for '{summary.arrangementId}'.";
+                    return false;
+                }
+            }
+
+            if (summary.noteCount != exportedNoteCount)
+            {
+                error = $"Converted .theory package note count mismatch for '{summary.arrangementId}'.";
+                return false;
+            }
+
+            ChartEditorTrack sourceTrack = sourceTracks != null && i < sourceTracks.Count ? sourceTracks[i] : null;
+            if (sourceTrack != null)
+            {
+                int expectedNoteCount = ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(sourceTrack.notes).Count;
+                if (expectedNoteCount != exportedNoteCount)
+                {
+                    error = $"Converted .theory package lost notes for '{summary.arrangementId}' ({exportedNoteCount}/{expectedNoteCount}).";
+                    return false;
+                }
+
+                bool expectedDifficultyVariants = HasDifficultyVariants(sourceTracks, sourceTrack);
+                if (expectedDifficultyVariants && !summary.hasDifficultyVariants)
+                {
+                    error = $"Converted .theory package lost difficulty variant metadata for '{summary.arrangementId}'.";
+                    return false;
+                }
+            }
+
+            if (arrangement.timing == null || arrangement.timing.beats == null || arrangement.timing.beats.Count == 0)
+                warnings.Add($"Arrangement '{summary.arrangementId}' has no beat map; gameplay will use fallback timing.");
+        }
+
+        if (playableArrangementCount == 0)
+        {
+            error = "Converted .theory package has no arrangements with notes.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ImportSource(
+        ChartEditorTheoryConversionRequest request,
+        bool sourceIsFile,
+        bool sourceIsDirectory,
+        out ChartEditorImportResult importResult,
+        out string error)
+    {
+        importResult = null;
+        error = string.Empty;
+        string sourcePath = request.sourcePath?.Trim();
+
+        if (sourceIsDirectory)
+            return ChartEditorImportService.ImportFolder(sourcePath, out importResult, out error);
+
+        if (!sourceIsFile)
+        {
+            error = "Theory conversion source was not found.";
+            return false;
+        }
+
+        string extension = Path.GetExtension(sourcePath) ?? string.Empty;
+        if (string.Equals(extension, ".psarc", StringComparison.OrdinalIgnoreCase))
+            return ChartEditorImportService.ImportPsarc(sourcePath, out importResult, out error);
+
+        if (!SongNotationFacade.TryDetectKind(sourcePath, out SongNotationSourceKind kind) ||
+            kind == SongNotationSourceKind.None)
+        {
+            error = $"Unsupported conversion source: {extension}";
+            return false;
+        }
+
+        if (kind == SongNotationSourceKind.ArrangementCache)
+            return ChartEditorImportService.ImportArrangementManifest(sourcePath, out importResult, out error);
+
+        return ChartEditorImportService.ImportChartAndAudio(sourcePath, request.audioPath, out importResult, out error);
+    }
+
+    private static SongNotationSourceKind ResolveSourceNotationKind(string sourcePath, bool sourceIsFile, ChartEditorSourceKind sourceKind)
+    {
+        if (sourceKind == ChartEditorSourceKind.Psarc)
+            return SongNotationSourceKind.ArrangementCache;
+
+        if (sourceIsFile && SongNotationFacade.TryDetectKind(sourcePath, out SongNotationSourceKind kind))
+            return kind;
+
+        return SongNotationSourceKind.None;
+    }
+
+    private static bool HasUsableAudio(ChartEditorProject project)
+    {
+        string audioPath = project?.audio?.sourcePath;
+        return !string.IsNullOrWhiteSpace(audioPath) && File.Exists(audioPath);
+    }
+
+    private static string ResolveOutputPackagePath(
+        ChartEditorProject project,
+        string sourcePath,
+        bool sourceIsDirectory,
+        ChartEditorTheoryConversionRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.outputPackagePath))
+        {
+            string path = request.outputPackagePath.Trim();
+            if (string.IsNullOrWhiteSpace(Path.GetExtension(path)))
+                path += TheoryPackageFormat.Extension;
+            return Path.GetFullPath(path);
+        }
+
+        string outputDirectory = request.outputDirectory;
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+        {
+            outputDirectory = request.useLibrarySongsDirectory
+                ? ExternalContentPaths.PersistentSongsDirectory
+                : (sourceIsDirectory
+                    ? sourcePath
+                    : Path.GetDirectoryName(sourcePath));
+        }
+
+        if (string.IsNullOrWhiteSpace(outputDirectory))
+            outputDirectory = Directory.GetCurrentDirectory();
+
+        outputDirectory = Path.GetFullPath(outputDirectory);
+        string baseName = BuildPackageBaseName(project);
+        string candidate = Path.Combine(outputDirectory, $"{baseName}{TheoryPackageFormat.Extension}");
+        return request.overwriteExisting
+            ? candidate
+            : BuildAvailableFilePath(outputDirectory, baseName, TheoryPackageFormat.Extension);
+    }
+
+    private static bool IsInChartEditorSaveDirectory(string packagePath)
+    {
+        if (string.IsNullOrWhiteSpace(packagePath))
+            return false;
+
+        string directory = Path.GetDirectoryName(Path.GetFullPath(packagePath));
+        if (string.IsNullOrWhiteSpace(directory))
+            return false;
+
+        string chartEditorDirectory = Path.GetFullPath(Path.Combine(
+            ExternalContentPaths.PersistentSongsDirectory,
+            ChartEditorProjectStore.ChartEditorSaveFolderName));
+        return IsSameOrChildPath(chartEditorDirectory, directory);
+    }
+
+    private static bool IsSameOrChildPath(string parentPath, string childPath)
+    {
+        if (string.IsNullOrWhiteSpace(parentPath) || string.IsNullOrWhiteSpace(childPath))
+            return false;
+
+        string parent = Path.GetFullPath(parentPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string child = Path.GetFullPath(childPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(parent, child, StringComparison.OrdinalIgnoreCase) ||
+               child.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+               child.StartsWith(parent + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildAvailableFilePath(string directory, string baseName, string extension)
+    {
+        string candidate = Path.Combine(directory, $"{baseName}{extension}");
+        if (!File.Exists(candidate))
+            return candidate;
+
+        for (int i = 2; i < 10000; i++)
+        {
+            candidate = Path.Combine(directory, $"{baseName}_{i}{extension}");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+
+        return Path.Combine(directory, $"{baseName}_{Guid.NewGuid():N}{extension}");
+    }
+
+    private static bool HasDifficultyVariants(List<ChartEditorTrack> tracks, ChartEditorTrack sourceTrack)
+    {
+        if (tracks == null || sourceTrack == null)
+            return false;
+
+        string groupId = FirstNonEmpty(sourceTrack.arrangementGroupId, sourceTrack.id);
+        if (string.IsNullOrWhiteSpace(groupId))
+            return false;
+
+        return tracks.Count(track =>
+        {
+            string candidateGroupId = FirstNonEmpty(track?.arrangementGroupId, track?.id);
+            return string.Equals(candidateGroupId, groupId, StringComparison.OrdinalIgnoreCase);
+        }) > 1;
+    }
+
+    private static string BuildPackageBaseName(ChartEditorProject project)
+    {
+        string artist = project?.metadata?.artist;
+        string title = project?.metadata?.title;
+        return SanitizeFileName($"{FirstNonEmpty(artist, "Unknown")}_{FirstNonEmpty(title, "Chart")}");
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "chart";
+
+        char[] invalid = Path.GetInvalidFileNameChars();
+        char[] chars = value.Trim().ToCharArray();
+        for (int i = 0; i < chars.Length; i++)
+        {
+            if (invalid.Contains(chars[i]) || char.IsWhiteSpace(chars[i]))
+                chars[i] = '_';
+        }
+
+        string sanitized = new string(chars);
+        while (sanitized.Contains("__"))
+            sanitized = sanitized.Replace("__", "_");
+        return sanitized.Trim('_');
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null)
+            return string.Empty;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(values[i]))
+                return values[i].Trim();
+        }
+
+        return string.Empty;
     }
 }
 

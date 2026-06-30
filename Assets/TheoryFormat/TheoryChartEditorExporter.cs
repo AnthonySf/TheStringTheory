@@ -80,6 +80,7 @@ public static class TheoryChartEditorExporter
         float duration = Mathf.Max(project.DurationSeconds, 0.1f);
         List<TheoryArrangementData> arrangements = new List<TheoryArrangementData>();
         List<TheoryArrangementSummary> summaries = new List<TheoryArrangementSummary>();
+        Dictionary<string, int> variantCounts = BuildVariantCounts(project);
 
         for (int i = 0; i < project.tracks.Count; i++)
         {
@@ -89,7 +90,9 @@ public static class TheoryChartEditorExporter
 
             track.EnsureDefaults();
             string arrangementId = SanitizeIdentifier(string.IsNullOrWhiteSpace(track.id) ? $"track_{i + 1}" : track.id);
-            TheoryArrangementData arrangement = BuildArrangement(project, track, arrangementId, duration);
+            string groupId = BuildArrangementGroupId(track, arrangementId);
+            bool hasDifficultyVariants = variantCounts.TryGetValue(groupId, out int variantCount) && variantCount > 1;
+            TheoryArrangementData arrangement = BuildArrangement(project, track, arrangementId, groupId, hasDifficultyVariants, duration);
             string entry = TheoryPackageFormat.BuildArrangementEntryName(arrangementId);
             arrangements.Add(arrangement);
             summaries.Add(new TheoryArrangementSummary
@@ -130,9 +133,7 @@ public static class TheoryChartEditorExporter
             subtitle = "Chart Editor",
             genre = project.metadata?.genre ?? string.Empty,
             year = project.metadata?.year ?? string.Empty,
-            defaultArrangementId = string.IsNullOrWhiteSpace(project.metadata?.defaultArrangementId)
-                ? summaries.FirstOrDefault()?.arrangementId ?? string.Empty
-                : project.metadata.defaultArrangementId,
+            defaultArrangementId = ResolveDefaultArrangementId(project, summaries),
             primaryAudioEntry = audioEntry,
             coverArtEntry = coverEntry,
             durationSeconds = duration,
@@ -141,6 +142,9 @@ public static class TheoryChartEditorExporter
             {
                 sourceType = "chart-editor",
                 sourceDisplayName = project.metadata?.title ?? string.Empty,
+                sourcePath = project.sourcePath ?? string.Empty,
+                sourceLastWriteUtcTicks = TryGetLastWriteUtcTicks(project.sourcePath),
+                sourceSizeBytes = TryGetFileSize(project.sourcePath),
                 importedAtUtcTicks = now.Ticks,
                 converterName = "String Theory Chart Editor",
                 converterVersion = TheoryPackageFormat.SchemaVersion.ToString()
@@ -249,7 +253,66 @@ public static class TheoryChartEditorExporter
         candidates.Add(path);
     }
 
-    private static TheoryArrangementData BuildArrangement(ChartEditorProject project, ChartEditorTrack track, string arrangementId, float duration)
+    private static Dictionary<string, int> BuildVariantCounts(ChartEditorProject project)
+    {
+        Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (project?.tracks == null)
+            return counts;
+
+        for (int i = 0; i < project.tracks.Count; i++)
+        {
+            ChartEditorTrack track = project.tracks[i];
+            if (track == null)
+                continue;
+
+            string arrangementId = SanitizeIdentifier(string.IsNullOrWhiteSpace(track.id) ? $"track_{i + 1}" : track.id);
+            string groupId = BuildArrangementGroupId(track, arrangementId);
+            counts.TryGetValue(groupId, out int count);
+            counts[groupId] = count + 1;
+        }
+
+        return counts;
+    }
+
+    private static string BuildArrangementGroupId(ChartEditorTrack track, string arrangementId)
+    {
+        string groupId = FirstNonEmpty(track?.arrangementGroupId, arrangementId);
+        return SanitizeIdentifier(groupId);
+    }
+
+    private static string ResolveDefaultArrangementId(ChartEditorProject project, List<TheoryArrangementSummary> summaries)
+    {
+        if (summaries == null || summaries.Count == 0)
+            return string.Empty;
+
+        string explicitDefault = project?.metadata?.defaultArrangementId;
+        if (!string.IsNullOrWhiteSpace(explicitDefault) &&
+            summaries.Any(summary => string.Equals(summary?.arrangementId ?? string.Empty, explicitDefault, StringComparison.OrdinalIgnoreCase)))
+        {
+            return explicitDefault;
+        }
+
+        string selectedTrackId = project?.selectedTrackId;
+        if (!string.IsNullOrWhiteSpace(selectedTrackId))
+        {
+            string selectedArrangementId = SanitizeIdentifier(selectedTrackId);
+            if (summaries.Any(summary => string.Equals(summary?.arrangementId ?? string.Empty, selectedArrangementId, StringComparison.OrdinalIgnoreCase)))
+                return selectedArrangementId;
+        }
+
+        return summaries
+            .OrderBy(summary => NormalizeDifficultyUiIndex(summary?.difficultyUiIndex ?? -1, summary?.difficultyLabel))
+            .ThenByDescending(summary => summary?.score ?? 0)
+            .FirstOrDefault()?.arrangementId ?? summaries[0].arrangementId;
+    }
+
+    private static TheoryArrangementData BuildArrangement(
+        ChartEditorProject project,
+        ChartEditorTrack track,
+        string arrangementId,
+        string groupId,
+        bool hasDifficultyVariants,
+        float duration)
     {
         List<ChartEditorNote> orderedNotes = ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(track.notes?
             .Where(note => note != null)
@@ -262,13 +325,13 @@ public static class TheoryChartEditorExporter
             schemaVersion = TheoryPackageFormat.SchemaVersion,
             arrangementId = arrangementId,
             displayName = track.displayName ?? track.importedName ?? arrangementId,
-            instrumentType = InstrumentTypeForRole(track.role),
-            route = RouteForRole(track.role),
-            groupId = arrangementId,
-            groupDisplayName = track.displayName ?? track.importedName ?? arrangementId,
-            difficultyLabel = "Full",
-            difficultyUiIndex = 3,
-            hasDifficultyVariants = false,
+            instrumentType = FirstNonEmpty(track.arrangementInstrumentType, InstrumentTypeForRole(track.role)),
+            route = FirstNonEmpty(track.arrangementRoute, RouteForRole(track.role)),
+            groupId = groupId,
+            groupDisplayName = FirstNonEmpty(track.arrangementGroupDisplayName, track.displayName, track.importedName, groupId),
+            difficultyLabel = NormalizeDifficultyLabel(track.difficultyLabel, track.difficultyUiIndex),
+            difficultyUiIndex = NormalizeDifficultyUiIndex(track.difficultyUiIndex, track.difficultyLabel),
+            hasDifficultyVariants = hasDifficultyVariants,
             durationSeconds = duration,
             difficultyRating = EstimateDifficulty(track),
             tuningPitches = track.tuning?.stringPitches != null ? (int[])track.tuning.stringPitches.Clone() : null,
@@ -284,7 +347,7 @@ public static class TheoryChartEditorExporter
             generatedPart = BuildGeneratedPart(track, arrangementId),
             notes = new List<TheoryNoteData>(),
             arpeggioGuides = BuildArpeggioGuides(track),
-            generatedNotes = BuildGeneratedNotes(track)
+            generatedNotes = BuildGeneratedNotes(track, arrangementId)
         };
 
         for (int i = 0; i < orderedNotes.Count; i++)
@@ -419,15 +482,16 @@ public static class TheoryChartEditorExporter
                 (track?.generatedNotes?.Count ?? 0) > 0);
     }
 
-    private static List<TheoryGeneratedNoteEvent> BuildGeneratedNotes(ChartEditorTrack track)
+    private static List<TheoryGeneratedNoteEvent> BuildGeneratedNotes(ChartEditorTrack track, string arrangementId)
     {
         List<TheoryGeneratedNoteEvent> result = new List<TheoryGeneratedNoteEvent>();
-        if (!ChartEditorGeneratedPlaybackIntegrity.CanReuseGeneratedPlayback(track))
-            return result;
+        List<ChartEditorGeneratedNoteEvent> sourceNotes = ChartEditorGeneratedPlaybackIntegrity.CanReuseGeneratedPlayback(track)
+            ? track.generatedNotes
+            : ChartEditorGeneratedPlaybackBuilder.BuildFromChartNotes(track, arrangementId);
 
-        for (int i = 0; i < track.generatedNotes.Count; i++)
+        for (int i = 0; i < sourceNotes.Count; i++)
         {
-            ChartEditorGeneratedNoteEvent source = track.generatedNotes[i];
+            ChartEditorGeneratedNoteEvent source = sourceNotes[i];
             if (source == null)
                 continue;
 
@@ -869,6 +933,18 @@ public static class TheoryChartEditorExporter
         }
     }
 
+    private static long TryGetLastWriteUtcTicks(string path)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(path) && File.Exists(path) ? File.GetLastWriteTimeUtc(path).Ticks : 0L;
+        }
+        catch
+        {
+            return 0L;
+        }
+    }
+
     private static string RouteForRole(ChartEditorTrackRole role)
     {
         switch (role)
@@ -968,6 +1044,28 @@ public static class TheoryChartEditorExporter
         return SanitizeFileName($"{FirstNonEmpty(artist, "Unknown")}_{FirstNonEmpty(title, "Chart")}");
     }
 
+    private static string NormalizeDifficultyLabel(string difficultyLabel, int difficultyUiIndex)
+    {
+        if (!string.IsNullOrWhiteSpace(difficultyLabel))
+            return difficultyLabel.Trim();
+        if (difficultyUiIndex == 0)
+            return "Full";
+        if (difficultyUiIndex > 0)
+            return difficultyUiIndex.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        return "Full";
+    }
+
+    private static int NormalizeDifficultyUiIndex(int difficultyUiIndex, string difficultyLabel)
+    {
+        if (difficultyUiIndex >= 0)
+            return difficultyUiIndex;
+        if (string.Equals(difficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        return int.TryParse(difficultyLabel, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int parsed)
+            ? Mathf.Max(0, parsed)
+            : 0;
+    }
+
     private static string SanitizeIdentifier(string value)
     {
         string sanitized = SanitizeFileName(value);
@@ -993,8 +1091,17 @@ public static class TheoryChartEditorExporter
         return string.IsNullOrWhiteSpace(sanitized) ? "chart" : sanitized;
     }
 
-    private static string FirstNonEmpty(string value, string fallback)
+    private static string FirstNonEmpty(params string[] values)
     {
-        return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        if (values == null)
+            return string.Empty;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(values[i]))
+                return values[i].Trim();
+        }
+
+        return string.Empty;
     }
 }

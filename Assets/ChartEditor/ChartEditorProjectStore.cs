@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -273,6 +274,7 @@ public static class ChartEditorProjectStore
 
             float duration = Mathf.Max(project.DurationSeconds, 0.1f);
             List<RocksmithCachedArrangementSummary> summaries = new List<RocksmithCachedArrangementSummary>();
+            Dictionary<string, int> variantCounts = BuildVariantCounts(project);
             for (int i = 0; i < project.tracks.Count; i++)
             {
                 ChartEditorTrack track = project.tracks[i];
@@ -281,21 +283,23 @@ public static class ChartEditorProjectStore
 
                 track.EnsureDefaults();
                 string partId = SanitizeIdentifier(string.IsNullOrWhiteSpace(track.id) ? $"track_{i + 1}" : track.id);
+                string groupId = BuildArrangementGroupId(track, partId);
+                bool hasDifficultyVariants = variantCounts.TryGetValue(groupId, out int variantCount) && variantCount > 1;
                 string partFileName = $"{partId}.rs2part.json";
                 string partPath = Path.Combine(arrangementsDirectory, partFileName);
-                RocksmithCachedArrangementPart part = BuildArrangementPart(project, track, partId, duration);
+                RocksmithCachedArrangementPart part = BuildArrangementPart(project, track, partId, groupId, hasDifficultyVariants, duration);
                 File.WriteAllText(partPath, JsonUtility.ToJson(part, true));
 
                 summaries.Add(new RocksmithCachedArrangementSummary
                 {
                     partId = partId,
                     displayName = track.displayName ?? track.importedName ?? $"Track {i + 1}",
-                    route = RouteForRole(track.role),
-                    arrangementGroupId = partId,
-                    arrangementDisplayName = track.displayName ?? track.importedName ?? $"Track {i + 1}",
-                    difficultyLabel = "Full",
-                    difficultyUiIndex = 3,
-                    hasDifficultyVariants = false,
+                    route = FirstNonEmpty(track.arrangementRoute, RouteForRole(track.role)),
+                    arrangementGroupId = groupId,
+                    arrangementDisplayName = FirstNonEmpty(track.arrangementGroupDisplayName, track.displayName, track.importedName, $"Track {i + 1}"),
+                    difficultyLabel = NormalizeDifficultyLabel(track.difficultyLabel, track.difficultyUiIndex),
+                    difficultyUiIndex = NormalizeDifficultyUiIndex(track.difficultyUiIndex, track.difficultyLabel),
+                    hasDifficultyVariants = hasDifficultyVariants,
                     partFilePath = Path.Combine("arrangements", partFileName),
                     noteCount = track.notes?.Count ?? 0,
                     tabCount = track.notes?.Count ?? 0,
@@ -349,6 +353,8 @@ public static class ChartEditorProjectStore
         ChartEditorProject project,
         ChartEditorTrack track,
         string partId,
+        string groupId,
+        bool hasDifficultyVariants,
         float duration)
     {
         List<ChartEditorNote> orderedNotes = ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(track.notes?
@@ -362,12 +368,12 @@ public static class ChartEditorProjectStore
             schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
             partId = partId,
             displayName = track.displayName ?? track.importedName ?? partId,
-            route = RouteForRole(track.role),
-            arrangementGroupId = partId,
-            arrangementDisplayName = track.displayName ?? track.importedName ?? partId,
-            difficultyLabel = "Full",
-            difficultyUiIndex = 3,
-            hasDifficultyVariants = false,
+            route = FirstNonEmpty(track.arrangementRoute, RouteForRole(track.role)),
+            arrangementGroupId = groupId,
+            arrangementDisplayName = FirstNonEmpty(track.arrangementGroupDisplayName, track.displayName, track.importedName, partId),
+            difficultyLabel = NormalizeDifficultyLabel(track.difficultyLabel, track.difficultyUiIndex),
+            difficultyUiIndex = NormalizeDifficultyUiIndex(track.difficultyUiIndex, track.difficultyLabel),
+            hasDifficultyVariants = hasDifficultyVariants,
             durationSeconds = duration,
             difficultyRating = EstimateDifficulty(track),
             tuningPitches = track.tuning?.stringPitches != null ? (int[])track.tuning.stringPitches.Clone() : null,
@@ -383,7 +389,7 @@ public static class ChartEditorProjectStore
             generatedPart = BuildGeneratedPart(track, partId),
             notes = new List<RocksmithCachedNoteData>(),
             arpeggioGuides = BuildArpeggioGuides(track),
-            generatedNotes = BuildGeneratedNotes(track)
+            generatedNotes = BuildGeneratedNotes(track, partId)
         };
 
         for (int i = 0; i < orderedNotes.Count; i++)
@@ -563,15 +569,16 @@ public static class ChartEditorProjectStore
                 (track?.generatedNotes?.Count ?? 0) > 0);
     }
 
-    private static List<RocksmithCachedGeneratedNoteEvent> BuildGeneratedNotes(ChartEditorTrack track)
+    private static List<RocksmithCachedGeneratedNoteEvent> BuildGeneratedNotes(ChartEditorTrack track, string partId)
     {
         List<RocksmithCachedGeneratedNoteEvent> result = new List<RocksmithCachedGeneratedNoteEvent>();
-        if (!ChartEditorGeneratedPlaybackIntegrity.CanReuseGeneratedPlayback(track))
-            return result;
+        List<ChartEditorGeneratedNoteEvent> sourceNotes = ChartEditorGeneratedPlaybackIntegrity.CanReuseGeneratedPlayback(track)
+            ? track.generatedNotes
+            : ChartEditorGeneratedPlaybackBuilder.BuildFromChartNotes(track, partId);
 
-        for (int i = 0; i < track.generatedNotes.Count; i++)
+        for (int i = 0; i < sourceNotes.Count; i++)
         {
-            ChartEditorGeneratedNoteEvent source = track.generatedNotes[i];
+            ChartEditorGeneratedNoteEvent source = sourceNotes[i];
             if (source == null)
                 continue;
 
@@ -961,6 +968,54 @@ public static class ChartEditorProjectStore
                role == ChartEditorTrackRole.RhythmGuitar ||
                role == ChartEditorTrackRole.Bass ||
                role == ChartEditorTrackRole.Custom;
+    }
+
+    private static Dictionary<string, int> BuildVariantCounts(ChartEditorProject project)
+    {
+        Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        if (project?.tracks == null)
+            return counts;
+
+        for (int i = 0; i < project.tracks.Count; i++)
+        {
+            ChartEditorTrack track = project.tracks[i];
+            if (track == null)
+                continue;
+
+            string partId = SanitizeIdentifier(string.IsNullOrWhiteSpace(track.id) ? $"track_{i + 1}" : track.id);
+            string groupId = BuildArrangementGroupId(track, partId);
+            counts.TryGetValue(groupId, out int count);
+            counts[groupId] = count + 1;
+        }
+
+        return counts;
+    }
+
+    private static string BuildArrangementGroupId(ChartEditorTrack track, string partId)
+    {
+        return SanitizeIdentifier(FirstNonEmpty(track?.arrangementGroupId, partId));
+    }
+
+    private static string NormalizeDifficultyLabel(string difficultyLabel, int difficultyUiIndex)
+    {
+        if (!string.IsNullOrWhiteSpace(difficultyLabel))
+            return difficultyLabel.Trim();
+        if (difficultyUiIndex == 0)
+            return "Full";
+        if (difficultyUiIndex > 0)
+            return difficultyUiIndex.ToString(CultureInfo.InvariantCulture);
+        return "Full";
+    }
+
+    private static int NormalizeDifficultyUiIndex(int difficultyUiIndex, string difficultyLabel)
+    {
+        if (difficultyUiIndex >= 0)
+            return difficultyUiIndex;
+        if (string.Equals(difficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        return int.TryParse(difficultyLabel, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+            ? Mathf.Max(0, parsed)
+            : 0;
     }
 
     private static int EstimateDifficulty(ChartEditorTrack track)

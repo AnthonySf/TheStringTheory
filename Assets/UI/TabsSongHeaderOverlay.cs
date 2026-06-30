@@ -397,6 +397,15 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private sealed class LibraryImportCandidateRow
+    {
+        public Button button;
+        public Label checkLabel;
+        public Label nameLabel;
+        public Label metaLabel;
+        public Label kindLabel;
+    }
+
 
 
     private sealed class MainMenuEntry
@@ -1792,6 +1801,17 @@ public sealed class TabsSongHeaderOverlay
     private readonly VisualElement libraryLoadingProgressTrack;
     private readonly VisualElement libraryLoadingProgressFill;
     private readonly Label libraryLoadingProgressLabel;
+    private readonly VisualElement libraryImportPopupOverlay;
+    private readonly VisualElement libraryImportPopupCard;
+    private readonly Label libraryImportPopupTitleLabel;
+    private readonly Label libraryImportPopupSummaryLabel;
+    private readonly Label libraryImportPopupStatusLabel;
+    private readonly ScrollView libraryImportPopupScrollView;
+    private readonly Button libraryImportSelectAllButton;
+    private readonly Button libraryImportConvertButton;
+    private readonly Button libraryImportLegacyButton;
+    private readonly Button libraryImportSkipButton;
+    private readonly List<LibraryImportCandidateRow> libraryImportCandidateRows = new List<LibraryImportCandidateRow>();
 
     private readonly Label gameplayShortcutLabel;
     private readonly VisualElement gameplayShortcutRow;
@@ -6698,6 +6718,120 @@ public sealed class TabsSongHeaderOverlay
         libraryLoadingContent.Add(libraryLoadingProgressTrack);
         libraryLoadingOverlay.ContentHost.Add(libraryLoadingContent);
 
+        libraryImportPopupOverlay = CreateFullscreenOverlay();
+        libraryImportPopupOverlay.style.display = DisplayStyle.None;
+        libraryImportPopupOverlay.style.alignItems = Align.Center;
+        libraryImportPopupOverlay.style.justifyContent = Justify.Center;
+        libraryImportPopupOverlay.style.paddingLeft = 48f;
+        libraryImportPopupOverlay.style.paddingRight = 48f;
+        libraryImportPopupOverlay.style.paddingTop = 64f;
+        libraryImportPopupOverlay.style.paddingBottom = 64f;
+        libraryImportPopupOverlay.style.backgroundColor = new Color(0.005f, 0.008f, 0.012f, 0.72f);
+
+        libraryImportPopupCard = new VisualElement();
+        libraryImportPopupCard.style.width = Length.Percent(100f);
+        libraryImportPopupCard.style.maxWidth = 1180f;
+        libraryImportPopupCard.style.maxHeight = Length.Percent(88f);
+        libraryImportPopupCard.style.flexDirection = FlexDirection.Column;
+        libraryImportPopupCard.style.alignItems = Align.Stretch;
+        libraryImportPopupCard.style.paddingLeft = 34f;
+        libraryImportPopupCard.style.paddingRight = 34f;
+        libraryImportPopupCard.style.paddingTop = 30f;
+        libraryImportPopupCard.style.paddingBottom = 26f;
+        libraryImportPopupCard.style.backgroundColor = new Color(0.035f, 0.045f, 0.055f, 0.98f);
+        libraryImportPopupCard.style.borderTopWidth = 1f;
+        libraryImportPopupCard.style.borderRightWidth = 1f;
+        libraryImportPopupCard.style.borderBottomWidth = 1f;
+        libraryImportPopupCard.style.borderLeftWidth = 1f;
+        libraryImportPopupCard.style.borderTopColor = new Color(1f, 1f, 1f, 0.12f);
+        libraryImportPopupCard.style.borderRightColor = new Color(1f, 1f, 1f, 0.12f);
+        libraryImportPopupCard.style.borderBottomColor = new Color(1f, 1f, 1f, 0.12f);
+        libraryImportPopupCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.12f);
+        libraryImportPopupCard.style.borderTopLeftRadius = 18f;
+        libraryImportPopupCard.style.borderTopRightRadius = 18f;
+        libraryImportPopupCard.style.borderBottomLeftRadius = 18f;
+        libraryImportPopupCard.style.borderBottomRightRadius = 18f;
+        libraryImportPopupCard.style.overflow = Overflow.Hidden;
+
+        Label libraryImportEyebrowLabel = CreateLabel("LIBRARY REFRESH", 20f, LibraryConfirmedSongColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        libraryImportEyebrowLabel.style.unityFontDefinition = modernUiFontDefinition;
+        libraryImportEyebrowLabel.style.letterSpacing = 1.6f;
+        libraryImportEyebrowLabel.style.marginBottom = 8f;
+
+        libraryImportPopupTitleLabel = CreateLabel("New Songs Found", 58f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        libraryImportPopupTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        libraryImportPopupTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+        libraryImportPopupTitleLabel.style.whiteSpace = WhiteSpace.Normal;
+        libraryImportPopupTitleLabel.style.marginBottom = 10f;
+
+        libraryImportPopupSummaryLabel = CreateLabel(
+            "Choose which songs to convert into .theory packages before they are added to the library.",
+            27f,
+            new Color(0.78f, 0.86f, 0.94f, 0.96f),
+            false,
+            TextAnchor.MiddleLeft,
+            useTitleFont: false);
+        libraryImportPopupSummaryLabel.style.unityFontDefinition = modernUiFontDefinition;
+        libraryImportPopupSummaryLabel.style.whiteSpace = WhiteSpace.Normal;
+        libraryImportPopupSummaryLabel.style.marginBottom = 18f;
+
+        VisualElement libraryImportToolbar = new VisualElement();
+        libraryImportToolbar.style.flexDirection = FlexDirection.Row;
+        libraryImportToolbar.style.alignItems = Align.Center;
+        libraryImportToolbar.style.justifyContent = Justify.SpaceBetween;
+        libraryImportToolbar.style.marginBottom = 14f;
+
+        libraryImportPopupStatusLabel = CreateLabel(string.Empty, 24f, new Color(0.84f, 0.90f, 0.96f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        libraryImportPopupStatusLabel.style.unityFontDefinition = modernUiFontDefinition;
+        libraryImportPopupStatusLabel.style.whiteSpace = WhiteSpace.Normal;
+        libraryImportPopupStatusLabel.style.flexGrow = 1f;
+        libraryImportPopupStatusLabel.style.minWidth = 0f;
+
+        libraryImportSelectAllButton = CreateLibraryImportPopupButton("Select All", false, () => owner?.SetAllLibraryImportCandidatesFromUi(true));
+        libraryImportSelectAllButton.style.minWidth = 168f;
+        libraryImportToolbar.Add(libraryImportPopupStatusLabel);
+        libraryImportToolbar.Add(libraryImportSelectAllButton);
+
+        libraryImportPopupScrollView = new ScrollView(ScrollViewMode.Vertical);
+        libraryImportPopupScrollView.style.flexGrow = 1f;
+        libraryImportPopupScrollView.style.flexBasis = 0f;
+        libraryImportPopupScrollView.style.minHeight = 220f;
+        libraryImportPopupScrollView.style.maxHeight = 540f;
+        libraryImportPopupScrollView.style.marginBottom = 22f;
+        libraryImportPopupScrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+        libraryImportPopupScrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
+        libraryImportPopupScrollView.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        ConfigureRuntimeScrollView(libraryImportPopupScrollView);
+        libraryImportPopupScrollView.contentContainer.style.paddingTop = 2f;
+        libraryImportPopupScrollView.contentContainer.style.paddingBottom = 2f;
+        AttachWheelScrolling(libraryImportPopupScrollView, libraryImportPopupScrollView);
+        AttachWheelScrolling(libraryImportPopupScrollView.contentViewport, libraryImportPopupScrollView);
+        AttachWheelScrolling(libraryImportPopupScrollView.contentContainer, libraryImportPopupScrollView);
+
+        VisualElement libraryImportActions = new VisualElement();
+        libraryImportActions.style.flexDirection = FlexDirection.Row;
+        libraryImportActions.style.justifyContent = Justify.FlexEnd;
+        libraryImportActions.style.alignItems = Align.Center;
+        libraryImportActions.style.flexWrap = Wrap.Wrap;
+
+        libraryImportSkipButton = CreateLibraryImportPopupButton("Skip", false, () => owner?.CloseLibraryImportPopupFromUi());
+        libraryImportLegacyButton = CreateLibraryImportPopupButton("Legacy Conversion", false, () => owner?.RunLegacyLibraryImportFromUi());
+        libraryImportConvertButton = CreateLibraryImportPopupButton("Convert to .theory", true, () => owner?.ConvertSelectedLibraryImportsToTheoryFromUi());
+        libraryImportSkipButton.style.marginRight = 14f;
+        libraryImportLegacyButton.style.marginRight = 14f;
+        libraryImportConvertButton.style.minWidth = 300f;
+        libraryImportActions.Add(libraryImportSkipButton);
+        libraryImportActions.Add(libraryImportLegacyButton);
+        libraryImportActions.Add(libraryImportConvertButton);
+
+        libraryImportPopupCard.Add(libraryImportEyebrowLabel);
+        libraryImportPopupCard.Add(libraryImportPopupTitleLabel);
+        libraryImportPopupCard.Add(libraryImportPopupSummaryLabel);
+        libraryImportPopupCard.Add(libraryImportToolbar);
+        libraryImportPopupCard.Add(libraryImportPopupScrollView);
+        libraryImportPopupCard.Add(libraryImportActions);
+        libraryImportPopupOverlay.Add(libraryImportPopupCard);
+
         multiplayerRhythmHudLayer = new VisualElement();
         multiplayerRhythmHudLayer.style.position = Position.Absolute;
         multiplayerRhythmHudLayer.style.left = 0f;
@@ -10500,6 +10634,8 @@ public sealed class TabsSongHeaderOverlay
 
         root.Add(selectionOverlay);
 
+        root.Add(libraryImportPopupOverlay);
+
         root.Add(trackSelectionOverlay);
 
         root.Add(arrangementDifficultyPopupOverlay);
@@ -10983,10 +11119,11 @@ public sealed class TabsSongHeaderOverlay
         bool showMultiplayerRhythmSetup = snapshot.showMultiplayerRhythmSetup && !showStartMenu && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
 
         bool showLibraryLoading = snapshot.showLibraryLoadingOverlay && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
+        bool showLibraryImportPopup = snapshot.showLibraryImportPopup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
 
         SetWordmarkParentForLibraryLoading(showLibraryLoading);
 
-        bool showMainMenu = snapshot.showMainMenu && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
+        bool showMainMenu = snapshot.showMainMenu && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showLibraryImportPopup && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor;
 
         bool showLoopPausePopup = snapshot.showLoopPausePopup && !showEnd;
 
@@ -11006,24 +11143,24 @@ public sealed class TabsSongHeaderOverlay
 
         bool showBackgroundMoodSetter = snapshot.showBackgroundMoodSetter && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showGameplayAudioPopup;
 
-        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showDiagnosticsConsent && !showBugReport && !showBugReportSent && !showBackgroundMoodSetter && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
+        bool showPause = snapshot.isPaused && !showCharacterSelection && !showStartMenu && !showMultiplayerRhythmSetup && !showLibraryLoading && !showLibraryImportPopup && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor && !showGameplayAudioPopup && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showDiagnosticsConsent && !showBugReport && !showBugReportSent && !showBackgroundMoodSetter && !snapshot.showStartupTuningReminder && !snapshot.mainMenuFlowActive && !snapshot.showSongSettings && !snapshot.showSongSelection && !snapshot.showTrackSelection && !snapshot.showGlobalSettings;
 
-        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showGameplayAudioPopup;
+        bool showSettings = snapshot.showSongSettings && !showLibraryLoading && !showLibraryImportPopup && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showGameplayAudioPopup;
         bool showSharedPauseSidebarBase = showPause || showGameModes || showSettings;
 
         bool showSelection = snapshot.showSongSelection && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor;
 
-        bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor;
+        bool showTrackSelection = snapshot.showTrackSelection && !showLibraryLoading && !showLibraryImportPopup && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor;
 
-        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showGameplayAudioPopup;
+        bool showGlobalSettings = snapshot.showGlobalSettings && !showLibraryLoading && !showLibraryImportPopup && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showGameplayAudioPopup;
 
-        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
+        bool showStartupTuningReminder = snapshot.showStartupTuningReminder && !showCharacterSelection && !showLibraryLoading && !showLibraryImportPopup && !showEnd && !showToneLab && !showTuner && !showMiniGames && !showChartEditor && !showMainMenu && !showStartMenu && !showSelection && !showTrackSelection;
 
         bool isHighway3D = owner != null && owner.renderMode.UsesHighway3D();
         bool isHighway3DAndTabs = owner != null && owner.renderMode == GuitarRenderMode.Highway3DAndTabs;
         bool isTabsGameplay = owner != null && owner.renderMode.UsesTabHudLayout() && snapshot.gameplayMode == GuitarGameplayMode.Guitar;
 
-        bool showTechniqueLegend = isTabsGameplay && !IsAlphaTabTabsGameplayLayout() && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor && !showGameplayAudioPopup && !showPause && !showBackgroundMoodSetter && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
+        bool showTechniqueLegend = isTabsGameplay && !IsAlphaTabTabsGameplayLayout() && snapshot.songTime > 0.15f && !showCharacterSelection && !showLibraryLoading && !showLibraryImportPopup && !showEnd && !showToneLab && !showTuner && !showNotesDetectorTest && !showMiniGames && !showChartEditor && !showGameplayAudioPopup && !showPause && !showBackgroundMoodSetter && !showLoopSetup && !showLoopPausePopup && !showArrangementDifficultyPopup && !showGameModes && !showHeroModeSettings && !showOffsetHelper && !showMainMenu && !showStartMenu && !showMultiplayerRhythmSetup && !showSettings && !showSelection && !showTrackSelection && !showGlobalSettings && !showStartupTuningReminder && !snapshot.mainMenuFlowActive;
 
 
 
@@ -11106,6 +11243,13 @@ public sealed class TabsSongHeaderOverlay
         selectionOverlay.style.display = showSelection ? DisplayStyle.Flex : DisplayStyle.None;
         if (selectionLibraryTypeButtonsRow != null)
             selectionLibraryTypeButtonsRow.style.display = snapshot.multiplayerRhythmMode ? DisplayStyle.None : DisplayStyle.Flex;
+
+        libraryImportPopupOverlay.style.display = showLibraryImportPopup ? DisplayStyle.Flex : DisplayStyle.None;
+        if (showLibraryImportPopup)
+        {
+            UpdateLibraryImportPopup(snapshot);
+            libraryImportPopupOverlay.BringToFront();
+        }
 
         trackSelectionOverlay.style.display = showTrackSelection ? DisplayStyle.Flex : DisplayStyle.None;
 
@@ -11224,6 +11368,7 @@ public sealed class TabsSongHeaderOverlay
             && !showMiniGames
             && !showChartEditor
             && !showGameplayAudioPopup
+            && !showLibraryImportPopup
             && !showMainMenu
             && !showStartMenu
             && !showSettings
@@ -17528,6 +17673,195 @@ public sealed class TabsSongHeaderOverlay
 
         }
 
+    }
+
+    private void UpdateLibraryImportPopup(GuitarGameplaySnapshot snapshot)
+    {
+        int count = snapshot.libraryImportCandidateNames?.Count ?? 0;
+        EnsureLibraryImportCandidateRows(count);
+
+        int selectedCount = snapshot.libraryImportCandidateSelected?.Count(value => value) ?? 0;
+        if (libraryImportPopupTitleLabel != null)
+            libraryImportPopupTitleLabel.text = count == 1 ? "New Song Found" : "New Songs Found";
+        if (libraryImportPopupSummaryLabel != null)
+            libraryImportPopupSummaryLabel.text = "Convert selected sources into .theory packages before adding them to the library. Legacy conversion keeps the old importer path available.";
+        if (libraryImportPopupStatusLabel != null)
+            libraryImportPopupStatusLabel.text = string.IsNullOrWhiteSpace(snapshot.libraryImportPopupStatusText)
+                ? $"{selectedCount}/{count} selected."
+                : snapshot.libraryImportPopupStatusText;
+
+        if (libraryImportSelectAllButton != null)
+        {
+            bool allSelected = count > 0 && selectedCount >= count;
+            libraryImportSelectAllButton.text = allSelected ? "Deselect All" : "Select All";
+            libraryImportSelectAllButton.clicked -= SelectAllLibraryImportCandidatesFromPopup;
+            libraryImportSelectAllButton.clicked -= DeselectAllLibraryImportCandidatesFromPopup;
+            if (allSelected)
+                libraryImportSelectAllButton.clicked += DeselectAllLibraryImportCandidatesFromPopup;
+            else
+                libraryImportSelectAllButton.clicked += SelectAllLibraryImportCandidatesFromPopup;
+        }
+
+        if (libraryImportConvertButton != null)
+        {
+            libraryImportConvertButton.SetEnabled(selectedCount > 0);
+            libraryImportConvertButton.style.opacity = selectedCount > 0 ? 1f : 0.48f;
+        }
+
+        for (int i = 0; i < libraryImportCandidateRows.Count; i++)
+        {
+            LibraryImportCandidateRow row = libraryImportCandidateRows[i];
+            bool selected = snapshot.libraryImportCandidateSelected != null &&
+                            i < snapshot.libraryImportCandidateSelected.Count &&
+                            snapshot.libraryImportCandidateSelected[i];
+            string name = snapshot.libraryImportCandidateNames != null && i < snapshot.libraryImportCandidateNames.Count
+                ? snapshot.libraryImportCandidateNames[i]
+                : $"Song {i + 1}";
+            string subtitle = snapshot.libraryImportCandidateSubtitles != null && i < snapshot.libraryImportCandidateSubtitles.Count
+                ? snapshot.libraryImportCandidateSubtitles[i]
+                : string.Empty;
+            string kind = snapshot.libraryImportCandidateKindLabels != null && i < snapshot.libraryImportCandidateKindLabels.Count
+                ? snapshot.libraryImportCandidateKindLabels[i]
+                : string.Empty;
+
+            row.nameLabel.text = string.IsNullOrWhiteSpace(name) ? $"Song {i + 1}" : name;
+            row.metaLabel.text = subtitle;
+            row.metaLabel.style.display = string.IsNullOrWhiteSpace(subtitle) ? DisplayStyle.None : DisplayStyle.Flex;
+            row.kindLabel.text = kind;
+            row.kindLabel.style.display = string.IsNullOrWhiteSpace(kind) ? DisplayStyle.None : DisplayStyle.Flex;
+            row.checkLabel.text = selected ? "✓" : string.Empty;
+
+            Color accent = selected ? LibraryConfirmedSongColor : new Color(0.30f, 0.38f, 0.46f, 0.88f);
+            Color background = selected ? new Color(0.08f, 0.13f, 0.16f, 0.96f) : new Color(0.055f, 0.065f, 0.075f, 0.94f);
+            row.button.style.backgroundColor = background;
+            row.button.style.borderTopColor = accent;
+            row.button.style.borderRightColor = accent;
+            row.button.style.borderBottomColor = accent;
+            row.button.style.borderLeftColor = accent;
+            row.nameLabel.style.color = selected ? Color.white : new Color(0.90f, 0.94f, 0.98f, 0.96f);
+            row.metaLabel.style.color = selected ? new Color(0.76f, 0.86f, 0.94f, 0.98f) : new Color(0.64f, 0.72f, 0.80f, 0.92f);
+            row.kindLabel.style.color = selected ? LibraryConfirmedSongTextColor : new Color(0.76f, 0.84f, 0.92f, 0.92f);
+            row.kindLabel.style.backgroundColor = selected ? LibraryConfirmedSongColor : new Color(0.12f, 0.16f, 0.20f, 0.96f);
+            row.checkLabel.style.borderTopColor = accent;
+            row.checkLabel.style.borderRightColor = accent;
+            row.checkLabel.style.borderBottomColor = accent;
+            row.checkLabel.style.borderLeftColor = accent;
+            row.checkLabel.style.color = selected ? LibraryConfirmedSongColor : new Color(1f, 1f, 1f, 0.54f);
+        }
+    }
+
+    private void SelectAllLibraryImportCandidatesFromPopup()
+    {
+        owner?.SetAllLibraryImportCandidatesFromUi(true);
+    }
+
+    private void DeselectAllLibraryImportCandidatesFromPopup()
+    {
+        owner?.SetAllLibraryImportCandidatesFromUi(false);
+    }
+
+    private void EnsureLibraryImportCandidateRows(int count)
+    {
+        if (libraryImportPopupScrollView == null || libraryImportCandidateRows.Count == count)
+            return;
+
+        libraryImportPopupScrollView.Clear();
+        libraryImportCandidateRows.Clear();
+
+        for (int i = 0; i < count; i++)
+        {
+            int rowIndex = i;
+            Button rowButton = new Button(() => owner?.ToggleLibraryImportCandidateFromUi(rowIndex));
+            rowButton.focusable = false;
+            rowButton.style.height = 86f;
+            rowButton.style.marginTop = 6f;
+            rowButton.style.marginBottom = 6f;
+            rowButton.style.paddingLeft = 16f;
+            rowButton.style.paddingRight = 16f;
+            rowButton.style.paddingTop = 0f;
+            rowButton.style.paddingBottom = 0f;
+            rowButton.style.borderTopLeftRadius = 12f;
+            rowButton.style.borderTopRightRadius = 12f;
+            rowButton.style.borderBottomLeftRadius = 12f;
+            rowButton.style.borderBottomRightRadius = 12f;
+            rowButton.style.borderTopWidth = 1f;
+            rowButton.style.borderRightWidth = 1f;
+            rowButton.style.borderBottomWidth = 1f;
+            rowButton.style.borderLeftWidth = 1f;
+            rowButton.style.backgroundImage = StyleKeyword.None;
+            rowButton.style.overflow = Overflow.Hidden;
+
+            VisualElement content = new VisualElement();
+            content.style.flexDirection = FlexDirection.Row;
+            content.style.alignItems = Align.Center;
+            content.style.height = Length.Percent(100f);
+
+            Label checkLabel = CreateLabel(string.Empty, 28f, LibraryConfirmedSongColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+            checkLabel.style.width = 38f;
+            checkLabel.style.height = 38f;
+            checkLabel.style.marginRight = 16f;
+            checkLabel.style.borderTopWidth = 2f;
+            checkLabel.style.borderRightWidth = 2f;
+            checkLabel.style.borderBottomWidth = 2f;
+            checkLabel.style.borderLeftWidth = 2f;
+            checkLabel.style.borderTopLeftRadius = 8f;
+            checkLabel.style.borderTopRightRadius = 8f;
+            checkLabel.style.borderBottomLeftRadius = 8f;
+            checkLabel.style.borderBottomRightRadius = 8f;
+            checkLabel.style.unityFontDefinition = modernUiFontDefinition;
+            checkLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            VisualElement textColumn = new VisualElement();
+            textColumn.style.flexGrow = 1f;
+            textColumn.style.flexBasis = 0f;
+            textColumn.style.minWidth = 0f;
+
+            Label nameLabel = CreateLabel(string.Empty, 28f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+            nameLabel.style.unityFontDefinition = modernUiFontDefinition;
+            nameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            nameLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            nameLabel.style.overflow = Overflow.Hidden;
+
+            Label metaLabel = CreateLabel(string.Empty, 20f, new Color(0.64f, 0.72f, 0.80f, 0.92f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+            metaLabel.style.unityFontDefinition = modernUiFontDefinition;
+            metaLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            metaLabel.style.overflow = Overflow.Hidden;
+
+            Label kindLabel = CreateLabel(string.Empty, 18f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
+            kindLabel.style.minWidth = 128f;
+            kindLabel.style.marginLeft = 18f;
+            kindLabel.style.paddingLeft = 12f;
+            kindLabel.style.paddingRight = 12f;
+            kindLabel.style.paddingTop = 5f;
+            kindLabel.style.paddingBottom = 5f;
+            kindLabel.style.borderTopLeftRadius = 8f;
+            kindLabel.style.borderTopRightRadius = 8f;
+            kindLabel.style.borderBottomLeftRadius = 8f;
+            kindLabel.style.borderBottomRightRadius = 8f;
+            kindLabel.style.unityFontDefinition = modernUiFontDefinition;
+            kindLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+            textColumn.Add(nameLabel);
+            textColumn.Add(metaLabel);
+            content.Add(checkLabel);
+            content.Add(textColumn);
+            content.Add(kindLabel);
+            rowButton.Add(content);
+
+            AttachWheelScrolling(rowButton, libraryImportPopupScrollView);
+            AttachWheelScrolling(content, libraryImportPopupScrollView);
+            AttachWheelScrolling(textColumn, libraryImportPopupScrollView);
+            libraryImportPopupScrollView.Add(rowButton);
+
+            libraryImportCandidateRows.Add(new LibraryImportCandidateRow
+            {
+                button = rowButton,
+                checkLabel = checkLabel,
+                nameLabel = nameLabel,
+                metaLabel = metaLabel,
+                kindLabel = kindLabel
+            });
+        }
     }
 
 
@@ -24211,6 +24545,60 @@ public sealed class TabsSongHeaderOverlay
 
         return button;
 
+    }
+
+    private Button CreateLibraryImportPopupButton(string text, bool primary, Action onClick)
+    {
+        Button button = new Button(() => onClick?.Invoke()) { text = text };
+        button.focusable = false;
+        button.style.height = 62f;
+        button.style.minWidth = primary ? 260f : 178f;
+        button.style.paddingLeft = 22f;
+        button.style.paddingRight = 22f;
+        button.style.marginTop = 6f;
+        button.style.marginBottom = 6f;
+        button.style.backgroundColor = primary ? LibraryConfirmedSongColor : new Color(0f, 0f, 0f, 0f);
+        button.style.color = primary ? LibraryConfirmedSongTextColor : new Color(0.88f, 0.93f, 0.97f, 0.96f);
+        button.style.fontSize = 23f;
+        button.style.unityFontDefinition = modernUiFontDefinition;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+        button.style.borderTopLeftRadius = 10f;
+        button.style.borderTopRightRadius = 10f;
+        button.style.borderBottomLeftRadius = 10f;
+        button.style.borderBottomRightRadius = 10f;
+        button.style.borderTopWidth = 1f;
+        button.style.borderRightWidth = 1f;
+        button.style.borderBottomWidth = 1f;
+        button.style.borderLeftWidth = 1f;
+        Color border = primary ? LibraryConfirmedSongColor : new Color(0.30f, 0.38f, 0.46f, 0.86f);
+        button.style.borderTopColor = border;
+        button.style.borderRightColor = border;
+        button.style.borderBottomColor = border;
+        button.style.borderLeftColor = border;
+
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.scale = new Scale(new Vector3(1.035f, 1.035f, 1f));
+            button.style.backgroundColor = primary ? LibraryConfirmedSongColor : new Color(0.10f, 0.14f, 0.18f, 0.96f);
+            button.style.color = primary ? LibraryConfirmedSongTextColor : Color.white;
+            button.style.borderTopColor = LibraryConfirmedSongColor;
+            button.style.borderRightColor = LibraryConfirmedSongColor;
+            button.style.borderBottomColor = LibraryConfirmedSongColor;
+            button.style.borderLeftColor = LibraryConfirmedSongColor;
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.scale = new Scale(Vector3.one);
+            button.style.backgroundColor = primary ? LibraryConfirmedSongColor : new Color(0f, 0f, 0f, 0f);
+            button.style.color = primary ? LibraryConfirmedSongTextColor : new Color(0.88f, 0.93f, 0.97f, 0.96f);
+            button.style.borderTopColor = border;
+            button.style.borderRightColor = border;
+            button.style.borderBottomColor = border;
+            button.style.borderLeftColor = border;
+        });
+
+        return button;
     }
 
     private Button CreateCharacterSelectionOption(string displayName, string resourceName, int optionIndex)

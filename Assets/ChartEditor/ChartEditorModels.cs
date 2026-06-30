@@ -32,7 +32,7 @@ public enum ChartEditorSourceKind
 [Serializable]
 public sealed class ChartEditorProject
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
 
     public int schemaVersion = CurrentSchemaVersion;
     public string projectId;
@@ -127,6 +127,7 @@ public sealed class ChartEditorProject
 
         for (int i = 0; i < tracks.Count; i++)
             tracks[i]?.EnsureDefaults();
+        NormalizeTrackDifficultyVariants();
         for (int i = 0; i < sections.Count; i++)
             sections[i]?.EnsureDefaults();
         beatMap.EnsureDefaults();
@@ -135,6 +136,38 @@ public sealed class ChartEditorProject
 
         if (string.IsNullOrWhiteSpace(selectedTrackId) && tracks.Count > 0)
             selectedTrackId = tracks[0]?.id;
+    }
+
+    private void NormalizeTrackDifficultyVariants()
+    {
+        Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            ChartEditorTrack track = tracks[i];
+            if (track == null)
+                continue;
+
+            string key = string.IsNullOrWhiteSpace(track.arrangementGroupId)
+                ? track.id ?? string.Empty
+                : track.arrangementGroupId.Trim();
+            if (string.IsNullOrWhiteSpace(key))
+                key = track.id ?? i.ToString(CultureInfo.InvariantCulture);
+
+            counts.TryGetValue(key, out int count);
+            counts[key] = count + 1;
+        }
+
+        for (int i = 0; i < tracks.Count; i++)
+        {
+            ChartEditorTrack track = tracks[i];
+            if (track == null)
+                continue;
+
+            string key = string.IsNullOrWhiteSpace(track.arrangementGroupId)
+                ? track.id ?? string.Empty
+                : track.arrangementGroupId.Trim();
+            track.hasDifficultyVariants = counts.TryGetValue(key, out int count) && count > 1;
+        }
     }
 }
 
@@ -180,6 +213,13 @@ public sealed class ChartEditorTrack
     public string importedName;
     public string displayName;
     public ChartEditorTrackRole role;
+    public string arrangementGroupId;
+    public string arrangementGroupDisplayName;
+    public string arrangementRoute;
+    public string arrangementInstrumentType;
+    public string difficultyLabel = "Full";
+    public int difficultyUiIndex = 0;
+    public bool hasDifficultyVariants;
     public ChartEditorTuningInfo tuning = new ChartEditorTuningInfo();
     public string colorHex;
     public bool visible = true;
@@ -198,6 +238,14 @@ public sealed class ChartEditorTrack
             id = Guid.NewGuid().ToString("N");
         if (string.IsNullOrWhiteSpace(displayName))
             displayName = string.IsNullOrWhiteSpace(importedName) ? "Track" : importedName;
+        if (string.IsNullOrWhiteSpace(arrangementGroupId))
+            arrangementGroupId = id;
+        if (string.IsNullOrWhiteSpace(arrangementGroupDisplayName))
+            arrangementGroupDisplayName = string.IsNullOrWhiteSpace(displayName) ? importedName ?? "Track" : displayName;
+        if (string.IsNullOrWhiteSpace(difficultyLabel))
+            difficultyLabel = "Full";
+        if (difficultyUiIndex < 0 && string.Equals(difficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase))
+            difficultyUiIndex = 0;
         tuning ??= new ChartEditorTuningInfo();
         generatedPart ??= new ChartEditorGeneratedPartInfo();
         tones ??= new ChartEditorToneData();
@@ -696,9 +744,272 @@ public static class ChartEditorGeneratedPlaybackIntegrity
     }
 }
 
+public static class ChartEditorGeneratedPlaybackBuilder
+{
+    public static List<ChartEditorGeneratedNoteEvent> BuildFromChartNotes(ChartEditorTrack track, string fallbackPartId)
+    {
+        List<ChartEditorGeneratedNoteEvent> result = new List<ChartEditorGeneratedNoteEvent>();
+        if (track?.notes == null || track.notes.Count == 0)
+            return result;
+
+        string partId = FirstNonEmpty(track.generatedPart?.partId, fallbackPartId, track.id);
+        string partName = FirstNonEmpty(track.generatedPart?.displayName, track.displayName, track.importedName, partId);
+        int channel = ResolvePlaybackChannel(track);
+        bool isDrum = track.role == ChartEditorTrackRole.Drums || track.generatedPart?.isDrum == true;
+        int[] tuning = ResolveTuning(track);
+
+        List<ChartEditorNote> notes = ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(track.notes)
+            .Where(note => note != null)
+            .OrderBy(note => note.timeSeconds)
+            .ThenBy(note => note.stringOrLane)
+            .ToList();
+
+        for (int i = 0; i < notes.Count; i++)
+        {
+            ChartEditorNote source = notes[i];
+            int midiNote = isDrum
+                ? ResolveDrumMidiNote(source)
+                : ResolveStringMidiNote(source, tuning);
+
+            ChartEditorGeneratedNoteEvent generated = new ChartEditorGeneratedNoteEvent
+            {
+                startTimeSeconds = Mathf.Max(0f, (float)source.timeSeconds),
+                durationSeconds = Mathf.Max(0.01f, (float)Math.Max(source.durationSeconds, GetTechniqueDuration(source))),
+                midiNote = Mathf.Clamp(midiNote, 0, 127),
+                velocity = Mathf.Clamp(source.velocity <= 0 ? 95 : source.velocity, 1, 127),
+                channel = channel,
+                partId = partId,
+                partName = partName,
+                techniqueVariant = ResolveTechniqueVariant(source),
+                legatoTransitionKind = ResolveLegatoKind(source),
+                attackVelocityScale = source.accent ? 1.12f : 1f,
+                vibratoDepthSemitones = HasVibrato(source) ? 0.18f : 0f,
+                vibratoRateHz = HasVibrato(source) ? 5.5f : 0f,
+                vibratoDelayNormalized = 0.15f,
+                vibratoFadeNormalized = 0.2f,
+                pitchBendRangeSemitones = ResolvePitchBendRange(source),
+                pitchCurve = BuildPitchCurve(source)
+            };
+
+            generated.EnsureDefaults();
+            result.Add(generated);
+        }
+
+        return result;
+    }
+
+    private static int ResolvePlaybackChannel(ChartEditorTrack track)
+    {
+        if (track?.generatedPart != null && track.generatedPart.sourceMidiChannel >= 0)
+            return Mathf.Clamp(track.generatedPart.sourceMidiChannel, 0, 15);
+
+        return track?.role == ChartEditorTrackRole.Drums ? 9 : 0;
+    }
+
+    private static int[] ResolveTuning(ChartEditorTrack track)
+    {
+        if (track?.tuning?.stringPitches != null && track.tuning.stringPitches.Length > 0)
+            return (int[])track.tuning.stringPitches.Clone();
+
+        bool preferBass = track?.role == ChartEditorTrackRole.Bass;
+        return StringTuningUtils.CloneOrDefault(null, preferBass);
+    }
+
+    private static int ResolveStringMidiNote(ChartEditorNote note, int[] tuning)
+    {
+        if (tuning == null || tuning.Length == 0)
+            return 40 + Mathf.Max(0, note?.fret ?? 0);
+
+        int stringIndex = Mathf.Clamp(note?.stringOrLane ?? 0, 0, tuning.Length - 1);
+        return tuning[stringIndex] + Mathf.Max(0, note?.fret ?? 0);
+    }
+
+    private static int ResolveDrumMidiNote(ChartEditorNote note)
+    {
+        if (note == null)
+            return 51;
+
+        if (note.fret >= 35 && note.fret <= 81)
+            return note.fret;
+
+        switch (Mathf.Clamp(note.stringOrLane, 0, DrumLaneMapper.LaneCount - 1))
+        {
+            case DrumLaneMapper.HiHatLane: return 42;
+            case DrumLaneMapper.CrashLane: return 49;
+            case DrumLaneMapper.SnareLane: return 38;
+            case DrumLaneMapper.HighTomLane: return 48;
+            case DrumLaneMapper.KickLane: return 36;
+            case DrumLaneMapper.MidTomLane: return 45;
+            case DrumLaneMapper.FloorTomLane: return 41;
+            case DrumLaneMapper.RideLane: return 51;
+            default: return 51;
+        }
+    }
+
+    private static float GetTechniqueDuration(ChartEditorNote note)
+    {
+        float duration = 0f;
+        if (note?.techniqueSegments == null)
+            return duration;
+
+        for (int i = 0; i < note.techniqueSegments.Count; i++)
+        {
+            ChartEditorTechniqueSegment segment = note.techniqueSegments[i];
+            if (segment == null)
+                continue;
+
+            duration = Mathf.Max(duration, segment.startOffset, segment.endOffset);
+        }
+
+        return duration;
+    }
+
+    private static int ResolveTechniqueVariant(ChartEditorNote note)
+    {
+        if (note == null)
+            return (int)GeneratedTechniqueVariant.Normal;
+        if (note.harmonic || note.pinchHarmonic)
+            return (int)GeneratedTechniqueVariant.Harmonic;
+        if (note.palmMute)
+            return (int)GeneratedTechniqueVariant.PalmMute;
+        if (note.muted || note.fretHandMute)
+            return (int)GeneratedTechniqueVariant.StraightMute;
+        return (int)GeneratedTechniqueVariant.Normal;
+    }
+
+    private static int ResolveLegatoKind(ChartEditorNote note)
+    {
+        if (note == null)
+            return (int)GeneratedLegatoTransitionKind.None;
+        if (note.technique == NoteTechnique.HammerOn)
+            return (int)GeneratedLegatoTransitionKind.HammerOn;
+        if (note.technique == NoteTechnique.PullOff)
+            return (int)GeneratedLegatoTransitionKind.PullOff;
+        if (note.technique == NoteTechnique.Slide || note.slideTargetFret >= 0 || HasSegment(note, NoteTechniqueSegmentType.Slide))
+            return (int)GeneratedLegatoTransitionKind.Slide;
+        return (int)GeneratedLegatoTransitionKind.None;
+    }
+
+    private static bool HasVibrato(ChartEditorNote note)
+    {
+        return note != null &&
+               (note.technique == NoteTechnique.Vibrato ||
+                note.vibratoStrength > 0 ||
+                HasSegment(note, NoteTechniqueSegmentType.Vibrato));
+    }
+
+    private static bool HasSegment(ChartEditorNote note, NoteTechniqueSegmentType type)
+    {
+        return note?.techniqueSegments != null &&
+               note.techniqueSegments.Any(segment => segment != null && segment.type == type);
+    }
+
+    private static int ResolvePitchBendRange(ChartEditorNote note)
+    {
+        float max = Mathf.Abs(note?.bendStep ?? 0f);
+        max = Mathf.Max(max, Mathf.Abs(note?.maxBend ?? 0f));
+
+        if (note?.bendPoints != null)
+        {
+            for (int i = 0; i < note.bendPoints.Count; i++)
+                max = Mathf.Max(max, Mathf.Abs(note.bendPoints[i]?.step ?? 0f));
+        }
+
+        if (note?.techniqueSegments != null)
+        {
+            for (int i = 0; i < note.techniqueSegments.Count; i++)
+            {
+                ChartEditorTechniqueSegment segment = note.techniqueSegments[i];
+                if (segment == null)
+                    continue;
+
+                max = Mathf.Max(max, Mathf.Abs(segment.startBend), Mathf.Abs(segment.endBend));
+            }
+        }
+
+        return max > 0.01f ? Mathf.Clamp(Mathf.CeilToInt(max), 1, 12) : 0;
+    }
+
+    private static List<ChartEditorGeneratedPitchPoint> BuildPitchCurve(ChartEditorNote note)
+    {
+        List<ChartEditorGeneratedPitchPoint> points = new List<ChartEditorGeneratedPitchPoint>();
+        if (note == null)
+            return points;
+
+        float duration = Mathf.Max(0.01f, (float)Math.Max(note.durationSeconds, GetTechniqueDuration(note)));
+        if (note.bendPoints != null && note.bendPoints.Count > 0)
+        {
+            foreach (ChartEditorBendPoint bend in note.bendPoints.Where(point => point != null).OrderBy(point => point.timeSeconds))
+            {
+                points.Add(new ChartEditorGeneratedPitchPoint
+                {
+                    normalizedTime = Mathf.Clamp01(bend.timeSeconds / duration),
+                    semitoneOffset = bend.step
+                });
+            }
+        }
+
+        if (points.Count == 0)
+        {
+            float bend = Mathf.Abs(note.maxBend) > Mathf.Abs(note.bendStep) ? note.maxBend : note.bendStep;
+            if (Mathf.Abs(bend) > 0.01f)
+            {
+                points.Add(new ChartEditorGeneratedPitchPoint { normalizedTime = 0f, semitoneOffset = note.bendPreBend ? bend : 0f });
+                points.Add(new ChartEditorGeneratedPitchPoint { normalizedTime = 1f, semitoneOffset = note.bendRelease ? 0f : bend });
+            }
+        }
+
+        if (points.Count == 1)
+            points.Insert(0, new ChartEditorGeneratedPitchPoint { normalizedTime = 0f, semitoneOffset = 0f });
+
+        return points;
+    }
+
+    private static string FirstNonEmpty(params string[] values)
+    {
+        if (values == null)
+            return string.Empty;
+
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!string.IsNullOrWhiteSpace(values[i]))
+                return values[i].Trim();
+        }
+
+        return string.Empty;
+    }
+}
+
 [Serializable]
 public sealed class ChartEditorImportResult
 {
     public ChartEditorProject project;
+    public List<string> warnings = new List<string>();
+}
+
+[Serializable]
+public sealed class ChartEditorTheoryConversionRequest
+{
+    public string sourcePath;
+    public string audioPath;
+    public string outputDirectory;
+    public string outputPackagePath;
+    public bool overwriteExisting;
+    public bool validatePackage = true;
+    public bool requireAudio = true;
+    public bool returnExistingTheoryPackage = true;
+    public bool useLibrarySongsDirectory;
+    public bool rejectChartEditorOutputDirectory;
+}
+
+[Serializable]
+public sealed class ChartEditorTheoryConversionResult
+{
+    public string packagePath;
+    public ChartEditorProject project;
+    public ChartEditorSourceKind sourceKind;
+    public SongNotationSourceKind sourceNotationKind;
+    public bool sourceAlreadyTheoryPackage;
+    public bool packageWasWritten;
     public List<string> warnings = new List<string>();
 }

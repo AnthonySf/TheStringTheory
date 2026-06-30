@@ -282,6 +282,7 @@ public sealed class ChartEditorOverlay
     private const float SidebarListRowGap = 8f;
     private const int SidebarMaxSectionRows = 14;
     private const string SidebarTracksKey = "tracks";
+    private const string SidebarDifficultiesKey = "difficulties";
     private const string SidebarSectionsKey = "sections";
     private const string SidebarAnchorsKey = "anchors";
     private const string SidebarProjectInfoKey = "project-info";
@@ -440,6 +441,7 @@ public sealed class ChartEditorOverlay
     private readonly Dictionary<string, SidebarExpansionAnimation> sidebarExpansionAnimations = new Dictionary<string, SidebarExpansionAnimation>(StringComparer.OrdinalIgnoreCase);
     private bool sectionsExpanded;
     private bool tracksExpanded = true;
+    private bool difficultiesExpanded;
     private bool anchorsExpanded;
     private bool projectInfoExpanded;
     private bool seekDragging;
@@ -1791,6 +1793,16 @@ public sealed class ChartEditorOverlay
             () => CreateTracksSidebarContent(groups),
             EstimateTracksSidebarContentHeight(groups),
             Mathf.Max(0, groups.Count).ToString(CultureInfo.InvariantCulture)));
+        ChartEditorTrackViewGroup selectedGroup = GetSelectedTrackViewGroup(groups);
+        int difficultyCount = selectedGroup?.tracks?.Count ?? 0;
+        panel.Add(CreateCollapsibleSidebarSection(
+            SidebarDifficultiesKey,
+            "DIFFICULTIES",
+            difficultiesExpanded,
+            ToggleDifficultiesExpanded,
+            () => CreateDifficultiesSidebarContent(selectedGroup),
+            EstimateDifficultiesSidebarContentHeight(selectedGroup),
+            difficultyCount > 1 ? difficultyCount.ToString(CultureInfo.InvariantCulture) : string.Empty));
         panel.Add(CreateCollapsibleSidebarSection(
             SidebarSectionsKey,
             "SECTIONS",
@@ -2133,6 +2145,26 @@ public sealed class ChartEditorOverlay
         return container;
     }
 
+    private VisualElement CreateDifficultiesSidebarContent(ChartEditorTrackViewGroup group)
+    {
+        VisualElement container = new VisualElement();
+        if (group?.tracks == null || group.tracks.Count == 0)
+        {
+            container.Add(CreateSidebarText("No arrangement selected.", new Color(0.70f, 0.74f, 0.82f, 0.92f)));
+            return container;
+        }
+
+        List<ChartEditorTrack> variants = OrderDifficultyTracks(group.tracks);
+        for (int i = 0; i < variants.Count; i++)
+        {
+            ChartEditorTrack track = variants[i];
+            bool selected = string.Equals(track?.id ?? string.Empty, project.selectedTrackId ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            container.Add(CreateDifficultySidebarRow(track, selected));
+        }
+
+        return container;
+    }
+
     private VisualElement CreateSectionsSidebarContent()
     {
         VisualElement container = new VisualElement();
@@ -2180,6 +2212,12 @@ public sealed class ChartEditorOverlay
         return EstimateSidebarContentHeight(count, SidebarTrackRowHeight + SidebarTrackRowGap);
     }
 
+    private static float EstimateDifficultiesSidebarContentHeight(ChartEditorTrackViewGroup group)
+    {
+        int count = group?.tracks?.Count ?? 0;
+        return EstimateSidebarContentHeight(count, SidebarListRowHeight + SidebarListRowGap);
+    }
+
     private float EstimateSectionsSidebarContentHeight()
     {
         int count = project.sections == null ? 0 : Mathf.Min(project.sections.Count, SidebarMaxSectionRows);
@@ -2211,6 +2249,11 @@ public sealed class ChartEditorOverlay
     private void ToggleTracksExpanded()
     {
         ToggleSidebarSectionExpanded(SidebarTracksKey, ref tracksExpanded);
+    }
+
+    private void ToggleDifficultiesExpanded()
+    {
+        ToggleSidebarSectionExpanded(SidebarDifficultiesKey, ref difficultiesExpanded);
     }
 
     private void ToggleAnchorsExpanded()
@@ -2342,6 +2385,59 @@ public sealed class ChartEditorOverlay
         row.Add(textColumn);
 
         Label count = CreateLabel((group?.NoteCount ?? 0).ToString(), 24f, new Color(0.72f, 0.76f, 0.82f, 1f), false, TextAnchor.MiddleRight, false);
+        count.style.width = 82f;
+        row.Add(count);
+        return row;
+    }
+
+    private VisualElement CreateDifficultySidebarRow(ChartEditorTrack track, bool selected)
+    {
+        VisualElement row = new VisualElement();
+        row.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (track == null)
+                return;
+
+            if (evt.button == 1)
+            {
+                ShowDifficultyContextMenu(evt.position, track);
+                evt.StopPropagation();
+                return;
+            }
+
+            if (evt.button != 0)
+                return;
+
+            SelectDifficultyTrack(track);
+            evt.StopPropagation();
+        });
+
+        row.style.height = SidebarListRowHeight;
+        row.style.minHeight = SidebarListRowHeight;
+        row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.Center;
+        row.style.paddingLeft = 24f;
+        row.style.paddingRight = 20f;
+        row.style.marginLeft = 20f;
+        row.style.marginRight = 20f;
+        row.style.marginBottom = SidebarListRowGap;
+        row.style.backgroundColor = selected ? new Color(0.078f, 0.086f, 0.108f, 0.86f) : new Color(0f, 0f, 0f, 0f);
+        SetRadius(row, 8f);
+        SetBorderWidth(row, selected ? 1.5f : 0f);
+        if (selected)
+        {
+            row.style.borderTopColor = new Color(0.70f, 0.76f, 0.92f, 1f);
+            row.style.borderRightColor = new Color(0.70f, 0.76f, 0.92f, 1f);
+            row.style.borderBottomColor = new Color(0.70f, 0.76f, 0.92f, 1f);
+            row.style.borderLeftColor = new Color(0.70f, 0.76f, 0.92f, 1f);
+        }
+
+        Label name = CreateLabel(FormatDifficultyLabel(track), 23f, Color.white, selected, TextAnchor.MiddleLeft, false);
+        name.style.flexGrow = 1f;
+        name.style.whiteSpace = WhiteSpace.NoWrap;
+        row.Add(name);
+
+        Label count = CreateLabel((track?.notes?.Count ?? 0).ToString(), 21f, new Color(0.72f, 0.76f, 0.82f, 1f), false, TextAnchor.MiddleRight, false);
         count.style.width = 82f;
         row.Add(count);
         return row;
@@ -3191,6 +3287,8 @@ public sealed class ChartEditorOverlay
         ShowContextMenu(worldPosition,
             new ContextMenuItem("Edit Track", () => ShowTrackEditPopup(track)),
             new ContextMenuItem(group.ContainsSelected(project.selectedTrackId) ? "Selected: ON" : "Show This Track", () => SelectTrackGroup(group)),
+            new ContextMenuItem("Duplicate Difficulty", () => DuplicateDifficulty(track)),
+            new ContextMenuItem("Rename Difficulty", () => ShowRenameDifficultyPopup(track)),
             new ContextMenuItem(track.muted ? "Muted: ON" : "Muted: OFF", () =>
             {
                 track.muted = !track.muted;
@@ -3203,8 +3301,20 @@ public sealed class ChartEditorOverlay
                 project.dirty = true;
                 Rebuild();
             }),
-            new ContextMenuItem("Delete Track", () => DeleteTrack(track)),
+            new ContextMenuItem("Delete Difficulty", () => DeleteTrack(track)),
             new ContextMenuItem("Edit Song Info", ShowSongInfoPopup));
+    }
+
+    private void ShowDifficultyContextMenu(Vector2 worldPosition, ChartEditorTrack track)
+    {
+        if (track == null)
+            return;
+
+        ShowContextMenu(worldPosition,
+            new ContextMenuItem(string.Equals(project.selectedTrackId, track.id, StringComparison.OrdinalIgnoreCase) ? "Selected: ON" : "Select Difficulty", () => SelectDifficultyTrack(track)),
+            new ContextMenuItem("Rename Difficulty", () => ShowRenameDifficultyPopup(track)),
+            new ContextMenuItem("Duplicate Difficulty", () => DuplicateDifficulty(track)),
+            new ContextMenuItem("Delete Difficulty", () => DeleteTrack(track)));
     }
 
     private void ShowNoteContextMenu(Vector2 worldPosition, ChartEditorTrack track, ChartEditorNote note)
@@ -3768,13 +3878,86 @@ public sealed class ChartEditorOverlay
 
     private void SelectTrackGroup(ChartEditorTrackViewGroup group)
     {
-        ChartEditorTrack track = group?.activeTrack ?? group?.tracks?.FirstOrDefault(candidate => candidate != null);
+        ChartEditorTrack track = group?.activeTrack ?? SelectPreferredDifficultyTrack(group?.tracks);
+        if (track == null)
+            return;
+
+        SelectDifficultyTrack(track);
+    }
+
+    private void SelectDifficultyTrack(ChartEditorTrack track)
+    {
         if (track == null)
             return;
 
         project.selectedTrackId = track.id;
         SetExclusiveVisibleTrack(track, markDirty: true);
         ClearNoteSelection();
+        Rebuild();
+    }
+
+    private void ShowRenameDifficultyPopup(ChartEditorTrack track)
+    {
+        if (track == null)
+            return;
+
+        TextField labelField = CreatePopupTextField("Difficulty", FormatDifficultyLabel(track));
+        ShowEditPopup("Rename Difficulty", new VisualElement[] { labelField }, () =>
+        {
+            string value = labelField.value?.Trim();
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                SetStatus("Enter a difficulty name.");
+                return false;
+            }
+
+            track.difficultyLabel = value;
+            track.difficultyUiIndex = ResolveDifficultyUiIndex(track);
+            project.dirty = true;
+            HideEditPopup();
+            Rebuild();
+            return true;
+        });
+    }
+
+    private void DuplicateDifficulty(ChartEditorTrack source)
+    {
+        if (project?.tracks == null || source == null)
+            return;
+
+        string json = JsonUtility.ToJson(source);
+        ChartEditorTrack clone = JsonUtility.FromJson<ChartEditorTrack>(json) ?? new ChartEditorTrack();
+        clone.id = BuildUniqueTrackId($"{source.id}_copy");
+        clone.difficultyLabel = BuildDuplicateDifficultyLabel(source);
+        clone.difficultyUiIndex = BuildDuplicateDifficultyIndex(source);
+        clone.hasDifficultyVariants = true;
+        clone.visible = false;
+        clone.solo = false;
+        clone.muted = source.muted;
+        clone.notes ??= new List<ChartEditorNote>();
+        for (int i = 0; i < clone.notes.Count; i++)
+        {
+            if (clone.notes[i] != null)
+                clone.notes[i].id = Guid.NewGuid().ToString("N");
+        }
+
+        clone.EnsureDefaults();
+        if (clone.generatedNotes != null && clone.generatedNotes.Count > 0)
+            clone.generatedPlaybackNoteFingerprint = ChartEditorGeneratedPlaybackIntegrity.ComputeNoteFingerprint(clone);
+
+        int sourceIndex = project.tracks.FindIndex(track => ReferenceEquals(track, source) ||
+                                                            string.Equals(track?.id ?? string.Empty, source.id ?? string.Empty, StringComparison.OrdinalIgnoreCase));
+        int insertIndex = sourceIndex >= 0 ? sourceIndex + 1 : project.tracks.Count;
+        project.tracks.Insert(insertIndex, clone);
+        project.EnsureDefaults();
+        project.selectedTrackId = clone.id;
+        SetExclusiveVisibleTrack(clone, markDirty: false);
+        ClearNoteSelection();
+        selectedSectionId = null;
+        ClearAnchorSelection();
+        project.dirty = true;
+        MarkHighwayPreviewDirty();
+        SetStatus($"Duplicated difficulty \"{FormatDifficultyLabel(source)}\".");
         Rebuild();
     }
 
@@ -3816,6 +3999,62 @@ public sealed class ChartEditorOverlay
         Rebuild();
     }
 
+    private string BuildUniqueTrackId(string seed)
+    {
+        string baseId = string.IsNullOrWhiteSpace(seed) ? "track_copy" : seed.Trim();
+        string candidate = baseId;
+        int suffix = 2;
+        while (project?.tracks != null &&
+               project.tracks.Any(track => track != null && string.Equals(track.id ?? string.Empty, candidate, StringComparison.OrdinalIgnoreCase)))
+        {
+            candidate = $"{baseId}_{suffix++}";
+        }
+
+        return candidate;
+    }
+
+    private string BuildDuplicateDifficultyLabel(ChartEditorTrack source)
+    {
+        string baseLabel = FormatDifficultyLabel(source);
+        string candidate = $"{baseLabel} Copy";
+        int suffix = 2;
+        HashSet<string> existing = new HashSet<string>(
+            project?.tracks?
+                .Where(track => track != null &&
+                                string.Equals(GetTrackGroupKey(track), GetTrackGroupKey(source), StringComparison.OrdinalIgnoreCase))
+                .Select(FormatDifficultyLabel) ?? Enumerable.Empty<string>(),
+            StringComparer.OrdinalIgnoreCase);
+
+        while (existing.Contains(candidate))
+            candidate = $"{baseLabel} Copy {suffix++}";
+
+        return candidate;
+    }
+
+    private int BuildDuplicateDifficultyIndex(ChartEditorTrack source)
+    {
+        int max = -1;
+        if (project?.tracks != null)
+        {
+            string groupKey = GetTrackGroupKey(source);
+            for (int i = 0; i < project.tracks.Count; i++)
+            {
+                ChartEditorTrack track = project.tracks[i];
+                if (track == null ||
+                    !string.Equals(GetTrackGroupKey(track), groupKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                int index = ResolveDifficultyUiIndex(track);
+                if (index != int.MaxValue)
+                    max = Mathf.Max(max, index);
+            }
+        }
+
+        return max + 1;
+    }
+
     private void EnsureSingleVisibleTrack(bool markDirty)
     {
         if (project?.tracks == null || project.tracks.Count == 0)
@@ -3824,14 +4063,7 @@ public sealed class ChartEditorOverlay
         ChartEditorTrack selectedTrack = project.SelectedTrack;
         if (selectedTrack == null)
         {
-            selectedTrack = project.tracks
-                .Where(track => track != null && track.visible)
-                .OrderByDescending(track => track.notes?.Count ?? 0)
-                .FirstOrDefault()
-                ?? project.tracks
-                    .Where(track => track != null)
-                    .OrderByDescending(track => track.notes?.Count ?? 0)
-                    .FirstOrDefault();
+            selectedTrack = SelectPreferredDifficultyTrack(project.tracks);
         }
 
         if (selectedTrack == null)
@@ -3887,6 +4119,8 @@ public sealed class ChartEditorOverlay
             track.displayName = string.IsNullOrWhiteSpace(nameField.value) ? FormatTrackName(track) : nameField.value.Trim();
             track.role = role;
             track.colorHex = DefaultColorHexForRole(role);
+            track.arrangementRoute = ArrangementRouteForTrackRole(role);
+            track.arrangementInstrumentType = ArrangementInstrumentTypeForTrackRole(role);
             if (roleChanged)
             {
                 ApplyGeneratedPartRoleDefaults(track, role);
@@ -9393,18 +9627,37 @@ public sealed class ChartEditorOverlay
             if (group.activeTrack != null)
                 continue;
 
-            group.activeTrack = group.tracks
-                .Where(track => track != null && track.visible)
-                .OrderByDescending(track => track.notes?.Count ?? 0)
-                .ThenBy(track => track.displayName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
-                .FirstOrDefault()
-                ?? group.tracks
-                    .Where(track => track != null)
-                    .OrderByDescending(track => track.notes?.Count ?? 0)
-                    .FirstOrDefault();
+            group.activeTrack = SelectPreferredDifficultyTrack(group.tracks);
         }
 
         return groups;
+    }
+
+    private ChartEditorTrackViewGroup GetSelectedTrackViewGroup(List<ChartEditorTrackViewGroup> groups)
+    {
+        if (groups == null || groups.Count == 0)
+            return null;
+
+        ChartEditorTrackViewGroup selected = groups.FirstOrDefault(group => group != null && group.ContainsSelected(project?.selectedTrackId));
+        return selected ?? groups.FirstOrDefault(group => group != null && group.activeTrack != null);
+    }
+
+    private static ChartEditorTrack SelectPreferredDifficultyTrack(IEnumerable<ChartEditorTrack> tracks)
+    {
+        return OrderDifficultyTracks(tracks)
+            .Where(track => track != null && track.visible)
+            .FirstOrDefault()
+            ?? OrderDifficultyTracks(tracks).FirstOrDefault();
+    }
+
+    private static List<ChartEditorTrack> OrderDifficultyTracks(IEnumerable<ChartEditorTrack> tracks)
+    {
+        return (tracks ?? Enumerable.Empty<ChartEditorTrack>())
+            .Where(track => track != null)
+            .OrderBy(ResolveDifficultyUiIndex)
+            .ThenByDescending(track => track.notes?.Count ?? 0)
+            .ThenBy(track => track.difficultyLabel ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     private static string GetTrackGroupKey(ChartEditorTrack track)
@@ -9412,12 +9665,38 @@ public sealed class ChartEditorOverlay
         if (track == null)
             return string.Empty;
 
+        if (!string.IsNullOrWhiteSpace(track.arrangementGroupId))
+            return $"arrangement|{NormalizeTrackKey(track.arrangementGroupId)}";
+
         string role = track.role.ToString();
         string tuning = NormalizeTrackKey(track.tuning?.displayName);
         string name = track.role == ChartEditorTrackRole.Custom
             ? NormalizeTrackKey(track.displayName)
             : string.Empty;
         return $"{role}|{tuning}|{name}";
+    }
+
+    private static int ResolveDifficultyUiIndex(ChartEditorTrack track)
+    {
+        if (track == null)
+            return int.MaxValue;
+        if (track.difficultyUiIndex >= 0)
+            return track.difficultyUiIndex;
+        if (string.Equals(track.difficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        return int.TryParse(track.difficultyLabel, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+            ? Mathf.Max(0, parsed)
+            : int.MaxValue;
+    }
+
+    private static string FormatDifficultyLabel(ChartEditorTrack track)
+    {
+        if (track == null)
+            return "Full";
+        if (!string.IsNullOrWhiteSpace(track.difficultyLabel))
+            return track.difficultyLabel.Trim();
+        int index = ResolveDifficultyUiIndex(track);
+        return index == 0 || index == int.MaxValue ? "Full" : index.ToString(CultureInfo.InvariantCulture);
     }
 
     private static string NormalizeTrackKey(string value)
@@ -9543,6 +9822,44 @@ public sealed class ChartEditorOverlay
                 return "#F36BC3";
             default:
                 return "#D4DAE8";
+        }
+    }
+
+    private static string ArrangementRouteForTrackRole(ChartEditorTrackRole role)
+    {
+        switch (role)
+        {
+            case ChartEditorTrackRole.Bass:
+                return "Bass";
+            case ChartEditorTrackRole.RhythmGuitar:
+                return "Rhythm";
+            case ChartEditorTrackRole.Drums:
+                return "Drums";
+            case ChartEditorTrackRole.Piano:
+                return "Piano";
+            case ChartEditorTrackRole.Vocals:
+                return "Vocals";
+            case ChartEditorTrackRole.Custom:
+                return "Custom";
+            default:
+                return "Lead";
+        }
+    }
+
+    private static string ArrangementInstrumentTypeForTrackRole(ChartEditorTrackRole role)
+    {
+        switch (role)
+        {
+            case ChartEditorTrackRole.Bass:
+                return "bass";
+            case ChartEditorTrackRole.Drums:
+                return "drums";
+            case ChartEditorTrackRole.Piano:
+                return "piano";
+            case ChartEditorTrackRole.Vocals:
+                return "vocals";
+            default:
+                return "guitar";
         }
     }
 
@@ -11350,6 +11667,7 @@ public sealed class ChartEditorOverlay
         });
         panel.Add(nameField);
         panel.Add(CreateKeyValue("Role", track.role.ToString()));
+        panel.Add(CreateKeyValue("Difficulty", FormatDifficultyLabel(track)));
         panel.Add(CreateKeyValue("Tuning", FirstNonEmpty(track.tuning?.displayName, "Unknown")));
         panel.Add(CreateKeyValue("Notes", (track.notes?.Count ?? 0).ToString()));
         panel.Add(CreateToggleButton("Visible", track.visible, () => { track.visible = !track.visible; project.dirty = true; Rebuild(); }));
@@ -11578,11 +11896,7 @@ public sealed class ChartEditorOverlay
         if (ChartEditorProjectStore.LoadProject(path, out ChartEditorProject loaded, out string error))
         {
             project = loaded;
-            int originalTrackCount = project.tracks?.Count ?? 0;
-            ChartEditorImportService.KeepFullDifficultyTracksOnly(project);
             ChartEditorTimingService.EnsureBeatMap(project, attachContentToBeatMap: true);
-            if ((project.tracks?.Count ?? 0) < originalTrackCount)
-                project.dirty = true;
             timelineZoom = ResolveDefaultTimelineZoom(project);
             EnsureSingleVisibleTrack(markDirty: false);
             currentWarnings = ChartEditorValidationService.BuildWarnings(project);
@@ -11607,7 +11921,6 @@ public sealed class ChartEditorOverlay
     {
         project = result?.project;
         project?.EnsureDefaults();
-        ChartEditorImportService.KeepFullDifficultyTracksOnly(project);
         ChartEditorTimingService.EnsureBeatMap(project, attachContentToBeatMap: true);
         timelineZoom = ResolveDefaultTimelineZoom(project);
         EnsureSingleVisibleTrack(markDirty: false);

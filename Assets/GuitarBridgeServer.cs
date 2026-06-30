@@ -1191,6 +1191,10 @@ public class GuitarBridgeServer : MonoBehaviour
     private float libraryRefreshProgressPercent;
     private string libraryRefreshStatusText = string.Empty;
     private bool libraryRefreshShowsProgress;
+    private bool showLibraryImportPopup;
+    private string libraryImportPopupStatusText = string.Empty;
+    private readonly List<SongLibraryImportCandidate> pendingLibraryImportCandidates = new List<SongLibraryImportCandidate>();
+    private readonly List<bool> pendingLibraryImportCandidateSelected = new List<bool>();
     private bool firstStartCompleted;
     private StartMenuStep startMenuStep = StartMenuStep.SelectMode;
     private int selectedStartMenuModeIndex;
@@ -2566,6 +2570,12 @@ public class GuitarBridgeServer : MonoBehaviour
         if (showTrackSelection)
         {
             HandleTrackSelectionControls();
+            return;
+        }
+
+        if (showLibraryImportPopup)
+        {
+            HandleLibraryImportPopupControls();
             return;
         }
 
@@ -5405,6 +5415,18 @@ public class GuitarBridgeServer : MonoBehaviour
             ConfirmTrackSelection();
     }
 
+    private void HandleLibraryImportPopupControls()
+    {
+        if (IsUiBackPressed())
+        {
+            CloseLibraryImportPopupFromUi();
+            return;
+        }
+
+        if (IsUiSubmitPressed(allowControllerPointerSubmit: true))
+            ConvertSelectedLibraryImportsToTheoryFromUi();
+    }
+
     private void HandleTrackSelectionControls()
     {
         if (IsUiBackPressed())
@@ -5915,7 +5937,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private MusicXmlLoader.MusicXmlPartSummary GetPendingSelectedTrackSummary()
     {
         if (IsPendingArrangementDifficultySelectionActive())
-            return GetHighestDifficultyArrangementVariant(GetPendingSelectedArrangementTrackGroup()?.Variants);
+            return GetPendingSelectedArrangementVariant(allowFallbackToNearest: true);
 
         if (pendingTrackSelectionParts == null || pendingTrackSelectionParts.Count == 0)
             return null;
@@ -6494,6 +6516,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         showLibraryLoadingOverlay = false;
+        ClearLibraryImportPopupState();
     }
 
     private void RefreshAvailableSongs(bool forceRefresh = false)
@@ -6513,12 +6536,75 @@ public class GuitarBridgeServer : MonoBehaviour
 
         songLibraryRefreshRequestId++;
         showLibraryLoadingOverlay = true;
+        ClearLibraryImportPopupState();
         SetSongLibraryRefreshOverlayState(
             inProgress: true,
             progressPercent: 0f,
-            statusText: refreshImports ? "Preparing library refresh..." : "Loading library...",
-            showProgress: refreshImports);
-        songLibraryRefreshRoutine = StartCoroutine(RefreshSongsDeferred(songLibraryRefreshRequestId, refreshImports));
+            statusText: refreshImports ? "Searching for new songs..." : "Loading library...",
+            showProgress: false);
+        songLibraryRefreshRoutine = refreshImports
+            ? StartCoroutine(DiscoverLibraryImportsDeferred(songLibraryRefreshRequestId))
+            : StartCoroutine(RefreshSongsDeferred(songLibraryRefreshRequestId, refreshImports: false));
+    }
+
+    private void BeginSongLibraryLegacyRefresh()
+    {
+        if (songLibraryRefreshRoutine != null)
+            return;
+
+        songLibraryRefreshRequestId++;
+        showLibraryLoadingOverlay = true;
+        ClearLibraryImportPopupState();
+        SetSongLibraryRefreshOverlayState(
+            inProgress: true,
+            progressPercent: 0f,
+            statusText: "Preparing legacy conversion...",
+            showProgress: true);
+        songLibraryRefreshRoutine = StartCoroutine(RefreshSongsDeferred(songLibraryRefreshRequestId, refreshImports: true));
+    }
+
+    private System.Collections.IEnumerator DiscoverLibraryImportsDeferred(int requestId)
+    {
+        yield return null;
+
+        Task<List<SongLibraryImportCandidate>> discoverTask = Task.Run(SongLibraryService.DiscoverPendingTheoryConversionCandidates);
+        while (!discoverTask.IsCompleted)
+            yield return null;
+
+        if (requestId != songLibraryRefreshRequestId)
+            yield break;
+
+        if (discoverTask.IsFaulted || discoverTask.IsCanceled)
+        {
+            Exception exception = discoverTask.Exception?.GetBaseException();
+            if (exception != null)
+                Debug.LogWarning($"[SongLibrary] Import discovery failed: {exception.Message}");
+            songLibraryRefreshRoutine = null;
+            BeginSongLibraryLegacyRefresh();
+            yield break;
+        }
+
+        List<SongLibraryImportCandidate> candidates = discoverTask.Result ?? new List<SongLibraryImportCandidate>();
+        if (candidates.Count > 0)
+        {
+            pendingLibraryImportCandidates.Clear();
+            pendingLibraryImportCandidates.AddRange(candidates);
+            pendingLibraryImportCandidateSelected.Clear();
+            for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
+                pendingLibraryImportCandidateSelected.Add(true);
+
+            libraryImportPopupStatusText = $"{candidates.Count} new song{(candidates.Count == 1 ? string.Empty : "s")} found.";
+            showSongSelection = true;
+            showLibraryImportPopup = true;
+            showLibraryLoadingOverlay = false;
+            SetSongLibraryRefreshOverlayState(false, 0f, string.Empty, false);
+            songLibraryRefreshRoutine = null;
+            runtimeSettingsSnapshotDirty = true;
+            yield break;
+        }
+
+        songLibraryRefreshRoutine = null;
+        BeginSongLibraryRefresh(refreshImports: false);
     }
 
     private System.Collections.IEnumerator RefreshSongsDeferred(int requestId, bool refreshImports)
@@ -6561,6 +6647,157 @@ public class GuitarBridgeServer : MonoBehaviour
             songLibraryRefreshRoutine = null;
             runtimeSettingsSnapshotDirty = true;
         }
+    }
+
+    private System.Collections.IEnumerator ConvertSelectedLibraryImportsDeferred(
+        int requestId,
+        List<SongLibraryImportCandidate> selectedCandidates)
+    {
+        yield return null;
+
+        List<string> conversionErrors = null;
+        object conversionProgressAnimationLock = new object();
+        float activeConversionProgressCeiling = 86f;
+        SetSongLibraryRefreshOverlayState(true, 3f, "Starting .theory conversion...", true);
+        Task<List<SongLibraryEntry>> conversionTask = Task.Run(() =>
+        {
+            int convertedCount = SongLibraryService.ConvertImportCandidatesToTheoryPackages(
+                selectedCandidates,
+                (completed, total, currentName) =>
+                {
+                    bool hasCurrentName = !string.IsNullOrWhiteSpace(currentName);
+                    int visibleIndex = total > 0
+                        ? Math.Max(1, Math.Min(completed, total))
+                        : 0;
+                    float progressPercent;
+                    string status;
+                    if (total > 0 && hasCurrentName)
+                    {
+                        float segmentSize = 76f / Math.Max(1, total);
+                        progressPercent = 6f + ((visibleIndex - 1) * segmentSize);
+                        status = $"Converting to .theory... {visibleIndex}/{total}  {currentName}";
+
+                        lock (conversionProgressAnimationLock)
+                        {
+                            activeConversionProgressCeiling = Math.Min(86f, progressPercent + Math.Max(2f, segmentSize * 0.85f));
+                        }
+                    }
+                    else if (total > 0)
+                    {
+                        progressPercent = 88f;
+                        status = "Finalizing .theory conversion...";
+                        lock (conversionProgressAnimationLock)
+                            activeConversionProgressCeiling = 88f;
+                    }
+                    else
+                    {
+                        progressPercent = 6f;
+                        status = "Converting to .theory...";
+                    }
+
+                    GetSongLibraryRefreshOverlayState(out _, out float currentProgress, out _, out _);
+                    UpdateSongLibraryRefreshProgress(Math.Max(progressPercent, currentProgress), status);
+                },
+                out conversionErrors);
+
+            if (conversionErrors != null && conversionErrors.Count > 0)
+            {
+                Debug.LogWarning($"[SongLibrary] .theory conversion completed with {conversionErrors.Count} error(s): {string.Join(" | ", conversionErrors)}");
+            }
+
+            UpdateSongLibraryRefreshProgress(90f, convertedCount > 0 ? "Refreshing converted songs..." : "Refreshing library...");
+            SongLibraryService.ClearCache();
+            return SongLibraryService.GetAvailableSongs(forceRefresh: true, refreshImports: false);
+        });
+
+        while (!conversionTask.IsCompleted)
+        {
+            GetSongLibraryRefreshOverlayState(
+                out bool inProgressSnapshot,
+                out float currentProgress,
+                out string currentStatus,
+                out bool showsProgressSnapshot);
+            if (inProgressSnapshot && showsProgressSnapshot)
+            {
+                float animationCeiling;
+                lock (conversionProgressAnimationLock)
+                    animationCeiling = activeConversionProgressCeiling;
+
+                if (currentProgress < animationCeiling)
+                {
+                    float nextProgress = Math.Min(
+                        animationCeiling,
+                        currentProgress + Mathf.Max(0.08f, Time.unscaledDeltaTime * 2.5f));
+                    SetSongLibraryRefreshOverlayState(
+                        true,
+                        nextProgress,
+                        string.IsNullOrWhiteSpace(currentStatus) ? "Converting to .theory..." : currentStatus,
+                        true);
+                }
+            }
+
+            yield return null;
+        }
+
+        if (requestId != songLibraryRefreshRequestId)
+            yield break;
+
+        try
+        {
+            if (conversionTask.IsFaulted || conversionTask.IsCanceled)
+            {
+                Exception exception = conversionTask.Exception?.GetBaseException();
+                if (exception != null)
+                    Debug.LogWarning($"[SongLibrary] .theory conversion failed: {exception.Message}");
+                RefreshAvailableSongs(forceRefresh: false, refreshImports: false);
+            }
+            else
+            {
+                ApplyAvailableSongsSnapshot(conversionTask.Result);
+            }
+
+            pendingLibraryImportCandidates.Clear();
+            pendingLibraryImportCandidateSelected.Clear();
+            songSelectionSongConfirmed = false;
+            EnsureSongSelectionVisible();
+        }
+        finally
+        {
+            showLibraryLoadingOverlay = false;
+            SetSongLibraryRefreshOverlayState(false, 0f, string.Empty, false);
+            songLibraryRefreshRoutine = null;
+            runtimeSettingsSnapshotDirty = true;
+        }
+    }
+
+    private List<SongLibraryImportCandidate> GetSelectedLibraryImportCandidates()
+    {
+        List<SongLibraryImportCandidate> selected = new List<SongLibraryImportCandidate>();
+        for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
+        {
+            if (i < pendingLibraryImportCandidateSelected.Count && pendingLibraryImportCandidateSelected[i])
+                selected.Add(pendingLibraryImportCandidates[i]);
+        }
+
+        return selected;
+    }
+
+    private string BuildLibraryImportPopupStatusText()
+    {
+        int total = pendingLibraryImportCandidates.Count;
+        int selected = pendingLibraryImportCandidateSelected.Count(value => value);
+        if (total == 0)
+            return "No new songs found.";
+
+        return $"{selected}/{total} selected.";
+    }
+
+    private void ClearLibraryImportPopupState()
+    {
+        showLibraryImportPopup = false;
+        libraryImportPopupStatusText = string.Empty;
+        pendingLibraryImportCandidates.Clear();
+        pendingLibraryImportCandidateSelected.Clear();
     }
 
     private void UpdateSongLibraryRefreshProgress(float progressPercent, string statusText)
@@ -7131,7 +7368,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             if (IsPendingArrangementDifficultySelectionActive())
             {
-                previousPartId = GetHighestDifficultyArrangementVariant(GetPendingSelectedArrangementTrackGroup()?.Variants)?.PartId ?? string.Empty;
+                previousPartId = GetPendingSelectedArrangementVariant(allowFallbackToNearest: true)?.PartId ?? string.Empty;
             }
             else if (selectedTrackListIndex >= 0 && selectedTrackListIndex < pendingTrackSelectionParts.Count)
             {
@@ -11395,6 +11632,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showMiniGames = false;
         showChartEditor = false;
         gameplayHudPreviewInMenus = false;
+        ClearLibraryImportPopupState();
         showSongSettings = true;
         showGeneratedAudioTrackSelectionPopup = false;
         showSongSettingsTrackSelectionPopup = false;
@@ -11418,6 +11656,7 @@ public class GuitarBridgeServer : MonoBehaviour
         CancelDeferredSongSelectionOpen();
         showToneLab = false;
         HideToneLabUi();
+        ClearLibraryImportPopupState();
         showTuner = false;
         tunerResumeGameplayAfterSkip = false;
         guitarTunerOverlay?.SetVisible(false);
@@ -12051,6 +12290,75 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
     }
 
+    public void ToggleLibraryImportCandidateFromUi(int candidateIndex)
+    {
+        if (!showLibraryImportPopup ||
+            candidateIndex < 0 ||
+            candidateIndex >= pendingLibraryImportCandidateSelected.Count)
+        {
+            return;
+        }
+
+        pendingLibraryImportCandidateSelected[candidateIndex] = !pendingLibraryImportCandidateSelected[candidateIndex];
+        libraryImportPopupStatusText = BuildLibraryImportPopupStatusText();
+    }
+
+    public void SetAllLibraryImportCandidatesFromUi(bool selected)
+    {
+        if (!showLibraryImportPopup)
+            return;
+
+        for (int i = 0; i < pendingLibraryImportCandidateSelected.Count; i++)
+            pendingLibraryImportCandidateSelected[i] = selected;
+
+        libraryImportPopupStatusText = BuildLibraryImportPopupStatusText();
+    }
+
+    public void ConvertSelectedLibraryImportsToTheoryFromUi()
+    {
+        if (!showLibraryImportPopup || songLibraryRefreshRoutine != null)
+            return;
+
+        List<SongLibraryImportCandidate> selectedCandidates = GetSelectedLibraryImportCandidates();
+        if (selectedCandidates.Count == 0)
+        {
+            libraryImportPopupStatusText = "Select at least one song to convert.";
+            return;
+        }
+
+        songLibraryRefreshRequestId++;
+        showLibraryImportPopup = false;
+        showLibraryLoadingOverlay = true;
+        SetSongLibraryRefreshOverlayState(
+            inProgress: true,
+            progressPercent: 0f,
+            statusText: "Converting selected songs to .theory...",
+            showProgress: true);
+        songLibraryRefreshRoutine = StartCoroutine(ConvertSelectedLibraryImportsDeferred(songLibraryRefreshRequestId, selectedCandidates));
+    }
+
+    public void RunLegacyLibraryImportFromUi()
+    {
+        if (!showLibraryImportPopup || songLibraryRefreshRoutine != null)
+            return;
+
+        ClearLibraryImportPopupState();
+        ClearSongSelectionCaches();
+        SongLibraryService.ClearCache();
+        BeginSongLibraryLegacyRefresh();
+    }
+
+    public void CloseLibraryImportPopupFromUi()
+    {
+        if (!showLibraryImportPopup || songLibraryRefreshRoutine != null)
+            return;
+
+        ClearLibraryImportPopupState();
+        ClearSongSelectionCaches();
+        SongLibraryService.ClearCache();
+        BeginSongLibraryRefresh(refreshImports: false);
+    }
+
     public void MoveSongSelectionFromUi(int delta)
     {
         MoveSongSelection(delta);
@@ -12200,6 +12508,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showToneLab = false;
         HideToneLabUi();
+        ClearLibraryImportPopupState();
         showSongSelection = false;
         songSelectionSongConfirmed = false;
         songLibrarySearchInputFocused = false;
@@ -21067,6 +21376,7 @@ private void OpenOrFocusToneLab()
         float progress = Mathf.Clamp01((songTimer - sectionStart) / Mathf.Max(0.01f, sectionDuration));
         float songDurationSecondsSnapshot = GetSongDurationSeconds();
         bool buildSongLibrarySnapshot = showSongSelection || showTrackSelection || pendingMultiplayerRhythmSongSelection;
+        bool buildLibraryImportSnapshot = showLibraryImportPopup;
         bool buildLoopBookmarkSnapshot = showLoopSettings || showLoopBookmarksPanel;
         bool buildRhythmPracticeSnapshot = showGameModes || showLoopSettings;
         bool buildMultiplayerRhythmSnapshot = multiplayerRhythmModeActive || pendingMultiplayerRhythmSongSelection || showMultiplayerRhythmSetup;
@@ -21372,6 +21682,18 @@ private void OpenOrFocusToneLab()
         string notesDetectorBackendLabelSnapshot = buildNotesDetectorStatusSnapshot ? GetNotesDetectorBackendLabel() : string.Empty;
         string notesDetectorStatusTextSnapshot = buildNotesDetectorStatusSnapshot ? GetNotesDetectorStatusText() : string.Empty;
         string notesDetectorDetailTextSnapshot = buildNotesDetectorStatusSnapshot ? GetNotesDetectorDetailText() : string.Empty;
+        List<string> libraryImportCandidateNames = buildLibraryImportSnapshot
+            ? pendingLibraryImportCandidates.Select(candidate => candidate?.DisplayName ?? string.Empty).ToList()
+            : EmptyStringSnapshotList;
+        List<string> libraryImportCandidateSubtitles = buildLibraryImportSnapshot
+            ? pendingLibraryImportCandidates.Select(candidate => candidate?.Subtitle ?? string.Empty).ToList()
+            : EmptyStringSnapshotList;
+        List<string> libraryImportCandidateKindLabels = buildLibraryImportSnapshot
+            ? pendingLibraryImportCandidates.Select(candidate => candidate?.SourceKindLabel ?? string.Empty).ToList()
+            : EmptyStringSnapshotList;
+        List<bool> libraryImportCandidateSelected = buildLibraryImportSnapshot
+            ? new List<bool>(pendingLibraryImportCandidateSelected)
+            : EmptyBoolSnapshotList;
         GetSongLibraryRefreshOverlayState(
             out bool libraryRefreshInProgressSnapshot,
             out float libraryRefreshProgressPercentSnapshot,
@@ -21499,6 +21821,12 @@ private void OpenOrFocusToneLab()
                 : "Loading library...",
             libraryLoadingProgressPercent = libraryRefreshProgressPercentSnapshot,
             libraryLoadingShowsProgress = libraryRefreshInProgressSnapshot && libraryRefreshShowsProgressSnapshot,
+            showLibraryImportPopup = showLibraryImportPopup,
+            libraryImportCandidateNames = libraryImportCandidateNames,
+            libraryImportCandidateSubtitles = libraryImportCandidateSubtitles,
+            libraryImportCandidateKindLabels = libraryImportCandidateKindLabels,
+            libraryImportCandidateSelected = libraryImportCandidateSelected,
+            libraryImportPopupStatusText = libraryImportPopupStatusText,
             selectedStartMenuStepIndex = (int)startMenuStep,
             selectedStartMenuModeIndex = selectedStartMenuModeIndex,
             selectedStartMenuArcadeSetupIndex = selectedStartMenuArcadeSetupIndex,

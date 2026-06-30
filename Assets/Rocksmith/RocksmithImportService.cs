@@ -132,6 +132,15 @@ public static class RocksmithImportService
             RocksmithCachedSongFormat.ManifestFileName);
     }
 
+    public static bool IsPsarcImportUpToDate(string psarcPath)
+    {
+        if (string.IsNullOrWhiteSpace(psarcPath))
+            return false;
+
+        string manifestPath = GetImportedManifestPathForPsarc(psarcPath);
+        return IsImportUpToDate(psarcPath, manifestPath);
+    }
+
     private static bool IsSupportedRuntimePlatform()
     {
         RuntimePlatform platform = Application.platform;
