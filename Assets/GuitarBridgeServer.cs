@@ -523,12 +523,24 @@ public class GuitarBridgeServer : MonoBehaviour
         public HashSet<int> consumedKeys = new HashSet<int>();
     }
 
+    private const int ArcadeLegacyLaneCount = 5;
+    private const int ArcadeInputLaneCapacity = 8;
+    private const int DrumLaneCount = 8;
+    private const int DrumLaneHiHat = 0;
+    private const int DrumLaneCrash = 1;
+    private const int DrumLaneSnare = 2;
+    private const int DrumLaneHighTom = 3;
+    private const int DrumLaneKick = 4;
+    private const int DrumLaneMidTom = 5;
+    private const int DrumLaneFloorTom = 6;
+    private const int DrumLaneRide = 7;
+
     private class ArcadeInputEvent
     {
         public int id;
         public float time;
-        public bool[] heldLanes = new bool[5];
-        public bool[] pressedLanes = new bool[5];
+        public bool[] heldLanes = new bool[ArcadeInputLaneCapacity];
+        public bool[] pressedLanes = new bool[ArcadeInputLaneCapacity];
         public bool isStrum;
         public bool isTap;
         public bool isRelease;
@@ -566,9 +578,9 @@ public class GuitarBridgeServer : MonoBehaviour
         public readonly List<ArcadeInputEvent> recentInputEvents = new List<ArcadeInputEvent>();
         public readonly Dictionary<int, ArcadeActiveSustain> activeSustains = new Dictionary<int, ArcadeActiveSustain>();
         public readonly Dictionary<int, int> awardedSustainScore = new Dictionary<int, int>();
-        public readonly bool[] heldLanes = new bool[5];
-        public readonly bool[] previousHeldLanes = new bool[5];
-        public readonly bool[] pressedLanes = new bool[5];
+        public readonly bool[] heldLanes = new bool[ArcadeLegacyLaneCount];
+        public readonly bool[] previousHeldLanes = new bool[ArcadeLegacyLaneCount];
+        public readonly bool[] pressedLanes = new bool[ArcadeLegacyLaneCount];
         public int latestInputEventId;
         public bool comboActive;
         public bool inputNeedsUnpausedPrime;
@@ -779,6 +791,14 @@ public class GuitarBridgeServer : MonoBehaviour
     public KeyCode arcadeKeyboardYellow = KeyCode.J;
     public KeyCode arcadeKeyboardBlue = KeyCode.K;
     public KeyCode arcadeKeyboardOrange = KeyCode.L;
+    public KeyCode arcadeKeyboardDrumHiHat = KeyCode.A;
+    public KeyCode arcadeKeyboardDrumCrash = KeyCode.S;
+    public KeyCode arcadeKeyboardDrumSnare = KeyCode.D;
+    public KeyCode arcadeKeyboardDrumHighTom = KeyCode.F;
+    public KeyCode arcadeKeyboardDrumKick = KeyCode.G;
+    public KeyCode arcadeKeyboardDrumMidTom = KeyCode.H;
+    public KeyCode arcadeKeyboardDrumFloorTom = KeyCode.J;
+    public KeyCode arcadeKeyboardDrumRide = KeyCode.K;
     public KeyCode arcadeKeyboardStrumUp = KeyCode.Space;
     public KeyCode arcadeKeyboardStrumDown = KeyCode.None;
     public KeyCode arcadeKeyboardOpen = KeyCode.None;
@@ -1350,10 +1370,11 @@ public class GuitarBridgeServer : MonoBehaviour
     private readonly HashSet<int> arcadeSessionScoredNoteIds = new HashSet<int>();
     private readonly List<ArcadeInputEvent> arcadeRecentInputEvents = new List<ArcadeInputEvent>();
     private readonly Dictionary<int, ArcadeActiveSustain> activeArcadeSustains = new Dictionary<int, ArcadeActiveSustain>();
-    private readonly bool[] arcadeHeldLanes = new bool[5];
-    private readonly bool[] previousArcadeHeldLanes = new bool[5];
-    private readonly bool[] arcadePressedLanesScratch = new bool[5];
-    private readonly bool[] arcadeMidiHeldLanes = new bool[5];
+    private readonly bool[] arcadeHeldLanes = new bool[ArcadeInputLaneCapacity];
+    private readonly bool[] previousArcadeHeldLanes = new bool[ArcadeInputLaneCapacity];
+    private readonly bool[] arcadePressedLanesScratch = new bool[ArcadeInputLaneCapacity];
+    private readonly bool[] arcadeMidiHeldLanes = new bool[ArcadeInputLaneCapacity];
+    private readonly bool[] arcadeMidiPressedLanes = new bool[ArcadeInputLaneCapacity];
     private ArcadeMidiInputBridge arcadeMidiInputBridge;
     private float nextArcadeMidiInputStartRealtime;
     private bool arcadeMidiInputUnavailableLogged;
@@ -1664,6 +1685,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private static readonly string[] HighwayCharacterDisplayModeOptions =
     {
         "Always",
+        "Always (Guitars)",
         "Never",
         "Only In Hero Mode"
     };
@@ -12290,6 +12312,19 @@ public class GuitarBridgeServer : MonoBehaviour
                ?? ArcadeCloneHeroLoader.GetArrangementDisplayName(ArcadeInstrument.Guitar);
     }
 
+    private ArcadeInstrument GetSelectedArcadeInstrument()
+    {
+        ArcadeArrangementSummary currentSummary = GetCurrentArcadeArrangementSummary();
+        if (currentSummary != null)
+            return currentSummary.Instrument;
+
+        ArcadeArrangementSummary pendingSummary = GetPendingSelectedArcadeArrangementSummary();
+        if (pendingSummary != null)
+            return pendingSummary.Instrument;
+
+        return currentArrangementUsesDrumLaneMode ? ArcadeInstrument.Drums : ArcadeInstrument.Guitar;
+    }
+
     private void ClampSelectedArcadeDifficultyToPendingArrangement()
     {
         ArcadeArrangementSummary selectedSummary = GetPendingSelectedArcadeArrangementSummary();
@@ -14454,16 +14489,17 @@ private void OpenOrFocusToneLab()
             if (!noteState.IsResolved)
                 continue;
 
-            int chordId = GetArcadeConsumeChordId(noteState.data);
-            if (!processedChordIds.Add(chordId))
+            int scoreEventKey = GetArcadeScoreEventKey(noteState.data);
+            if (!processedChordIds.Add(scoreEventKey))
                 continue;
 
-            arcadeSessionScoredNoteIds.Add(chordId);
+            arcadeSessionScoredNoteIds.Add(scoreEventKey);
             if (noteState.IsHit)
             {
                 sessionScoreHits++;
-                currentSessionArcadeScoreValue += Mathf.Max(1, GetArcadeChordLaneCount(noteState.data)) * 50 * GetArcadeScoreMultiplier(simulatedComboCount);
-                currentSessionArcadeScoreValue += GetAwardedArcadeSustainScore(chordId);
+                currentSessionArcadeScoreValue += GetArcadeScoreValueForResolvedEvent(noteState.data, simulatedComboCount);
+                if (!IsActiveDrumLaneGameplay())
+                    currentSessionArcadeScoreValue += GetAwardedArcadeSustainScore(GetArcadeConsumeChordId(noteState.data));
                 simulatedComboCount++;
             }
             else if (noteState.IsMissed)
@@ -14473,7 +14509,7 @@ private void OpenOrFocusToneLab()
             }
         }
 
-        int total = arcadeTotalChordCount > 0 ? arcadeTotalChordCount : CountArcadeChordGroups(arcadeNoteStates);
+        int total = GetArcadeScoreEventTotal();
         currentSessionScorePercent = total > 0
             ? Mathf.Clamp(100f * sessionScoreHits / total, 0f, 100f)
             : 0f;
@@ -16581,8 +16617,8 @@ private void OpenOrFocusToneLab()
 
     public IReadOnlyList<ArcadeNoteState> ArcadeNoteStates => arcadeNoteStates;
 
-    public int ArcadeLaneCount => currentArcadeChart != null ? Mathf.Max(5, currentArcadeChart.LaneCount) : 5;
-    public int ArcadeHighwayLaneCount => Mathf.Clamp(Mathf.Max(arcadeHighwayLaneCount, ArcadeLaneCount), 1, 8);
+    public int ArcadeLaneCount => currentArcadeChart != null ? Mathf.Max(ArcadeLegacyLaneCount, currentArcadeChart.LaneCount) : ArcadeLegacyLaneCount;
+    public int ArcadeHighwayLaneCount => Mathf.Clamp(Mathf.Max(arcadeHighwayLaneCount, ArcadeLaneCount), 1, ArcadeInputLaneCapacity);
     public float ArcadeSpawnZ => Mathf.Max(StrikeLineZ + 1f, arcadeNoteSpawnZ);
     public float ArcadeResolvedHoldTime => Mathf.Max(0f, arcadeResolvedHoldTime);
     public bool HasArcadeVisibleSustain(ArcadeNoteData note) => HasMeaningfulArcadeSustain(note.duration, note.sustainBeats);
@@ -16806,7 +16842,7 @@ private void OpenOrFocusToneLab()
         for (int lane = 0; lane < arcadeHeldLanes.Length; lane++)
         {
             anyHeld |= arcadeHeldLanes[lane];
-            if (arcadeHeldLanes[lane] && !previousArcadeHeldLanes[lane])
+            if ((arcadeHeldLanes[lane] && !previousArcadeHeldLanes[lane]) || arcadeMidiPressedLanes[lane])
             {
                 pressedLanes[lane] = true;
                 tap = true;
@@ -17024,6 +17060,9 @@ private void OpenOrFocusToneLab()
 
     private bool IsArcadeLaneHeld(int lane)
     {
+        if (IsActiveDrumLaneGameplay())
+            return IsArcadeDrumLaneHeld(lane);
+
         switch (lane)
         {
             case 0:
@@ -17036,8 +17075,61 @@ private void OpenOrFocusToneLab()
                 return IsArcadeKeyboardBindingHeld(arcadeKeyboardBlue) || IsArcadeControllerBindingHeld(arcadeControllerBlue);
             case 4:
                 return IsArcadeKeyboardBindingHeld(arcadeKeyboardOrange) || IsArcadeControllerBindingHeld(arcadeControllerOrange);
+            case 5:
+                return IsArcadeKeyboardBindingHeld(arcadeKeyboardDrumFloorTom);
+            case 6:
+                return IsArcadeKeyboardBindingHeld(arcadeKeyboardDrumCrash);
+            case 7:
+                return IsArcadeKeyboardBindingHeld(arcadeKeyboardDrumRide);
             default:
                 return false;
+        }
+    }
+
+    private bool IsArcadeDrumLaneHeld(int lane)
+    {
+        if (IsArcadeKeyboardBindingHeld(GetArcadeDrumKeyboardBinding(lane)))
+            return true;
+
+        switch (lane)
+        {
+            case 0:
+                return IsArcadeControllerBindingHeld(arcadeControllerGreen);
+            case 1:
+                return IsArcadeControllerBindingHeld(arcadeControllerRed);
+            case 2:
+                return IsArcadeControllerBindingHeld(arcadeControllerYellow);
+            case 3:
+                return IsArcadeControllerBindingHeld(arcadeControllerBlue);
+            case 4:
+                return IsArcadeControllerBindingHeld(arcadeControllerOrange);
+            default:
+                return false;
+        }
+    }
+
+    private KeyCode GetArcadeDrumKeyboardBinding(int lane)
+    {
+        switch (lane)
+        {
+            case DrumLaneKick:
+                return arcadeKeyboardDrumKick;
+            case DrumLaneSnare:
+                return arcadeKeyboardDrumSnare;
+            case DrumLaneHiHat:
+                return arcadeKeyboardDrumHiHat;
+            case DrumLaneHighTom:
+                return arcadeKeyboardDrumHighTom;
+            case DrumLaneMidTom:
+                return arcadeKeyboardDrumMidTom;
+            case DrumLaneFloorTom:
+                return arcadeKeyboardDrumFloorTom;
+            case DrumLaneCrash:
+                return arcadeKeyboardDrumCrash;
+            case DrumLaneRide:
+                return arcadeKeyboardDrumRide;
+            default:
+                return KeyCode.None;
         }
     }
 
@@ -17053,6 +17145,7 @@ private void OpenOrFocusToneLab()
     private void SyncArcadeInputHeldStateWithoutEvents()
     {
         bool midiStrum = UpdateArcadeMidiInputState();
+        Array.Clear(arcadePressedLanesScratch, 0, arcadePressedLanesScratch.Length);
         for (int lane = 0; lane < arcadeHeldLanes.Length; lane++)
         {
             bool held = IsArcadeLaneHeld(lane) || arcadeMidiHeldLanes[lane];
@@ -17335,6 +17428,9 @@ private void OpenOrFocusToneLab()
 
     private bool UsesArcadeMidiInput()
     {
+        if (IsActiveDrumLaneGameplay())
+            return true;
+
         return arcadeInputSource == ArcadeInputSourceMode.Midi ||
                arcadeInputSource == ArcadeInputSourceMode.All;
     }
@@ -17343,7 +17439,10 @@ private void OpenOrFocusToneLab()
     {
         arcadeMidiOpenButtonPressed = false;
         for (int lane = 0; lane < arcadeMidiHeldLanes.Length; lane++)
+        {
             arcadeMidiHeldLanes[lane] = false;
+            arcadeMidiPressedLanes[lane] = false;
+        }
 
         if (!UsesArcadeMidiInput())
         {
@@ -17370,10 +17469,12 @@ private void OpenOrFocusToneLab()
             if (!midiEvent.noteOn)
                 continue;
 
-            if (TryMapArcadeMidiInputNote(midiEvent.note, out _, out bool isOpen))
+            if (TryMapArcadeMidiInputNote(midiEvent.note, out int lane, out bool isOpen))
             {
                 if (isOpen)
                     arcadeMidiOpenButtonPressed = true;
+                else if (lane >= 0 && lane < arcadeMidiPressedLanes.Length)
+                    arcadeMidiPressedLanes[lane] = true;
                 midiStrum = true;
             }
         }
@@ -17413,7 +17514,10 @@ private void OpenOrFocusToneLab()
 
         arcadeMidiOpenButtonPressed = false;
         for (int lane = 0; lane < arcadeMidiHeldLanes.Length; lane++)
+        {
             arcadeMidiHeldLanes[lane] = false;
+            arcadeMidiPressedLanes[lane] = false;
+        }
     }
 
     public bool IsArcadeInputLaneHeld(int lane)
@@ -17421,10 +17525,21 @@ private void OpenOrFocusToneLab()
         return lane >= 0 && lane < arcadeHeldLanes.Length && arcadeHeldLanes[lane];
     }
 
+    public bool IsArcadeInputLanePressed(int lane)
+    {
+        return lane >= 0 && lane < arcadePressedLanesScratch.Length && arcadePressedLanesScratch[lane];
+    }
+
     private bool TryMapArcadeMidiInputNote(int midiNote, out int lane, out bool isOpen)
     {
         lane = -1;
         isOpen = false;
+
+        if (IsActiveDrumLaneGameplay() && TryMapGeneralMidiDrumInputNote(midiNote, out lane))
+        {
+            isOpen = false;
+            return true;
+        }
 
         if (midiNote == arcadeMidiOpenNote)
         {
@@ -17543,20 +17658,29 @@ private void OpenOrFocusToneLab()
 
             if (TryFindMatchingArcadeInput(noteState, out ArcadeInputEvent matchedInput))
             {
-                ResolveArcadeChord(noteState.data, GameplayNoteResult.Hit, songTimer);
+                if (IsActiveDrumLaneGameplay())
+                    ResolveArcadeSingleNote(noteState, GameplayNoteResult.Hit, songTimer);
+                else
+                    ResolveArcadeChord(noteState.data, GameplayNoteResult.Hit, songTimer);
                 matchedInput.consumedChordIds.Add(GetArcadeConsumeChordId(noteState.data));
                 continue;
             }
 
             if (CanPassivelyHitArcadeSpecialNote(noteState))
             {
-                ResolveArcadeChord(noteState.data, GameplayNoteResult.Hit, songTimer);
+                if (IsActiveDrumLaneGameplay())
+                    ResolveArcadeSingleNote(noteState, GameplayNoteResult.Hit, songTimer);
+                else
+                    ResolveArcadeChord(noteState.data, GameplayNoteResult.Hit, songTimer);
                 continue;
             }
 
             if (songTimer > noteState.data.time + arcadeHitWindowLate)
             {
-                ResolveArcadeChord(noteState.data, GameplayNoteResult.Missed, songTimer);
+                if (IsActiveDrumLaneGameplay())
+                    ResolveArcadeSingleNote(noteState, GameplayNoteResult.Missed, songTimer);
+                else
+                    ResolveArcadeChord(noteState.data, GameplayNoteResult.Missed, songTimer);
             }
         }
 
@@ -17825,6 +17949,9 @@ private void OpenOrFocusToneLab()
         if (inputEvent == null)
             return false;
 
+        if (IsActiveDrumLaneGameplay())
+            return DoesDrumLaneInputMatchNote(note, inputEvent);
+
         if (inputEvent.isStrum &&
             DoesArcadeHeldStateMatchNote(note, inputEvent.heldLanes, allowAnchoring: note.noteType != ArcadeNoteType.Strum, openButton: inputEvent.isOpenButton))
         {
@@ -17868,6 +17995,33 @@ private void OpenOrFocusToneLab()
         return DoesArcadeHeldStateMatchNote(note, inputEvent.heldLanes, allowAnchoring: true, openButton: false);
     }
 
+    private bool DoesDrumLaneInputMatchNote(ArcadeNoteData note, ArcadeInputEvent inputEvent)
+    {
+        if (inputEvent == null || note.isOpen || !inputEvent.isTap)
+            return false;
+
+        int lane = note.lane;
+        if (lane < 0)
+            return false;
+
+        if (inputEvent.pressedLanes == null ||
+            lane >= inputEvent.pressedLanes.Length ||
+            !inputEvent.pressedLanes[lane])
+        {
+            return false;
+        }
+
+        int pressedMask = BuildArcadeLaneMask(inputEvent.pressedLanes);
+        if (pressedMask == 0)
+            return false;
+
+        int requiredMask = BuildArcadeRequiredLaneMask(note, out _, out _);
+        if (requiredMask == 0)
+            return false;
+
+        return (pressedMask & ~requiredMask) == 0;
+    }
+
     private bool DoesArcadeTapInputMatchNote(ArcadeNoteData note, ArcadeInputEvent inputEvent)
     {
         if (note.isOpen)
@@ -17892,6 +18046,33 @@ private void OpenOrFocusToneLab()
         return note.chordId >= 0 ? note.chordId : note.id;
     }
 
+    private int GetArcadeScoreEventKey(ArcadeNoteData note)
+    {
+        return IsActiveDrumLaneGameplay()
+            ? note.id
+            : GetArcadeConsumeChordId(note);
+    }
+
+    private int GetArcadeScoreEventTotal()
+    {
+        if (arcadeTotalChordCount > 0)
+            return arcadeTotalChordCount;
+
+        if (IsActiveDrumLaneGameplay())
+            return arcadeNoteStates != null ? arcadeNoteStates.Count(state => state != null) : 0;
+
+        return CountArcadeChordGroups(arcadeNoteStates);
+    }
+
+    private int GetArcadeScoreValueForResolvedEvent(ArcadeNoteData note, int comboCount)
+    {
+        int laneCount = IsActiveDrumLaneGameplay()
+            ? 1
+            : Mathf.Max(1, GetArcadeChordLaneCount(note));
+
+        return laneCount * 50 * GetArcadeScoreMultiplier(comboCount);
+    }
+
     private static int CountArcadeChordGroups(IReadOnlyList<ArcadeNoteState> states)
     {
         if (states == null || states.Count == 0)
@@ -17912,7 +18093,7 @@ private void OpenOrFocusToneLab()
 
     private bool AnyRequiredArcadeLanePressed(ArcadeNoteData note, bool[] pressedLanes)
     {
-        if (pressedLanes == null || pressedLanes.Length < 5)
+        if (pressedLanes == null || pressedLanes.Length == 0)
             return false;
 
         int requiredMask = BuildArcadeRequiredLaneMask(note, out _, out _);
@@ -17921,7 +18102,7 @@ private void OpenOrFocusToneLab()
 
     private bool AnyRequiredArcadeLanePressed(IReadOnlyList<ArcadeNoteState> sourceStates, ArcadeNoteData note, bool[] pressedLanes)
     {
-        if (pressedLanes == null || pressedLanes.Length < 5)
+        if (pressedLanes == null || pressedLanes.Length == 0)
             return false;
 
         int requiredMask = BuildArcadeRequiredLaneMask(sourceStates, note, out _, out _);
@@ -17930,7 +18111,7 @@ private void OpenOrFocusToneLab()
 
     private bool DoesArcadeHeldStateMatchNote(ArcadeNoteData note, bool[] heldLanes, bool allowAnchoring, bool openButton)
     {
-        if (heldLanes == null || heldLanes.Length < 5)
+        if (heldLanes == null || heldLanes.Length == 0)
             return false;
 
         if (note.isOpen)
@@ -17938,7 +18119,8 @@ private void OpenOrFocusToneLab()
             if (openButton)
                 return true;
 
-            for (int lane = 0; lane < 5; lane++)
+            int laneCount = Mathf.Min(ArcadeInputLaneCapacity, heldLanes.Length);
+            for (int lane = 0; lane < laneCount; lane++)
             {
                 if (heldLanes[lane])
                     return false;
@@ -17955,6 +18137,9 @@ private void OpenOrFocusToneLab()
         if ((heldMask & requiredMask) != requiredMask)
             return false;
 
+        if (IsActiveDrumLaneGameplay())
+            return true;
+
         if (!allowAnchoring && requiredCount > 1)
             return heldMask == requiredMask;
 
@@ -17963,7 +18148,7 @@ private void OpenOrFocusToneLab()
 
     private bool DoesArcadeHeldStateMatchNote(IReadOnlyList<ArcadeNoteState> sourceStates, ArcadeNoteData note, bool[] heldLanes, bool allowAnchoring, bool openButton)
     {
-        if (heldLanes == null || heldLanes.Length < 5)
+        if (heldLanes == null || heldLanes.Length == 0)
             return false;
 
         if (note.isOpen)
@@ -17971,7 +18156,8 @@ private void OpenOrFocusToneLab()
             if (openButton)
                 return true;
 
-            for (int lane = 0; lane < 5; lane++)
+            int laneCount = Mathf.Min(ArcadeInputLaneCapacity, heldLanes.Length);
+            for (int lane = 0; lane < laneCount; lane++)
             {
                 if (heldLanes[lane])
                     return false;
@@ -18039,7 +18225,7 @@ private void OpenOrFocusToneLab()
     private static int BuildArcadeLaneMask(bool[] lanes)
     {
         int mask = 0;
-        int count = Mathf.Min(5, lanes.Length);
+        int count = Mathf.Min(ArcadeInputLaneCapacity, lanes.Length);
         for (int lane = 0; lane < count; lane++)
         {
             if (lanes[lane])
@@ -18051,13 +18237,13 @@ private void OpenOrFocusToneLab()
 
     private static int AddArcadeLaneToMask(int mask, int lane)
     {
-        return lane >= 0 && lane < 5 ? mask | (1 << lane) : mask;
+        return lane >= 0 && lane < ArcadeInputLaneCapacity ? mask | (1 << lane) : mask;
     }
 
     private static int CountArcadeLaneMask(int mask)
     {
         int count = 0;
-        for (int lane = 0; lane < 5; lane++)
+        for (int lane = 0; lane < ArcadeInputLaneCapacity; lane++)
         {
             if ((mask & (1 << lane)) != 0)
                 count++;
@@ -18068,7 +18254,7 @@ private void OpenOrFocusToneLab()
 
     private static int GetHighestArcadeLane(int mask)
     {
-        for (int lane = 4; lane >= 0; lane--)
+        for (int lane = ArcadeInputLaneCapacity - 1; lane >= 0; lane--)
         {
             if ((mask & (1 << lane)) != 0)
                 return lane;
@@ -18080,7 +18266,7 @@ private void OpenOrFocusToneLab()
     private static int GetArcadeLaneMaskAbove(int lane)
     {
         int mask = 0;
-        for (int i = lane + 1; i < 5; i++)
+        for (int i = lane + 1; i < ArcadeInputLaneCapacity; i++)
             mask |= 1 << i;
 
         return mask;
@@ -18090,10 +18276,11 @@ private void OpenOrFocusToneLab()
     {
         requiredCount = 0;
         highestRequiredLane = -1;
-        if (requiredLanes == null || requiredLanes.Length < 5)
+        if (requiredLanes == null || requiredLanes.Length == 0)
             return false;
 
-        for (int lane = 0; lane < 5; lane++)
+        int laneCapacity = Mathf.Min(ArcadeInputLaneCapacity, requiredLanes.Length);
+        for (int lane = 0; lane < laneCapacity; lane++)
             requiredLanes[lane] = false;
 
         if (note.chordId >= 0 && arcadeNoteStates != null)
@@ -18105,17 +18292,17 @@ private void OpenOrFocusToneLab()
                     continue;
 
                 ArcadeNoteData chordNote = chordNoteState.data;
-                if (chordNote.lane < 0 || chordNote.lane >= 5)
+                if (chordNote.lane < 0 || chordNote.lane >= laneCapacity)
                     continue;
 
                 requiredLanes[chordNote.lane] = true;
             }
         }
 
-        if (note.lane >= 0 && note.lane < 5)
+        if (note.lane >= 0 && note.lane < laneCapacity)
             requiredLanes[note.lane] = true;
 
-        for (int lane = 0; lane < 5; lane++)
+        for (int lane = 0; lane < laneCapacity; lane++)
         {
             if (!requiredLanes[lane])
                 continue;
@@ -18131,10 +18318,11 @@ private void OpenOrFocusToneLab()
     {
         requiredCount = 0;
         highestRequiredLane = -1;
-        if (requiredLanes == null || requiredLanes.Length < 5)
+        if (requiredLanes == null || requiredLanes.Length == 0)
             return false;
 
-        for (int lane = 0; lane < 5; lane++)
+        int laneCapacity = Mathf.Min(ArcadeInputLaneCapacity, requiredLanes.Length);
+        for (int lane = 0; lane < laneCapacity; lane++)
             requiredLanes[lane] = false;
 
         if (note.chordId >= 0 && sourceStates != null)
@@ -18146,17 +18334,17 @@ private void OpenOrFocusToneLab()
                     continue;
 
                 ArcadeNoteData chordNote = chordNoteState.data;
-                if (chordNote.lane < 0 || chordNote.lane >= 5)
+                if (chordNote.lane < 0 || chordNote.lane >= laneCapacity)
                     continue;
 
                 requiredLanes[chordNote.lane] = true;
             }
         }
 
-        if (note.lane >= 0 && note.lane < 5)
+        if (note.lane >= 0 && note.lane < laneCapacity)
             requiredLanes[note.lane] = true;
 
-        for (int lane = 0; lane < 5; lane++)
+        for (int lane = 0; lane < laneCapacity; lane++)
         {
             if (!requiredLanes[lane])
                 continue;
@@ -18266,6 +18454,17 @@ private void OpenOrFocusToneLab()
             ApplyArcadeChordScoreAndState(note, result);
     }
 
+    private void ResolveArcadeSingleNote(ArcadeNoteState state, GameplayNoteResult result, float resolvedTime)
+    {
+        if (state == null || state.IsResolved)
+            return;
+
+        state.result = result;
+        state.resolvedAt = resolvedTime;
+        state.isJudgeable = false;
+        ApplyArcadeSingleNoteScoreAndState(state.data, result);
+    }
+
     private void ResolveArcadeOverstrums()
     {
         for (int i = 0; i < arcadeRecentInputEvents.Count; i++)
@@ -18274,9 +18473,9 @@ private void OpenOrFocusToneLab()
             if (inputEvent == null || inputEvent.overstrumJudged)
                 continue;
 
-            bool overstrumCandidate =
-                inputEvent.isStrum ||
-                inputEvent.isOpenButton;
+            bool overstrumCandidate = IsActiveDrumLaneGameplay()
+                ? inputEvent.isTap && HasPressedArcadeLane(inputEvent.pressedLanes)
+                : inputEvent.isStrum || inputEvent.isOpenButton;
             if (!overstrumCandidate)
                 continue;
 
@@ -18302,6 +18501,34 @@ private void OpenOrFocusToneLab()
         arcadeComboCount++;
         arcadeComboActive = true;
         TryStartArcadeSustain(note);
+    }
+
+    private static bool HasPressedArcadeLane(bool[] lanes)
+    {
+        if (lanes == null)
+            return false;
+
+        int count = Mathf.Min(ArcadeInputLaneCapacity, lanes.Length);
+        for (int lane = 0; lane < count; lane++)
+        {
+            if (lanes[lane])
+                return true;
+        }
+
+        return false;
+    }
+
+    private void ApplyArcadeSingleNoteScoreAndState(ArcadeNoteData note, GameplayNoteResult result)
+    {
+        if (result != GameplayNoteResult.Hit)
+        {
+            ResetArcadeCombo();
+            return;
+        }
+
+        currentSessionArcadeScoreValue += 50 * GetArcadeScoreMultiplier(arcadeComboCount);
+        arcadeComboCount++;
+        arcadeComboActive = true;
     }
 
     private void ResolveMultiplayerRhythmChord(MultiplayerRhythmPlayerState player, ArcadeNoteData note, GameplayNoteResult result, float resolvedTime)
@@ -20938,6 +21165,9 @@ private void OpenOrFocusToneLab()
         string selectedArcadeArrangementDisplayNameSnapshot = buildArcadeArrangementLabelSnapshot
             ? GetSelectedArcadeArrangementDisplayName()
             : string.Empty;
+        ArcadeInstrument selectedArcadeInstrumentSnapshot = buildArcadeArrangementLabelSnapshot
+            ? GetSelectedArcadeInstrument()
+            : ArcadeInstrument.Guitar;
         string selectedArcadeDifficultyLabelSnapshot = buildArcadeArrangementLabelSnapshot
             ? ArcadeCloneHeroLoader.GetDifficultyLabel(selectedArcadeDifficulty)
             : string.Empty;
@@ -20987,7 +21217,7 @@ private void OpenOrFocusToneLab()
             heroModeEnabled = multiplayerRhythmUiMode ? false : heroModeEnabled,
             heroModeHeartCount = heroModeHeartCount,
             currentHeroHeartsRemaining = GetCurrentHeroHeartsRemaining(),
-            showHighwayCharacter = !notesDetectorGameplayTestActive && (multiplayerRhythmModeActive || ShouldDisplayHighwayCharacter(heroModeEnabled)),
+            showHighwayCharacter = !notesDetectorGameplayTestActive && ShouldDisplayHighwayCharacter(heroModeEnabled, selectedArcadeInstrumentSnapshot, multiplayerRhythmModeActive),
             forceStandardTuning = forceStandardTuning,
             selectedPauseActionIndex = selectedPauseActionIndex,
             selectedGameModesIndex = selectedGameModesIndex,
@@ -21046,6 +21276,7 @@ private void OpenOrFocusToneLab()
             arcadeLaneCount = ArcadeLaneCount,
             selectedArcadeArrangementId = selectedArcadeArrangementId,
             selectedArcadeArrangementDisplayName = selectedArcadeArrangementDisplayNameSnapshot,
+            selectedArcadeInstrument = selectedArcadeInstrumentSnapshot,
             selectedArcadeDifficultyLabel = selectedArcadeDifficultyLabelSnapshot,
             arcadeDifficultyLabels = arcadeDifficultyLabels,
             arcadeDifficultyAvailable = arcadeDifficultyAvailable,
@@ -21905,7 +22136,7 @@ private void OpenOrFocusToneLab()
         currentArcadeChart = new ArcadeChartData
         {
             SourcePath = currentSongEntry?.PrimaryNotationPath ?? string.Empty,
-            LaneCount = 5
+            LaneCount = DrumLaneCount
         };
         arcadeNoteStates = new List<ArcadeNoteState>();
         arcadeTotalChordCount = 0;
@@ -21947,7 +22178,7 @@ private void OpenOrFocusToneLab()
         arcadeNoteStates = currentArcadeChart.Notes != null
             ? currentArcadeChart.Notes.Select(note => new ArcadeNoteState(note)).ToList()
             : new List<ArcadeNoteState>();
-        arcadeTotalChordCount = CountArcadeChordGroups(arcadeNoteStates);
+        arcadeTotalChordCount = arcadeNoteStates.Count;
 
         currentTrackBestArcadeScoreValue = currentTrackBestScoreValue;
         currentTrackBestArcadeHeroScoreValue = currentTrackHeroBestScoreValue;
@@ -21966,9 +22197,10 @@ private void OpenOrFocusToneLab()
             .ThenBy(note => note.stringIdx)
             .ThenBy(note => note.fret)
             .ToList();
-        Dictionary<int, int> sourceChordToLaneChord = new Dictionary<int, int>();
         HashSet<string> emittedChordLanes = new HashSet<string>(StringComparer.Ordinal);
+        HashSet<int> emittedNoteIds = new HashSet<int>();
         int nextChordId = 0;
+        int nextGeneratedNoteId = -1;
         int currentImplicitChordId = -1;
         float currentImplicitChordTime = float.NegativeInfinity;
 
@@ -21976,15 +22208,7 @@ private void OpenOrFocusToneLab()
         {
             NoteData note = ordered[i];
             int chordId;
-            if (note.chordId >= 0)
-            {
-                if (!sourceChordToLaneChord.TryGetValue(note.chordId, out chordId))
-                {
-                    chordId = nextChordId++;
-                    sourceChordToLaneChord[note.chordId] = chordId;
-                }
-            }
-            else if (currentImplicitChordId >= 0 && Mathf.Abs(note.time - currentImplicitChordTime) <= Mathf.Max(0.001f, chordGroupWindow))
+            if (currentImplicitChordId >= 0 && Mathf.Abs(note.time - currentImplicitChordTime) <= Mathf.Max(0.001f, chordGroupWindow))
             {
                 chordId = currentImplicitChordId;
             }
@@ -22000,7 +22224,10 @@ private void OpenOrFocusToneLab()
             if (!emittedChordLanes.Add(emittedKey))
                 continue;
 
-            int noteId = note.id >= 0 ? note.id : result.Count;
+            int noteId = note.id >= 0 ? note.id : nextGeneratedNoteId--;
+            while (!emittedNoteIds.Add(noteId))
+                noteId = nextGeneratedNoteId--;
+
             result.Add(new ArcadeNoteData(
                 noteId,
                 Mathf.Max(0f, note.time),
@@ -22009,7 +22236,7 @@ private void OpenOrFocusToneLab()
                 lane,
                 openNote: false,
                 hopoNote: false,
-                tapNote: true,
+                tapNote: false,
                 assignedChordId: chordId));
         }
 
@@ -22029,9 +22256,9 @@ private void OpenOrFocusToneLab()
             return MapGeneralMidiDrumToLane(midi);
 
         if (note.stringIdx >= 0)
-            return Mathf.Clamp(note.stringIdx, 0, 4);
+            return Mathf.Clamp(note.stringIdx, 0, DrumLaneCount - 1);
 
-        return Mathf.Abs(note.fret) % 5;
+        return Mathf.Abs(note.fret) % DrumLaneCount;
     }
 
     private static bool TryResolveDrumLaneFromLabel(string label, out int lane)
@@ -22043,35 +22270,78 @@ private void OpenOrFocusToneLab()
         string normalized = label.Trim().ToLowerInvariant();
         if (normalized.Contains("kick") || normalized.Contains("bass drum"))
         {
-            lane = 0;
+            lane = DrumLaneKick;
             return true;
         }
 
         if (normalized.Contains("snare") || normalized.Contains("rim") || normalized.Contains("clap"))
         {
-            lane = 1;
+            lane = DrumLaneSnare;
             return true;
         }
 
         if (normalized.Contains("hat") || normalized.Contains("hihat") || normalized.Contains("hi-hat"))
         {
-            lane = 2;
+            lane = DrumLaneHiHat;
+            return true;
+        }
+
+        if (normalized.Contains("ride") || normalized.Contains("bell"))
+        {
+            lane = DrumLaneRide;
+            return true;
+        }
+
+        if (normalized.Contains("crash") ||
+            normalized.Contains("splash") ||
+            normalized.Contains("china") ||
+            normalized.Contains("cymbal"))
+        {
+            lane = DrumLaneCrash;
             return true;
         }
 
         if (normalized.Contains("tom"))
         {
-            lane = 3;
+            if (normalized.Contains("floor") ||
+                normalized.Contains("low") ||
+                normalized.Contains("tom 3") ||
+                normalized.Contains("tom3"))
+            {
+                lane = DrumLaneFloorTom;
+                return true;
+            }
+
+            if (normalized.Contains("mid") ||
+                normalized.Contains("middle") ||
+                normalized.Contains("tom 2") ||
+                normalized.Contains("tom2"))
+            {
+                lane = DrumLaneMidTom;
+                return true;
+            }
+
+            if (normalized.Contains("high") ||
+                normalized.Contains("rack") ||
+                normalized.Contains("small") ||
+                normalized.Contains("tom 1") ||
+                normalized.Contains("tom1"))
+            {
+                lane = DrumLaneHighTom;
+                return true;
+            }
+
+            lane = DrumLaneMidTom;
             return true;
         }
 
-        if (normalized.Contains("cymbal") ||
-            normalized.Contains("crash") ||
-            normalized.Contains("ride") ||
-            normalized.Contains("splash") ||
-            normalized.Contains("china"))
+        if (normalized.Contains("tambourine") ||
+            normalized.Contains("cowbell") ||
+            normalized.Contains("clave") ||
+            normalized.Contains("woodblock") ||
+            normalized.Contains("percussion"))
         {
-            lane = 4;
+            lane = DrumLaneRide;
             return true;
         }
 
@@ -22084,33 +22354,36 @@ private void OpenOrFocusToneLab()
         {
             case 35:
             case 36:
-                return 0;
+                return DrumLaneKick;
             case 37:
             case 38:
             case 39:
             case 40:
-                return 1;
+                return DrumLaneSnare;
             case 42:
             case 44:
             case 46:
-                return 2;
-            case 41:
-            case 43:
-            case 45:
-            case 47:
+                return DrumLaneHiHat;
             case 48:
             case 50:
-                return 3;
+                return DrumLaneHighTom;
+            case 45:
+            case 47:
+                return DrumLaneMidTom;
+            case 41:
+            case 43:
+                return DrumLaneFloorTom;
             case 49:
-            case 51:
             case 52:
-            case 53:
             case 55:
             case 57:
+                return DrumLaneCrash;
+            case 51:
+            case 53:
             case 59:
-                return 4;
+                return DrumLaneRide;
             default:
-                return Mathf.Abs(midi) % 5;
+                return DrumLaneRide;
         }
     }
 
@@ -24874,7 +25147,7 @@ private void OpenOrFocusToneLab()
                 if (noteState == null || !noteState.IsResolved)
                     continue;
 
-                int noteKey = GetArcadeConsumeChordId(noteState.data);
+                int noteKey = GetArcadeScoreEventKey(noteState.data);
                 arcadeSessionScoredNoteIds.Add(noteKey);
             }
 
@@ -24968,7 +25241,7 @@ private void OpenOrFocusToneLab()
             if (noteState == null || !noteState.IsResolved)
                 continue;
 
-            int noteKey = GetArcadeConsumeChordId(noteState.data);
+            int noteKey = GetArcadeScoreEventKey(noteState.data);
             if (!arcadeSessionScoredNoteIds.Add(noteKey))
                 continue;
 
@@ -24978,7 +25251,7 @@ private void OpenOrFocusToneLab()
                 sessionScoreMisses++;
         }
 
-        int total = arcadeTotalChordCount > 0 ? arcadeTotalChordCount : CountArcadeChordGroups(arcadeNoteStates);
+        int total = GetArcadeScoreEventTotal();
         currentSessionScorePercent = total > 0
             ? Mathf.Clamp(100f * sessionScoreHits / total, 0f, 100f)
             : 0f;
@@ -25834,10 +26107,18 @@ private void OpenOrFocusToneLab()
         RegisterBindingSetting("arcade.controls.keyboard.yellow", "Rhythm Controls", "Keyboard Yellow", "Clone Hero default keyboard yellow fret.", () => arcadeKeyboardYellow, v => arcadeKeyboardYellow = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.blue", "Rhythm Controls", "Keyboard Blue", "Clone Hero default keyboard blue fret.", () => arcadeKeyboardBlue, v => arcadeKeyboardBlue = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.orange", "Rhythm Controls", "Keyboard Orange", "Clone Hero default keyboard orange fret.", () => arcadeKeyboardOrange, v => arcadeKeyboardOrange = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.drumHiHat", "Rhythm Controls", "Keyboard Drum Hi-Hat", "Drum lane 1 keyboard key.", () => arcadeKeyboardDrumHiHat, v => arcadeKeyboardDrumHiHat = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.drumCrash", "Rhythm Controls", "Keyboard Drum Crash", "Drum lane 2 keyboard key.", () => arcadeKeyboardDrumCrash, v => arcadeKeyboardDrumCrash = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.drumSnare", "Rhythm Controls", "Keyboard Drum Snare", "Drum lane 3 keyboard key.", () => arcadeKeyboardDrumSnare, v => arcadeKeyboardDrumSnare = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.drumHighTom", "Rhythm Controls", "Keyboard Drum High Tom", "Drum lane 4 keyboard key.", () => arcadeKeyboardDrumHighTom, v => arcadeKeyboardDrumHighTom = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.drumKick", "Rhythm Controls", "Keyboard Drum Kick", "Drum lane 5 keyboard key.", () => arcadeKeyboardDrumKick, v => arcadeKeyboardDrumKick = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.drumMidTom", "Rhythm Controls", "Keyboard Drum Mid Tom", "Drum lane 6 keyboard key.", () => arcadeKeyboardDrumMidTom, v => arcadeKeyboardDrumMidTom = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.drumFloorTom", "Rhythm Controls", "Keyboard Drum Floor Tom", "Drum lane 7 keyboard key.", () => arcadeKeyboardDrumFloorTom, v => arcadeKeyboardDrumFloorTom = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.drumRide", "Rhythm Controls", "Keyboard Drum Ride", "Drum lane 8 keyboard key.", () => arcadeKeyboardDrumRide, v => arcadeKeyboardDrumRide = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.strumUp", "Rhythm Controls", "Keyboard Strum", "Primary keyboard strum key.", () => arcadeKeyboardStrumUp, v => arcadeKeyboardStrumUp = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.strumDown", "Rhythm Controls", "Keyboard Strum Alt", "Optional secondary keyboard strum key.", () => arcadeKeyboardStrumDown, v => arcadeKeyboardStrumDown = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.open", "Rhythm Controls", "Keyboard Open Button", "Optional keyboard open-button binding. Clone Hero's default keyboard layout leaves this unbound.", () => arcadeKeyboardOpen, v => arcadeKeyboardOpen = v, ArcadeBindingCaptureKind.Keyboard);
-        RegisterActionSetting("arcade.controls.keyboard.reset", "Rhythm Controls", "Reset Keyboard Defaults", "Restores the default keyboard layout: A S J K L with Space as the strum key.", "RESET", () => { ResetArcadeKeyboardBindingsToDefaults(); SaveGlobalRuntimeSettingsMetadata(); });
+        RegisterActionSetting("arcade.controls.keyboard.reset", "Rhythm Controls", "Reset Keyboard Defaults", "Restores the default keyboard layout. Drum lanes use A S D F G H J K.", "RESET", () => { ResetArcadeKeyboardBindingsToDefaults(); SaveGlobalRuntimeSettingsMetadata(); });
         RegisterBindingSetting("arcade.controls.controller.green", "Rhythm Controls", "Controller Green", "Primary green fret button for controller or Clone Hero guitar input.", () => arcadeControllerGreen, v => arcadeControllerGreen = v, ArcadeBindingCaptureKind.Controller);
         RegisterBindingSetting("arcade.controls.controller.red", "Rhythm Controls", "Controller Red", "Primary red fret button for controller or Clone Hero guitar input.", () => arcadeControllerRed, v => arcadeControllerRed = v, ArcadeBindingCaptureKind.Controller);
         RegisterBindingSetting("arcade.controls.controller.yellow", "Rhythm Controls", "Controller Yellow", "Primary yellow fret button for controller or Clone Hero guitar input.", () => arcadeControllerYellow, v => arcadeControllerYellow = v, ArcadeBindingCaptureKind.Controller);
@@ -25857,7 +26138,7 @@ private void OpenOrFocusToneLab()
             "fx.characterDisplay",
             "Visuals",
             "Character Display",
-            "Controls when the Highway3D character is shown. Hearts remain hero-mode only.",
+            "Controls when the Highway3D character is shown. Always (Guitars) hides it for drum arrangements. Hearts remain hero-mode only.",
             HighwayCharacterDisplayModeOptions,
             () => SerializeHighwayCharacterDisplayMode(highwayCharacterDisplayMode),
             value => highwayCharacterDisplayMode = ParseHighwayCharacterDisplayMode(value));
@@ -28060,6 +28341,14 @@ private void OpenOrFocusToneLab()
         arcadeKeyboardYellow = KeyCode.J;
         arcadeKeyboardBlue = KeyCode.K;
         arcadeKeyboardOrange = KeyCode.L;
+        arcadeKeyboardDrumHiHat = KeyCode.A;
+        arcadeKeyboardDrumCrash = KeyCode.S;
+        arcadeKeyboardDrumSnare = KeyCode.D;
+        arcadeKeyboardDrumHighTom = KeyCode.F;
+        arcadeKeyboardDrumKick = KeyCode.G;
+        arcadeKeyboardDrumMidTom = KeyCode.H;
+        arcadeKeyboardDrumFloorTom = KeyCode.J;
+        arcadeKeyboardDrumRide = KeyCode.K;
         arcadeKeyboardStrumUp = KeyCode.Space;
         arcadeKeyboardStrumDown = KeyCode.None;
         arcadeKeyboardOpen = KeyCode.None;
@@ -28200,6 +28489,8 @@ private void OpenOrFocusToneLab()
                 return "Never";
             case HighwayCharacterDisplayMode.HeroModeOnly:
                 return "Only In Hero Mode";
+            case HighwayCharacterDisplayMode.AlwaysGuitars:
+                return "Always (Guitars)";
             default:
                 return "Always";
         }
@@ -28213,6 +28504,12 @@ private void OpenOrFocusToneLab()
         if (string.Equals(value, "Only In Hero Mode", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(value, "HeroModeOnly", StringComparison.OrdinalIgnoreCase))
             return HighwayCharacterDisplayMode.HeroModeOnly;
+
+        if (string.Equals(value, "Always (Guitars)", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "AlwaysGuitars", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "Always Guitars", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(value, "Guitars", StringComparison.OrdinalIgnoreCase))
+            return HighwayCharacterDisplayMode.AlwaysGuitars;
 
         return HighwayCharacterDisplayMode.Always;
     }
@@ -28310,14 +28607,25 @@ private void OpenOrFocusToneLab()
         }
     }
 
-    private bool ShouldDisplayHighwayCharacter(bool heroModeActive)
+    private bool ShouldDisplayHighwayCharacter(bool heroModeActive, ArcadeInstrument selectedInstrument, bool forceShowForMultiplayer)
     {
+        if (highwayCharacterDisplayMode == HighwayCharacterDisplayMode.AlwaysGuitars &&
+            selectedInstrument == ArcadeInstrument.Drums)
+        {
+            return false;
+        }
+
+        if (forceShowForMultiplayer)
+            return true;
+
         switch (highwayCharacterDisplayMode)
         {
             case HighwayCharacterDisplayMode.Never:
                 return false;
             case HighwayCharacterDisplayMode.HeroModeOnly:
                 return heroModeActive;
+            case HighwayCharacterDisplayMode.AlwaysGuitars:
+                return true;
             default:
                 return true;
         }
@@ -29075,6 +29383,9 @@ private void OpenOrFocusToneLab()
         if (TryMigrateLegacyKeyboardStrumDefaults(values))
             changed = true;
 
+        if (TryMigrateLegacyDrumKeyboardDefaults(values))
+            changed = true;
+
         if (TryMigrateLegacyControllerDefaults(values))
             changed = true;
 
@@ -29147,6 +29458,103 @@ private void OpenOrFocusToneLab()
         values["arcade.controls.keyboard.strumUp"] = KeyCode.Space.ToString();
         values["arcade.controls.keyboard.strumDown"] = KeyCode.None.ToString();
         return true;
+    }
+
+    private static bool TryMigrateLegacyDrumKeyboardDefaults(Dictionary<string, string> values)
+    {
+        if (values == null)
+            return false;
+
+        bool matchesSemanticHomeRowDefaults =
+            MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumKick", "A") &&
+            MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumSnare", "S") &&
+            MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumHiHat", "D") &&
+            MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumHighTom", "F") &&
+            MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumMidTom", "G") &&
+            MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumFloorTom", "H") &&
+            MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumCrash", "J") &&
+            MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumRide", "K");
+        if (matchesSemanticHomeRowDefaults)
+        {
+            values["arcade.controls.keyboard.drumHiHat"] = KeyCode.A.ToString();
+            values["arcade.controls.keyboard.drumCrash"] = KeyCode.S.ToString();
+            values["arcade.controls.keyboard.drumSnare"] = KeyCode.D.ToString();
+            values["arcade.controls.keyboard.drumHighTom"] = KeyCode.F.ToString();
+            values["arcade.controls.keyboard.drumKick"] = KeyCode.G.ToString();
+            values["arcade.controls.keyboard.drumMidTom"] = KeyCode.H.ToString();
+            values["arcade.controls.keyboard.drumFloorTom"] = KeyCode.J.ToString();
+            values["arcade.controls.keyboard.drumRide"] = KeyCode.K.ToString();
+            return true;
+        }
+
+        bool changed = false;
+        if (!values.ContainsKey("arcade.controls.keyboard.drumHiHat"))
+        {
+            values["arcade.controls.keyboard.drumHiHat"] = KeyCode.A.ToString();
+            changed = true;
+        }
+
+        if (!values.ContainsKey("arcade.controls.keyboard.drumCrash"))
+        {
+            values["arcade.controls.keyboard.drumCrash"] = KeyCode.S.ToString();
+            changed = true;
+        }
+
+        if (!values.ContainsKey("arcade.controls.keyboard.drumSnare"))
+        {
+            values["arcade.controls.keyboard.drumSnare"] = KeyCode.D.ToString();
+            changed = true;
+        }
+
+        if (!values.ContainsKey("arcade.controls.keyboard.drumHighTom"))
+        {
+            values["arcade.controls.keyboard.drumHighTom"] = KeyCode.F.ToString();
+            changed = true;
+        }
+
+        if (!values.ContainsKey("arcade.controls.keyboard.drumKick"))
+        {
+            values["arcade.controls.keyboard.drumKick"] = KeyCode.G.ToString();
+            changed = true;
+        }
+
+        if (!values.ContainsKey("arcade.controls.keyboard.drumMidTom"))
+        {
+            values["arcade.controls.keyboard.drumMidTom"] = KeyCode.H.ToString();
+            changed = true;
+        }
+
+        if (MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumFloorTom", "D"))
+        {
+            values["arcade.controls.keyboard.drumFloorTom"] = KeyCode.J.ToString();
+            changed = true;
+        }
+
+        if (MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumCrash", "F"))
+        {
+            values["arcade.controls.keyboard.drumCrash"] = KeyCode.S.ToString();
+            changed = true;
+        }
+
+        if (!values.ContainsKey("arcade.controls.keyboard.drumFloorTom"))
+        {
+            values["arcade.controls.keyboard.drumFloorTom"] = KeyCode.J.ToString();
+            changed = true;
+        }
+
+        if (MatchesRuntimeSettingValue(values, "arcade.controls.keyboard.drumRide", "Semicolon"))
+        {
+            values["arcade.controls.keyboard.drumRide"] = KeyCode.K.ToString();
+            changed = true;
+        }
+
+        if (!values.ContainsKey("arcade.controls.keyboard.drumRide"))
+        {
+            values["arcade.controls.keyboard.drumRide"] = KeyCode.K.ToString();
+            changed = true;
+        }
+
+        return changed;
     }
 
     private static bool TryMigrateLegacyControllerDefaults(Dictionary<string, string> values)

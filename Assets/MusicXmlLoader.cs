@@ -107,8 +107,11 @@ public static class MusicXmlLoader
         public string name;
         public string instrumentName;
         public string instrumentSound;
+        public Dictionary<string, string> instrumentNameById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, int> midiUnpitchedByInstrumentId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         public int midiProgram = -1;
         public int midiChannel = -1;
+        public bool usesMidiUnpitched;
     }
 
     public static List<NoteData> LoadMusicXmlSong(string filePath, int targetPartIndex = -1)
@@ -147,12 +150,13 @@ public static class MusicXmlLoader
             XElement chosenPart = parts[chosenPartIndex];
             string chosenPartId = Attr(chosenPart, "id");
             string chosenPartName = ResolvePartDisplayName(partDescriptors, chosenPartId, chosenPartIndex);
+            partDescriptors.TryGetValue(chosenPartId, out MusicXmlPartDescriptor chosenDescriptor);
 
             Debug.Log($"MusicXML selected part: {chosenPartIndex} ('{chosenPartName}')");
 
             List<double> canonicalMeasureStarts = BuildCanonicalMeasureStarts(parts);
             List<TempoEvent> tempoMap = BuildGlobalTempoMap(parts, canonicalMeasureStarts);
-            List<ParsedNote> parsed = ParsePart(chosenPart, canonicalMeasureStarts);
+            List<ParsedNote> parsed = ParsePart(chosenPart, canonicalMeasureStarts, chosenDescriptor);
 
             if (parsed.Count == 0)
             {
@@ -236,17 +240,52 @@ public static class MusicXmlLoader
             string id = Attr(scorePart, "id");
             if (!string.IsNullOrEmpty(id))
             {
-                XElement scoreInstrument = scorePart.Elements().FirstOrDefault(e => e.Name.LocalName == "score-instrument");
-                XElement midiInstrument = scorePart.Elements().FirstOrDefault(e => e.Name.LocalName == "midi-instrument");
+                List<XElement> scoreInstruments = scorePart.Elements().Where(e => e.Name.LocalName == "score-instrument").ToList();
+                List<XElement> midiInstruments = scorePart.Elements().Where(e => e.Name.LocalName == "midi-instrument").ToList();
+                XElement midiInstrument = midiInstruments.FirstOrDefault();
                 int midiProgram = ParseInt(ChildValue(midiInstrument, "midi-program"), -1);
+                var instrumentNameById = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                for (int i = 0; i < scoreInstruments.Count; i++)
+                {
+                    XElement instrument = scoreInstruments[i];
+                    string instrumentId = Attr(instrument, "id");
+                    string instrumentName = ChildValue(instrument, "instrument-name");
+                    if (!string.IsNullOrWhiteSpace(instrumentId) && !string.IsNullOrWhiteSpace(instrumentName))
+                        instrumentNameById[instrumentId] = instrumentName.Trim();
+                }
+
+                var midiUnpitchedByInstrumentId = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                int firstMidiChannel = ParseInt(ChildValue(midiInstrument, "midi-channel"), -1);
+                bool hasChannelTen = firstMidiChannel == 10;
+                for (int i = 0; i < midiInstruments.Count; i++)
+                {
+                    XElement instrument = midiInstruments[i];
+                    string instrumentId = Attr(instrument, "id");
+                    int midiChannel = ParseInt(ChildValue(instrument, "midi-channel"), -1);
+                    int midiUnpitched = ParseInt(ChildValue(instrument, "midi-unpitched"), -1);
+                    if (midiChannel == 10)
+                        hasChannelTen = true;
+                    if (!string.IsNullOrWhiteSpace(instrumentId) && midiUnpitched > 0)
+                        midiUnpitchedByInstrumentId[instrumentId] = midiUnpitched;
+                }
+
                 result[id] = new MusicXmlPartDescriptor
                 {
                     id = id,
                     name = FirstNonEmpty(ChildValue(scorePart, "part-name"), id),
-                    instrumentName = ChildValue(scoreInstrument, "instrument-name"),
-                    instrumentSound = ChildValue(scoreInstrument, "instrument-sound"),
+                    instrumentName = string.Join(" ", scoreInstruments
+                        .Select(instrument => ChildValue(instrument, "instrument-name"))
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Distinct()),
+                    instrumentSound = string.Join(" ", scoreInstruments
+                        .Select(instrument => ChildValue(instrument, "instrument-sound"))
+                        .Where(value => !string.IsNullOrWhiteSpace(value))
+                        .Distinct()),
+                    instrumentNameById = instrumentNameById,
+                    midiUnpitchedByInstrumentId = midiUnpitchedByInstrumentId,
                     midiProgram = NormalizeMusicXmlMidiProgram(midiProgram),
-                    midiChannel = ParseInt(ChildValue(midiInstrument, "midi-channel"), -1)
+                    midiChannel = hasChannelTen ? 10 : firstMidiChannel,
+                    usesMidiUnpitched = midiUnpitchedByInstrumentId.Count > 0
                 };
             }
         }
@@ -361,7 +400,7 @@ public static class MusicXmlLoader
 
         if (descriptor != null)
         {
-            if (descriptor.midiChannel == 10)
+            if (descriptor.midiChannel == 10 || descriptor.usesMidiUnpitched)
                 return "drums";
             if (descriptor.midiProgram >= 32 && descriptor.midiProgram <= 39)
                 return "bass";
@@ -425,6 +464,17 @@ public static class MusicXmlLoader
             .ToLowerInvariant();
     }
 
+    private static bool IsPercussionDescriptor(MusicXmlPartDescriptor descriptor)
+    {
+        if (descriptor == null)
+            return false;
+
+        if (descriptor.midiChannel == 10 || descriptor.usesMidiUnpitched)
+            return true;
+
+        return ContainsAny(BuildInstrumentSearchText(descriptor.name, descriptor), "drum", "percussion", "kit");
+    }
+
     private static bool ContainsAny(string text, params string[] needles)
     {
         if (string.IsNullOrWhiteSpace(text) || needles == null)
@@ -462,7 +512,10 @@ public static class MusicXmlLoader
         return bestIndex;
     }
 
-    private static List<ParsedNote> ParsePart(XElement part, List<double> canonicalMeasureStarts)
+    private static List<ParsedNote> ParsePart(
+        XElement part,
+        List<double> canonicalMeasureStarts,
+        MusicXmlPartDescriptor descriptor)
     {
         var notes = new List<ParsedNote>();
 
@@ -470,6 +523,7 @@ public static class MusicXmlLoader
         int chromaticTranspose = 0;
         int sourceIndex = 0;
         int measureIndex = 0;
+        bool preferPercussion = IsPercussionDescriptor(descriptor);
 
         foreach (XElement measure in part.Elements().Where(e => e.Name.LocalName == "measure"))
         {
@@ -498,6 +552,13 @@ public static class MusicXmlLoader
                     XElement transposeNode = child.Elements().FirstOrDefault(e => e.Name.LocalName == "transpose");
                     if (transposeNode != null)
                         chromaticTranspose = ParseInt(ChildValue(transposeNode, "chromatic"), chromaticTranspose);
+
+                    if (child.Descendants().Any(e =>
+                            e.Name.LocalName == "sign" &&
+                            string.Equals((e.Value ?? string.Empty).Trim(), "percussion", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        preferPercussion = true;
+                    }
                 }
                 else if (local == "backup")
                 {
@@ -555,7 +616,48 @@ public static class MusicXmlLoader
                             out bool vibrato, out float bendStep, out bool bendPreBend, out bool bendRelease);
                         bool isMuted = IsStraightMutedNote(child);
 
-                        if (TryReadTabNote(child, out stringIdx, out fret, out midi, out name))
+                        bool hasUnpitched = child.Elements().Any(e => e.Name.LocalName == "unpitched");
+                        if ((preferPercussion || hasUnpitched) &&
+                            TryReadUnpitchedNote(child, descriptor, out midi, out name))
+                        {
+                            stringIdx = MapPercussionMidiToLane(midi);
+                            fret = Mathf.Max(0, midi);
+                            List<ParsedTechniqueSegment> techniqueSegments = BuildInitialTechniqueSegments(
+                                noteStartQuarter,
+                                durQuarter,
+                                fret,
+                                vibrato,
+                                bendStep,
+                                bendPreBend,
+                                bendRelease,
+                                BuildBendTechniqueSegments(child, noteStartQuarter, durQuarter, fret));
+                            notes.Add(new ParsedNote
+                            {
+                                sourceIndex = sourceIndex++,
+                                quarterPos = noteStartQuarter,
+                                durationQuarter = durQuarter,
+                                stringIdx = stringIdx,
+                                fret = fret,
+                                midi = midi,
+                                note = name,
+                                staff = staff,
+                                fromTab = false,
+                                tieStart = tieStart,
+                                tieStop = tieStop,
+                                slideStart = slideStart,
+                                hammerStart = hammerStart,
+                                pullStart = pullStart,
+                                vibrato = vibrato,
+                                bendStep = bendStep,
+                                bendVisualStartQuarter = bendStep > 0f || bendPreBend || bendRelease ? noteStartQuarter : -1.0,
+                                bendVisualDurationQuarter = bendStep > 0f || bendPreBend || bendRelease ? durQuarter : 0.0,
+                                bendPreBend = bendPreBend,
+                                bendRelease = bendRelease,
+                                isMuted = isMuted,
+                                techniqueSegments = techniqueSegments
+                            });
+                        }
+                        else if (TryReadTabNote(child, out stringIdx, out fret, out midi, out name))
                         {
                             List<ParsedTechniqueSegment> techniqueSegments = BuildInitialTechniqueSegments(
                                 noteStartQuarter,
@@ -592,9 +694,13 @@ public static class MusicXmlLoader
                                 techniqueSegments = techniqueSegments
                             });
                         }
-                        else if (TryReadPitchedNote(child, chromaticTranspose, out midi, out name))
+                        else if (TryReadPitchedNote(child, preferPercussion ? 0 : chromaticTranspose, out midi, out name))
                         {
-                            var mapped = MapMidiToGuitar(midi);
+                            KeyValuePair<int, int>? mapped = preferPercussion
+                                ? new KeyValuePair<int, int>(MapPercussionMidiToLane(midi), Mathf.Max(0, midi))
+                                : MapMidiToGuitar(midi);
+                            if (preferPercussion)
+                                name = FirstNonEmpty(GetGeneralMidiDrumName(midi), name);
                             if (mapped.HasValue)
                             {
                                 List<ParsedTechniqueSegment> techniqueSegments = BuildInitialTechniqueSegments(
@@ -1803,6 +1909,51 @@ public static class MusicXmlLoader
         return true;
     }
 
+    private static bool TryReadUnpitchedNote(
+        XElement noteNode,
+        MusicXmlPartDescriptor descriptor,
+        out int midi,
+        out string name)
+    {
+        midi = -1;
+        name = null;
+
+        XElement instrumentNode = noteNode.Elements().FirstOrDefault(e => e.Name.LocalName == "instrument");
+        string instrumentId = Attr(instrumentNode, "id");
+
+        if (!string.IsNullOrWhiteSpace(instrumentId) &&
+            descriptor?.midiUnpitchedByInstrumentId != null &&
+            descriptor.midiUnpitchedByInstrumentId.TryGetValue(instrumentId, out int mappedMidi))
+        {
+            midi = mappedMidi;
+        }
+        else if (descriptor?.midiUnpitchedByInstrumentId != null && descriptor.midiUnpitchedByInstrumentId.Count == 1)
+        {
+            midi = descriptor.midiUnpitchedByInstrumentId.Values.First();
+        }
+
+        if (midi <= 0)
+        {
+            XElement unpitchedNode = noteNode.Elements().FirstOrDefault(e => e.Name.LocalName == "unpitched");
+            if (unpitchedNode == null)
+                return false;
+
+            string step = ChildValue(unpitchedNode, "display-step");
+            int octave = ParseInt(ChildValue(unpitchedNode, "display-octave"), int.MinValue);
+            if (string.IsNullOrWhiteSpace(step) || octave == int.MinValue)
+                return false;
+
+            int pitchClass = StepToPitchClass(step.Trim().ToUpperInvariant(), 0);
+            midi = (octave + 1) * 12 + pitchClass;
+        }
+
+        string instrumentName = string.Empty;
+        if (!string.IsNullOrWhiteSpace(instrumentId) && descriptor?.instrumentNameById != null)
+            descriptor.instrumentNameById.TryGetValue(instrumentId, out instrumentName);
+        name = FirstNonEmpty(GetGeneralMidiDrumName(midi), instrumentName, GetNoteName(midi));
+        return true;
+    }
+
     private static bool TryReadPitchedNote(XElement noteNode, int chromaticTranspose, out int midi, out string name)
     {
         midi = -1;
@@ -1840,6 +1991,84 @@ public static class MusicXmlLoader
         }
 
         return best;
+    }
+
+    private static int MapPercussionMidiToLane(int midiNote)
+    {
+        switch (midiNote)
+        {
+            case 42:
+            case 44:
+            case 46:
+                return 0;
+            case 49:
+            case 52:
+            case 55:
+            case 57:
+                return 1;
+            case 37:
+            case 38:
+            case 39:
+            case 40:
+                return 2;
+            case 48:
+            case 50:
+                return 3;
+            case 35:
+            case 36:
+                return 4;
+            case 45:
+            case 47:
+                return 5;
+            case 41:
+            case 43:
+                return 6;
+            case 51:
+            case 53:
+            case 59:
+            default:
+                return 7;
+        }
+    }
+
+    private static string GetGeneralMidiDrumName(int midi)
+    {
+        switch (midi)
+        {
+            case 35:
+            case 36:
+                return "Kick";
+            case 37:
+                return "Side Stick";
+            case 38:
+            case 39:
+            case 40:
+                return "Snare";
+            case 41:
+            case 43:
+                return "Floor Tom";
+            case 42:
+            case 44:
+            case 46:
+                return "Hi-Hat";
+            case 45:
+            case 47:
+                return "Mid Tom";
+            case 48:
+            case 50:
+                return "High Tom";
+            case 49:
+            case 52:
+            case 55:
+            case 57:
+                return "Crash Cymbal";
+            case 51:
+            case 53:
+            case 59:
+                return "Ride Cymbal";
+            default:
+                return string.Empty;
+        }
     }
 
     private static double QuarterToSeconds(double targetQuarter, List<TempoEvent> tempoMap)

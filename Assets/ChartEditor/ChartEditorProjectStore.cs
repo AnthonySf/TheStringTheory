@@ -658,7 +658,7 @@ public static class ChartEditorProjectStore
             id = noteId,
             time = Mathf.Max(0f, (float)note.timeSeconds),
             duration = Mathf.Max(0f, (float)note.durationSeconds),
-            stringIdx = Mathf.Clamp(note.stringOrLane, 0, 8),
+            stringIdx = Mathf.Clamp(note.stringOrLane, 0, 7),
             fret = Mathf.Max(0, note.fret),
             note = note.noteName ?? string.Empty,
             chordId = note.chordId,

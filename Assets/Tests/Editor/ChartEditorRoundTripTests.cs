@@ -355,6 +355,67 @@ public sealed class ChartEditorRoundTripTests
     }
 
     [Test]
+    public void ExportImportDrumTheoryPackage_PreservesLaneOrderAndNormalNoteFlags()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        project.tracks.Add(CreateDrumTrack());
+        AttachFixtureAudio(project, scope.RootPath);
+        PrepareProjectForNoEditRoundTrip(project);
+
+        Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(project, out _, out string packagePath, out string exportError), exportError);
+        Assert.IsTrue(TheorySongLoader.TryLoadArrangementByPartId(packagePath, "drums", out TheoryArrangementSummary drumSummary, out TheoryArrangementData drumArrangement), "The .theory package did not contain the drum arrangement.");
+        Assert.AreEqual("drums", drumSummary.instrumentType);
+        Assert.AreEqual("Drums", drumSummary.route);
+
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "0:42:Hi-Hat:False:True",
+                "1:49:Crash Cymbal:False:True",
+                "2:38:Snare:False:True",
+                "4:36:Kick:False:True"
+            },
+            drumArrangement.notes
+                .OrderBy(note => note.time)
+                .Select(note => $"{note.stringIndex}:{note.fret}:{note.noteName}:{note.tap}:{note.requiresPluck}")
+                .ToArray());
+
+        MusicXmlLoader.MusicXmlPartSummary runtimeSummary = SongNotationFacade
+            .GetPartSummaries(packagePath, SongNotationSourceKind.TheoryPackage)
+            .First(summary => string.Equals(summary.PartId, "drums", StringComparison.OrdinalIgnoreCase));
+        List<NoteData> runtimeNotes = SongNotationFacade.LoadSong(packagePath, SongNotationSourceKind.TheoryPackage, runtimeSummary.Index);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "0:42:Hi-Hat:True",
+                "1:49:Crash Cymbal:True",
+                "2:38:Snare:True",
+                "4:36:Kick:True"
+            },
+            runtimeNotes
+                .OrderBy(note => note.time)
+                .Select(note => $"{note.stringIdx}:{note.fret}:{note.note}:{note.requiresPluck}")
+                .ToArray());
+
+        Assert.IsTrue(ChartEditorImportService.ImportTheoryPackage(packagePath, out ChartEditorImportResult importResult, out string importError), importError);
+        ChartEditorTrack importedDrums = importResult.project.tracks.First(track => string.Equals(track.id, "drums", StringComparison.OrdinalIgnoreCase));
+        Assert.AreEqual(ChartEditorTrackRole.Drums, importedDrums.role);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "0:42:Hi-Hat:False:True",
+                "1:49:Crash Cymbal:False:True",
+                "2:38:Snare:False:True",
+                "4:36:Kick:False:True"
+            },
+            importedDrums.notes
+                .OrderBy(note => note.timeSeconds)
+                .Select(note => $"{note.stringOrLane}:{note.fret}:{note.noteName}:{note.tap}:{note.requiresPluck}")
+                .ToArray());
+    }
+
+    [Test]
     public void ExportWithoutEdits_PreservesGeneratedPlaybackEventsInTheoryAndCompatibilityExport()
     {
         using ExternalContentRootScope scope = new ExternalContentRootScope();
@@ -731,6 +792,50 @@ public sealed class ChartEditorRoundTripTests
     }
 
     [Test]
+    public void ImportCachedDrumArrangementThenExport_PreservesLaneOrderAndNormalNoteFlags()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        string manifestPath = WriteCachedDrumArrangementFixture(scope.RootPath);
+
+        Assert.IsTrue(ChartEditorImportService.ImportArrangementManifest(manifestPath, out ChartEditorImportResult result, out string importError), importError);
+        ChartEditorProject project = result?.project;
+        Assert.IsNotNull(project, "Import did not return a chart editor project.");
+        Assert.AreEqual(1, project.tracks.Count);
+
+        ChartEditorTrack track = project.tracks[0];
+        Assert.AreEqual(ChartEditorTrackRole.Drums, track.role);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "0:42:Hi-Hat:False:True",
+                "1:49:Crash Cymbal:False:True",
+                "2:38:Snare:False:True",
+                "4:36:Kick:False:True"
+            },
+            track.notes
+                .OrderBy(note => note.timeSeconds)
+                .Select(note => $"{note.stringOrLane}:{note.fret}:{note.noteName}:{note.tap}:{note.requiresPluck}")
+                .ToArray());
+
+        Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(project, out string exportDirectory, out string exportError), exportError);
+        RocksmithCachedArrangementPart exported = ReadSingleExportedArrangementPart(exportDirectory);
+        Assert.AreEqual("Drums", exported.route);
+        Assert.IsTrue(exported.generatedPart.isDrum);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "0:42:Hi-Hat:False:True",
+                "1:49:Crash Cymbal:False:True",
+                "2:38:Snare:False:True",
+                "4:36:Kick:False:True"
+            },
+            exported.notes
+                .OrderBy(note => note.time)
+                .Select(note => $"{note.stringIdx}:{note.fret}:{note.note}:{note.isTap}:{note.requiresPluck}")
+                .ToArray());
+    }
+
+    [Test]
     public void ImportMusicXml_UsesInstrumentMetadataForGenericPartNames()
     {
         using ExternalContentRootScope scope = new ExternalContentRootScope();
@@ -755,6 +860,12 @@ public sealed class ChartEditorRoundTripTests
         Assert.AreEqual(ChartEditorTrackRole.Drums, tracksById["P4"].role);
         CollectionAssert.AreEqual(new[] { 40, 45, 50, 55, 59, 64 }, tracksById["P1"].tuning.stringPitches);
         CollectionAssert.AreEqual(new[] { 28, 33, 38, 43 }, tracksById["P2"].tuning.stringPitches);
+        Assert.AreEqual(1, tracksById["P4"].notes.Count);
+        Assert.AreEqual(0, tracksById["P4"].notes[0].stringOrLane);
+        Assert.AreEqual(42, tracksById["P4"].notes[0].fret);
+        Assert.AreEqual("Hi-Hat", tracksById["P4"].notes[0].noteName);
+        Assert.IsFalse(tracksById["P4"].notes[0].tap);
+        Assert.IsTrue(tracksById["P4"].notes[0].requiresPluck);
     }
 
     [Test]
@@ -1416,25 +1527,47 @@ public sealed class ChartEditorRoundTripTests
             {
                 new ChartEditorNote
                 {
-                    id = "drum_kick",
+                    id = "drum_hihat",
                     sourceNoteId = 300,
                     timeSeconds = 0.25,
                     chartTimeSeconds = 0.25,
                     durationSeconds = 0.10,
                     stringOrLane = 0,
-                    fret = 36,
-                    noteName = "Kick"
+                    fret = 42,
+                    noteName = "Hi-Hat"
+                },
+                new ChartEditorNote
+                {
+                    id = "drum_crash",
+                    sourceNoteId = 301,
+                    timeSeconds = 0.50,
+                    chartTimeSeconds = 0.50,
+                    durationSeconds = 0.10,
+                    stringOrLane = 1,
+                    fret = 49,
+                    noteName = "Crash Cymbal"
                 },
                 new ChartEditorNote
                 {
                     id = "drum_snare",
-                    sourceNoteId = 301,
+                    sourceNoteId = 302,
                     timeSeconds = 0.75,
                     chartTimeSeconds = 0.75,
                     durationSeconds = 0.10,
-                    stringOrLane = 1,
+                    stringOrLane = 2,
                     fret = 38,
                     noteName = "Snare"
+                },
+                new ChartEditorNote
+                {
+                    id = "drum_kick",
+                    sourceNoteId = 303,
+                    timeSeconds = 1.00,
+                    chartTimeSeconds = 1.00,
+                    durationSeconds = 0.10,
+                    stringOrLane = 4,
+                    fret = 36,
+                    noteName = "Kick"
                 }
             }
         };
@@ -1543,7 +1676,7 @@ public sealed class ChartEditorRoundTripTests
         <instrument-name>Drumset</instrument-name>
         <instrument-sound>drum-set.standard</instrument-sound>
       </score-instrument>
-      <midi-instrument id=""P4-I1""><midi-channel>10</midi-channel><midi-program>1</midi-program></midi-instrument>
+      <midi-instrument id=""P4-I1""><midi-channel>10</midi-channel><midi-program>1</midi-program><midi-unpitched>42</midi-unpitched></midi-instrument>
     </score-part>
   </part-list>
   <part id=""P1"">
@@ -1671,6 +1804,103 @@ public sealed class ChartEditorRoundTripTests
         string manifestPath = Path.Combine(sourceDirectory, RocksmithCachedSongFormat.ManifestFileName);
         File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true));
         return manifestPath;
+    }
+
+    private static string WriteCachedDrumArrangementFixture(string rootPath)
+    {
+        string sourceDirectory = Path.Combine(rootPath, "drum_import_fixture");
+        string arrangementsDirectory = Path.Combine(sourceDirectory, "arrangements");
+        Directory.CreateDirectory(arrangementsDirectory);
+
+        RocksmithCachedArrangementPart drumPart = CreateCachedDrumArrangementPart();
+        string drumPartPath = Path.Combine(arrangementsDirectory, "drums_full.rs2part.json");
+        File.WriteAllText(drumPartPath, JsonUtility.ToJson(drumPart, true));
+
+        string audioPath = Path.Combine(sourceDirectory, "silence.ogg");
+        File.WriteAllBytes(audioPath, Array.Empty<byte>());
+
+        RocksmithCachedSongManifest manifest = new RocksmithCachedSongManifest
+        {
+            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            sourcePsarcPath = Path.Combine(sourceDirectory, "source.psarc"),
+            sourcePsarcLastWriteUtcTicks = 123456789,
+            importedAtUtcTicks = 123456790,
+            displayName = "Drum Import Song",
+            artist = "Unit Test Band",
+            album = "Regression Suite",
+            audioPath = audioPath,
+            previewAudioPath = audioPath,
+            durationSeconds = 8f,
+            difficultyRating = 4,
+            arrangements = new List<RocksmithCachedArrangementSummary>
+            {
+                new RocksmithCachedArrangementSummary
+                {
+                    partId = "drums_full",
+                    displayName = "Drums",
+                    route = "Drums",
+                    arrangementGroupId = "drums",
+                    arrangementDisplayName = "Drums",
+                    difficultyLabel = "Full",
+                    difficultyUiIndex = 0,
+                    hasDifficultyVariants = false,
+                    partFilePath = Path.Combine("arrangements", "drums_full.rs2part.json"),
+                    noteCount = drumPart.notes.Count,
+                    tabCount = drumPart.notes.Count,
+                    score = drumPart.notes.Count,
+                    difficultyRating = 4
+                }
+            }
+        };
+
+        string manifestPath = Path.Combine(sourceDirectory, RocksmithCachedSongFormat.ManifestFileName);
+        File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true));
+        return manifestPath;
+    }
+
+    private static RocksmithCachedArrangementPart CreateCachedDrumArrangementPart()
+    {
+        return new RocksmithCachedArrangementPart
+        {
+            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            partId = "drums_full",
+            displayName = "Drums",
+            route = "Drums",
+            arrangementGroupId = "drums",
+            arrangementDisplayName = "Drums",
+            difficultyLabel = "Full",
+            difficultyUiIndex = 0,
+            hasDifficultyVariants = false,
+            durationSeconds = 8f,
+            difficultyRating = 4,
+            generatedPart = new RocksmithCachedGeneratedPartInfo
+            {
+                partId = "drums_full",
+                displayName = "Drums",
+                instrumentName = "Drums",
+                sourceMidiChannel = 9,
+                sourceMidiProgram = 0,
+                preferredBank = -1,
+                isDrum = true,
+                isGuitarFamily = false
+            },
+            timing = new RocksmithCachedArrangementTimingData
+            {
+                averageTempoBpm = 120f,
+                sections = new List<RocksmithCachedSectionData>
+                {
+                    new RocksmithCachedSectionData { name = "intro", number = 1, timeSeconds = 0f }
+                },
+                ebeats = BuildFixtureEbeats()
+            },
+            notes = new List<RocksmithCachedNoteData>
+            {
+                new RocksmithCachedNoteData { id = 601, time = 0.25f, duration = 0.10f, stringIdx = 0, fret = 42, note = "Hi-Hat", requiresPluck = true },
+                new RocksmithCachedNoteData { id = 602, time = 0.50f, duration = 0.10f, stringIdx = 1, fret = 49, note = "Crash Cymbal", requiresPluck = true },
+                new RocksmithCachedNoteData { id = 603, time = 0.75f, duration = 0.10f, stringIdx = 2, fret = 38, note = "Snare", requiresPluck = true },
+                new RocksmithCachedNoteData { id = 604, time = 1.00f, duration = 0.10f, stringIdx = 4, fret = 36, note = "Kick", requiresPluck = true }
+            }
+        };
     }
 
     private static RocksmithCachedArrangementPart CreateFullDifficultyCachedPart(int[] tuningPitches)

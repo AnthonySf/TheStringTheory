@@ -577,6 +577,13 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         public int[] Triangles;
         public int WidthSegments = -1;
         public int HeightSegments = -1;
+        public bool HasAppliedFloorShape;
+        public float FloorWidth = float.NaN;
+        public float FloorDepth = float.NaN;
+        public float FloorCurveDown = float.NaN;
+        public float FloorCurveTowardCamera = float.NaN;
+        public Vector3 FloorForwardFlat;
+        public Quaternion FloorWorldRotation;
     }
 
     private sealed class StageCloud
@@ -3391,6 +3398,11 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         }
     }
 
+    private Vector3 GetRootWorldOffset()
+    {
+        return root != null ? root.transform.position : Vector3.zero;
+    }
+
     private void UpdateStagePlacement(Camera camera)
     {
         if (!proceduralStageVisible)
@@ -3533,10 +3545,11 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         Quaternion rotation = Quaternion.LookRotation(normal, depthAxis);
         float curveDown = HorizonCurveDownValue;
         float curveTowardCamera = HorizonCurveTowardCameraValue;
+        Vector3 rootOffset = GetRootWorldOffset();
 
         if (floorObject != null)
         {
-            floorObject.transform.position = center;
+            floorObject.transform.position = center + rootOffset;
             floorObject.transform.rotation = rotation;
             floorObject.transform.localScale = Vector3.one;
             ApplyCurvedFloorMesh(floorMeshCache, floorWidth, floorDepth, rotation, forwardFlat, curveDown, curveTowardCamera);
@@ -3545,7 +3558,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         if (floorGridObject != null)
         {
             Vector3 gridCenter = center + (normal * 0.035f);
-            floorGridObject.transform.position = gridCenter;
+            floorGridObject.transform.position = gridCenter + rootOffset;
             floorGridObject.transform.rotation = rotation;
             floorGridObject.transform.localScale = Vector3.one;
             ApplyCurvedFloorMesh(floorGridMeshCache, floorWidth, floorDepth, rotation, forwardFlat, curveDown, curveTowardCamera);
@@ -3671,10 +3684,11 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         Quaternion rotation = Quaternion.LookRotation(-forwardFlat, Vector3.up);
         float curveDown = HorizonCurveDownValue;
         float curveTowardCamera = HorizonCurveTowardCameraValue;
+        Vector3 rootOffset = GetRootWorldOffset();
 
         if (horizonObject != null)
         {
-            horizonObject.transform.position = center;
+            horizonObject.transform.position = center + rootOffset;
             horizonObject.transform.rotation = rotation;
             horizonObject.transform.localScale = Vector3.one;
             ApplyCurvedHorizonMesh(horizonMeshCache, horizonLineWidth, horizonGlowBlurHeight, curveDown, curveTowardCamera);
@@ -3684,7 +3698,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         {
             Vector3 coreCenter = center;
             coreCenter.y += horizonCoreLineYOffset;
-            horizonCoreObject.transform.position = coreCenter;
+            horizonCoreObject.transform.position = coreCenter + rootOffset;
             horizonCoreObject.transform.rotation = rotation;
             horizonCoreObject.transform.localScale = Vector3.one;
             ApplyCurvedHorizonMesh(horizonCoreMeshCache, horizonLineWidth, horizonCoreLineHeight, curveDown, curveTowardCamera);
@@ -3710,7 +3724,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         center.x = Mathf.Lerp(center.x, boardMidX, 0.46f);
         center.y = horizonLineY + EnviroMountainSilhouetteYOffset;
 
-        enviroMountainObject.transform.position = center;
+        enviroMountainObject.transform.position = center + GetRootWorldOffset();
         enviroMountainObject.transform.rotation = Quaternion.LookRotation(forwardFlat, Vector3.up);
         enviroMountainObject.transform.localScale = new Vector3(
             Mathf.Max(1f, horizonLineWidth * EnviroMountainSilhouetteWidthMultiplier),
@@ -3756,7 +3770,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
 
             float widthScale = FarLightWidth * (i % 2 == 0 ? 1.0f : 0.82f);
             float heightScale = FarLightHeight * (i % 3 == 0 ? 1.08f : 0.92f);
-            farLight.transform.position = center;
+            farLight.transform.position = center + GetRootWorldOffset();
             farLight.transform.rotation = rotation;
             farLight.transform.localScale = new Vector3(widthScale, heightScale, 1f);
         }
@@ -3840,7 +3854,7 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
             center += rightFlat * (xNorm * horizonLineWidth * 0.42f);
             center.y = horizonLineY + Mathf.Lerp(24.0f, 42.0f, cloud.BaseY);
 
-            cloud.Object.transform.position = center;
+            cloud.Object.transform.position = center + GetRootWorldOffset();
             cloud.Object.transform.rotation = rotation;
             cloud.Object.transform.localScale = new Vector3(
                 Mathf.Lerp(26f, 54f, cloud.Scale),
@@ -4285,7 +4299,27 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         cache.Triangles = BuildGridTriangles(widthSegments, heightSegments);
         cache.Mesh = new Mesh { name = meshName };
         cache.Mesh.MarkDynamic();
+        InitializeGridUvs(cache);
+        ApplyMeshData(cache);
         meshFilter.sharedMesh = cache.Mesh;
+    }
+
+    private static void InitializeGridUvs(CurvedMeshCache cache)
+    {
+        if (cache == null || cache.Uvs == null)
+            return;
+
+        int widthSegments = Mathf.Max(1, cache.WidthSegments);
+        int heightSegments = Mathf.Max(1, cache.HeightSegments);
+        for (int y = 0; y <= heightSegments; y++)
+        {
+            float v = y / (float)heightSegments;
+            for (int x = 0; x <= widthSegments; x++)
+            {
+                float u = x / (float)widthSegments;
+                cache.Uvs[y * (widthSegments + 1) + x] = new Vector2(u, v);
+            }
+        }
     }
 
     private static int[] BuildGridTriangles(int widthSegments, int heightSegments)
@@ -4388,6 +4422,8 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         if (forwardFlat.sqrMagnitude < 0.0001f)
             forwardFlat = Vector3.forward;
         forwardFlat.Normalize();
+        if (!ShouldRebuildCurvedFloorMesh(cache, width, depth, worldRotation, forwardFlat, curveDown, curveTowardCamera))
+            return;
 
         Quaternion inverseRotation = Quaternion.Inverse(worldRotation);
         int widthSegments = Mathf.Max(1, cache.WidthSegments);
@@ -4405,11 +4441,45 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
                     (u - 0.5f) * width,
                     (v - 0.5f) * depth,
                     0f) + localOffset;
-                cache.Uvs[vertexIndex] = new Vector2(u, v);
             }
         }
 
-        ApplyMeshData(cache);
+        ApplyMeshVertices(cache);
+        cache.HasAppliedFloorShape = true;
+        cache.FloorWidth = width;
+        cache.FloorDepth = depth;
+        cache.FloorCurveDown = curveDown;
+        cache.FloorCurveTowardCamera = curveTowardCamera;
+        cache.FloorForwardFlat = forwardFlat;
+        cache.FloorWorldRotation = worldRotation;
+    }
+
+    private static bool ShouldRebuildCurvedFloorMesh(
+        CurvedMeshCache cache,
+        float width,
+        float depth,
+        Quaternion worldRotation,
+        Vector3 forwardFlat,
+        float curveDown,
+        float curveTowardCamera)
+    {
+        if (cache == null || !cache.HasAppliedFloorShape)
+            return true;
+
+        if (!Mathf.Approximately(cache.FloorWidth, width) ||
+            !Mathf.Approximately(cache.FloorDepth, depth) ||
+            !Mathf.Approximately(cache.FloorCurveDown, curveDown) ||
+            !Mathf.Approximately(cache.FloorCurveTowardCamera, curveTowardCamera))
+        {
+            return true;
+        }
+
+        bool curved = Mathf.Abs(curveDown) > 0.0001f || Mathf.Abs(curveTowardCamera) > 0.0001f;
+        if (!curved)
+            return false;
+
+        return Vector3.SqrMagnitude(cache.FloorForwardFlat - forwardFlat) > 0.000001f ||
+               Mathf.Abs(Quaternion.Dot(cache.FloorWorldRotation, worldRotation)) < 0.999999f;
     }
 
     private static void ApplyMeshData(CurvedMeshCache cache)
@@ -4418,6 +4488,15 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         cache.Mesh.vertices = cache.Vertices;
         cache.Mesh.uv = cache.Uvs;
         cache.Mesh.triangles = cache.Triangles;
+        cache.Mesh.RecalculateBounds();
+    }
+
+    private static void ApplyMeshVertices(CurvedMeshCache cache)
+    {
+        if (cache == null || cache.Mesh == null || cache.Vertices == null)
+            return;
+
+        cache.Mesh.vertices = cache.Vertices;
         cache.Mesh.RecalculateBounds();
     }
 
@@ -4435,6 +4514,13 @@ public sealed class TabsNeonStageBackground : ITabsBackgroundEffect
         cache.Triangles = null;
         cache.WidthSegments = -1;
         cache.HeightSegments = -1;
+        cache.HasAppliedFloorShape = false;
+        cache.FloorWidth = float.NaN;
+        cache.FloorDepth = float.NaN;
+        cache.FloorCurveDown = float.NaN;
+        cache.FloorCurveTowardCamera = float.NaN;
+        cache.FloorForwardFlat = Vector3.zero;
+        cache.FloorWorldRotation = Quaternion.identity;
     }
 
     private Texture2D BuildFloorBaseTexture(int width, int height)

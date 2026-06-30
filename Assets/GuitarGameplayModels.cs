@@ -49,7 +49,8 @@ public enum HighwayCharacterDisplayMode
 {
     Always,
     Never,
-    HeroModeOnly
+    HeroModeOnly,
+    AlwaysGuitars
 }
 
 public enum HighwayCharacterChoice
@@ -468,6 +469,7 @@ public sealed class GuitarGameplaySnapshot
     public int arcadeLaneCount;
     public string selectedArcadeArrangementId;
     public string selectedArcadeArrangementDisplayName;
+    public ArcadeInstrument selectedArcadeInstrument;
     public string selectedArcadeDifficultyLabel;
     public List<string> arcadeDifficultyLabels;
     public List<bool> arcadeDifficultyAvailable;

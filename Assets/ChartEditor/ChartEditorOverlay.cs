@@ -9708,7 +9708,7 @@ public sealed class ChartEditorOverlay
     private static string[] GetVisualLaneLabels(ChartEditorTrack track, int laneCount)
     {
         if (track?.role == ChartEditorTrackRole.Drums)
-            return new[] { "Kick", "Sn", "Hat", "T1", "T2", "Ride", "Cr", "Perc" };
+            return new[] { "Kick", "Sn", "Hat", "T1", "T2", "Floor", "Cr", "Ride" };
 
         int[] pitches = track?.tuning?.stringPitches;
         bool bass = track?.role == ChartEditorTrackRole.Bass;

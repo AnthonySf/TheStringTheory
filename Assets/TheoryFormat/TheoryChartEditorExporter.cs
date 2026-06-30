@@ -490,7 +490,7 @@ public static class TheoryChartEditorExporter
             id = noteId,
             time = Mathf.Max(0f, (float)note.timeSeconds),
             duration = Mathf.Max(0f, (float)note.durationSeconds),
-            stringIndex = Mathf.Clamp(note.stringOrLane, 0, 8),
+            stringIndex = Mathf.Clamp(note.stringOrLane, 0, 7),
             fret = Mathf.Max(0, note.fret),
             noteName = note.noteName ?? string.Empty,
             chordId = note.chordId,

@@ -97,6 +97,13 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
     private static readonly Color BackgroundColor = new Color(0.01f, 0.015f, 0.045f, 1f);
     private static readonly Rect[] CurrentCharacterHudRects = new Rect[PlayerCount];
 
+    private enum BackgroundProfile
+    {
+        Gameplay,
+        MainMenu,
+        MiniGames
+    }
+
     private sealed class MultiplayerPlayerScene
     {
         public int playerIndex;
@@ -189,6 +196,8 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
     private GameObject root;
     private GameObject backgroundRoot;
     private ITabsBackgroundEffect backgroundEffect;
+    private BackgroundProfile backgroundProfile = BackgroundProfile.Gameplay;
+    private string backgroundSignature = string.Empty;
     private MultiplayerPlayerScene[] playerScenes;
     private float currentVisualNoteSpeed = 12f;
     private TabsSongHeaderOverlay overlay;
@@ -212,7 +221,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
             ConfigureMainCamera();
         }
 
-        InitializeBackgroundEffect();
+        InitializeBackgroundEffect(BackgroundProfile.Gameplay);
         BuildPlayerScenes();
     }
 
@@ -229,11 +238,14 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
 
         using (RenderProfilerMarker.Auto())
         {
+            BackgroundProfile targetBackgroundProfile = ResolveBackgroundProfile(snapshot);
+            EnsureBackgroundMode(targetBackgroundProfile);
             ConfigureMainCamera();
             currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
-            bool suppressGameplay = snapshot.mainMenuFlowActive;
+            bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded || snapshot.showToneLab || snapshot.showTuner || snapshot.showMiniGames;
 
-            UpdateBackgroundPlacement();
+            if (!suppressGameplay && backgroundProfile == BackgroundProfile.Gameplay)
+                UpdateBackgroundPlacement();
             backgroundEffect?.Tick(Time.deltaTime);
 
             for (int i = 0; i < playerScenes.Length; i++)
@@ -336,6 +348,34 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         if (mainCamera == null || owner == null)
             return;
 
+        if (backgroundProfile != BackgroundProfile.Gameplay)
+        {
+            bool usePerspectiveCamera = ShouldUsePerspectiveBackgroundCamera();
+            mainCamera.orthographic = !usePerspectiveCamera;
+            if (!usePerspectiveCamera)
+                mainCamera.orthographicSize = owner.tabCameraSize;
+            mainCamera.clearFlags = usePerspectiveCamera ? CameraClearFlags.Skybox : CameraClearFlags.SolidColor;
+            mainCamera.backgroundColor = GetCameraBackgroundColor();
+            if (originalMainCameraCullingMask >= 0)
+                mainCamera.cullingMask = originalMainCameraCullingMask;
+            mainCamera.depth = originalMainCameraDepth;
+            mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, owner.highwayCameraFarClip);
+            if (usePerspectiveCamera)
+            {
+                mainCamera.transform.position = new Vector3(0f, owner.highwayCameraY, owner.highwayCameraZ);
+                mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
+                mainCamera.fieldOfView = 60f;
+            }
+            else
+            {
+                mainCamera.transform.position = new Vector3(0f, 0f, owner.tabCameraZ);
+                mainCamera.transform.rotation = Quaternion.identity;
+            }
+
+            SetBackgroundEffectRenderCamera(mainCamera);
+            return;
+        }
+
         mainCamera.orthographic = false;
         mainCamera.clearFlags = CameraClearFlags.SolidColor;
         mainCamera.backgroundColor = GetCameraBackgroundColor();
@@ -350,6 +390,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch + owner.multiplayerHighwayCameraPitchOffset, 0f, 0f);
         mainCamera.fieldOfView = Mathf.Clamp(owner.multiplayerHighwayCameraFieldOfView, 30f, 90f);
         mainCamera.orthographic = false;
+        SetBackgroundEffectRenderCamera(mainCamera);
     }
 
     private Color GetCameraBackgroundColor()
@@ -357,26 +398,48 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         if (owner == null)
             return BackgroundColor;
 
-        if (owner.tabBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.BlueSky)
+        GuitarBridgeServer.TabsBackgroundMode activeBackgroundMode = owner.GetBackgroundModeForContext(ToOwnerBackgroundContext(backgroundProfile));
+        if (activeBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.BlueSky)
         {
+            if (backgroundProfile == BackgroundProfile.Gameplay)
+            {
+                switch (owner.tabSkyMood)
+                {
+                    case GuitarBridgeServer.TabsSkyMood.Sunset:
+                        return new Color(0.05f, 0.03f, 0.05f, 1f);
+                    case GuitarBridgeServer.TabsSkyMood.Midnight:
+                        return new Color(0.010f, 0.012f, 0.034f, 1f);
+                    default:
+                        return new Color(0.03f, 0.05f, 0.10f, 1f);
+                }
+            }
+
             switch (owner.tabSkyMood)
             {
                 case GuitarBridgeServer.TabsSkyMood.Sunset:
-                    return new Color(0.05f, 0.03f, 0.05f, 1f);
+                    return owner.tabSkySunsetBottomColor;
                 case GuitarBridgeServer.TabsSkyMood.Midnight:
-                    return new Color(0.010f, 0.012f, 0.034f, 1f);
+                    return owner.tabSkyMidnightBottomColor;
                 default:
-                    return new Color(0.03f, 0.05f, 0.10f, 1f);
+                    return owner.tabSkyBottomColor;
             }
         }
+
+        if (activeBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.NeonStage)
+            return new Color(0.006f, 0.008f, 0.030f, 1f);
 
         return owner.tabBackgroundColor;
     }
 
-    private void InitializeBackgroundEffect()
+    private void InitializeBackgroundEffect(BackgroundProfile profile)
     {
         backgroundEffect?.Dispose();
-        backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides: true);
+        backgroundProfile = profile;
+        GuitarBridgeServer.TabsBackgroundContext ownerContext = ToOwnerBackgroundContext(profile);
+        bool applyHighwayOverrides = profile == BackgroundProfile.Gameplay;
+        backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides, ownerContext);
+        backgroundSignature = GetBackgroundSignature(profile);
+        SetBackgroundEffectRenderCamera(mainCamera);
         if (backgroundEffect != null && backgroundRoot != null)
         {
             backgroundEffect.Initialize(backgroundRoot.transform, owner);
@@ -390,12 +453,97 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         if (backgroundRoot == null || owner == null)
             return;
 
+        if (backgroundProfile == BackgroundProfile.MainMenu)
+        {
+            backgroundRoot.transform.localPosition = Vector3.zero;
+            backgroundRoot.transform.localRotation = Quaternion.identity;
+            backgroundRoot.transform.localScale = Vector3.one;
+            return;
+        }
+
+        if (backgroundProfile == BackgroundProfile.MiniGames)
+        {
+            backgroundRoot.transform.localPosition = new Vector3(0f, 0.85f, 0f);
+            backgroundRoot.transform.localRotation = Quaternion.identity;
+            backgroundRoot.transform.localScale = Vector3.one * 1.24f;
+            return;
+        }
+
+        GuitarBridgeServer.TabsBackgroundMode activeBackgroundMode = owner.GetBackgroundModeForContext(ToOwnerBackgroundContext(backgroundProfile));
+        if (activeBackgroundMode == GuitarBridgeServer.TabsBackgroundMode.NeonStage)
+        {
+            backgroundRoot.transform.position = Vector3.zero;
+            backgroundRoot.transform.localRotation = Quaternion.identity;
+            backgroundRoot.transform.localScale = Vector3.one;
+            return;
+        }
+
         backgroundRoot.transform.position = new Vector3(
             Mathf.Max(0f, owner.TotalFrets * owner.FretSpacing * 0.5f),
             owner.highwayBackgroundCenterY,
             owner.highwayBackgroundDistance);
         backgroundRoot.transform.localRotation = Quaternion.identity;
         backgroundRoot.transform.localScale = Vector3.one * owner.highwayBackgroundScale;
+    }
+
+    private static BackgroundProfile ResolveBackgroundProfile(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot != null && snapshot.showMiniGames)
+            return BackgroundProfile.MiniGames;
+
+        if (snapshot != null && (snapshot.mainMenuFlowActive || snapshot.showToneLab || snapshot.showTuner))
+            return BackgroundProfile.MainMenu;
+
+        return BackgroundProfile.Gameplay;
+    }
+
+    private static GuitarBridgeServer.TabsBackgroundContext ToOwnerBackgroundContext(BackgroundProfile profile)
+    {
+        switch (profile)
+        {
+            case BackgroundProfile.MainMenu:
+                return GuitarBridgeServer.TabsBackgroundContext.MainMenu;
+            case BackgroundProfile.MiniGames:
+                return GuitarBridgeServer.TabsBackgroundContext.MiniGames;
+            case BackgroundProfile.Gameplay:
+            default:
+                return GuitarBridgeServer.TabsBackgroundContext.Gameplay;
+        }
+    }
+
+    private void EnsureBackgroundMode(BackgroundProfile profile)
+    {
+        if (profile != backgroundProfile || backgroundSignature != GetBackgroundSignature(profile))
+            InitializeBackgroundEffect(profile);
+    }
+
+    private string GetBackgroundSignature(BackgroundProfile profile)
+    {
+        if (owner == null)
+            return string.Empty;
+
+        return owner.GetBackgroundSignatureForContext(ToOwnerBackgroundContext(profile));
+    }
+
+    private bool ShouldUsePerspectiveBackgroundCamera()
+    {
+        if (owner == null || backgroundProfile == BackgroundProfile.Gameplay)
+            return false;
+
+        GuitarBridgeServer.TabsBackgroundContext context = ToOwnerBackgroundContext(backgroundProfile);
+        if (owner.GetBackgroundModeForContext(context) != GuitarBridgeServer.TabsBackgroundMode.NeonStage)
+            return false;
+
+        bool useMainMenuProfile = context == GuitarBridgeServer.TabsBackgroundContext.MainMenu;
+        return owner.GetNeonStageSkyDesign(useMainMenuProfile) == GuitarBridgeServer.TabsNeonStageSkyDesign.Enviro3;
+    }
+
+    private void SetBackgroundEffectRenderCamera(Camera camera)
+    {
+        if (backgroundEffect is TabsNeonStageBackground neonStageBackground)
+            neonStageBackground.SetRenderCamera(camera);
+        if (backgroundEffect is TabsBlueSkyBackground blueSkyBackground)
+            blueSkyBackground.SetRenderCamera(camera);
     }
 
     private void BuildPlayerScenes()

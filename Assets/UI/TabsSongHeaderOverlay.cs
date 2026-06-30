@@ -145,6 +145,9 @@ public sealed class TabsSongHeaderOverlay
     private const float ArcadeComboBadgeHeightInCharacterHeights = 0.36f;
     private const float ArcadeComboBadgeHorizontalOffsetInCharacterWidths = 0.2f;
     private const float ArcadeComboBadgeVerticalOffsetInCharacterHeights = 0.05f;
+    private const float DrumArcadeComboBadgeSideGapInCharacterWidths = 0.08f;
+    private const float DrumArcadeComboBadgeGapAboveCharacter = 12f;
+    private const float DrumArcadeComboBadgeGapBelowSongCard = 10f;
     private const float GuitarComboBadgeRightOffsetFromSongCard = 10f;
     private const float GuitarComboBadgeGapBelowSongCard = 35f;
     private const float ArcadeComboCaptionFontScale = 0.24f;
@@ -2858,16 +2861,16 @@ public sealed class TabsSongHeaderOverlay
         gameplayTimelineContainer.style.paddingBottom = 10f;
         gameplayTimelineContainer.style.display = DisplayStyle.None;
         gameplayTimelineContainer.style.overflow = Overflow.Visible;
-        gameplayTimelineContainer.style.opacity = 0.96f;
+        gameplayTimelineContainer.style.opacity = 1f;
         gameplayTimelineContainer.style.flexDirection = FlexDirection.Column;
         gameplayTimelineContainer.style.justifyContent = Justify.FlexStart;
         gameplayTimelineContainer.pickingMode = PickingMode.Position;
-        StyleCard(gameplayTimelineContainer, new Color(0.006f, 0.012f, 0.020f, 0.62f), radius: 4f);
+        StyleCard(gameplayTimelineContainer, new Color(0.003f, 0.007f, 0.014f, 0.90f), radius: 4f);
         gameplayTimelineContainer.style.borderTopWidth = 0f;
         gameplayTimelineContainer.style.borderTopColor = Color.clear;
-        gameplayTimelineContainer.style.borderRightColor = new Color(0.10f, 0.26f, 0.34f, 0.24f);
-        gameplayTimelineContainer.style.borderBottomColor = new Color(0.10f, 0.26f, 0.34f, 0.24f);
-        gameplayTimelineContainer.style.borderLeftColor = new Color(0.10f, 0.26f, 0.34f, 0.24f);
+        gameplayTimelineContainer.style.borderRightColor = new Color(0.10f, 0.26f, 0.34f, 0.42f);
+        gameplayTimelineContainer.style.borderBottomColor = new Color(0.10f, 0.26f, 0.34f, 0.42f);
+        gameplayTimelineContainer.style.borderLeftColor = new Color(0.10f, 0.26f, 0.34f, 0.42f);
 
         gameplayTimelineHeaderRow = new VisualElement();
         gameplayTimelineHeaderRow.style.flexDirection = FlexDirection.Row;
@@ -2955,7 +2958,7 @@ public sealed class TabsSongHeaderOverlay
         gameplayTimelineTrack.style.height = 7f;
         gameplayTimelineTrack.style.marginTop = 8f;
         gameplayTimelineTrack.style.flexGrow = 0f;
-        gameplayTimelineTrack.style.backgroundColor = new Color(0.07f, 0.18f, 0.25f, 0.88f);
+        gameplayTimelineTrack.style.backgroundColor = new Color(0.045f, 0.12f, 0.18f, 0.96f);
         gameplayTimelineTrack.style.borderTopLeftRadius = 999f;
         gameplayTimelineTrack.style.borderTopRightRadius = 999f;
         gameplayTimelineTrack.style.borderBottomLeftRadius = 999f;
@@ -13486,15 +13489,15 @@ public sealed class TabsSongHeaderOverlay
         float timelineHeight = GetGameplayTimelineHeight(expanded);
         gameplayTimelineContainer.style.height = timelineHeight;
         gameplayTimelineContainer.style.minHeight = timelineHeight;
-        gameplayTimelineContainer.style.opacity = expanded ? 0.98f : 0.96f;
+        gameplayTimelineContainer.style.opacity = 1f;
         gameplayTimelineContainer.style.backgroundColor = expanded
-            ? new Color(0.006f, 0.014f, 0.024f, 0.74f)
-            : new Color(0.006f, 0.012f, 0.020f, 0.62f);
+            ? new Color(0.003f, 0.008f, 0.016f, 0.92f)
+            : new Color(0.003f, 0.007f, 0.014f, 0.90f);
         gameplayTimelineContainer.style.borderTopWidth = 0f;
         gameplayTimelineContainer.style.borderTopColor = Color.clear;
-        gameplayTimelineContainer.style.borderRightColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.32f : 0.24f);
-        gameplayTimelineContainer.style.borderBottomColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.32f : 0.24f);
-        gameplayTimelineContainer.style.borderLeftColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.32f : 0.24f);
+        gameplayTimelineContainer.style.borderRightColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.52f : 0.42f);
+        gameplayTimelineContainer.style.borderBottomColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.52f : 0.42f);
+        gameplayTimelineContainer.style.borderLeftColor = new Color(0.10f, 0.26f, 0.34f, expanded ? 0.52f : 0.42f);
         gameplayTimelineContainer.style.paddingLeft = 0f;
         gameplayTimelineContainer.style.paddingRight = 0f;
         gameplayTimelineContainer.style.paddingTop = expanded ? 12f : 10f;
@@ -13982,14 +13985,14 @@ public sealed class TabsSongHeaderOverlay
     private static Color GetGameplayTimelineDensityColor(float normalizedDensity)
     {
         normalizedDensity = Mathf.Clamp01(normalizedDensity);
-        Color rest = new Color(0.08f, 0.24f, 0.34f, 0.82f);
+        Color rest = new Color(0.045f, 0.14f, 0.21f, 0.94f);
         if (normalizedDensity <= 0.001f)
             return rest;
 
         float t = Mathf.Pow(normalizedDensity, 0.72f);
-        Color low = new Color(0.08f, 0.63f, 0.76f, 0.88f);
-        Color medium = new Color(0.30f, 0.48f, 1.00f, 0.92f);
-        Color busy = new Color(0.68f, 0.30f, 1.00f, 0.95f);
+        Color low = new Color(0.08f, 0.63f, 0.76f, 0.94f);
+        Color medium = new Color(0.30f, 0.48f, 1.00f, 0.96f);
+        Color busy = new Color(0.68f, 0.30f, 1.00f, 0.98f);
         Color intense = new Color(1.00f, 0.54f, 0.18f, 0.98f);
         Color peak = new Color(1.00f, 0.20f, 0.28f, 1.00f);
 
@@ -14164,8 +14167,8 @@ public sealed class TabsSongHeaderOverlay
             layoutCursor += widthPercent;
 
             Color background = active
-                ? new Color(0.46f, 0.30f, 0.09f, expanded ? 0.26f : 0.20f)
-                : new Color(0.006f, 0.014f, 0.026f, expanded ? 0.24f : 0.16f);
+                ? new Color(0.38f, 0.23f, 0.055f, expanded ? 0.58f : 0.50f)
+                : new Color(0.004f, 0.010f, 0.020f, expanded ? 0.62f : 0.56f);
             Color border = active
                 ? new Color(0.96f, 0.66f, 0.20f, expanded ? 0.58f : 0.46f)
                 : hovered
@@ -14173,10 +14176,10 @@ public sealed class TabsSongHeaderOverlay
                     : new Color(0.25f, 0.42f, 0.58f, expanded ? 0.34f : 0.25f);
 
             host.style.backgroundColor = background;
-            host.style.borderTopColor = active ? new Color(0.80f, 0.58f, 0.24f, expanded ? 0.34f : 0.26f) : new Color(0.10f, 0.22f, 0.32f, expanded ? 0.24f : 0.14f);
+            host.style.borderTopColor = active ? new Color(0.80f, 0.58f, 0.24f, expanded ? 0.50f : 0.42f) : new Color(0.10f, 0.22f, 0.32f, expanded ? 0.42f : 0.34f);
             host.style.borderRightColor = border;
-            host.style.borderBottomColor = active ? new Color(0.98f, 0.70f, 0.18f, expanded ? 0.74f : 0.58f) : new Color(0.10f, 0.22f, 0.32f, expanded ? 0.24f : 0.14f);
-            host.style.borderLeftColor = active ? border : new Color(0.25f, 0.42f, 0.58f, expanded ? 0.24f : 0.18f);
+            host.style.borderBottomColor = active ? new Color(0.98f, 0.70f, 0.18f, expanded ? 0.82f : 0.68f) : new Color(0.10f, 0.22f, 0.32f, expanded ? 0.42f : 0.34f);
+            host.style.borderLeftColor = active ? border : new Color(0.25f, 0.42f, 0.58f, expanded ? 0.40f : 0.32f);
             host.style.backgroundImage = active
                 ? new StyleBackground(GetGameplayTimelineActiveSectionTexture())
                 : StyleKeyword.None;
@@ -21389,6 +21392,7 @@ public sealed class TabsSongHeaderOverlay
         bool isHighway3D = owner != null && owner.renderMode.UsesHighway3D();
         bool isAlphaTabTabsLayout = IsAlphaTabTabsGameplayLayout();
         bool guitarMode = snapshot.gameplayMode == GuitarGameplayMode.Guitar;
+        bool drumsMode = IsDrumArcadeSnapshot(snapshot);
 
         Rect characterRect = isHighway3D
             ? GuitarHighway3DRenderer.GetHighwayCharacterHudScreenRect(panelWidth, panelHeight)
@@ -21513,6 +21517,21 @@ public sealed class TabsSongHeaderOverlay
             badgeLeft = Mathf.Clamp(targetLeft, 18f, layerWidth - badgeWidth - 18f);
             badgeTop = Mathf.Clamp(targetTop, 18f, layerHeight - badgeHeight - 112f);
         }
+        else if (drumsMode && isHighway3D)
+        {
+            float sideGap = Mathf.Clamp(characterRect.width * DrumArcadeComboBadgeSideGapInCharacterWidths, 14f, 32f);
+            float rightSideLeft = characterRect.xMax + sideGap;
+            float leftSideLeft = characterRect.xMin - badgeWidth - sideGap;
+            bool rightSideFits = rightSideLeft + badgeWidth <= layerWidth - 18f;
+            bool leftSideFits = leftSideLeft >= 18f;
+            float targetLeft = rightSideFits || !leftSideFits ? rightSideLeft : leftSideLeft;
+            float targetTop = characterRect.yMin - badgeHeight - DrumArcadeComboBadgeGapAboveCharacter;
+            if (songCardBounds.width > 1f && songCardBounds.height > 1f)
+                targetTop = Mathf.Max(targetTop, songCardBounds.yMax + DrumArcadeComboBadgeGapBelowSongCard);
+
+            badgeLeft = Mathf.Clamp(targetLeft, 18f, layerWidth - badgeWidth - 18f);
+            badgeTop = Mathf.Clamp(targetTop, 18f, layerHeight - badgeHeight - 112f);
+        }
         else
         {
             badgeLeft = isHighway3D
@@ -21592,6 +21611,27 @@ public sealed class TabsSongHeaderOverlay
 
         arcadeComboCountLabel.style.fontSize = Mathf.Clamp(badgeHeight * ArcadeComboCountFontScale, ArcadeComboCountFontMin, ArcadeComboCountFontMax);
 
+    }
+
+    private static bool IsDrumArcadeSnapshot(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null)
+            return false;
+
+        if (snapshot.selectedArcadeInstrument == ArcadeInstrument.Drums)
+            return true;
+
+        if (snapshot.arcadeLaneCount >= 8)
+            return true;
+
+        return ContainsDrumText(snapshot.selectedArcadeArrangementDisplayName) ||
+               ContainsDrumText(snapshot.selectedArcadeArrangementId);
+    }
+
+    private static bool ContainsDrumText(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               value.IndexOf("drum", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
 

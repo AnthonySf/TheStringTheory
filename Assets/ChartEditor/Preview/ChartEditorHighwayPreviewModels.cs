@@ -102,7 +102,8 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
 
     public static int ResolveLaneCount(ChartEditorTrack track)
     {
-        int defaultCount = track?.role == ChartEditorTrackRole.Bass ? 4 : 6;
+        int defaultCount = track?.role == ChartEditorTrackRole.Bass ? 4 :
+            (track?.role == ChartEditorTrackRole.Drums || track?.role == ChartEditorTrackRole.Piano) ? 8 : 6;
         int count = defaultCount;
         if (track?.tuning?.stringPitches != null && track.tuning.stringPitches.Length > 0)
             count = Mathf.Clamp(track.tuning.stringPitches.Length, 1, 8);
