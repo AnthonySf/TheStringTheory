@@ -60,9 +60,10 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
         };
 
         for (int i = 0; i < orderedNotes.Count; i++)
-            frame.notes.Add(ToNoteData(orderedNotes[i], i, laneCount));
+            frame.notes.Add(ToNoteData(orderedNotes[i], i, laneCount, track.role));
 
-        ChartEditorRuntimeNoteSanitizer.TrimSameStringNoteOverlaps(frame.notes);
+        if (track.role != ChartEditorTrackRole.Drums)
+            ChartEditorRuntimeNoteSanitizer.TrimSameStringNoteOverlaps(frame.notes);
         return frame;
     }
 
@@ -97,13 +98,17 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
                (track.role == ChartEditorTrackRole.LeadGuitar ||
                 track.role == ChartEditorTrackRole.RhythmGuitar ||
                 track.role == ChartEditorTrackRole.Bass ||
+                track.role == ChartEditorTrackRole.Drums ||
                 track.role == ChartEditorTrackRole.Custom);
     }
 
     public static int ResolveLaneCount(ChartEditorTrack track)
     {
+        if (track?.role == ChartEditorTrackRole.Drums)
+            return DrumLaneMapper.LaneCount;
+
         int defaultCount = track?.role == ChartEditorTrackRole.Bass ? 4 :
-            (track?.role == ChartEditorTrackRole.Drums || track?.role == ChartEditorTrackRole.Piano) ? 8 : 6;
+            track?.role == ChartEditorTrackRole.Piano ? 8 : 6;
         int count = defaultCount;
         if (track?.tuning?.stringPitches != null && track.tuning.stringPitches.Length > 0)
             count = Mathf.Clamp(track.tuning.stringPitches.Length, 1, 8);
@@ -121,32 +126,45 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
         return Mathf.Clamp(count, 1, 8);
     }
 
-    private static NoteData ToNoteData(ChartEditorNote note, int fallbackIndex, int laneCount)
+    private static NoteData ToNoteData(ChartEditorNote note, int fallbackIndex, int laneCount, ChartEditorTrackRole role)
     {
         int sourceId = note.sourceNoteId >= 0 ? note.sourceNoteId : StableId(note.id, fallbackIndex);
-        List<NoteTechniqueSegmentData> segments = BuildPreviewTechniqueSegments(note);
-        bool hammerOn = IsTechniqueEnabled(note, NoteTechnique.HammerOn);
-        bool pullOff = IsTechniqueEnabled(note, NoteTechnique.PullOff);
+        bool isDrums = role == ChartEditorTrackRole.Drums;
+        List<NoteTechniqueSegmentData> segments = isDrums ? null : BuildPreviewTechniqueSegments(note);
+        bool hammerOn = !isDrums && IsTechniqueEnabled(note, NoteTechnique.HammerOn);
+        bool pullOff = !isDrums && IsTechniqueEnabled(note, NoteTechnique.PullOff);
+        int lane = Mathf.Clamp(note.stringOrLane, 0, Math.Max(0, laneCount - 1));
+        int fret = Mathf.Max(0, note.fret);
+        if (isDrums)
+        {
+            if (fret >= 35 && fret <= 87)
+                lane = Mathf.Clamp(DrumLaneMapper.MapGeneralMidiToLane(fret), 0, Math.Max(0, laneCount - 1));
+            else if (DrumLaneMapper.TryResolveLaneFromLabel(note.noteName, out int labelLane))
+                lane = Mathf.Clamp(labelLane, 0, Math.Max(0, laneCount - 1));
+
+            fret = lane + 1;
+        }
+
         return new NoteData(
             sourceId,
             Mathf.Max(0f, (float)note.timeSeconds),
             Mathf.Max(0f, (float)note.durationSeconds),
-            Mathf.Clamp(note.stringOrLane, 0, Math.Max(0, laneCount - 1)),
-            Mathf.Max(0, note.fret),
+            lane,
+            fret,
             note.noteName ?? string.Empty,
             note.chordId,
-            ResolvePrimaryTechnique(note),
-            note.slideTargetFret,
-            note.bendStep,
-            note.legato || hammerOn || pullOff,
-            (hammerOn || pullOff) ? false : note.requiresPluck,
-            note.linkedFromNoteId,
-            note.bendPreBend,
-            note.bendRelease,
-            note.bendVisualStartTime,
-            note.bendVisualDuration,
+            isDrums ? NoteTechnique.None : ResolvePrimaryTechnique(note),
+            isDrums ? -1 : note.slideTargetFret,
+            isDrums ? 0f : note.bendStep,
+            isDrums ? false : note.legato || hammerOn || pullOff,
+            isDrums ? true : ((hammerOn || pullOff) ? false : note.requiresPluck),
+            isDrums ? -1 : note.linkedFromNoteId,
+            isDrums ? false : note.bendPreBend,
+            isDrums ? false : note.bendRelease,
+            isDrums ? -1f : note.bendVisualStartTime,
+            isDrums ? 0f : note.bendVisualDuration,
             segments,
-            note.muted || note.palmMute || note.fretHandMute,
+            isDrums ? false : note.muted || note.palmMute || note.fretHandMute,
             note.chordName ?? string.Empty);
     }
 

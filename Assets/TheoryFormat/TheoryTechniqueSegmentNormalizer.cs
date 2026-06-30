@@ -27,6 +27,7 @@ public static class TheoryTechniqueSegmentNormalizer
             }
         }
 
+        segments = NormalizeStaticBendSegments(segments);
         segments = EnsureFlagTechniqueSegments(source, segments);
         bool wantsBendVisual =
             source != null &&
@@ -107,6 +108,40 @@ public static class TheoryTechniqueSegmentNormalizer
         }
 
         return false;
+    }
+
+    private static List<NoteTechniqueSegmentData> NormalizeStaticBendSegments(List<NoteTechniqueSegmentData> segments)
+    {
+        if (segments == null || segments.Count == 0)
+            return segments;
+
+        List<NoteTechniqueSegmentData> result = null;
+        for (int i = 0; i < segments.Count; i++)
+        {
+            NoteTechniqueSegmentData segment = segments[i];
+            bool isStaticBentBend =
+                segment.type == NoteTechniqueSegmentType.Bend &&
+                Mathf.Abs(segment.endBend - segment.startBend) <= 0.01f &&
+                (Mathf.Abs(segment.startBend) > 0.01f ||
+                 Mathf.Abs(segment.endBend) > 0.01f);
+            if (!isStaticBentBend)
+            {
+                result?.Add(segment);
+                continue;
+            }
+
+            result ??= segments.Take(i).ToList();
+            result.Add(new NoteTechniqueSegmentData(
+                NoteTechniqueSegmentType.Sustain,
+                segment.startOffset,
+                segment.endOffset,
+                segment.startFret,
+                segment.endFret,
+                segment.startBend,
+                segment.endBend));
+        }
+
+        return result ?? segments;
     }
 
     private static List<NoteTechniqueSegmentData> BuildFallbackBendTechniqueSegments(

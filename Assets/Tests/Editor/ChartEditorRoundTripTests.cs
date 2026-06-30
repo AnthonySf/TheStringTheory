@@ -416,6 +416,136 @@ public sealed class ChartEditorRoundTripTests
     }
 
     [Test]
+    public void DrumLaneMapper_UsesGameplayLaneOrder()
+    {
+        CollectionAssert.AreEqual(
+            new[] { "Hat", "Crash", "Snare", "T1", "Kick", "T2", "Floor", "Ride" },
+            Enumerable.Range(0, DrumLaneMapper.LaneCount)
+                .Select(DrumLaneMapper.GetLaneLabel)
+                .ToArray());
+
+        Assert.AreEqual(DrumLaneMapper.HiHatLane, DrumLaneMapper.MapGeneralMidiToLane(42));
+        Assert.AreEqual(DrumLaneMapper.CrashLane, DrumLaneMapper.MapGeneralMidiToLane(49));
+        Assert.AreEqual(DrumLaneMapper.SnareLane, DrumLaneMapper.MapGeneralMidiToLane(38));
+        Assert.AreEqual(DrumLaneMapper.KickLane, DrumLaneMapper.MapGeneralMidiToLane(36));
+    }
+
+    [Test]
+    public void HighwayPreview_DrumTrack_IsSupportedAndUsesDrumLanePreviewColumns()
+    {
+        ChartEditorTrack drums = CreateDrumTrack();
+        ChartEditorProject project = new ChartEditorProject
+        {
+            tracks = new List<ChartEditorTrack> { drums },
+            selectedTrackId = drums.id,
+            cursorTimeSeconds = 0.5
+        };
+        project.EnsureDefaults();
+
+        Assert.IsTrue(ChartEditorHighwayPreviewSnapshotBuilder.IsSupportedPreviewTrack(drums));
+        ChartEditorHighwayPreviewFrame frame = ChartEditorHighwayPreviewSnapshotBuilder.Build(project);
+
+        Assert.AreEqual(DrumLaneMapper.LaneCount, frame.laneCount);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "0:1:Hi-Hat:True",
+                "1:2:Crash Cymbal:True",
+                "2:3:Snare:True",
+                "4:5:Kick:True"
+            },
+            frame.notes
+                .OrderBy(note => note.time)
+                .Select(note => $"{note.stringIdx}:{note.fret}:{note.note}:{note.requiresPluck}")
+                .ToArray());
+    }
+
+    [Test]
+    public void DrumNoteSanitizer_ClearsGuitarTechniqueState()
+    {
+        ChartEditorNote note = new ChartEditorNote
+        {
+            technique = NoteTechnique.Bend,
+            slideTargetFret = 9,
+            bendStep = 2f,
+            bendVisualStartTime = 0.1f,
+            bendVisualDuration = 0.4f,
+            bendPreBend = true,
+            bendRelease = true,
+            muted = true,
+            palmMute = true,
+            fretHandMute = true,
+            harmonic = true,
+            accent = true,
+            tap = true,
+            tremolo = true,
+            pinchHarmonic = true,
+            vibratoStrength = 2,
+            maxBend = 2f,
+            legato = true,
+            requiresPluck = false,
+            linkedFromNoteId = 42,
+            bendPoints = new List<ChartEditorBendPoint> { new ChartEditorBendPoint { timeSeconds = 0.1f, step = 2f } },
+            techniqueSegments = new List<ChartEditorTechniqueSegment>
+            {
+                new ChartEditorTechniqueSegment { type = NoteTechniqueSegmentType.Vibrato, startOffset = 0f, endOffset = 0.3f }
+            }
+        };
+
+        Assert.IsTrue(ChartEditorDrumNoteSanitizer.Sanitize(note));
+        Assert.AreEqual(NoteTechnique.None, note.technique);
+        Assert.AreEqual(-1, note.slideTargetFret);
+        Assert.AreEqual(0f, note.bendStep);
+        Assert.AreEqual(-1f, note.bendVisualStartTime);
+        Assert.AreEqual(0f, note.bendVisualDuration);
+        Assert.IsFalse(note.bendPreBend);
+        Assert.IsFalse(note.bendRelease);
+        Assert.IsFalse(note.muted);
+        Assert.IsFalse(note.palmMute);
+        Assert.IsFalse(note.fretHandMute);
+        Assert.IsFalse(note.harmonic);
+        Assert.IsFalse(note.accent);
+        Assert.IsFalse(note.tap);
+        Assert.IsFalse(note.tremolo);
+        Assert.IsFalse(note.pinchHarmonic);
+        Assert.AreEqual(0, note.vibratoStrength);
+        Assert.AreEqual(0f, note.maxBend);
+        Assert.IsFalse(note.legato);
+        Assert.IsTrue(note.requiresPluck);
+        Assert.AreEqual(-1, note.linkedFromNoteId);
+        Assert.AreEqual(0, note.bendPoints.Count);
+        Assert.AreEqual(0, note.techniqueSegments.Count);
+    }
+
+    [Test]
+    public void ImportTheoryDrumNote_MapsMidiFretToEditorLaneWhenSourceLaneIsCollapsed()
+    {
+        MethodInfo method = typeof(ChartEditorImportService).GetMethod("FromTheoryNoteData", StaticPrivate);
+        Assert.IsNotNull(method, "Could not find chart editor theory-note import method.");
+
+        TheoryNoteData source = new TheoryNoteData
+        {
+            id = 77,
+            time = 1.0f,
+            duration = 0.1f,
+            stringIndex = 0,
+            fret = 49,
+            noteName = "Crash Cymbal",
+            requiresPluck = false,
+            legato = true,
+            linkedFromNoteId = 12
+        };
+
+        ChartEditorNote note = (ChartEditorNote)method.Invoke(null, new object[] { source, 0, true });
+
+        Assert.AreEqual(DrumLaneMapper.CrashLane, note.stringOrLane);
+        Assert.AreEqual(49, note.fret);
+        Assert.IsTrue(note.requiresPluck);
+        Assert.IsFalse(note.legato);
+        Assert.AreEqual(-1, note.linkedFromNoteId);
+    }
+
+    [Test]
     public void ExportWithoutEdits_PreservesGeneratedPlaybackEventsInTheoryAndCompatibilityExport()
     {
         using ExternalContentRootScope scope = new ExternalContentRootScope();
@@ -789,6 +919,62 @@ public sealed class ChartEditorRoundTripTests
         RocksmithCachedNoteData exportedPalmMute = FindCachedNote(exported, 507);
         Assert.IsTrue(exportedPalmMute.isMuted);
         Assert.IsTrue(exportedPalmMute.isPalmMute);
+    }
+
+    [Test]
+    public void RuntimeNormalizers_ConvertStaticBentBendSegmentsToBentSustain()
+    {
+        TheoryNoteData theoryNote = new TheoryNoteData
+        {
+            id = 901,
+            duration = 1f,
+            fret = 8,
+            primaryTechnique = (int)NoteTechnique.Bend,
+            bendStep = 2f,
+            techniqueSegments = new List<TheoryTechniqueSegmentData>
+            {
+                new TheoryTechniqueSegmentData
+                {
+                    type = (int)NoteTechniqueSegmentType.Bend,
+                    startOffset = 0f,
+                    endOffset = 1f,
+                    startFret = 8,
+                    endFret = 8,
+                    startBend = 2f,
+                    endBend = 2f
+                }
+            }
+        };
+
+        List<NoteTechniqueSegmentData> theorySegments = TheoryTechniqueSegmentNormalizer.Build(theoryNote);
+        Assert.IsFalse(theorySegments.Any(segment => segment.type == NoteTechniqueSegmentType.Bend));
+        AssertRuntimeSegment(FindRuntimeSegment(theorySegments, NoteTechniqueSegmentType.Sustain, 0f, 1f), 8, 8, 2f, 2f);
+
+        RocksmithCachedNoteData cachedNote = new RocksmithCachedNoteData
+        {
+            id = 902,
+            duration = 1f,
+            fret = 8,
+            technique = (int)NoteTechnique.Bend,
+            bendStep = 2f,
+            techniqueSegments = new List<RocksmithCachedTechniqueSegmentData>
+            {
+                new RocksmithCachedTechniqueSegmentData
+                {
+                    type = (int)NoteTechniqueSegmentType.Bend,
+                    startOffset = 0f,
+                    endOffset = 1f,
+                    startFret = 8,
+                    endFret = 8,
+                    startBend = 2f,
+                    endBend = 2f
+                }
+            }
+        };
+
+        List<NoteTechniqueSegmentData> cachedSegments = RocksmithCachedSongLoader.BuildNormalizedTechniqueSegments(cachedNote);
+        Assert.IsFalse(cachedSegments.Any(segment => segment.type == NoteTechniqueSegmentType.Bend));
+        AssertRuntimeSegment(FindRuntimeSegment(cachedSegments, NoteTechniqueSegmentType.Sustain, 0f, 1f), 8, 8, 2f, 2f);
     }
 
     [Test]
@@ -2158,6 +2344,20 @@ public sealed class ChartEditorRoundTripTests
         return segment;
     }
 
+    private static NoteTechniqueSegmentData FindRuntimeSegment(
+        List<NoteTechniqueSegmentData> segments,
+        NoteTechniqueSegmentType type,
+        float startOffset,
+        float endOffset)
+    {
+        NoteTechniqueSegmentData? segment = segments?.FirstOrDefault(candidate =>
+            candidate.type == type &&
+            Approximately(candidate.startOffset, startOffset) &&
+            Approximately(candidate.endOffset, endOffset));
+        Assert.IsTrue(segment.HasValue, $"Missing runtime {type} segment {startOffset:0.###}-{endOffset:0.###}.");
+        return segment.Value;
+    }
+
     private static void AssertSegment(
         ChartEditorTechniqueSegment segment,
         int startFret,
@@ -2180,6 +2380,19 @@ public sealed class ChartEditorRoundTripTests
         float endBend)
     {
         Assert.IsNotNull(segment);
+        Assert.AreEqual(startFret, segment.startFret);
+        Assert.AreEqual(endFret, segment.endFret);
+        Assert.AreEqual(startBend, segment.startBend, 0.001f);
+        Assert.AreEqual(endBend, segment.endBend, 0.001f);
+    }
+
+    private static void AssertRuntimeSegment(
+        NoteTechniqueSegmentData segment,
+        int startFret,
+        int endFret,
+        float startBend,
+        float endBend)
+    {
         Assert.AreEqual(startFret, segment.startFret);
         Assert.AreEqual(endFret, segment.endFret);
         Assert.AreEqual(startBend, segment.startBend, 0.001f);

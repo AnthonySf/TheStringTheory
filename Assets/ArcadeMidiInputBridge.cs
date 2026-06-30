@@ -36,6 +36,22 @@ public sealed class ArcadeMidiInputBridge : IDisposable
     [DllImport("winmm.dll")]
     private static extern uint midiInGetNumDevs();
 
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
+    private struct MidiInCaps
+    {
+        public ushort manufacturerId;
+        public ushort productId;
+        public uint driverVersion;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string productName;
+
+        public uint support;
+    }
+
+    [DllImport("winmm.dll", CharSet = CharSet.Auto)]
+    private static extern uint midiInGetDevCaps(UIntPtr deviceId, out MidiInCaps caps, uint capsSize);
+
     [DllImport("winmm.dll")]
     private static extern uint midiInOpen(out IntPtr handle, uint deviceId, MidiInCallback callback, IntPtr instance, uint flags);
 
@@ -54,6 +70,25 @@ public sealed class ArcadeMidiInputBridge : IDisposable
 
     public bool IsRunning => running;
     public string LastError => lastError;
+
+    public static List<string> GetInputDeviceNames()
+    {
+        List<string> names = new List<string>();
+
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        uint deviceCount = midiInGetNumDevs();
+        uint capsSize = (uint)Marshal.SizeOf(typeof(MidiInCaps));
+        for (uint i = 0; i < deviceCount; i++)
+        {
+            if (midiInGetDevCaps((UIntPtr)i, out MidiInCaps caps, capsSize) == 0 && !string.IsNullOrWhiteSpace(caps.productName))
+                names.Add(caps.productName.Trim());
+            else
+                names.Add($"MIDI Device {i}");
+        }
+#endif
+
+        return names;
+    }
 
     public bool Start(int deviceIndex)
     {

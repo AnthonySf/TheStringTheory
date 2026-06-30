@@ -1134,7 +1134,7 @@ public static class SongLibraryService
         {
             if (string.IsNullOrWhiteSpace(arcadeChartPath) || !hasArcadeSongIni)
             {
-                Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: a .theory package, extracted arrangement manifest, supported Guitar Pro/MusicXML notation, or Clone Hero notes.chart/notes.mid plus song.ini.");
+                Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: a .theory package, extracted arrangement manifest, supported Guitar Pro/MusicXML notation, or five-lane notes.chart/notes.mid plus song.ini.");
                 return false;
             }
 
@@ -1635,7 +1635,7 @@ public static class SongLibraryService
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[SongLibraryService] Failed to parse Clone Hero song.ini '{iniPath}': {ex.Message}");
+            Debug.LogWarning($"[SongLibraryService] Failed to parse rhythm song.ini '{iniPath}': {ex.Message}");
             return null;
         }
     }

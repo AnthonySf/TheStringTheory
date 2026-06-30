@@ -1995,80 +1995,12 @@ public static class MusicXmlLoader
 
     private static int MapPercussionMidiToLane(int midiNote)
     {
-        switch (midiNote)
-        {
-            case 42:
-            case 44:
-            case 46:
-                return 0;
-            case 49:
-            case 52:
-            case 55:
-            case 57:
-                return 1;
-            case 37:
-            case 38:
-            case 39:
-            case 40:
-                return 2;
-            case 48:
-            case 50:
-                return 3;
-            case 35:
-            case 36:
-                return 4;
-            case 45:
-            case 47:
-                return 5;
-            case 41:
-            case 43:
-                return 6;
-            case 51:
-            case 53:
-            case 59:
-            default:
-                return 7;
-        }
+        return DrumLaneMapper.MapGeneralMidiToLane(midiNote);
     }
 
     private static string GetGeneralMidiDrumName(int midi)
     {
-        switch (midi)
-        {
-            case 35:
-            case 36:
-                return "Kick";
-            case 37:
-                return "Side Stick";
-            case 38:
-            case 39:
-            case 40:
-                return "Snare";
-            case 41:
-            case 43:
-                return "Floor Tom";
-            case 42:
-            case 44:
-            case 46:
-                return "Hi-Hat";
-            case 45:
-            case 47:
-                return "Mid Tom";
-            case 48:
-            case 50:
-                return "High Tom";
-            case 49:
-            case 52:
-            case 55:
-            case 57:
-                return "Crash Cymbal";
-            case 51:
-            case 53:
-            case 59:
-                return "Ride Cymbal";
-            default:
-                return string.Empty;
-        }
+        return DrumLaneMapper.GetGeneralMidiDrumName(midi);
     }
 
     private static double QuarterToSeconds(double targetQuarter, List<TempoEvent> tempoMap)

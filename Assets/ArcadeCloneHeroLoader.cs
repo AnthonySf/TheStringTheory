@@ -100,7 +100,7 @@ public static class ArcadeCloneHeroLoader
 
         if (string.IsNullOrWhiteSpace(chartPath) || !File.Exists(chartPath))
         {
-            Debug.LogWarning($"[ArcadeCloneHeroLoader] Chart file not found: {chartPath}");
+            Debug.LogWarning($"[ArcadeFiveLaneChartLoader] Chart file not found: {chartPath}");
             return empty;
         }
 
@@ -115,7 +115,7 @@ public static class ArcadeCloneHeroLoader
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[ArcadeCloneHeroLoader] Failed to load '{chartPath}': {ex.Message}");
+            Debug.LogWarning($"[ArcadeFiveLaneChartLoader] Failed to load '{chartPath}': {ex.Message}");
         }
 
         return empty;
@@ -137,7 +137,7 @@ public static class ArcadeCloneHeroLoader
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[ArcadeCloneHeroLoader] Failed to inspect '{chartPath}': {ex.Message}");
+            Debug.LogWarning($"[ArcadeFiveLaneChartLoader] Failed to inspect '{chartPath}': {ex.Message}");
         }
 
         return new List<ArcadeArrangementSummary>();
@@ -815,7 +815,7 @@ public static class ArcadeCloneHeroLoader
         }
 
         if ((result.timeDivision & 0x8000) != 0)
-            throw new NotSupportedException("SMPTE MIDI timing is not supported for Clone Hero charts.");
+            throw new NotSupportedException("SMPTE MIDI timing is not supported for five-lane rhythm charts.");
 
         result.tempos = BuildMidiTempoMap(chunks, result.timeDivision);
         for (int i = 0; i < chunks.Count; i++)

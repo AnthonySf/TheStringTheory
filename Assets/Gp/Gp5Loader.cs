@@ -202,73 +202,7 @@ public static class Gp5Loader
 
     private static int MapPercussionMidiToLane(int midiNote)
     {
-        switch (midiNote)
-        {
-            case 35:
-            case 36:
-                return 4;
-            case 37:
-            case 38:
-            case 39:
-            case 40:
-                return 2;
-            case 42:
-            case 44:
-            case 46:
-                return 0;
-            case 48:
-            case 50:
-                return 3;
-            case 45:
-            case 47:
-                return 5;
-            case 41:
-            case 43:
-                return 6;
-            case 49:
-            case 52:
-            case 55:
-            case 57:
-                return 1;
-            case 51:
-            case 53:
-            case 59:
-                return 7;
-            case 54:
-            case 56:
-            case 58:
-            case 60:
-            case 61:
-            case 62:
-            case 63:
-            case 64:
-            case 65:
-            case 66:
-            case 67:
-            case 68:
-            case 69:
-            case 70:
-            case 71:
-            case 72:
-            case 73:
-            case 74:
-            case 75:
-            case 76:
-            case 77:
-            case 78:
-            case 79:
-            case 80:
-            case 81:
-            case 82:
-            case 83:
-            case 84:
-            case 85:
-            case 86:
-            case 87:
-                return 7;
-            default:
-                return 7;
-        }
+        return DrumLaneMapper.MapGeneralMidiToLane(midiNote);
     }
 
     private static void LinkLegatoTransitions(List<ParsedGpNote> parsed, List<Gp5Beat> beats)
@@ -337,14 +271,15 @@ public static class Gp5Loader
         if (bend.points.Count == 1)
         {
             float value = bend.points[0].value;
+            float startBend = preBendType ? value : 0f;
             parsedNote.techniqueSegments.Add(new ParsedTechniqueSegment
             {
-                type = NoteTechniqueSegmentType.Bend,
+                type = ResolveBendSegmentType(startBend, value),
                 startQuarter = parsedNote.quarterPos,
                 endQuarter = parsedNote.quarterPos + parsedNote.durationQuarter,
                 startFret = parsedNote.fret,
                 endFret = parsedNote.fret,
-                startBend = preBendType ? value : 0f,
+                startBend = startBend,
                 endBend = value
             });
             maxBend = Mathf.Max(maxBend, Mathf.Abs(value));
@@ -359,7 +294,7 @@ public static class Gp5Loader
                 double endQuarter = parsedNote.quarterPos + (parsedNote.durationQuarter * (next.position / 12.0));
                 ParsedTechniqueSegment segment = new ParsedTechniqueSegment
                 {
-                    type = NoteTechniqueSegmentType.Bend,
+                    type = ResolveBendSegmentType(current.value, next.value),
                     startQuarter = startQuarter,
                     endQuarter = Math.Max(startQuarter + 0.015625, endQuarter),
                     startFret = parsedNote.fret,
@@ -382,6 +317,13 @@ public static class Gp5Loader
         return bendType == BendTypePreBend || bendType == BendTypePreBendRelease;
     }
 
+    private static NoteTechniqueSegmentType ResolveBendSegmentType(float startBend, float endBend)
+    {
+        return Mathf.Abs(endBend - startBend) <= 0.01f
+            ? NoteTechniqueSegmentType.Sustain
+            : NoteTechniqueSegmentType.Bend;
+    }
+
     private static List<NoteData> BuildGameplayNotes(List<ParsedGpNote> parsed, List<TempoEvent> tempoMap)
     {
         List<NoteData> result = new List<NoteData>(parsed.Count);
@@ -394,8 +336,9 @@ public static class Gp5Loader
             float startSeconds = (float)QuarterToSeconds(note.quarterPos, tempoMap);
             float durationSeconds = (float)Math.Max(0.0, QuarterToSeconds(note.quarterPos + note.durationQuarter, tempoMap) - QuarterToSeconds(note.quarterPos, tempoMap));
             List<NoteTechniqueSegmentData> techniqueSegments = ConvertTechniqueSegmentsToGameplay(note.techniqueSegments, note.quarterPos, tempoMap);
-            float bendVisualStart = techniqueSegments.Count > 0 ? startSeconds + GetTechniqueSegmentVisualStart(techniqueSegments) : -1f;
-            float bendVisualDuration = techniqueSegments.Count > 0 ? GetTechniqueSegmentVisualDuration(techniqueSegments) : 0f;
+            bool hasBendSegments = HasBendTechniqueSegments(techniqueSegments);
+            float bendVisualStart = hasBendSegments ? startSeconds + GetTechniqueSegmentVisualStart(techniqueSegments) : -1f;
+            float bendVisualDuration = hasBendSegments ? GetTechniqueSegmentVisualDuration(techniqueSegments) : 0f;
 
             double chordKey = Math.Round(note.quarterPos, 6);
             if (!chordMap.TryGetValue(chordKey, out int chordId))
@@ -405,7 +348,7 @@ public static class Gp5Loader
             }
 
             NoteTechnique technique = NoteTechnique.None;
-            if (note.techniqueSegments.Any(segment => segment.type == NoteTechniqueSegmentType.Bend))
+            if (hasBendSegments || note.bendStep > 0.01f || note.bendPreBend || note.bendRelease)
                 technique = NoteTechnique.Bend;
             else if (note.vibrato)
                 technique = NoteTechnique.Vibrato;
@@ -460,6 +403,29 @@ public static class Gp5Loader
         }
 
         return result;
+    }
+
+    private static bool HasBendTechniqueSegments(List<NoteTechniqueSegmentData> techniqueSegments)
+    {
+        if (techniqueSegments == null || techniqueSegments.Count == 0)
+            return false;
+
+        for (int i = 0; i < techniqueSegments.Count; i++)
+        {
+            NoteTechniqueSegmentData segment = techniqueSegments[i];
+            if (segment.type == NoteTechniqueSegmentType.Bend)
+                return true;
+
+            if ((segment.type == NoteTechniqueSegmentType.Sustain ||
+                 segment.type == NoteTechniqueSegmentType.Vibrato) &&
+                (Mathf.Abs(segment.startBend) > 0.01f ||
+                 Mathf.Abs(segment.endBend) > 0.01f))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static List<NoteTechniqueSegmentData> ConvertTechniqueSegmentsToGameplay(List<ParsedTechniqueSegment> techniqueSegments, double noteQuarterStart, List<TempoEvent> tempoMap)

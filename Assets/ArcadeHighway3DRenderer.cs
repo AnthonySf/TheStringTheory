@@ -3,6 +3,20 @@ using UnityEngine;
 using Unity.Profiling;
 using UnityEngine.Rendering;
 
+public sealed class ArcadeHighway3DRenderHost
+{
+    public Camera Camera;
+    public RenderTexture TargetTexture;
+    public bool ManualRender;
+    public bool EnableBackground = true;
+    public bool EnableHighwayCharacter = true;
+    public bool EnableSongHeaderOverlay = true;
+    public bool EnableDrumKit = true;
+    public int RenderLayer = -1;
+    public string RootName = "ArcadeHighway3DRendererRoot";
+    public int? LaneCountOverride;
+}
+
 public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 {
     private static readonly ProfilerMarker RenderProfilerMarker = new ProfilerMarker("StringTheory.ArcadeHighway3D.Render");
@@ -193,6 +207,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     private readonly bool[] drumKitLaneHasTargetSurfaceBinding = new bool[MaxLaneCount];
     private readonly bool[] heldLaneSnapshot = new bool[MaxLaneCount];
     private readonly bool[] incomingLaneSnapshot = new bool[MaxLaneCount];
+    private readonly ArcadeHighway3DRenderHost renderHost;
 
     private enum BackgroundProfile
     {
@@ -256,6 +271,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     private int originalMainCameraCullingMask = -1;
     private float originalMainCameraDepth;
     private bool originalMainCameraOrthographic;
+    private RenderTexture originalMainCameraTargetTexture;
+    private Rect originalMainCameraRect;
+    private bool originalMainCameraEnabled = true;
     private bool gameplayBuilt;
     private float currentVisualNoteSpeed = 12f;
     private int builtLaneCount = DefaultLaneCount;
@@ -351,11 +369,21 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         public float phase;
     }
 
+    public ArcadeHighway3DRenderer()
+        : this(null)
+    {
+    }
+
+    public ArcadeHighway3DRenderer(ArcadeHighway3DRenderHost renderHost)
+    {
+        this.renderHost = renderHost;
+    }
+
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
         this.owner = owner;
-        mainCamera = Camera.main;
-        root = new GameObject("ArcadeHighway3DRendererRoot");
+        mainCamera = renderHost?.Camera != null ? renderHost.Camera : Camera.main;
+        root = new GameObject(string.IsNullOrEmpty(renderHost?.RootName) ? "ArcadeHighway3DRendererRoot" : renderHost.RootName);
         backgroundRoot = new GameObject("ArcadeHighway3DBackgroundRoot");
         backgroundRoot.transform.SetParent(root.transform, false);
         drumKitRoot = new GameObject("ArcadeHighway3DDrumKitRoot");
@@ -373,18 +401,88 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             originalMainCameraCullingMask = mainCamera.cullingMask;
             originalMainCameraDepth = mainCamera.depth;
             originalMainCameraOrthographic = mainCamera.orthographic;
+            originalMainCameraTargetTexture = mainCamera.targetTexture;
+            originalMainCameraRect = mainCamera.rect;
+            originalMainCameraEnabled = mainCamera.enabled;
         }
         lastObservedHighwayCharacterMissCount = -1;
         lastHighwayCharacterMissTriggerSongTime = float.NegativeInfinity;
         lastHighwayCharacterBopSourceNoteCount = -1;
         highwayCharacterBopEvents.Clear();
 
-        InitializeBackgroundCamera();
-        InitializeBackgroundEffect(BackgroundProfile.Gameplay);
+        if (IsBackgroundEnabled())
+        {
+            InitializeBackgroundCamera();
+            InitializeBackgroundEffect(BackgroundProfile.Gameplay);
+        }
+        else
+        {
+            backgroundProfile = BackgroundProfile.Gameplay;
+            backgroundRoot.SetActive(false);
+        }
         ConfigureCamera();
-        InitializeHighwayCharacter();
-        songHeaderOverlay = new TabsSongHeaderOverlay(owner);
+        if (IsHighwayCharacterEnabled())
+            InitializeHighwayCharacter();
+        else
+            characterRoot.SetActive(false);
+        if (renderHost == null || renderHost.EnableSongHeaderOverlay)
+            songHeaderOverlay = new TabsSongHeaderOverlay(owner);
         gameplayBuilt = false;
+        ApplyHostRenderLayer();
+        if (renderHost?.ManualRender == true && root != null)
+            root.SetActive(false);
+    }
+
+    private bool IsBackgroundEnabled()
+    {
+        return renderHost == null || renderHost.EnableBackground;
+    }
+
+    private bool IsHighwayCharacterEnabled()
+    {
+        return renderHost == null || renderHost.EnableHighwayCharacter;
+    }
+
+    private bool IsDrumKitVisualEnabled()
+    {
+        return renderHost == null || renderHost.EnableDrumKit;
+    }
+
+    private void ApplyHostCameraOverrides()
+    {
+        if (renderHost == null || mainCamera == null)
+            return;
+
+        if (renderHost.TargetTexture != null)
+            mainCamera.targetTexture = renderHost.TargetTexture;
+        mainCamera.rect = new Rect(0f, 0f, 1f, 1f);
+        if (renderHost.ManualRender)
+            mainCamera.enabled = false;
+        if (renderHost.RenderLayer >= 0 && renderHost.RenderLayer < 32)
+            mainCamera.cullingMask = 1 << renderHost.RenderLayer;
+        if (!renderHost.EnableBackground)
+        {
+            mainCamera.clearFlags = CameraClearFlags.SolidColor;
+            mainCamera.backgroundColor = Color.black;
+        }
+    }
+
+    private void ApplyHostRenderLayer()
+    {
+        if (renderHost == null || renderHost.RenderLayer < 0 || renderHost.RenderLayer >= 32 || root == null)
+            return;
+
+        SetLayerRecursively(root, renderHost.RenderLayer);
+    }
+
+    private void RenderHostCameraIfNeeded()
+    {
+        if (renderHost == null || !renderHost.ManualRender || mainCamera == null)
+            return;
+
+        RenderTexture previousActive = RenderTexture.active;
+        mainCamera.Render();
+        RenderTexture.active = previousActive;
     }
 
     public void ResetRenderer(List<NoteData> chartNotes, List<TabSectionData> sections)
@@ -408,40 +506,70 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         if (snapshot == null || mainCamera == null)
             return;
 
-        using (RenderProfilerMarker.Auto())
+        bool deactivateHostRootAfterRender = renderHost?.ManualRender == true && root != null && !root.activeSelf;
+        if (deactivateHostRootAfterRender)
+            root.SetActive(true);
+
+        try
         {
-            BackgroundProfile targetBackgroundProfile = ResolveBackgroundProfile(snapshot);
-            EnsureBackgroundMode(targetBackgroundProfile);
-            bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded || snapshot.showToneLab || snapshot.showTuner || snapshot.showMiniGames;
-            bool useDrumHighwayPlacement = !suppressGameplay && IsDrumKitSnapshot(snapshot);
-            currentRendererRootWorldOffset = useDrumHighwayPlacement ? DrumKitRendererRootWorldPosition : Vector3.zero;
-            ApplyRendererRootPlacement();
-            ConfigureCamera();
-            EnsureGameplayVisualsBuilt();
-            if (gameplayRoot != null && gameplayRoot.activeSelf == suppressGameplay)
-                gameplayRoot.SetActive(!suppressGameplay);
-            UpdateDrumKitVisual(snapshot, suppressGameplay);
-
-            if (!suppressGameplay && backgroundProfile == BackgroundProfile.Gameplay)
-                UpdateBackgroundPlacement();
-
-            if (!suppressGameplay)
+            using (RenderProfilerMarker.Auto())
             {
-                UpdateHighwayCharacter(snapshot, suppressGameplay);
-                UpdateResolvedFeedback(snapshot);
-                UpdateGameplayRootShake();
-                UpdateLaneVisuals(snapshot);
-                UpdateNotes(snapshot);
-                UpdateFeedbackEffects();
-            }
-            else
-            {
-                UpdateHighwayCharacter(snapshot, suppressGameplay);
-                ResetGameplayRootShake();
-            }
+                BackgroundProfile targetBackgroundProfile = ResolveBackgroundProfile(snapshot);
+                if (IsBackgroundEnabled())
+                {
+                    EnsureBackgroundMode(targetBackgroundProfile);
+                }
+                else
+                {
+                    backgroundProfile = BackgroundProfile.Gameplay;
+                    if (backgroundRoot != null && backgroundRoot.activeSelf)
+                        backgroundRoot.SetActive(false);
+                    if (backgroundCamera != null)
+                        backgroundCamera.enabled = false;
+                }
 
-            backgroundEffect?.Tick(Time.deltaTime);
-            songHeaderOverlay?.UpdateFromSnapshot(snapshot);
+                bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded || snapshot.showToneLab || snapshot.showTuner || snapshot.showMiniGames;
+                bool useDrumHighwayPlacement = !suppressGameplay && IsDrumKitVisualEnabled() && IsDrumKitSnapshot(snapshot);
+                currentRendererRootWorldOffset = useDrumHighwayPlacement ? DrumKitRendererRootWorldPosition : Vector3.zero;
+                ApplyRendererRootPlacement();
+                ConfigureCamera();
+                EnsureGameplayVisualsBuilt();
+                if (gameplayRoot != null && gameplayRoot.activeSelf == suppressGameplay)
+                    gameplayRoot.SetActive(!suppressGameplay);
+                UpdateDrumKitVisual(snapshot, suppressGameplay);
+
+                if (IsBackgroundEnabled() && !suppressGameplay && backgroundProfile == BackgroundProfile.Gameplay)
+                    UpdateBackgroundPlacement();
+
+                if (!suppressGameplay)
+                {
+                    if (IsHighwayCharacterEnabled())
+                        UpdateHighwayCharacter(snapshot, suppressGameplay);
+                    UpdateResolvedFeedback(snapshot);
+                    UpdateGameplayRootShake();
+                    UpdateLaneVisuals(snapshot);
+                    UpdateNotes(snapshot);
+                    UpdateFeedbackEffects();
+                }
+                else
+                {
+                    if (IsHighwayCharacterEnabled())
+                        UpdateHighwayCharacter(snapshot, suppressGameplay);
+                    ResetGameplayRootShake();
+                }
+
+                if (IsBackgroundEnabled())
+                    backgroundEffect?.Tick(Time.deltaTime);
+                songHeaderOverlay?.UpdateFromSnapshot(snapshot);
+                ApplyHostRenderLayer();
+                ApplyHostCameraOverrides();
+                RenderHostCameraIfNeeded();
+            }
+        }
+        finally
+        {
+            if (deactivateHostRootAfterRender && root != null)
+                root.SetActive(false);
         }
     }
 
@@ -462,6 +590,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             mainCamera.cullingMask = originalMainCameraCullingMask;
             mainCamera.depth = originalMainCameraDepth;
             mainCamera.orthographic = originalMainCameraOrthographic;
+            mainCamera.targetTexture = originalMainCameraTargetTexture;
+            mainCamera.rect = originalMainCameraRect;
+            mainCamera.enabled = originalMainCameraEnabled;
         }
 
         if (root != null)
@@ -563,6 +694,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         using (UpdateDrumKitVisualProfilerMarker.Auto())
         {
             bool shouldShow = snapshot != null &&
+                              IsDrumKitVisualEnabled() &&
                               !suppressGameplay &&
                               IsDrumKitSnapshot(snapshot);
             if (!shouldShow)
@@ -3027,6 +3159,13 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
     private void SyncBackgroundCamera()
     {
+        if (!IsBackgroundEnabled())
+        {
+            if (backgroundCamera != null)
+                backgroundCamera.enabled = false;
+            return;
+        }
+
         if (backgroundCamera != null && backgroundProfile != BackgroundProfile.Gameplay)
         {
             backgroundCamera.enabled = false;
@@ -3185,6 +3324,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
             mainCamera.backgroundColor = GetCameraBackgroundColor();
             SetBackgroundEffectRenderCamera(mainCamera);
+            ApplyHostCameraOverrides();
             return;
         }
 
@@ -3201,6 +3341,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         mainCamera.backgroundColor = GetCameraBackgroundColor();
         SetBackgroundEffectRenderCamera(mainCamera);
         SyncBackgroundCamera();
+        ApplyHostCameraOverrides();
     }
 
     private void InitializeBackgroundCamera()
@@ -4137,6 +4278,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
     private int GetLaneCount()
     {
+        if (renderHost?.LaneCountOverride.HasValue == true)
+            return Mathf.Clamp(renderHost.LaneCountOverride.Value, 1, MaxLaneCount);
+
         return Mathf.Clamp(owner != null ? owner.ArcadeHighwayLaneCount : DefaultLaneCount, 1, MaxLaneCount);
     }
 

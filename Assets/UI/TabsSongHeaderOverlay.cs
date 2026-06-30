@@ -462,6 +462,57 @@ public sealed class TabsSongHeaderOverlay
 
     }
 
+    private sealed class GlobalSettingsTabDefinition
+    {
+        public string Key;
+        public string Label;
+        public int TopIndex;
+        public string[] Categories;
+    }
+
+    private sealed class GlobalSettingsSubtabDefinition
+    {
+        public string Key;
+        public string Label;
+    }
+
+    private static readonly GlobalSettingsTabDefinition[] GlobalSettingsTabs =
+    {
+        new GlobalSettingsTabDefinition { Key = string.Empty, Label = "General", TopIndex = 0, Categories = new string[0] },
+        new GlobalSettingsTabDefinition { Key = "Visuals", Label = "Visuals", TopIndex = 10, Categories = new[] { "Visuals", "2D Tabs", "Highway3D", "Multiplayer Visuals" } },
+        new GlobalSettingsTabDefinition { Key = "Audio", Label = "Audio", TopIndex = 4, Categories = new[] { "Audio" } },
+        new GlobalSettingsTabDefinition { Key = "Gameplay", Label = "Gameplay", TopIndex = 5, Categories = new[] { "Gameplay", "Rhythm" } },
+        new GlobalSettingsTabDefinition { Key = "Controls", Label = "Controls", TopIndex = 9, Categories = new[] { "Controls" } },
+        new GlobalSettingsTabDefinition { Key = "Diagnostics", Label = "Diagnostics", TopIndex = 12, Categories = new[] { "Diagnostics" } }
+    };
+
+    private static readonly GlobalSettingsSubtabDefinition[] EmptyGlobalSettingsSubtabs = new GlobalSettingsSubtabDefinition[0];
+
+    private static readonly GlobalSettingsSubtabDefinition[] VisualGlobalSettingsSubtabs =
+    {
+        new GlobalSettingsSubtabDefinition { Key = "tabs", Label = "Tabs" },
+        new GlobalSettingsSubtabDefinition { Key = "character", Label = "Character" },
+        new GlobalSettingsSubtabDefinition { Key = "feedback", Label = "Feedback" },
+        new GlobalSettingsSubtabDefinition { Key = "highway", Label = "Highway" },
+        new GlobalSettingsSubtabDefinition { Key = "multiplayer", Label = "Multiplayer" },
+        new GlobalSettingsSubtabDefinition { Key = "background", Label = "Background" }
+    };
+
+    private static readonly GlobalSettingsSubtabDefinition[] GameplayGlobalSettingsSubtabs =
+    {
+        new GlobalSettingsSubtabDefinition { Key = "basics", Label = "Basics" },
+        new GlobalSettingsSubtabDefinition { Key = "timing", Label = "Timing" },
+        new GlobalSettingsSubtabDefinition { Key = "rhythm", Label = "Rhythm" }
+    };
+
+    private static readonly GlobalSettingsSubtabDefinition[] ControlsGlobalSettingsSubtabs =
+    {
+        new GlobalSettingsSubtabDefinition { Key = "setup", Label = "Setup" },
+        new GlobalSettingsSubtabDefinition { Key = "keyboard", Label = "Keyboard" },
+        new GlobalSettingsSubtabDefinition { Key = "midi", Label = "MIDI" },
+        new GlobalSettingsSubtabDefinition { Key = "controller", Label = "Controller" }
+    };
+
 
 
     private sealed class JudgePopupEntry
@@ -1907,6 +1958,8 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly VisualElement globalSettingsCard;
 
+    private readonly VisualElement globalSettingsTabBarHost;
+
     private readonly ScrollView globalSettingsScrollView;
 
     private readonly Button resetDefaultsButton;
@@ -1916,6 +1969,8 @@ public sealed class TabsSongHeaderOverlay
     private readonly Label globalSettingsHelpLabel;
 
     private readonly List<GlobalSettingsMenuRow> globalSettingsMenuRows = new List<GlobalSettingsMenuRow>();
+    private string globalSettingsRenderedTabKey = string.Empty;
+    private string globalSettingsRenderedSubtabKey = string.Empty;
     private readonly VisualElement backgroundMoodSetterOverlay;
     private readonly VisualElement backgroundMoodSetterCard;
     private readonly ScrollView backgroundMoodSetterScrollView;
@@ -7476,7 +7531,7 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsOverlay.style.backgroundColor = new Color(0.08f, 0.08f, 0.09f, 0.992f);
 
-        globalSettingsOverlay.style.paddingTop = 56f;
+        globalSettingsOverlay.style.paddingTop = 30f;
 
         globalSettingsOverlay.style.paddingBottom = 28f;
 
@@ -7488,15 +7543,57 @@ public sealed class TabsSongHeaderOverlay
 
         globalSettingsOverlay.style.justifyContent = Justify.FlexStart;
 
-        Label globalSettingsTopTag = CreateLabel("ESC BACK  /  O TOGGLE BACKGROUND", 24f, LibraryPrimaryColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+        Label globalSettingsTopTag = CreateLabel("ESC BACK  /  O TOGGLE BG", 26f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
 
         globalSettingsTopTag.style.unityFontDefinition = modernUiFontDefinition;
 
-        globalSettingsTopTag.style.marginBottom = 12f;
+        globalSettingsTopTag.style.position = Position.Absolute;
+
+        globalSettingsTopTag.style.left = 30f;
+
+        globalSettingsTopTag.style.top = 24f;
+
+        globalSettingsTopTag.style.marginBottom = 0f;
+
+        globalSettingsTopTag.style.paddingLeft = 0f;
+
+        globalSettingsTopTag.style.paddingRight = 0f;
+
+        globalSettingsTopTag.style.paddingTop = 0f;
+
+        globalSettingsTopTag.style.paddingBottom = 0f;
+
+        globalSettingsTopTag.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+
+        globalSettingsTopTag.style.borderTopWidth = 0f;
+
+        globalSettingsTopTag.style.borderRightWidth = 0f;
+
+        globalSettingsTopTag.style.borderBottomWidth = 0f;
+
+        globalSettingsTopTag.style.borderLeftWidth = 0f;
+
+        Color globalSettingsTopTagBorder = new Color(0.22f, 0.25f, 0.31f, 0.62f);
+
+        globalSettingsTopTag.style.borderTopColor = globalSettingsTopTagBorder;
+
+        globalSettingsTopTag.style.borderRightColor = globalSettingsTopTagBorder;
+
+        globalSettingsTopTag.style.borderBottomColor = globalSettingsTopTagBorder;
+
+        globalSettingsTopTag.style.borderLeftColor = globalSettingsTopTagBorder;
+
+        globalSettingsTopTag.style.borderTopLeftRadius = 0f;
+
+        globalSettingsTopTag.style.borderTopRightRadius = 0f;
+
+        globalSettingsTopTag.style.borderBottomLeftRadius = 0f;
+
+        globalSettingsTopTag.style.borderBottomRightRadius = 0f;
 
         globalSettingsTopTag.style.letterSpacing = 1.8f;
 
-        globalSettingsTopTag.style.alignSelf = Align.Center;
+        globalSettingsTopTag.style.alignSelf = Align.FlexStart;
 
 
 
@@ -7601,6 +7698,28 @@ public sealed class TabsSongHeaderOverlay
 
 
 
+        globalSettingsTabBarHost = new VisualElement();
+
+        globalSettingsTabBarHost.style.width = Length.Percent(100f);
+
+        globalSettingsTabBarHost.style.maxWidth = 3000f;
+
+        globalSettingsTabBarHost.style.alignSelf = Align.Center;
+
+        globalSettingsTabBarHost.style.paddingTop = 12f;
+
+        globalSettingsTabBarHost.style.paddingLeft = 90f;
+
+        globalSettingsTabBarHost.style.paddingRight = 90f;
+
+        globalSettingsTabBarHost.style.flexShrink = 0f;
+
+        globalSettingsTabBarHost.style.display = DisplayStyle.None;
+
+        globalSettingsCard.Add(globalSettingsTabBarHost);
+
+
+
         globalSettingsScrollView = new ScrollView(ScrollViewMode.Vertical);
 
         globalSettingsScrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
@@ -7622,6 +7741,8 @@ public sealed class TabsSongHeaderOverlay
         ConfigureRuntimeScrollView(globalSettingsScrollView);
 
         AttachGlobalSettingsWheelScrolling(globalSettingsScrollView);
+
+        AttachGlobalSettingsWheelScrolling(globalSettingsTabBarHost);
 
         AttachGlobalSettingsWheelScrolling(globalSettingsScrollView.contentViewport);
 
@@ -11044,12 +11165,13 @@ public sealed class TabsSongHeaderOverlay
         {
             if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
             {
+                bool drumStartup = IsDrumArcadeSnapshot(snapshot);
                 startupTuningReminderPopup?.SetContent(
                     "RHYTHM CONTROLS",
                     "Before You Play",
-                    GetArcadeStartupPrimaryMessage(),
-                    GetArcadeStartupCalloutMessage(),
-                    "You can configure details later in General Settings > Rhythm Controls.",
+                    GetArcadeStartupPrimaryMessage(snapshot),
+                    GetArcadeStartupCalloutMessage(snapshot),
+                    drumStartup ? string.Empty : "You can configure details later in General Settings.",
                     "Continue");
             }
             else
@@ -11124,7 +11246,7 @@ public sealed class TabsSongHeaderOverlay
             string restartTarget = snapshot.loopEnabled ? "restart" : "restart";
             if (snapshot.gameplayMode == GuitarGameplayMode.Arcade)
             {
-                gameplayShortcutLabel.text = BuildArcadeGameplayShortcutText(showPause, restartTarget);
+                gameplayShortcutLabel.text = BuildArcadeGameplayShortcutText(snapshot, showPause, restartTarget);
             }
             else
             {
@@ -14777,54 +14899,83 @@ public sealed class TabsSongHeaderOverlay
         return gameplayTimelineDurationSeconds;
     }
 
-    private string BuildArcadeGameplayShortcutText(bool showPause, string restartTarget)
+    private string BuildArcadeGameplayShortcutText(GuitarGameplaySnapshot snapshot, bool showPause, string restartTarget)
     {
-        string controls = GetArcadeFooterControlSummary();
+        string controls = GetArcadeFooterControlSummary(snapshot);
         return showPause
             ? $"{controls}  \u2022  Esc resume  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  W Mood Setter  \u2022  Enter open  \u2022  Left/Right seek  \u2022  Double Left/Right prev/next note"
             : $"{controls}  \u2022  Esc pause  \u2022  R {restartTarget}  \u2022  V Audio  \u2022  T Tone Lab  \u2022  W Mood Setter";
     }
 
-    private string GetArcadeStartupPrimaryMessage()
+    private string GetArcadeStartupPrimaryMessage(GuitarGameplaySnapshot snapshot)
     {
         if (UsesArcadeKeyboardInput())
+        {
+            if (UsesEightLaneDrumControlsSnapshot(snapshot))
+                return $"Keyboard: <color=#F99E6B>{GetArcadeKeyboardDrumSummary()}</color>.";
+
             return $"Keyboard: <color=#F99E6B>{GetArcadeKeyboardFretSummary()}</color>  \u2022  <color=#F99E6B>{GetArcadeKeyboardStrumSummary()}</color>.";
+        }
 
         if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
-            return "Use your guitar controller or MIDI controller.";
+            return IsDrumArcadeSnapshot(snapshot)
+                ? "Use your controller or MIDI controller."
+                : "Use your guitar controller or MIDI controller.";
 
         if (UsesArcadeMidiInput())
             return "Use your MIDI controller.";
 
-        return "Use your gamepad or guitar controller.";
+        return IsDrumArcadeSnapshot(snapshot)
+            ? "Use your controller."
+            : "Use your gamepad or guitar controller.";
     }
 
-    private string GetArcadeStartupCalloutMessage()
+    private string GetArcadeStartupCalloutMessage(GuitarGameplaySnapshot snapshot)
     {
+        if (UsesEightLaneDrumControlsSnapshot(snapshot))
+            return "Connect your drum kit, or configure your drum input in General Settings at any time.";
+
         if (UsesArcadeKeyboardInput())
-            return "You can also use a guitar controller or MIDI controller.";
+        {
+            List<string> alternatives = new List<string>();
+            if (UsesArcadeControllerInput())
+                alternatives.Add("a gamepad or guitar controller");
+            if (UsesArcadeMidiInput())
+                alternatives.Add("a MIDI controller");
+
+            if (alternatives.Count > 0)
+                return $"You can also use {FormatNaturalInputList(alternatives)}.";
+
+            return "Keyboard input is enabled.";
+        }
 
         if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
-            return "Controller and MIDI input are enabled for Rhythm mode.";
+            return "Controller and MIDI input are enabled.";
 
         if (UsesArcadeMidiInput())
-            return "MIDI input is enabled for Rhythm mode.";
+            return "MIDI input is enabled.";
 
-        return "Controller input is enabled for Rhythm mode.";
+        return "Controller input is enabled.";
     }
 
-    private string GetArcadeFooterControlSummary()
+    private string GetArcadeFooterControlSummary(GuitarGameplaySnapshot snapshot)
     {
         if (UsesArcadeKeyboardInput())
-            return $"{GetArcadeKeyboardFretSummary()} frets  \u2022  {GetArcadeKeyboardStrumSummary()}";
+            return UsesEightLaneDrumControlsSnapshot(snapshot)
+                ? $"{GetArcadeKeyboardDrumSummary()} drums"
+                : $"{GetArcadeKeyboardFretSummary()} frets  \u2022  {GetArcadeKeyboardStrumSummary()}";
 
         if (UsesArcadeMidiInput() && UsesArcadeControllerInput())
-            return "Use guitar controller or MIDI controller  \u2022  Configure Rhythm Controls in Settings";
+            return IsDrumArcadeSnapshot(snapshot)
+                ? "Use controller or MIDI controller  \u2022  Configure in General Settings"
+                : "Use guitar controller or MIDI controller  \u2022  Configure in General Settings";
 
         if (UsesArcadeMidiInput())
-            return "Use MIDI controller  \u2022  Configure Rhythm Controls in Settings";
+            return "Use MIDI controller  \u2022  Configure in General Settings";
 
-        return "Use guitar/controller  \u2022  Configure Rhythm Controls in Settings";
+        return IsDrumArcadeSnapshot(snapshot)
+            ? "Use controller  \u2022  Configure in General Settings"
+            : "Use guitar/controller  \u2022  Configure in General Settings";
     }
 
     private string GetArcadeKeyboardFretSummary()
@@ -14835,6 +14986,19 @@ public sealed class TabsSongHeaderOverlay
         KeyCode blue = owner != null ? owner.arcadeKeyboardBlue : KeyCode.K;
         KeyCode orange = owner != null ? owner.arcadeKeyboardOrange : KeyCode.L;
         return $"{FormatControlKeyLabel(green)} / {FormatControlKeyLabel(red)} / {FormatControlKeyLabel(yellow)} / {FormatControlKeyLabel(blue)} / {FormatControlKeyLabel(orange)}";
+    }
+
+    private string GetArcadeKeyboardDrumSummary()
+    {
+        KeyCode hiHat = owner != null ? owner.arcadeKeyboardDrumHiHat : KeyCode.A;
+        KeyCode crash = owner != null ? owner.arcadeKeyboardDrumCrash : KeyCode.S;
+        KeyCode snare = owner != null ? owner.arcadeKeyboardDrumSnare : KeyCode.D;
+        KeyCode highTom = owner != null ? owner.arcadeKeyboardDrumHighTom : KeyCode.F;
+        KeyCode kick = owner != null ? owner.arcadeKeyboardDrumKick : KeyCode.G;
+        KeyCode midTom = owner != null ? owner.arcadeKeyboardDrumMidTom : KeyCode.H;
+        KeyCode floorTom = owner != null ? owner.arcadeKeyboardDrumFloorTom : KeyCode.J;
+        KeyCode ride = owner != null ? owner.arcadeKeyboardDrumRide : KeyCode.K;
+        return $"{FormatControlKeyLabel(hiHat)} / {FormatControlKeyLabel(crash)} / {FormatControlKeyLabel(snare)} / {FormatControlKeyLabel(highTom)} / {FormatControlKeyLabel(kick)} / {FormatControlKeyLabel(midTom)} / {FormatControlKeyLabel(floorTom)} / {FormatControlKeyLabel(ride)}";
     }
 
     private string GetArcadeKeyboardStrumSummary()
@@ -14876,6 +15040,20 @@ public sealed class TabsSongHeaderOverlay
 
         return source == GuitarBridgeServer.ArcadeInputSourceMode.Midi ||
                source == GuitarBridgeServer.ArcadeInputSourceMode.All;
+    }
+
+    private static string FormatNaturalInputList(List<string> values)
+    {
+        if (values == null || values.Count == 0)
+            return string.Empty;
+
+        if (values.Count == 1)
+            return values[0];
+
+        if (values.Count == 2)
+            return $"{values[0]} or {values[1]}";
+
+        return $"{string.Join(", ", values.Take(values.Count - 1))}, or {values[values.Count - 1]}";
     }
 
     private static string FormatControlKeyLabel(KeyCode key)
@@ -18414,11 +18592,13 @@ public sealed class TabsSongHeaderOverlay
 
 
         string value = FormatGlobalSettingsValue(setting);
+        bool isListSelectorSetting = IsListSelectorPopupSetting(setting);
         bool adjustable = !string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) &&
-                          !string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase);
-        bool showAudioSelectorHint = isSelected && IsAudioDevicePopupSetting(setting);
-        string metaText = showAudioSelectorHint ? "ENTER opens list selector" : GetGlobalSettingMetaText(setting);
-        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(setting.label, value, isSelected, showArrows: adjustable, onHover: () => owner?.HoverGlobalSettingsItemSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsItemSelectionFromUi(index), onLeft: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, -1)) : null, onRight: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, 1)) : null, metaText: metaText, metaAlignRight: showAudioSelectorHint, metaColor: showAudioSelectorHint ? new Color(0.74f, 0.88f, 0.98f, 0.92f) : new Color(0.56f, 0.63f, 0.70f, 0.96f));
+                          !string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase) &&
+                          !isListSelectorSetting;
+        bool showListSelectorHint = isSelected && isListSelectorSetting;
+        string metaText = showListSelectorHint ? "ENTER opens list selector" : GetGlobalSettingMetaText(setting);
+        GlobalSettingsMenuRow row = CreateGlobalSettingsMenuRow(setting.label, value, isSelected, showArrows: adjustable, onHover: () => owner?.HoverGlobalSettingsItemSelectionFromUi(index), onActivate: () => owner?.ActivateGlobalSettingsItemSelectionFromUi(index), onLeft: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, -1)) : null, onRight: adjustable ? (Action)(() => owner?.AdjustGlobalSettingsItemValueFromUi(index, 1)) : null, metaText: metaText, metaAlignRight: showListSelectorHint, metaColor: showListSelectorHint ? new Color(0.74f, 0.88f, 0.98f, 0.92f) : new Color(0.56f, 0.63f, 0.70f, 0.96f));
 
         parent.Add(row.row);
 
@@ -18719,9 +18899,7 @@ public sealed class TabsSongHeaderOverlay
 
 
         return !string.IsNullOrWhiteSpace(setting.id) && setting.id.StartsWith("audio.", StringComparison.OrdinalIgnoreCase)
-
             ? string.Empty
-
             : setting.tooltip;
 
     }
@@ -18733,6 +18911,15 @@ public sealed class TabsSongHeaderOverlay
 
         return string.Equals(setting.id, "audio.inputDevice", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(setting.id, "audio.outputDevice", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsListSelectorPopupSetting(RuntimeSettingSnapshot setting)
+    {
+        if (setting == null || string.IsNullOrWhiteSpace(setting.id))
+            return false;
+
+        return IsAudioDevicePopupSetting(setting) ||
+               string.Equals(setting.id, "arcade.midiDeviceIndex", StringComparison.OrdinalIgnoreCase);
     }
 
 
@@ -18896,248 +19083,1409 @@ public sealed class TabsSongHeaderOverlay
 
 
     private void BuildGlobalSettingsFullscreenMenu(GuitarGameplaySnapshot snapshot)
-
     {
-
-        if (globalSettingsScrollView == null)
-
+        if (globalSettingsScrollView == null || globalSettingsTabBarHost == null || snapshot == null)
             return;
 
-
-
+        GlobalSettingsTabDefinition activeTab = GetGlobalSettingsActiveTab(snapshot);
+        string activeTabKey = activeTab?.Key ?? string.Empty;
+        string activeSubtabKey = GetGlobalSettingsActiveSubtabKey(snapshot, activeTab);
         string fullscreenSignature = BuildGlobalSettingsFullscreenSignature(snapshot);
-
         bool needsRebuild = fullscreenSignature != globalSettingsFullscreenSignature || globalSettingsMenuRows.Count == 0;
-
-        globalSettingsScrollOffset = globalSettingsScrollView.scrollOffset;
-
-
+        bool tabChanged =
+            !string.Equals(activeTabKey, globalSettingsRenderedTabKey, StringComparison.Ordinal) ||
+            !string.Equals(activeSubtabKey, globalSettingsRenderedSubtabKey, StringComparison.Ordinal);
+        globalSettingsScrollOffset = tabChanged ? Vector2.zero : globalSettingsScrollView.scrollOffset;
 
         if (resetDefaultsButton != null)
-
             resetDefaultsButton.style.display = DisplayStyle.None;
 
-
-
         VisualElement globalSettingsDock = globalSettingsCard?.Q<VisualElement>("primary-actions-dock");
-
         if (globalSettingsDock != null)
-
             globalSettingsDock.style.display = DisplayStyle.None;
 
-
-
         VisualElement globalSettingsDockSpacer = globalSettingsCard?.Q<VisualElement>("primary-actions-dock-spacer");
-
         if (globalSettingsDockSpacer != null)
-
             globalSettingsDockSpacer.style.display = DisplayStyle.None;
 
-
-
         globalSettingsCard.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-
         globalSettingsCard.style.borderTopWidth = 0f;
-
         globalSettingsCard.style.borderRightWidth = 0f;
-
         globalSettingsCard.style.borderBottomWidth = 0f;
-
         globalSettingsCard.style.borderLeftWidth = 0f;
-
         globalSettingsCard.style.maxHeight = StyleKeyword.None;
-
         globalSettingsCard.style.paddingLeft = 0f;
-
         globalSettingsCard.style.paddingRight = 0f;
-
         globalSettingsCard.style.paddingTop = 0f;
-
         globalSettingsCard.style.paddingBottom = 0f;
 
-
-
-        bool inSubmenu = !string.IsNullOrEmpty(snapshot.activeGlobalSettingsCategory);
-
-        globalSettingsTitleLabel.text = inSubmenu ? snapshot.activeGlobalSettingsCategory : "SETTINGS";
-
+        bool inSubmenu = !string.IsNullOrEmpty(activeTabKey);
+        globalSettingsTitleLabel.text = activeTab?.Label ?? "Settings";
         globalSettingsHelpLabel.text = string.Empty;
         globalSettingsHelpLabel.style.display = DisplayStyle.None;
 
-
-
         if (!needsRebuild)
-
         {
-
-            int selectedIndexNoRebuild = inSubmenu
-
-                ? Mathf.Clamp(snapshot.selectedGlobalSettingsItemIndex, 0, Mathf.Max(0, globalSettingsMenuRows.Count - 1))
-
-                : Mathf.Clamp(snapshot.selectedGlobalSettingsTopIndex, 0, Mathf.Max(0, globalSettingsMenuRows.Count - 1));
-
-            string selectionSignature = $"{(inSubmenu ? "submenu" : "top")}:{selectedIndexNoRebuild}:{snapshot.activeGlobalSettingsCategory}";
-
+            int selectedIndexNoRebuild = GetGlobalSettingsVisibleSelectionIndex(snapshot, activeTab);
+            string selectionSignature = $"{activeTabKey}:{activeSubtabKey}:{selectedIndexNoRebuild}";
             if (Time.unscaledTime >= globalSettingsManualScrollUntil && selectionSignature != lastGlobalSettingsCenteredSelectionSignature)
-
             {
-
                 lastGlobalSettingsCenteredSelectionSignature = selectionSignature;
-
                 ScrollGlobalSettingsSelectionIntoView(inSubmenu, selectedIndexNoRebuild);
-
             }
 
             return;
-
         }
-
-
 
         globalSettingsFullscreenSignature = fullscreenSignature;
-
+        globalSettingsRenderedTabKey = activeTabKey;
+        globalSettingsRenderedSubtabKey = activeSubtabKey;
+        globalSettingsTabBarHost.Clear();
+        globalSettingsTabBarHost.style.display = DisplayStyle.Flex;
+        globalSettingsTabBarHost.Add(CreateGlobalSettingsTabBar(activeTab));
+        VisualElement subtabBar = CreateGlobalSettingsSubtabBar(activeTab, activeSubtabKey);
+        if (subtabBar != null)
+            globalSettingsTabBarHost.Add(subtabBar);
         globalSettingsScrollView.Clear();
-
         globalSettingsMenuRows.Clear();
 
+        VisualElement page = new VisualElement();
+        page.style.width = Length.Percent(100f);
+        page.style.maxWidth = 3000f;
+        page.style.alignSelf = Align.Center;
+        page.style.paddingTop = 34f;
+        page.style.paddingBottom = 42f;
+        page.style.paddingLeft = 90f;
+        page.style.paddingRight = 90f;
+        page.style.flexDirection = FlexDirection.Column;
 
+        VisualElement content = new VisualElement();
+        content.style.width = Length.Percent(100f);
+        content.style.flexDirection = FlexDirection.Column;
+        content.style.paddingTop = 18f;
+        content.style.paddingBottom = 18f;
+        content.style.paddingLeft = 20f;
+        content.style.paddingRight = 20f;
+        content.style.overflow = Overflow.Visible;
+        content.style.backgroundColor = new Color(0.050f, 0.060f, 0.078f, 0.58f);
+        content.style.borderTopWidth = 1f;
+        content.style.borderRightWidth = 1f;
+        content.style.borderBottomWidth = 1f;
+        content.style.borderLeftWidth = 1f;
+        Color contentBorderColor = new Color(0.22f, 0.26f, 0.32f, 0.72f);
+        content.style.borderTopColor = contentBorderColor;
+        content.style.borderRightColor = contentBorderColor;
+        content.style.borderBottomColor = contentBorderColor;
+        content.style.borderLeftColor = contentBorderColor;
+        const float contentRadius = 10f;
+        content.style.borderTopLeftRadius = contentRadius;
+        content.style.borderTopRightRadius = contentRadius;
+        content.style.borderBottomLeftRadius = contentRadius;
+        content.style.borderBottomRightRadius = contentRadius;
+        page.Add(content);
 
-        VisualElement menuList = new VisualElement();
+        if (string.IsNullOrEmpty(activeTabKey))
+            BuildGlobalSettingsGeneralTab(content, snapshot);
+        else
+            BuildGlobalSettingsCategoryTab(content, snapshot, activeTab, activeSubtabKey);
 
-        menuList.style.width = Length.Percent(100f);
-
-        menuList.style.maxWidth = 1500f;
-
-        menuList.style.alignSelf = Align.Center;
-
-        menuList.style.paddingTop = 18f;
-
-        menuList.style.paddingBottom = 24f;
-
-        menuList.style.paddingLeft = 64f;
-
-        menuList.style.paddingRight = 64f;
-
-        globalSettingsScrollView.Add(menuList);
-
+        globalSettingsScrollView.Add(page);
         globalSettingsScrollView.scrollOffset = globalSettingsScrollOffset;
 
-
-
-        if (!inSubmenu)
-
-        {
-
-            AddGlobalSettingsFullscreenTopValueRow(menuList, snapshot, 0, "Invert Strings");
-
-            AddGlobalSettingsFullscreenTopValueRow(menuList, snapshot, 1, "Render Mode");
-
-            AddGlobalSettingsFullscreenTopValueRow(menuList, snapshot, 2, "Songs Folder");
-
-            AddGlobalSettingsFullscreenTopValueRow(menuList, snapshot, 3, "Effects Folder");
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 4, "Audio", snapshot.selectedGlobalSettingsTopIndex == 4);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 5, "Gameplay", snapshot.selectedGlobalSettingsTopIndex == 5);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 6, "2D Tabs", snapshot.selectedGlobalSettingsTopIndex == 6);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 7, "Highway3D", snapshot.selectedGlobalSettingsTopIndex == 7);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 8, "Rhythm", snapshot.selectedGlobalSettingsTopIndex == 8);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 9, "Controls", snapshot.selectedGlobalSettingsTopIndex == 9);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 10, "Visuals", snapshot.selectedGlobalSettingsTopIndex == 10);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 11, "Multiplayer Visuals", snapshot.selectedGlobalSettingsTopIndex == 11);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 12, "Diagnostics", snapshot.selectedGlobalSettingsTopIndex == 12);
-
-            AddGlobalSettingsFullscreenTopCategoryRow(menuList, 13, "Reset Settings", snapshot.selectedGlobalSettingsTopIndex == 13, "DEFAULTS");
-
-            return;
-
-        }
-
-        if (string.Equals(snapshot.activeGlobalSettingsCategory, "Audio", StringComparison.OrdinalIgnoreCase))
-            AddGlobalSettingsAudioToneLabHint(menuList);
-
-
-
-        List<RuntimeSettingSnapshot> items = GetGlobalSettingsMenuItems(snapshot);
-
-        for (int i = 0; i < items.Count; i++)
-
-        {
-
-            RuntimeSettingSnapshot setting = items[i];
-
-            if (setting == null)
-
-                continue;
-
-
-
-            int rowIndex = i;
-
-            string value = FormatGlobalSettingsValue(setting);
-            bool showAudioSelectorHint = rowIndex == snapshot.selectedGlobalSettingsItemIndex && IsAudioDevicePopupSetting(setting);
-            string metaText = showAudioSelectorHint ? "ENTER opens list selector" : GetGlobalSettingMetaText(setting);
-
-            GlobalSettingsMenuRow row = CreateGlobalSettingsTextMenuRow(
-
-                setting.label,
-
-                value,
-
-                rowIndex == snapshot.selectedGlobalSettingsItemIndex,
-
-                showArrows: true,
-
-                metaText: metaText,
-
-                metaAlignRight: showAudioSelectorHint,
-
-                metaColor: showAudioSelectorHint ? new Color(0.74f, 0.88f, 0.98f, 0.92f) : new Color(0.66f, 0.70f, 0.75f, 0.98f),
-
-                onHover: null,
-
-                onActivate: () => owner?.ActivateGlobalSettingsItemSelectionFromUi(rowIndex),
-
-                onLeft: () => owner?.AdjustGlobalSettingsItemValueFromUi(rowIndex, -1),
-
-                onRight: () => owner?.AdjustGlobalSettingsItemValueFromUi(rowIndex, 1));
-
-            menuList.Add(row.row);
-
-            globalSettingsMenuRows.Add(row);
-
-        }
-
-
-
-        int selectedIndex = inSubmenu
-
-            ? Mathf.Clamp(snapshot.selectedGlobalSettingsItemIndex, 0, Mathf.Max(0, globalSettingsMenuRows.Count - 1))
-
-            : Mathf.Clamp(snapshot.selectedGlobalSettingsTopIndex, 0, Mathf.Max(0, globalSettingsMenuRows.Count - 1));
-
-        string rebuiltSelectionSignature = $"{(inSubmenu ? "submenu" : "top")}:{selectedIndex}:{snapshot.activeGlobalSettingsCategory}";
-
+        int selectedIndex = GetGlobalSettingsVisibleSelectionIndex(snapshot, activeTab);
+        string rebuiltSelectionSignature = $"{activeTabKey}:{activeSubtabKey}:{selectedIndex}";
         if (Time.unscaledTime >= globalSettingsManualScrollUntil)
-
         {
-
             lastGlobalSettingsCenteredSelectionSignature = rebuiltSelectionSignature;
-
             ScrollGlobalSettingsSelectionIntoView(inSubmenu, selectedIndex);
-
         }
-
     }
 
 
+
+    private static GlobalSettingsTabDefinition GetGlobalSettingsActiveTab(GuitarGameplaySnapshot snapshot)
+    {
+        string category = snapshot?.activeGlobalSettingsCategory ?? string.Empty;
+        if (string.IsNullOrEmpty(category))
+            return GlobalSettingsTabs[0];
+
+        foreach (GlobalSettingsTabDefinition tab in GlobalSettingsTabs)
+        {
+            if (tab == null)
+                continue;
+
+            if (string.Equals(tab.Key, category, StringComparison.OrdinalIgnoreCase) ||
+                GlobalSettingsTabContainsCategory(tab, category))
+                return tab;
+        }
+
+        return GlobalSettingsTabs[0];
+    }
+
+    private static bool GlobalSettingsTabContainsCategory(GlobalSettingsTabDefinition tab, string category)
+    {
+        if (tab?.Categories == null || string.IsNullOrEmpty(category))
+            return false;
+
+        return tab.Categories.Any(candidate => string.Equals(candidate, category, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static GlobalSettingsSubtabDefinition[] GetGlobalSettingsSubtabs(GlobalSettingsTabDefinition tab)
+    {
+        string key = tab?.Key ?? string.Empty;
+        if (string.Equals(key, "Visuals", StringComparison.OrdinalIgnoreCase))
+            return VisualGlobalSettingsSubtabs;
+        if (string.Equals(key, "Gameplay", StringComparison.OrdinalIgnoreCase))
+            return GameplayGlobalSettingsSubtabs;
+        if (string.Equals(key, "Controls", StringComparison.OrdinalIgnoreCase))
+            return ControlsGlobalSettingsSubtabs;
+
+        return EmptyGlobalSettingsSubtabs;
+    }
+
+    private static string GetGlobalSettingsActiveSubtabKey(GuitarGameplaySnapshot snapshot, GlobalSettingsTabDefinition activeTab)
+    {
+        GlobalSettingsSubtabDefinition[] subtabs = GetGlobalSettingsSubtabs(activeTab);
+        if (subtabs == null || subtabs.Length == 0)
+            return string.Empty;
+
+        string activeKey = snapshot?.activeGlobalSettingsSubtab ?? string.Empty;
+        foreach (GlobalSettingsSubtabDefinition subtab in subtabs)
+        {
+            if (subtab != null && string.Equals(subtab.Key, activeKey, StringComparison.OrdinalIgnoreCase))
+                return subtab.Key;
+        }
+
+        return subtabs[0]?.Key ?? string.Empty;
+    }
+
+    private VisualElement CreateGlobalSettingsTabBar(GlobalSettingsTabDefinition activeTab)
+    {
+        VisualElement tabBar = new VisualElement();
+        tabBar.style.flexDirection = FlexDirection.Row;
+        tabBar.style.alignSelf = Align.Center;
+        tabBar.style.width = Length.Percent(100f);
+        tabBar.style.maxWidth = 2700f;
+        tabBar.style.minHeight = 86f;
+        tabBar.style.backgroundColor = new Color(0.055f, 0.060f, 0.075f, 0.82f);
+        tabBar.style.borderTopWidth = 1f;
+        tabBar.style.borderRightWidth = 1f;
+        tabBar.style.borderBottomWidth = 1f;
+        tabBar.style.borderLeftWidth = 1f;
+        Color borderColor = new Color(0.22f, 0.25f, 0.31f, 0.76f);
+        tabBar.style.borderTopColor = borderColor;
+        tabBar.style.borderRightColor = borderColor;
+        tabBar.style.borderBottomColor = borderColor;
+        tabBar.style.borderLeftColor = borderColor;
+        const float tabBarRadius = 18f;
+        tabBar.style.borderTopLeftRadius = tabBarRadius;
+        tabBar.style.borderTopRightRadius = tabBarRadius;
+        tabBar.style.borderBottomLeftRadius = tabBarRadius;
+        tabBar.style.borderBottomRightRadius = tabBarRadius;
+        tabBar.style.overflow = Overflow.Hidden;
+
+        for (int tabIndex = 0; tabIndex < GlobalSettingsTabs.Length; tabIndex++)
+        {
+            GlobalSettingsTabDefinition tab = GlobalSettingsTabs[tabIndex];
+            if (tab == null)
+                continue;
+
+            bool isFirstTab = tabIndex == 0;
+            bool isLastTab = tabIndex == GlobalSettingsTabs.Length - 1;
+            bool isActive = string.Equals(activeTab?.Key ?? string.Empty, tab.Key ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            Button tabButton = new Button(() => owner?.SelectGlobalSettingsTabFromUi(tab.Key ?? string.Empty))
+            {
+                text = tab.Label?.ToUpperInvariant() ?? string.Empty
+            };
+            tabButton.focusable = false;
+            tabButton.tooltip = tab.Label;
+            tabButton.AddToClassList("global-settings-tab-label");
+            tabButton.style.flexGrow = 1f;
+            tabButton.style.flexShrink = 1f;
+            tabButton.style.flexBasis = 0f;
+            tabButton.style.minWidth = 210f;
+            tabButton.style.height = 86f;
+            tabButton.style.marginLeft = 0f;
+            tabButton.style.marginRight = 0f;
+            tabButton.style.marginTop = 0f;
+            tabButton.style.marginBottom = 0f;
+            tabButton.style.paddingLeft = 18f;
+            tabButton.style.paddingRight = 18f;
+            tabButton.style.backgroundImage = StyleKeyword.None;
+            tabButton.style.backgroundColor = isActive ? new Color(0.12f, 0.13f, 0.16f, 0.96f) : new Color(0f, 0f, 0f, 0f);
+            tabButton.style.color = isActive ? LibraryConfirmedSongColor : new Color(0.68f, 0.70f, 0.76f, 1f);
+            tabButton.style.fontSize = 36f;
+            tabButton.style.unityFontDefinition = modernUiFontDefinition;
+            tabButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+            tabButton.style.unityTextAlign = TextAnchor.MiddleCenter;
+            tabButton.style.borderTopWidth = 0f;
+            tabButton.style.borderRightWidth = 0f;
+            tabButton.style.borderBottomWidth = isActive ? 4f : 0f;
+            tabButton.style.borderLeftWidth = 0f;
+            tabButton.style.borderBottomColor = LibraryConfirmedSongColor;
+            tabButton.style.borderTopLeftRadius = isFirstTab ? tabBarRadius : 0f;
+            tabButton.style.borderBottomLeftRadius = isFirstTab ? tabBarRadius : 0f;
+            tabButton.style.borderTopRightRadius = isLastTab ? tabBarRadius : 0f;
+            tabButton.style.borderBottomRightRadius = isLastTab ? tabBarRadius : 0f;
+            tabButton.style.overflow = Overflow.Hidden;
+            tabButton.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                tabButton.style.color = isActive ? LibraryConfirmedSongColor : new Color(0.88f, 0.90f, 0.95f, 1f);
+                tabButton.style.backgroundColor = isActive ? new Color(0.12f, 0.13f, 0.16f, 0.96f) : new Color(0.10f, 0.11f, 0.14f, 0.80f);
+            });
+            tabButton.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                tabButton.style.color = isActive ? LibraryConfirmedSongColor : new Color(0.68f, 0.70f, 0.76f, 1f);
+                tabButton.style.backgroundColor = isActive ? new Color(0.12f, 0.13f, 0.16f, 0.96f) : new Color(0f, 0f, 0f, 0f);
+            });
+
+            AttachGlobalSettingsWheelScrolling(tabButton);
+            tabBar.Add(tabButton);
+        }
+
+        return tabBar;
+    }
+
+    private VisualElement CreateGlobalSettingsSubtabBar(GlobalSettingsTabDefinition activeTab, string activeSubtabKey)
+    {
+        GlobalSettingsSubtabDefinition[] subtabs = GetGlobalSettingsSubtabs(activeTab);
+        if (subtabs == null || subtabs.Length == 0)
+            return null;
+
+        VisualElement subtabBar = new VisualElement();
+        subtabBar.style.flexDirection = FlexDirection.Row;
+        subtabBar.style.alignItems = Align.Center;
+        subtabBar.style.alignSelf = Align.Center;
+        subtabBar.style.width = Length.Percent(92f);
+        subtabBar.style.maxWidth = 2200f;
+        subtabBar.style.minHeight = 84f;
+        subtabBar.style.marginTop = 34f;
+        subtabBar.style.backgroundColor = new Color(0.040f, 0.046f, 0.060f, 0.70f);
+        subtabBar.style.borderTopWidth = 1f;
+        subtabBar.style.borderRightWidth = 1f;
+        subtabBar.style.borderBottomWidth = 1f;
+        subtabBar.style.borderLeftWidth = 1f;
+        Color borderColor = new Color(0.22f, 0.25f, 0.31f, 0.72f);
+        subtabBar.style.borderTopColor = borderColor;
+        subtabBar.style.borderRightColor = borderColor;
+        subtabBar.style.borderBottomColor = borderColor;
+        subtabBar.style.borderLeftColor = borderColor;
+        const float subtabBarRadius = 38f;
+        subtabBar.style.borderTopLeftRadius = subtabBarRadius;
+        subtabBar.style.borderTopRightRadius = subtabBarRadius;
+        subtabBar.style.borderBottomLeftRadius = subtabBarRadius;
+        subtabBar.style.borderBottomRightRadius = subtabBarRadius;
+        subtabBar.style.paddingLeft = 8f;
+        subtabBar.style.paddingRight = 8f;
+        subtabBar.style.paddingTop = 7f;
+        subtabBar.style.paddingBottom = 7f;
+        subtabBar.style.overflow = Overflow.Visible;
+
+        for (int subtabIndex = 0; subtabIndex < subtabs.Length; subtabIndex++)
+        {
+            GlobalSettingsSubtabDefinition subtab = subtabs[subtabIndex];
+            if (subtab == null)
+                continue;
+
+            string subtabKey = subtab.Key ?? string.Empty;
+            string activeTabKey = activeTab?.Key ?? string.Empty;
+            bool isActive = string.Equals(activeSubtabKey, subtabKey, StringComparison.OrdinalIgnoreCase);
+            Button subtabButton = new Button(() => owner?.SelectGlobalSettingsSubtabFromUi(activeTabKey, subtabKey))
+            {
+                text = subtab.Label?.ToUpperInvariant() ?? string.Empty
+            };
+            subtabButton.focusable = false;
+            subtabButton.tooltip = subtab.Label;
+            subtabButton.AddToClassList("global-settings-subtab-label");
+            subtabButton.style.flexGrow = 1f;
+            subtabButton.style.flexShrink = 1f;
+            subtabButton.style.flexBasis = 0f;
+            subtabButton.style.minWidth = 136f;
+            subtabButton.style.height = 64f;
+            subtabButton.style.marginLeft = 2f;
+            subtabButton.style.marginRight = 2f;
+            subtabButton.style.marginTop = 0f;
+            subtabButton.style.marginBottom = 0f;
+            subtabButton.style.paddingLeft = 12f;
+            subtabButton.style.paddingRight = 12f;
+            subtabButton.style.backgroundImage = StyleKeyword.None;
+            subtabButton.style.backgroundColor = isActive ? new Color(0.125f, 0.132f, 0.160f, 0.96f) : new Color(0f, 0f, 0f, 0f);
+            subtabButton.style.color = isActive ? LibraryConfirmedSongColor : new Color(0.64f, 0.68f, 0.75f, 1f);
+            subtabButton.style.fontSize = 30f;
+            subtabButton.style.unityFontDefinition = modernUiFontDefinition;
+            subtabButton.style.unityFontStyleAndWeight = FontStyle.Bold;
+            subtabButton.style.unityTextAlign = TextAnchor.MiddleCenter;
+            subtabButton.style.borderTopWidth = 1f;
+            subtabButton.style.borderRightWidth = 1f;
+            subtabButton.style.borderBottomWidth = 1f;
+            subtabButton.style.borderLeftWidth = 1f;
+            Color subtabBorderColor = isActive ? LibraryConfirmedSongColor : new Color(0f, 0f, 0f, 0f);
+            subtabButton.style.borderTopColor = subtabBorderColor;
+            subtabButton.style.borderRightColor = subtabBorderColor;
+            subtabButton.style.borderBottomColor = subtabBorderColor;
+            subtabButton.style.borderLeftColor = subtabBorderColor;
+            subtabButton.style.borderTopLeftRadius = 32f;
+            subtabButton.style.borderTopRightRadius = 32f;
+            subtabButton.style.borderBottomLeftRadius = 32f;
+            subtabButton.style.borderBottomRightRadius = 32f;
+            subtabButton.style.overflow = Overflow.Hidden;
+            subtabButton.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                subtabButton.style.color = isActive ? LibraryConfirmedSongColor : new Color(0.86f, 0.90f, 0.96f, 1f);
+                subtabButton.style.backgroundColor = isActive ? new Color(0.125f, 0.132f, 0.160f, 0.96f) : new Color(0.09f, 0.10f, 0.13f, 0.76f);
+            });
+            subtabButton.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                subtabButton.style.color = isActive ? LibraryConfirmedSongColor : new Color(0.64f, 0.68f, 0.75f, 1f);
+                subtabButton.style.backgroundColor = isActive ? new Color(0.125f, 0.132f, 0.160f, 0.96f) : new Color(0f, 0f, 0f, 0f);
+            });
+
+            AttachGlobalSettingsWheelScrolling(subtabButton);
+            subtabBar.Add(subtabButton);
+        }
+
+        return subtabBar;
+    }
+
+    private void BuildGlobalSettingsGeneralTab(VisualElement parent, GuitarGameplaySnapshot snapshot)
+    {
+        if (parent == null || snapshot == null)
+            return;
+
+        AddGlobalSettingsSectionHeader(parent, "Core");
+
+        RuntimeSettingSnapshot invertStrings = FindGlobalSetting(snapshot.runtimeSettingsSections, "core.invertStrings");
+        if (invertStrings != null)
+        {
+            GlobalSettingsMenuRow row = CreateGlobalSettingsSettingBand(
+                invertStrings,
+                snapshot.selectedGlobalSettingsTopIndex == 0,
+                () => owner?.HoverGlobalSettingsTopSelectionFromUi(0),
+                () => owner?.ActivateGlobalSettingsTopSelectionFromUi(0));
+            parent.Add(row.row);
+            globalSettingsMenuRows.Add(row);
+        }
+
+        RuntimeSettingSnapshot renderMode = FindGlobalSetting(snapshot.runtimeSettingsSections, "render.mode");
+        if (renderMode != null)
+        {
+            GlobalSettingsMenuRow row = CreateGlobalSettingsSettingBand(
+                renderMode,
+                snapshot.selectedGlobalSettingsTopIndex == 1,
+                () => owner?.HoverGlobalSettingsTopSelectionFromUi(1),
+                () => owner?.ActivateGlobalSettingsTopSelectionFromUi(1));
+            parent.Add(row.row);
+            globalSettingsMenuRows.Add(row);
+        }
+
+        AddGlobalSettingsSectionHeader(parent, "Libraries");
+        AddGlobalSettingsGeneralActionBand(
+            parent,
+            "Songs Folder",
+            "Choose where imported and custom songs are loaded from.",
+            snapshot.songsFolderMenuValueLabel ?? "DEFAULT",
+            "CHANGE",
+            snapshot.selectedGlobalSettingsTopIndex == 2,
+            () => owner?.HoverGlobalSettingsTopSelectionFromUi(2),
+            () => owner?.ActivateGlobalSettingsTopSelectionFromUi(2));
+
+        AddGlobalSettingsGeneralActionBand(
+            parent,
+            "Effects Folder",
+            "Choose the external Tone Lab effects directory.",
+            snapshot.effectsFolderMenuValueLabel ?? "DEFAULT",
+            "CHANGE",
+            snapshot.selectedGlobalSettingsTopIndex == 3,
+            () => owner?.HoverGlobalSettingsTopSelectionFromUi(3),
+            () => owner?.ActivateGlobalSettingsTopSelectionFromUi(3));
+
+        AddGlobalSettingsSectionHeader(parent, "Maintenance");
+        AddGlobalSettingsGeneralActionBand(
+            parent,
+            "Reset Settings",
+            "Restore gameplay, visual, audio, and control settings to their defaults.",
+            "DEFAULTS",
+            "RESET",
+            snapshot.selectedGlobalSettingsTopIndex == 13,
+            () => owner?.HoverGlobalSettingsTopSelectionFromUi(13),
+            () => owner?.ResetGlobalSettingsToDefaultsFromUi(),
+            accent: true);
+    }
+
+    private void BuildGlobalSettingsCategoryTab(VisualElement parent, GuitarGameplaySnapshot snapshot, GlobalSettingsTabDefinition activeTab, string activeSubtabKey)
+    {
+        if (parent == null || snapshot?.runtimeSettingsSections == null || activeTab == null)
+            return;
+
+        if (string.Equals(activeTab.Key, "Audio", StringComparison.OrdinalIgnoreCase))
+            AddGlobalSettingsAudioToneLabHint(parent);
+
+        if (IsGlobalSettingsKeyboardControlsTab(activeTab, activeSubtabKey))
+        {
+            BuildGlobalSettingsKeyboardControlsTab(parent, snapshot, activeTab, activeSubtabKey);
+            return;
+        }
+
+        if (IsGlobalSettingsMidiControlsTab(activeTab, activeSubtabKey))
+        {
+            BuildGlobalSettingsMidiControlsTab(parent, snapshot, activeTab, activeSubtabKey);
+            return;
+        }
+
+        int rowIndex = 0;
+        foreach (RuntimeSettingSectionSnapshot section in snapshot.runtimeSettingsSections)
+        {
+            if (section?.settings == null)
+                continue;
+
+            string category = CategorizeGlobalSettingsSection(section);
+            if (!GlobalSettingsTabContainsCategory(activeTab, category))
+                continue;
+
+            List<RuntimeSettingSnapshot> visibleSettings = section.settings
+                .Where(setting => setting != null &&
+                    IsGlobalSettingsSettingVisibleInCategoryTab(setting) &&
+                    IsGlobalSettingsSettingInActiveSubtab(activeTab, activeSubtabKey, section, setting))
+                .ToList();
+            if (visibleSettings.Count == 0)
+                continue;
+
+            AddGlobalSettingsSectionHeader(parent, section.title);
+
+            foreach (RuntimeSettingSnapshot setting in visibleSettings)
+            {
+                int currentRowIndex = rowIndex;
+                GlobalSettingsMenuRow row = CreateGlobalSettingsSettingBand(
+                    setting,
+                    currentRowIndex == snapshot.selectedGlobalSettingsItemIndex,
+                    () => owner?.HoverGlobalSettingsItemSelectionFromUi(currentRowIndex),
+                    () => owner?.ActivateGlobalSettingsItemSelectionFromUi(currentRowIndex));
+                parent.Add(row.row);
+                globalSettingsMenuRows.Add(row);
+                rowIndex++;
+            }
+        }
+    }
+
+    private void BuildGlobalSettingsKeyboardControlsTab(VisualElement parent, GuitarGameplaySnapshot snapshot, GlobalSettingsTabDefinition activeTab, string activeSubtabKey)
+    {
+        if (parent == null || snapshot?.runtimeSettingsSections == null || activeTab == null)
+            return;
+
+        List<RuntimeSettingSnapshot> settings = new List<RuntimeSettingSnapshot>();
+        foreach (RuntimeSettingSectionSnapshot section in snapshot.runtimeSettingsSections)
+        {
+            if (section?.settings == null)
+                continue;
+
+            string category = CategorizeGlobalSettingsSection(section);
+            if (!GlobalSettingsTabContainsCategory(activeTab, category))
+                continue;
+
+            settings.AddRange(section.settings
+                .Where(setting => setting != null &&
+                    IsGlobalSettingsSettingVisibleInCategoryTab(setting) &&
+                    IsGlobalSettingsSettingInActiveSubtab(activeTab, activeSubtabKey, section, setting)));
+        }
+
+        settings = settings
+            .OrderBy(GetGlobalSettingsKeyboardControlSortIndex)
+            .ThenBy(setting => setting?.id ?? string.Empty)
+            .ToList();
+
+        int rowIndex = 0;
+        AddGlobalSettingsKeyboardControlsGroup(parent, "Rhythm", settings, snapshot, ref rowIndex, IsGlobalSettingsRhythmKeyboardControl);
+        AddGlobalSettingsKeyboardControlsGroup(parent, "Drums", settings, snapshot, ref rowIndex, IsGlobalSettingsDrumKeyboardControl);
+        AddGlobalSettingsKeyboardControlsGroup(parent, "Maintenance", settings, snapshot, ref rowIndex, IsGlobalSettingsKeyboardMaintenanceControl);
+        AddGlobalSettingsKeyboardControlsGroup(parent, "Other", settings, snapshot, ref rowIndex, setting =>
+            !IsGlobalSettingsRhythmKeyboardControl(setting) &&
+            !IsGlobalSettingsDrumKeyboardControl(setting) &&
+            !IsGlobalSettingsKeyboardMaintenanceControl(setting));
+    }
+
+    private void BuildGlobalSettingsMidiControlsTab(VisualElement parent, GuitarGameplaySnapshot snapshot, GlobalSettingsTabDefinition activeTab, string activeSubtabKey)
+    {
+        if (parent == null || snapshot?.runtimeSettingsSections == null || activeTab == null)
+            return;
+
+        List<RuntimeSettingSnapshot> settings = new List<RuntimeSettingSnapshot>();
+        foreach (RuntimeSettingSectionSnapshot section in snapshot.runtimeSettingsSections)
+        {
+            if (section?.settings == null)
+                continue;
+
+            string category = CategorizeGlobalSettingsSection(section);
+            if (!GlobalSettingsTabContainsCategory(activeTab, category))
+                continue;
+
+            settings.AddRange(section.settings
+                .Where(setting => setting != null &&
+                    IsGlobalSettingsSettingVisibleInCategoryTab(setting) &&
+                    IsGlobalSettingsSettingInActiveSubtab(activeTab, activeSubtabKey, section, setting)));
+        }
+
+        settings = settings
+            .OrderBy(GetGlobalSettingsMidiControlSortIndex)
+            .ThenBy(setting => setting?.id ?? string.Empty)
+            .ToList();
+
+        int rowIndex = 0;
+        AddGlobalSettingsMidiControlsGroup(parent, "Input", settings, snapshot, ref rowIndex, IsGlobalSettingsMidiDeviceControl);
+        AddGlobalSettingsMidiControlsGroup(parent, "Rhythm", settings, snapshot, ref rowIndex, IsGlobalSettingsRhythmMidiControl);
+        AddGlobalSettingsMidiControlsGroup(parent, "Drums", settings, snapshot, ref rowIndex, IsGlobalSettingsDrumMidiControl);
+        AddGlobalSettingsMidiControlsGroup(parent, "Maintenance", settings, snapshot, ref rowIndex, IsGlobalSettingsMidiMaintenanceControl);
+        AddGlobalSettingsMidiControlsGroup(parent, "Other", settings, snapshot, ref rowIndex, setting =>
+            !IsGlobalSettingsMidiDeviceControl(setting) &&
+            !IsGlobalSettingsRhythmMidiControl(setting) &&
+            !IsGlobalSettingsDrumMidiControl(setting) &&
+            !IsGlobalSettingsMidiMaintenanceControl(setting));
+    }
+
+    private void AddGlobalSettingsKeyboardControlsGroup(VisualElement parent, string title, List<RuntimeSettingSnapshot> settings, GuitarGameplaySnapshot snapshot, ref int rowIndex, Func<RuntimeSettingSnapshot, bool> predicate)
+    {
+        if (parent == null || settings == null || predicate == null)
+            return;
+
+        List<RuntimeSettingSnapshot> groupSettings = settings.Where(predicate).ToList();
+        if (groupSettings.Count == 0)
+            return;
+
+        AddGlobalSettingsSectionHeader(parent, title);
+        foreach (RuntimeSettingSnapshot setting in groupSettings)
+        {
+            int currentRowIndex = rowIndex;
+            GlobalSettingsMenuRow row = CreateGlobalSettingsSettingBand(
+                setting,
+                currentRowIndex == snapshot.selectedGlobalSettingsItemIndex,
+                () => owner?.HoverGlobalSettingsItemSelectionFromUi(currentRowIndex),
+                () => owner?.ActivateGlobalSettingsItemSelectionFromUi(currentRowIndex));
+            parent.Add(row.row);
+            globalSettingsMenuRows.Add(row);
+            rowIndex++;
+        }
+    }
+
+    private void AddGlobalSettingsMidiControlsGroup(VisualElement parent, string title, List<RuntimeSettingSnapshot> settings, GuitarGameplaySnapshot snapshot, ref int rowIndex, Func<RuntimeSettingSnapshot, bool> predicate)
+    {
+        if (parent == null || settings == null || predicate == null)
+            return;
+
+        List<RuntimeSettingSnapshot> groupSettings = settings.Where(predicate).ToList();
+        if (groupSettings.Count == 0)
+            return;
+
+        AddGlobalSettingsSectionHeader(parent, title);
+        foreach (RuntimeSettingSnapshot setting in groupSettings)
+        {
+            int currentRowIndex = rowIndex;
+            GlobalSettingsMenuRow row = CreateGlobalSettingsSettingBand(
+                setting,
+                currentRowIndex == snapshot.selectedGlobalSettingsItemIndex,
+                () => owner?.HoverGlobalSettingsItemSelectionFromUi(currentRowIndex),
+                () => owner?.ActivateGlobalSettingsItemSelectionFromUi(currentRowIndex));
+            parent.Add(row.row);
+            globalSettingsMenuRows.Add(row);
+            rowIndex++;
+        }
+    }
+
+    private static bool IsGlobalSettingsKeyboardControlsTab(GlobalSettingsTabDefinition activeTab, string activeSubtabKey)
+    {
+        return string.Equals(activeTab?.Key, "Controls", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(activeSubtabKey, "keyboard", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGlobalSettingsMidiControlsTab(GlobalSettingsTabDefinition activeTab, string activeSubtabKey)
+    {
+        return string.Equals(activeTab?.Key, "Controls", StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(activeSubtabKey, "midi", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGlobalSettingsRhythmKeyboardControl(RuntimeSettingSnapshot setting)
+    {
+        string id = setting?.id ?? string.Empty;
+        return id.StartsWith("arcade.controls.keyboard.", StringComparison.OrdinalIgnoreCase) &&
+               !IsGlobalSettingsDrumKeyboardControl(setting) &&
+               !IsGlobalSettingsKeyboardMaintenanceControl(setting);
+    }
+
+    private static bool IsGlobalSettingsDrumKeyboardControl(RuntimeSettingSnapshot setting)
+    {
+        return (setting?.id ?? string.Empty).StartsWith("arcade.controls.keyboard.drum", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGlobalSettingsKeyboardMaintenanceControl(RuntimeSettingSnapshot setting)
+    {
+        return string.Equals(setting?.id, "arcade.controls.keyboard.reset", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int GetGlobalSettingsKeyboardControlSortIndex(RuntimeSettingSnapshot setting)
+    {
+        string id = setting?.id ?? string.Empty;
+        if (string.Equals(id, "arcade.controls.keyboard.green", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        if (string.Equals(id, "arcade.controls.keyboard.red", StringComparison.OrdinalIgnoreCase))
+            return 1;
+        if (string.Equals(id, "arcade.controls.keyboard.yellow", StringComparison.OrdinalIgnoreCase))
+            return 2;
+        if (string.Equals(id, "arcade.controls.keyboard.blue", StringComparison.OrdinalIgnoreCase))
+            return 3;
+        if (string.Equals(id, "arcade.controls.keyboard.orange", StringComparison.OrdinalIgnoreCase))
+            return 4;
+        if (string.Equals(id, "arcade.controls.keyboard.strumUp", StringComparison.OrdinalIgnoreCase))
+            return 5;
+        if (string.Equals(id, "arcade.controls.keyboard.strumDown", StringComparison.OrdinalIgnoreCase))
+            return 6;
+        if (string.Equals(id, "arcade.controls.keyboard.open", StringComparison.OrdinalIgnoreCase))
+            return 7;
+
+        if (string.Equals(id, "arcade.controls.keyboard.drumHiHat", StringComparison.OrdinalIgnoreCase))
+            return 100;
+        if (string.Equals(id, "arcade.controls.keyboard.drumCrash", StringComparison.OrdinalIgnoreCase))
+            return 101;
+        if (string.Equals(id, "arcade.controls.keyboard.drumSnare", StringComparison.OrdinalIgnoreCase))
+            return 102;
+        if (string.Equals(id, "arcade.controls.keyboard.drumHighTom", StringComparison.OrdinalIgnoreCase))
+            return 103;
+        if (string.Equals(id, "arcade.controls.keyboard.drumKick", StringComparison.OrdinalIgnoreCase))
+            return 104;
+        if (string.Equals(id, "arcade.controls.keyboard.drumMidTom", StringComparison.OrdinalIgnoreCase))
+            return 105;
+        if (string.Equals(id, "arcade.controls.keyboard.drumFloorTom", StringComparison.OrdinalIgnoreCase))
+            return 106;
+        if (string.Equals(id, "arcade.controls.keyboard.drumRide", StringComparison.OrdinalIgnoreCase))
+            return 107;
+
+        if (string.Equals(id, "arcade.controls.keyboard.reset", StringComparison.OrdinalIgnoreCase))
+            return 200;
+
+        return id.StartsWith("arcade.controls.keyboard.", StringComparison.OrdinalIgnoreCase) ? 90 : 300;
+    }
+
+    private static bool IsGlobalSettingsMidiDeviceControl(RuntimeSettingSnapshot setting)
+    {
+        return string.Equals(setting?.id, "arcade.midiDeviceIndex", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(setting?.id, "arcade.midi.refreshDevices", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGlobalSettingsRhythmMidiControl(RuntimeSettingSnapshot setting)
+    {
+        return (setting?.id ?? string.Empty).StartsWith("arcade.midi.rhythm.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGlobalSettingsDrumMidiControl(RuntimeSettingSnapshot setting)
+    {
+        return (setting?.id ?? string.Empty).StartsWith("arcade.midi.drums.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGlobalSettingsMidiMaintenanceControl(RuntimeSettingSnapshot setting)
+    {
+        return string.Equals(setting?.id, "arcade.midi.reset", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int GetGlobalSettingsMidiControlSortIndex(RuntimeSettingSnapshot setting)
+    {
+        string id = setting?.id ?? string.Empty;
+        if (string.Equals(id, "arcade.midiDeviceIndex", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        if (string.Equals(id, "arcade.midi.refreshDevices", StringComparison.OrdinalIgnoreCase))
+            return 10;
+
+        if (string.Equals(id, "arcade.midi.rhythm.green", StringComparison.OrdinalIgnoreCase))
+            return 100;
+        if (string.Equals(id, "arcade.midi.rhythm.red", StringComparison.OrdinalIgnoreCase))
+            return 101;
+        if (string.Equals(id, "arcade.midi.rhythm.yellow", StringComparison.OrdinalIgnoreCase))
+            return 102;
+        if (string.Equals(id, "arcade.midi.rhythm.blue", StringComparison.OrdinalIgnoreCase))
+            return 103;
+        if (string.Equals(id, "arcade.midi.rhythm.orange", StringComparison.OrdinalIgnoreCase))
+            return 104;
+        if (string.Equals(id, "arcade.midi.rhythm.open", StringComparison.OrdinalIgnoreCase))
+            return 105;
+
+        if (string.Equals(id, "arcade.midi.drums.kick", StringComparison.OrdinalIgnoreCase))
+            return 200;
+        if (string.Equals(id, "arcade.midi.drums.snare", StringComparison.OrdinalIgnoreCase))
+            return 201;
+        if (string.Equals(id, "arcade.midi.drums.hihat", StringComparison.OrdinalIgnoreCase))
+            return 202;
+        if (string.Equals(id, "arcade.midi.drums.highTom", StringComparison.OrdinalIgnoreCase))
+            return 203;
+        if (string.Equals(id, "arcade.midi.drums.midTom", StringComparison.OrdinalIgnoreCase))
+            return 204;
+        if (string.Equals(id, "arcade.midi.drums.floorTom", StringComparison.OrdinalIgnoreCase))
+            return 205;
+        if (string.Equals(id, "arcade.midi.drums.crash", StringComparison.OrdinalIgnoreCase))
+            return 206;
+        if (string.Equals(id, "arcade.midi.drums.ride", StringComparison.OrdinalIgnoreCase))
+            return 207;
+
+        if (string.Equals(id, "arcade.midi.reset", StringComparison.OrdinalIgnoreCase))
+            return 300;
+
+        return id.StartsWith("arcade.midi", StringComparison.OrdinalIgnoreCase) ? 250 : 400;
+    }
+
+    private static bool IsGlobalSettingsSettingVisibleInCategoryTab(RuntimeSettingSnapshot setting)
+    {
+        if (setting == null || string.IsNullOrEmpty(setting.id))
+            return false;
+
+        return !string.Equals(setting.id, "core.invertStrings", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(setting.id, "render.mode", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsGlobalSettingsSettingInActiveSubtab(GlobalSettingsTabDefinition activeTab, string activeSubtabKey, RuntimeSettingSectionSnapshot section, RuntimeSettingSnapshot setting)
+    {
+        GlobalSettingsSubtabDefinition[] subtabs = GetGlobalSettingsSubtabs(activeTab);
+        if (subtabs == null || subtabs.Length == 0)
+            return true;
+
+        string settingSubtab = GetGlobalSettingsSettingSubtabKey(activeTab, section, setting);
+        string normalizedActiveSubtab = activeSubtabKey;
+        if (string.IsNullOrEmpty(normalizedActiveSubtab))
+            normalizedActiveSubtab = subtabs[0]?.Key ?? string.Empty;
+
+        return string.Equals(settingSubtab, normalizedActiveSubtab, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetGlobalSettingsSettingSubtabKey(GlobalSettingsTabDefinition activeTab, RuntimeSettingSectionSnapshot section, RuntimeSettingSnapshot setting)
+    {
+        string tabKey = activeTab?.Key ?? string.Empty;
+        string sectionCategory = CategorizeGlobalSettingsSection(section);
+        string sectionTitle = section?.title?.ToLowerInvariant() ?? string.Empty;
+        string settingId = setting?.id ?? string.Empty;
+
+        if (string.Equals(tabKey, "Visuals", StringComparison.OrdinalIgnoreCase))
+        {
+            if (settingId.StartsWith("mp.", StringComparison.OrdinalIgnoreCase) || string.Equals(sectionCategory, "Multiplayer Visuals", StringComparison.OrdinalIgnoreCase))
+                return "multiplayer";
+
+            if (settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("highway.background", StringComparison.OrdinalIgnoreCase) ||
+                sectionTitle.Contains("background"))
+                return "background";
+
+            if (settingId.StartsWith("highway.", StringComparison.OrdinalIgnoreCase) || string.Equals(sectionCategory, "Highway3D", StringComparison.OrdinalIgnoreCase))
+                return "highway";
+
+            if (string.Equals(settingId, "fx.characterDisplay", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("fx.character", StringComparison.OrdinalIgnoreCase))
+                return "character";
+
+            if (string.Equals(settingId, "fx.alphaTabNoteFeedback", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(settingId, "fx.showGameplayTimeline", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(settingId, "fx.judgeableDarkenMultiplier", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("fx.rhythmHopo", StringComparison.OrdinalIgnoreCase))
+                return "feedback";
+
+            if (settingId.StartsWith("fx.alphaTab", StringComparison.OrdinalIgnoreCase) || string.Equals(sectionCategory, "2D Tabs", StringComparison.OrdinalIgnoreCase))
+                return "tabs";
+
+            return "tabs";
+        }
+
+        if (string.Equals(tabKey, "Gameplay", StringComparison.OrdinalIgnoreCase))
+        {
+            if (settingId.StartsWith("timing.", StringComparison.OrdinalIgnoreCase) || sectionTitle.Contains("timing") || sectionTitle.Contains("forgiveness"))
+                return "timing";
+
+            if (settingId.StartsWith("arcade.", StringComparison.OrdinalIgnoreCase) || string.Equals(sectionCategory, "Rhythm", StringComparison.OrdinalIgnoreCase))
+                return "rhythm";
+
+            return "basics";
+        }
+
+        if (string.Equals(tabKey, "Controls", StringComparison.OrdinalIgnoreCase))
+        {
+            if (settingId.StartsWith("arcade.controls.keyboard.", StringComparison.OrdinalIgnoreCase))
+                return "keyboard";
+
+            if (settingId.StartsWith("arcade.controls.controller.", StringComparison.OrdinalIgnoreCase))
+                return "controller";
+
+            if (settingId.StartsWith("arcade.midi", StringComparison.OrdinalIgnoreCase))
+                return "midi";
+
+            return "setup";
+        }
+
+        return string.Empty;
+    }
+
+    private static RuntimeSettingSnapshot FindGlobalSetting(List<RuntimeSettingSectionSnapshot> sections, string settingId)
+    {
+        if (sections == null || string.IsNullOrEmpty(settingId))
+            return null;
+
+        foreach (RuntimeSettingSectionSnapshot section in sections)
+        {
+            if (section?.settings == null)
+                continue;
+
+            RuntimeSettingSnapshot match = section.settings.FirstOrDefault(setting =>
+                setting != null &&
+                string.Equals(setting.id, settingId, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+                return match;
+        }
+
+        return null;
+    }
+
+    private void AddGlobalSettingsSectionHeader(VisualElement parent, string title)
+    {
+        if (parent == null || string.IsNullOrWhiteSpace(title))
+            return;
+
+        VisualElement header = new VisualElement();
+        header.style.flexDirection = FlexDirection.Row;
+        header.style.alignItems = Align.Center;
+        header.style.marginTop = parent.childCount == 0 ? 0f : 30f;
+        header.style.marginBottom = 14f;
+        header.style.minHeight = 38f;
+
+        Label label = CreateLabel(title.ToUpperInvariant(), 30f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        label.AddToClassList("global-settings-section-label");
+        label.style.unityFontDefinition = modernUiFontDefinition;
+        label.style.letterSpacing = 1.4f;
+        label.style.marginRight = 18f;
+        label.style.flexShrink = 0f;
+        header.Add(label);
+
+        VisualElement line = new VisualElement();
+        line.style.height = 1f;
+        line.style.flexGrow = 1f;
+        line.style.backgroundColor = new Color(0.32f, 0.36f, 0.43f, 0.66f);
+        header.Add(line);
+        parent.Add(header);
+    }
+
+    private void AddGlobalSettingsGeneralActionBand(VisualElement parent, string title, string description, string value, string actionText, bool isSelected, Action onHover, Action onActivate, bool accent = false)
+    {
+        GlobalSettingsMenuRow row = CreateGlobalSettingsBand(
+            title,
+            description,
+            value,
+            CreateGlobalSettingsGeneralActionControl(value, actionText, onActivate, accent),
+            isSelected,
+            onHover,
+            onActivate);
+        parent.Add(row.row);
+        globalSettingsMenuRows.Add(row);
+    }
+
+    private VisualElement CreateGlobalSettingsGeneralActionControl(string value, string actionText, Action onActivate, bool accent)
+    {
+        VisualElement control = new VisualElement();
+        control.style.flexDirection = FlexDirection.Row;
+        control.style.alignItems = Align.Center;
+        control.style.justifyContent = Justify.FlexEnd;
+
+        if (!accent && !string.IsNullOrWhiteSpace(value))
+        {
+            Label valueLabel = CreateGlobalSettingsValuePill(value, 300f);
+            valueLabel.style.marginRight = 14f;
+            control.Add(valueLabel);
+        }
+
+        control.Add(CreateGlobalSettingsCompactButton(actionText, onActivate, accent));
+        return control;
+    }
+
+    private GlobalSettingsMenuRow CreateGlobalSettingsSettingBand(RuntimeSettingSnapshot setting, bool isSelected, Action onHover, Action onActivate)
+    {
+        string value = FormatGlobalSettingsValue(setting);
+        VisualElement control = CreateGlobalSettingsSettingControl(setting);
+        return CreateGlobalSettingsBand(setting.label, GetGlobalSettingMetaText(setting), value, control, isSelected, onHover, onActivate);
+    }
+
+    private GlobalSettingsMenuRow CreateGlobalSettingsBand(string title, string description, string value, VisualElement control, bool isSelected, Action onHover, Action onActivate)
+    {
+        Color transparent = new Color(0f, 0f, 0f, 0f);
+        Color selectedBackground = new Color(0.140f, 0.150f, 0.178f, 0.88f);
+        Color hoverBackground = new Color(0.120f, 0.130f, 0.155f, 0.54f);
+        Color selectedBorder = LibraryConfirmedSongColor;
+
+        VisualElement row = new VisualElement();
+        row.style.flexDirection = FlexDirection.Column;
+        row.style.width = Length.Percent(100f);
+        row.style.marginBottom = 0f;
+        row.style.paddingTop = 4f;
+        row.style.paddingBottom = 4f;
+        row.style.paddingLeft = 6f;
+        row.style.paddingRight = 6f;
+        row.style.backgroundColor = transparent;
+        row.style.overflow = Overflow.Visible;
+
+        VisualElement contentRow = new VisualElement();
+        contentRow.style.flexDirection = FlexDirection.Row;
+        contentRow.style.alignItems = Align.Center;
+        contentRow.style.width = StyleKeyword.Auto;
+        contentRow.style.alignSelf = Align.Stretch;
+        contentRow.style.minHeight = 120f;
+        contentRow.style.paddingLeft = 40f;
+        contentRow.style.paddingRight = 28f;
+        contentRow.style.paddingTop = 12f;
+        contentRow.style.paddingBottom = 12f;
+        contentRow.style.backgroundColor = isSelected ? selectedBackground : transparent;
+        contentRow.style.borderTopWidth = 1f;
+        contentRow.style.borderRightWidth = 1f;
+        contentRow.style.borderBottomWidth = 1f;
+        contentRow.style.borderLeftWidth = 1f;
+        contentRow.style.borderTopColor = isSelected ? selectedBorder : transparent;
+        contentRow.style.borderRightColor = isSelected ? selectedBorder : transparent;
+        contentRow.style.borderBottomColor = isSelected ? selectedBorder : transparent;
+        contentRow.style.borderLeftColor = isSelected ? selectedBorder : transparent;
+        const float rowRadius = 10f;
+        contentRow.style.borderTopLeftRadius = rowRadius;
+        contentRow.style.borderTopRightRadius = rowRadius;
+        contentRow.style.borderBottomLeftRadius = rowRadius;
+        contentRow.style.borderBottomRightRadius = rowRadius;
+        contentRow.style.overflow = Overflow.Visible;
+
+        Label titleLabel = CreateLabel(title ?? string.Empty, 48f, new Color(0.94f, 0.96f, 1f, 1f), true, TextAnchor.MiddleLeft, useTitleFont: false);
+        titleLabel.AddToClassList("global-settings-band-title");
+        titleLabel.style.unityFontDefinition = modernUiFontDefinition;
+        titleLabel.style.whiteSpace = WhiteSpace.Normal;
+        titleLabel.style.width = 430f;
+        titleLabel.style.minWidth = 360f;
+        titleLabel.style.flexShrink = 0f;
+        titleLabel.style.marginRight = 28f;
+
+        Label metaLabel = CreateLabel(description ?? string.Empty, 34f, new Color(0.66f, 0.69f, 0.75f, 0.96f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        metaLabel.AddToClassList("global-settings-band-help");
+        metaLabel.style.unityFontDefinition = modernUiFontDefinition;
+        metaLabel.style.whiteSpace = WhiteSpace.Normal;
+        metaLabel.style.flexGrow = 1f;
+        metaLabel.style.flexShrink = 1f;
+        metaLabel.style.minWidth = 0f;
+        metaLabel.style.paddingRight = 42f;
+        metaLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+
+        Label valueLabel = CreateLabel(value ?? string.Empty, 38f, isSelected ? LibraryConfirmedSongColor : new Color(0.72f, 0.78f, 0.84f, 1f), true, TextAnchor.MiddleRight, useTitleFont: false);
+        valueLabel.AddToClassList("global-settings-band-value");
+        valueLabel.style.unityFontDefinition = modernUiFontDefinition;
+        valueLabel.style.display = DisplayStyle.None;
+
+        contentRow.Add(titleLabel);
+        contentRow.Add(metaLabel);
+        if (control != null)
+        {
+            control.tooltip = description;
+            control.style.flexShrink = 0f;
+            contentRow.Add(control);
+        }
+
+        VisualElement divider = new VisualElement();
+        divider.style.height = 1f;
+        divider.style.minHeight = 1f;
+        divider.style.marginLeft = 36f;
+        divider.style.marginRight = 36f;
+        divider.style.marginTop = 4f;
+        divider.style.marginBottom = 2f;
+        divider.style.flexShrink = 0f;
+        divider.style.alignSelf = Align.Stretch;
+        divider.style.backgroundColor = new Color(0.30f, 0.34f, 0.40f, 0.52f);
+
+        row.Add(contentRow);
+        row.Add(divider);
+
+        contentRow.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            onHover?.Invoke();
+            contentRow.style.backgroundColor = isSelected ? selectedBackground : hoverBackground;
+            contentRow.style.borderTopColor = selectedBorder;
+            contentRow.style.borderRightColor = selectedBorder;
+            contentRow.style.borderBottomColor = selectedBorder;
+            contentRow.style.borderLeftColor = selectedBorder;
+            titleLabel.style.color = Color.white;
+        });
+        contentRow.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            contentRow.style.backgroundColor = isSelected ? selectedBackground : transparent;
+            contentRow.style.borderTopColor = isSelected ? selectedBorder : transparent;
+            contentRow.style.borderRightColor = isSelected ? selectedBorder : transparent;
+            contentRow.style.borderBottomColor = isSelected ? selectedBorder : transparent;
+            contentRow.style.borderLeftColor = isSelected ? selectedBorder : transparent;
+            titleLabel.style.color = new Color(0.94f, 0.96f, 1f, 1f);
+        });
+        contentRow.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (evt.button != 0)
+                return;
+
+            if (evt.target is VisualElement element && control != null && (element == control || control.Contains(element)))
+                return;
+
+            onActivate?.Invoke();
+        });
+
+        AttachGlobalSettingsWheelScrolling(row);
+        AttachGlobalSettingsWheelScrolling(contentRow);
+        AttachGlobalSettingsWheelScrolling(divider);
+        AttachGlobalSettingsWheelScrolling(titleLabel);
+        AttachGlobalSettingsWheelScrolling(metaLabel);
+        if (control != null)
+            AttachGlobalSettingsWheelScrolling(control);
+
+        return new GlobalSettingsMenuRow
+        {
+            row = row,
+            titleLabel = titleLabel,
+            valueLabel = valueLabel,
+            metaLabel = metaLabel
+        };
+    }
+
+    private VisualElement CreateGlobalSettingsSettingControl(RuntimeSettingSnapshot setting)
+    {
+        if (setting == null)
+            return new VisualElement();
+
+        if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
+            return CreateGlobalSettingsBoolControl(setting);
+
+        if (string.Equals(setting.valueType, "enum", StringComparison.OrdinalIgnoreCase))
+            return CreateGlobalSettingsEnumControl(setting);
+
+        if (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase))
+            return CreateGlobalSettingsActionControl(setting);
+
+        if (string.Equals(setting.valueType, "midiNote", StringComparison.OrdinalIgnoreCase))
+            return CreateGlobalSettingsMidiNoteControl(setting);
+
+        return CreateGlobalSettingsNumberControl(setting);
+    }
+
+    private VisualElement CreateGlobalSettingsBoolControl(RuntimeSettingSnapshot setting)
+    {
+        bool isOn = string.Equals(setting.value, "true", StringComparison.OrdinalIgnoreCase);
+        Button button = CreateGlobalSettingsCompactButton(isOn ? "ON" : "OFF", () =>
+        {
+            owner?.SetGlobalRuntimeSettingFromUi(setting.id, isOn ? "false" : "true");
+        }, isOn);
+        button.style.width = 150f;
+        button.style.minWidth = 150f;
+        return button;
+    }
+
+    private VisualElement CreateGlobalSettingsEnumControl(RuntimeSettingSnapshot setting)
+    {
+        if (IsListSelectorPopupSetting(setting))
+        {
+            Button selector = CreateGlobalSettingsCompactButton(FormatGlobalSettingsValue(setting), () => owner?.ActivateGlobalRuntimeSettingFromUi(setting.id), false);
+            selector.style.minWidth = 480f;
+            selector.style.maxWidth = 660f;
+            selector.style.unityTextAlign = TextAnchor.MiddleLeft;
+            return selector;
+        }
+
+        VisualElement control = CreateGlobalSettingsStepperShell();
+        control.Add(CreateGlobalSettingsStepButton("-", () => AdjustGlobalSettingsEnumSetting(setting, -1)));
+        control.Add(CreateGlobalSettingsValuePill(FormatGlobalSettingsValue(setting), 320f));
+        control.Add(CreateGlobalSettingsStepButton("+", () => AdjustGlobalSettingsEnumSetting(setting, 1)));
+        return control;
+    }
+
+    private VisualElement CreateGlobalSettingsNumberControl(RuntimeSettingSnapshot setting)
+    {
+        VisualElement control = CreateGlobalSettingsStepperShell();
+        control.Add(CreateGlobalSettingsStepButton("-", () => AdjustGlobalSettingsNumericSetting(setting, -1)));
+        control.Add(CreateGlobalSettingsValuePill(FormatGlobalSettingsValue(setting), 210f));
+        control.Add(CreateGlobalSettingsStepButton("+", () => AdjustGlobalSettingsNumericSetting(setting, 1)));
+        return control;
+    }
+
+    private VisualElement CreateGlobalSettingsMidiNoteControl(RuntimeSettingSnapshot setting)
+    {
+        VisualElement control = CreateGlobalSettingsStepperShell();
+        control.Add(CreateGlobalSettingsStepButton("-", () => AdjustGlobalSettingsNumericSetting(setting, -1)));
+        control.Add(CreateGlobalSettingsMidiNoteField(setting));
+        control.Add(CreateGlobalSettingsStepButton("+", () => AdjustGlobalSettingsNumericSetting(setting, 1)));
+
+        bool isLearning = string.Equals(setting?.value, "PLAY A MIDI NOTE", StringComparison.OrdinalIgnoreCase);
+        Button learnButton = CreateGlobalSettingsCompactButton(isLearning ? "LISTENING" : "LEARN", () => owner?.ActivateGlobalRuntimeSettingFromUi(setting.id), isLearning);
+        learnButton.style.minWidth = 190f;
+        learnButton.style.marginLeft = 14f;
+        control.Add(learnButton);
+        return control;
+    }
+
+    private TextField CreateGlobalSettingsMidiNoteField(RuntimeSettingSnapshot setting)
+    {
+        TextField field = new TextField();
+        bool isLearning = string.Equals(setting?.value, "PLAY A MIDI NOTE", StringComparison.OrdinalIgnoreCase);
+        float fieldWidth = isLearning ? 300f : 160f;
+        field.isDelayed = true;
+        field.focusable = true;
+        field.value = setting?.value ?? string.Empty;
+        field.tooltip = setting?.tooltip ?? string.Empty;
+        field.style.width = fieldWidth;
+        field.style.minWidth = fieldWidth;
+        field.style.height = 72f;
+        field.style.marginLeft = 2f;
+        field.style.marginRight = 2f;
+        field.style.paddingLeft = 0f;
+        field.style.paddingRight = 0f;
+        field.style.backgroundColor = new Color(0.065f, 0.070f, 0.086f, 0.94f);
+        field.style.borderTopWidth = 1f;
+        field.style.borderRightWidth = 1f;
+        field.style.borderBottomWidth = 1f;
+        field.style.borderLeftWidth = 1f;
+        Color border = new Color(0.20f, 0.23f, 0.29f, 0.90f);
+        field.style.borderTopColor = border;
+        field.style.borderRightColor = border;
+        field.style.borderBottomColor = border;
+        field.style.borderLeftColor = border;
+        const float fieldRadius = 14f;
+        field.style.borderTopLeftRadius = fieldRadius;
+        field.style.borderTopRightRadius = fieldRadius;
+        field.style.borderBottomLeftRadius = fieldRadius;
+        field.style.borderBottomRightRadius = fieldRadius;
+
+        ApplyGlobalSettingsTextFieldStyle(field, 40f, TextAnchor.MiddleCenter);
+        field.RegisterCallback<AttachToPanelEvent>(_ => ApplyGlobalSettingsTextFieldStyle(field, 40f, TextAnchor.MiddleCenter));
+        field.RegisterCallback<FocusInEvent>(_ => owner?.SetKeyboardTextInputActiveFromUi(true), TrickleDown.TrickleDown);
+        field.RegisterCallback<FocusOutEvent>(_ => owner?.SetKeyboardTextInputActiveFromUi(false), TrickleDown.TrickleDown);
+        field.RegisterCallback<DetachFromPanelEvent>(_ => owner?.SetKeyboardTextInputActiveFromUi(false));
+        field.RegisterValueChangedCallback(evt =>
+        {
+            string rawValue = evt.newValue?.Trim() ?? string.Empty;
+            if (!int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            {
+                field.SetValueWithoutNotify(setting?.value ?? string.Empty);
+                return;
+            }
+
+            owner?.SetGlobalRuntimeSettingFromUi(setting.id, Mathf.Clamp(parsed, 0, 127).ToString(CultureInfo.InvariantCulture));
+        });
+
+        AttachGlobalSettingsWheelScrolling(field);
+        return field;
+    }
+
+    private VisualElement CreateGlobalSettingsActionControl(RuntimeSettingSnapshot setting)
+    {
+        bool isBinding = string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase);
+        VisualElement control = new VisualElement();
+        control.style.flexDirection = FlexDirection.Row;
+        control.style.alignItems = Align.Center;
+        control.style.justifyContent = Justify.FlexEnd;
+
+        if (isBinding)
+        {
+            Label value = CreateGlobalSettingsValuePill(FormatGlobalSettingsValue(setting), 260f);
+            value.style.marginRight = 14f;
+            control.Add(value);
+        }
+
+        string buttonText = isBinding ? "REMAP" : (string.IsNullOrWhiteSpace(setting.value) ? "RUN" : FormatGlobalSettingsValue(setting));
+        Button actionButton = CreateGlobalSettingsCompactButton(buttonText, () => owner?.ActivateGlobalRuntimeSettingFromUi(setting.id), false);
+        actionButton.style.minWidth = isBinding ? 190f : 230f;
+        control.Add(actionButton);
+        return control;
+    }
+
+    private VisualElement CreateGlobalSettingsStepperShell()
+    {
+        VisualElement control = new VisualElement();
+        control.style.flexDirection = FlexDirection.Row;
+        control.style.alignItems = Align.Center;
+        control.style.justifyContent = Justify.FlexEnd;
+        control.style.height = 72f;
+        return control;
+    }
+
+    private Button CreateGlobalSettingsStepButton(string text, Action onClick)
+    {
+        Button button = CreateGlobalSettingsCompactButton(text, onClick, false);
+        button.style.width = 76f;
+        button.style.minWidth = 76f;
+        button.style.fontSize = 40f;
+        button.style.paddingLeft = 0f;
+        button.style.paddingRight = 0f;
+        return button;
+    }
+
+    private Label CreateGlobalSettingsValuePill(string text, float width)
+    {
+        int maxChars = width <= 240f ? 18 : width <= 320f ? 24 : 42;
+        Label value = CreateLabel(CompactGlobalSettingsControlText(text, maxChars), 40f, new Color(0.92f, 0.95f, 0.98f, 1f), true, TextAnchor.MiddleCenter, useTitleFont: false);
+        value.AddToClassList("global-settings-band-value");
+        value.style.unityFontDefinition = modernUiFontDefinition;
+        value.style.width = width;
+        value.style.minWidth = width;
+        value.style.height = 72f;
+        value.style.marginLeft = 2f;
+        value.style.marginRight = 2f;
+        value.style.paddingLeft = 14f;
+        value.style.paddingRight = 14f;
+        value.style.backgroundColor = new Color(0.065f, 0.070f, 0.086f, 0.94f);
+        value.style.borderTopWidth = 1f;
+        value.style.borderRightWidth = 1f;
+        value.style.borderBottomWidth = 1f;
+        value.style.borderLeftWidth = 1f;
+        Color border = new Color(0.20f, 0.23f, 0.29f, 0.90f);
+        value.style.borderTopColor = border;
+        value.style.borderRightColor = border;
+        value.style.borderBottomColor = border;
+        value.style.borderLeftColor = border;
+        const float controlRadius = 14f;
+        value.style.borderTopLeftRadius = controlRadius;
+        value.style.borderTopRightRadius = controlRadius;
+        value.style.borderBottomLeftRadius = controlRadius;
+        value.style.borderBottomRightRadius = controlRadius;
+        value.style.unityTextAlign = TextAnchor.MiddleCenter;
+        return value;
+    }
+
+    private static void ApplyGlobalSettingsTextFieldStyle(TextField field, float fontSize, TextAnchor textAlign)
+    {
+        if (field == null)
+            return;
+
+        field.style.color = new Color(0.92f, 0.95f, 0.98f, 1f);
+        field.style.fontSize = fontSize;
+        field.style.unityFontStyleAndWeight = FontStyle.Bold;
+
+        VisualElement textInputElement =
+            field.Q(className: TextInputBaseField<string>.textInputUssName)
+            ?? field.Q(className: "unity-text-field__input")
+            ?? field.Q(className: "unity-base-text-field__input")
+            ?? field.Q(className: "unity-base-field__input");
+
+        if (textInputElement != null)
+        {
+            textInputElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+            textInputElement.style.color = new Color(0.92f, 0.95f, 0.98f, 1f);
+            textInputElement.style.fontSize = fontSize;
+            textInputElement.style.unityFontStyleAndWeight = FontStyle.Bold;
+            textInputElement.style.unityTextAlign = textAlign;
+            textInputElement.style.borderTopWidth = 0f;
+            textInputElement.style.borderRightWidth = 0f;
+            textInputElement.style.borderBottomWidth = 0f;
+            textInputElement.style.borderLeftWidth = 0f;
+        }
+
+        foreach (UnityEngine.UIElements.TextElement textElement in field.Query<UnityEngine.UIElements.TextElement>().ToList())
+        {
+            textElement.style.color = new Color(0.92f, 0.95f, 0.98f, 1f);
+            textElement.style.fontSize = fontSize;
+            textElement.style.unityFontStyleAndWeight = FontStyle.Bold;
+            textElement.style.unityTextAlign = textAlign;
+            textElement.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        }
+    }
+
+    private Button CreateGlobalSettingsCompactButton(string text, Action onClick, bool accent)
+    {
+        Button button = new Button(() => onClick?.Invoke()) { text = CompactGlobalSettingsControlText(text, 38) };
+        button.focusable = false;
+        button.AddToClassList("global-settings-control-label");
+        button.style.height = 72f;
+        button.style.minWidth = 150f;
+        button.style.paddingLeft = 24f;
+        button.style.paddingRight = 24f;
+        button.style.marginLeft = 0f;
+        button.style.marginRight = 0f;
+        button.style.marginTop = 0f;
+        button.style.marginBottom = 0f;
+        button.style.backgroundImage = StyleKeyword.None;
+        Color background = accent ? new Color(0.93f, 0.48f, 0.18f, 0.96f) : new Color(0.065f, 0.070f, 0.086f, 0.94f);
+        Color foreground = accent ? new Color(0.10f, 0.06f, 0.03f, 1f) : new Color(0.88f, 0.92f, 0.96f, 1f);
+        Color border = accent ? new Color(1.00f, 0.58f, 0.26f, 0.98f) : new Color(0.20f, 0.23f, 0.29f, 0.90f);
+        button.style.backgroundColor = background;
+        button.style.color = foreground;
+        button.style.fontSize = 38f;
+        button.style.unityFontDefinition = modernUiFontDefinition;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+        button.style.borderTopWidth = 1f;
+        button.style.borderRightWidth = 1f;
+        button.style.borderBottomWidth = 1f;
+        button.style.borderLeftWidth = 1f;
+        button.style.borderTopColor = border;
+        button.style.borderRightColor = border;
+        button.style.borderBottomColor = border;
+        button.style.borderLeftColor = border;
+        const float buttonRadius = 14f;
+        button.style.borderTopLeftRadius = buttonRadius;
+        button.style.borderTopRightRadius = buttonRadius;
+        button.style.borderBottomLeftRadius = buttonRadius;
+        button.style.borderBottomRightRadius = buttonRadius;
+        button.style.overflow = Overflow.Hidden;
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.backgroundColor = accent ? new Color(1.00f, 0.56f, 0.24f, 1f) : new Color(0.120f, 0.130f, 0.155f, 0.98f);
+            button.style.color = accent ? new Color(0.10f, 0.06f, 0.03f, 1f) : Color.white;
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.backgroundColor = background;
+            button.style.color = foreground;
+        });
+        return button;
+    }
+
+    private static string CompactGlobalSettingsControlText(string text, int maxChars)
+    {
+        if (string.IsNullOrEmpty(text) || maxChars <= 3 || text.Length <= maxChars)
+            return text ?? string.Empty;
+
+        return text.Substring(0, maxChars - 3).TrimEnd() + "...";
+    }
+
+    private void AdjustGlobalSettingsEnumSetting(RuntimeSettingSnapshot setting, int delta)
+    {
+        if (setting?.enumOptions == null || setting.enumOptions.Count == 0)
+            return;
+
+        int currentIndex = setting.enumOptions.FindIndex(option => string.Equals(option, setting.value, StringComparison.OrdinalIgnoreCase));
+        if (currentIndex < 0)
+            currentIndex = 0;
+
+        int nextIndex = (currentIndex + delta + setting.enumOptions.Count) % setting.enumOptions.Count;
+        owner?.SetGlobalRuntimeSettingFromUi(setting.id, setting.enumOptions[nextIndex]);
+    }
+
+    private void AdjustGlobalSettingsNumericSetting(RuntimeSettingSnapshot setting, int delta)
+    {
+        if (setting == null || delta == 0)
+            return;
+
+        if (!float.TryParse(setting.value, NumberStyles.Float, CultureInfo.InvariantCulture, out float currentValue))
+            currentValue = setting.min;
+
+        float step = Mathf.Abs(setting.step) > 0.0001f ? setting.step : 1f;
+        float nextValue = Mathf.Clamp(currentValue + (delta * step), setting.min, setting.max);
+        string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(setting.valueType, "midiNote", StringComparison.OrdinalIgnoreCase)
+            ? Mathf.RoundToInt(nextValue).ToString(CultureInfo.InvariantCulture)
+            : nextValue.ToString("0.###", CultureInfo.InvariantCulture);
+        owner?.SetGlobalRuntimeSettingFromUi(setting.id, serialized);
+    }
+
+    private static int GetGlobalSettingsVisibleSelectionIndex(GuitarGameplaySnapshot snapshot, GlobalSettingsTabDefinition activeTab)
+    {
+        if (snapshot == null)
+            return 0;
+
+        if (!string.IsNullOrEmpty(activeTab?.Key))
+            return Mathf.Clamp(snapshot.selectedGlobalSettingsItemIndex, 0, int.MaxValue);
+
+        switch (snapshot.selectedGlobalSettingsTopIndex)
+        {
+            case 0: return 0;
+            case 1: return 1;
+            case 2: return 2;
+            case 3: return 3;
+            case 13: return 4;
+            default: return 0;
+        }
+    }
 
     private static string BuildGlobalSettingsFullscreenSignature(GuitarGameplaySnapshot snapshot)
 
@@ -19175,6 +20523,8 @@ public sealed class TabsSongHeaderOverlay
 
             snapshot.activeGlobalSettingsCategory ?? string.Empty,
 
+            snapshot.activeGlobalSettingsSubtab ?? string.Empty,
+
             snapshot.songsFolderMenuValueLabel ?? string.Empty,
 
             snapshot.effectsFolderMenuValueLabel ?? string.Empty,
@@ -19199,9 +20549,10 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        Label hintLabel = CreateLabel("Please refer to Tone Lab for full and advanced audio settings management.", 30f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label hintLabel = CreateLabel("Please refer to Tone Lab for full and advanced audio settings management.", 28f, LibraryPrimaryColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
 
         hintLabel.style.unityFontDefinition = modernUiFontDefinition;
+        hintLabel.AddToClassList("global-settings-band-help");
 
         hintLabel.style.whiteSpace = WhiteSpace.Normal;
 
@@ -20387,31 +21738,62 @@ public sealed class TabsSongHeaderOverlay
 
         {
 
-            EnumCycleControl enumCycle = new EnumCycleControl(setting.enumOptions, setting.value, CreateLabel, CreateActionButton);
-
-            enumCycle.focusable = false;
-
-            enumCycle.style.marginTop = 4f;
-
-            enumCycle.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
-
-            enumCycle.OnValueChanged += value =>
+            if (IsListSelectorPopupSetting(setting))
 
             {
 
-                if (!suppressCallbacks)
+                Button selector = CreateActionButton(FormatGlobalSettingsValue(setting), () =>
 
                 {
 
+                    if (suppressCallbacks)
+                        return;
+
                     PreserveGlobalSettingsScrollOffset();
 
-                    owner?.SetGlobalRuntimeSettingFromUi(setting.id, value);
+                    owner?.ActivateGlobalRuntimeSettingFromUi(setting.id);
 
-                }
+                });
 
-            };
+                selector.style.marginTop = 4f;
 
-            input = enumCycle;
+                selector.style.unityTextAlign = TextAnchor.MiddleLeft;
+
+                input = selector;
+
+            }
+
+            else
+
+            {
+
+                EnumCycleControl enumCycle = new EnumCycleControl(setting.enumOptions, setting.value, CreateLabel, CreateActionButton);
+
+                enumCycle.focusable = false;
+
+                enumCycle.style.marginTop = 4f;
+
+                enumCycle.RegisterCallback<PointerDownEvent>(_ => PreserveGlobalSettingsScrollOffset());
+
+                enumCycle.OnValueChanged += value =>
+
+                {
+
+                    if (!suppressCallbacks)
+
+                    {
+
+                        PreserveGlobalSettingsScrollOffset();
+
+                        owner?.SetGlobalRuntimeSettingFromUi(setting.id, value);
+
+                    }
+
+                };
+
+                input = enumCycle;
+
+            }
 
         }
 
@@ -20496,7 +21878,8 @@ public sealed class TabsSongHeaderOverlay
 
                 float snapped = setting.step > 0.0001f ? Mathf.Round(evt.newValue / setting.step) * setting.step : evt.newValue;
 
-                string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase)
+                string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase) ||
+                                    string.Equals(setting.valueType, "midiNote", StringComparison.OrdinalIgnoreCase)
 
                     ? Mathf.RoundToInt(snapped).ToString(CultureInfo.InvariantCulture)
 
@@ -21626,6 +23009,11 @@ public sealed class TabsSongHeaderOverlay
 
         return ContainsDrumText(snapshot.selectedArcadeArrangementDisplayName) ||
                ContainsDrumText(snapshot.selectedArcadeArrangementId);
+    }
+
+    private static bool UsesEightLaneDrumControlsSnapshot(GuitarGameplaySnapshot snapshot)
+    {
+        return snapshot != null && snapshot.arcadeLaneCount >= 8;
     }
 
     private static bool ContainsDrumText(string value)
@@ -28824,6 +30212,33 @@ public sealed class TabsSongHeaderOverlay
         foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-setting-value").ToList())
 
             label.style.fontSize = buttonFontSize * 0.82f;
+
+        foreach (Button button in document.rootVisualElement.Query<Button>().Class("global-settings-tab-label").ToList())
+            button.style.fontSize = Mathf.Clamp(buttonFontSize * 1.05f, 30f, 42f);
+
+        foreach (Button button in document.rootVisualElement.Query<Button>().Class("global-settings-subtab-label").ToList())
+            button.style.fontSize = Mathf.Clamp(buttonFontSize * 0.78f, 24f, 32f);
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-settings-section-label").ToList())
+            label.style.fontSize = Mathf.Clamp(buttonFontSize * 1.02f, 32f, 42f);
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-settings-band-title").ToList())
+            label.style.fontSize = Mathf.Clamp(buttonFontSize * 1.30f, 42f, 58f);
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-settings-band-help").ToList())
+            label.style.fontSize = Mathf.Clamp(buttonFontSize * 0.98f, 30f, 40f);
+
+        foreach (Label label in document.rootVisualElement.Query<Label>().Class("global-settings-band-value").ToList())
+            label.style.fontSize = Mathf.Clamp(buttonFontSize * 1.08f, 34f, 46f);
+
+        foreach (Button button in document.rootVisualElement.Query<Button>().Class("global-settings-control-label").ToList())
+            button.style.fontSize = Mathf.Clamp(buttonFontSize * 1.04f, 34f, 46f);
+
+        if (globalSettingsTitleLabel != null)
+        {
+            globalSettingsTitleLabel.style.fontSize = Mathf.Clamp(menuLayoutHeight * 0.082f, 76f, 116f);
+            globalSettingsTitleLabel.style.marginBottom = Mathf.Clamp(menuLayoutHeight * 0.016f, 16f, 28f);
+        }
 
 
 

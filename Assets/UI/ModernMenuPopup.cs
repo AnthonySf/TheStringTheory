@@ -82,6 +82,7 @@ public sealed class ModernMenuPopup
 
         hintLabel.text = hint;
         hintLabel.enableRichText = true;
+        hintLabel.style.display = string.IsNullOrWhiteSpace(hint) ? DisplayStyle.None : DisplayStyle.Flex;
         hintLabel.style.fontSize = 34f;
         hintLabel.style.color = new Color(0.73f, 0.82f, 0.90f, 0.96f);
         hintLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
@@ -140,6 +141,7 @@ public sealed class ModernMenuPopup
         calloutLabel.text = callout ?? string.Empty;
         calloutLabel.style.display = string.IsNullOrWhiteSpace(callout) ? DisplayStyle.None : DisplayStyle.Flex;
         hintLabel.text = hint ?? string.Empty;
+        hintLabel.style.display = string.IsNullOrWhiteSpace(hint) ? DisplayStyle.None : DisplayStyle.Flex;
         primaryButton.text = primaryText ?? string.Empty;
     }
 

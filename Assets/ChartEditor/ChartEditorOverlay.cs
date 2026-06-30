@@ -26,6 +26,14 @@ public sealed class ChartEditorOverlay
         SongInfo
     }
 
+    private enum ChartEditorPopupKind
+    {
+        None,
+        Generic,
+        SaveOptions,
+        UnsavedClosePrompt
+    }
+
     private enum ChartEditorCursorKind
     {
         ResizeHorizontal,
@@ -418,7 +426,9 @@ public sealed class ChartEditorOverlay
     private VisualElement contextMenuElement;
     private VisualElement contextSubmenuElement;
     private VisualElement editPopupElement;
+    private ChartEditorPopupKind editPopupKind = ChartEditorPopupKind.None;
     private VisualElement saveSuccessPopupElement;
+    private bool closeAfterSuccessfulSave;
     private double lastTapTempoRealtime = -1.0;
     private double tapTempoAverageIntervalSeconds;
     private bool marqueeSelecting;
@@ -434,8 +444,10 @@ public sealed class ChartEditorOverlay
     private bool projectInfoExpanded;
     private bool seekDragging;
     private bool seekWasPlaying;
-    private GuitarHighway3DRenderer highwayPreviewRenderer;
-    private GuitarHighway3DRenderHost highwayPreviewHost;
+    private IGuitarGameplayRenderer highwayPreviewRenderer;
+    private GuitarHighway3DRenderHost highwayPreviewGuitarHost;
+    private ArcadeHighway3DRenderHost highwayPreviewArcadeHost;
+    private ChartEditorTrackRole? highwayPreviewRendererRole;
     private RenderTexture highwayPreviewTexture;
     private GameObject highwayPreviewCameraObject;
     private Camera highwayPreviewCamera;
@@ -564,9 +576,9 @@ public sealed class ChartEditorOverlay
         headerActions.style.flexGrow = 1f;
         headerActions.style.paddingLeft = 30f;
 
-        saveButton = CreateHeaderActionButton("▣ Save", ShowSaveOptionsPopup, true);
+        saveButton = CreateHeaderActionButton("▣ Save", () => ShowSaveOptionsPopup(), true);
         Button settingsButton = CreateHeaderIconButton("⚙", ShowSongInfoPopup, false);
-        Button closeButton = CreateHeaderIconButton("☰", () => owner?.CloseChartEditorToMainMenuFromUi(), false);
+        Button closeButton = CreateHeaderIconButton("☰", RequestCloseFromUi, false);
 
         headerActions.Add(saveButton);
         headerActions.Add(settingsButton);
@@ -596,7 +608,6 @@ public sealed class ChartEditorOverlay
 
         RootElement.Add(header);
         RootElement.Add(contentHost);
-        RootElement.Add(statusLabel);
         Rebuild();
     }
 
@@ -680,6 +691,14 @@ public sealed class ChartEditorOverlay
         if (!show)
             return;
 
+        if (owner != null && owner.ConsumeChartEditorCloseRequestFromUi())
+        {
+            RequestCloseFromUi();
+            AdvancePlayback(Mathf.Max(0f, deltaTime));
+            UpdateHighwayPreview();
+            return;
+        }
+
         if (HandleOverlayKeyboardInput())
         {
             AdvancePlayback(Mathf.Max(0f, deltaTime));
@@ -690,6 +709,97 @@ public sealed class ChartEditorOverlay
         HandleKeyboardShortcuts();
         AdvancePlayback(Mathf.Max(0f, deltaTime));
         UpdateHighwayPreview();
+    }
+
+    public void RequestCloseFromUi()
+    {
+        HideContextMenu();
+        HideSaveSuccessPopup();
+
+        if (project != null && project.dirty)
+        {
+            ShowUnsavedClosePrompt();
+            return;
+        }
+
+        owner?.CloseChartEditorToMainMenuFromUi();
+    }
+
+    private void ShowUnsavedClosePrompt()
+    {
+        HideEditPopup();
+
+        VisualElement overlay = new VisualElement();
+        overlay.style.position = Position.Absolute;
+        overlay.style.left = 0f;
+        overlay.style.right = 0f;
+        overlay.style.top = 0f;
+        overlay.style.bottom = 0f;
+        overlay.style.alignItems = Align.Center;
+        overlay.style.justifyContent = Justify.Center;
+        overlay.style.backgroundColor = new Color(0f, 0f, 0f, 0.48f);
+        overlay.pickingMode = PickingMode.Position;
+        overlay.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            HideEditPopup();
+            evt.StopPropagation();
+        });
+
+        VisualElement panel = new VisualElement();
+        panel.style.width = 720f;
+        panel.style.paddingLeft = 36f;
+        panel.style.paddingRight = 36f;
+        panel.style.paddingTop = 34f;
+        panel.style.paddingBottom = 32f;
+        StyleStrongPopupPanel(panel, new Color(0.030f, 0.036f, 0.048f, 1f), 18f);
+        panel.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+
+        Label title = CreateLabel("Unsaved Changes", 36f, Color.white, true, TextAnchor.MiddleLeft, false);
+        title.style.marginBottom = 12f;
+        panel.Add(title);
+
+        Label body = CreateLabel("You have unsaved changes. Save before exiting, or discard the changes and close the chart editor.", 22f, new Color(0.76f, 0.82f, 0.91f, 1f), false, TextAnchor.MiddleLeft, false);
+        body.style.whiteSpace = WhiteSpace.Normal;
+        body.style.marginBottom = 28f;
+        panel.Add(body);
+
+        VisualElement actions = new VisualElement();
+        actions.style.flexDirection = FlexDirection.Row;
+        actions.style.justifyContent = Justify.FlexEnd;
+        actions.style.alignItems = Align.Center;
+
+        Button cancel = CreatePopupDialogButton("Cancel", HideEditPopup, new Color(0.70f, 0.78f, 0.88f, 1f));
+        cancel.style.minWidth = 126f;
+        cancel.style.height = 54f;
+        cancel.style.marginRight = 12f;
+
+        Button discard = CreatePopupDialogButton("Discard Changes", DiscardChangesAndClose, new Color(1f, 0.44f, 0.38f, 1f));
+        discard.style.minWidth = 218f;
+        discard.style.height = 54f;
+        discard.style.marginRight = 12f;
+
+        Button save = CreatePopupDialogButton("Save", () => ShowSaveOptionsPopup(closeAfterSave: true), new Color(0.62f, 0.38f, 1f, 1f), filled: true);
+        save.style.minWidth = 132f;
+        save.style.height = 54f;
+
+        actions.Add(cancel);
+        actions.Add(discard);
+        actions.Add(save);
+        panel.Add(actions);
+
+        overlay.Add(panel);
+        editPopupElement = overlay;
+        editPopupKind = ChartEditorPopupKind.UnsavedClosePrompt;
+        RootElement.Add(editPopupElement);
+        editPopupElement.BringToFront();
+        SetChartEditorKeyboardCaptureActive(true);
+    }
+
+    private void DiscardChangesAndClose()
+    {
+        closeAfterSuccessfulSave = false;
+        HideEditPopup();
+        owner?.CloseChartEditorToMainMenuFromUi();
     }
 
     private void ResetEditorSession()
@@ -809,7 +919,6 @@ public sealed class ChartEditorOverlay
         panel.Add(CreateStartupAction("Create from Guitar Pro / MusicXML + Audio", ImportChartAndAudio));
         panel.Add(CreateStartupAction("Import Rocksmith PSARC", ImportPsarc));
         panel.Add(CreateStartupAction("Open Unpacked Chart Folder", ImportFolder));
-        panel.Add(CreateStartupAction("Open Existing Chart Editor Project", OpenExistingProject));
 
         shell.Add(panel);
         contentHost.Add(shell);
@@ -1190,35 +1299,73 @@ public sealed class ChartEditorOverlay
 
         EnsureHighwayPreviewTexture();
         EnsureHighwayPreviewCamera();
+        bool drumPreview = frame.role == ChartEditorTrackRole.Drums;
 
-        if (highwayPreviewHost == null)
+        if (highwayPreviewRenderer != null && highwayPreviewRendererRole.HasValue && highwayPreviewRendererRole.Value != frame.role)
         {
-            highwayPreviewHost = new GuitarHighway3DRenderHost
-            {
-                Camera = highwayPreviewCamera,
-                TargetTexture = highwayPreviewTexture,
-                ManualRender = true,
-                EnableBackground = false,
-                EnableHighwayCharacter = false,
-                EnableSongHeaderOverlay = false,
-                SuppressPendingNoteOutlines = true,
-                RenderLayer = 29,
-                RootName = "ChartEditorHighwayPreviewRendererRoot",
-                RenderableStringCountOverride = frame.laneCount
-            };
+            highwayPreviewRenderer.DisposeRenderer();
+            highwayPreviewRenderer = null;
+            highwayPreviewSignature = null;
         }
 
-        highwayPreviewHost.Camera = highwayPreviewCamera;
-        highwayPreviewHost.TargetTexture = highwayPreviewTexture;
-        highwayPreviewHost.RenderableStringCountOverride = frame.laneCount;
+        if (drumPreview)
+        {
+            if (highwayPreviewArcadeHost == null)
+            {
+                highwayPreviewArcadeHost = new ArcadeHighway3DRenderHost
+                {
+                    Camera = highwayPreviewCamera,
+                    TargetTexture = highwayPreviewTexture,
+                    ManualRender = true,
+                    EnableBackground = false,
+                    EnableHighwayCharacter = false,
+                    EnableSongHeaderOverlay = false,
+                    EnableDrumKit = false,
+                    RenderLayer = 29,
+                    RootName = "ChartEditorDrumHighwayPreviewRendererRoot",
+                    LaneCountOverride = frame.laneCount
+                };
+            }
+
+            highwayPreviewArcadeHost.Camera = highwayPreviewCamera;
+            highwayPreviewArcadeHost.TargetTexture = highwayPreviewTexture;
+            highwayPreviewArcadeHost.LaneCountOverride = frame.laneCount;
+        }
+        else
+        {
+            if (highwayPreviewGuitarHost == null)
+            {
+                highwayPreviewGuitarHost = new GuitarHighway3DRenderHost
+                {
+                    Camera = highwayPreviewCamera,
+                    TargetTexture = highwayPreviewTexture,
+                    ManualRender = true,
+                    EnableBackground = false,
+                    EnableHighwayCharacter = false,
+                    EnableSongHeaderOverlay = false,
+                    SuppressPendingNoteOutlines = true,
+                    RenderLayer = 29,
+                    RootName = "ChartEditorHighwayPreviewRendererRoot",
+                    RenderableStringCountOverride = frame.laneCount
+                };
+            }
+
+            highwayPreviewGuitarHost.Camera = highwayPreviewCamera;
+            highwayPreviewGuitarHost.TargetTexture = highwayPreviewTexture;
+            highwayPreviewGuitarHost.RenderableStringCountOverride = frame.laneCount;
+            highwayPreviewGuitarHost.FretLightColumnCountOverride = null;
+        }
 
         signature ??= BuildHighwayPreviewSignature(frame, project);
         previewSections ??= BuildHighwayPreviewTabSections(project, frame.notes);
 
         if (highwayPreviewRenderer == null)
         {
-            highwayPreviewRenderer = new GuitarHighway3DRenderer(highwayPreviewHost);
+            highwayPreviewRenderer = drumPreview
+                ? new ArcadeHighway3DRenderer(highwayPreviewArcadeHost)
+                : new GuitarHighway3DRenderer(highwayPreviewGuitarHost);
             highwayPreviewRenderer.Initialize(owner, frame.notes, previewSections);
+            highwayPreviewRendererRole = frame.role;
             highwayPreviewSignature = signature;
         }
         else if (!string.Equals(highwayPreviewSignature, signature, StringComparison.Ordinal))
@@ -1260,6 +1407,7 @@ public sealed class ChartEditorOverlay
         {
             highwayPreviewRenderer?.DisposeRenderer();
             highwayPreviewRenderer = null;
+            highwayPreviewRendererRole = null;
             highwayPreviewSignature = null;
             ClearHighwayPreviewTexture();
         }
@@ -1292,7 +1440,8 @@ public sealed class ChartEditorOverlay
             {
                 string tuning = FirstNonEmpty(track?.tuning?.displayName, track?.role.ToString(), "Unknown tuning");
                 int laneCount = ChartEditorHighwayPreviewSnapshotBuilder.ResolveLaneCount(track);
-                highwayPreviewMetaLabel.text = $"{tuning}  -  {laneCount} strings  -  {track?.notes?.Count ?? 0} notes  -  {FormatTime(project.cursorTimeSeconds)}";
+                string laneLabel = track?.role == ChartEditorTrackRole.Drums ? "lanes" : "strings";
+                highwayPreviewMetaLabel.text = $"{tuning}  -  {laneCount} {laneLabel}  -  {track?.notes?.Count ?? 0} notes  -  {FormatTime(project.cursorTimeSeconds)}";
             }
             else
             {
@@ -1321,20 +1470,29 @@ public sealed class ChartEditorOverlay
     private GuitarGameplaySnapshot BuildHighwayPreviewSnapshot(ChartEditorHighwayPreviewFrame frame)
     {
         float songTime = Mathf.Max(0f, frame.songTime);
+        bool drumPreview = frame.role == ChartEditorTrackRole.Drums;
         List<GameplayNoteState> noteStates = frame.notes != null
-            ? frame.notes.Select(note => BuildHighwayPreviewNoteState(note, songTime)).ToList()
+            ? (drumPreview ? new List<GameplayNoteState>() : frame.notes.Select(note => BuildHighwayPreviewNoteState(note, songTime)).ToList())
             : new List<GameplayNoteState>();
+        List<ArcadeNoteState> arcadeNoteStates = drumPreview && frame.notes != null
+            ? frame.notes.Select(note => BuildHighwayPreviewArcadeNoteState(note, frame.laneCount, songTime)).ToList()
+            : new List<ArcadeNoteState>();
 
         return new GuitarGameplaySnapshot
         {
-            gameplayMode = GuitarGameplayMode.Guitar,
-            songLibraryType = SongLibraryType.Guitar,
+            gameplayMode = drumPreview ? GuitarGameplayMode.Arcade : GuitarGameplayMode.Guitar,
+            songLibraryType = drumPreview ? SongLibraryType.Arcade : SongLibraryType.Guitar,
             songTime = songTime,
             songDurationSeconds = Mathf.Max(0.1f, frame.songDurationSeconds),
             isPaused = !editorPlaying,
             playbackSpeedPercent = 100f,
             tabSpeedOffsetPercent = 100f,
             noteStates = noteStates,
+            arcadeLaneCount = drumPreview ? frame.laneCount : 0,
+            arcadeNoteStates = arcadeNoteStates,
+            selectedArcadeArrangementId = drumPreview ? "drums" : string.Empty,
+            selectedArcadeArrangementDisplayName = drumPreview ? "Drums" : string.Empty,
+            selectedArcadeInstrument = drumPreview ? ArcadeInstrument.Drums : ArcadeInstrument.Guitar,
             arpeggioGuides = frame.arpeggioGuides ?? new List<ArpeggioGuideData>(),
             sections = cachedHighwayPreviewTabSections ?? new List<TabSectionData>(),
             songTimelineSections = cachedHighwayPreviewTimelineSections ?? new List<SongTimelineSectionData>(),
@@ -1348,6 +1506,29 @@ public sealed class ChartEditorOverlay
             showTuner = false,
             songEnded = false
         };
+    }
+
+    private static ArcadeNoteState BuildHighwayPreviewArcadeNoteState(NoteData note, int laneCount, float songTime)
+    {
+        int lane = Mathf.Clamp(note.stringIdx, 0, Math.Max(0, laneCount - 1));
+        ArcadeNoteState state = new ArcadeNoteState(new ArcadeNoteData(
+            note.id,
+            Mathf.Max(0f, note.time),
+            Mathf.Max(0f, note.duration),
+            0f,
+            lane,
+            openNote: false,
+            tapNote: false,
+            assignedChordId: note.chordId));
+
+        float noteEnd = note.time + Mathf.Max(0f, note.duration);
+        if (songTime > noteEnd + 0.03f)
+        {
+            state.result = GameplayNoteResult.Hit;
+            state.resolvedAt = note.time;
+        }
+
+        return state;
     }
 
     private static GameplayNoteState BuildHighwayPreviewNoteState(NoteData note, float songTime)
@@ -1432,6 +1613,7 @@ public sealed class ChartEditorOverlay
         {
             int hash = 17;
             hash = (hash * 31) + StablePreviewHash(frame.trackId);
+            hash = (hash * 31) + (int)frame.role;
             hash = (hash * 31) + frame.laneCount;
             hash = (hash * 31) + StablePreviewHash(frame.tuningName);
             if (frame.notes != null)
@@ -1514,7 +1696,9 @@ public sealed class ChartEditorOverlay
     {
         highwayPreviewRenderer?.DisposeRenderer();
         highwayPreviewRenderer = null;
-        highwayPreviewHost = null;
+        highwayPreviewGuitarHost = null;
+        highwayPreviewArcadeHost = null;
+        highwayPreviewRendererRole = null;
         highwayPreviewSignature = null;
         cachedHighwayPreviewFrame = null;
         cachedHighwayPreviewTabSections = new List<TabSectionData>();
@@ -1926,7 +2110,7 @@ public sealed class ChartEditorOverlay
         section.style.paddingTop = 12f;
         section.style.paddingBottom = 12f;
         section.Add(CreateSidebarButton("Beat Map Settings", ShowBeatMapSettingsPopup));
-        section.Add(CreateSidebarButton("SynchTheory", ShowSynchTheoryPopup));
+        section.Add(CreateSidebarButton("SynchTheory", ShowSynchTheoryPopup, synchTheoryAccent: true));
         return section;
     }
 
@@ -2286,7 +2470,7 @@ public sealed class ChartEditorOverlay
         return row;
     }
 
-    private Button CreateSidebarButton(string text, Action action)
+    private Button CreateSidebarButton(string text, Action action, bool synchTheoryAccent = false)
     {
         Button button = new Button(action) { text = string.Empty };
         button.focusable = false;
@@ -2302,12 +2486,22 @@ public sealed class ChartEditorOverlay
         button.style.paddingLeft = 22f;
         button.style.paddingRight = 18f;
         button.style.unityFontDefinition = bodyFont;
-        StyleSidebarActionButton(button);
+        if (synchTheoryAccent)
+            StyleSynchTheorySidebarButton(button);
+        else
+            StyleSidebarActionButton(button);
 
-        Label label = CreateLabel(text, 23f, new Color(0.91f, 0.94f, 0.98f, 1f), true, TextAnchor.MiddleLeft, false);
+        Color titleColor = synchTheoryAccent
+            ? new Color(1f, 0.90f, 0.70f, 1f)
+            : new Color(0.91f, 0.94f, 0.98f, 1f);
+        Color actionColor = synchTheoryAccent
+            ? new Color(1f, 0.66f, 0.24f, 0.98f)
+            : new Color(0.74f, 0.80f, 0.90f, 0.95f);
+
+        Label label = CreateLabel(text, 23f, titleColor, true, TextAnchor.MiddleLeft, false);
         label.style.flexGrow = 1f;
         label.style.whiteSpace = WhiteSpace.NoWrap;
-        Label actionLabel = CreateLabel("Open", 19f, new Color(0.74f, 0.80f, 0.90f, 0.95f), true, TextAnchor.MiddleRight, false);
+        Label actionLabel = CreateLabel("Open", 19f, actionColor, true, TextAnchor.MiddleRight, false);
         actionLabel.style.width = 72f;
         actionLabel.style.flexShrink = 0f;
         button.Add(label);
@@ -2339,6 +2533,34 @@ public sealed class ChartEditorOverlay
             ? new Color(0.33f, 0.39f, 0.50f, 0.92f)
             : new Color(0.18f, 0.22f, 0.29f, 0.88f));
         button.style.opacity = hover ? 1f : 0.96f;
+        button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
+    }
+
+    private static void StyleSynchTheorySidebarButton(Button button)
+    {
+        if (button == null)
+            return;
+
+        SetRadius(button, 10f);
+        SetBorderWidth(button, 2f);
+        ApplySynchTheorySidebarButtonState(button, false);
+        button.RegisterCallback<MouseEnterEvent>(_ => ApplySynchTheorySidebarButtonState(button, true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => ApplySynchTheorySidebarButtonState(button, false));
+    }
+
+    private static void ApplySynchTheorySidebarButtonState(Button button, bool hover)
+    {
+        if (button == null)
+            return;
+
+        button.style.backgroundColor = hover
+            ? new Color(0.18f, 0.11f, 0.040f, 0.72f)
+            : new Color(0.10f, 0.070f, 0.040f, 0.52f);
+        SetBorderWidth(button, 2f);
+        SetBorderColor(button, hover
+            ? new Color(1f, 0.66f, 0.24f, 0.98f)
+            : new Color(0.96f, 0.54f, 0.18f, 0.86f));
+        button.style.opacity = hover ? 1f : 0.98f;
         button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
     }
 
@@ -3002,21 +3224,24 @@ public sealed class ChartEditorOverlay
 
         List<ContextMenuItem> items = new List<ContextMenuItem>
         {
-            new ContextMenuItem("Edit Note", () => ShowNoteEditPopup(track, note)),
-            new ContextMenuItem("Technique Settings...", () => ShowTechniqueSettingsPopup(track, note)),
-            new ContextMenuItem("Move to Cursor", MoveSelectedNotesToCursor),
-            new ContextMenuItem("Selection",
-                new ContextMenuItem("Select After on This String", () => SelectNotesAfter(track, note, sameStringOnly: true)),
-                new ContextMenuItem("Select After on All Strings", () => SelectNotesAfter(track, note, sameStringOnly: false))),
-            new ContextMenuItem("Techniques", BuildTechniqueContextItems(new[] { new ChartEditorNoteReference { track = track, note = note } })),
-            new ContextMenuItem("Copy Note", CopySelectedNotes),
-            new ContextMenuItem("Quantize to Beat Grid", QuantizeSelectedNotesToBeatGrid),
-            new ContextMenuItem("Duplicate Note", () => DuplicateNote(note)),
-            new ContextMenuItem("Delete Note", () => DeleteNote(note)),
-            new ContextMenuItem("Add Note Here", () => AddNoteAtTime(note.timeSeconds))
+            new ContextMenuItem("Edit Note", () => ShowNoteEditPopup(track, note))
         };
+        if (!IsDrumTrack(track))
+            items.Add(new ContextMenuItem("Technique Settings...", () => ShowTechniqueSettingsPopup(track, note)));
+        items.Add(new ContextMenuItem("Move to Cursor", MoveSelectedNotesToCursor));
+        items.Add(new ContextMenuItem("Selection",
+            new ContextMenuItem("Select After on This String", () => SelectNotesAfter(track, note, sameStringOnly: true)),
+            new ContextMenuItem("Select After on All Strings", () => SelectNotesAfter(track, note, sameStringOnly: false))));
+        ContextMenuItem[] techniqueItems = BuildTechniqueContextItems(new[] { new ChartEditorNoteReference { track = track, note = note } });
+        if (techniqueItems.Length > 0)
+            items.Add(new ContextMenuItem("Techniques", techniqueItems));
+        items.Add(new ContextMenuItem("Copy Note", CopySelectedNotes));
+        items.Add(new ContextMenuItem("Quantize to Beat Grid", QuantizeSelectedNotesToBeatGrid));
+        items.Add(new ContextMenuItem("Duplicate Note", () => DuplicateNote(note)));
+        items.Add(new ContextMenuItem("Delete Note", () => DeleteNote(note)));
+        items.Add(new ContextMenuItem("Add Note Here", () => AddNoteAtTime(note.timeSeconds)));
         if (HasCopiedNotes())
-            items.Insert(4, new ContextMenuItem("Paste Notes Here", () => PasteCopiedNotesAt(note.timeSeconds)));
+            items.Insert(Math.Min(4, items.Count), new ContextMenuItem("Paste Notes Here", () => PasteCopiedNotesAt(note.timeSeconds)));
         ShowContextMenu(worldPosition, items.ToArray());
     }
 
@@ -3032,13 +3257,15 @@ public sealed class ChartEditorOverlay
             new ContextMenuItem("Move Selected to Cursor", MoveSelectedNotesToCursor),
             new ContextMenuItem("Selection",
                 new ContextMenuItem("Select After on This String", () => SelectNotesAfter(clickedTrack, clickedNote, sameStringOnly: true)),
-                new ContextMenuItem("Select After on All Strings", () => SelectNotesAfter(clickedTrack, clickedNote, sameStringOnly: false))),
-            new ContextMenuItem("Techniques", BuildTechniqueContextItems(selectedNotes)),
-            new ContextMenuItem($"Copy {count} Notes", CopySelectedNotes),
-            new ContextMenuItem("Quantize Selected to Beat Grid", QuantizeSelectedNotesToBeatGrid),
-            new ContextMenuItem($"Duplicate {count} Notes", DuplicateSelectedNotes),
-            new ContextMenuItem($"Delete {count} Notes", DeleteSelectedNotes)
+                new ContextMenuItem("Select After on All Strings", () => SelectNotesAfter(clickedTrack, clickedNote, sameStringOnly: false)))
         };
+        ContextMenuItem[] techniqueItems = BuildTechniqueContextItems(selectedNotes);
+        if (techniqueItems.Length > 0)
+            items.Add(new ContextMenuItem("Techniques", techniqueItems));
+        items.Add(new ContextMenuItem($"Copy {count} Notes", CopySelectedNotes));
+        items.Add(new ContextMenuItem("Quantize Selected to Beat Grid", QuantizeSelectedNotesToBeatGrid));
+        items.Add(new ContextMenuItem($"Duplicate {count} Notes", DuplicateSelectedNotes));
+        items.Add(new ContextMenuItem($"Delete {count} Notes", DeleteSelectedNotes));
         if (HasCopiedNotes())
             items.Insert(4, new ContextMenuItem("Paste Notes Here", () => PasteCopiedNotesAt(pasteTimeSeconds)));
         ShowContextMenu(worldPosition, items.ToArray());
@@ -3131,6 +3358,17 @@ public sealed class ChartEditorOverlay
     {
         if (note == null || segment == null)
             return;
+        if (IsDrumTrack(track))
+        {
+            if (ChartEditorDrumNoteSanitizer.Sanitize(note))
+            {
+                project.dirty = true;
+                MarkHighwayPreviewDirty();
+                Rebuild();
+            }
+            SetStatus("Drum notes do not use guitar techniques.");
+            return;
+        }
 
         SelectSingleNote(track, note);
         ShowContextMenu(worldPosition,
@@ -3650,7 +3888,11 @@ public sealed class ChartEditorOverlay
             track.role = role;
             track.colorHex = DefaultColorHexForRole(role);
             if (roleChanged)
+            {
                 ApplyGeneratedPartRoleDefaults(track, role);
+                if (role == ChartEditorTrackRole.Drums)
+                    SanitizeDrumTrackTechniqueData(track);
+            }
             project.dirty = true;
             MarkHighwayPreviewDirty();
             HideEditPopup();
@@ -3802,6 +4044,17 @@ public sealed class ChartEditorOverlay
     {
         if (note == null)
             return;
+        if (IsDrumTrack(track))
+        {
+            if (ChartEditorDrumNoteSanitizer.Sanitize(note))
+            {
+                project.dirty = true;
+                MarkHighwayPreviewDirty();
+                Rebuild();
+            }
+            SetStatus("Drum notes do not use guitar techniques.");
+            return;
+        }
 
         HideContextMenu();
         HideEditPopup();
@@ -3829,6 +4082,7 @@ public sealed class ChartEditorOverlay
         bool tap = note.tap;
         bool tremolo = note.tremolo;
         bool pinchHarmonic = note.pinchHarmonic;
+        int linkedFromNoteId = note.linkedFromNoteId;
 
         VisualElement overlay = new VisualElement();
         overlay.style.position = Position.Absolute;
@@ -3838,7 +4092,7 @@ public sealed class ChartEditorOverlay
         overlay.style.bottom = 0f;
         overlay.style.alignItems = Align.Center;
         overlay.style.justifyContent = Justify.Center;
-        overlay.style.backgroundColor = new Color(0f, 0f, 0f, 0.42f);
+        overlay.style.backgroundColor = new Color(0f, 0f, 0f, 0.66f);
         overlay.pickingMode = PickingMode.Position;
         overlay.RegisterCallback<PointerDownEvent>(evt =>
         {
@@ -3847,186 +4101,299 @@ public sealed class ChartEditorOverlay
         });
 
         VisualElement panel = new VisualElement();
-        panel.style.width = 1420f;
-        panel.style.maxWidth = Length.Percent(92f);
-        panel.style.maxHeight = Length.Percent(90f);
-        panel.style.paddingLeft = 42f;
-        panel.style.paddingRight = 42f;
-        panel.style.paddingTop = 38f;
-        panel.style.paddingBottom = 34f;
-        StylePopupPanel(panel, new Color(0.030f, 0.036f, 0.048f, 0.995f), 16f);
+        panel.style.width = 1650f;
+        panel.style.height = Length.Percent(98f);
+        panel.style.minHeight = Length.Percent(92f);
+        panel.style.maxWidth = Length.Percent(96f);
+        panel.style.maxHeight = Length.Percent(98f);
+        panel.style.paddingLeft = 52f;
+        panel.style.paddingRight = 52f;
+        panel.style.paddingTop = 46f;
+        panel.style.paddingBottom = 40f;
+        StylePopupPanel(panel, TechniqueSettingsPanelBackgroundColor, 14f);
+        SetTechniqueSettingsBorder(panel, TechniqueSettingsModalBorderColor, 2f, 14f);
         panel.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
 
         VisualElement header = new VisualElement();
         header.style.flexDirection = FlexDirection.Row;
         header.style.justifyContent = Justify.SpaceBetween;
         header.style.alignItems = Align.Center;
-        header.style.marginBottom = 30f;
+        header.style.marginBottom = 24f;
         VisualElement headerText = new VisualElement();
-        Label title = CreateLabel("Technique Settings", 40f, Color.white, true, TextAnchor.MiddleLeft, false);
-        Label subtitle = CreateLabel($"Note {note.fret}  -  {FormatTime(note.timeSeconds)}  -  {GetNoteEffectiveDurationSeconds(note):0.000}s", 24f, new Color(0.68f, 0.75f, 0.84f, 1f), false, TextAnchor.MiddleLeft, false);
-        subtitle.style.marginTop = 6f;
+        Label title = CreateTechniqueSettingsLabel("Technique Settings", 42f, Color.white, true, TextAnchor.MiddleLeft);
+        Label subtitle = CreateTechniqueSettingsLabel($"Note {note.fret}  -  {FormatTime(note.timeSeconds)}  -  {GetNoteEffectiveDurationSeconds(note):0.000}s", 26f, new Color(0.68f, 0.71f, 0.77f, 1f), false, TextAnchor.MiddleLeft);
+        subtitle.style.marginTop = 8f;
         headerText.Add(title);
         headerText.Add(subtitle);
         header.Add(headerText);
-        Button close = CreateCompactButton("Close", HideEditPopup);
-        StyleSoftButton(close, new Color(0.80f, 0.86f, 0.94f, 1f));
-        close.style.height = 62f;
-        close.style.minWidth = 132f;
-        close.style.fontSize = UiFont(22f);
-        SetRadius(close, 12f);
+        Button close = CreateTechniqueSettingsButton("X", HideEditPopup);
+        StyleTechniqueSettingsIconButton(close, new Color(0.84f, 0.86f, 0.90f, 1f));
+        close.style.width = 58f;
+        close.style.minWidth = 58f;
+        close.style.height = 58f;
+        close.style.fontSize = UiFont(28f);
         header.Add(close);
         panel.Add(header);
+        panel.Add(CreateTechniqueSettingsDivider(30f));
 
-        panel.Add(CreateTechniqueSettingsSectionLabel("Note Flags"));
-        VisualElement flagRow = new VisualElement();
-        flagRow.style.flexDirection = FlexDirection.Row;
-        flagRow.style.flexWrap = Wrap.Wrap;
-        flagRow.style.marginBottom = 22f;
-        Button hammerButton = null;
-        Button pullButton = null;
-        Button palmMuteButton = null;
-        Button fretHandMuteButton = null;
-        Button legatoButton = null;
-        Button pluckButton = null;
-        Button harmonicButton = null;
-        Button accentButton = null;
-        Button tapButton = null;
-        Button tremoloButton = null;
-        Button pinchHarmonicButton = null;
-
-        void UpdateFlagButtons()
-        {
-            StyleTechniqueSettingsToggleButton(hammerButton, hammerOn);
-            StyleTechniqueSettingsToggleButton(pullButton, pullOff);
-            StyleTechniqueSettingsToggleButton(palmMuteButton, palmMute);
-            StyleTechniqueSettingsToggleButton(fretHandMuteButton, fretHandMute);
-            StyleTechniqueSettingsToggleButton(legatoButton, legato);
-            StyleTechniqueSettingsToggleButton(pluckButton, requiresPluck);
-            StyleTechniqueSettingsToggleButton(harmonicButton, harmonic);
-            StyleTechniqueSettingsToggleButton(accentButton, accentFlag);
-            StyleTechniqueSettingsToggleButton(tapButton, tap);
-            StyleTechniqueSettingsToggleButton(tremoloButton, tremolo);
-            StyleTechniqueSettingsToggleButton(pinchHarmonicButton, pinchHarmonic);
-        }
-
-        hammerButton = CreateTechniqueSettingsToggleButton("Hammer-On", () =>
-        {
-            hammerOn = !hammerOn;
-            if (hammerOn)
-                pullOff = false;
-            UpdateFlagButtons();
-        });
-        pullButton = CreateTechniqueSettingsToggleButton("Pull-Off", () =>
-        {
-            pullOff = !pullOff;
-            if (pullOff)
-                hammerOn = false;
-            UpdateFlagButtons();
-        });
-        palmMuteButton = CreateTechniqueSettingsToggleButton("Palm Mute", () =>
-        {
-            palmMute = !palmMute;
-            if (palmMute)
-                fretHandMute = false;
-            UpdateFlagButtons();
-        });
-        fretHandMuteButton = CreateTechniqueSettingsToggleButton("Fret-Hand Mute", () =>
-        {
-            fretHandMute = !fretHandMute;
-            if (fretHandMute)
-                palmMute = false;
-            UpdateFlagButtons();
-        });
-        legatoButton = CreateTechniqueSettingsToggleButton("Legato", () =>
-        {
-            legato = !legato;
-            UpdateFlagButtons();
-        });
-        pluckButton = CreateTechniqueSettingsToggleButton("Requires Pluck", () =>
-        {
-            requiresPluck = !requiresPluck;
-            UpdateFlagButtons();
-        });
-        harmonicButton = CreateTechniqueSettingsToggleButton("Natural Harmonic", () =>
-        {
-            harmonic = !harmonic;
-            if (harmonic)
-                pinchHarmonic = false;
-            UpdateFlagButtons();
-        });
-        pinchHarmonicButton = CreateTechniqueSettingsToggleButton("Pinch Harmonic", () =>
-        {
-            pinchHarmonic = !pinchHarmonic;
-            if (pinchHarmonic)
-                harmonic = false;
-            UpdateFlagButtons();
-        });
-        accentButton = CreateTechniqueSettingsToggleButton("Accent", () =>
-        {
-            accentFlag = !accentFlag;
-            UpdateFlagButtons();
-        });
-        tapButton = CreateTechniqueSettingsToggleButton("Tap", () =>
-        {
-            tap = !tap;
-            UpdateFlagButtons();
-        });
-        tremoloButton = CreateTechniqueSettingsToggleButton("Tremolo", () =>
-        {
-            tremolo = !tremolo;
-            UpdateFlagButtons();
-        });
-
-        flagRow.Add(hammerButton);
-        flagRow.Add(pullButton);
-        flagRow.Add(palmMuteButton);
-        flagRow.Add(fretHandMuteButton);
-        flagRow.Add(legatoButton);
-        flagRow.Add(pluckButton);
-        flagRow.Add(harmonicButton);
-        flagRow.Add(pinchHarmonicButton);
-        flagRow.Add(accentButton);
-        flagRow.Add(tapButton);
-        flagRow.Add(tremoloButton);
-        panel.Add(flagRow);
-        UpdateFlagButtons();
-
-        panel.Add(CreateTechniqueSettingsSectionLabel("Add Segment"));
         VisualElement addRow = new VisualElement();
         addRow.style.flexDirection = FlexDirection.Row;
-        addRow.style.flexWrap = Wrap.Wrap;
+        addRow.style.alignItems = Align.Center;
         addRow.style.marginBottom = 24f;
-        addRow.Add(CreateTechniqueSettingsAddButton("Add Sustain", () => AddTechniqueSettingsSegment(rowStates, note, NoteTechniqueSegmentType.Sustain)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Add Vibrato", () => AddTechniqueSettingsSegment(rowStates, note, NoteTechniqueSegmentType.Vibrato)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Half Bend", () => AddTechniqueSettingsBendSegment(rowStates, note, 0f, HalfStepBendSemitones)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Full Bend", () => AddTechniqueSettingsBendSegment(rowStates, note, 0f, FullStepBendSemitones)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Half Pre-Bend", () => AddTechniqueSettingsBendSegment(rowStates, note, HalfStepBendSemitones, HalfStepBendSemitones)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Full Pre-Bend", () => AddTechniqueSettingsBendSegment(rowStates, note, FullStepBendSemitones, FullStepBendSemitones)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Half Release", () => AddTechniqueSettingsBendSegment(rowStates, note, HalfStepBendSemitones, 0f)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Full Release", () => AddTechniqueSettingsBendSegment(rowStates, note, FullStepBendSemitones, 0f)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Add Slide", () => AddTechniqueSettingsSegment(rowStates, note, NoteTechniqueSegmentType.Slide)));
+        Button addFlagButton = CreateTechniqueSettingsAddButton("Add Flag", null);
+        Button addSegmentButton = CreateTechniqueSettingsAddButton("Add Segment", null);
+        addRow.Add(addFlagButton);
+        addRow.Add(addSegmentButton);
         panel.Add(addRow);
+
+        panel.Add(CreateTechniqueSettingsSectionLabel("Flags"));
+        VisualElement selectedFlags = new VisualElement();
+        selectedFlags.style.flexDirection = FlexDirection.Row;
+        selectedFlags.style.flexWrap = Wrap.Wrap;
+        selectedFlags.style.marginBottom = 18f;
+        panel.Add(selectedFlags);
+
+        VisualElement flagDetails = new VisualElement();
+        flagDetails.style.marginBottom = 28f;
+        panel.Add(flagDetails);
+
+        TextField linkedFromField = null;
+
+        int ResolveNoteExportId(ChartEditorNote source)
+        {
+            if (source == null)
+                return -1;
+            if (source.sourceNoteId >= 0)
+                return source.sourceNoteId;
+
+            List<ChartEditorNote> ordered = track?.notes?
+                .Where(candidate => candidate != null)
+                .OrderBy(candidate => candidate.timeSeconds)
+                .ThenBy(candidate => candidate.stringOrLane)
+                .ToList();
+            int resolvedIndex = ordered?.IndexOf(source) ?? -1;
+            return resolvedIndex >= 0 ? resolvedIndex : -1;
+        }
+
+        int FindPreviousLinkedNoteId()
+        {
+            if (track?.notes == null)
+                return -1;
+
+            ChartEditorNote previous = track.notes
+                .Where(candidate =>
+                    candidate != null &&
+                    !ReferenceEquals(candidate, note) &&
+                    candidate.timeSeconds < note.timeSeconds - 0.0001 &&
+                    candidate.stringOrLane == note.stringOrLane)
+                .OrderByDescending(candidate => candidate.timeSeconds)
+                .ThenByDescending(candidate => candidate.fret)
+                .FirstOrDefault();
+            previous ??= track.notes
+                .Where(candidate =>
+                    candidate != null &&
+                    !ReferenceEquals(candidate, note) &&
+                    candidate.timeSeconds < note.timeSeconds - 0.0001)
+                .OrderByDescending(candidate => candidate.timeSeconds)
+                .ThenByDescending(candidate => candidate.stringOrLane)
+                .FirstOrDefault();
+            return ResolveNoteExportId(previous);
+        }
+
+        void EnsureLinkedFromPrevious()
+        {
+            if (linkedFromNoteId >= 0)
+                return;
+
+            linkedFromNoteId = FindPreviousLinkedNoteId();
+            if (linkedFromField != null)
+                linkedFromField.value = linkedFromNoteId >= 0 ? linkedFromNoteId.ToString(CultureInfo.InvariantCulture) : string.Empty;
+        }
+
+        void SetHammerOn(bool value)
+        {
+            hammerOn = value;
+            if (hammerOn)
+            {
+                pullOff = false;
+                legato = true;
+                requiresPluck = false;
+                EnsureLinkedFromPrevious();
+            }
+            else if (!pullOff)
+            {
+                legato = false;
+                requiresPluck = true;
+                linkedFromNoteId = -1;
+            }
+        }
+
+        void SetPullOff(bool value)
+        {
+            pullOff = value;
+            if (pullOff)
+            {
+                hammerOn = false;
+                legato = true;
+                requiresPluck = false;
+                EnsureLinkedFromPrevious();
+            }
+            else if (!hammerOn)
+            {
+                legato = false;
+                requiresPluck = true;
+                linkedFromNoteId = -1;
+            }
+        }
+
+        void SetPalmMuteFlag(bool value)
+        {
+            palmMute = value;
+            if (palmMute)
+                fretHandMute = false;
+        }
+
+        void SetFretHandMuteFlag(bool value)
+        {
+            fretHandMute = value;
+            if (fretHandMute)
+                palmMute = false;
+        }
+
+        void SetNaturalHarmonicFlag(bool value)
+        {
+            harmonic = value;
+            if (harmonic)
+                pinchHarmonic = false;
+        }
+
+        void SetPinchHarmonicFlag(bool value)
+        {
+            pinchHarmonic = value;
+            if (pinchHarmonic)
+                harmonic = false;
+        }
+
+        void AddFlagChip(string label, Action remove)
+        {
+            selectedFlags.Add(CreateTechniqueSettingsChip(label, remove));
+        }
+
+        void RebuildFlagDetails()
+        {
+            flagDetails.Clear();
+            linkedFromField = null;
+            if (!hammerOn && !pullOff && !legato && requiresPluck)
+                return;
+
+            VisualElement detailRow = new VisualElement();
+            detailRow.style.flexDirection = FlexDirection.Column;
+            detailRow.style.paddingLeft = 26f;
+            detailRow.style.paddingRight = 26f;
+            detailRow.style.paddingTop = 22f;
+            detailRow.style.paddingBottom = 22f;
+            detailRow.style.marginTop = 2f;
+            detailRow.style.backgroundColor = TechniqueSettingsSurfaceColor;
+            SetRadius(detailRow, 8f);
+            SetTechniqueSettingsBorder(detailRow, TechniqueSettingsBorderColor, 2f, 8f);
+
+            VisualElement linkControls = new VisualElement();
+            linkControls.style.flexDirection = FlexDirection.Column;
+
+            linkedFromField = CreateTechniqueSettingsTextField(
+                "Source Note ID",
+                linkedFromNoteId >= 0 ? linkedFromNoteId.ToString(CultureInfo.InvariantCulture) : string.Empty,
+                310f);
+            linkedFromField.style.width = Length.Percent(100f);
+            linkedFromField.style.marginRight = 0f;
+            linkControls.Add(linkedFromField);
+
+            VisualElement linkButtonRow = new VisualElement();
+            linkButtonRow.style.flexDirection = FlexDirection.Row;
+            linkButtonRow.style.flexWrap = Wrap.Wrap;
+            linkButtonRow.style.alignItems = Align.Center;
+            linkButtonRow.style.marginTop = 4f;
+
+            Button previous = CreateTechniqueSettingsAddButton("Use Previous Note", () =>
+            {
+                linkedFromNoteId = FindPreviousLinkedNoteId();
+                linkedFromField.value = linkedFromNoteId >= 0 ? linkedFromNoteId.ToString(CultureInfo.InvariantCulture) : string.Empty;
+            });
+            previous.style.width = 340f;
+            previous.style.minWidth = 340f;
+            linkButtonRow.Add(previous);
+
+            Button clear = CreateTechniqueSettingsAddButton("Clear Link", () =>
+            {
+                linkedFromNoteId = -1;
+                linkedFromField.value = string.Empty;
+            });
+            clear.style.width = 220f;
+            clear.style.minWidth = 220f;
+            linkButtonRow.Add(clear);
+            linkControls.Add(linkButtonRow);
+            detailRow.Add(linkControls);
+            flagDetails.Add(detailRow);
+        }
+
+        void RebuildFlags()
+        {
+            selectedFlags.Clear();
+            if (hammerOn)
+                AddFlagChip("Hammer-On", () => { SetHammerOn(false); RebuildFlags(); });
+            if (pullOff)
+                AddFlagChip("Pull-Off", () => { SetPullOff(false); RebuildFlags(); });
+            if (palmMute)
+                AddFlagChip("Palm Mute", () => { SetPalmMuteFlag(false); RebuildFlags(); });
+            if (fretHandMute)
+                AddFlagChip("Fret-Hand Mute", () => { SetFretHandMuteFlag(false); RebuildFlags(); });
+            if (legato && !hammerOn && !pullOff)
+                AddFlagChip("Legato", () =>
+                {
+                    legato = false;
+                    requiresPluck = true;
+                    linkedFromNoteId = -1;
+                    RebuildFlags();
+                });
+            if (!requiresPluck && !hammerOn && !pullOff && !legato)
+                AddFlagChip("No Pluck", () =>
+                {
+                    requiresPluck = true;
+                    linkedFromNoteId = -1;
+                    RebuildFlags();
+                });
+            if (harmonic)
+                AddFlagChip("Natural Harmonic", () => { SetNaturalHarmonicFlag(false); RebuildFlags(); });
+            if (pinchHarmonic)
+                AddFlagChip("Pinch Harmonic", () => { SetPinchHarmonicFlag(false); RebuildFlags(); });
+            if (accentFlag)
+                AddFlagChip("Accent", () => { accentFlag = false; RebuildFlags(); });
+            if (tap)
+                AddFlagChip("Tap", () => { tap = false; RebuildFlags(); });
+            if (tremolo)
+                AddFlagChip("Tremolo", () => { tremolo = false; RebuildFlags(); });
+
+            if (selectedFlags.childCount == 0)
+                selectedFlags.Add(CreateTechniqueSettingsEmptyFlags());
+
+            RebuildFlagDetails();
+        }
 
         panel.Add(CreateTechniqueSettingsSectionLabel("Segments"));
 
         ScrollView listScroll = new ScrollView(ScrollViewMode.Vertical);
         ConfigureScrollView(listScroll);
-        listScroll.style.height = 560f;
-        listScroll.style.minHeight = 360f;
-        listScroll.style.marginBottom = 28f;
-        listScroll.style.backgroundColor = new Color(0.018f, 0.023f, 0.032f, 0.92f);
-        SetRadius(listScroll, 14f);
-        SetBorderWidth(listScroll, 1f);
-        SetToneLabBorder(listScroll,
-            new Color(0.30f, 0.32f, 0.36f, 0.78f),
-            new Color(0.17f, 0.19f, 0.23f, 0.90f),
-            new Color(0.10f, 0.12f, 0.15f, 0.98f));
+        listScroll.style.height = new StyleLength(StyleKeyword.Auto);
+        listScroll.style.minHeight = 620f;
+        listScroll.style.flexGrow = 1f;
+        listScroll.style.flexShrink = 1f;
+        listScroll.style.marginBottom = 0f;
+        listScroll.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         VisualElement list = new VisualElement();
-        list.style.paddingLeft = 18f;
-        list.style.paddingRight = 18f;
-        list.style.paddingTop = 18f;
-        list.style.paddingBottom = 18f;
+        list.style.paddingLeft = 0f;
+        list.style.paddingRight = 0f;
+        list.style.paddingTop = 8f;
+        list.style.paddingBottom = 8f;
         listScroll.Add(list);
         panel.Add(listScroll);
 
@@ -4041,9 +4408,11 @@ public sealed class ChartEditorOverlay
             list.Clear();
             if (rowStates.Count == 0)
             {
-                Label empty = CreateLabel("No timed technique segments. Add Sustain, Vibrato, Bend, or Slide.", 24f, new Color(0.70f, 0.76f, 0.84f, 1f), false, TextAnchor.MiddleCenter, false);
-                empty.style.height = 118f;
-                list.Add(empty);
+                list.Add(CreateTechniqueSettingsEmptyState(
+                    170f,
+                    "No segments added yet.",
+                    "Use \"Add Segment\" to create one.",
+                    CreateTechniqueSettingsSegmentEmptyIcon()));
                 return;
             }
 
@@ -4058,55 +4427,103 @@ public sealed class ChartEditorOverlay
             RebuildRows();
         }
 
-        addRow.Clear();
-        addRow.Add(CreateTechniqueSettingsAddButton("Add Sustain", () => AddAndRebuild(NoteTechniqueSegmentType.Sustain)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Add Vibrato", () => AddAndRebuild(NoteTechniqueSegmentType.Vibrato)));
-        addRow.Add(CreateTechniqueSettingsAddButton("Half Bend", () =>
+        void AddBendAndRebuild(float startBend, float endBend)
         {
             CaptureRows();
-            AddTechniqueSettingsBendSegment(rowStates, note, 0f, HalfStepBendSemitones);
+            AddTechniqueSettingsBendSegment(rowStates, note, startBend, endBend);
             RebuildRows();
-        }));
-        addRow.Add(CreateTechniqueSettingsAddButton("Full Bend", () =>
-        {
-            CaptureRows();
-            AddTechniqueSettingsBendSegment(rowStates, note, 0f, FullStepBendSemitones);
-            RebuildRows();
-        }));
-        addRow.Add(CreateTechniqueSettingsAddButton("Half Pre-Bend", () =>
-        {
-            CaptureRows();
-            AddTechniqueSettingsBendSegment(rowStates, note, HalfStepBendSemitones, HalfStepBendSemitones);
-            RebuildRows();
-        }));
-        addRow.Add(CreateTechniqueSettingsAddButton("Full Pre-Bend", () =>
-        {
-            CaptureRows();
-            AddTechniqueSettingsBendSegment(rowStates, note, FullStepBendSemitones, FullStepBendSemitones);
-            RebuildRows();
-        }));
-        addRow.Add(CreateTechniqueSettingsAddButton("Half Release", () =>
-        {
-            CaptureRows();
-            AddTechniqueSettingsBendSegment(rowStates, note, HalfStepBendSemitones, 0f);
-            RebuildRows();
-        }));
-        addRow.Add(CreateTechniqueSettingsAddButton("Full Release", () =>
-        {
-            CaptureRows();
-            AddTechniqueSettingsBendSegment(rowStates, note, FullStepBendSemitones, 0f);
-            RebuildRows();
-        }));
-        addRow.Add(CreateTechniqueSettingsAddButton("Add Slide", () => AddAndRebuild(NoteTechniqueSegmentType.Slide)));
+        }
 
+        void AddBentCarryAndRebuild(NoteTechniqueSegmentType type, float bend)
+        {
+            CaptureRows();
+            AddTechniqueSettingsSegment(rowStates, note, type);
+            TechniqueSettingsRowState last = rowStates.LastOrDefault();
+            if (last?.segment != null)
+            {
+                last.segment.startBend = Mathf.Max(0f, bend);
+                last.segment.endBend = Mathf.Max(0f, bend);
+            }
+            RebuildRows();
+        }
+
+        void ShowMenuFromButton(Button button, params ContextMenuItem[] items)
+        {
+            if (button == null)
+                return;
+
+            ShowContextMenu(new Vector2(button.worldBound.xMin, button.worldBound.yMax + 8f), items);
+        }
+
+        ContextMenuItem FlagItem(string label, bool enabled, Action add)
+        {
+            return new ContextMenuItem((enabled ? "On: " : string.Empty) + label, () =>
+            {
+                add?.Invoke();
+                RebuildFlags();
+            });
+        }
+
+        addFlagButton.clicked += () => ShowMenuFromButton(addFlagButton,
+            FlagItem("Hammer-On", hammerOn, () => SetHammerOn(true)),
+            FlagItem("Pull-Off", pullOff, () => SetPullOff(true)),
+            FlagItem("Palm Mute", palmMute, () => SetPalmMuteFlag(true)),
+            FlagItem("Fret-Hand Mute", fretHandMute, () => SetFretHandMuteFlag(true)),
+            FlagItem("Legato", legato && !hammerOn && !pullOff, () =>
+            {
+                legato = true;
+                requiresPluck = false;
+                EnsureLinkedFromPrevious();
+            }),
+            FlagItem("No Pluck", !requiresPluck && !hammerOn && !pullOff && !legato, () =>
+            {
+                requiresPluck = false;
+                EnsureLinkedFromPrevious();
+            }),
+            FlagItem("Natural Harmonic", harmonic, () => SetNaturalHarmonicFlag(true)),
+            FlagItem("Pinch Harmonic", pinchHarmonic, () => SetPinchHarmonicFlag(true)),
+            FlagItem("Accent", accentFlag, () => accentFlag = true),
+            FlagItem("Tap", tap, () => tap = true),
+            FlagItem("Tremolo", tremolo, () => tremolo = true));
+
+        addSegmentButton.clicked += () => ShowMenuFromButton(addSegmentButton,
+            new ContextMenuItem("Sustain", () => AddAndRebuild(NoteTechniqueSegmentType.Sustain)),
+            new ContextMenuItem("Vibrato", () => AddAndRebuild(NoteTechniqueSegmentType.Vibrato)),
+            new ContextMenuItem("Bent Sustain", () => AddBentCarryAndRebuild(NoteTechniqueSegmentType.Sustain, FullStepBendSemitones)),
+            new ContextMenuItem("Bent Vibrato", () => AddBentCarryAndRebuild(NoteTechniqueSegmentType.Vibrato, FullStepBendSemitones)),
+            new ContextMenuItem("Half Bend", () => AddBendAndRebuild(0f, HalfStepBendSemitones)),
+            new ContextMenuItem("Full Bend", () => AddBendAndRebuild(0f, FullStepBendSemitones)),
+            new ContextMenuItem("Half Pre-Bend", () => AddBendAndRebuild(HalfStepBendSemitones, HalfStepBendSemitones)),
+            new ContextMenuItem("Full Pre-Bend", () => AddBendAndRebuild(FullStepBendSemitones, FullStepBendSemitones)),
+            new ContextMenuItem("Half Release", () => AddBendAndRebuild(HalfStepBendSemitones, 0f)),
+            new ContextMenuItem("Full Release", () => AddBendAndRebuild(FullStepBendSemitones, 0f)),
+            new ContextMenuItem("Slide", () => AddAndRebuild(NoteTechniqueSegmentType.Slide)));
+
+        RebuildFlags();
         RebuildRows();
 
         VisualElement actions = new VisualElement();
         actions.style.flexDirection = FlexDirection.Row;
         actions.style.justifyContent = Justify.FlexEnd;
-        Button cancel = CreateCompactButton("Cancel", HideEditPopup);
-        Button apply = CreateCompactButton("Apply", () =>
+        actions.style.marginTop = 30f;
+        Button cancel = CreateTechniqueSettingsButton("Cancel", HideEditPopup);
+        Button apply = CreateTechniqueSettingsButton("Apply", () =>
         {
+            if (linkedFromField != null)
+            {
+                string linkedValue = linkedFromField.value?.Trim() ?? string.Empty;
+                if (string.IsNullOrWhiteSpace(linkedValue))
+                {
+                    linkedFromNoteId = -1;
+                }
+                else if (!int.TryParse(linkedValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out linkedFromNoteId) ||
+                         linkedFromNoteId < 0)
+                {
+                    SetStatus("Source Note ID must be empty or a non-negative note id.");
+                    return;
+                }
+            }
+
             for (int i = 0; i < rowStates.Count; i++)
             {
                 if (!TryCaptureTechniqueSettingsRow(rowStates[i], note, showError: true))
@@ -4132,6 +4549,7 @@ public sealed class ChartEditorOverlay
             note.tremolo = tremolo;
             note.legato = legato || hammerOn || pullOff;
             note.requiresPluck = hammerOn || pullOff ? false : requiresPluck;
+            note.linkedFromNoteId = note.legato || !note.requiresPluck ? linkedFromNoteId : -1;
             ApplyTechniqueSegmentSummaries(note);
             if (hammerOn)
                 note.technique = NoteTechnique.HammerOn;
@@ -4144,22 +4562,26 @@ public sealed class ChartEditorOverlay
             HideEditPopup();
             Rebuild();
         });
-        StyleSoftButton(cancel, new Color(0.80f, 0.86f, 0.94f, 1f));
-        StyleFilledButton(apply, new Color(0.62f, 0.38f, 1f, 1f), darkText: false);
-        cancel.style.height = 66f;
-        cancel.style.minWidth = 154f;
-        apply.style.height = 66f;
-        apply.style.minWidth = 154f;
-        cancel.style.fontSize = UiFont(24f);
-        apply.style.fontSize = UiFont(24f);
-        SetRadius(cancel, 12f);
-        SetRadius(apply, 12f);
-        cancel.style.marginRight = 14f;
+        panel.Add(CreateTechniqueSettingsDivider(22f, 0f));
+        StyleTechniqueSettingsFlatButton(cancel, TechniqueSettingsButtonBackgroundColor, Color.white, TechniqueSettingsBorderColor, TechniqueSettingsButtonHoverColor, TechniqueSettingsBorderColor);
+        StyleTechniqueSettingsFlatButton(apply, TechniqueSettingsAccentColor, Color.white, TechniqueSettingsAccentColor, new Color(0.94f, 0.58f, 0.19f, 1f), TechniqueSettingsAccentColor);
+        cancel.style.height = 76f;
+        cancel.style.minWidth = 230f;
+        cancel.style.width = 230f;
+        apply.style.height = 76f;
+        apply.style.minWidth = 230f;
+        apply.style.width = 230f;
+        cancel.style.fontSize = UiFont(26f);
+        apply.style.fontSize = UiFont(26f);
+        SetRadius(cancel, 7f);
+        SetRadius(apply, 7f);
+        cancel.style.marginRight = 18f;
         actions.Add(cancel);
         actions.Add(apply);
         panel.Add(actions);
 
         overlay.Add(panel);
+        ApplyTechniqueSettingsTypographyTree(panel);
         editPopupElement = overlay;
         RootElement.Add(editPopupElement);
         editPopupElement.BringToFront();
@@ -4168,75 +4590,422 @@ public sealed class ChartEditorOverlay
 
     private Label CreateTechniqueSettingsSectionLabel(string text)
     {
-        Label label = CreateLabel(text, 20f, new Color(0.60f, 0.68f, 0.80f, 1f), true, TextAnchor.MiddleLeft, false);
-        label.style.marginBottom = 10f;
+        Label label = CreateTechniqueSettingsLabel(text, 26f, Color.white, true, TextAnchor.MiddleLeft);
+        label.style.marginBottom = 14f;
         label.style.unityTextAlign = TextAnchor.MiddleLeft;
         return label;
     }
 
+    private static Color TechniqueSettingsPanelBackgroundColor => new Color(0.075f, 0.086f, 0.100f, 0.985f);
+    private static Color TechniqueSettingsSurfaceColor => new Color(0.092f, 0.105f, 0.123f, 0.96f);
+    private static Color TechniqueSettingsInputColor => new Color(0.052f, 0.060f, 0.073f, 0.98f);
+    private static Color TechniqueSettingsAccentColor => new Color(0.86f, 0.50f, 0.16f, 1f);
+    private static Color TechniqueSettingsBorderColor => new Color(0.36f, 0.39f, 0.44f, 0.86f);
+    private static Color TechniqueSettingsSubtleBorderColor => new Color(0.48f, 0.51f, 0.56f, 0.58f);
+    private static Color TechniqueSettingsModalBorderColor => new Color(0.54f, 0.57f, 0.62f, 0.86f);
+    private static Color TechniqueSettingsButtonBackgroundColor => new Color(0.088f, 0.100f, 0.116f, 0.96f);
+    private static Color TechniqueSettingsButtonHoverColor => new Color(0.130f, 0.145f, 0.166f, 0.98f);
+
+    private Label CreateTechniqueSettingsLabel(string text, float size, Color color, bool bold, TextAnchor align)
+    {
+        Label label = new Label(text ?? string.Empty);
+        label.style.fontSize = UiFont(size);
+        label.style.color = color;
+        label.style.unityFontDefinition = bodyFont;
+        label.style.unityFontStyleAndWeight = bold ? FontStyle.Bold : FontStyle.Normal;
+        label.style.unityTextAlign = align;
+        label.style.whiteSpace = WhiteSpace.Normal;
+        label.style.marginLeft = 0f;
+        label.style.marginRight = 0f;
+        label.style.marginTop = 0f;
+        label.style.marginBottom = 0f;
+        ApplyTechniqueSettingsTypography(label);
+        return label;
+    }
+
+    private Button CreateTechniqueSettingsButton(string text, Action action)
+    {
+        Button button = new Button(action) { text = text ?? string.Empty };
+        button.focusable = false;
+        button.style.height = 66f;
+        button.style.minWidth = TechniqueSettingsButtonMinWidthForText(text, 180f);
+        button.style.marginLeft = 0f;
+        button.style.marginRight = 0f;
+        button.style.marginTop = 0f;
+        button.style.marginBottom = 0f;
+        button.style.flexShrink = 0f;
+        button.style.paddingLeft = 18f;
+        button.style.paddingRight = 18f;
+        button.style.fontSize = UiFont(23f);
+        button.style.unityFontDefinition = bodyFont;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+        button.style.alignItems = Align.Center;
+        button.style.justifyContent = Justify.Center;
+        button.style.whiteSpace = WhiteSpace.NoWrap;
+        button.style.overflow = Overflow.Visible;
+        ApplyTechniqueSettingsTypography(button);
+        StyleTechniqueSettingsFlatButton(
+            button,
+            TechniqueSettingsButtonBackgroundColor,
+            Color.white,
+            TechniqueSettingsBorderColor,
+            TechniqueSettingsButtonHoverColor,
+            TechniqueSettingsBorderColor);
+        return button;
+    }
+
+    private void ApplyTechniqueSettingsTypography(VisualElement element)
+    {
+        if (element == null)
+            return;
+
+        element.style.unityFontDefinition = bodyFont;
+        element.style.letterSpacing = 0f;
+    }
+
+    private void ApplyTechniqueSettingsTypographyTree(VisualElement root)
+    {
+        if (root == null)
+            return;
+
+        ApplyTechniqueSettingsTypography(root);
+        foreach (VisualElement child in root.Children())
+            ApplyTechniqueSettingsTypographyTree(child);
+    }
+
+    private static float TechniqueSettingsButtonMinWidthForText(string text, float floor)
+    {
+        int length = string.IsNullOrWhiteSpace(text) ? 0 : text.Trim().Length;
+        return Mathf.Max(floor, length * 15f + 70f);
+    }
+
+    private static void SetTechniqueSettingsBorder(VisualElement element, Color color, float width = 1f, float radius = -1f)
+    {
+        if (element == null)
+            return;
+
+        SetBorderWidth(element, width);
+        SetBorderColor(element, color);
+        if (radius >= 0f)
+            SetRadius(element, radius);
+    }
+
+    private static void SetTechniqueSettingsBorder(VisualElement element)
+    {
+        SetTechniqueSettingsBorder(element, TechniqueSettingsBorderColor);
+    }
+
+    private void StyleTechniqueSettingsFlatButton(
+        Button button,
+        Color restBackground,
+        Color restText,
+        Color restBorder,
+        Color hoverBackground,
+        Color hoverBorder)
+    {
+        if (button == null)
+            return;
+
+        ApplyTechniqueSettingsTypography(button);
+        SetRadius(button, 7f);
+        button.style.backgroundImage = StyleKeyword.None;
+        button.style.backgroundColor = restBackground;
+        button.style.color = restText;
+        button.style.unityFontDefinition = bodyFont;
+        button.style.flexShrink = 0f;
+        SetTechniqueSettingsBorder(button, restBorder, 2f, 7f);
+        button.schedule.Execute(() =>
+        {
+            button.style.backgroundImage = StyleKeyword.None;
+            button.style.backgroundColor = restBackground;
+            button.style.color = restText;
+            button.style.unityFontDefinition = bodyFont;
+            SetTechniqueSettingsBorder(button, restBorder, 2f, 7f);
+        }).ExecuteLater(0);
+        button.RegisterCallback<MouseEnterEvent>(_ =>
+        {
+            button.style.backgroundColor = hoverBackground;
+            button.style.color = Color.white;
+            SetTechniqueSettingsBorder(button, hoverBorder, 2f, 7f);
+        });
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            button.style.backgroundColor = restBackground;
+            button.style.color = restText;
+            SetTechniqueSettingsBorder(button, restBorder, 2f, 7f);
+        });
+        button.RegisterCallback<FocusInEvent>(_ => SetTechniqueSettingsBorder(button, hoverBorder, 2f, 7f));
+        button.RegisterCallback<FocusOutEvent>(_ => SetTechniqueSettingsBorder(button, restBorder, 2f, 7f));
+    }
+
+    private VisualElement CreateTechniqueSettingsDivider(float marginBottom, float marginTop = 0f)
+    {
+        VisualElement divider = new VisualElement();
+        divider.style.height = 1f;
+        divider.style.marginTop = marginTop;
+        divider.style.marginBottom = marginBottom;
+        divider.style.backgroundColor = new Color(1f, 1f, 1f, 0.13f);
+        return divider;
+    }
+
+    private VisualElement CreateTechniqueSettingsEmptyFlags()
+    {
+        VisualElement empty = CreateTechniqueSettingsEmptyState(
+            122f,
+            "No flags added yet.",
+            "Use \"Add Flag\" to create one.",
+            CreateTechniqueSettingsFlagEmptyIcon());
+        empty.style.width = Length.Percent(100f);
+        return empty;
+    }
+
+    private VisualElement CreateTechniqueSettingsEmptyState(float height, string titleText, string detailText, VisualElement icon)
+    {
+        VisualElement box = new VisualElement();
+        box.style.position = Position.Relative;
+        box.style.height = height;
+        box.style.marginBottom = 12f;
+        box.style.paddingLeft = 28f;
+        box.style.paddingRight = 28f;
+        box.style.paddingTop = 20f;
+        box.style.paddingBottom = 20f;
+        box.style.alignItems = Align.Center;
+        box.style.justifyContent = Justify.Center;
+        box.style.backgroundColor = new Color(0.055f, 0.064f, 0.076f, 0.26f);
+        SetRadius(box, 8f);
+        SetTechniqueSettingsBorder(box, TechniqueSettingsSubtleBorderColor, 2f, 8f);
+
+        VisualElement content = new VisualElement();
+        content.style.flexDirection = FlexDirection.Row;
+        content.style.alignItems = Align.Center;
+        content.style.justifyContent = Justify.Center;
+        content.style.maxWidth = 520f;
+
+        if (icon != null)
+        {
+            icon.style.marginRight = 24f;
+            content.Add(icon);
+        }
+
+        VisualElement text = new VisualElement();
+        text.style.flexDirection = FlexDirection.Column;
+        Label title = CreateTechniqueSettingsLabel(titleText, 24f, new Color(0.72f, 0.75f, 0.81f, 1f), false, TextAnchor.MiddleLeft);
+        Label detail = CreateTechniqueSettingsLabel(detailText, 24f, new Color(0.72f, 0.75f, 0.81f, 1f), false, TextAnchor.MiddleLeft);
+        detail.style.marginTop = 6f;
+        text.Add(title);
+        text.Add(detail);
+        content.Add(text);
+
+        box.Add(content);
+        return box;
+    }
+
+    private static VisualElement CreateTechniqueSettingsFlagEmptyIcon()
+    {
+        VisualElement icon = new VisualElement();
+        icon.style.width = 62f;
+        icon.style.height = 62f;
+        icon.style.position = Position.Relative;
+        icon.style.flexShrink = 0f;
+
+        Color line = new Color(0.60f, 0.64f, 0.70f, 0.88f);
+        VisualElement pole = new VisualElement();
+        pole.style.position = Position.Absolute;
+        pole.style.left = 19f;
+        pole.style.top = 11f;
+        pole.style.width = 3f;
+        pole.style.height = 42f;
+        pole.style.backgroundColor = line;
+        SetRadius(pole, 2f);
+        icon.Add(pole);
+
+        VisualElement flagTop = new VisualElement();
+        flagTop.style.position = Position.Absolute;
+        flagTop.style.left = 22f;
+        flagTop.style.top = 12f;
+        flagTop.style.width = 26f;
+        flagTop.style.height = 3f;
+        flagTop.style.backgroundColor = line;
+        SetRadius(flagTop, 2f);
+        icon.Add(flagTop);
+
+        VisualElement flagSide = new VisualElement();
+        flagSide.style.position = Position.Absolute;
+        flagSide.style.left = 47f;
+        flagSide.style.top = 12f;
+        flagSide.style.width = 3f;
+        flagSide.style.height = 22f;
+        flagSide.style.backgroundColor = line;
+        SetRadius(flagSide, 2f);
+        icon.Add(flagSide);
+
+        VisualElement flagBottom = new VisualElement();
+        flagBottom.style.position = Position.Absolute;
+        flagBottom.style.left = 22f;
+        flagBottom.style.top = 34f;
+        flagBottom.style.width = 26f;
+        flagBottom.style.height = 3f;
+        flagBottom.style.backgroundColor = line;
+        SetRadius(flagBottom, 2f);
+        icon.Add(flagBottom);
+
+        return icon;
+    }
+
+    private static VisualElement CreateTechniqueSettingsSegmentEmptyIcon()
+    {
+        VisualElement icon = new VisualElement();
+        icon.style.width = 62f;
+        icon.style.height = 62f;
+        icon.style.justifyContent = Justify.Center;
+        icon.style.alignItems = Align.Center;
+        icon.style.flexShrink = 0f;
+
+        Color line = new Color(0.60f, 0.64f, 0.70f, 0.88f);
+        for (int i = 0; i < 3; i++)
+        {
+            VisualElement row = new VisualElement();
+            row.style.width = i == 1 ? 40f : 32f;
+            row.style.height = 4f;
+            row.style.marginTop = 5f;
+            row.style.marginBottom = 5f;
+            row.style.backgroundColor = line;
+            SetRadius(row, 2f);
+            icon.Add(row);
+        }
+
+        return icon;
+    }
+
     private Button CreateTechniqueSettingsToggleButton(string text, Action action)
     {
-        Button button = CreateButton(text, action);
-        button.style.height = 68f;
-        button.style.minWidth = 205f;
+        Button button = CreateTechniqueSettingsButton(text, action);
+        button.style.height = 72f;
+        button.style.minWidth = 230f;
         button.style.marginLeft = 0f;
         button.style.marginRight = 12f;
         button.style.marginBottom = 12f;
-        button.style.fontSize = UiFont(22f);
+        button.style.fontSize = UiFont(24f);
         button.style.paddingLeft = 22f;
         button.style.paddingRight = 22f;
         SetRadius(button, 12f);
         return button;
     }
 
-    private static void StyleTechniqueSettingsToggleButton(Button button, bool selected)
+    private void StyleTechniqueSettingsToggleButton(Button button, bool selected)
     {
         if (button == null)
             return;
 
         if (selected)
         {
-            SetButtonChrome(
+            StyleTechniqueSettingsFlatButton(
                 button,
                 new Color(0.28f, 0.17f, 0.48f, 0.92f),
                 Color.white,
-                new Color(0.78f, 0.58f, 1f, 0.96f),
-                new Color(0.48f, 0.32f, 0.72f, 0.98f),
-                new Color(0.30f, 0.18f, 0.48f, 1f),
                 new Color(0.40f, 0.24f, 0.70f, 0.95f),
-                Color.white,
+                new Color(0.40f, 0.24f, 0.70f, 0.95f),
                 new Color(0.82f, 0.62f, 1f, 0.98f));
         }
         else
         {
-            SetButtonChrome(
+            StyleTechniqueSettingsFlatButton(
                 button,
-                new Color(0f, 0f, 0f, 0f),
+                TechniqueSettingsButtonBackgroundColor,
                 new Color(0.80f, 0.85f, 0.93f, 1f),
-                new Color(0.36f, 0.38f, 0.42f, 0.82f),
-                new Color(0.22f, 0.24f, 0.28f, 0.95f),
-                new Color(0.14f, 0.16f, 0.20f, 1f),
-                new Color(1f, 1f, 1f, 0.070f),
-                Color.white,
-                new Color(0.66f, 0.72f, 0.84f, 0.56f));
+                TechniqueSettingsBorderColor,
+                TechniqueSettingsButtonHoverColor,
+                TechniqueSettingsBorderColor);
         }
         SetRadius(button, 11f);
     }
 
     private Button CreateTechniqueSettingsAddButton(string text, Action action)
     {
-        Button button = CreateButton(text, action);
-        button.style.height = 66f;
-        button.style.minWidth = 176f;
-        button.style.fontSize = UiFont(22f);
+        Button button = CreateTechniqueSettingsButton(text, action);
+        button.style.height = 68f;
+        button.style.minWidth = TechniqueSettingsButtonMinWidthForText(text, 260f);
+        button.style.fontSize = UiFont(23f);
         button.style.marginLeft = 0f;
-        button.style.marginRight = 12f;
-        button.style.marginBottom = 12f;
-        button.style.paddingLeft = 20f;
-        button.style.paddingRight = 20f;
-        StyleSoftButton(button, new Color(0.68f, 0.76f, 0.90f, 1f));
-        SetRadius(button, 12f);
+        button.style.marginRight = 18f;
+        button.style.marginBottom = 0f;
+        button.style.paddingLeft = 22f;
+        button.style.paddingRight = 22f;
+        StyleTechniqueSettingsOutlineButton(button);
         return button;
+    }
+
+    private void StyleTechniqueSettingsOutlineButton(Button button)
+    {
+        if (button == null)
+            return;
+
+        StyleTechniqueSettingsFlatButton(
+            button,
+            TechniqueSettingsButtonBackgroundColor,
+            Color.white,
+            TechniqueSettingsBorderColor,
+            TechniqueSettingsButtonHoverColor,
+            TechniqueSettingsBorderColor);
+        SetRadius(button, 7f);
+    }
+
+    private void StyleTechniqueSettingsIconButton(Button button, Color color, bool danger = false)
+    {
+        if (button == null)
+            return;
+
+        StyleTechniqueSettingsFlatButton(
+            button,
+            new Color(0.075f, 0.085f, 0.100f, 0.95f),
+            color,
+            danger ? new Color(0.86f, 0.20f, 0.14f, 0.92f) : TechniqueSettingsBorderColor,
+            danger ? new Color(0.88f, 0.16f, 0.12f, 0.12f) : new Color(1f, 1f, 1f, 0.040f),
+            danger ? new Color(0.95f, 0.23f, 0.18f, 0.95f) : new Color(0.62f, 0.66f, 0.72f, 0.72f));
+        SetRadius(button, 7f);
+    }
+
+    private VisualElement CreateTechniqueSettingsChip(string text, Action remove)
+    {
+        VisualElement chip = new VisualElement();
+        chip.style.flexDirection = FlexDirection.Row;
+        chip.style.alignItems = Align.Center;
+        chip.style.height = 56f;
+        chip.style.marginRight = 12f;
+        chip.style.marginBottom = 12f;
+        chip.style.paddingLeft = 20f;
+        chip.style.paddingRight = 8f;
+        chip.style.backgroundColor = TechniqueSettingsSurfaceColor;
+        SetRadius(chip, 7f);
+        SetTechniqueSettingsBorder(chip, TechniqueSettingsBorderColor, 2f, 7f);
+
+        Label label = CreateTechniqueSettingsLabel(text, 22f, new Color(0.90f, 0.92f, 0.96f, 1f), true, TextAnchor.MiddleLeft);
+        label.style.whiteSpace = WhiteSpace.NoWrap;
+        chip.Add(label);
+
+        Label close = CreateTechniqueSettingsLabel("X", 18f, new Color(0.78f, 0.82f, 0.88f, 1f), true, TextAnchor.MiddleCenter);
+        close.pickingMode = PickingMode.Position;
+        close.style.width = 30f;
+        close.style.minWidth = 30f;
+        close.style.height = 34f;
+        close.style.marginLeft = 6f;
+        close.style.marginRight = 0f;
+        close.style.marginTop = 0f;
+        close.style.marginBottom = 0f;
+        close.style.paddingLeft = 0f;
+        close.style.paddingRight = 0f;
+        close.style.backgroundColor = Color.clear;
+        close.style.unityTextAlign = TextAnchor.MiddleCenter;
+        close.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            remove?.Invoke();
+            evt.StopPropagation();
+        });
+        close.RegisterCallback<MouseEnterEvent>(_ => close.style.color = Color.white);
+        close.RegisterCallback<MouseLeaveEvent>(_ => close.style.color = new Color(0.78f, 0.82f, 0.88f, 1f));
+        chip.Add(close);
+        return chip;
     }
 
     private VisualElement CreateTechniqueSettingsRow(
@@ -4250,94 +5019,202 @@ public sealed class ChartEditorOverlay
         TechniqueSettingsRowState state = rowStates[index];
         VisualElement row = new VisualElement();
         row.style.flexDirection = FlexDirection.Column;
-        row.style.marginBottom = 16f;
-        row.style.paddingLeft = 20f;
-        row.style.paddingRight = 20f;
-        row.style.paddingTop = 18f;
-        row.style.paddingBottom = 18f;
-        row.style.backgroundColor = new Color(0.030f, 0.036f, 0.048f, 0.96f);
-        SetRadius(row, 12f);
-        SetBorderWidth(row, 1f);
-        SetToneLabBorder(row,
-            new Color(0.34f, 0.36f, 0.40f, 0.76f),
-            new Color(0.18f, 0.20f, 0.24f, 0.92f),
-            new Color(0.10f, 0.12f, 0.15f, 0.98f));
+        row.style.marginBottom = 22f;
+        row.style.paddingLeft = 24f;
+        row.style.paddingRight = 24f;
+        row.style.paddingTop = 22f;
+        row.style.paddingBottom = 22f;
+        row.style.backgroundColor = TechniqueSettingsSurfaceColor;
+        row.style.translate = new Translate(0f, 0f, 0f);
+        row.style.scale = new Scale(Vector3.one);
+        row.style.transitionProperty = new List<StylePropertyName>
+        {
+            new StylePropertyName("background-color"),
+            new StylePropertyName("scale"),
+            new StylePropertyName("translate")
+        };
+        row.style.transitionDuration = new List<TimeValue>
+        {
+            new TimeValue(100f, TimeUnit.Millisecond),
+            new TimeValue(100f, TimeUnit.Millisecond),
+            new TimeValue(100f, TimeUnit.Millisecond)
+        };
+        row.style.transitionTimingFunction = new List<EasingFunction>
+        {
+            new EasingFunction(EasingMode.EaseOutCubic),
+            new EasingFunction(EasingMode.EaseOutCubic),
+            new EasingFunction(EasingMode.EaseOutCubic)
+        };
+        SetRadius(row, 8f);
+        SetTechniqueSettingsBorder(row, index == 0 ? TechniqueSettingsAccentColor : TechniqueSettingsBorderColor, 2f, 8f);
 
         VisualElement topRow = new VisualElement();
         topRow.style.flexDirection = FlexDirection.Row;
         topRow.style.alignItems = Align.Center;
+        topRow.style.minHeight = 66f;
         row.Add(topRow);
 
         VisualElement grip = new VisualElement();
-        grip.style.width = 44f;
-        grip.style.height = 68f;
-        grip.style.marginRight = 16f;
+        grip.style.width = 62f;
+        grip.style.height = 62f;
+        grip.style.marginRight = 24f;
         grip.style.justifyContent = Justify.Center;
         grip.style.alignItems = Align.Center;
+        grip.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         grip.pickingMode = PickingMode.Position;
-        for (int i = 0; i < 3; i++)
+        for (int dotRow = 0; dotRow < 3; dotRow++)
         {
-            VisualElement bar = new VisualElement();
-            bar.style.width = 20f;
-            bar.style.height = 3f;
-            bar.style.marginTop = 4f;
-            bar.style.marginBottom = 4f;
-            bar.style.backgroundColor = new Color(0.72f, 0.78f, 0.88f, 0.82f);
-            SetRadius(bar, 2f);
-            grip.Add(bar);
+            VisualElement dotLine = new VisualElement();
+            dotLine.style.flexDirection = FlexDirection.Row;
+            dotLine.style.justifyContent = Justify.Center;
+            dotLine.style.marginTop = 3f;
+            dotLine.style.marginBottom = 3f;
+            for (int dotColumn = 0; dotColumn < 2; dotColumn++)
+            {
+                VisualElement dot = new VisualElement();
+                dot.style.width = 5f;
+                dot.style.height = 5f;
+                dot.style.marginLeft = 3f;
+                dot.style.marginRight = 3f;
+                dot.style.backgroundColor = new Color(0.72f, 0.75f, 0.80f, 0.82f);
+                SetRadius(dot, 3f);
+                dotLine.Add(dot);
+            }
+            grip.Add(dotLine);
         }
         topRow.Add(grip);
 
         DropdownField type = new DropdownField();
-        type.label = "Type";
+        type.label = string.Empty;
         type.choices = TechniqueSegmentChoiceLabels().ToList();
         type.value = SegmentTypeToChoiceLabel(state.segment.type);
-        type.style.width = 260f;
-        type.style.marginRight = 18f;
+        type.style.width = 340f;
+        type.style.marginRight = 22f;
         StyleTechniqueSettingsDropdown(type);
         state.typeDropdown = type;
         topRow.Add(type);
 
-        Label summary = CreateLabel(GetTechniqueSegmentLabel(state.segment), 24f, new Color(0.82f, 0.88f, 0.96f, 1f), true, TextAnchor.MiddleLeft, false);
-        summary.style.flexGrow = 1f;
-        summary.style.whiteSpace = WhiteSpace.NoWrap;
-        topRow.Add(summary);
+        VisualElement spacer = new VisualElement();
+        spacer.style.flexGrow = 1f;
+        topRow.Add(spacer);
 
-        Button remove = CreateCompactButton("Remove", () =>
+        Button up = CreateTechniqueSettingsButton("^", () =>
+        {
+            captureRows?.Invoke();
+            int current = rowStates.IndexOf(state);
+            if (current <= 0)
+                return;
+
+            rowStates.RemoveAt(current);
+            rowStates.Insert(current - 1, state);
+            ReflowTechniqueSettingsRowsByOrder(rowStates);
+            rebuildRows?.Invoke();
+        });
+        up.style.width = 64f;
+        up.style.height = 60f;
+        up.style.minWidth = 64f;
+        up.style.fontSize = UiFont(28f);
+        up.style.marginLeft = 12f;
+        up.style.marginRight = 8f;
+        StyleTechniqueSettingsIconButton(up, new Color(0.88f, 0.90f, 0.94f, 1f));
+        topRow.Add(up);
+
+        Button down = CreateTechniqueSettingsButton("v", () =>
+        {
+            captureRows?.Invoke();
+            int current = rowStates.IndexOf(state);
+            if (current < 0 || current >= rowStates.Count - 1)
+                return;
+
+            rowStates.RemoveAt(current);
+            rowStates.Insert(current + 1, state);
+            ReflowTechniqueSettingsRowsByOrder(rowStates);
+            rebuildRows?.Invoke();
+        });
+        down.style.width = 64f;
+        down.style.height = 60f;
+        down.style.minWidth = 64f;
+        down.style.fontSize = UiFont(27f);
+        down.style.marginLeft = 0f;
+        down.style.marginRight = 8f;
+        StyleTechniqueSettingsIconButton(down, new Color(0.88f, 0.90f, 0.94f, 1f));
+        topRow.Add(down);
+
+        Button remove = CreateTechniqueSettingsButton("X", () =>
         {
             captureRows?.Invoke();
             rowStates.Remove(state);
             rebuildRows?.Invoke();
         });
-        remove.style.height = 62f;
-        remove.style.minWidth = 150f;
-        remove.style.fontSize = UiFont(22f);
-        remove.style.marginLeft = 16f;
+        remove.style.width = 64f;
+        remove.style.height = 60f;
+        remove.style.minWidth = 64f;
+        remove.style.fontSize = UiFont(24f);
+        remove.style.marginLeft = 0f;
         remove.style.marginRight = 0f;
-        StyleDangerButton(remove);
-        SetRadius(remove, 12f);
+        StyleTechniqueSettingsIconButton(remove, new Color(1f, 0.27f, 0.20f, 1f), danger: true);
         topRow.Add(remove);
 
         VisualElement fieldsRow = new VisualElement();
         fieldsRow.style.flexDirection = FlexDirection.Row;
         fieldsRow.style.flexWrap = Wrap.Wrap;
-        fieldsRow.style.marginTop = 18f;
+        fieldsRow.style.marginTop = 22f;
+        fieldsRow.style.paddingLeft = 86f;
         row.Add(fieldsRow);
 
-        state.startField = CreateTechniqueSettingsTextField("Start", state.segment.startOffset.ToString("0.000", CultureInfo.InvariantCulture), 166f);
-        state.endField = CreateTechniqueSettingsTextField("End", state.segment.endOffset.ToString("0.000", CultureInfo.InvariantCulture), 166f);
+        state.startField = CreateTechniqueSettingsTextField("Start", state.segment.startOffset.ToString("0.000", CultureInfo.InvariantCulture), 210f);
+        state.endField = CreateTechniqueSettingsTextField("End", state.segment.endOffset.ToString("0.000", CultureInfo.InvariantCulture), 210f);
         fieldsRow.Add(state.startField);
         fieldsRow.Add(state.endField);
 
-        state.startFretField = CreateTechniqueSettingsTextField("From Fret", Mathf.Clamp(state.segment.startFret, 0, 24).ToString(CultureInfo.InvariantCulture), 170f);
-        state.endFretField = CreateTechniqueSettingsTextField("To Fret", Mathf.Clamp(state.segment.endFret, 0, 24).ToString(CultureInfo.InvariantCulture), 170f);
-        fieldsRow.Add(state.startFretField);
-        fieldsRow.Add(state.endFretField);
+        state.startFretField = null;
+        state.endFretField = null;
+        if (ShouldShowTechniqueSettingsFretFields(state.segment))
+        {
+            state.startFretField = CreateTechniqueSettingsTextField("From Fret", Mathf.Clamp(state.segment.startFret, 0, 24).ToString(CultureInfo.InvariantCulture), 210f);
+            state.endFretField = CreateTechniqueSettingsTextField("To Fret", Mathf.Clamp(state.segment.endFret, 0, 24).ToString(CultureInfo.InvariantCulture), 210f);
+            fieldsRow.Add(state.startFretField);
+            fieldsRow.Add(state.endFretField);
+        }
 
-        state.startBendField = CreateTechniqueSettingsTextField("From Bend", state.segment.startBend.ToString("0.###", CultureInfo.InvariantCulture), 178f);
-        state.endBendField = CreateTechniqueSettingsTextField("To Bend", state.segment.endBend.ToString("0.###", CultureInfo.InvariantCulture), 178f);
-        fieldsRow.Add(state.startBendField);
-        fieldsRow.Add(state.endBendField);
+        state.startBendField = null;
+        state.endBendField = null;
+        if (ShouldShowTechniqueSettingsBendFields(state.segment))
+        {
+            state.startBendField = CreateTechniqueSettingsTextField("Bend Start", state.segment.startBend.ToString("0.###", CultureInfo.InvariantCulture), 210f);
+            state.endBendField = CreateTechniqueSettingsTextField("Bend End", state.segment.endBend.ToString("0.###", CultureInfo.InvariantCulture), 210f);
+            fieldsRow.Add(state.startBendField);
+            fieldsRow.Add(state.endBendField);
+            if (CanCarryBendValues(state.segment))
+            {
+                Button clearBendValues = CreateTechniqueSettingsAddButton("Clear Bend Values", () =>
+                {
+                    captureRows?.Invoke();
+                    state.segment.startBend = 0f;
+                    state.segment.endBend = 0f;
+                    rebuildRows?.Invoke();
+                });
+                clearBendValues.style.minWidth = 320f;
+                clearBendValues.style.width = 320f;
+                fieldsRow.Add(clearBendValues);
+            }
+        }
+        else if (CanCarryBendValues(state.segment))
+        {
+            Button addBendValues = CreateTechniqueSettingsAddButton("Add Bend Values", () =>
+            {
+                captureRows?.Invoke();
+                float bend = Mathf.Abs(note?.bendStep ?? 0f) > 0.01f
+                    ? Mathf.Abs(note.bendStep)
+                    : FullStepBendSemitones;
+                state.segment.startBend = Mathf.Max(0.5f, bend);
+                state.segment.endBend = Mathf.Max(0.5f, bend);
+                rebuildRows?.Invoke();
+            });
+            addBendValues.style.minWidth = 300f;
+            addBendValues.style.width = 300f;
+            fieldsRow.Add(addBendValues);
+        }
 
         int pointerId = -1;
         Vector2 startPointer = Vector2.zero;
@@ -4352,7 +5229,35 @@ public sealed class ChartEditorOverlay
             startPointer = PointerPosition(evt);
             startIndex = rowStates.IndexOf(state);
             row.style.opacity = 0.64f;
+            row.style.scale = new Scale(new Vector3(1.012f, 1.012f, 1f));
             grip.CapturePointer(pointerId);
+            evt.StopImmediatePropagation();
+        });
+        grip.RegisterCallback<PointerMoveEvent>(evt =>
+        {
+            if (evt.pointerId != pointerId || !grip.HasPointerCapture(pointerId))
+                return;
+
+            Vector2 pointer = PointerPosition(evt);
+            row.style.translate = new Translate(0f, Mathf.Clamp((pointer.y - startPointer.y) * 0.08f, -8f, 8f), 0f);
+
+            int currentIndex = rowStates.IndexOf(state);
+            if (currentIndex < 0)
+            {
+                evt.StopImmediatePropagation();
+                return;
+            }
+
+            int targetIndex = ResolveTechniqueSettingsDragTargetIndex(list, row, pointer);
+            if (targetIndex != currentIndex)
+            {
+                rowStates.RemoveAt(currentIndex);
+                targetIndex = Mathf.Clamp(targetIndex, 0, rowStates.Count);
+                rowStates.Insert(targetIndex, state);
+                MoveTechniqueSettingsRowElement(list, row, targetIndex);
+                RefreshTechniqueSettingsRowOutlines(list);
+            }
+
             evt.StopImmediatePropagation();
         });
         grip.RegisterCallback<PointerUpEvent>(evt =>
@@ -4364,16 +5269,9 @@ public sealed class ChartEditorOverlay
                 grip.ReleasePointer(pointerId);
 
             row.style.opacity = 1f;
-            Vector2 local = list.WorldToLocal(PointerPosition(evt));
-            int targetIndex = Mathf.Clamp(Mathf.FloorToInt(local.y / 184f), 0, Math.Max(0, rowStates.Count - 1));
-            int currentIndex = rowStates.IndexOf(state);
-            if (currentIndex >= 0 && targetIndex != currentIndex)
-            {
-                rowStates.RemoveAt(currentIndex);
-                rowStates.Insert(Mathf.Clamp(targetIndex, 0, rowStates.Count), state);
-                ReflowTechniqueSettingsRowsByOrder(rowStates);
-            }
-
+            row.style.scale = new Scale(Vector3.one);
+            row.style.translate = new Translate(0f, 0f, 0f);
+            ReflowTechniqueSettingsRowsByOrder(rowStates);
             pointerId = -1;
             rebuildRows?.Invoke();
             evt.StopImmediatePropagation();
@@ -4387,44 +5285,152 @@ public sealed class ChartEditorOverlay
                 state.segment.type = parsedType;
                 ApplyTechniqueSegmentTypeDefaultsForSettings(note, state.segment);
             }
+            rebuildRows?.Invoke();
         });
 
         return row;
+    }
+
+    private static int ResolveTechniqueSettingsDragTargetIndex(VisualElement list, VisualElement draggedRow, Vector2 worldPosition)
+    {
+        if (list == null)
+            return 0;
+
+        Vector2 local = list.WorldToLocal(worldPosition);
+        List<VisualElement> siblings = list.Children()
+            .Where(child => child != null && !ReferenceEquals(child, draggedRow))
+            .ToList();
+        for (int i = 0; i < siblings.Count; i++)
+        {
+            VisualElement sibling = siblings[i];
+            float midpoint = sibling.layout.y + sibling.layout.height * 0.5f;
+            if (local.y < midpoint)
+                return i;
+        }
+
+        return siblings.Count;
+    }
+
+    private static void MoveTechniqueSettingsRowElement(VisualElement list, VisualElement row, int targetIndex)
+    {
+        if (list == null || row == null)
+            return;
+
+        List<VisualElement> siblings = list.Children()
+            .Where(child => child != null && !ReferenceEquals(child, row))
+            .ToList();
+        if (siblings.Count == 0)
+            return;
+
+        if (targetIndex <= 0)
+        {
+            row.PlaceBehind(siblings[0]);
+            return;
+        }
+
+        if (targetIndex >= siblings.Count)
+        {
+            row.PlaceInFront(siblings[siblings.Count - 1]);
+            return;
+        }
+
+        row.PlaceBehind(siblings[targetIndex]);
+    }
+
+    private static void RefreshTechniqueSettingsRowOutlines(VisualElement list)
+    {
+        if (list == null)
+            return;
+
+        int index = 0;
+        foreach (VisualElement child in list.Children())
+        {
+            if (child == null)
+                continue;
+
+            SetTechniqueSettingsBorder(child, index == 0 ? TechniqueSettingsAccentColor : TechniqueSettingsBorderColor, 2f, 8f);
+            index++;
+        }
     }
 
     private TextField CreateTechniqueSettingsTextField(string label, string value, float width)
     {
         TextField field = CreatePopupTextField(label, value);
         field.style.width = width;
-        field.style.height = 84f;
-        field.style.marginRight = 12f;
-        field.style.marginBottom = 12f;
-        field.style.fontSize = UiFont(21f);
-        SetRadius(field, 12f);
+        field.style.height = 102f;
+        field.style.marginRight = 30f;
+        field.style.marginBottom = 16f;
+        field.style.fontSize = UiFont(23f);
+        field.style.unityFontDefinition = bodyFont;
+        field.style.flexDirection = FlexDirection.Column;
+        field.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
+        SetBorderWidth(field, 0f);
+        SetRadius(field, 0f);
+        ApplyTechniqueSettingsTypography(field);
+        field.RegisterCallback<AttachToPanelEvent>(_ =>
+        {
+            Label fieldLabel = field.Q<Label>();
+            if (fieldLabel != null)
+            {
+                fieldLabel.style.width = Length.Percent(100f);
+                fieldLabel.style.minWidth = 0f;
+                fieldLabel.style.marginBottom = 8f;
+                fieldLabel.style.fontSize = UiFont(21f);
+                fieldLabel.style.unityFontDefinition = bodyFont;
+                fieldLabel.style.color = new Color(0.70f, 0.72f, 0.78f, 1f);
+                fieldLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+                fieldLabel.style.whiteSpace = WhiteSpace.NoWrap;
+                fieldLabel.style.overflow = Overflow.Hidden;
+                fieldLabel.style.unityTextAlign = TextAnchor.MiddleLeft;
+                ApplyTechniqueSettingsTypography(fieldLabel);
+            }
+
+            VisualElement input = field.Q<VisualElement>(TextField.textInputUssName) ?? field.Q<VisualElement>("unity-text-input");
+            if (input != null)
+            {
+                input.style.width = Length.Percent(100f);
+                input.style.minHeight = 58f;
+                input.style.fontSize = UiFont(23f);
+                input.style.unityFontDefinition = bodyFont;
+                input.style.color = Color.white;
+                input.style.backgroundColor = TechniqueSettingsInputColor;
+                input.style.paddingLeft = 16f;
+                input.style.paddingRight = 16f;
+                SetRadius(input, 7f);
+                SetTechniqueSettingsBorder(input, TechniqueSettingsBorderColor, 2f, 7f);
+                ApplyTechniqueSettingsTypography(input);
+                field.RegisterCallback<FocusInEvent>(_ => SetTechniqueSettingsBorder(input, TechniqueSettingsAccentColor, 2f, 7f));
+                field.RegisterCallback<FocusOutEvent>(_ => SetTechniqueSettingsBorder(input, TechniqueSettingsBorderColor, 2f, 7f));
+            }
+        });
         return field;
     }
 
-    private static void StyleTechniqueSettingsDropdown(DropdownField dropdown)
+    private void StyleTechniqueSettingsDropdown(DropdownField dropdown)
     {
         if (dropdown == null)
             return;
 
-        dropdown.style.height = 68f;
-        dropdown.style.fontSize = UiFont(22f);
+        dropdown.style.height = 62f;
+        dropdown.style.fontSize = UiFont(25f);
+        dropdown.style.unityFontDefinition = bodyFont;
         dropdown.style.unityFontStyleAndWeight = FontStyle.Bold;
         dropdown.style.color = Color.white;
         dropdown.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        dropdown.style.paddingLeft = 12f;
-        dropdown.style.paddingRight = 12f;
+        dropdown.style.paddingLeft = 0f;
+        dropdown.style.paddingRight = 0f;
         SetRadius(dropdown, 0f);
-        SetBorderWidth(dropdown, 1f);
-        dropdown.style.borderTopWidth = 0f;
-        dropdown.style.borderRightWidth = 0f;
-        dropdown.style.borderLeftWidth = 0f;
-        dropdown.style.borderBottomWidth = 1f;
-        dropdown.style.borderBottomColor = new Color(1f, 1f, 1f, 0.34f);
+        SetBorderWidth(dropdown, 0f);
+        ApplyTechniqueSettingsTypography(dropdown);
         dropdown.RegisterCallback<AttachToPanelEvent>(_ =>
         {
+            Label label = dropdown.Q<Label>();
+            if (label != null)
+            {
+                label.style.display = DisplayStyle.None;
+                label.style.unityFontDefinition = bodyFont;
+            }
+
             VisualElement input = dropdown.Q(className: "unity-base-field__input");
             if (input != null)
             {
@@ -4434,21 +5440,46 @@ public sealed class ChartEditorOverlay
                 input.style.borderBottomWidth = 0f;
                 input.style.borderLeftWidth = 0f;
                 input.style.color = Color.white;
-                input.style.fontSize = UiFont(22f);
+                input.style.fontSize = UiFont(25f);
+                input.style.unityFontDefinition = bodyFont;
+                input.style.paddingLeft = 0f;
+                ApplyTechniqueSettingsTypography(input);
             }
 
             Label text = dropdown.Q<Label>(className: "unity-base-popup-field__text");
             if (text != null)
             {
                 text.style.color = new Color(0.92f, 0.94f, 0.98f, 1f);
-                text.style.fontSize = UiFont(22f);
+                text.style.fontSize = UiFont(25f);
+                text.style.unityFontDefinition = bodyFont;
                 text.style.unityFontStyleAndWeight = FontStyle.Bold;
+                ApplyTechniqueSettingsTypography(text);
             }
 
             VisualElement arrow = dropdown.Q(className: "unity-base-popup-field__arrow");
             if (arrow != null)
                 arrow.style.unityBackgroundImageTintColor = new Color(0.82f, 0.84f, 0.88f, 1f);
         });
+    }
+
+    private static bool ShouldShowTechniqueSettingsFretFields(ChartEditorTechniqueSegment segment)
+    {
+        return segment != null && segment.type == NoteTechniqueSegmentType.Slide;
+    }
+
+    private static bool ShouldShowTechniqueSettingsBendFields(ChartEditorTechniqueSegment segment)
+    {
+        return segment != null &&
+               (segment.type == NoteTechniqueSegmentType.Bend ||
+                Mathf.Abs(segment.startBend) > 0.01f ||
+                Mathf.Abs(segment.endBend) > 0.01f);
+    }
+
+    private static bool CanCarryBendValues(ChartEditorTechniqueSegment segment)
+    {
+        return segment != null &&
+               (segment.type == NoteTechniqueSegmentType.Sustain ||
+                segment.type == NoteTechniqueSegmentType.Vibrato);
     }
 
     private void AddTechniqueSettingsSegment(List<TechniqueSettingsRowState> rowStates, ChartEditorNote note, NoteTechniqueSegmentType type)
@@ -4531,20 +5562,36 @@ public sealed class ChartEditorOverlay
             return false;
         }
 
-        if (!TryParseIntInRange(state.startFretField?.value, 0, 24, out int startFret) ||
-            !TryParseIntInRange(state.endFretField?.value, 0, 24, out int endFret))
+        int noteFret = Mathf.Clamp(note?.fret ?? 0, 0, 24);
+        int startFret = noteFret;
+        int endFret = noteFret;
+        if (type == NoteTechniqueSegmentType.Slide)
         {
-            if (showError)
-                SetStatus("Technique frets must be whole numbers from 0 to 24.");
-            return false;
+            if (!TryParseIntInRange(state.startFretField?.value, 0, 24, out startFret) ||
+                !TryParseIntInRange(state.endFretField?.value, 0, 24, out endFret))
+            {
+                if (showError)
+                    SetStatus("Technique frets must be whole numbers from 0 to 24.");
+                return false;
+            }
         }
 
-        if (!TryParseFloatInRange(state.startBendField?.value, 0f, 4f, out float startBend) ||
-            !TryParseFloatInRange(state.endBendField?.value, 0f, 4f, out float endBend))
+        float startBend = 0f;
+        float endBend = 0f;
+        if (state.startBendField != null || state.endBendField != null)
         {
-            if (showError)
-                SetStatus("Technique bend values must be between 0 and 4 semitones.");
-            return false;
+            if (!TryParseFloatInRange(state.startBendField?.value, 0f, 4f, out startBend) ||
+                !TryParseFloatInRange(state.endBendField?.value, 0f, 4f, out endBend))
+            {
+                if (showError)
+                    SetStatus("Technique bend values must be between 0 and 4 semitones.");
+                return false;
+            }
+        }
+        else if (type == NoteTechniqueSegmentType.Bend)
+        {
+            startBend = Mathf.Max(0f, state.segment.startBend);
+            endBend = Mathf.Max(0.5f, state.segment.endBend);
         }
 
         state.segment.type = type;
@@ -4628,7 +5675,12 @@ public sealed class ChartEditorOverlay
 
     private static void ClearBendPoints(ChartEditorNote note)
     {
-        note?.bendPoints?.Clear();
+        if (note == null)
+            return;
+
+        note.bendPoints?.Clear();
+        note.bendVisualStartTime = -1f;
+        note.bendVisualDuration = 0f;
     }
 
     private static IEnumerable<string> TechniqueSegmentChoiceLabels()
@@ -4788,6 +5840,7 @@ public sealed class ChartEditorOverlay
         toggles.Add(CreatePopupStateButton("Note Claps", () => noteClaps, value => noteClaps = value));
         toggles.Add(CreatePopupStateButton("Snap Editing", () => snapEnabled, value => snapEnabled = value));
 
+        Button synchTheoryButton = CreatePopupDialogButton("SynchTheory", ShowSynchTheoryPopup, new Color(0.96f, 0.54f, 0.18f, 1f));
         VisualElement actions = CreatePopupActionGrid(
             CreateCompactButton("Tap Tempo", () => RegisterTapTempo(defaultBpmField, regionBpmField)),
             CreateCompactButton("Add Anchor", () =>
@@ -4796,7 +5849,7 @@ public sealed class ChartEditorOverlay
                 HideEditPopup();
             }),
             CreateCompactButton("Quantize Notes", QuantizeSelectedNotesToBeatGrid),
-            CreateCompactButton("SynchTheory", ShowSynchTheoryPopup),
+            synchTheoryButton,
             CreateCompactButton("Apply Now", () =>
             {
                 ChartEditorTimingService.ApplyBeatMapToContent(project);
@@ -5383,6 +6436,7 @@ public sealed class ChartEditorOverlay
 
         overlay.Add(panel);
         editPopupElement = overlay;
+        editPopupKind = ChartEditorPopupKind.Generic;
         RootElement.Add(editPopupElement);
         editPopupElement.BringToFront();
         SetChartEditorKeyboardCaptureActive(true);
@@ -5400,8 +6454,12 @@ public sealed class ChartEditorOverlay
         if (editPopupElement == null)
             return;
 
+        if (editPopupKind == ChartEditorPopupKind.SaveOptions)
+            closeAfterSuccessfulSave = false;
+
         editPopupElement.RemoveFromHierarchy();
         editPopupElement = null;
+        editPopupKind = ChartEditorPopupKind.None;
         UpdateChartEditorKeyboardCaptureState();
     }
 
@@ -5678,7 +6736,7 @@ public sealed class ChartEditorOverlay
         ChartEditorBeatMarker syncPoint = FindSelectedAnchor();
 
         if (mode == ChartEditorMode.Notes && note != null)
-            BuildNoteInspector(panel, note);
+            BuildNoteInspector(panel, project.SelectedTrack, note);
         else if (mode == ChartEditorMode.Sections && section != null)
             BuildSectionInspector(panel, section);
         else if (mode == ChartEditorMode.SyncTiming && syncPoint != null)
@@ -8539,6 +9597,23 @@ public sealed class ChartEditorOverlay
                role == ChartEditorTrackRole.Custom;
     }
 
+    private static bool IsDrumTrack(ChartEditorTrack track)
+    {
+        return track?.role == ChartEditorTrackRole.Drums;
+    }
+
+    private static bool SanitizeDrumTrackTechniqueData(ChartEditorTrack track)
+    {
+        if (!IsDrumTrack(track) || track.notes == null)
+            return false;
+
+        bool changed = false;
+        for (int i = 0; i < track.notes.Count; i++)
+            changed |= ChartEditorDrumNoteSanitizer.Sanitize(track.notes[i]);
+
+        return changed;
+    }
+
     private static float GetLaneCenterY(float laneTop, int lane, float laneHeight)
     {
         return laneTop + lane * laneHeight + laneHeight * 0.5f;
@@ -9708,7 +10783,12 @@ public sealed class ChartEditorOverlay
     private static string[] GetVisualLaneLabels(ChartEditorTrack track, int laneCount)
     {
         if (track?.role == ChartEditorTrackRole.Drums)
-            return new[] { "Kick", "Sn", "Hat", "T1", "T2", "Floor", "Cr", "Ride" };
+        {
+            string[] drumLabels = new string[laneCount];
+            for (int lane = 0; lane < laneCount; lane++)
+                drumLabels[lane] = DrumLaneMapper.GetLaneLabel(lane);
+            return drumLabels;
+        }
 
         int[] pitches = track?.tuning?.stringPitches;
         bool bass = track?.role == ChartEditorTrackRole.Bass;
@@ -9751,8 +10831,11 @@ public sealed class ChartEditorOverlay
 
     private static int GetTrackLaneCount(ChartEditorTrack track)
     {
+        if (track?.role == ChartEditorTrackRole.Drums)
+            return DrumLaneMapper.LaneCount;
+
         int count = track?.role == ChartEditorTrackRole.Bass ? 4 :
-            (track?.role == ChartEditorTrackRole.Drums || track?.role == ChartEditorTrackRole.Piano) ? 8 : 6;
+            track?.role == ChartEditorTrackRole.Piano ? 8 : 6;
 
         if (track?.tuning?.stringPitches != null && track.tuning.stringPitches.Length > 0)
             count = Mathf.Max(count, track.tuning.stringPitches.Length);
@@ -10274,14 +11357,15 @@ public sealed class ChartEditorOverlay
         panel.Add(CreateToggleButton("Solo", track.solo, () => { track.solo = !track.solo; project.dirty = true; Rebuild(); }));
     }
 
-    private void BuildNoteInspector(VisualElement panel, ChartEditorNote note)
+    private void BuildNoteInspector(VisualElement panel, ChartEditorTrack track, ChartEditorNote note)
     {
         panel.Add(CreateSectionTitle("Selected Note"));
         panel.Add(CreateKeyValue("Time", FormatTime(note.timeSeconds)));
         panel.Add(CreateKeyValue("Duration", $"{GetNoteEffectiveDurationSeconds(note) * 1000.0:F0} ms"));
         panel.Add(CreateKeyValue("String/Lane", note.stringOrLane.ToString()));
         panel.Add(CreateKeyValue("Fret", note.fret.ToString()));
-        panel.Add(CreateKeyValue("Techniques", FirstNonEmpty(GetNoteTechniqueOverlayText(note), "None")));
+        if (!IsDrumTrack(track))
+            panel.Add(CreateKeyValue("Techniques", FirstNonEmpty(GetNoteTechniqueOverlayText(note), "None")));
         panel.Add(CreateCompactRow(
             CreateCompactButton("-10ms", () => NudgeNote(note, -0.01)),
             CreateCompactButton("+10ms", () => NudgeNote(note, 0.01))));
@@ -10297,6 +11381,9 @@ public sealed class ChartEditorOverlay
         panel.Add(CreateCompactRow(
             CreateCompactButton("Duplicate", () => DuplicateNote(note)),
             CreateCompactButton("Delete", () => DeleteNote(note))));
+        if (IsDrumTrack(track))
+            return;
+
         panel.Add(CreateTechniqueButton(note, NoteTechnique.HammerOn));
         panel.Add(CreateTechniqueButton(note, NoteTechnique.PullOff));
         panel.Add(CreateTechniqueButton(note, NoteTechnique.Slide));
@@ -10537,13 +11624,14 @@ public sealed class ChartEditorOverlay
         SetStatus(status);
     }
 
-    private void ShowSaveOptionsPopup()
+    private void ShowSaveOptionsPopup(bool closeAfterSave = false)
     {
         if (project == null)
             return;
 
         HideContextMenu();
         HideEditPopup();
+        closeAfterSuccessfulSave = closeAfterSave;
 
         VisualElement overlay = new VisualElement();
         overlay.style.position = Position.Absolute;
@@ -10567,7 +11655,7 @@ public sealed class ChartEditorOverlay
         panel.style.paddingRight = 34f;
         panel.style.paddingTop = 32f;
         panel.style.paddingBottom = 32f;
-        StylePopupPanel(panel, new Color(0.030f, 0.036f, 0.048f, 1f), 18f);
+        StyleStrongPopupPanel(panel, new Color(0.030f, 0.036f, 0.048f, 1f), 18f);
         panel.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
 
         string saveFolder = ResolveTheoryPackageSaveDirectoryForPopup(saveAs: false);
@@ -10582,7 +11670,7 @@ public sealed class ChartEditorOverlay
         Label title = CreateLabel("Save Chart", 36f, Color.white, true, TextAnchor.MiddleLeft, false);
         header.Add(title);
 
-        Button openFolder = CreateCompactButton("Open Save Folder", () => OpenTheoryPackageSaveFolder(saveFolder));
+        Button openFolder = CreatePopupDialogButton("Open Save Folder", () => OpenTheoryPackageSaveFolder(saveFolder), new Color(0.70f, 0.78f, 0.88f, 1f));
         openFolder.style.minWidth = 218f;
         openFolder.style.height = 50f;
         openFolder.style.fontSize = UiFont(18f);
@@ -10611,11 +11699,15 @@ public sealed class ChartEditorOverlay
         footer.style.flexDirection = FlexDirection.Row;
         footer.style.justifyContent = Justify.FlexEnd;
         footer.style.marginTop = 20f;
-        footer.Add(CreateCompactButton("Cancel", HideEditPopup));
+        Button cancel = CreatePopupDialogButton("Cancel", HideEditPopup, new Color(0.70f, 0.78f, 0.88f, 1f));
+        cancel.style.minWidth = 132f;
+        cancel.style.height = 52f;
+        footer.Add(cancel);
         panel.Add(footer);
 
         overlay.Add(panel);
         editPopupElement = overlay;
+        editPopupKind = ChartEditorPopupKind.SaveOptions;
         RootElement.Add(editPopupElement);
         editPopupElement.BringToFront();
         SetChartEditorKeyboardCaptureActive(true);
@@ -10637,7 +11729,7 @@ public sealed class ChartEditorOverlay
         button.style.justifyContent = Justify.Center;
         button.style.unityFontDefinition = bodyFont;
         SetRadius(button, 12f);
-        SetBorderWidth(button, 1f);
+        SetBorderWidth(button, 2f);
         ApplySaveOptionButtonState(button, false);
         button.RegisterCallback<MouseEnterEvent>(_ => ApplySaveOptionButtonState(button, true));
         button.RegisterCallback<MouseLeaveEvent>(_ => ApplySaveOptionButtonState(button, false));
@@ -10731,9 +11823,17 @@ public sealed class ChartEditorOverlay
     {
         if (ChartEditorProjectStore.SaveTheoryPackage(project, saveAs, out string packagePath, out string error))
         {
+            bool shouldClose = closeAfterSuccessfulSave;
+            closeAfterSuccessfulSave = false;
             HideEditPopup();
             owner?.NotifyChartEditorLibraryChangedFromUi(packagePath);
             SetStatus(saveAs ? $"Saved new .theory chart: {packagePath}" : $"Saved .theory chart: {packagePath}");
+            if (shouldClose)
+            {
+                owner?.CloseChartEditorToMainMenuFromUi();
+                return;
+            }
+
             Rebuild();
             ShowSaveSuccessPopup();
             return;
@@ -11579,23 +12679,29 @@ public sealed class ChartEditorOverlay
 
     private static VisualElement CreateIosScrollIndicator(string name, bool vertical)
     {
+        const float thickness = 12f;
+        const float radius = thickness * 0.5f;
+
         VisualElement indicator = new VisualElement();
         indicator.name = name;
         indicator.style.position = Position.Absolute;
-        indicator.style.width = vertical ? 12f : 60f;
-        indicator.style.height = vertical ? 66f : 8f;
-        indicator.style.right = vertical ? 6f : StyleKeyword.Auto;
-        indicator.style.bottom = vertical ? StyleKeyword.Auto : 6f;
-        indicator.style.backgroundColor = new Color(0.92f, 0.95f, 1f, 0.34f);
-        indicator.style.borderTopLeftRadius = 999f;
-        indicator.style.borderTopRightRadius = 999f;
-        indicator.style.borderBottomLeftRadius = 999f;
-        indicator.style.borderBottomRightRadius = 999f;
+        indicator.style.width = vertical ? thickness : 72f;
+        indicator.style.height = vertical ? 72f : thickness;
+        indicator.style.minWidth = vertical ? thickness : 48f;
+        indicator.style.minHeight = vertical ? 48f : thickness;
+        indicator.style.right = vertical ? 8f : StyleKeyword.Auto;
+        indicator.style.bottom = vertical ? StyleKeyword.Auto : 8f;
+        indicator.style.backgroundColor = new Color(0.92f, 0.95f, 1f, 0.64f);
+        indicator.style.borderTopLeftRadius = radius;
+        indicator.style.borderTopRightRadius = radius;
+        indicator.style.borderBottomLeftRadius = radius;
+        indicator.style.borderBottomRightRadius = radius;
         indicator.style.borderTopWidth = 0f;
         indicator.style.borderRightWidth = 0f;
         indicator.style.borderBottomWidth = 0f;
         indicator.style.borderLeftWidth = 0f;
-        indicator.style.opacity = 0.74f;
+        indicator.style.opacity = 1f;
+        indicator.style.overflow = Overflow.Hidden;
         indicator.pickingMode = PickingMode.Position;
         return indicator;
     }
@@ -11652,7 +12758,7 @@ public sealed class ChartEditorOverlay
             if (indicator.HasPointerCapture(pointerId))
                 indicator.ReleasePointer(pointerId);
 
-            indicator.style.opacity = 0.74f;
+            indicator.style.opacity = 1f;
             UpdateIosScrollIndicator(view, indicator, vertical);
             evt.StopImmediatePropagation();
         });
@@ -11660,6 +12766,9 @@ public sealed class ChartEditorOverlay
 
     private static void UpdateIosScrollIndicator(ScrollView view, VisualElement indicator, bool vertical)
     {
+        const float thickness = 12f;
+        const float radius = thickness * 0.5f;
+
         if (view == null || indicator == null || view.contentViewport == null || view.contentContainer == null)
             return;
 
@@ -11669,24 +12778,28 @@ public sealed class ChartEditorOverlay
             return;
         }
 
-        float inset = 6f;
+        float inset = 8f;
         float scroll = vertical ? view.scrollOffset.y : view.scrollOffset.x;
-        float position = inset + Mathf.Clamp01(scroll / maxScroll) * trackTravel;
+        float position = Mathf.Round(inset + Mathf.Clamp01(scroll / maxScroll) * trackTravel);
+        float roundedThumbSize = Mathf.Round(thumbSize);
 
         indicator.style.display = DisplayStyle.Flex;
+        indicator.style.opacity = 1f;
         if (vertical)
         {
             indicator.style.top = position;
-            indicator.style.right = 6f;
-            indicator.style.width = 12f;
-            indicator.style.height = thumbSize;
+            indicator.style.right = 8f;
+            indicator.style.width = thickness;
+            indicator.style.height = roundedThumbSize;
+            SetRadius(indicator, radius);
         }
         else
         {
             indicator.style.left = position;
-            indicator.style.bottom = 6f;
-            indicator.style.width = thumbSize;
-            indicator.style.height = 8f;
+            indicator.style.bottom = 8f;
+            indicator.style.width = roundedThumbSize;
+            indicator.style.height = thickness;
+            SetRadius(indicator, radius);
         }
     }
 
@@ -11722,9 +12835,9 @@ public sealed class ChartEditorOverlay
         if (maxScroll <= 1f)
             return false;
 
-        float inset = 6f;
+        float inset = 8f;
         float trackSize = Mathf.Max(1f, viewportSize - inset * 2f);
-        thumbSize = Mathf.Clamp(viewportSize / contentSize * trackSize, vertical ? 66f : 54f, trackSize);
+        thumbSize = Mathf.Clamp(viewportSize / contentSize * trackSize, vertical ? 52f : 48f, trackSize);
         trackTravel = Mathf.Max(0f, trackSize - thumbSize);
         return trackTravel > 0.001f;
     }
@@ -11790,8 +12903,10 @@ public sealed class ChartEditorOverlay
     private ContextMenuItem[] BuildTechniqueContextItems(IEnumerable<ChartEditorNoteReference> noteRefs)
     {
         List<ChartEditorNoteReference> refs = noteRefs?
-            .Where(noteRef => noteRef?.note != null)
+            .Where(noteRef => noteRef?.note != null && !IsDrumTrack(noteRef.track))
             .ToList() ?? new List<ChartEditorNoteReference>();
+        if (refs.Count == 0)
+            return Array.Empty<ContextMenuItem>();
 
         return new[]
         {
@@ -11857,7 +12972,7 @@ public sealed class ChartEditorOverlay
     private void AddTechniqueSegmentToNotes(List<ChartEditorNoteReference> refs, NoteTechniqueSegmentType type, Action<ChartEditorTechniqueSegment> configure)
     {
         refs = refs?
-            .Where(noteRef => noteRef?.note != null)
+            .Where(noteRef => noteRef?.note != null && !IsDrumTrack(noteRef.track))
             .ToList() ?? new List<ChartEditorNoteReference>();
         if (refs.Count == 0)
             return;
@@ -11899,7 +13014,7 @@ public sealed class ChartEditorOverlay
     private void ClearTechniqueSegmentsForNotes(List<ChartEditorNoteReference> refs)
     {
         refs = refs?
-            .Where(noteRef => noteRef?.note != null)
+            .Where(noteRef => noteRef?.note != null && !IsDrumTrack(noteRef.track))
             .ToList() ?? new List<ChartEditorNoteReference>();
         if (refs.Count == 0)
             return;
@@ -11907,9 +13022,11 @@ public sealed class ChartEditorOverlay
         for (int i = 0; i < refs.Count; i++)
         {
             ChartEditorNote note = refs[i].note;
-            if (note?.techniqueSegments?.Any(segment => segment != null && segment.type == NoteTechniqueSegmentType.Bend) == true)
+            if (note?.techniqueSegments?.Any(segment => segment != null &&
+                (segment.type == NoteTechniqueSegmentType.Bend || IsBendBearingTechniqueSegment(segment))) == true)
                 ClearBendPoints(note);
             note?.techniqueSegments?.Clear();
+            ApplyTechniqueSegmentSummaries(note);
             NormalizePrimaryTechnique(note);
         }
 
@@ -12134,7 +13251,10 @@ public sealed class ChartEditorOverlay
 
     private void ToggleTechniqueForNotes(List<ChartEditorNoteReference> refs, NoteTechnique technique)
     {
-        if (refs == null || refs.Count == 0)
+        refs = refs?
+            .Where(noteRef => noteRef?.note != null && !IsDrumTrack(noteRef.track))
+            .ToList() ?? new List<ChartEditorNoteReference>();
+        if (refs.Count == 0)
             return;
 
         bool disable = refs.All(noteRef => IsTechniqueEnabled(noteRef.note, technique));
@@ -12225,19 +13345,23 @@ public sealed class ChartEditorOverlay
         if (note.technique == NoteTechnique.HammerOn || note.technique == NoteTechnique.PullOff)
             return;
 
-        if (IsTechniqueEnabled(note, NoteTechnique.Slide))
+        if (note.slideTargetFret >= 0 || HasTechniqueSegment(note, NoteTechniqueSegmentType.Slide))
         {
             note.technique = NoteTechnique.Slide;
             return;
         }
 
-        if (IsTechniqueEnabled(note, NoteTechnique.Bend))
+        if (Mathf.Abs(note.bendStep) > 0.01f ||
+            note.bendPreBend ||
+            note.bendRelease ||
+            HasTechniqueSegment(note, NoteTechniqueSegmentType.Bend) ||
+            HasBendBearingTechniqueSegment(note))
         {
             note.technique = NoteTechnique.Bend;
             return;
         }
 
-        if (IsTechniqueEnabled(note, NoteTechnique.Vibrato))
+        if (HasTechniqueSegment(note, NoteTechniqueSegmentType.Vibrato))
         {
             note.technique = NoteTechnique.Vibrato;
             return;
@@ -12513,6 +13637,49 @@ public sealed class ChartEditorOverlay
         return button;
     }
 
+    private Button CreatePopupDialogButton(string text, Action action, Color accent, bool filled = false)
+    {
+        Button button = new Button(action) { text = text ?? string.Empty };
+        button.focusable = false;
+        button.style.unityFontDefinition = bodyFont;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.fontSize = UiFont(22f);
+        button.style.height = 54f;
+        button.style.minWidth = 146f;
+        button.style.marginLeft = 0f;
+        button.style.marginRight = 0f;
+        button.style.marginTop = 0f;
+        button.style.marginBottom = 0f;
+        button.style.paddingLeft = 22f;
+        button.style.paddingRight = 22f;
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+        SetRadius(button, 11f);
+        ApplyPopupDialogButtonState(button, accent, filled, hover: false);
+        button.RegisterCallback<MouseEnterEvent>(_ => ApplyPopupDialogButtonState(button, accent, filled, hover: true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => ApplyPopupDialogButtonState(button, accent, filled, hover: false));
+        return button;
+    }
+
+    private static void ApplyPopupDialogButtonState(Button button, Color accent, bool filled, bool hover)
+    {
+        if (button == null)
+            return;
+
+        Color background = filled
+            ? (hover ? Color.Lerp(accent, Color.white, 0.10f) : accent)
+            : (hover ? new Color(accent.r, accent.g, accent.b, 0.16f) : new Color(0.044f, 0.052f, 0.068f, 0.96f));
+        Color border = filled
+            ? Color.Lerp(accent, Color.white, hover ? 0.46f : 0.30f)
+            : new Color(accent.r, accent.g, accent.b, hover ? 0.98f : 0.78f);
+
+        button.style.backgroundColor = background;
+        button.style.color = Color.white;
+        SetBorderWidth(button, 2f);
+        SetBorderColor(button, border);
+        button.style.opacity = hover ? 1f : 0.98f;
+        button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
+    }
+
     private Button CreateToggleButton(string text, bool enabled, Action action)
     {
         Button button = new Button(action) { text = string.Empty };
@@ -12618,6 +13785,16 @@ public sealed class ChartEditorOverlay
         SetRadius(element, radius);
         SetBorderWidth(element, 1f);
         SetBorderColor(element, new Color(1f, 1f, 1f, 0.34f));
+    }
+
+    private static void StyleStrongPopupPanel(VisualElement element, Color background, float radius = 16f)
+    {
+        if (element == null)
+            return;
+
+        StylePopupPanel(element, background, radius);
+        SetBorderWidth(element, 2f);
+        SetBorderColor(element, new Color(0.42f, 0.48f, 0.58f, 0.96f));
     }
 
     private static void SetElementCursor(VisualElement element, ChartEditorCursorKind cursor)

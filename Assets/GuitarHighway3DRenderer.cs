@@ -20,6 +20,7 @@ public sealed class GuitarHighway3DRenderHost
     public int RenderLayer = -1;
     public string RootName = "Highway3DRendererRoot";
     public int? RenderableStringCountOverride;
+    public int? FretLightColumnCountOverride;
 }
 
 public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
@@ -2658,7 +2659,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         fretBoundaryMats[0] = nutMat;
         fretBoundaryRenderers[0] = nutRenderer;
 
-        for (int fret = 1; fret <= owner.TotalFrets; fret++)
+        int boundaryCount = GetFretLightColumnCount();
+        for (int fret = 1; fret < boundaryCount; fret++)
         {
             float wireX = fret * owner.FretSpacing;
 
@@ -2729,7 +2731,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void GenerateStrings()
     {
         float stringStartX = 0f;
-        float stringEndX = (owner.TotalFrets * owner.FretSpacing) + (owner.FretSpacing * 0.75f);
+        int lastFretColumn = Mathf.Max(1, GetFretLightColumnCount() - 1);
+        float stringEndX = (lastFretColumn * owner.FretSpacing) + (owner.FretSpacing * 0.75f);
         float stringLength = Mathf.Max(0.01f, stringEndX - stringStartX);
         float stringCenterX = stringStartX + (stringLength * 0.5f);
         int activeStringCount = GetRenderableStringCount();
@@ -2754,7 +2757,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private void GenerateLoopMarkers()
     {
         float stringStartX = 0f;
-        float stringEndX = (owner.TotalFrets * owner.FretSpacing) + (owner.FretSpacing * 0.75f);
+        int lastFretColumn = Mathf.Max(1, GetFretLightColumnCount() - 1);
+        float stringEndX = (lastFretColumn * owner.FretSpacing) + (owner.FretSpacing * 0.75f);
         float stringLength = Mathf.Max(0.01f, stringEndX - stringStartX);
         float stringCenterX = stringStartX + (stringLength * 0.5f);
 
@@ -6926,8 +6930,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (endAttachZ <= startAttachZ + 0.05f)
             endAttachZ = startAttachZ + 0.05f;
 
-        float startX = GetNoteX(segment.startFret);
-        float endX = GetNoteX(segment.endFret);
+        float startX = GetSegmentFretVisualX(state.data, segment.startFret);
+        float endX = GetSegmentFretVisualX(state.data, segment.endFret);
         float startY = GetSegmentBendVisualY(state.data.stringIdx, segment.startBend);
         float endY = GetSegmentBendVisualY(state.data.stringIdx, segment.endBend);
 
@@ -7027,8 +7031,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float startTravelZ = owner.StrikeLineZ + ((segmentStartTime - songTime) * currentVisualNoteSpeed);
         float fullEndTravelZ = owner.StrikeLineZ + ((segmentEndTime - songTime) * currentVisualNoteSpeed);
         float startAttachZ = startTravelZ + (startDepth * 0.5f);
-        float startX = GetNoteX(segment.startFret);
-        float endX = GetNoteX(segment.endFret);
+        float startX = GetSegmentFretVisualX(state.data, segment.startFret);
+        float endX = GetSegmentFretVisualX(state.data, segment.endFret);
         float startY = GetSegmentBendVisualY(state.data.stringIdx, segment.startBend);
         float targetY = GetSegmentBendVisualY(state.data.stringIdx, segment.endBend);
 
@@ -7123,8 +7127,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (totalDisplayedDepth <= 0.05f)
             return false;
 
-        startX = GetNoteX(segment.startFret);
-        endX = GetNoteX(segment.endFret);
+        startX = GetSegmentFretVisualX(state.data, segment.startFret);
+        endX = GetSegmentFretVisualX(state.data, segment.endFret);
         baseStartY = GetSegmentBendVisualY(state.data.stringIdx, segment.startBend);
         baseEndY = GetSegmentBendVisualY(state.data.stringIdx, segment.endBend);
         return true;
@@ -10406,6 +10410,9 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private int GetFretLightColumnCount()
     {
+        if (renderHost?.FretLightColumnCountOverride.HasValue == true)
+            return Mathf.Max(1, renderHost.FretLightColumnCountOverride.Value);
+
         return Mathf.Max(1, owner.TotalFrets + 1);
     }
 

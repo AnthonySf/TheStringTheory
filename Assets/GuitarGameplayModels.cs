@@ -664,6 +664,7 @@ public sealed class GuitarGameplaySnapshot
     public int selectedGlobalSettingsItemIndex;
     public int selectedBackgroundMoodSettingIndex;
     public string activeGlobalSettingsCategory;
+    public string activeGlobalSettingsSubtab;
     public string backgroundMoodSetterStatusText;
     public bool globalSettingsTransparentBackground;
     public bool showGlobalSettingsSelectionPopup;

@@ -525,15 +525,15 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private const int ArcadeLegacyLaneCount = 5;
     private const int ArcadeInputLaneCapacity = 8;
-    private const int DrumLaneCount = 8;
-    private const int DrumLaneHiHat = 0;
-    private const int DrumLaneCrash = 1;
-    private const int DrumLaneSnare = 2;
-    private const int DrumLaneHighTom = 3;
-    private const int DrumLaneKick = 4;
-    private const int DrumLaneMidTom = 5;
-    private const int DrumLaneFloorTom = 6;
-    private const int DrumLaneRide = 7;
+    private const int DrumLaneCount = DrumLaneMapper.LaneCount;
+    private const int DrumLaneHiHat = DrumLaneMapper.HiHatLane;
+    private const int DrumLaneCrash = DrumLaneMapper.CrashLane;
+    private const int DrumLaneSnare = DrumLaneMapper.SnareLane;
+    private const int DrumLaneHighTom = DrumLaneMapper.HighTomLane;
+    private const int DrumLaneKick = DrumLaneMapper.KickLane;
+    private const int DrumLaneMidTom = DrumLaneMapper.MidTomLane;
+    private const int DrumLaneFloorTom = DrumLaneMapper.FloorTomLane;
+    private const int DrumLaneRide = DrumLaneMapper.RideLane;
 
     private class ArcadeInputEvent
     {
@@ -692,7 +692,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool noteByNoteModeEnabled;
     private bool noteByNoteWaitingForMatch;
     private bool heroModeEnabled = false;
-    private HighwayCharacterDisplayMode highwayCharacterDisplayMode = HighwayCharacterDisplayMode.Always;
+    private HighwayCharacterDisplayMode highwayCharacterDisplayMode = HighwayCharacterDisplayMode.AlwaysGuitars;
     private int heroModeHeartCount = 5;
     private float noteByNoteWaitingNoteTime = -1f;
     private int selectedPauseActionIndex;
@@ -786,6 +786,14 @@ public class GuitarBridgeServer : MonoBehaviour
     public int arcadeMidiLane3Note = 63;
     public int arcadeMidiLane4Note = 64;
     public int arcadeMidiOpenNote = 65;
+    public int arcadeMidiDrumKickNote = 36;
+    public int arcadeMidiDrumSnareNote = 38;
+    public int arcadeMidiDrumHiHatNote = 42;
+    public int arcadeMidiDrumHighTomNote = 50;
+    public int arcadeMidiDrumMidTomNote = 47;
+    public int arcadeMidiDrumFloorTomNote = 43;
+    public int arcadeMidiDrumCrashNote = 49;
+    public int arcadeMidiDrumRideNote = 51;
     public KeyCode arcadeKeyboardGreen = KeyCode.A;
     public KeyCode arcadeKeyboardRed = KeyCode.S;
     public KeyCode arcadeKeyboardYellow = KeyCode.J;
@@ -1155,6 +1163,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private int selectedMainMenuIndex;
     private bool showMiniGames;
     private bool showChartEditor;
+    private bool chartEditorCloseRequestedFromUi;
     private int selectedMiniGameIndex;
     private int selectedMiniGamePauseActionIndex;
     private bool miniGameTextInputFocused;
@@ -1201,6 +1210,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private int selectedBackgroundMoodSettingIndex;
     private int selectedGlobalSettingsSelectionPopupIndex;
     private string activeGlobalSettingsCategory = string.Empty;
+    private string activeGlobalSettingsSubtab = string.Empty;
     private bool globalSettingsTransparentBackground;
     private string backgroundMoodSetterStatusText = string.Empty;
     private MainMenuBackgroundProfile mainMenuBackgroundProfile = new MainMenuBackgroundProfile();
@@ -1395,6 +1405,8 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool arcadeInputNeedsUnpausedPrime;
     private string activeArcadeBindingSettingId = string.Empty;
     private int activeArcadeBindingStartFrame = -1;
+    private string activeArcadeMidiNoteSettingId = string.Empty;
+    private int activeArcadeMidiNoteStartFrame = -1;
     private int latestArcadeInputEventId;
     private readonly List<AudioSource> arcadeAudioSources = new List<AudioSource>();
     private int pendingArcadeAudioLoadCount;
@@ -1625,7 +1637,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool cachedSongDurationGeneratedAvailable;
     private float cachedSongDurationGeneratedSeconds = -1f;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
-    private const int CurrentGlobalRuntimeSettingsVersion = 13;
+    private const int CurrentGlobalRuntimeSettingsVersion = 14;
     private int loadedGlobalRuntimeSettingsVersion = CurrentGlobalRuntimeSettingsVersion;
     private const int ArcadeControllerSlotCount = 8;
     private const int GlobalSettingsTopLevelCount = 14;
@@ -1641,6 +1653,7 @@ public class GuitarBridgeServer : MonoBehaviour
         None,
         AudioInputDevice,
         AudioOutputDevice,
+        ArcadeMidiDevice,
         SongsFolder,
         EffectsFolder
     }
@@ -2462,7 +2475,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 return;
 
             if (IsUiBackPressed() || IsUiPausePressed())
-                CloseChartEditorToMainMenuFromUi();
+                RequestChartEditorCloseFromUi();
             return;
         }
 
@@ -5660,6 +5673,9 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void HandleGlobalSettingsControls()
     {
+        if (HandleArcadeMidiNoteCaptureInput())
+            return;
+
         if (HandleArcadeBindingCaptureInput())
             return;
 
@@ -5706,6 +5722,7 @@ public class GuitarBridgeServer : MonoBehaviour
             if (!string.IsNullOrEmpty(activeGlobalSettingsCategory))
             {
                 activeGlobalSettingsCategory = string.Empty;
+                activeGlobalSettingsSubtab = string.Empty;
                 selectedGlobalSettingsItemIndex = 0;
             }
             else
@@ -5718,7 +5735,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (IsUiUpPressed())
         {
             if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
-                selectedGlobalSettingsTopIndex = (selectedGlobalSettingsTopIndex + GlobalSettingsTopLevelCount - 1) % GlobalSettingsTopLevelCount;
+                MoveGlobalSettingsGeneralSelection(-1);
             else
                 MoveGlobalSettingsItemSelection(-1);
             return;
@@ -5727,7 +5744,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (IsUiDownPressed())
         {
             if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
-                selectedGlobalSettingsTopIndex = (selectedGlobalSettingsTopIndex + 1) % GlobalSettingsTopLevelCount;
+                MoveGlobalSettingsGeneralSelection(1);
             else
                 MoveGlobalSettingsItemSelection(1);
             return;
@@ -9338,12 +9355,27 @@ public class GuitarBridgeServer : MonoBehaviour
 
     public void CloseChartEditorToMainMenuFromUi()
     {
+        chartEditorCloseRequestedFromUi = false;
         showChartEditor = false;
         showMainMenu = true;
         mainMenuFlowActive = true;
         selectedMainMenuIndex = 7;
         isPaused = true;
         SyncAudioToSongTimer(playImmediately: false);
+    }
+
+    public void RequestChartEditorCloseFromUi()
+    {
+        chartEditorCloseRequestedFromUi = true;
+    }
+
+    public bool ConsumeChartEditorCloseRequestFromUi()
+    {
+        if (!chartEditorCloseRequestedFromUi)
+            return false;
+
+        chartEditorCloseRequestedFromUi = false;
+        return true;
     }
 
     public void NotifyChartEditorLibraryChangedFromUi(string changedTheoryPackagePath = null)
@@ -10324,7 +10356,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         if (highwayCharacterDisplayMode == HighwayCharacterDisplayMode.Never)
-            highwayCharacterDisplayMode = HighwayCharacterDisplayMode.Always;
+            highwayCharacterDisplayMode = HighwayCharacterDisplayMode.AlwaysGuitars;
 
         ApplySelectedHighwayCharacter((HighwayCharacterChoice)Mathf.Clamp(optionIndex - 1, 0, HighwayCharacterVisualUtility.CharacterCount - 1));
     }
@@ -11214,6 +11246,7 @@ public class GuitarBridgeServer : MonoBehaviour
         selectedGlobalSettingsTopIndex = 0;
         selectedGlobalSettingsItemIndex = 0;
         activeGlobalSettingsCategory = string.Empty;
+        activeGlobalSettingsSubtab = string.Empty;
         songSelectionSongConfirmed = false;
         showTrackSelection = false;
         selectedTrackListIndex = 0;
@@ -11405,6 +11438,7 @@ public class GuitarBridgeServer : MonoBehaviour
         selectedGlobalSettingsTopIndex = 0;
         selectedGlobalSettingsItemIndex = 0;
         activeGlobalSettingsCategory = string.Empty;
+        activeGlobalSettingsSubtab = string.Empty;
         showSongSettings = false;
         showGameplayAudioPopup = false;
         gameplayAudioPopupOpenedWhilePaused = false;
@@ -11441,6 +11475,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showGlobalSettingsSelectionPopup = false;
         globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.None;
         activeGlobalSettingsCategory = string.Empty;
+        activeGlobalSettingsSubtab = string.Empty;
         showSongSettings = false;
         showGameplayAudioPopup = false;
         gameplayAudioPopupOpenedWhilePaused = false;
@@ -12840,6 +12875,7 @@ public class GuitarBridgeServer : MonoBehaviour
         selectedGlobalSettingsSelectionPopupIndex = 0;
         globalSettingsTransparentBackground = false;
         activeGlobalSettingsCategory = string.Empty;
+        activeGlobalSettingsSubtab = string.Empty;
         selectedGlobalSettingsItemIndex = 0;
         showGameModes = false;
         showHeroModeSettings = false;
@@ -13036,7 +13072,32 @@ public class GuitarBridgeServer : MonoBehaviour
         if (string.IsNullOrWhiteSpace(settingId) || !runtimeSettingById.TryGetValue(settingId, out RuntimeSettingDefinition definition))
             return;
 
+        if (OpenRuntimeSettingSelectionPopupFromUi(settingId))
+            return;
+
         definition.Activator?.Invoke();
+    }
+
+    public void SelectGlobalSettingsTabFromUi(string category)
+    {
+        if (!showGlobalSettings)
+            return;
+
+        activeGlobalSettingsCategory = NormalizeGlobalSettingsTabCategory(category);
+        activeGlobalSettingsSubtab = GetDefaultGlobalSettingsSubtabKey(activeGlobalSettingsCategory);
+        selectedGlobalSettingsItemIndex = 0;
+        selectedGlobalSettingsTopIndex = GetGlobalSettingsTopIndexFromTabCategory(activeGlobalSettingsCategory);
+    }
+
+    public void SelectGlobalSettingsSubtabFromUi(string category, string subtab)
+    {
+        if (!showGlobalSettings)
+            return;
+
+        activeGlobalSettingsCategory = NormalizeGlobalSettingsTabCategory(category);
+        activeGlobalSettingsSubtab = NormalizeGlobalSettingsSubtab(activeGlobalSettingsCategory, subtab);
+        selectedGlobalSettingsItemIndex = 0;
+        selectedGlobalSettingsTopIndex = GetGlobalSettingsTopIndexFromTabCategory(activeGlobalSettingsCategory);
     }
 
     public void ResetGlobalSettingsToDefaultsFromUi()
@@ -15738,6 +15799,38 @@ private void OpenOrFocusToneLab()
         selectedGlobalSettingsSelectionPopupIndex = Mathf.Clamp(GetSelectedSharedAudioOutputUiIndex(), 0, Mathf.Max(0, sharedAudioOutputDeviceChoices.Count - 1));
     }
 
+    public void OpenArcadeMidiDeviceSelectionPopupFromUi()
+    {
+        RefreshArcadeMidiDeviceOptionsFromUi();
+        List<string> options = BuildArcadeMidiDeviceOptions();
+        showGlobalSettingsSelectionPopup = true;
+        globalSettingsSelectionPopupMode = GlobalSettingsSelectionPopupMode.ArcadeMidiDevice;
+        selectedGlobalSettingsSelectionPopupIndex = Mathf.Clamp(arcadeMidiInputDeviceIndex, 0, Mathf.Max(0, options.Count - 1));
+    }
+
+    private bool OpenRuntimeSettingSelectionPopupFromUi(string settingId)
+    {
+        if (string.Equals(settingId, "audio.inputDevice", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenAudioInputSelectionPopupFromUi();
+            return true;
+        }
+
+        if (string.Equals(settingId, "audio.outputDevice", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenAudioOutputSelectionPopupFromUi();
+            return true;
+        }
+
+        if (string.Equals(settingId, "arcade.midiDeviceIndex", StringComparison.OrdinalIgnoreCase))
+        {
+            OpenArcadeMidiDeviceSelectionPopupFromUi();
+            return true;
+        }
+
+        return false;
+    }
+
     public void OpenSongsFolderSelectionPopupFromUi()
     {
         showGlobalSettingsSelectionPopup = true;
@@ -15805,6 +15898,16 @@ private void OpenOrFocusToneLab()
                 CloseGlobalSettingsSelectionPopupFromUi();
                 return;
             }
+            case GlobalSettingsSelectionPopupMode.ArcadeMidiDevice:
+            {
+                List<string> midiOptions = BuildArcadeMidiDeviceOptions();
+                if (selectedGlobalSettingsSelectionPopupIndex < 0 || selectedGlobalSettingsSelectionPopupIndex >= midiOptions.Count)
+                    return;
+
+                ApplyRuntimeSettingValue("arcade.midiDeviceIndex", midiOptions[selectedGlobalSettingsSelectionPopupIndex], saveMetadata: true);
+                CloseGlobalSettingsSelectionPopupFromUi();
+                return;
+            }
             case GlobalSettingsSelectionPopupMode.SongsFolder:
             {
                 int optionIndex = Mathf.Clamp(selectedGlobalSettingsSelectionPopupIndex, 0, Mathf.Max(0, GetGlobalSettingsSelectionPopupOptionCount() - 1));
@@ -15857,6 +15960,8 @@ private void OpenOrFocusToneLab()
                 return new List<string>(sharedAudioInputDeviceChoices);
             case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
                 return new List<string>(sharedAudioOutputDeviceChoices);
+            case GlobalSettingsSelectionPopupMode.ArcadeMidiDevice:
+                return BuildArcadeMidiDeviceOptions();
             case GlobalSettingsSelectionPopupMode.SongsFolder:
                 return new List<string>
                 {
@@ -15894,6 +15999,15 @@ private void OpenOrFocusToneLab()
                     states.Add(string.Equals(sharedAudioOutputDeviceChoices[i], selectedLabel, StringComparison.Ordinal) ? "ACTIVE" : "OUTPUT");
                 return states;
             }
+            case GlobalSettingsSelectionPopupMode.ArcadeMidiDevice:
+            {
+                List<string> options = BuildArcadeMidiDeviceOptions();
+                List<string> states = new List<string>(options.Count);
+                int selectedIndex = Mathf.Clamp(arcadeMidiInputDeviceIndex, 0, Mathf.Max(0, options.Count - 1));
+                for (int i = 0; i < options.Count; i++)
+                    states.Add(i == selectedIndex ? "ACTIVE" : "MIDI");
+                return states;
+            }
             case GlobalSettingsSelectionPopupMode.SongsFolder:
             case GlobalSettingsSelectionPopupMode.EffectsFolder:
                 return new List<string>
@@ -15924,6 +16038,14 @@ private void OpenOrFocusToneLab()
                     actions.Add(string.Empty);
                 return actions;
             }
+            case GlobalSettingsSelectionPopupMode.ArcadeMidiDevice:
+            {
+                List<string> options = BuildArcadeMidiDeviceOptions();
+                List<string> actions = new List<string>(options.Count);
+                for (int i = 0; i < options.Count; i++)
+                    actions.Add(string.Empty);
+                return actions;
+            }
             case GlobalSettingsSelectionPopupMode.SongsFolder:
             case GlobalSettingsSelectionPopupMode.EffectsFolder:
                 return new List<string>
@@ -15943,6 +16065,8 @@ private void OpenOrFocusToneLab()
             case GlobalSettingsSelectionPopupMode.AudioInputDevice:
             case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
                 return "GENERAL SETTINGS";
+            case GlobalSettingsSelectionPopupMode.ArcadeMidiDevice:
+                return "MIDI CONTROLS";
             case GlobalSettingsSelectionPopupMode.SongsFolder:
             case GlobalSettingsSelectionPopupMode.EffectsFolder:
                 return "CONTENT LOCATION";
@@ -15959,6 +16083,8 @@ private void OpenOrFocusToneLab()
                 return "INPUT DEVICE";
             case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
                 return "OUTPUT DEVICE";
+            case GlobalSettingsSelectionPopupMode.ArcadeMidiDevice:
+                return "MIDI DEVICE";
             case GlobalSettingsSelectionPopupMode.SongsFolder:
                 return "SONGS FOLDER";
             case GlobalSettingsSelectionPopupMode.EffectsFolder:
@@ -15976,6 +16102,8 @@ private void OpenOrFocusToneLab()
                 return $"Current input: {GetSharedAudioSelectedInputLabel()}";
             case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
                 return $"Current output: {GetSharedAudioSelectedOutputLabel()}";
+            case GlobalSettingsSelectionPopupMode.ArcadeMidiDevice:
+                return $"Current MIDI input: {SerializeArcadeMidiDevice()}";
             case GlobalSettingsSelectionPopupMode.SongsFolder:
                 return $"Current folder: {ExternalContentPaths.PersistentSongsDirectory}";
             case GlobalSettingsSelectionPopupMode.EffectsFolder:
@@ -15993,6 +16121,8 @@ private void OpenOrFocusToneLab()
                 return sharedAudioInputDeviceChoices.Count;
             case GlobalSettingsSelectionPopupMode.AudioOutputDevice:
                 return sharedAudioOutputDeviceChoices.Count;
+            case GlobalSettingsSelectionPopupMode.ArcadeMidiDevice:
+                return BuildArcadeMidiDeviceOptions().Count;
             case GlobalSettingsSelectionPopupMode.SongsFolder:
             case GlobalSettingsSelectionPopupMode.EffectsFolder:
                 return 2;
@@ -17535,10 +17665,14 @@ private void OpenOrFocusToneLab()
         lane = -1;
         isOpen = false;
 
-        if (IsActiveDrumLaneGameplay() && TryMapGeneralMidiDrumInputNote(midiNote, out lane))
+        if (IsActiveDrumLaneGameplay())
         {
-            isOpen = false;
-            return true;
+            if (TryMapConfiguredArcadeMidiDrumInputNote(midiNote, out lane) ||
+                TryMapGeneralMidiDrumInputNote(midiNote, out lane))
+            {
+                isOpen = false;
+                return true;
+            }
         }
 
         if (midiNote == arcadeMidiOpenNote)
@@ -17577,7 +17711,7 @@ private void OpenOrFocusToneLab()
             return true;
         }
 
-        if (TryMapCloneHeroMidiInputNote(midiNote, out lane, out isOpen))
+        if (TryMapFiveLaneMidiInputNote(midiNote, out lane, out isOpen))
             return true;
 
         if (TryMapGeneralMidiDrumInputNote(midiNote, out lane))
@@ -17589,7 +17723,61 @@ private void OpenOrFocusToneLab()
         return false;
     }
 
-    private static bool TryMapCloneHeroMidiInputNote(int midiNote, out int lane, out bool isOpen)
+    private bool TryMapConfiguredArcadeMidiDrumInputNote(int midiNote, out int lane)
+    {
+        if (midiNote == arcadeMidiDrumKickNote)
+        {
+            lane = DrumLaneKick;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiDrumSnareNote)
+        {
+            lane = DrumLaneSnare;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiDrumHiHatNote)
+        {
+            lane = DrumLaneHiHat;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiDrumHighTomNote)
+        {
+            lane = DrumLaneHighTom;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiDrumMidTomNote)
+        {
+            lane = DrumLaneMidTom;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiDrumFloorTomNote)
+        {
+            lane = DrumLaneFloorTom;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiDrumCrashNote)
+        {
+            lane = DrumLaneCrash;
+            return true;
+        }
+
+        if (midiNote == arcadeMidiDrumRideNote)
+        {
+            lane = DrumLaneRide;
+            return true;
+        }
+
+        lane = -1;
+        return false;
+    }
+
+    private static bool TryMapFiveLaneMidiInputNote(int midiNote, out int lane, out bool isOpen)
     {
         int[] difficultyRows = { 60, 72, 84, 96 };
         for (int i = 0; i < difficultyRows.Length; i++)
@@ -21332,6 +21520,7 @@ private void OpenOrFocusToneLab()
             selectedGlobalSettingsItemIndex = selectedGlobalSettingsItemIndex,
             selectedBackgroundMoodSettingIndex = selectedBackgroundMoodSettingIndex,
             activeGlobalSettingsCategory = activeGlobalSettingsCategory,
+            activeGlobalSettingsSubtab = activeGlobalSettingsSubtab,
             backgroundMoodSetterStatusText = backgroundMoodSetterStatusText,
             globalSettingsTransparentBackground = globalSettingsTransparentBackground,
             showGlobalSettingsSelectionPopup = showGlobalSettingsSelectionPopup,
@@ -22024,7 +22213,7 @@ private void OpenOrFocusToneLab()
 
         if (selectedSummary == null)
         {
-            Debug.LogWarning($"[GuitarBridgeServer] Clone Hero chart had no playable arrangements: {entry.ArcadeChartPath}");
+            Debug.LogWarning($"[GuitarBridgeServer] Five-lane chart had no playable arrangements: {entry.ArcadeChartPath}");
             return;
         }
 
@@ -22263,128 +22452,12 @@ private void OpenOrFocusToneLab()
 
     private static bool TryResolveDrumLaneFromLabel(string label, out int lane)
     {
-        lane = -1;
-        if (string.IsNullOrWhiteSpace(label))
-            return false;
-
-        string normalized = label.Trim().ToLowerInvariant();
-        if (normalized.Contains("kick") || normalized.Contains("bass drum"))
-        {
-            lane = DrumLaneKick;
-            return true;
-        }
-
-        if (normalized.Contains("snare") || normalized.Contains("rim") || normalized.Contains("clap"))
-        {
-            lane = DrumLaneSnare;
-            return true;
-        }
-
-        if (normalized.Contains("hat") || normalized.Contains("hihat") || normalized.Contains("hi-hat"))
-        {
-            lane = DrumLaneHiHat;
-            return true;
-        }
-
-        if (normalized.Contains("ride") || normalized.Contains("bell"))
-        {
-            lane = DrumLaneRide;
-            return true;
-        }
-
-        if (normalized.Contains("crash") ||
-            normalized.Contains("splash") ||
-            normalized.Contains("china") ||
-            normalized.Contains("cymbal"))
-        {
-            lane = DrumLaneCrash;
-            return true;
-        }
-
-        if (normalized.Contains("tom"))
-        {
-            if (normalized.Contains("floor") ||
-                normalized.Contains("low") ||
-                normalized.Contains("tom 3") ||
-                normalized.Contains("tom3"))
-            {
-                lane = DrumLaneFloorTom;
-                return true;
-            }
-
-            if (normalized.Contains("mid") ||
-                normalized.Contains("middle") ||
-                normalized.Contains("tom 2") ||
-                normalized.Contains("tom2"))
-            {
-                lane = DrumLaneMidTom;
-                return true;
-            }
-
-            if (normalized.Contains("high") ||
-                normalized.Contains("rack") ||
-                normalized.Contains("small") ||
-                normalized.Contains("tom 1") ||
-                normalized.Contains("tom1"))
-            {
-                lane = DrumLaneHighTom;
-                return true;
-            }
-
-            lane = DrumLaneMidTom;
-            return true;
-        }
-
-        if (normalized.Contains("tambourine") ||
-            normalized.Contains("cowbell") ||
-            normalized.Contains("clave") ||
-            normalized.Contains("woodblock") ||
-            normalized.Contains("percussion"))
-        {
-            lane = DrumLaneRide;
-            return true;
-        }
-
-        return false;
+        return DrumLaneMapper.TryResolveLaneFromLabel(label, out lane);
     }
 
     private static int MapGeneralMidiDrumToLane(int midi)
     {
-        switch (midi)
-        {
-            case 35:
-            case 36:
-                return DrumLaneKick;
-            case 37:
-            case 38:
-            case 39:
-            case 40:
-                return DrumLaneSnare;
-            case 42:
-            case 44:
-            case 46:
-                return DrumLaneHiHat;
-            case 48:
-            case 50:
-                return DrumLaneHighTom;
-            case 45:
-            case 47:
-                return DrumLaneMidTom;
-            case 41:
-            case 43:
-                return DrumLaneFloorTom;
-            case 49:
-            case 52:
-            case 55:
-            case 57:
-                return DrumLaneCrash;
-            case 51:
-            case 53:
-            case 59:
-                return DrumLaneRide;
-            default:
-                return DrumLaneRide;
-        }
+        return DrumLaneMapper.MapGeneralMidiToLane(midi);
     }
 
     private static bool TryParseNoteNameToMidi(string noteName, out int midi)
@@ -23305,7 +23378,7 @@ private void OpenOrFocusToneLab()
         {
             hasBackingTrack = false;
             isLoadingBackingTrack = false;
-            backingTrackLoadError = $"No Clone Hero audio files found for: {entry?.SongDirectory}";
+            backingTrackLoadError = $"No supported rhythm audio files found for: {entry?.SongDirectory}";
             Debug.LogWarning(backingTrackLoadError);
             return;
         }
@@ -23542,7 +23615,7 @@ private void OpenOrFocusToneLab()
 #endif
             if (failed)
             {
-                backingTrackLoadError = $"Failed to load Clone Hero audio '{absolutePath}': {request.error}";
+                backingTrackLoadError = $"Failed to load rhythm audio '{absolutePath}': {request.error}";
                 Debug.LogWarning(backingTrackLoadError);
             }
             else
@@ -26052,7 +26125,7 @@ private void OpenOrFocusToneLab()
 
         RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line. This also controls the visible distance between notes.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
-        RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "When ON, pitch validation uses E Standard so you can play songs that are not in E Standard without retuning your guitar. When OFF, tune your guitar to the song's required tuning.", () => forceStandardTuning, v =>
+        RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "Uses E Standard pitch validation for songs that are not in E Standard.", () => forceStandardTuning, v =>
         {
             if (forceStandardTuning == v)
                 return;
@@ -26070,7 +26143,7 @@ private void OpenOrFocusToneLab()
         RegisterFloatSetting("audio.songVolume", "Audio", "Song Volume", string.Empty, 0f, 100f, 1f, () => GetSharedAudioSongVolumePercent(), SetSongVolumePercentFromUi);
         RegisterFloatSetting("audio.guitarVolume", "Audio", "Guitar Volume", string.Empty, 0f, UnityToneLabRuntime.MaxMonitorVolumePercent, 1f, () => GetSharedAudioGuitarVolumePercent(), SetSharedAudioGuitarVolumeFromUi);
         RegisterEnumSetting("audio.monitoringLatency", "Audio", "Monitoring Latency", string.Empty, UnityToneLabRuntime.SharedMonitoringLatencyOptions, () => GetSharedAudioSelectedLatencyLabel(), SetSharedAudioMonitoringLatencyFromUi);
-        RegisterBoolSetting("tonelab.useSongToneMappings", "Audio", "Use Song Tone Mappings", "When ON, songs use auto-generated Tone Lab mappings when available and switch tones at the song's tone-change points. You can override generated tones in Tone Lab's Song Tone Mapping screen. When OFF, the currently selected Tone Lab preset is used.", () => useSongToneMappings, v =>
+        RegisterBoolSetting("tonelab.useSongToneMappings", "Audio", "Use Song Tone Mappings", "Uses auto-generated Tone Lab mappings and switches tones at song tone-change points when available.", () => useSongToneMappings, v =>
         {
             SetUseSongToneMappings(v, saveMetadata: false);
         });
@@ -26092,21 +26165,37 @@ private void OpenOrFocusToneLab()
             if (v && !wasEnabled)
                 QueueAutomaticDiagnosticsUploads("automatic-reports-enabled-from-settings");
         });
-        RegisterActionSetting("diagnostics.sendBugReport", "Diagnostics", "Send Bug Report", "Opens a report form and attaches the current diagnostic logs automatically.", "OPEN", OpenBugReportFromUi);
+        RegisterActionSetting("diagnostics.sendBugReport", "Diagnostics", "Send Bug Report", "Opens a report form and attaches current diagnostic logs.", "OPEN", OpenBugReportFromUi);
         RegisterIntSetting("arcade.highwayLaneCount", "Rhythm Mode", "Rhythm Lanes", "Minimum number of lane columns used by the Rhythm highway.", 1, 8, 1, () => arcadeHighwayLaneCount, v => arcadeHighwayLaneCount = Mathf.Clamp(v, 1, 8));
         RegisterFloatSetting("arcade.hitWindowEarly", "Rhythm Mode", "Early Hit Window", "How far before the strike line a Rhythm input can hit.", 0.02f, 0.30f, 0.005f, () => arcadeHitWindowEarly, v => arcadeHitWindowEarly = Mathf.Max(0f, v));
         RegisterFloatSetting("arcade.hitWindowLate", "Rhythm Mode", "Late Hit Window", "How far after the strike line a Rhythm input can hit after the gem has visually passed.", 0.02f, 0.30f, 0.005f, () => arcadeHitWindowLate, v => arcadeHitWindowLate = Mathf.Max(0f, v));
         RegisterFloatSetting("arcade.noteSpawnZ", "Rhythm Mode", "Note Spawn Z", "How far back Rhythm notes first appear on the 3D highway.", 10f, 180f, 0.5f, () => arcadeNoteSpawnZ, v => arcadeNoteSpawnZ = Mathf.Max(StrikeLineZ + 1f, v));
-        RegisterFloatSetting("arcade.resolvedHoldTime", "Rhythm Mode", "Resolved Hold Time", "How long hit Rhythm gems remain visible. Zero matches Clone Hero-style immediate disappearance.", 0f, 0.5f, 0.005f, () => arcadeResolvedHoldTime, v => arcadeResolvedHoldTime = Mathf.Max(0f, v));
-        RegisterEnumSetting("arcade.controls.inputSource", "Rhythm Controls", "Input Source", "Selects which Rhythm input sources are live. Keyboard defaults use A S J K L with Space as the strum key.", new []{"Keyboard","Controller","Keyboard + Controller","MIDI","All"}, () => SerializeArcadeInputSource(arcadeInputSource), v => { arcadeInputSource = ParseArcadeInputSource(v); arcadeMidiInputEnabled = UsesArcadeMidiInput(); if (!UsesArcadeMidiInput()) StopArcadeMidiInput(); });
-        RegisterEnumSetting("arcade.controls.controllerDevice", "Rhythm Controls", "Controller Device", "Selects which connected joystick slot Rhythm mode listens to. 'Any' matches every connected controller, while numbered slots map to Unity's joystick slots.", BuildArcadeControllerDeviceOptions(), () => SerializeArcadeControllerDevice(), v => arcadeControllerDeviceIndex = ParseArcadeControllerDevice(v));
-        RegisterBoolSetting("arcade.controls.gamepadMode", "Rhythm Controls", "Gamepad Mode", "Clone Hero-style gamepad mode: each fret/button press acts like a strum for fretted notes. Open strum notes use the Open Button; open HOPO/tap notes can use release or the Open Button.", () => arcadeGamepadMode, v => arcadeGamepadMode = v);
-        RegisterIntSetting("arcade.midiDeviceIndex", "Rhythm Controls", "MIDI Device", "Windows MIDI input device index used when the Rhythm input source includes MIDI.", 0, 16, 1, () => arcadeMidiInputDeviceIndex, v => { arcadeMidiInputDeviceIndex = v; StopArcadeMidiInput(); });
-        RegisterBindingSetting("arcade.controls.keyboard.green", "Rhythm Controls", "Keyboard Green", "Clone Hero default keyboard green fret.", () => arcadeKeyboardGreen, v => arcadeKeyboardGreen = v, ArcadeBindingCaptureKind.Keyboard);
-        RegisterBindingSetting("arcade.controls.keyboard.red", "Rhythm Controls", "Keyboard Red", "Clone Hero default keyboard red fret.", () => arcadeKeyboardRed, v => arcadeKeyboardRed = v, ArcadeBindingCaptureKind.Keyboard);
-        RegisterBindingSetting("arcade.controls.keyboard.yellow", "Rhythm Controls", "Keyboard Yellow", "Clone Hero default keyboard yellow fret.", () => arcadeKeyboardYellow, v => arcadeKeyboardYellow = v, ArcadeBindingCaptureKind.Keyboard);
-        RegisterBindingSetting("arcade.controls.keyboard.blue", "Rhythm Controls", "Keyboard Blue", "Clone Hero default keyboard blue fret.", () => arcadeKeyboardBlue, v => arcadeKeyboardBlue = v, ArcadeBindingCaptureKind.Keyboard);
-        RegisterBindingSetting("arcade.controls.keyboard.orange", "Rhythm Controls", "Keyboard Orange", "Clone Hero default keyboard orange fret.", () => arcadeKeyboardOrange, v => arcadeKeyboardOrange = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterFloatSetting("arcade.resolvedHoldTime", "Rhythm Mode", "Resolved Hold Time", "How long hit Rhythm gems remain visible.", 0f, 0.5f, 0.005f, () => arcadeResolvedHoldTime, v => arcadeResolvedHoldTime = Mathf.Max(0f, v));
+        RegisterEnumSetting("arcade.controls.inputSource", "Rhythm Controls", "Input Source", "Selects which Rhythm input sources are enabled.", new []{"Keyboard","Controller","Keyboard + Controller","MIDI","All"}, () => SerializeArcadeInputSource(arcadeInputSource), v => { arcadeInputSource = ParseArcadeInputSource(v); arcadeMidiInputEnabled = UsesArcadeMidiInput(); if (!UsesArcadeMidiInput()) StopArcadeMidiInput(); });
+        RegisterEnumSetting("arcade.controls.controllerDevice", "Rhythm Controls", "Controller Device", "Selects which connected joystick slot Rhythm mode listens to.", BuildArcadeControllerDeviceOptions(), () => SerializeArcadeControllerDevice(), v => arcadeControllerDeviceIndex = ParseArcadeControllerDevice(v));
+        RegisterBoolSetting("arcade.controls.gamepadMode", "Rhythm Controls", "Gamepad Mode", "Each fret/button press acts like a strum for fretted notes. Open strum notes use the Open Button; open HOPO/tap notes can use release or the Open Button.", () => arcadeGamepadMode, v => arcadeGamepadMode = v);
+        RegisterEnumSetting("arcade.midiDeviceIndex", "MIDI Controls", "MIDI Device", "Windows MIDI input device used when the Rhythm input source includes MIDI.", BuildArcadeMidiDeviceOptions(), () => SerializeArcadeMidiDevice(), v => { arcadeMidiInputDeviceIndex = ParseArcadeMidiDevice(v); StopArcadeMidiInput(); });
+        RegisterActionSetting("arcade.midi.refreshDevices", "MIDI Controls", "Refresh MIDI Devices", "Updates the MIDI input device list.", "REFRESH", RefreshArcadeMidiDeviceOptionsFromUi);
+        RegisterMidiNoteSetting("arcade.midi.rhythm.green", "MIDI Controls", "MIDI Green", "MIDI note for the green rhythm lane.", () => arcadeMidiLane0Note, v => arcadeMidiLane0Note = v);
+        RegisterMidiNoteSetting("arcade.midi.rhythm.red", "MIDI Controls", "MIDI Red", "MIDI note for the red rhythm lane.", () => arcadeMidiLane1Note, v => arcadeMidiLane1Note = v);
+        RegisterMidiNoteSetting("arcade.midi.rhythm.yellow", "MIDI Controls", "MIDI Yellow", "MIDI note for the yellow rhythm lane.", () => arcadeMidiLane2Note, v => arcadeMidiLane2Note = v);
+        RegisterMidiNoteSetting("arcade.midi.rhythm.blue", "MIDI Controls", "MIDI Blue", "MIDI note for the blue rhythm lane.", () => arcadeMidiLane3Note, v => arcadeMidiLane3Note = v);
+        RegisterMidiNoteSetting("arcade.midi.rhythm.orange", "MIDI Controls", "MIDI Orange", "MIDI note for the orange rhythm lane.", () => arcadeMidiLane4Note, v => arcadeMidiLane4Note = v);
+        RegisterMidiNoteSetting("arcade.midi.rhythm.open", "MIDI Controls", "MIDI Open", "MIDI note for open rhythm notes.", () => arcadeMidiOpenNote, v => arcadeMidiOpenNote = v);
+        RegisterMidiNoteSetting("arcade.midi.drums.kick", "MIDI Controls", "MIDI Kick", "MIDI note for the kick drum lane.", () => arcadeMidiDrumKickNote, v => arcadeMidiDrumKickNote = v);
+        RegisterMidiNoteSetting("arcade.midi.drums.snare", "MIDI Controls", "MIDI Snare", "MIDI note for the snare drum lane.", () => arcadeMidiDrumSnareNote, v => arcadeMidiDrumSnareNote = v);
+        RegisterMidiNoteSetting("arcade.midi.drums.hihat", "MIDI Controls", "MIDI Hi-Hat", "MIDI note for the hi-hat drum lane.", () => arcadeMidiDrumHiHatNote, v => arcadeMidiDrumHiHatNote = v);
+        RegisterMidiNoteSetting("arcade.midi.drums.highTom", "MIDI Controls", "MIDI High Tom", "MIDI note for the high tom drum lane.", () => arcadeMidiDrumHighTomNote, v => arcadeMidiDrumHighTomNote = v);
+        RegisterMidiNoteSetting("arcade.midi.drums.midTom", "MIDI Controls", "MIDI Mid Tom", "MIDI note for the mid tom drum lane.", () => arcadeMidiDrumMidTomNote, v => arcadeMidiDrumMidTomNote = v);
+        RegisterMidiNoteSetting("arcade.midi.drums.floorTom", "MIDI Controls", "MIDI Floor Tom", "MIDI note for the floor tom drum lane.", () => arcadeMidiDrumFloorTomNote, v => arcadeMidiDrumFloorTomNote = v);
+        RegisterMidiNoteSetting("arcade.midi.drums.crash", "MIDI Controls", "MIDI Crash", "MIDI note for the crash cymbal lane.", () => arcadeMidiDrumCrashNote, v => arcadeMidiDrumCrashNote = v);
+        RegisterMidiNoteSetting("arcade.midi.drums.ride", "MIDI Controls", "MIDI Ride", "MIDI note for the ride cymbal lane.", () => arcadeMidiDrumRideNote, v => arcadeMidiDrumRideNote = v);
+        RegisterActionSetting("arcade.midi.reset", "MIDI Controls", "Reset MIDI Defaults", "Restores standard five-lane rhythm notes and General MIDI drum notes.", "RESET", () => { ResetArcadeMidiMappingsToDefaults(); SaveGlobalRuntimeSettingsMetadata(); });
+        RegisterBindingSetting("arcade.controls.keyboard.green", "Rhythm Controls", "Keyboard Green", "Default keyboard green fret.", () => arcadeKeyboardGreen, v => arcadeKeyboardGreen = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.red", "Rhythm Controls", "Keyboard Red", "Default keyboard red fret.", () => arcadeKeyboardRed, v => arcadeKeyboardRed = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.yellow", "Rhythm Controls", "Keyboard Yellow", "Default keyboard yellow fret.", () => arcadeKeyboardYellow, v => arcadeKeyboardYellow = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.blue", "Rhythm Controls", "Keyboard Blue", "Default keyboard blue fret.", () => arcadeKeyboardBlue, v => arcadeKeyboardBlue = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.orange", "Rhythm Controls", "Keyboard Orange", "Default keyboard orange fret.", () => arcadeKeyboardOrange, v => arcadeKeyboardOrange = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.drumHiHat", "Rhythm Controls", "Keyboard Drum Hi-Hat", "Drum lane 1 keyboard key.", () => arcadeKeyboardDrumHiHat, v => arcadeKeyboardDrumHiHat = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.drumCrash", "Rhythm Controls", "Keyboard Drum Crash", "Drum lane 2 keyboard key.", () => arcadeKeyboardDrumCrash, v => arcadeKeyboardDrumCrash = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.drumSnare", "Rhythm Controls", "Keyboard Drum Snare", "Drum lane 3 keyboard key.", () => arcadeKeyboardDrumSnare, v => arcadeKeyboardDrumSnare = v, ArcadeBindingCaptureKind.Keyboard);
@@ -26117,13 +26206,13 @@ private void OpenOrFocusToneLab()
         RegisterBindingSetting("arcade.controls.keyboard.drumRide", "Rhythm Controls", "Keyboard Drum Ride", "Drum lane 8 keyboard key.", () => arcadeKeyboardDrumRide, v => arcadeKeyboardDrumRide = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.strumUp", "Rhythm Controls", "Keyboard Strum", "Primary keyboard strum key.", () => arcadeKeyboardStrumUp, v => arcadeKeyboardStrumUp = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterBindingSetting("arcade.controls.keyboard.strumDown", "Rhythm Controls", "Keyboard Strum Alt", "Optional secondary keyboard strum key.", () => arcadeKeyboardStrumDown, v => arcadeKeyboardStrumDown = v, ArcadeBindingCaptureKind.Keyboard);
-        RegisterBindingSetting("arcade.controls.keyboard.open", "Rhythm Controls", "Keyboard Open Button", "Optional keyboard open-button binding. Clone Hero's default keyboard layout leaves this unbound.", () => arcadeKeyboardOpen, v => arcadeKeyboardOpen = v, ArcadeBindingCaptureKind.Keyboard);
+        RegisterBindingSetting("arcade.controls.keyboard.open", "Rhythm Controls", "Keyboard Open Button", "Optional keyboard open-button binding. The default keyboard layout leaves this unbound.", () => arcadeKeyboardOpen, v => arcadeKeyboardOpen = v, ArcadeBindingCaptureKind.Keyboard);
         RegisterActionSetting("arcade.controls.keyboard.reset", "Rhythm Controls", "Reset Keyboard Defaults", "Restores the default keyboard layout. Drum lanes use A S D F G H J K.", "RESET", () => { ResetArcadeKeyboardBindingsToDefaults(); SaveGlobalRuntimeSettingsMetadata(); });
-        RegisterBindingSetting("arcade.controls.controller.green", "Rhythm Controls", "Controller Green", "Primary green fret button for controller or Clone Hero guitar input.", () => arcadeControllerGreen, v => arcadeControllerGreen = v, ArcadeBindingCaptureKind.Controller);
-        RegisterBindingSetting("arcade.controls.controller.red", "Rhythm Controls", "Controller Red", "Primary red fret button for controller or Clone Hero guitar input.", () => arcadeControllerRed, v => arcadeControllerRed = v, ArcadeBindingCaptureKind.Controller);
-        RegisterBindingSetting("arcade.controls.controller.yellow", "Rhythm Controls", "Controller Yellow", "Primary yellow fret button for controller or Clone Hero guitar input.", () => arcadeControllerYellow, v => arcadeControllerYellow = v, ArcadeBindingCaptureKind.Controller);
-        RegisterBindingSetting("arcade.controls.controller.blue", "Rhythm Controls", "Controller Blue", "Primary blue fret button for controller or Clone Hero guitar input.", () => arcadeControllerBlue, v => arcadeControllerBlue = v, ArcadeBindingCaptureKind.Controller);
-        RegisterBindingSetting("arcade.controls.controller.orange", "Rhythm Controls", "Controller Orange", "Primary orange fret button for controller or Clone Hero guitar input.", () => arcadeControllerOrange, v => arcadeControllerOrange = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.green", "Rhythm Controls", "Controller Green", "Primary green fret button for controller or guitar-controller input.", () => arcadeControllerGreen, v => arcadeControllerGreen = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.red", "Rhythm Controls", "Controller Red", "Primary red fret button for controller or guitar-controller input.", () => arcadeControllerRed, v => arcadeControllerRed = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.yellow", "Rhythm Controls", "Controller Yellow", "Primary yellow fret button for controller or guitar-controller input.", () => arcadeControllerYellow, v => arcadeControllerYellow = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.blue", "Rhythm Controls", "Controller Blue", "Primary blue fret button for controller or guitar-controller input.", () => arcadeControllerBlue, v => arcadeControllerBlue = v, ArcadeBindingCaptureKind.Controller);
+        RegisterBindingSetting("arcade.controls.controller.orange", "Rhythm Controls", "Controller Orange", "Primary orange fret button for controller or guitar-controller input.", () => arcadeControllerOrange, v => arcadeControllerOrange = v, ArcadeBindingCaptureKind.Controller);
         RegisterBindingSetting("arcade.controls.controller.strumUp", "Rhythm Controls", "Controller Strum Up", "Controller or guitar strum-up input.", () => arcadeControllerStrumUp, v => arcadeControllerStrumUp = v, ArcadeBindingCaptureKind.Controller);
         RegisterBindingSetting("arcade.controls.controller.strumDown", "Rhythm Controls", "Controller Strum Down", "Controller or guitar strum-down input.", () => arcadeControllerStrumDown, v => arcadeControllerStrumDown = v, ArcadeBindingCaptureKind.Controller);
         RegisterBindingSetting("arcade.controls.controller.open", "Rhythm Controls", "Controller Open Button", "Optional open-button binding for gamepad-style or guitar controller play.", () => arcadeControllerOpen, v => arcadeControllerOpen = v, ArcadeBindingCaptureKind.Controller);
@@ -26132,21 +26221,21 @@ private void OpenOrFocusToneLab()
 
         RegisterFloatSetting("timing.hitWindowEarly", "Timing & Forgiveness", "Hit Window Early", "How far before a note you can strike and still get credit.", 0.05f, 0.6f, 0.005f, () => hitWindowEarly, v => hitWindowEarly = v);
         RegisterFloatSetting("timing.hitWindowLate", "Timing & Forgiveness", "Hit Window Late", "How far after a note you can strike and still get credit.", 0.05f, 0.8f, 0.005f, () => hitWindowLate, v => hitWindowLate = v);
-        RegisterBoolSetting("timing.nativeExpectedNoteVerifier", "Timing & Forgiveness", "Native Note Verifier", "Uses the native expected-note verifier for direct note and chord hits. The legacy event matcher remains as fallback.", () => nativeExpectedNoteVerifierEnabled, v => nativeExpectedNoteVerifierEnabled = v);
+        RegisterBoolSetting("timing.nativeExpectedNoteVerifier", "Timing & Forgiveness", "Native Note Verifier", "Uses the native expected-note verifier for direct note and chord hits.", () => nativeExpectedNoteVerifierEnabled, v => nativeExpectedNoteVerifierEnabled = v);
 
         RegisterEnumSetting(
             "fx.characterDisplay",
             "Visuals",
             "Character Display",
-            "Controls when the Highway3D character is shown. Always (Guitars) hides it for drum arrangements. Hearts remain hero-mode only.",
+            "Controls when the Highway3D character is shown. Always (Guitars) hides it for drum arrangements.",
             HighwayCharacterDisplayModeOptions,
             () => SerializeHighwayCharacterDisplayMode(highwayCharacterDisplayMode),
             value => highwayCharacterDisplayMode = ParseHighwayCharacterDisplayMode(value));
-        RegisterFloatSetting("fx.characterScale", "Visuals - Character", "Character Scale", "Scales the highway character up or down. Pixel-art scaling still snaps cleanly.", 0.5f, 3f, 0.05f, () => highwayCharacterScale, v => highwayCharacterScale = v);
-        RegisterFloatSetting("fx.characterRigOffsetX", "Visuals - Character", "Character Rig Position X", "Moves the entire character + portal rig left or right without changing the character's position relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterRigOffsetX, v => highwayCharacterRigOffsetX = v);
-        RegisterFloatSetting("fx.characterRigOffsetY", "Visuals - Character", "Character Rig Position Y", "Moves the entire character + portal rig up or down without changing the character's position relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterRigOffsetY, v => highwayCharacterRigOffsetY = v);
+        RegisterFloatSetting("fx.characterScale", "Visuals - Character", "Character Scale", "Scales the highway character up or down.", 0.5f, 3f, 0.05f, () => highwayCharacterScale, v => highwayCharacterScale = v);
+        RegisterFloatSetting("fx.characterRigOffsetX", "Visuals - Character", "Character Rig Position X", "Moves the character and portal rig left or right.", -0.25f, 0.25f, 0.005f, () => highwayCharacterRigOffsetX, v => highwayCharacterRigOffsetX = v);
+        RegisterFloatSetting("fx.characterRigOffsetY", "Visuals - Character", "Character Rig Position Y", "Moves the character and portal rig up or down.", -0.25f, 0.25f, 0.005f, () => highwayCharacterRigOffsetY, v => highwayCharacterRigOffsetY = v);
         RegisterFloatSetting("fx.characterOffsetX", "Visuals - Character", "Character Position X", "Moves the highway character left or right relative to the portal.", -0.25f, 0.25f, 0.005f, () => highwayCharacterOffsetX, v => highwayCharacterOffsetX = v);
-        RegisterFloatSetting("fx.characterOffsetY", "Visuals - Character", "Character Position Y", "Moves the highway character up or down relative to the portal and automatically rebalances the fade/portal blend.", -0.20f, 0.20f, 0.005f, () => highwayCharacterOffsetY, v => highwayCharacterOffsetY = v);
+        RegisterFloatSetting("fx.characterOffsetY", "Visuals - Character", "Character Position Y", "Moves the highway character up or down relative to the portal.", -0.20f, 0.20f, 0.005f, () => highwayCharacterOffsetY, v => highwayCharacterOffsetY = v);
         RegisterFloatSetting("fx.characterFadeSoftness", "Visuals - Character", "Character Fade Softness", "Controls how gradually the character fades into the portal.", 0.02f, 0.40f, 0.005f, () => highwayCharacterFadeSoftness, v => highwayCharacterFadeSoftness = v);
         RegisterBoolSetting("fx.characterMovementEnabled", "Visuals - Character", "Character Animation", "Enables the character idle motion, note bop, and miss movement.", () => highwayCharacterMovementEnabled, v => highwayCharacterMovementEnabled = v);
         RegisterBoolSetting("fx.characterMissColorEnabled", "Visuals - Character", "Character Color Change", "Enables the red miss flash/color change on the character.", () => highwayCharacterMissColorEnabled, v => highwayCharacterMissColorEnabled = v);
@@ -26158,10 +26247,10 @@ private void OpenOrFocusToneLab()
         RegisterEnumSetting("fx.characterPortalSwirlColor", "Visuals - Character", "Portal Swirl Color", "Selects the swirl-energy color inside the character portal.", HighwayCharacterPortalColorPresetOptions, () => SerializeHighwayCharacterPortalColorPreset(highwayCharacterPortalSwirlColor), value => highwayCharacterPortalSwirlColor = ParseHighwayCharacterPortalColorPreset(value));
         RegisterFloatSetting("fx.rhythmHopoOutlineGap", "Visuals - Rhythm Notes", "HOPO Outline Gap", "Adds more dark spacing between the HOPO body and its outer accent so it stays readable on bright lanes like yellow.", 0f, 0.18f, 0.005f, () => rhythmHopoOutlineGap, v => rhythmHopoOutlineGap = Mathf.Max(0f, v));
         RegisterEnumSetting("fx.rhythmHopoAccentColor", "Visuals - Rhythm Notes", "HOPO Accent Color", "Switches the HOPO outer accent between the classic white edge and a darker glowing orange.", RhythmHopoAccentColorPresetOptions, () => SerializeRhythmHopoAccentColorPreset(rhythmHopoAccentColor), value => rhythmHopoAccentColor = ParseRhythmHopoAccentColorPreset(value));
-        RegisterEnumSetting("fx.alphaTabTheme", "Visuals", "Tabs Theme", "Switches tabs between black-on-white and white-on-dark-blue. Active tabs views reload their rendered tabs when this changes.", AlphaTabVisualThemeOptions, () => SerializeAlphaTabVisualTheme(alphaTabVisualTheme), value => alphaTabVisualTheme = ParseAlphaTabVisualTheme(value));
-        RegisterFloatSetting("fx.alphaTabSpan", "Visuals", "Tabs Span", "Controls how much notation each tabs panel covers. Higher values fit more notes in each panel and reload the rendered tabs immediately.", 0.70f, 2.50f, 0.05f, () => alphaTabSpanMultiplier, v => alphaTabSpanMultiplier = Mathf.Clamp(v, 0.70f, 2.50f));
-        RegisterEnumSetting("fx.alphaTabHybridVisibleTabs", "Visuals", "3D + Tabs Visible Tabs", "Chooses whether the split 3D + Tabs mode shows one or two visible tabs at the bottom. The mixed tabs layout updates immediately when this changes.", AlphaTabHybridVisibleTabOptions, () => SerializeAlphaTabHybridVisibleTabs(alphaTabHybridVisibleTabs), value => alphaTabHybridVisibleTabs = ParseAlphaTabHybridVisibleTabs(value));
-        RegisterBoolSetting("fx.alphaTabNoteFeedback", "Visuals", "Tabs Note Feedback", "Shows green note highlights on tabs after successful hits. Active tabs views update immediately when this changes.", () => alphaTabNoteFeedbackEnabled, v => alphaTabNoteFeedbackEnabled = v);
+        RegisterEnumSetting("fx.alphaTabTheme", "Visuals", "Tabs Theme", "Switches tabs between black-on-white and white-on-dark-blue.", AlphaTabVisualThemeOptions, () => SerializeAlphaTabVisualTheme(alphaTabVisualTheme), value => alphaTabVisualTheme = ParseAlphaTabVisualTheme(value));
+        RegisterFloatSetting("fx.alphaTabSpan", "Visuals", "Tabs Span", "Controls how much notation each tabs panel covers. Higher values fit more notes in each panel.", 0.70f, 2.50f, 0.05f, () => alphaTabSpanMultiplier, v => alphaTabSpanMultiplier = Mathf.Clamp(v, 0.70f, 2.50f));
+        RegisterEnumSetting("fx.alphaTabHybridVisibleTabs", "Visuals", "3D + Tabs Visible Tabs", "Chooses whether the split 3D + Tabs mode shows one or two visible tabs at the bottom.", AlphaTabHybridVisibleTabOptions, () => SerializeAlphaTabHybridVisibleTabs(alphaTabHybridVisibleTabs), value => alphaTabHybridVisibleTabs = ParseAlphaTabHybridVisibleTabs(value));
+        RegisterBoolSetting("fx.alphaTabNoteFeedback", "Visuals", "Tabs Note Feedback", "Shows green note highlights on tabs after successful hits.", () => alphaTabNoteFeedbackEnabled, v => alphaTabNoteFeedbackEnabled = v);
         RegisterBoolSetting("fx.showGameplayTimeline", "Visuals", "Song Timeline", "Shows the clickable song section timeline at the bottom of the gameplay screen.", () => showGameplayTimeline, v => showGameplayTimeline = v);
         RegisterFloatSetting("mp.cameraOffsetX", "Visuals - Multiplayer", "Camera Offset X", "Moves the multiplayer camera left or right.", -20f, 20f, 0.05f, () => multiplayerHighwayCameraOffsetX, v => multiplayerHighwayCameraOffsetX = v);
         RegisterFloatSetting("mp.cameraOffsetY", "Visuals - Multiplayer", "Camera Offset Y", "Moves the multiplayer camera up or down.", -10f, 10f, 0.05f, () => multiplayerHighwayCameraOffsetY, v => multiplayerHighwayCameraOffsetY = v);
@@ -26184,7 +26273,7 @@ private void OpenOrFocusToneLab()
             Id = "bg.moodSetter",
             Section = "Visuals",
             Label = "Mood Setter",
-            Tooltip = "Opens the focused background mood controls. From the main menu it edits the menu background profile; in game it edits the gameplay profile.",
+            Tooltip = "Opens background mood controls for the current screen.",
             ValueType = "action",
             Getter = () => CanOpenBackgroundMoodSetter() ? "OPEN" : "UNAVAILABLE",
             Setter = null,
@@ -26203,7 +26292,7 @@ private void OpenOrFocusToneLab()
         RegisterFloatSetting("bg.skyCloudNearSpeed", "Background - Blue Sky", "Cloud Speed (Near)", "Horizontal drift speed for the nearest cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedNear, v => tabSkyCloudSpeedNear = v);
         RegisterFloatSetting("bg.skyCloudMidSpeed", "Background - Blue Sky", "Cloud Speed (Mid)", "Horizontal drift speed for the middle cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedMid, v => tabSkyCloudSpeedMid = v);
         RegisterFloatSetting("bg.skyCloudFarSpeed", "Background - Blue Sky", "Cloud Speed (Far)", "Horizontal drift speed for the far cloud layer.", 0.01f, 2f, 0.01f, () => tabSkyCloudSpeedFar, v => tabSkyCloudSpeedFar = v);
-        RegisterFloatSetting("bg.skyCloudGlobalScale", "Background - Blue Sky", "Cloud Global Scale", "Scales all BlueSky clouds live without restarting.", 0.2f, 6f, 0.05f, () => tabSkyCloudGlobalScale, v => tabSkyCloudGlobalScale = v);
+        RegisterFloatSetting("bg.skyCloudGlobalScale", "Background - Blue Sky", "Cloud Global Scale", "Scales all BlueSky clouds.", 0.2f, 6f, 0.05f, () => tabSkyCloudGlobalScale, v => tabSkyCloudGlobalScale = v);
 
         RegisterIntSetting("highway.totalFrets", "Highway 3D - Layout", "Total Frets", "How many fret lanes are generated for the 3D highway.", 12, 36, 1, () => TotalFrets, v => TotalFrets = v);
         RegisterFloatSetting("highway.fretSpacing", "Highway 3D - Layout", "Fret Spacing", "Horizontal spacing between fret lanes in Highway3D.", 0.4f, 6f, 0.01f, () => FretSpacing, v => FretSpacing = v);
@@ -26216,9 +26305,9 @@ private void OpenOrFocusToneLab()
         RegisterFloatSetting("highway.cameraZ", "Highway 3D - Camera", "Camera Z", "Depth placement of the Highway3D camera.", -30f, 5f, 0.05f, () => highwayCameraZ, v => highwayCameraZ = v);
         RegisterFloatSetting("highway.cameraPitch", "Highway 3D - Camera", "Camera Pitch", "Pitch angle of the Highway3D camera.", 10f, 80f, 0.5f, () => highwayCameraPitch, v => highwayCameraPitch = v);
         RegisterFloatSetting("highway.lookaheadWindow", "Highway 3D - Camera", "Lookahead Window", "How far ahead the Highway3D camera frames upcoming notes.", 0.5f, 6f, 0.05f, () => lookaheadWindow, v => lookaheadWindow = v);
-        RegisterEnumSetting("highway.cameraEngine", "Highway 3D - Camera", "Camera Engine", "Legacy keeps the current camera. Smart Lookahead is an experimental smoother camera that anticipates notes, sustains, and fret-range changes.", new []{"Legacy","Smart Lookahead"}, () => SerializeHighwayCameraEngine(highwayCameraEngine), value => highwayCameraEngine = ParseHighwayCameraEngine(value));
+        RegisterEnumSetting("highway.cameraEngine", "Highway 3D - Camera", "Camera Engine", "Smart Lookahead anticipates notes, sustains, and fret-range changes.", new []{"Legacy","Smart Lookahead"}, () => SerializeHighwayCameraEngine(highwayCameraEngine), value => highwayCameraEngine = ParseHighwayCameraEngine(value));
         RegisterFloatSetting("highway.cameraFarClip", "Highway 3D - Camera", "Camera Far Clip", "Far clipping plane for the Highway3D camera.", 100f, 6000f, 10f, () => highwayCameraFarClip, v => highwayCameraFarClip = v);
-        RegisterFloatSetting("highway.cameraMoveSpeed", "Highway 3D - Camera", "Camera Move Speed", "Movement speed tuning value for Highway3D camera transitions.", 0.5f, 20f, 0.1f, () => camMoveSpeed, v => camMoveSpeed = v);
+        RegisterFloatSetting("highway.cameraMoveSpeed", "Highway 3D - Camera", "Camera Move Speed", "Controls speed of Highway3D camera transitions.", 0.5f, 20f, 0.1f, () => camMoveSpeed, v => camMoveSpeed = v);
 
         RegisterFloatSetting("highway.noteHeightScale", "Highway 3D - Notes", "Note Height Scale", "Scales the vertical size of Highway3D note bodies.", 0.6f, 3f, 0.05f, () => highwayNoteHeightScale, v => highwayNoteHeightScale = v);
         RegisterFloatSetting("highway.resolvedHoldTime", "Highway 3D - Notes", "Resolved Hold Time", "How long hit/miss note feedback stays visible.", 0.1f, 1.5f, 0.01f, () => highwayResolvedHoldTime, v => highwayResolvedHoldTime = v);
@@ -27671,7 +27760,7 @@ private void OpenOrFocusToneLab()
         });
         RegisterBoolSetting("bg.neonHorizon.enviroHorizon", skyDesignSection, "Enviro Horizon", "Shows the Neon Stage horizon line at the far end of Enviro ground or mountains. It uses the shared horizon color settings.", () => GetEnviroHorizonEnabled(IsEditingMainMenuBackground), SetEnviroHorizonEnabledForCurrentContext);
 
-        RegisterBoolSetting("bg.neonHorizon.unifiedSideColors", skySection, "Unified Side Colors", "Uses a coherent dark-blue sky and purple horizon. When off, the aurora beams use a symmetrical lower-pink and upper-blue split.", () => GetNeonHorizonUseUnifiedSideColors(IsEditingMainMenuBackground), SetNeonHorizonUseUnifiedSideColorsForCurrentContext);
+        RegisterBoolSetting("bg.neonHorizon.unifiedSideColors", skySection, "Unified Side Colors", "Uses a coherent dark-blue sky and purple horizon; disabling it splits aurora beams into lower pink and upper blue.", () => GetNeonHorizonUseUnifiedSideColors(IsEditingMainMenuBackground), SetNeonHorizonUseUnifiedSideColorsForCurrentContext);
         RegisterEnumSetting("bg.neonHorizon.skyLineStyle", skySection, "Sky Line Type", "Switches the animated sky lines between the original side waves and horizon-origin wave beams.", NeonSkyLineStyleOptions, () => GetIndexedOption(NeonSkyLineStyleOptions, neonHorizonSkyLineStyle), value => neonHorizonSkyLineStyle = ParseIndexedOption(NeonSkyLineStyleOptions, value, neonHorizonSkyLineStyle));
         RegisterEnumSetting("bg.neonHorizon.skyLinePalette", skySection, "Sky Line Palette", "Color palette used by the animated sky lines and side wash.", NeonSkyLineColorPaletteOptions, () => GetIndexedOption(NeonSkyLineColorPaletteOptions, GetNeonHorizonSkyLineColorPalette(IsEditingMainMenuBackground)), value => SetNeonHorizonSkyLineColorPaletteForCurrentContext(ParseIndexedOption(NeonSkyLineColorPaletteOptions, value, GetNeonHorizonSkyLineColorPalette(IsEditingMainMenuBackground))));
         RegisterFloatSetting("bg.neonHorizon.skyCoreBrightness", skySection, "White Core Brightness", "Brightness of the white light bloom at the center of the sky.", 0f, 4f, 0.01f, () => neonHorizonSkyCoreBrightness, v => neonHorizonSkyCoreBrightness = Mathf.Max(0f, v));
@@ -28145,6 +28234,38 @@ private void OpenOrFocusToneLab()
         });
     }
 
+    private void RegisterMidiNoteSetting(string id, string section, string label, string tooltip, Func<int> getter, Action<int> setter)
+    {
+        RegisterSetting(new RuntimeSettingDefinition
+        {
+            Id = id,
+            Section = section,
+            Label = label,
+            Tooltip = tooltip,
+            ValueType = "midiNote",
+            Min = 0,
+            Max = 127,
+            Step = 1,
+            Getter = () =>
+            {
+                if (!savingRuntimeSettingsMetadata &&
+                    string.Equals(activeArcadeMidiNoteSettingId, id, StringComparison.OrdinalIgnoreCase))
+                {
+                    return "PLAY A MIDI NOTE";
+                }
+
+                return Mathf.Clamp(getter(), 0, 127).ToString(CultureInfo.InvariantCulture);
+            },
+            Setter = value =>
+            {
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+                    return;
+                setter(Mathf.Clamp(parsed, 0, 127));
+            },
+            Activator = () => BeginArcadeMidiNoteCapture(id)
+        });
+    }
+
     private void RegisterBoolSetting(string id, string section, string label, string tooltip, Func<bool> getter, Action<bool> setter)
     {
         RegisterSetting(new RuntimeSettingDefinition
@@ -28298,6 +28419,54 @@ private void OpenOrFocusToneLab()
         return 0;
     }
 
+    private List<string> BuildArcadeMidiDeviceOptions()
+    {
+        List<string> deviceNames = ArcadeMidiInputBridge.GetInputDeviceNames();
+        int optionCount = Mathf.Max(1, Mathf.Max(arcadeMidiInputDeviceIndex + 1, deviceNames?.Count ?? 0));
+
+        List<string> options = new List<string>();
+        for (int i = 0; i < optionCount; i++)
+        {
+            string deviceName = deviceNames != null && i < deviceNames.Count ? deviceNames[i] : string.Empty;
+            string label = string.IsNullOrWhiteSpace(deviceName)
+                ? $"MIDI Device {i}"
+                : $"MIDI Device {i} ({deviceName.Trim()})";
+            options.Add(label);
+        }
+
+        return options;
+    }
+
+    private string SerializeArcadeMidiDevice()
+    {
+        List<string> options = BuildArcadeMidiDeviceOptions();
+        int index = Mathf.Clamp(arcadeMidiInputDeviceIndex, 0, options.Count - 1);
+        return options[index];
+    }
+
+    private static int ParseArcadeMidiDevice(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return 0;
+
+        if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int rawIndex))
+            return Mathf.Clamp(rawIndex, 0, 16);
+
+        Match match = Regex.Match(value, @"MIDI\s+Device\s+(\d+)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+        if (match.Success && int.TryParse(match.Groups[1].Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            return Mathf.Clamp(parsed, 0, 16);
+
+        return 0;
+    }
+
+    private void RefreshArcadeMidiDeviceOptionsFromUi()
+    {
+        if (runtimeSettingById.TryGetValue("arcade.midiDeviceIndex", out RuntimeSettingDefinition definition))
+            definition.EnumOptions = BuildArcadeMidiDeviceOptions();
+
+        runtimeSettingsSnapshotDirty = true;
+    }
+
     private static ArcadeInputSourceMode ParseArcadeInputSource(string value)
     {
         if (string.Equals(value, "Keyboard", StringComparison.OrdinalIgnoreCase))
@@ -28368,6 +28537,25 @@ private void OpenOrFocusToneLab()
         runtimeSettingsSnapshotDirty = true;
     }
 
+    private void ResetArcadeMidiMappingsToDefaults()
+    {
+        arcadeMidiLane0Note = 60;
+        arcadeMidiLane1Note = 61;
+        arcadeMidiLane2Note = 62;
+        arcadeMidiLane3Note = 63;
+        arcadeMidiLane4Note = 64;
+        arcadeMidiOpenNote = 65;
+        arcadeMidiDrumKickNote = 36;
+        arcadeMidiDrumSnareNote = 38;
+        arcadeMidiDrumHiHatNote = 42;
+        arcadeMidiDrumHighTomNote = 50;
+        arcadeMidiDrumMidTomNote = 47;
+        arcadeMidiDrumFloorTomNote = 43;
+        arcadeMidiDrumCrashNote = 49;
+        arcadeMidiDrumRideNote = 51;
+        runtimeSettingsSnapshotDirty = true;
+    }
+
     private void BeginArcadeBindingCapture(string settingId)
     {
         if (string.IsNullOrWhiteSpace(settingId) || !runtimeSettingById.TryGetValue(settingId, out RuntimeSettingDefinition definition) || definition.BindingCaptureKind == ArcadeBindingCaptureKind.None)
@@ -28375,6 +28563,23 @@ private void OpenOrFocusToneLab()
 
         activeArcadeBindingSettingId = settingId;
         activeArcadeBindingStartFrame = Time.frameCount;
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    private void BeginArcadeMidiNoteCapture(string settingId)
+    {
+        if (string.IsNullOrWhiteSpace(settingId) || !runtimeSettingById.TryGetValue(settingId, out RuntimeSettingDefinition definition) ||
+            !string.Equals(definition.ValueType, "midiNote", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        activeArcadeBindingSettingId = string.Empty;
+        activeArcadeBindingStartFrame = -1;
+        activeArcadeMidiNoteSettingId = settingId;
+        activeArcadeMidiNoteStartFrame = Time.frameCount;
+        EnsureArcadeMidiInput();
+        arcadeMidiInputBridge?.ConsumeEvents();
         runtimeSettingsSnapshotDirty = true;
     }
 
@@ -28386,6 +28591,58 @@ private void OpenOrFocusToneLab()
         activeArcadeBindingSettingId = string.Empty;
         activeArcadeBindingStartFrame = -1;
         runtimeSettingsSnapshotDirty = true;
+    }
+
+    private void CancelArcadeMidiNoteCapture()
+    {
+        if (string.IsNullOrEmpty(activeArcadeMidiNoteSettingId))
+            return;
+
+        activeArcadeMidiNoteSettingId = string.Empty;
+        activeArcadeMidiNoteStartFrame = -1;
+        if (!UsesArcadeMidiInput())
+            StopArcadeMidiInput();
+        runtimeSettingsSnapshotDirty = true;
+    }
+
+    private bool HandleArcadeMidiNoteCaptureInput()
+    {
+        if (string.IsNullOrEmpty(activeArcadeMidiNoteSettingId))
+            return false;
+
+        if (Time.frameCount <= activeArcadeMidiNoteStartFrame)
+            return true;
+
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.Delete))
+        {
+            CancelArcadeMidiNoteCapture();
+            return true;
+        }
+
+        if (!runtimeSettingById.TryGetValue(activeArcadeMidiNoteSettingId, out RuntimeSettingDefinition definition) ||
+            !string.Equals(definition.ValueType, "midiNote", StringComparison.OrdinalIgnoreCase))
+        {
+            CancelArcadeMidiNoteCapture();
+            return true;
+        }
+
+        EnsureArcadeMidiInput();
+        if (arcadeMidiInputBridge == null || !arcadeMidiInputBridge.IsRunning)
+            return true;
+
+        List<ArcadeMidiInputBridge.MidiInputEvent> events = arcadeMidiInputBridge.ConsumeEvents();
+        for (int i = 0; i < events.Count; i++)
+        {
+            ArcadeMidiInputBridge.MidiInputEvent midiEvent = events[i];
+            if (!midiEvent.noteOn)
+                continue;
+
+            ApplyRuntimeSettingValue(activeArcadeMidiNoteSettingId, Mathf.Clamp(midiEvent.note, 0, 127).ToString(CultureInfo.InvariantCulture), saveMetadata: true);
+            CancelArcadeMidiNoteCapture();
+            return true;
+        }
+
+        return true;
     }
 
     private bool HandleArcadeBindingCaptureInput()
@@ -28643,13 +28900,37 @@ private void OpenOrFocusToneLab()
         selectedGlobalSettingsItemIndex = (selectedGlobalSettingsItemIndex + delta + settings.Count) % settings.Count;
     }
 
+    private void MoveGlobalSettingsGeneralSelection(int delta)
+    {
+        int[] visibleTopIndices = { 0, 1, GlobalSettingsSongsFolderTopIndex, GlobalSettingsEffectsFolderTopIndex, GlobalSettingsResetTopIndex };
+        int currentIndex = Array.IndexOf(visibleTopIndices, selectedGlobalSettingsTopIndex);
+        if (currentIndex < 0)
+            currentIndex = 0;
+
+        int nextIndex = (currentIndex + delta + visibleTopIndices.Length) % visibleTopIndices.Length;
+        selectedGlobalSettingsTopIndex = visibleTopIndices[nextIndex];
+    }
+
     private void ActivateCurrentGlobalSettingsSelection()
     {
         if (string.IsNullOrEmpty(activeGlobalSettingsCategory))
         {
+            if (selectedGlobalSettingsTopIndex == 0)
+            {
+                ApplyRuntimeSettingValue("core.invertStrings", invertStrings ? "false" : "true", saveMetadata: true);
+                return;
+            }
+
+            if (selectedGlobalSettingsTopIndex == 1)
+            {
+                AdjustCurrentGlobalSettingsValue(1);
+                return;
+            }
+
             if (selectedGlobalSettingsTopIndex >= GlobalSettingsFirstCategoryTopIndex && selectedGlobalSettingsTopIndex <= GlobalSettingsLastCategoryTopIndex)
             {
                 activeGlobalSettingsCategory = GetGlobalSettingsCategoryFromTopIndex(selectedGlobalSettingsTopIndex);
+                activeGlobalSettingsSubtab = GetDefaultGlobalSettingsSubtabKey(activeGlobalSettingsCategory);
                 selectedGlobalSettingsItemIndex = 0;
                 return;
             }
@@ -28681,17 +28962,15 @@ private void OpenOrFocusToneLab()
             return;
 
         if (runtimeSettingById.TryGetValue(setting.id, out RuntimeSettingDefinition definition) && definition.Activator != null &&
-            (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) || string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase)))
+            (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(setting.valueType, "midiNote", StringComparison.OrdinalIgnoreCase)))
         {
             definition.Activator();
         }
-        else if (string.Equals(setting.id, "audio.inputDevice", StringComparison.OrdinalIgnoreCase))
+        else if (OpenRuntimeSettingSelectionPopupFromUi(setting.id))
         {
-            OpenAudioInputSelectionPopupFromUi();
-        }
-        else if (string.Equals(setting.id, "audio.outputDevice", StringComparison.OrdinalIgnoreCase))
-        {
-            OpenAudioOutputSelectionPopupFromUi();
+            return;
         }
         else if (string.Equals(setting.valueType, "bool", StringComparison.OrdinalIgnoreCase))
         {
@@ -28782,7 +29061,8 @@ private void OpenOrFocusToneLab()
 
         float step = Mathf.Abs(setting.step) > 0.0001f ? setting.step : 1f;
         float nextValue = Mathf.Clamp(currentValue + (delta * step), setting.min, setting.max);
-        string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase)
+        string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(setting.valueType, "midiNote", StringComparison.OrdinalIgnoreCase)
             ? Mathf.RoundToInt(nextValue).ToString(CultureInfo.InvariantCulture)
             : nextValue.ToString("0.###", CultureInfo.InvariantCulture);
         ApplyRuntimeSettingValue(setting.id, serialized, saveMetadata: true);
@@ -28790,15 +29070,125 @@ private void OpenOrFocusToneLab()
 
     private List<RuntimeSettingSnapshot> GetActiveGlobalSettingsItems()
     {
-        string category = activeGlobalSettingsCategory;
+        string category = NormalizeGlobalSettingsTabCategory(activeGlobalSettingsCategory);
         if (string.IsNullOrEmpty(category))
             return new List<RuntimeSettingSnapshot>();
 
-        return BuildRuntimeSettingsSnapshot()
-            .Where(section => string.Equals(CategorizeRuntimeSettingsSectionForMenu(section), category, StringComparison.OrdinalIgnoreCase))
-            .SelectMany(section => section.settings ?? new List<RuntimeSettingSnapshot>())
-            .Where(setting => setting != null && !string.Equals(setting.id, "core.invertStrings", StringComparison.OrdinalIgnoreCase) && !string.Equals(setting.id, "render.mode", StringComparison.OrdinalIgnoreCase))
+        string subtab = NormalizeGlobalSettingsSubtab(category, activeGlobalSettingsSubtab);
+        List<RuntimeSettingSnapshot> settings = BuildRuntimeSettingsSnapshot()
+            .Where(section => IsRuntimeSettingsSectionInActiveTab(CategorizeRuntimeSettingsSectionForMenu(section), category))
+            .SelectMany(section => (section.settings ?? new List<RuntimeSettingSnapshot>())
+                .Where(setting => setting != null &&
+                    !string.Equals(setting.id, "core.invertStrings", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(setting.id, "render.mode", StringComparison.OrdinalIgnoreCase) &&
+                    IsRuntimeSettingInActiveGlobalSettingsSubtab(section, setting, category, subtab)))
             .ToList();
+
+        if (string.Equals(category, "Controls", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(subtab, "keyboard", StringComparison.OrdinalIgnoreCase))
+        {
+            settings = settings
+                .OrderBy(GetGlobalSettingsKeyboardControlSortIndex)
+                .ThenBy(setting => setting?.id ?? string.Empty)
+                .ToList();
+        }
+        else if (string.Equals(category, "Controls", StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(subtab, "midi", StringComparison.OrdinalIgnoreCase))
+        {
+            settings = settings
+                .OrderBy(GetGlobalSettingsMidiControlSortIndex)
+                .ThenBy(setting => setting?.id ?? string.Empty)
+                .ToList();
+        }
+
+        return settings;
+    }
+
+    private static int GetGlobalSettingsKeyboardControlSortIndex(RuntimeSettingSnapshot setting)
+    {
+        string id = setting?.id ?? string.Empty;
+        if (string.Equals(id, "arcade.controls.keyboard.green", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        if (string.Equals(id, "arcade.controls.keyboard.red", StringComparison.OrdinalIgnoreCase))
+            return 1;
+        if (string.Equals(id, "arcade.controls.keyboard.yellow", StringComparison.OrdinalIgnoreCase))
+            return 2;
+        if (string.Equals(id, "arcade.controls.keyboard.blue", StringComparison.OrdinalIgnoreCase))
+            return 3;
+        if (string.Equals(id, "arcade.controls.keyboard.orange", StringComparison.OrdinalIgnoreCase))
+            return 4;
+        if (string.Equals(id, "arcade.controls.keyboard.strumUp", StringComparison.OrdinalIgnoreCase))
+            return 5;
+        if (string.Equals(id, "arcade.controls.keyboard.strumDown", StringComparison.OrdinalIgnoreCase))
+            return 6;
+        if (string.Equals(id, "arcade.controls.keyboard.open", StringComparison.OrdinalIgnoreCase))
+            return 7;
+
+        if (string.Equals(id, "arcade.controls.keyboard.drumHiHat", StringComparison.OrdinalIgnoreCase))
+            return 100;
+        if (string.Equals(id, "arcade.controls.keyboard.drumCrash", StringComparison.OrdinalIgnoreCase))
+            return 101;
+        if (string.Equals(id, "arcade.controls.keyboard.drumSnare", StringComparison.OrdinalIgnoreCase))
+            return 102;
+        if (string.Equals(id, "arcade.controls.keyboard.drumHighTom", StringComparison.OrdinalIgnoreCase))
+            return 103;
+        if (string.Equals(id, "arcade.controls.keyboard.drumKick", StringComparison.OrdinalIgnoreCase))
+            return 104;
+        if (string.Equals(id, "arcade.controls.keyboard.drumMidTom", StringComparison.OrdinalIgnoreCase))
+            return 105;
+        if (string.Equals(id, "arcade.controls.keyboard.drumFloorTom", StringComparison.OrdinalIgnoreCase))
+            return 106;
+        if (string.Equals(id, "arcade.controls.keyboard.drumRide", StringComparison.OrdinalIgnoreCase))
+            return 107;
+
+        if (string.Equals(id, "arcade.controls.keyboard.reset", StringComparison.OrdinalIgnoreCase))
+            return 200;
+
+        return id.StartsWith("arcade.controls.keyboard.", StringComparison.OrdinalIgnoreCase) ? 90 : 300;
+    }
+
+    private static int GetGlobalSettingsMidiControlSortIndex(RuntimeSettingSnapshot setting)
+    {
+        string id = setting?.id ?? string.Empty;
+        if (string.Equals(id, "arcade.midiDeviceIndex", StringComparison.OrdinalIgnoreCase))
+            return 0;
+        if (string.Equals(id, "arcade.midi.refreshDevices", StringComparison.OrdinalIgnoreCase))
+            return 10;
+
+        if (string.Equals(id, "arcade.midi.rhythm.green", StringComparison.OrdinalIgnoreCase))
+            return 100;
+        if (string.Equals(id, "arcade.midi.rhythm.red", StringComparison.OrdinalIgnoreCase))
+            return 101;
+        if (string.Equals(id, "arcade.midi.rhythm.yellow", StringComparison.OrdinalIgnoreCase))
+            return 102;
+        if (string.Equals(id, "arcade.midi.rhythm.blue", StringComparison.OrdinalIgnoreCase))
+            return 103;
+        if (string.Equals(id, "arcade.midi.rhythm.orange", StringComparison.OrdinalIgnoreCase))
+            return 104;
+        if (string.Equals(id, "arcade.midi.rhythm.open", StringComparison.OrdinalIgnoreCase))
+            return 105;
+
+        if (string.Equals(id, "arcade.midi.drums.kick", StringComparison.OrdinalIgnoreCase))
+            return 200;
+        if (string.Equals(id, "arcade.midi.drums.snare", StringComparison.OrdinalIgnoreCase))
+            return 201;
+        if (string.Equals(id, "arcade.midi.drums.hihat", StringComparison.OrdinalIgnoreCase))
+            return 202;
+        if (string.Equals(id, "arcade.midi.drums.highTom", StringComparison.OrdinalIgnoreCase))
+            return 203;
+        if (string.Equals(id, "arcade.midi.drums.midTom", StringComparison.OrdinalIgnoreCase))
+            return 204;
+        if (string.Equals(id, "arcade.midi.drums.floorTom", StringComparison.OrdinalIgnoreCase))
+            return 205;
+        if (string.Equals(id, "arcade.midi.drums.crash", StringComparison.OrdinalIgnoreCase))
+            return 206;
+        if (string.Equals(id, "arcade.midi.drums.ride", StringComparison.OrdinalIgnoreCase))
+            return 207;
+
+        if (string.Equals(id, "arcade.midi.reset", StringComparison.OrdinalIgnoreCase))
+            return 300;
+
+        return id.StartsWith("arcade.midi", StringComparison.OrdinalIgnoreCase) ? 250 : 400;
     }
 
     private List<RuntimeSettingSectionSnapshot> BuildBackgroundMoodSetterSections()
@@ -29164,7 +29554,9 @@ private void OpenOrFocusToneLab()
             return;
 
         if (runtimeSettingById.TryGetValue(setting.id, out RuntimeSettingDefinition definition) && definition.Activator != null &&
-            (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) || string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase)))
+            (string.Equals(setting.valueType, "binding", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(setting.valueType, "action", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(setting.valueType, "midiNote", StringComparison.OrdinalIgnoreCase)))
         {
             definition.Activator();
         }
@@ -29216,10 +29608,199 @@ private void OpenOrFocusToneLab()
 
         float step = Mathf.Abs(setting.step) > 0.0001f ? setting.step : 1f;
         float nextValue = Mathf.Clamp(currentValue + (delta * step), setting.min, setting.max);
-        string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase)
+        string serialized = string.Equals(setting.valueType, "int", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(setting.valueType, "midiNote", StringComparison.OrdinalIgnoreCase)
             ? Mathf.RoundToInt(nextValue).ToString(CultureInfo.InvariantCulture)
             : nextValue.ToString("0.###", CultureInfo.InvariantCulture);
         ApplyRuntimeSettingValue(setting.id, serialized, saveMetadata: true);
+    }
+
+    private static string NormalizeGlobalSettingsTabCategory(string category)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+            return string.Empty;
+
+        if (string.Equals(category, "Visuals", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(category, "2D Tabs", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(category, "Highway3D", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(category, "Multiplayer Visuals", StringComparison.OrdinalIgnoreCase))
+            return "Visuals";
+
+        if (string.Equals(category, "Gameplay", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(category, "Rhythm", StringComparison.OrdinalIgnoreCase))
+            return "Gameplay";
+
+        if (string.Equals(category, "Audio", StringComparison.OrdinalIgnoreCase))
+            return "Audio";
+
+        if (string.Equals(category, "Controls", StringComparison.OrdinalIgnoreCase))
+            return "Controls";
+
+        if (string.Equals(category, "Diagnostics", StringComparison.OrdinalIgnoreCase))
+            return "Diagnostics";
+
+        return category;
+    }
+
+    private static string GetDefaultGlobalSettingsSubtabKey(string category)
+    {
+        string normalizedCategory = NormalizeGlobalSettingsTabCategory(category);
+        if (string.Equals(normalizedCategory, "Visuals", StringComparison.OrdinalIgnoreCase))
+            return "tabs";
+        if (string.Equals(normalizedCategory, "Gameplay", StringComparison.OrdinalIgnoreCase))
+            return "basics";
+        if (string.Equals(normalizedCategory, "Controls", StringComparison.OrdinalIgnoreCase))
+            return "setup";
+
+        return string.Empty;
+    }
+
+    private static string NormalizeGlobalSettingsSubtab(string category, string subtab)
+    {
+        string normalizedCategory = NormalizeGlobalSettingsTabCategory(category);
+        if (string.IsNullOrWhiteSpace(normalizedCategory))
+            return string.Empty;
+
+        string candidate = subtab ?? string.Empty;
+        if (IsGlobalSettingsSubtabValid(normalizedCategory, candidate))
+            return candidate;
+
+        return GetDefaultGlobalSettingsSubtabKey(normalizedCategory);
+    }
+
+    private static bool IsGlobalSettingsSubtabValid(string category, string subtab)
+    {
+        if (string.IsNullOrWhiteSpace(subtab))
+            return false;
+
+        string normalizedCategory = NormalizeGlobalSettingsTabCategory(category);
+        if (string.Equals(normalizedCategory, "Visuals", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(subtab, "tabs", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "character", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "feedback", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "highway", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "multiplayer", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "background", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (string.Equals(normalizedCategory, "Gameplay", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(subtab, "basics", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "timing", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "rhythm", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (string.Equals(normalizedCategory, "Controls", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(subtab, "setup", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "keyboard", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "midi", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(subtab, "controller", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    private static int GetGlobalSettingsTopIndexFromTabCategory(string category)
+    {
+        if (string.IsNullOrWhiteSpace(category))
+            return 0;
+
+        if (string.Equals(category, "Audio", StringComparison.OrdinalIgnoreCase))
+            return 4;
+        if (string.Equals(category, "Gameplay", StringComparison.OrdinalIgnoreCase))
+            return 5;
+        if (string.Equals(category, "Controls", StringComparison.OrdinalIgnoreCase))
+            return 9;
+        if (string.Equals(category, "Visuals", StringComparison.OrdinalIgnoreCase))
+            return 10;
+        if (string.Equals(category, "Diagnostics", StringComparison.OrdinalIgnoreCase))
+            return 12;
+
+        return 0;
+    }
+
+    private static bool IsRuntimeSettingsSectionInActiveTab(string sectionCategory, string activeCategory)
+    {
+        string normalizedActive = NormalizeGlobalSettingsTabCategory(activeCategory);
+        string normalizedSection = NormalizeGlobalSettingsTabCategory(sectionCategory);
+        return string.Equals(normalizedSection, normalizedActive, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsRuntimeSettingInActiveGlobalSettingsSubtab(RuntimeSettingSectionSnapshot section, RuntimeSettingSnapshot setting, string activeCategory, string activeSubtab)
+    {
+        string normalizedCategory = NormalizeGlobalSettingsTabCategory(activeCategory);
+        string normalizedSubtab = NormalizeGlobalSettingsSubtab(normalizedCategory, activeSubtab);
+        if (string.IsNullOrEmpty(normalizedSubtab))
+            return true;
+
+        string settingSubtab = GetRuntimeSettingGlobalSettingsSubtabKey(section, setting, normalizedCategory);
+        return string.Equals(settingSubtab, normalizedSubtab, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetRuntimeSettingGlobalSettingsSubtabKey(RuntimeSettingSectionSnapshot section, RuntimeSettingSnapshot setting, string activeCategory)
+    {
+        string normalizedCategory = NormalizeGlobalSettingsTabCategory(activeCategory);
+        string sectionCategory = CategorizeRuntimeSettingsSectionForMenu(section);
+        string sectionTitle = section?.title?.ToLowerInvariant() ?? string.Empty;
+        string settingId = setting?.id ?? string.Empty;
+
+        if (string.Equals(normalizedCategory, "Visuals", StringComparison.OrdinalIgnoreCase))
+        {
+            if (settingId.StartsWith("mp.", StringComparison.OrdinalIgnoreCase) || string.Equals(sectionCategory, "Multiplayer Visuals", StringComparison.OrdinalIgnoreCase))
+                return "multiplayer";
+
+            if (settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("highway.background", StringComparison.OrdinalIgnoreCase) ||
+                sectionTitle.Contains("background"))
+                return "background";
+
+            if (settingId.StartsWith("highway.", StringComparison.OrdinalIgnoreCase) || string.Equals(sectionCategory, "Highway3D", StringComparison.OrdinalIgnoreCase))
+                return "highway";
+
+            if (string.Equals(settingId, "fx.characterDisplay", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("fx.character", StringComparison.OrdinalIgnoreCase))
+                return "character";
+
+            if (string.Equals(settingId, "fx.alphaTabNoteFeedback", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(settingId, "fx.showGameplayTimeline", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(settingId, "fx.judgeableDarkenMultiplier", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("fx.rhythmHopo", StringComparison.OrdinalIgnoreCase))
+                return "feedback";
+
+            if (settingId.StartsWith("fx.alphaTab", StringComparison.OrdinalIgnoreCase) || string.Equals(sectionCategory, "2D Tabs", StringComparison.OrdinalIgnoreCase))
+                return "tabs";
+
+            return "tabs";
+        }
+
+        if (string.Equals(normalizedCategory, "Gameplay", StringComparison.OrdinalIgnoreCase))
+        {
+            if (settingId.StartsWith("timing.", StringComparison.OrdinalIgnoreCase) || sectionTitle.Contains("timing") || sectionTitle.Contains("forgiveness"))
+                return "timing";
+
+            if (settingId.StartsWith("arcade.", StringComparison.OrdinalIgnoreCase) || string.Equals(sectionCategory, "Rhythm", StringComparison.OrdinalIgnoreCase))
+                return "rhythm";
+
+            return "basics";
+        }
+
+        if (string.Equals(normalizedCategory, "Controls", StringComparison.OrdinalIgnoreCase))
+        {
+            if (settingId.StartsWith("arcade.controls.keyboard.", StringComparison.OrdinalIgnoreCase))
+                return "keyboard";
+
+            if (settingId.StartsWith("arcade.controls.controller.", StringComparison.OrdinalIgnoreCase))
+                return "controller";
+
+            if (settingId.StartsWith("arcade.midi", StringComparison.OrdinalIgnoreCase))
+                return "midi";
+
+            return "setup";
+        }
+
+        return string.Empty;
     }
 
     private static string GetGlobalSettingsCategoryFromTopIndex(int index)
@@ -29228,12 +29809,12 @@ private void OpenOrFocusToneLab()
         {
             case 4: return "Audio";
             case 5: return "Gameplay";
-            case 6: return "2D Tabs";
-            case 7: return "Highway3D";
-            case 8: return "Rhythm";
+            case 6: return "Visuals";
+            case 7: return "Visuals";
+            case 8: return "Gameplay";
             case 9: return "Controls";
             case 10: return "Visuals";
-            case 11: return "Multiplayer Visuals";
+            case 11: return "Visuals";
             case 12: return "Diagnostics";
             default: return string.Empty;
         }
@@ -29798,6 +30379,13 @@ private void OpenOrFocusToneLab()
             }
 
             migratedVersion = 13;
+        }
+
+        if (migratedVersion < 14)
+        {
+            SetRuntimeSettingMigrationValue(values, "fx.characterDisplay", "Always (Guitars)");
+            migratedVersion = 14;
+            migrated = true;
         }
 
         return migrated;

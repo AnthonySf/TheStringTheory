@@ -459,7 +459,7 @@ public static class ChartEditorImportService
 
         sourceNotes ??= new List<NoteData>();
         for (int i = 0; i < sourceNotes.Count; i++)
-            track.notes.Add(FromNoteData(sourceNotes[i], i));
+            track.notes.Add(FromNoteData(sourceNotes[i], i, role == ChartEditorTrackRole.Drums));
 
         track.notes = track.notes
             .OrderBy(note => note.timeSeconds)
@@ -504,7 +504,7 @@ public static class ChartEditorImportService
 
         List<RocksmithCachedNoteData> sourceNotes = part?.notes ?? new List<RocksmithCachedNoteData>();
         for (int i = 0; i < sourceNotes.Count; i++)
-            track.notes.Add(FromCachedNoteData(sourceNotes[i], i));
+            track.notes.Add(FromCachedNoteData(sourceNotes[i], i, role == ChartEditorTrackRole.Drums));
 
         if (part?.arpeggioGuides != null)
         {
@@ -571,7 +571,7 @@ public static class ChartEditorImportService
 
         List<TheoryNoteData> sourceNotes = arrangement?.notes ?? new List<TheoryNoteData>();
         for (int i = 0; i < sourceNotes.Count; i++)
-            track.notes.Add(FromTheoryNoteData(sourceNotes[i], i));
+            track.notes.Add(FromTheoryNoteData(sourceNotes[i], i, role == ChartEditorTrackRole.Drums));
 
         if (arrangement?.arpeggioGuides != null)
         {
@@ -1103,7 +1103,7 @@ public static class ChartEditorImportService
         return result;
     }
 
-    private static ChartEditorNote FromNoteData(NoteData source, int fallbackIndex)
+    private static ChartEditorNote FromNoteData(NoteData source, int fallbackIndex, bool drumTrack = false)
     {
         ChartEditorNote note = new ChartEditorNote
         {
@@ -1156,11 +1156,13 @@ public static class ChartEditorImportService
 
         if (string.IsNullOrWhiteSpace(note.id))
             note.id = $"note_{fallbackIndex}";
+        if (drumTrack)
+            NormalizeDrumEditorNote(note);
         note.EnsureDefaults();
         return note;
     }
 
-    private static ChartEditorNote FromCachedNoteData(RocksmithCachedNoteData source, int fallbackIndex)
+    private static ChartEditorNote FromCachedNoteData(RocksmithCachedNoteData source, int fallbackIndex, bool drumTrack = false)
     {
         if (source == null)
             return null;
@@ -1242,11 +1244,13 @@ public static class ChartEditorImportService
 
         if (string.IsNullOrWhiteSpace(note.id))
             note.id = $"note_{fallbackIndex}";
+        if (drumTrack)
+            NormalizeDrumEditorNote(note);
         note.EnsureDefaults();
         return note;
     }
 
-    private static ChartEditorNote FromTheoryNoteData(TheoryNoteData source, int fallbackIndex)
+    private static ChartEditorNote FromTheoryNoteData(TheoryNoteData source, int fallbackIndex, bool drumTrack = false)
     {
         if (source == null)
             return null;
@@ -1328,8 +1332,34 @@ public static class ChartEditorImportService
 
         if (string.IsNullOrWhiteSpace(note.id))
             note.id = $"note_{fallbackIndex}";
+        if (drumTrack)
+            NormalizeDrumEditorNote(note);
         note.EnsureDefaults();
         return note;
+    }
+
+    private static void NormalizeDrumEditorNote(ChartEditorNote note)
+    {
+        if (note == null)
+            return;
+
+        if (note.fret >= 35 && note.fret <= 87)
+        {
+            note.stringOrLane = DrumLaneMapper.MapGeneralMidiToLane(note.fret);
+            if (string.IsNullOrWhiteSpace(note.noteName))
+                note.noteName = DrumLaneMapper.GetGeneralMidiDrumName(note.fret);
+        }
+        else if (DrumLaneMapper.TryResolveLaneFromLabel(note.noteName, out int labelLane))
+        {
+            note.stringOrLane = labelLane;
+        }
+        else
+        {
+            note.stringOrLane = Mathf.Clamp(note.stringOrLane, 0, DrumLaneMapper.LaneCount - 1);
+        }
+
+        note.stringOrLane = Mathf.Clamp(note.stringOrLane, 0, DrumLaneMapper.LaneCount - 1);
+        ChartEditorDrumNoteSanitizer.Sanitize(note);
     }
 
     private static NoteTechnique ResolveCachedPrimaryTechnique(RocksmithCachedNoteData source)

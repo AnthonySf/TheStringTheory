@@ -118,38 +118,44 @@ internal static class AlphaTabGpLoader
             bool isMuted = source != null && source.IsDead;
             List<NoteTechniqueSegmentData> segments = BuildTechniqueSegments(note, matchedBySource, durationSeconds, data.tempoPoints, data.midiDivision);
 
-            if (segments != null && segments.Count > 0)
+            if (HasBendTechniqueSegments(segments))
             {
-                NoteTechniqueSegmentData firstBend = segments.FirstOrDefault(segment => segment.type == NoteTechniqueSegmentType.Bend);
-                if (!firstBend.Equals(default(NoteTechniqueSegmentData)) || segments.Any(segment => segment.type == NoteTechniqueSegmentType.Bend))
+                technique = NoteTechnique.Bend;
+                float maxBend = 0f;
+                float minBend = 0f;
+                float bendStart = float.MaxValue;
+                float bendEnd = 0f;
+                bool hasRelease = false;
+                bool hasPreBend = source != null && IsPreBendType(source.BendType);
+                NoteTechniqueSegmentData? firstBendBearingSegment = null;
+
+                for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
                 {
-                    technique = NoteTechnique.Bend;
-                    float maxBend = 0f;
-                    float minBend = 0f;
-                    float bendStart = float.MaxValue;
-                    float bendEnd = 0f;
-                    bool hasRelease = false;
-                    bool hasPreBend = source != null && IsPreBendType(source.BendType);
+                    NoteTechniqueSegmentData segment = segments[segmentIndex];
+                    if (!IsBendBearingTechniqueSegment(segment))
+                        continue;
 
-                    for (int segmentIndex = 0; segmentIndex < segments.Count; segmentIndex++)
+                    if (!firstBendBearingSegment.HasValue ||
+                        segment.startOffset < firstBendBearingSegment.Value.startOffset)
                     {
-                        NoteTechniqueSegmentData segment = segments[segmentIndex];
-                        if (segment.type != NoteTechniqueSegmentType.Bend)
-                            continue;
-
-                        bendStart = Mathf.Min(bendStart, segment.startOffset);
-                        bendEnd = Mathf.Max(bendEnd, segment.endOffset);
-                        maxBend = Mathf.Max(maxBend, segment.startBend, segment.endBend);
-                        minBend = Mathf.Min(minBend, segment.startBend, segment.endBend);
-                        hasRelease |= segment.endBend < segment.startBend - 0.01f;
+                        firstBendBearingSegment = segment;
                     }
 
-                    bendStep = Mathf.Max(Mathf.Abs(maxBend), Mathf.Abs(minBend));
-                    bendPreBend = hasPreBend;
-                    bendRelease = hasRelease;
-                    bendVisualStartTime = bendStart < float.MaxValue ? bendStart : -1f;
-                    bendVisualDuration = bendEnd > bendStart ? bendEnd - bendStart : 0f;
+                    bendStart = Mathf.Min(bendStart, segment.startOffset);
+                    bendEnd = Mathf.Max(bendEnd, segment.endOffset);
+                    maxBend = Mathf.Max(maxBend, segment.startBend, segment.endBend);
+                    minBend = Mathf.Min(minBend, segment.startBend, segment.endBend);
+                    hasRelease |= segment.endBend < segment.startBend - 0.01f;
                 }
+
+                if (firstBendBearingSegment.HasValue)
+                    hasPreBend |= Mathf.Abs(firstBendBearingSegment.Value.startBend) > 0.01f;
+
+                bendStep = Mathf.Max(Mathf.Abs(maxBend), Mathf.Abs(minBend));
+                bendPreBend = hasPreBend;
+                bendRelease = hasRelease;
+                bendVisualStartTime = bendStart < float.MaxValue ? bendStart : -1f;
+                bendVisualDuration = bendEnd > bendStart ? bendEnd - bendStart : 0f;
             }
 
             if (source != null && source.IsHammerPullDestination && source.HammerPullOrigin != null)
@@ -362,6 +368,44 @@ internal static class AlphaTabGpLoader
         return null;
     }
 
+    private static bool HasBendTechniqueSegments(List<NoteTechniqueSegmentData> segments)
+    {
+        if (segments == null || segments.Count == 0)
+            return false;
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            if (IsBendBearingTechniqueSegment(segments[i]))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsBendBearingTechniqueSegment(NoteTechniqueSegmentData segment)
+    {
+        if (segment.type == NoteTechniqueSegmentType.Bend)
+            return Mathf.Abs(segment.endBend - segment.startBend) > 0.01f ||
+                   Mathf.Abs(segment.startBend) > 0.01f ||
+                   Mathf.Abs(segment.endBend) > 0.01f;
+
+        if (segment.type == NoteTechniqueSegmentType.Sustain ||
+            segment.type == NoteTechniqueSegmentType.Vibrato)
+        {
+            return Mathf.Abs(segment.startBend) > 0.01f ||
+                   Mathf.Abs(segment.endBend) > 0.01f;
+        }
+
+        return false;
+    }
+
+    private static NoteTechniqueSegmentType ResolveBendSegmentType(float startBend, float endBend)
+    {
+        return Mathf.Abs(endBend - startBend) <= 0.01f
+            ? NoteTechniqueSegmentType.Sustain
+            : NoteTechniqueSegmentType.Bend;
+    }
+
     private static AlphaTabGpMatchedNote FindRelatedNote(Note related, Dictionary<Note, AlphaTabGpMatchedNote> matchedBySource)
     {
         if (related == null)
@@ -425,7 +469,7 @@ internal static class AlphaTabGpLoader
                 GeneratedPlaybackPitchPoint previous = pitchCurve[i - 1];
                 GeneratedPlaybackPitchPoint current = pitchCurve[i];
                 segments.Add(new NoteTechniqueSegmentData(
-                    NoteTechniqueSegmentType.Bend,
+                    ResolveBendSegmentType(previous.semitoneOffset, current.semitoneOffset),
                     previous.normalizedTime * safeDurationSeconds,
                     current.normalizedTime * safeDurationSeconds,
                     note.fret,
@@ -489,7 +533,7 @@ internal static class AlphaTabGpLoader
                 GeneratedPlaybackPitchPoint previous = pitchCurve[i - 1];
                 GeneratedPlaybackPitchPoint current = pitchCurve[i];
                 segments.Add(new NoteTechniqueSegmentData(
-                    NoteTechniqueSegmentType.Bend,
+                    ResolveBendSegmentType(previous.semitoneOffset, current.semitoneOffset),
                     previous.normalizedTime * safeDurationSeconds,
                     current.normalizedTime * safeDurationSeconds,
                     Mathf.Max(0, Mathf.RoundToInt((float)source.Fret)),
