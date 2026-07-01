@@ -919,7 +919,7 @@ public sealed class ChartEditorOverlay
         panel.Add(subtitle);
         panel.Add(CreateStartupAction("Open .theory Package", ImportTheoryPackage));
         panel.Add(CreateStartupAction("Create from Guitar Pro / MusicXML + Audio", ImportChartAndAudio));
-        panel.Add(CreateStartupAction("Import Rocksmith PSARC", ImportPsarc));
+        AddExternalImporterStartupActions(panel);
         panel.Add(CreateStartupAction("Open Unpacked Chart Folder", ImportFolder));
 
         shell.Add(panel);
@@ -941,13 +941,11 @@ public sealed class ChartEditorOverlay
         button.style.alignItems = Align.Center;
         button.style.justifyContent = Justify.SpaceBetween;
         button.style.unityFontDefinition = bodyFont;
-        Color accent = label.IndexOf("PSARC", StringComparison.OrdinalIgnoreCase) >= 0
-            ? new Color(0.40f, 0.72f, 1f, 1f)
-            : label.IndexOf("Folder", StringComparison.OrdinalIgnoreCase) >= 0
-                ? new Color(0.47f, 0.88f, 0.64f, 1f)
-                : label.IndexOf("Existing", StringComparison.OrdinalIgnoreCase) >= 0
-                    ? new Color(0.98f, 0.72f, 0.36f, 1f)
-                    : new Color(0.68f, 0.44f, 1f, 1f);
+        Color accent = label.IndexOf("Folder", StringComparison.OrdinalIgnoreCase) >= 0
+            ? new Color(0.47f, 0.88f, 0.64f, 1f)
+            : label.IndexOf("Existing", StringComparison.OrdinalIgnoreCase) >= 0
+                ? new Color(0.98f, 0.72f, 0.36f, 1f)
+                : new Color(0.68f, 0.44f, 1f, 1f);
         StyleSoftButton(button, accent);
         SetRadius(button, 12f);
 
@@ -960,6 +958,65 @@ public sealed class ChartEditorOverlay
         actionLabel.style.width = 116f;
         button.Add(actionLabel);
         return button;
+    }
+
+    private void AddExternalImporterStartupActions(VisualElement panel)
+    {
+        List<SongImporterDescriptor> importers = SongImporterRegistry.GetAvailableImporters(forceRefresh: true);
+        for (int i = 0; i < importers.Count; i++)
+        {
+            SongImporterDescriptor importer = importers[i];
+            if (importer == null)
+                continue;
+
+            string importerId = importer.Id;
+            bool hasFolderSignatures = HasImporterFolderSignatures(importer);
+            if (HasImporterFileExtensions(importer))
+            {
+                string label = BuildImporterFileActionLabel(importer, hasFolderSignatures);
+                panel.Add(CreateStartupAction(label, () => ImportExternalImporterFile(importerId)));
+            }
+
+            if (!hasFolderSignatures)
+                continue;
+
+            for (int signatureIndex = 0; signatureIndex < importer.FolderSignatures.Count; signatureIndex++)
+            {
+                SongImporterFolderSignature signature = importer.FolderSignatures[signatureIndex];
+                if (signature == null)
+                    continue;
+
+                int capturedSignatureIndex = signatureIndex;
+                string label = BuildImporterFolderActionLabel(importer, signature);
+                panel.Add(CreateStartupAction(label, () => ImportExternalImporterFolder(importerId, capturedSignatureIndex)));
+            }
+        }
+    }
+
+    private static bool HasImporterFileExtensions(SongImporterDescriptor importer)
+    {
+        return importer?.Extensions != null &&
+               importer.Extensions.Any(extension => !string.IsNullOrWhiteSpace(extension));
+    }
+
+    private static bool HasImporterFolderSignatures(SongImporterDescriptor importer)
+    {
+        return importer?.FolderSignatures != null &&
+               importer.FolderSignatures.Any(signature => signature != null);
+    }
+
+    private static string BuildImporterFileActionLabel(SongImporterDescriptor importer, bool hasFolderSignatures)
+    {
+        string displayName = FirstNonEmpty(importer?.DisplayName, "Importer");
+        return hasFolderSignatures ? $"Import {displayName} File" : $"Import {displayName}";
+    }
+
+    private static string BuildImporterFolderActionLabel(
+        SongImporterDescriptor importer,
+        SongImporterFolderSignature signature)
+    {
+        string displayName = FirstNonEmpty(signature?.displayName, importer?.DisplayName, "Importer");
+        return $"Import {displayName} Folder";
     }
 
     private void BuildImportSummary()
@@ -10340,7 +10397,7 @@ public sealed class ChartEditorOverlay
             }
         }
 
-        List<NoteTechniqueSegmentData> normalized = RocksmithCachedSongLoader.BuildNormalizedTechniqueSegments(source);
+        List<NoteTechniqueSegmentData> normalized = RocksmithTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
         if (normalized == null || normalized.Count == 0 || TechniqueSegmentsEquivalent(note.techniqueSegments, normalized))
             return;
 
@@ -11865,14 +11922,48 @@ public sealed class ChartEditorOverlay
             SetStatus(error);
     }
 
-    private void ImportPsarc()
+    private void ImportExternalImporterFile(string importerId)
     {
-        if (!ChartEditorFilePicker.TryPickPsarcFile(out string psarcPath))
+        if (!SongImporterRegistry.TryGetImporterById(importerId, out SongImporterDescriptor importer))
+        {
+            SetStatus("Importer is no longer available.");
+            return;
+        }
+
+        if (!ChartEditorFilePicker.TryPickImporterSourceFile(importer, out string sourcePath))
             return;
 
-        SetStatus("Importing PSARC...");
-        if (ChartEditorImportService.ImportPsarc(psarcPath, out ChartEditorImportResult result, out string error))
-            AcceptImport(result, "PSARC imported.");
+        SetStatus($"Importing {importer.DisplayName}...");
+        if (ChartEditorImportService.ImportExternalImporterSource(sourcePath, out ChartEditorImportResult result, out string error, importer.Id))
+            AcceptImport(result, $"{importer.DisplayName} imported.");
+        else
+            SetStatus(error);
+    }
+
+    private void ImportExternalImporterFolder(string importerId, int signatureIndex)
+    {
+        if (!SongImporterRegistry.TryGetImporterById(importerId, out SongImporterDescriptor importer))
+        {
+            SetStatus("Importer is no longer available.");
+            return;
+        }
+
+        if (importer.FolderSignatures == null ||
+            signatureIndex < 0 ||
+            signatureIndex >= importer.FolderSignatures.Count)
+        {
+            SetStatus("Importer folder type is no longer available.");
+            return;
+        }
+
+        SongImporterFolderSignature signature = importer.FolderSignatures[signatureIndex];
+        if (!ChartEditorFilePicker.TryPickImporterSourceFolder(importer, signature, out string sourcePath))
+            return;
+
+        string sourceLabel = FirstNonEmpty(signature?.displayName, importer.DisplayName);
+        SetStatus($"Importing {sourceLabel}...");
+        if (ChartEditorImportService.ImportExternalImporterSource(sourcePath, out ChartEditorImportResult result, out string error, importer.Id))
+            AcceptImport(result, $"{sourceLabel} imported.");
         else
             SetStatus(error);
     }

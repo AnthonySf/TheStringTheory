@@ -119,6 +119,19 @@ public static class TheoryChartEditorExporter
         string audioEntry = BuildAudioEntry(project.audio?.sourcePath);
         string coverEntry = BuildCoverEntry(project.metadata?.coverImagePath);
         List<TheoryStemAsset> preservedStems = LoadPreservedStems(project, packagePath, out string preservedPackageSourcePath);
+        List<string> preservedEntryNames = preservedStems
+            .Where(stem => stem != null && !string.IsNullOrWhiteSpace(stem.entry))
+            .Select(stem => stem.entry)
+            .ToList();
+        string toneLabMappingsSourcePath = FindPreservedPackageEntrySourcePath(project, packagePath, TheoryPackageFormat.ToneLabMappingsEntryName);
+        if (!string.IsNullOrWhiteSpace(toneLabMappingsSourcePath) &&
+            (string.IsNullOrWhiteSpace(preservedPackageSourcePath) ||
+             string.Equals(Path.GetFullPath(preservedPackageSourcePath), Path.GetFullPath(toneLabMappingsSourcePath), StringComparison.OrdinalIgnoreCase)))
+        {
+            preservedPackageSourcePath = toneLabMappingsSourcePath;
+            if (!preservedEntryNames.Any(entry => string.Equals(entry, TheoryPackageFormat.ToneLabMappingsEntryName, StringComparison.OrdinalIgnoreCase)))
+                preservedEntryNames.Add(TheoryPackageFormat.ToneLabMappingsEntryName);
+        }
         DateTime now = DateTime.UtcNow;
         TheorySongManifest manifest = new TheorySongManifest
         {
@@ -178,10 +191,7 @@ public static class TheoryChartEditorExporter
             primaryAudioSourcePath = project.audio?.sourcePath,
             coverArtSourcePath = project.metadata?.coverImagePath,
             preservedPackageSourcePath = preservedPackageSourcePath,
-            preservedEntryNames = preservedStems
-                .Where(stem => stem != null && !string.IsNullOrWhiteSpace(stem.entry))
-                .Select(stem => stem.entry)
-                .ToList()
+            preservedEntryNames = preservedEntryNames
         };
     }
 
@@ -189,8 +199,8 @@ public static class TheoryChartEditorExporter
     {
         packageSourcePath = string.Empty;
         List<string> candidates = new List<string>();
-        AddPreservedStemCandidate(candidates, project?.sourcePath);
-        AddPreservedStemCandidate(candidates, packagePath);
+        AddPreservedPackageCandidate(candidates, project?.sourcePath);
+        AddPreservedPackageCandidate(candidates, packagePath);
 
         for (int candidateIndex = 0; candidateIndex < candidates.Count; candidateIndex++)
         {
@@ -237,7 +247,7 @@ public static class TheoryChartEditorExporter
         return new List<TheoryStemAsset>();
     }
 
-    private static void AddPreservedStemCandidate(List<string> candidates, string path)
+    private static void AddPreservedPackageCandidate(List<string> candidates, string path)
     {
         if (candidates == null ||
             !TheoryPackageFormat.IsPackagePath(path) ||
@@ -251,6 +261,22 @@ public static class TheoryChartEditorExporter
             return;
 
         candidates.Add(path);
+    }
+
+    private static string FindPreservedPackageEntrySourcePath(ChartEditorProject project, string packagePath, string entryName)
+    {
+        List<string> candidates = new List<string>();
+        AddPreservedPackageCandidate(candidates, project?.sourcePath);
+        AddPreservedPackageCandidate(candidates, packagePath);
+
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            string candidate = candidates[i];
+            if (TheoryPackageIO.EntryExists(candidate, entryName))
+                return candidate;
+        }
+
+        return string.Empty;
     }
 
     private static Dictionary<string, int> BuildVariantCounts(ChartEditorProject project)

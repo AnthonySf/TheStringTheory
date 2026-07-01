@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using UnityEngine;
@@ -45,9 +47,22 @@ public static class ChartEditorFilePicker
             out path);
     }
 
-    public static bool TryPickPsarcFile(out string path)
+    public static bool TryPickImporterSourceFile(SongImporterDescriptor importer, out string path)
     {
-        return TryPickInputFile("Select PSARC File", "PSARC Files", "*.psarc", out path);
+        string label = string.IsNullOrWhiteSpace(importer?.DisplayName)
+            ? "Importer Files"
+            : $"{importer.DisplayName} Files";
+        string patterns = BuildExtensionPattern(importer?.Extensions);
+        return TryPickInputFile($"Select {label}", label, patterns, out path);
+    }
+
+    public static bool TryPickImporterSourceFolder(
+        SongImporterDescriptor importer,
+        SongImporterFolderSignature signature,
+        out string path)
+    {
+        string label = BuildImporterFolderLabel(importer, signature);
+        return TryPickFolder($"Select {label}", ResolveInputInitialDirectory(), out path);
     }
 
     public static bool TryPickProjectFile(out string path)
@@ -86,6 +101,32 @@ public static class ChartEditorFilePicker
         if (picked)
             RememberInputDirectory(path);
         return picked;
+    }
+
+    private static string BuildExtensionPattern(IReadOnlyList<string> extensions)
+    {
+        List<string> patterns = (extensions ?? Array.Empty<string>())
+            .Where(extension => !string.IsNullOrWhiteSpace(extension))
+            .Select(extension => extension.Trim())
+            .Select(extension => extension.StartsWith(".", StringComparison.Ordinal) ? extension : "." + extension)
+            .Select(extension => "*" + extension)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return patterns.Count == 0 ? "*.*" : string.Join(";", patterns);
+    }
+
+    private static string BuildImporterFolderLabel(
+        SongImporterDescriptor importer,
+        SongImporterFolderSignature signature)
+    {
+        if (!string.IsNullOrWhiteSpace(signature?.displayName))
+            return $"{signature.displayName.Trim()} Folder";
+
+        if (!string.IsNullOrWhiteSpace(importer?.DisplayName))
+            return $"{importer.DisplayName.Trim()} Folder";
+
+        return "Importer Folder";
     }
 
     private static bool TryPickFile(string title, string filterName, string filterPattern, string initialDirectory, out string path)

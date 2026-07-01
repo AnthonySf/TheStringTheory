@@ -148,6 +148,56 @@ public static class TheoryPackageIO
         }
     }
 
+    public static bool TryReadToneLabMappings(string packagePath, out TheoryToneLabMappingState mappingState, out string error)
+    {
+        mappingState = null;
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
+        {
+            error = "Theory package was not found.";
+            return false;
+        }
+
+        try
+        {
+            using (ZipArchive archive = ZipFile.OpenRead(packagePath))
+            {
+                ZipArchiveEntry entry = archive.GetEntry(NormalizeEntryName(TheoryPackageFormat.ToneLabMappingsEntryName));
+                if (entry == null)
+                    return false;
+
+                using (Stream stream = entry.Open())
+                using (StreamReader reader = new StreamReader(stream))
+                {
+                    string json = reader.ReadToEnd();
+                    mappingState = JsonUtility.FromJson<TheoryToneLabMappingState>(json);
+                }
+            }
+
+            if (mappingState == null)
+            {
+                error = "Theory package Tone Lab mappings could not be parsed.";
+                return false;
+            }
+
+            mappingState.EnsureDefaults();
+            if (mappingState.schemaVersion <= 0 || mappingState.schemaVersion > TheoryPackageFormat.SchemaVersion)
+            {
+                error = $"Theory package Tone Lab mappings schema version {mappingState.schemaVersion} is not supported.";
+                mappingState = null;
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            Debug.LogWarning($"[TheoryPackage] Failed to read Tone Lab mappings '{packagePath}': {ex.Message}");
+            return false;
+        }
+    }
+
     public static bool WritePackage(string packagePath, TheoryPackageWriteRequest request, out string error)
     {
         error = string.Empty;
@@ -238,6 +288,63 @@ public static class TheoryPackageIO
             TryDeleteFile(packagePath + ".tmp");
             error = ex.Message;
             Debug.LogWarning($"[TheoryPackage] Failed to write package '{packagePath}': {ex.Message}");
+            return false;
+        }
+    }
+
+    public static bool TryWriteToneLabMappings(string packagePath, TheoryToneLabMappingState mappingState, out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
+        {
+            error = "Theory package was not found.";
+            return false;
+        }
+
+        if (mappingState == null)
+        {
+            error = "Theory package Tone Lab mappings are missing.";
+            return false;
+        }
+
+        string tempPath = packagePath + ".tmp";
+        if (File.Exists(tempPath))
+            File.Delete(tempPath);
+
+        try
+        {
+            mappingState.EnsureDefaults();
+            if (mappingState.modifiedAtUtcTicks <= 0L)
+                mappingState.modifiedAtUtcTicks = DateTime.UtcNow.Ticks;
+
+            string mappingEntryName = NormalizeEntryName(TheoryPackageFormat.ToneLabMappingsEntryName);
+            using (ZipArchive sourceArchive = ZipFile.OpenRead(packagePath))
+            using (FileStream stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            using (ZipArchive destinationArchive = new ZipArchive(stream, ZipArchiveMode.Create))
+            {
+                foreach (ZipArchiveEntry sourceEntry in sourceArchive.Entries)
+                {
+                    string entryName = NormalizeEntryName(sourceEntry.FullName);
+                    if (string.IsNullOrWhiteSpace(entryName) ||
+                        string.Equals(entryName, mappingEntryName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    CopyEntry(sourceEntry, destinationArchive, entryName);
+                }
+
+                WriteTextEntry(destinationArchive, mappingEntryName, JsonUtility.ToJson(mappingState, true));
+            }
+
+            ReplacePackageFile(tempPath, packagePath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            TryDeleteFile(tempPath);
+            error = ex.Message;
+            Debug.LogWarning($"[TheoryPackage] Failed to write Tone Lab mappings in '{packagePath}': {ex.Message}");
             return false;
         }
     }
@@ -411,6 +518,82 @@ public static class TheoryPackageIO
         {
             error = ex.Message;
             Debug.LogWarning($"[TheoryPackage] Failed to extract '{entryName}' from '{packagePath}': {ex.Message}");
+            return false;
+        }
+    }
+
+    public static bool TryReadTextEntry(string packagePath, string entryName, out string text, out string error)
+    {
+        text = string.Empty;
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(packagePath) || string.IsNullOrWhiteSpace(entryName))
+        {
+            error = "Theory package text entry request is incomplete.";
+            return false;
+        }
+
+        try
+        {
+            text = ReadTextEntry(packagePath, entryName);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+            Debug.LogWarning($"[TheoryPackage] Failed to read '{entryName}' from '{packagePath}': {ex.Message}");
+            return false;
+        }
+    }
+
+    public static bool TryRewriteManifest(string packagePath, TheorySongManifest manifest, out string error)
+    {
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(packagePath) || !File.Exists(packagePath))
+        {
+            error = "Theory package was not found.";
+            return false;
+        }
+
+        if (manifest == null)
+        {
+            error = "Theory package manifest is missing.";
+            return false;
+        }
+
+        string tempPath = packagePath + ".tmp";
+        if (File.Exists(tempPath))
+            File.Delete(tempPath);
+
+        try
+        {
+            manifest.EnsureDefaults();
+            using (ZipArchive sourceArchive = ZipFile.OpenRead(packagePath))
+            using (FileStream stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+            using (ZipArchive destinationArchive = new ZipArchive(stream, ZipArchiveMode.Create))
+            {
+                foreach (ZipArchiveEntry sourceEntry in sourceArchive.Entries)
+                {
+                    string entryName = NormalizeEntryName(sourceEntry.FullName);
+                    if (string.IsNullOrWhiteSpace(entryName) ||
+                        string.Equals(entryName, TheoryPackageFormat.ManifestEntryName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    CopyEntry(sourceEntry, destinationArchive, entryName);
+                }
+
+                WriteTextEntry(destinationArchive, TheoryPackageFormat.ManifestEntryName, JsonUtility.ToJson(manifest, true));
+            }
+
+            ReplacePackageFile(tempPath, packagePath);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            TryDeleteFile(tempPath);
+            error = ex.Message;
+            Debug.LogWarning($"[TheoryPackage] Failed to rewrite manifest in '{packagePath}': {ex.Message}");
             return false;
         }
     }

@@ -844,6 +844,7 @@ public class GuitarBridgeServer : MonoBehaviour
         public string arrangementId;
         public string toneName;
         public string presetId;
+        public TheoryTonePresetData presetSnapshot = new TheoryTonePresetData();
     }
 
     [Serializable]
@@ -1328,6 +1329,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool cachedSongToneMappingLoaded;
     private string cachedSongToneMappingToneName = string.Empty;
     private string cachedSongToneMappingPresetId = string.Empty;
+    private UnityToneLabRuntime.ToneLabPreset cachedSongToneMappingPresetSnapshot;
     private float cachedSongToneMappingToneStartTimeSeconds = float.NegativeInfinity;
     private float cachedSongToneMappingNextSwitchTimeSeconds = float.PositiveInfinity;
     private bool isLoadingBackingTrack;
@@ -2936,9 +2938,10 @@ public class GuitarBridgeServer : MonoBehaviour
         string songKey = BuildToneLabSongMappingSongKey(currentSongEntry);
         string toneName = string.Empty;
         string presetId = string.Empty;
+        UnityToneLabRuntime.ToneLabPreset presetSnapshot = null;
         float toneTimeSeconds = IsSongStartTunerActive() ? 0f : audioSongTimer + (audioOffsetMs / 1000f);
         if (EnsureToneLabSongTonePlaybackCache(songKey, arrangementKey, activeSummary))
-            ResolveCachedToneLabSongToneMapping(toneTimeSeconds, out toneName, out presetId);
+            ResolveCachedToneLabSongToneMapping(toneTimeSeconds, out toneName, out presetId, out presetSnapshot);
 
         if (string.IsNullOrWhiteSpace(toneName))
         {
@@ -2961,7 +2964,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         EnsureToneLabRuntimeComponent();
-        if (TryApplyToneLabPlaybackPresetOverride(presetId))
+        if (TryApplyToneLabPlaybackPresetOverride(presetId, presetSnapshot))
         {
             activeSongToneMappingSongKey = songKey;
             activeSongToneMappingArrangementKey = arrangementKey;
@@ -3038,18 +3041,27 @@ public class GuitarBridgeServer : MonoBehaviour
             UpdateToneLabSongTonePlaybackOverride();
     }
 
-    private bool TryApplyToneLabPlaybackPresetOverride(string presetId)
+    private bool TryApplyToneLabPlaybackPresetOverride(string presetId, UnityToneLabRuntime.ToneLabPreset presetSnapshot = null)
     {
-        if (string.IsNullOrWhiteSpace(presetId) || unityToneLabRuntime == null)
+        if ((string.IsNullOrWhiteSpace(presetId) && presetSnapshot == null) || unityToneLabRuntime == null)
             return false;
 
-        if (RocksmithTonePresetBuilder.IsGeneratedPresetId(presetId))
+        if (!string.IsNullOrWhiteSpace(presetId) && RocksmithTonePresetBuilder.IsGeneratedPresetId(presetId))
         {
-            return generatedRocksmithTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset) &&
-                   unityToneLabRuntime.SetPlaybackPresetOverride(generatedPreset);
+            if (generatedRocksmithTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset) &&
+                unityToneLabRuntime.SetPlaybackPresetOverride(generatedPreset))
+            {
+                return true;
+            }
         }
 
-        return unityToneLabRuntime.SetPlaybackPresetOverride(presetId);
+        if (!string.IsNullOrWhiteSpace(presetId) &&
+            unityToneLabRuntime.SetPlaybackPresetOverride(presetId))
+        {
+            return true;
+        }
+
+        return presetSnapshot != null && unityToneLabRuntime.SetPlaybackPresetOverride(presetSnapshot);
     }
 
     private bool EnsureToneLabSongTonePlaybackCache(
@@ -3093,10 +3105,15 @@ public class GuitarBridgeServer : MonoBehaviour
         return true;
     }
 
-    private void ResolveCachedToneLabSongToneMapping(float timeSeconds, out string toneName, out string presetId)
+    private void ResolveCachedToneLabSongToneMapping(
+        float timeSeconds,
+        out string toneName,
+        out string presetId,
+        out UnityToneLabRuntime.ToneLabPreset presetSnapshot)
     {
         toneName = string.Empty;
         presetId = string.Empty;
+        presetSnapshot = null;
         if (cachedSongToneMappingToneData == null)
             return;
 
@@ -3105,6 +3122,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             toneName = cachedSongToneMappingToneName;
             presetId = cachedSongToneMappingPresetId;
+            presetSnapshot = cachedSongToneMappingPresetSnapshot;
             return;
         }
 
@@ -3118,6 +3136,7 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             cachedSongToneMappingToneName = string.Empty;
             cachedSongToneMappingPresetId = string.Empty;
+            cachedSongToneMappingPresetSnapshot = null;
             cachedSongToneMappingToneStartTimeSeconds = float.NegativeInfinity;
             cachedSongToneMappingNextSwitchTimeSeconds = float.PositiveInfinity;
             return;
@@ -3128,9 +3147,11 @@ public class GuitarBridgeServer : MonoBehaviour
             cachedSongToneMappingArrangementKey,
             toneName,
             cachedSongToneMappingToneData,
-            cachedSongToneMappingArrangementRoute);
+            cachedSongToneMappingArrangementRoute,
+            out presetSnapshot);
         cachedSongToneMappingToneName = toneName;
         cachedSongToneMappingPresetId = presetId ?? string.Empty;
+        cachedSongToneMappingPresetSnapshot = presetSnapshot;
         cachedSongToneMappingToneStartTimeSeconds = toneStartTimeSeconds;
         cachedSongToneMappingNextSwitchTimeSeconds = nextSwitchTimeSeconds;
     }
@@ -3159,6 +3180,7 @@ public class GuitarBridgeServer : MonoBehaviour
         cachedSongToneMappingLoaded = false;
         cachedSongToneMappingToneName = string.Empty;
         cachedSongToneMappingPresetId = string.Empty;
+        cachedSongToneMappingPresetSnapshot = null;
         cachedSongToneMappingToneStartTimeSeconds = float.NegativeInfinity;
         cachedSongToneMappingNextSwitchTimeSeconds = float.PositiveInfinity;
     }
@@ -6245,8 +6267,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private static bool SupportsArrangementTrackGroups(SongNotationSourceKind kind)
     {
-        return kind == SongNotationSourceKind.ArrangementCache ||
-               kind == SongNotationSourceKind.TheoryPackage;
+        return kind == SongNotationSourceKind.TheoryPackage;
     }
 
     private List<ArrangementTrackSelectionGroup> GetCurrentArrangementTrackSelectionGroups()
@@ -6547,22 +6568,6 @@ public class GuitarBridgeServer : MonoBehaviour
             : StartCoroutine(RefreshSongsDeferred(songLibraryRefreshRequestId, refreshImports: false));
     }
 
-    private void BeginSongLibraryLegacyRefresh()
-    {
-        if (songLibraryRefreshRoutine != null)
-            return;
-
-        songLibraryRefreshRequestId++;
-        showLibraryLoadingOverlay = true;
-        ClearLibraryImportPopupState();
-        SetSongLibraryRefreshOverlayState(
-            inProgress: true,
-            progressPercent: 0f,
-            statusText: "Preparing legacy conversion...",
-            showProgress: true);
-        songLibraryRefreshRoutine = StartCoroutine(RefreshSongsDeferred(songLibraryRefreshRequestId, refreshImports: true));
-    }
-
     private System.Collections.IEnumerator DiscoverLibraryImportsDeferred(int requestId)
     {
         yield return null;
@@ -6580,7 +6585,7 @@ public class GuitarBridgeServer : MonoBehaviour
             if (exception != null)
                 Debug.LogWarning($"[SongLibrary] Import discovery failed: {exception.Message}");
             songLibraryRefreshRoutine = null;
-            BeginSongLibraryLegacyRefresh();
+            BeginSongLibraryRefresh(refreshImports: false);
             yield break;
         }
 
@@ -6649,18 +6654,26 @@ public class GuitarBridgeServer : MonoBehaviour
         }
     }
 
+    private sealed class LibraryImportConversionTaskResult
+    {
+        public int ConvertedCount;
+        public List<string> Errors = new List<string>();
+        public List<SongLibraryEntry> Songs = new List<SongLibraryEntry>();
+        public List<SongLibraryImportCandidate> RemainingCandidates = new List<SongLibraryImportCandidate>();
+    }
+
     private System.Collections.IEnumerator ConvertSelectedLibraryImportsDeferred(
         int requestId,
         List<SongLibraryImportCandidate> selectedCandidates)
     {
         yield return null;
 
-        List<string> conversionErrors = null;
         object conversionProgressAnimationLock = new object();
         float activeConversionProgressCeiling = 86f;
         SetSongLibraryRefreshOverlayState(true, 3f, "Starting .theory conversion...", true);
-        Task<List<SongLibraryEntry>> conversionTask = Task.Run(() =>
+        Task<LibraryImportConversionTaskResult> conversionTask = Task.Run(() =>
         {
+            List<string> conversionErrors;
             int convertedCount = SongLibraryService.ConvertImportCandidatesToTheoryPackages(
                 selectedCandidates,
                 (completed, total, currentName) =>
@@ -6700,14 +6713,26 @@ public class GuitarBridgeServer : MonoBehaviour
                 },
                 out conversionErrors);
 
-            if (conversionErrors != null && conversionErrors.Count > 0)
+            conversionErrors ??= new List<string>();
+            if (conversionErrors.Count > 0)
             {
                 Debug.LogWarning($"[SongLibrary] .theory conversion completed with {conversionErrors.Count} error(s): {string.Join(" | ", conversionErrors)}");
             }
 
             UpdateSongLibraryRefreshProgress(90f, convertedCount > 0 ? "Refreshing converted songs..." : "Refreshing library...");
             SongLibraryService.ClearCache();
-            return SongLibraryService.GetAvailableSongs(forceRefresh: true, refreshImports: false);
+            List<SongLibraryEntry> songs = SongLibraryService.GetAvailableSongs(forceRefresh: true, refreshImports: false);
+            List<SongLibraryImportCandidate> remainingCandidates = conversionErrors.Count > 0
+                ? SongLibraryService.DiscoverPendingTheoryConversionCandidates()
+                : new List<SongLibraryImportCandidate>();
+
+            return new LibraryImportConversionTaskResult
+            {
+                ConvertedCount = convertedCount,
+                Errors = conversionErrors,
+                Songs = songs,
+                RemainingCandidates = remainingCandidates
+            };
         });
 
         while (!conversionTask.IsCompleted)
@@ -6753,11 +6778,37 @@ public class GuitarBridgeServer : MonoBehaviour
             }
             else
             {
-                ApplyAvailableSongsSnapshot(conversionTask.Result);
+                LibraryImportConversionTaskResult conversionResult = conversionTask.Result ?? new LibraryImportConversionTaskResult();
+                ApplyAvailableSongsSnapshot(conversionResult.Songs);
+
+                if (conversionResult.Errors != null && conversionResult.Errors.Count > 0)
+                {
+                    pendingLibraryImportCandidates.Clear();
+                    if (conversionResult.RemainingCandidates != null)
+                        pendingLibraryImportCandidates.AddRange(conversionResult.RemainingCandidates);
+
+                    pendingLibraryImportCandidateSelected.Clear();
+                    for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
+                        pendingLibraryImportCandidateSelected.Add(true);
+
+                    int attemptedCount = selectedCandidates?.Count ?? 0;
+                    libraryImportPopupStatusText = BuildLibraryImportConversionErrorStatusText(
+                        conversionResult.ConvertedCount,
+                        attemptedCount,
+                        conversionResult.Errors.Count,
+                        pendingLibraryImportCandidates.Count);
+                    showSongSelection = true;
+                    showLibraryImportPopup = true;
+                }
+                else
+                {
+                    pendingLibraryImportCandidates.Clear();
+                    pendingLibraryImportCandidateSelected.Clear();
+                    showLibraryImportPopup = false;
+                    libraryImportPopupStatusText = string.Empty;
+                }
             }
 
-            pendingLibraryImportCandidates.Clear();
-            pendingLibraryImportCandidateSelected.Clear();
             songSelectionSongConfirmed = false;
             EnsureSongSelectionVisible();
         }
@@ -6768,6 +6819,20 @@ public class GuitarBridgeServer : MonoBehaviour
             songLibraryRefreshRoutine = null;
             runtimeSettingsSnapshotDirty = true;
         }
+    }
+
+    private static string BuildLibraryImportConversionErrorStatusText(
+        int convertedCount,
+        int attemptedCount,
+        int errorCount,
+        int remainingCandidateCount)
+    {
+        string convertedText = $"{Mathf.Max(0, convertedCount)}/{Mathf.Max(0, attemptedCount)} converted";
+        string errorText = $"{Mathf.Max(0, errorCount)} failed";
+        if (remainingCandidateCount > 0)
+            return $"{convertedText}. {errorText}. Failed sources are still selected below.";
+
+        return $"{convertedText}. {errorText}. Check the importer log for details.";
     }
 
     private List<SongLibraryImportCandidate> GetSelectedLibraryImportCandidates()
@@ -6992,8 +7057,6 @@ public class GuitarBridgeServer : MonoBehaviour
 
         switch (song.PrimaryNotationKind)
         {
-            case SongNotationSourceKind.ArrangementCache:
-                return "RS";
             case SongNotationSourceKind.TheoryPackage:
                 return "THEORY";
             case SongNotationSourceKind.Gp5:
@@ -12337,17 +12400,6 @@ public class GuitarBridgeServer : MonoBehaviour
         songLibraryRefreshRoutine = StartCoroutine(ConvertSelectedLibraryImportsDeferred(songLibraryRefreshRequestId, selectedCandidates));
     }
 
-    public void RunLegacyLibraryImportFromUi()
-    {
-        if (!showLibraryImportPopup || songLibraryRefreshRoutine != null)
-            return;
-
-        ClearLibraryImportPopupState();
-        ClearSongSelectionCaches();
-        SongLibraryService.ClearCache();
-        BeginSongLibraryLegacyRefresh();
-    }
-
     public void CloseLibraryImportPopupFromUi()
     {
         if (!showLibraryImportPopup || songLibraryRefreshRoutine != null)
@@ -13137,6 +13189,8 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         RefreshEffectiveAudioOffset();
+        UpdatePersistedTrackSelectionStateFromActiveSelection();
+        SaveSongMetadata();
 
         if (selectedGameplayArrangementDifficultyIndex > 0)
             scoreSaveInvalidated = true;
@@ -23465,20 +23519,7 @@ private void OpenOrFocusToneLab()
         currentSongFileName = ResolveSongMetadataFileName(currentSongEntry);
         bool isArrangementGroupGuitarSong = currentSongEntry.LibraryType == SongLibraryType.Guitar &&
                                      SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind);
-        bool isArrangementCacheGuitarSong = currentSongEntry.LibraryType == SongLibraryType.Guitar &&
-                                     currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache;
         bool isTheoryPackageSong = currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage;
-
-        if (isArrangementCacheGuitarSong &&
-            (string.IsNullOrWhiteSpace(songPath) || !File.Exists(songPath)) &&
-            !string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) &&
-            ArrangementCacheSongLoader.TryLoadManifest(currentSongEntry.PrimaryNotationPath, out var repairedManifest) &&
-            !string.IsNullOrWhiteSpace(repairedManifest.audioPath) &&
-            File.Exists(repairedManifest.audioPath))
-        {
-            songPath = repairedManifest.audioPath;
-            currentSongEntry.Mp3Path = songPath;
-        }
 
         if (isTheoryPackageSong &&
             (string.IsNullOrWhiteSpace(songPath) || !File.Exists(songPath)) &&
@@ -23492,13 +23533,10 @@ private void OpenOrFocusToneLab()
             currentSongEntry.Mp3Path = songPath;
         }
 
-        bool arrangementCacheHasBackingTrack = isArrangementCacheGuitarSong &&
-                                        !string.IsNullOrWhiteSpace(songPath) &&
-                                        File.Exists(songPath);
         bool theoryPackageHasOriginalMix = isTheoryPackageSong &&
                                            !string.IsNullOrWhiteSpace(songPath) &&
                                            File.Exists(songPath);
-        bool shouldUseOriginalMixByDefault = arrangementCacheHasBackingTrack || theoryPackageHasOriginalMix;
+        bool shouldUseOriginalMixByDefault = theoryPackageHasOriginalMix;
 
         string metadataPath = BuildSongMetadataPath(currentSongEntry);
         bool metadataExists = !string.IsNullOrWhiteSpace(metadataPath) && File.Exists(metadataPath);
@@ -23603,7 +23641,7 @@ private void OpenOrFocusToneLab()
         currentTrackHeroBestHeartsTotal = currentHeroTrackBest.heartsTotal;
         bool shouldSavePlaybackAudioModeDefault = shouldUseOriginalMixByDefault
             ? loadedPlaybackAudioMode != SongPlaybackAudioMode.Mp3 || !metadataExists
-            : isArrangementCacheGuitarSong && !metadataExists;
+            : false;
         if (shouldSavePlaybackAudioModeDefault ||
             arrangementTrackSelectionNormalized)
         {
@@ -24387,9 +24425,6 @@ private void OpenOrFocusToneLab()
         if (entry.LibraryType == SongLibraryType.Arcade)
             return !string.IsNullOrWhiteSpace(entry.ArcadeDifficultySummary) ? entry.ArcadeDifficultySummary : "Rhythm";
 
-        if (entry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache)
-            return SongLibraryService.GetDifficultyLabel(entry.DifficultyRating);
-
         if (!string.IsNullOrWhiteSpace(entry.DifficultyDisplayLabel))
             return entry.DifficultyDisplayLabel;
 
@@ -24560,7 +24595,8 @@ private void OpenOrFocusToneLab()
         for (int i = 0; i < toneNames.Count; i++)
         {
             string toneName = toneNames[i];
-            string presetId = GetTonePresetMapping(metadata, arrangementKey, toneName);
+            SongTonePresetMappingEntry manualMapping = GetTonePresetMappingEntry(metadata, arrangementKey, toneName);
+            string presetId = manualMapping?.presetId?.Trim() ?? string.Empty;
             bool automaticMapping = false;
             if (string.IsNullOrWhiteSpace(presetId))
             {
@@ -24569,6 +24605,12 @@ private void OpenOrFocusToneLab()
             }
 
             string sourcePresetName = GetToneLabPresetNameForUi(presetId);
+            if (string.IsNullOrWhiteSpace(sourcePresetName) &&
+                manualMapping?.presetSnapshot != null &&
+                !string.IsNullOrWhiteSpace(manualMapping.presetSnapshot.presetName))
+            {
+                sourcePresetName = manualMapping.presetSnapshot.presetName.Trim();
+            }
             snapshots.Add(new ToneLabSongToneMappingSnapshot
             {
                 songKey = BuildToneLabSongMappingSongKey(entry),
@@ -24612,7 +24654,8 @@ private void OpenOrFocusToneLab()
             {
                 arrangementId = arrangementKey.Trim(),
                 toneName = toneName.Trim(),
-                presetId = presetId.Trim()
+                presetId = presetId.Trim(),
+                presetSnapshot = CreateTonePresetSnapshotForMapping(presetId)
             });
         }
 
@@ -24763,19 +24806,6 @@ private void OpenOrFocusToneLab()
         if (entry == null || string.IsNullOrWhiteSpace(entry.PrimaryNotationPath) || string.IsNullOrWhiteSpace(arrangementKey))
             return false;
 
-        if (entry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache)
-        {
-            RocksmithCachedArrangementPart part = null;
-            if (!string.IsNullOrWhiteSpace(partId))
-                ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(entry.PrimaryNotationPath, partId, out _, out part);
-            if (part == null)
-                ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(entry.PrimaryNotationPath, arrangementKey, out _, out part);
-
-            toneData = part?.tones;
-            arrangementRoute = part?.route ?? summary?.Name ?? summary?.GroupDisplayName ?? string.Empty;
-            return toneData != null;
-        }
-
         if (entry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage)
         {
             TheoryArrangementSummary loadedSummary = null;
@@ -24785,7 +24815,7 @@ private void OpenOrFocusToneLab()
             if (arrangement == null)
                 TheorySongLoader.TryLoadArrangementByGroupId(entry.PrimaryNotationPath, arrangementKey, out loadedSummary, out arrangement);
 
-            toneData = ToCachedToneData(arrangement?.tones);
+            toneData = ToCachedToneData(arrangement?.tones, entry.PrimaryNotationPath);
             arrangementRoute = arrangement?.route ?? loadedSummary?.route ?? summary?.Name ?? summary?.GroupDisplayName ?? string.Empty;
             return toneData != null;
         }
@@ -24793,7 +24823,7 @@ private void OpenOrFocusToneLab()
         return false;
     }
 
-    private static RocksmithCachedArrangementToneData ToCachedToneData(TheoryToneData source)
+    private static RocksmithCachedArrangementToneData ToCachedToneData(TheoryToneData source, string packagePath = null)
     {
         if (source == null)
             return null;
@@ -24834,14 +24864,28 @@ private void OpenOrFocusToneLab()
                 {
                     name = definition.name ?? string.Empty,
                     key = definition.key ?? string.Empty,
-                    rawJson = BuildToneLabPresetJson(definition.preset, definition.name, definition.key),
-                    preferredPresetName = FirstNonEmpty(definition.fallback?.preferredPresetName, definition.preset?.presetName, definition.name, definition.key),
-                    fallbackSearchText = BuildToneFallbackSearchText(definition.fallback?.searchText, definition.name, definition.key)
+                    rawJson = FirstNonEmpty(
+                        ReadTheoryRawToneJson(packagePath, definition.rawToneEntry),
+                        BuildToneLabPresetJson(definition.preset, definition.name, definition.key)),
+                    preferredPresetName = FirstNonEmpty(definition.fallback?.preferredPresetName, definition.preferredPresetName, definition.preset?.presetName, definition.name, definition.key),
+                    fallbackSearchText = BuildToneFallbackSearchText(definition.fallback?.searchText, definition.fallbackSearchText, definition.name, definition.key)
                 });
             }
         }
 
         return result;
+    }
+
+    private static string ReadTheoryRawToneJson(string packagePath, string rawToneEntry)
+    {
+        if (string.IsNullOrWhiteSpace(packagePath) ||
+            string.IsNullOrWhiteSpace(rawToneEntry) ||
+            !TheoryPackageIO.TryReadTextEntry(packagePath, rawToneEntry, out string rawJson, out _))
+        {
+            return string.Empty;
+        }
+
+        return rawJson ?? string.Empty;
     }
 
     private static string BuildToneLabPresetJson(TheoryTonePresetData source, string fallbackName, string fallbackKey)
@@ -24894,6 +24938,89 @@ private void OpenOrFocusToneLab()
         }
 
         return preset;
+    }
+
+    private TheoryTonePresetData CreateTonePresetSnapshotForMapping(string presetId)
+    {
+        if (string.IsNullOrWhiteSpace(presetId))
+            return new TheoryTonePresetData();
+
+        string normalizedPresetId = presetId.Trim();
+        if (generatedRocksmithTonePresetCache.TryGetValue(normalizedPresetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset))
+            return ToTheoryTonePreset(generatedPreset);
+
+        EnsureToneLabRuntimeComponent();
+        UnityToneLabRuntime.ToneLabPreset preset = unityToneLabRuntime?.CurrentPresets?
+            .FirstOrDefault(candidate => candidate != null && string.Equals(candidate.preset_id, normalizedPresetId, StringComparison.Ordinal));
+        return ToTheoryTonePreset(preset);
+    }
+
+    private static TheoryTonePresetData ToTheoryTonePreset(UnityToneLabRuntime.ToneLabPreset source)
+    {
+        TheoryTonePresetData result = new TheoryTonePresetData
+        {
+            presetId = source?.preset_id ?? string.Empty,
+            presetName = source?.preset_name ?? string.Empty,
+            inputGainDb = source?.input_gain_db ?? 0f,
+            outputGainDb = source?.output_gain_db ?? 0f,
+            pedalChain = new List<TheoryTonePedalSlotData>()
+        };
+
+        if (source?.pedal_chain != null)
+        {
+            for (int i = 0; i < source.pedal_chain.Count; i++)
+            {
+                UnityToneLabRuntime.ToneLabPedalSlot slot = source.pedal_chain[i];
+                if (slot == null)
+                    continue;
+
+                result.pedalChain.Add(new TheoryTonePedalSlotData
+                {
+                    instanceId = slot.pedal_instance_id ?? string.Empty,
+                    pedalType = slot.pedal_type.ToString(),
+                    descriptorId = slot.descriptor_id ?? string.Empty,
+                    enabled = slot.enabled,
+                    settingsJson = slot.settings_json ?? string.Empty
+                });
+            }
+        }
+
+        result.EnsureDefaults();
+        return result;
+    }
+
+    private static TheoryTonePresetData CloneTheoryTonePresetData(TheoryTonePresetData source)
+    {
+        TheoryTonePresetData result = new TheoryTonePresetData
+        {
+            presetId = source?.presetId ?? string.Empty,
+            presetName = source?.presetName ?? string.Empty,
+            inputGainDb = source?.inputGainDb ?? 0f,
+            outputGainDb = source?.outputGainDb ?? 0f,
+            pedalChain = new List<TheoryTonePedalSlotData>()
+        };
+
+        if (source?.pedalChain != null)
+        {
+            for (int i = 0; i < source.pedalChain.Count; i++)
+            {
+                TheoryTonePedalSlotData slot = source.pedalChain[i];
+                if (slot == null)
+                    continue;
+
+                result.pedalChain.Add(new TheoryTonePedalSlotData
+                {
+                    instanceId = slot.instanceId ?? string.Empty,
+                    pedalType = slot.pedalType ?? string.Empty,
+                    descriptorId = slot.descriptorId ?? string.Empty,
+                    enabled = slot.enabled,
+                    settingsJson = slot.settingsJson ?? string.Empty
+                });
+            }
+        }
+
+        result.EnsureDefaults();
+        return result;
     }
 
     private static string BuildNeutralTonePresetId(string name, string key)
@@ -24949,19 +25076,6 @@ private void OpenOrFocusToneLab()
         }
 
         return string.Empty;
-    }
-
-    private RocksmithCachedArrangementPart LoadToneMappingArrangementPart(SongLibraryEntry entry, string arrangementKey)
-    {
-        if (entry == null || string.IsNullOrWhiteSpace(entry.PrimaryNotationPath) || string.IsNullOrWhiteSpace(arrangementKey))
-            return null;
-
-        if (ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(entry.PrimaryNotationPath, arrangementKey, out _, out RocksmithCachedArrangementPart part))
-            return part;
-
-        return ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(entry.PrimaryNotationPath, arrangementKey, out _, out part)
-            ? part
-            : null;
     }
 
     private static string ResolveToneNameAtTime(RocksmithCachedArrangementToneData toneData, float timeSeconds)
@@ -25055,24 +25169,35 @@ private void OpenOrFocusToneLab()
         string arrangementKey,
         string toneName,
         RocksmithCachedArrangementToneData toneData,
-        string arrangementRoute)
+        string arrangementRoute,
+        out UnityToneLabRuntime.ToneLabPreset presetSnapshot)
     {
-        string manualPresetId = GetTonePresetMapping(metadata, arrangementKey, toneName);
-        return !string.IsNullOrWhiteSpace(manualPresetId)
-            ? manualPresetId
-            : ResolveAutomaticTonePresetId(toneName, arrangementRoute, toneData);
+        presetSnapshot = null;
+        SongTonePresetMappingEntry manualMapping = GetTonePresetMappingEntry(metadata, arrangementKey, toneName);
+        if (manualMapping != null && !string.IsNullOrWhiteSpace(manualMapping.presetId))
+        {
+            presetSnapshot = ToUnityToneLabPreset(manualMapping.presetSnapshot, manualMapping.toneName, manualMapping.presetId);
+            return manualMapping.presetId.Trim();
+        }
+
+        return ResolveAutomaticTonePresetId(toneName, arrangementRoute, toneData);
     }
 
     private static string GetTonePresetMapping(SongMetadata metadata, string arrangementKey, string toneName)
     {
-        if (metadata?.tonePresetMappings == null || string.IsNullOrWhiteSpace(arrangementKey) || string.IsNullOrWhiteSpace(toneName))
-            return string.Empty;
+        SongTonePresetMappingEntry mapping = GetTonePresetMappingEntry(metadata, arrangementKey, toneName);
+        return mapping?.presetId?.Trim() ?? string.Empty;
+    }
 
-        SongTonePresetMappingEntry mapping = metadata.tonePresetMappings.FirstOrDefault(entry =>
+    private static SongTonePresetMappingEntry GetTonePresetMappingEntry(SongMetadata metadata, string arrangementKey, string toneName)
+    {
+        if (metadata?.tonePresetMappings == null || string.IsNullOrWhiteSpace(arrangementKey) || string.IsNullOrWhiteSpace(toneName))
+            return null;
+
+        return metadata.tonePresetMappings.FirstOrDefault(entry =>
             entry != null &&
             string.Equals(entry.arrangementId ?? string.Empty, arrangementKey, StringComparison.OrdinalIgnoreCase) &&
             string.Equals(entry.toneName ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase));
-        return mapping?.presetId?.Trim() ?? string.Empty;
     }
 
     private string ResolveAutomaticTonePresetId(string toneName, string arrangementRoute, RocksmithCachedArrangementToneData toneData)
@@ -25347,7 +25472,8 @@ private void OpenOrFocusToneLab()
             {
                 arrangementId = arrangementId,
                 toneName = toneName,
-                presetId = presetId
+                presetId = presetId,
+                presetSnapshot = CloneTheoryTonePresetData(entry.presetSnapshot)
             };
         }
 
@@ -25885,9 +26011,10 @@ private void OpenOrFocusToneLab()
 
     private SongMetadata LoadSongMetadata(string songFileName, string metadataPath)
     {
+        string theoryPackagePath = FindPrimaryNotationPathForMetadataPath(metadataPath);
         if (!string.IsNullOrEmpty(metadataPath))
         {
-            long lastWriteTicks = File.Exists(metadataPath) ? File.GetLastWriteTimeUtc(metadataPath).Ticks : -1L;
+            long lastWriteTicks = BuildSongMetadataCacheTicks(metadataPath, theoryPackagePath);
             if (cachedSongMetadataByPath.TryGetValue(metadataPath, out SongMetadata cachedMetadata) &&
                 cachedSongMetadataTicksByPath.TryGetValue(metadataPath, out long cachedTicks) &&
                 cachedTicks == lastWriteTicks &&
@@ -26050,10 +26177,13 @@ private void OpenOrFocusToneLab()
             Debug.LogWarning($"Failed to load metadata {metadataPath}: {ex.Message}");
         }
 
+        ApplyTheoryTonePresetMappingsFromPackage(metadataPath, data, theoryPackagePath);
+        NormalizeSongTonePresetMappings(data);
+
         if (!string.IsNullOrEmpty(metadataPath))
         {
             cachedSongMetadataByPath[metadataPath] = CloneSongMetadata(data);
-            cachedSongMetadataTicksByPath[metadataPath] = File.Exists(metadataPath) ? File.GetLastWriteTimeUtc(metadataPath).Ticks : -1L;
+            cachedSongMetadataTicksByPath[metadataPath] = BuildSongMetadataCacheTicks(metadataPath, theoryPackagePath);
         }
 
         return data;
@@ -26106,12 +26236,16 @@ private void OpenOrFocusToneLab()
         metadata.bestScorePercent = Mathf.Clamp(GetHighestTrackScore(metadata), 0f, 100f);
         metadata.bestArcadeScoreValue = GetHighestArcadeScoreValue(metadata);
         NormalizeSongTonePresetMappings(metadata);
+        string primaryNotationPath = FindPrimaryNotationPathForMetadataPath(metadataPath);
+        HydrateTheoryTonePresetMappingSnapshots(metadata, primaryNotationPath);
+        NormalizeSongTonePresetMappings(metadata);
         HeroScoreSummary heroSummary = GetHighestHeroTrackScoreSummary(metadata);
 
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(metadataPath));
             File.WriteAllText(metadataPath, JsonUtility.ToJson(metadata, true));
+            SaveTheoryTonePresetMappingsIfChanged(metadata, primaryNotationPath);
         }
         catch (Exception ex)
         {
@@ -26119,9 +26253,8 @@ private void OpenOrFocusToneLab()
         }
 
         cachedSongMetadataByPath[metadataPath] = CloneSongMetadata(metadata);
-        cachedSongMetadataTicksByPath[metadataPath] = File.Exists(metadataPath) ? File.GetLastWriteTimeUtc(metadataPath).Ticks : -1L;
+        cachedSongMetadataTicksByPath[metadataPath] = BuildSongMetadataCacheTicks(metadataPath, primaryNotationPath);
         string songDirectory = Path.GetDirectoryName(metadataPath);
-        string primaryNotationPath = FindPrimaryNotationPathForMetadataPath(metadataPath);
         SongLibraryService.UpdateCachedMetadataSummary(
             songDirectory,
             primaryNotationPath,
@@ -26144,6 +26277,181 @@ private void OpenOrFocusToneLab()
             heroSummary.heartsRemaining,
             heroSummary.heartsTotal,
             metadata.bestArcadeScoreValue);
+    }
+
+    private void ApplyTheoryTonePresetMappingsFromPackage(string metadataPath, SongMetadata metadata, string packagePath = null)
+    {
+        if (metadata == null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(packagePath))
+            packagePath = FindPrimaryNotationPathForMetadataPath(metadataPath);
+        if (string.IsNullOrWhiteSpace(packagePath) ||
+            !TheoryPackageFormat.IsPackagePath(packagePath) ||
+            !File.Exists(packagePath))
+        {
+            return;
+        }
+
+        if (TheoryPackageIO.TryReadToneLabMappings(packagePath, out TheoryToneLabMappingState mappingState, out string error))
+        {
+            metadata.tonePresetMappings = ToSongTonePresetMappings(mappingState);
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(error))
+            Debug.LogWarning($"[ToneLab] Could not read .theory Tone Lab mappings from '{packagePath}': {error}");
+    }
+
+    private void SaveTheoryTonePresetMappingsIfChanged(SongMetadata metadata, string packagePath)
+    {
+        if (metadata == null ||
+            string.IsNullOrWhiteSpace(packagePath) ||
+            !TheoryPackageFormat.IsPackagePath(packagePath) ||
+            !File.Exists(packagePath))
+        {
+            return;
+        }
+
+        TheoryToneLabMappingState nextState = ToTheoryToneLabMappingState(metadata);
+        bool hasCurrentState = TheoryPackageIO.TryReadToneLabMappings(packagePath, out TheoryToneLabMappingState currentState, out string readError);
+        if (!hasCurrentState && nextState.mappings.Count == 0 && string.IsNullOrWhiteSpace(readError))
+            return;
+
+        if (hasCurrentState && AreTheoryToneLabMappingStatesEqual(currentState, nextState))
+            return;
+
+        nextState.modifiedAtUtcTicks = DateTime.UtcNow.Ticks;
+        if (!TheoryPackageIO.TryWriteToneLabMappings(packagePath, nextState, out string writeError))
+            Debug.LogWarning($"[ToneLab] Could not write .theory Tone Lab mappings to '{packagePath}': {writeError}");
+    }
+
+    private void HydrateTheoryTonePresetMappingSnapshots(SongMetadata metadata, string packagePath)
+    {
+        if (metadata?.tonePresetMappings == null ||
+            metadata.tonePresetMappings.Count == 0 ||
+            string.IsNullOrWhiteSpace(packagePath) ||
+            !TheoryPackageFormat.IsPackagePath(packagePath) ||
+            !File.Exists(packagePath))
+        {
+            return;
+        }
+
+        for (int i = 0; i < metadata.tonePresetMappings.Count; i++)
+        {
+            SongTonePresetMappingEntry mapping = metadata.tonePresetMappings[i];
+            if (mapping == null ||
+                string.IsNullOrWhiteSpace(mapping.presetId) ||
+                HasUsableTheoryTonePresetSnapshot(mapping.presetSnapshot))
+            {
+                continue;
+            }
+
+            mapping.presetSnapshot = CreateTonePresetSnapshotForMapping(mapping.presetId);
+        }
+    }
+
+    private static bool HasUsableTheoryTonePresetSnapshot(TheoryTonePresetData source)
+    {
+        return source?.pedalChain != null && source.pedalChain.Count > 0;
+    }
+
+    private static TheoryToneLabMappingState ToTheoryToneLabMappingState(SongMetadata metadata)
+    {
+        TheoryToneLabMappingState state = new TheoryToneLabMappingState
+        {
+            schemaVersion = TheoryPackageFormat.SchemaVersion,
+            modifiedAtUtcTicks = DateTime.UtcNow.Ticks,
+            mappings = new List<TheoryToneLabPresetMappingData>()
+        };
+
+        if (metadata?.tonePresetMappings != null)
+        {
+            for (int i = 0; i < metadata.tonePresetMappings.Count; i++)
+            {
+                SongTonePresetMappingEntry source = metadata.tonePresetMappings[i];
+                if (source == null ||
+                    string.IsNullOrWhiteSpace(source.arrangementId) ||
+                    string.IsNullOrWhiteSpace(source.toneName) ||
+                    string.IsNullOrWhiteSpace(source.presetId))
+                {
+                    continue;
+                }
+
+                state.mappings.Add(new TheoryToneLabPresetMappingData
+                {
+                    arrangementId = source.arrangementId.Trim(),
+                    toneName = source.toneName.Trim(),
+                    presetId = source.presetId.Trim(),
+                    presetSnapshot = CloneTheoryTonePresetData(source.presetSnapshot)
+                });
+            }
+        }
+
+        state.EnsureDefaults();
+        return state;
+    }
+
+    private static List<SongTonePresetMappingEntry> ToSongTonePresetMappings(TheoryToneLabMappingState state)
+    {
+        List<SongTonePresetMappingEntry> mappings = new List<SongTonePresetMappingEntry>();
+        if (state?.mappings == null)
+            return mappings;
+
+        for (int i = 0; i < state.mappings.Count; i++)
+        {
+            TheoryToneLabPresetMappingData source = state.mappings[i];
+            if (source == null ||
+                string.IsNullOrWhiteSpace(source.arrangementId) ||
+                string.IsNullOrWhiteSpace(source.toneName) ||
+                string.IsNullOrWhiteSpace(source.presetId))
+            {
+                continue;
+            }
+
+            mappings.Add(new SongTonePresetMappingEntry
+            {
+                arrangementId = source.arrangementId.Trim(),
+                toneName = source.toneName.Trim(),
+                presetId = source.presetId.Trim(),
+                presetSnapshot = CloneTheoryTonePresetData(source.presetSnapshot)
+            });
+        }
+
+        SongMetadata metadata = new SongMetadata
+        {
+            tonePresetMappings = mappings
+        };
+        NormalizeSongTonePresetMappings(metadata);
+        return metadata.tonePresetMappings;
+    }
+
+    private static bool AreTheoryToneLabMappingStatesEqual(TheoryToneLabMappingState left, TheoryToneLabMappingState right)
+    {
+        List<SongTonePresetMappingEntry> leftMappings = ToSongTonePresetMappings(left);
+        List<SongTonePresetMappingEntry> rightMappings = ToSongTonePresetMappings(right);
+        if (leftMappings.Count != rightMappings.Count)
+            return false;
+
+        for (int i = 0; i < leftMappings.Count; i++)
+        {
+            SongTonePresetMappingEntry leftMapping = leftMappings[i];
+            SongTonePresetMappingEntry rightMapping = rightMappings[i];
+            if (!string.Equals(leftMapping.arrangementId, rightMapping.arrangementId, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(leftMapping.toneName, rightMapping.toneName, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(leftMapping.presetId, rightMapping.presetId, StringComparison.Ordinal) ||
+                !string.Equals(BuildTheoryTonePresetSnapshotSignature(leftMapping.presetSnapshot), BuildTheoryTonePresetSnapshotSignature(rightMapping.presetSnapshot), StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static string BuildTheoryTonePresetSnapshotSignature(TheoryTonePresetData source)
+    {
+        return JsonUtility.ToJson(CloneTheoryTonePresetData(source), false) ?? string.Empty;
     }
 
     private void ApplyCachedSummaryToKnownSongEntries(
@@ -26256,6 +26564,23 @@ private void OpenOrFocusToneLab()
 
         string packagePath = Path.Combine(directory, $"{packageName}.theory");
         return File.Exists(packagePath) ? packagePath : string.Empty;
+    }
+
+    private static long BuildSongMetadataCacheTicks(string metadataPath, string theoryPackagePath)
+    {
+        long metadataTicks = !string.IsNullOrWhiteSpace(metadataPath) && File.Exists(metadataPath)
+            ? File.GetLastWriteTimeUtc(metadataPath).Ticks
+            : -1L;
+        long packageTicks = !string.IsNullOrWhiteSpace(theoryPackagePath) &&
+                            TheoryPackageFormat.IsPackagePath(theoryPackagePath) &&
+                            File.Exists(theoryPackagePath)
+            ? File.GetLastWriteTimeUtc(theoryPackagePath).Ticks
+            : -1L;
+
+        unchecked
+        {
+            return (metadataTicks * 397L) ^ packageTicks;
+        }
     }
 
     private static bool PathsMatch(string a, string b)
@@ -26416,7 +26741,8 @@ private void OpenOrFocusToneLab()
                     {
                         arrangementId = entry.arrangementId.Trim(),
                         toneName = entry.toneName.Trim(),
-                        presetId = entry.presetId.Trim()
+                        presetId = entry.presetId.Trim(),
+                        presetSnapshot = CloneTheoryTonePresetData(entry.presetSnapshot)
                     }).ToList()
                 : new List<SongTonePresetMappingEntry>()
         };
@@ -28472,8 +28798,7 @@ private void OpenOrFocusToneLab()
         if (currentSongEntry == null)
             return false;
 
-        if ((currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.ArrangementCache ||
-             currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage) &&
+        if (currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage &&
             !string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath) &&
             File.Exists(currentSongEntry.PrimaryNotationPath))
         {
@@ -31278,38 +31603,6 @@ private void OpenOrFocusToneLab()
         if (currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.TheoryPackage)
             return TryGetCurrentTheoryTimelineSections(out sections, out duration);
 
-        if (currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache)
-            return false;
-
-        if (TryGetCurrentArrangementCachePart(out RocksmithCachedArrangementPart selectedPart) &&
-            selectedPart?.timing?.sections != null &&
-            selectedPart.timing.sections.Count > 0)
-        {
-            sections = selectedPart.timing.sections;
-            duration = selectedPart.durationSeconds;
-            return true;
-        }
-
-        if (!RocksmithCachedSongLoader.TryLoadManifest(currentSongEntry.PrimaryNotationPath, out RocksmithCachedSongManifest manifest) ||
-            manifest?.arrangements == null)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < manifest.arrangements.Count; i++)
-        {
-            if (!RocksmithCachedSongLoader.TryLoadArrangementPart(currentSongEntry.PrimaryNotationPath, i, out _, out RocksmithCachedArrangementPart candidate) ||
-                candidate?.timing?.sections == null ||
-                candidate.timing.sections.Count == 0)
-            {
-                continue;
-            }
-
-            sections = candidate.timing.sections;
-            duration = Mathf.Max(candidate.durationSeconds, manifest.durationSeconds);
-            return true;
-        }
-
         return false;
     }
 
@@ -31538,54 +31831,6 @@ private void OpenOrFocusToneLab()
 
         seconds += Math.Max(0.0, targetQuarter - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
         return seconds;
-    }
-
-    private bool TryGetCurrentArrangementCachePart(out RocksmithCachedArrangementPart part)
-    {
-        part = null;
-        if (currentSongEntry == null ||
-            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.ArrangementCache ||
-            string.IsNullOrWhiteSpace(currentSongEntry.PrimaryNotationPath))
-        {
-            return false;
-        }
-
-        string selectedPartId = selectedMusicXmlPartId ?? string.Empty;
-        if (!string.IsNullOrWhiteSpace(selectedPartId) &&
-            ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(currentSongEntry.PrimaryNotationPath, selectedPartId, out _, out part))
-        {
-            return part != null;
-        }
-
-        string selectedGroupId = !string.IsNullOrWhiteSpace(selectedPartId)
-            ? GetArrangementGroupIdFromPartId(selectedPartId)
-            : string.Empty;
-        if (!string.IsNullOrWhiteSpace(selectedGroupId) &&
-            ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(currentSongEntry.PrimaryNotationPath, selectedGroupId, out _, out part))
-        {
-            return part != null;
-        }
-
-        if (currentSongPartSummaries != null && midiTrackIndex >= 0 && midiTrackIndex < currentSongPartSummaries.Count)
-        {
-            MusicXmlLoader.MusicXmlPartSummary summary = currentSongPartSummaries[midiTrackIndex];
-            if (summary != null)
-            {
-                if (!string.IsNullOrWhiteSpace(summary.PartId) &&
-                    ArrangementCacheSongLoader.TryLoadArrangementPartByPartId(currentSongEntry.PrimaryNotationPath, summary.PartId, out _, out part))
-                {
-                    return part != null;
-                }
-
-                if (!string.IsNullOrWhiteSpace(summary.GroupId) &&
-                    ArrangementCacheSongLoader.TryLoadArrangementPartByGroupId(currentSongEntry.PrimaryNotationPath, summary.GroupId, out _, out part))
-                {
-                    return part != null;
-                }
-            }
-        }
-
-        return false;
     }
 
     private void AddArrangementTimelineSections(List<RocksmithCachedSectionData> sections, float duration)

@@ -72,8 +72,6 @@ public static class TheorySongLoader
 
         List<TheoryNoteData> ordered = arrangement.notes
             .Where(note => note != null)
-            .OrderBy(note => note.time)
-            .ThenBy(note => note.stringIndex)
             .ToList();
 
         for (int i = 0; i < ordered.Count; i++)

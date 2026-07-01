@@ -98,7 +98,7 @@ public static class ChartEditorImportService
             if (!TheoryPackageIO.TryReadArrangement(packagePath, arrangementSummary, out TheoryArrangementData arrangement, out _))
                 continue;
 
-            project.tracks.Add(BuildTrack(summary, arrangement));
+            project.tracks.Add(BuildTrack(summary, arrangement, packagePath));
         }
 
         ImportTheoryTiming(packagePath, manifest, project);
@@ -112,33 +112,55 @@ public static class ChartEditorImportService
         return true;
     }
 
-    public static bool ImportPsarc(string psarcPath, out ChartEditorImportResult result, out string error)
+    public static bool ImportExternalImporterSource(
+        string sourcePath,
+        out ChartEditorImportResult result,
+        out string error,
+        string importerId = null)
     {
         result = null;
         error = string.Empty;
 
-        if (string.IsNullOrWhiteSpace(psarcPath) || !File.Exists(psarcPath))
+        if (string.IsNullOrWhiteSpace(sourcePath) || (!File.Exists(sourcePath) && !Directory.Exists(sourcePath)))
         {
-            error = "PSARC file was not found.";
+            error = "Importer source file or folder was not found.";
             return false;
         }
 
-        if (!RocksmithImportService.RefreshImportForPsarc(psarcPath, out error))
-            return false;
-
-        string manifestPath = RocksmithImportService.GetImportedManifestPathForPsarc(psarcPath);
-        if (string.IsNullOrWhiteSpace(manifestPath) || !File.Exists(manifestPath))
+        string importDirectory = Path.Combine(ExternalContentPaths.PersistentRoot, "ChartEditorImports");
+        if (!SongImporterRegistry.ConvertSourceToTheoryPackage(
+                new SongImporterConversionRequest
+                {
+                    importerId = importerId,
+                    sourcePath = sourcePath,
+                    outputDirectory = importDirectory,
+                    overwriteExisting = false,
+                    validatePackage = true,
+                    requireAudio = true
+                },
+                out SongImporterConversionResult conversionResult,
+                out error))
         {
-            error = "PSARC import completed without a usable song manifest.";
             return false;
         }
 
-        if (!ImportArrangementManifest(manifestPath, out result, out error))
+        if (string.IsNullOrWhiteSpace(conversionResult?.packagePath) || !File.Exists(conversionResult.packagePath))
+        {
+            error = "Importer completed without a usable .theory package.";
+            return false;
+        }
+
+        if (!ImportTheoryPackage(conversionResult.packagePath, out result, out error))
             return false;
 
-        result.project.sourceKind = ChartEditorSourceKind.Psarc;
-        result.project.sourcePath = psarcPath;
-        result.warnings.Add("PSARC was unpacked through the existing library importer; the editor is using the extracted manifest.");
+        result.project.sourceKind = ChartEditorSourceKind.ExternalImporter;
+        result.project.sourcePath = Path.GetFullPath(sourcePath);
+        result.project.sourceFolder = Directory.Exists(sourcePath)
+            ? Path.GetFullPath(sourcePath)
+            : Path.GetDirectoryName(sourcePath) ?? string.Empty;
+        result.project.dirty = true;
+        if (conversionResult.warnings != null)
+            result.warnings.AddRange(conversionResult.warnings.Where(warning => !string.IsNullOrWhiteSpace(warning)));
         return true;
     }
 
@@ -163,18 +185,8 @@ public static class ChartEditorImportService
             return imported;
         }
 
-        string manifestPath = ArrangementCacheSongLoader.FindManifestInDirectory(folderPath);
-        if (!string.IsNullOrWhiteSpace(manifestPath) && File.Exists(manifestPath))
-        {
-            bool imported = ImportArrangementManifest(manifestPath, out result, out error);
-            if (imported)
-            {
-                result.project.sourceKind = ChartEditorSourceKind.Folder;
-                result.project.sourceFolder = folderPath;
-            }
-
-            return imported;
-        }
+        if (SongImporterRegistry.TryGetImporterForSource(folderPath, out SongImporterDescriptor folderImporter))
+            return ImportExternalImporterSource(folderPath, out result, out error, folderImporter?.Id);
 
         string chartPath = Directory.GetFiles(folderPath, "*.*", SearchOption.AllDirectories)
             .Where(path => IsSupportedChartPath(path) &&
@@ -189,7 +201,7 @@ public static class ChartEditorImportService
 
         if (string.IsNullOrWhiteSpace(chartPath))
         {
-            error = "No supported chart or Rocksmith manifest was found in the folder.";
+            error = "No supported chart or importer-backed folder source was found in the folder.";
             return false;
         }
 
@@ -200,58 +212,6 @@ public static class ChartEditorImportService
         result.project.sourceFolder = folderPath;
         if (string.IsNullOrWhiteSpace(audioPath))
             result.warnings.Add("No audio file was found in the folder. The project can still be edited, but export should include audio before gameplay.");
-        return true;
-    }
-
-    public static bool ImportArrangementManifest(string manifestPath, out ChartEditorImportResult result, out string error)
-    {
-        result = null;
-        error = string.Empty;
-
-        if (string.IsNullOrWhiteSpace(manifestPath) || !File.Exists(manifestPath))
-        {
-            error = "Arrangement manifest was not found.";
-            return false;
-        }
-
-        if (!RocksmithCachedSongLoader.TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest) || manifest == null)
-        {
-            error = "Arrangement manifest could not be read.";
-            return false;
-        }
-
-        ChartEditorProject project = CreateBaseProject(manifestPath, ChartEditorSourceKind.ArrangementCache);
-        project.sourceFolder = Path.GetDirectoryName(manifestPath) ?? string.Empty;
-        project.metadata.title = FirstNonEmpty(manifest.displayName, Path.GetFileName(project.sourceFolder));
-        project.metadata.artist = manifest.artist ?? string.Empty;
-        project.metadata.album = manifest.album ?? string.Empty;
-        project.metadata.coverImagePath = manifest.artworkPath ?? string.Empty;
-        project.audio = BuildAudioInfo(manifest.audioPath, manifest.durationSeconds);
-
-        List<MusicXmlLoader.MusicXmlPartSummary> summaries = OrderImportedSummaries(ArrangementCacheSongLoader.GetPartSummaries(manifestPath));
-        for (int i = 0; i < summaries.Count; i++)
-        {
-            MusicXmlLoader.MusicXmlPartSummary summary = summaries[i];
-            if (summary == null)
-                continue;
-
-            if (RocksmithCachedSongLoader.TryLoadArrangementPart(manifestPath, summary.Index, out _, out RocksmithCachedArrangementPart part) &&
-                part != null)
-            {
-                project.tracks.Add(BuildTrack(summary, part));
-            }
-            else
-            {
-                List<NoteData> notes = ArrangementCacheSongLoader.LoadSong(manifestPath, summary.Index) ?? new List<NoteData>();
-                project.tracks.Add(BuildTrack(summary, notes));
-            }
-        }
-
-        ImportArrangementSections(manifestPath, project);
-        ImportArrangementBeatMap(manifestPath, project);
-        FinishProject(project);
-        result = new ChartEditorImportResult { project = project };
-        result.warnings.AddRange(ChartEditorValidationService.BuildWarnings(project));
         return true;
     }
 
@@ -550,12 +510,13 @@ public static class ChartEditorImportService
         return track;
     }
 
-    private static ChartEditorTrack BuildTrack(MusicXmlLoader.MusicXmlPartSummary summary, TheoryArrangementData arrangement)
+    private static ChartEditorTrack BuildTrack(MusicXmlLoader.MusicXmlPartSummary summary, TheoryArrangementData arrangement, string packagePath = null)
     {
         string importedName = FirstNonEmpty(summary?.GroupDisplayName, summary?.Name, arrangement?.groupDisplayName, arrangement?.displayName, "Track");
+        string arrangementRoute = FirstNonEmpty(arrangement?.route, summary?.Route);
         ChartEditorTrackRole role = ResolveRole(
             summary,
-            arrangement?.route,
+            arrangementRoute,
             arrangement?.instrumentType,
             summary?.Route,
             summary?.InstrumentType,
@@ -584,7 +545,7 @@ public static class ChartEditorImportService
                     : arrangement?.tuningPitches != null ? (int[])arrangement.tuningPitches.Clone() : null
             },
             generatedPart = FromTheoryGeneratedPart(arrangement?.generatedPart, arrangement?.arrangementId, importedName, role),
-            tones = FromTheoryToneData(arrangement?.tones),
+            tones = FromTheoryToneData(arrangement?.tones, packagePath, arrangementRoute),
             notes = new List<ChartEditorNote>(),
             arpeggioGuides = new List<ChartEditorArpeggioGuide>(),
             generatedNotes = FromTheoryGeneratedNotes(arrangement?.generatedNotes)
@@ -672,7 +633,7 @@ public static class ChartEditorImportService
         return result;
     }
 
-    private static ChartEditorToneData FromTheoryToneData(TheoryToneData source)
+    private static ChartEditorToneData FromTheoryToneData(TheoryToneData source, string packagePath = null, string arrangementRoute = null)
     {
         ChartEditorToneData result = new ChartEditorToneData
         {
@@ -710,14 +671,74 @@ public static class ChartEditorImportService
                 {
                     name = definition.name ?? string.Empty,
                     key = definition.key ?? string.Empty,
-                    preset = FromTheoryTonePreset(definition.preset),
-                    fallback = FromTheoryToneFallback(definition.fallback)
+                    preset = FromTheoryToneDefinitionPreset(definition, packagePath, arrangementRoute),
+                    fallback = FromTheoryToneDefinitionFallback(definition, arrangementRoute)
                 });
             }
         }
 
         result.EnsureDefaults();
         return result;
+    }
+
+    private static ChartEditorTonePresetData FromTheoryToneDefinitionPreset(
+        TheoryToneDefinitionData source,
+        string packagePath,
+        string arrangementRoute)
+    {
+        ChartEditorTonePresetData preset = FromTheoryTonePreset(source?.preset);
+        if (HasUsableTonePreset(preset))
+            return preset;
+
+        string rawToneJson = ReadTheoryRawToneJson(packagePath, source?.rawToneEntry);
+        if (!string.IsNullOrWhiteSpace(rawToneJson))
+        {
+            if (TryParseToneLabPreset(rawToneJson, out UnityToneLabRuntime.ToneLabPreset serializedPreset))
+                return FromUnityToneLabPreset(serializedPreset, source?.name, source?.key);
+
+            if (RocksmithTonePresetBuilder.TryBuildPreset(source?.name, arrangementRoute, rawToneJson, out UnityToneLabRuntime.ToneLabPreset convertedPreset))
+                return FromUnityToneLabPreset(convertedPreset, source?.name, source?.key);
+        }
+
+        return preset;
+    }
+
+    private static ChartEditorToneFallbackData FromTheoryToneDefinitionFallback(
+        TheoryToneDefinitionData source,
+        string arrangementRoute)
+    {
+        ChartEditorToneFallbackData fallback = FromTheoryToneFallback(source?.fallback);
+        if (!string.IsNullOrWhiteSpace(fallback.preferredPresetName) ||
+            !string.IsNullOrWhiteSpace(fallback.searchText))
+        {
+            return fallback;
+        }
+
+        return new ChartEditorToneFallbackData
+        {
+            preferredPresetName = FirstNonEmpty(source?.preferredPresetName, source?.preset?.presetName, source?.name, source?.key),
+            searchText = BuildToneFallbackSearchText(source?.fallbackSearchText, source?.name, source?.key, arrangementRoute)
+        };
+    }
+
+    private static bool HasUsableTonePreset(ChartEditorTonePresetData preset)
+    {
+        return preset != null &&
+               (!string.IsNullOrWhiteSpace(preset.presetId) ||
+                !string.IsNullOrWhiteSpace(preset.presetName) ||
+                (preset.pedalChain != null && preset.pedalChain.Count > 0));
+    }
+
+    private static string ReadTheoryRawToneJson(string packagePath, string rawToneEntry)
+    {
+        if (string.IsNullOrWhiteSpace(packagePath) ||
+            string.IsNullOrWhiteSpace(rawToneEntry) ||
+            !TheoryPackageIO.TryReadTextEntry(packagePath, rawToneEntry, out string rawJson, out _))
+        {
+            return string.Empty;
+        }
+
+        return rawJson ?? string.Empty;
     }
 
     private static ChartEditorTonePresetData FromCachedToneDefinition(RocksmithCachedToneDefinitionData source, string arrangementRoute)
@@ -1394,7 +1415,7 @@ public static class ChartEditorImportService
             }
         }
 
-        List<NoteTechniqueSegmentData> normalizedSegments = RocksmithCachedSongLoader.BuildNormalizedTechniqueSegments(source);
+        List<NoteTechniqueSegmentData> normalizedSegments = RocksmithTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
         if (normalizedSegments != null)
         {
             for (int i = 0; i < normalizedSegments.Count; i++)
@@ -1721,80 +1742,6 @@ public static class ChartEditorImportService
                 });
             }
         }
-    }
-
-    private static void ImportArrangementSections(string manifestPath, ChartEditorProject project)
-    {
-        if (!RocksmithCachedSongLoader.TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest) ||
-            manifest?.arrangements == null)
-        {
-            return;
-        }
-
-        RocksmithCachedArrangementPart partWithSections = null;
-        for (int i = 0; i < manifest.arrangements.Count; i++)
-        {
-            if (RocksmithCachedSongLoader.TryLoadArrangementPart(manifestPath, i, out _, out RocksmithCachedArrangementPart part) &&
-                part?.timing?.sections != null &&
-                part.timing.sections.Count > 0)
-            {
-                partWithSections = part;
-                break;
-            }
-        }
-
-        if (partWithSections?.timing?.sections == null)
-            return;
-
-        BuildSectionsFromStartMarkers(
-            project,
-            partWithSections.timing.sections
-                .Where(section => section != null && section.timeSeconds >= 0f)
-                .Select((section, index) => new SectionMarker(section.name, section.timeSeconds, index)));
-    }
-
-    private static void ImportArrangementBeatMap(string manifestPath, ChartEditorProject project)
-    {
-        if (project?.beatMap == null ||
-            !RocksmithCachedSongLoader.TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest) ||
-            manifest?.arrangements == null)
-        {
-            return;
-        }
-
-        RocksmithCachedArrangementPart partWithTiming = null;
-        for (int i = 0; i < manifest.arrangements.Count; i++)
-        {
-            if (RocksmithCachedSongLoader.TryLoadArrangementPart(manifestPath, i, out _, out RocksmithCachedArrangementPart part) &&
-                part?.timing?.ebeats != null &&
-                part.timing.ebeats.Count > 0)
-            {
-                partWithTiming = part;
-                break;
-            }
-        }
-
-        List<RocksmithCachedEbeatData> ebeats = partWithTiming?.timing?.ebeats?
-            .Where(ebeat => ebeat != null && ebeat.timeSeconds >= 0f)
-            .OrderBy(ebeat => ebeat.timeSeconds)
-            .ToList();
-        if (ebeats == null || ebeats.Count == 0)
-            return;
-
-        project.beatMap.defaultTempoBpm = Math.Max(1.0, partWithTiming.timing.averageTempoBpm);
-        BuildImportedTempoAnchors(
-            project,
-            ebeats.Select(ebeat => Math.Max(0.0, (double)ebeat.timeSeconds)).ToList(),
-            project.beatMap.defaultTempoBpm,
-            "imported_anchor");
-
-        project.beatMap.timeSignatures.Clear();
-        project.beatMap.timeSignatures.Add(new ChartEditorTimeSignatureChange
-        {
-            beatPosition = 0.0,
-            numerator = 4,
-            denominator = 4
-        });
     }
 
     private static void ImportGpSections(string path, ChartEditorProject project)
@@ -2207,8 +2154,6 @@ public static class ChartEditorImportService
                 return ChartEditorSourceKind.MusicXml;
             case SongNotationSourceKind.Gp5:
                 return ChartEditorSourceKind.GuitarPro;
-            case SongNotationSourceKind.ArrangementCache:
-                return ChartEditorSourceKind.ArrangementCache;
             case SongNotationSourceKind.TheoryPackage:
                 return ChartEditorSourceKind.TheoryPackage;
             default:
@@ -2565,6 +2510,9 @@ public static class ChartEditorTheoryConversionService
             return true;
         }
 
+        if ((sourceIsFile || sourceIsDirectory) && SongImporterRegistry.TryGetImporterForSource(sourcePath, out _))
+            return ConvertExternalImporterSourceToTheoryPackage(request, sourcePath, out result, out error);
+
         if (!ImportSource(request, sourceIsFile, sourceIsDirectory, out ChartEditorImportResult importResult, out error))
             return false;
 
@@ -2770,32 +2718,61 @@ public static class ChartEditorTheoryConversionService
             return false;
         }
 
-        string extension = Path.GetExtension(sourcePath) ?? string.Empty;
-        if (string.Equals(extension, ".psarc", StringComparison.OrdinalIgnoreCase))
-            return ChartEditorImportService.ImportPsarc(sourcePath, out importResult, out error);
-
         if (!SongNotationFacade.TryDetectKind(sourcePath, out SongNotationSourceKind kind) ||
             kind == SongNotationSourceKind.None)
         {
+            string extension = Path.GetExtension(sourcePath) ?? string.Empty;
             error = $"Unsupported conversion source: {extension}";
             return false;
         }
-
-        if (kind == SongNotationSourceKind.ArrangementCache)
-            return ChartEditorImportService.ImportArrangementManifest(sourcePath, out importResult, out error);
 
         return ChartEditorImportService.ImportChartAndAudio(sourcePath, request.audioPath, out importResult, out error);
     }
 
     private static SongNotationSourceKind ResolveSourceNotationKind(string sourcePath, bool sourceIsFile, ChartEditorSourceKind sourceKind)
     {
-        if (sourceKind == ChartEditorSourceKind.Psarc)
-            return SongNotationSourceKind.ArrangementCache;
+        if (sourceKind == ChartEditorSourceKind.ExternalImporter)
+            return SongNotationSourceKind.TheoryPackage;
 
         if (sourceIsFile && SongNotationFacade.TryDetectKind(sourcePath, out SongNotationSourceKind kind))
             return kind;
 
         return SongNotationSourceKind.None;
+    }
+
+    private static bool ConvertExternalImporterSourceToTheoryPackage(
+        ChartEditorTheoryConversionRequest request,
+        string sourcePath,
+        out ChartEditorTheoryConversionResult result,
+        out string error)
+    {
+        result = new ChartEditorTheoryConversionResult();
+        if (!SongImporterRegistry.ConvertSourceToTheoryPackage(
+                new SongImporterConversionRequest
+                {
+                    sourcePath = sourcePath,
+                    outputDirectory = request.outputDirectory,
+                    outputPackagePath = request.outputPackagePath,
+                    overwriteExisting = request.overwriteExisting,
+                    validatePackage = request.validatePackage,
+                    requireAudio = request.requireAudio,
+                    useLibrarySongsDirectory = request.useLibrarySongsDirectory,
+                    rejectChartEditorOutputDirectory = request.rejectChartEditorOutputDirectory
+                },
+                out SongImporterConversionResult importerResult,
+                out error))
+        {
+            return false;
+        }
+
+        result.packagePath = importerResult.packagePath;
+        result.sourceKind = ChartEditorSourceKind.ExternalImporter;
+        result.sourceNotationKind = SongNotationSourceKind.TheoryPackage;
+        result.sourceAlreadyTheoryPackage = false;
+        result.packageWasWritten = importerResult.packageWasWritten;
+        if (importerResult.warnings != null)
+            result.warnings.AddRange(importerResult.warnings.Where(warning => !string.IsNullOrWhiteSpace(warning)));
+        return true;
     }
 
     private static bool HasUsableAudio(ChartEditorProject project)

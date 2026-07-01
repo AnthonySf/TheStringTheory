@@ -85,10 +85,9 @@ Assets/Plugins/**/*.exp.meta
 Assets/Plugins/**/*.pdb
 Assets/StreamingAssets/NotesReader/*.exe
 Assets/StreamingAssets/NotesReader/Models/*.onnx
-Assets/StreamingAssets/RocksmithImport/*
-!Assets/StreamingAssets/RocksmithImport/
-!Assets/StreamingAssets/RocksmithImport/README.md
-!Assets/StreamingAssets/RocksmithImport.meta
+Assets/StreamingAssets/Importers/rocksmith-psarc/RocksmithImport/*
+!Assets/StreamingAssets/Importers/rocksmith-psarc/RocksmithImport/
+!Assets/StreamingAssets/Importers/rocksmith-psarc/RocksmithImport.meta
 Assets/StreamingAssets/AlphaTabRenderHelper/*
 !Assets/StreamingAssets/AlphaTabRenderHelper/
 !Assets/StreamingAssets/AlphaTabRenderHelper/README.md
@@ -140,6 +139,7 @@ Assets/Resources/filler2.png.meta
 # General
 *.log
 .codex_tmp/
+LocalTestFixtures/
 
 # Notes detector regression tool
 !Tools/NotesDetectorRegression/

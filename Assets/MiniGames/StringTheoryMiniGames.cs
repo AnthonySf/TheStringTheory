@@ -1209,7 +1209,7 @@ public sealed class MiniGameManager
             List<MusicXmlLoader.MusicXmlPartSummary> summaries = SongNotationFacade.GetPartSummaries(song.PrimaryNotationPath, song.PrimaryNotationKind);
             if (summaries != null && summaries.Count > 0)
             {
-                foreach (MusicXmlLoader.MusicXmlPartSummary summary in summaries)
+                foreach (MusicXmlLoader.MusicXmlPartSummary summary in SelectFightClubSongSummaries(song, summaries))
                     AddSongChordMatches(result, transitions, SongNotationFacade.LoadSong(song.PrimaryNotationPath, song.PrimaryNotationKind, summary.Index));
             }
             else
@@ -1225,6 +1225,53 @@ public sealed class MiniGameManager
         fightClubSongChordCache[key] = result;
         fightClubSongTransitionCache[key] = transitions;
         return result;
+    }
+
+    private static IEnumerable<MusicXmlLoader.MusicXmlPartSummary> SelectFightClubSongSummaries(
+        SongLibraryEntry song,
+        IReadOnlyList<MusicXmlLoader.MusicXmlPartSummary> summaries)
+    {
+        if (summaries == null || summaries.Count == 0)
+            return Enumerable.Empty<MusicXmlLoader.MusicXmlPartSummary>();
+
+        IEnumerable<MusicXmlLoader.MusicXmlPartSummary> validSummaries = summaries.Where(summary => summary != null);
+        if (song?.PrimaryNotationKind != SongNotationSourceKind.TheoryPackage)
+            return validSummaries;
+
+        return validSummaries
+            .GroupBy(GetFightClubArrangementGroupId, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(GetFightClubDifficultyRank)
+                .ThenByDescending(summary => summary.Score)
+                .FirstOrDefault())
+            .Where(summary => summary != null);
+    }
+
+    private static string GetFightClubArrangementGroupId(MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        if (!string.IsNullOrWhiteSpace(summary?.GroupId))
+            return summary.GroupId.Trim();
+
+        string partId = summary?.PartId?.Trim() ?? string.Empty;
+        int levelSuffixIndex = partId.IndexOf("::level-", StringComparison.OrdinalIgnoreCase);
+        return levelSuffixIndex > 0 ? partId.Substring(0, levelSuffixIndex) : partId;
+    }
+
+    private static int GetFightClubDifficultyRank(MusicXmlLoader.MusicXmlPartSummary summary)
+    {
+        if (summary == null)
+            return int.MaxValue;
+
+        if (summary.DifficultyUiIndex >= 0)
+            return summary.DifficultyUiIndex;
+
+        string label = summary.DifficultyLabel?.Trim();
+        if (string.Equals(label, "Full", StringComparison.OrdinalIgnoreCase))
+            return 0;
+
+        return int.TryParse(label, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed)
+            ? Mathf.Max(0, parsed)
+            : int.MaxValue;
     }
 
     private static void AddSongChordMatches(HashSet<string> target, Dictionary<string, int> transitions, List<NoteData> notes)

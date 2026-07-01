@@ -22,11 +22,14 @@ public enum ChartEditorSourceKind
     Empty,
     GuitarPro,
     MusicXml,
+    // Reserved for old serialized projects. Cache folders are imported through importer modules.
     ArrangementCache,
+    // Reserved for old serialized projects. PSARC files are imported through importer modules.
     Psarc,
     Folder,
     TheoryPackage,
-    StringTheoryProject
+    StringTheoryProject,
+    ExternalImporter
 }
 
 [Serializable]

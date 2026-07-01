@@ -1809,7 +1809,6 @@ public sealed class TabsSongHeaderOverlay
     private readonly ScrollView libraryImportPopupScrollView;
     private readonly Button libraryImportSelectAllButton;
     private readonly Button libraryImportConvertButton;
-    private readonly Button libraryImportLegacyButton;
     private readonly Button libraryImportSkipButton;
     private readonly List<LibraryImportCandidateRow> libraryImportCandidateRows = new List<LibraryImportCandidateRow>();
 
@@ -6815,13 +6814,10 @@ public sealed class TabsSongHeaderOverlay
         libraryImportActions.style.flexWrap = Wrap.Wrap;
 
         libraryImportSkipButton = CreateLibraryImportPopupButton("Skip", false, () => owner?.CloseLibraryImportPopupFromUi());
-        libraryImportLegacyButton = CreateLibraryImportPopupButton("Legacy Conversion", false, () => owner?.RunLegacyLibraryImportFromUi());
         libraryImportConvertButton = CreateLibraryImportPopupButton("Convert to .theory", true, () => owner?.ConvertSelectedLibraryImportsToTheoryFromUi());
         libraryImportSkipButton.style.marginRight = 14f;
-        libraryImportLegacyButton.style.marginRight = 14f;
         libraryImportConvertButton.style.minWidth = 300f;
         libraryImportActions.Add(libraryImportSkipButton);
-        libraryImportActions.Add(libraryImportLegacyButton);
         libraryImportActions.Add(libraryImportConvertButton);
 
         libraryImportPopupCard.Add(libraryImportEyebrowLabel);
@@ -17684,7 +17680,7 @@ public sealed class TabsSongHeaderOverlay
         if (libraryImportPopupTitleLabel != null)
             libraryImportPopupTitleLabel.text = count == 1 ? "New Song Found" : "New Songs Found";
         if (libraryImportPopupSummaryLabel != null)
-            libraryImportPopupSummaryLabel.text = "Convert selected sources into .theory packages before adding them to the library. Legacy conversion keeps the old importer path available.";
+            libraryImportPopupSummaryLabel.text = "Convert selected sources into .theory packages before adding them to the library.";
         if (libraryImportPopupStatusLabel != null)
             libraryImportPopupStatusLabel.text = string.IsNullOrWhiteSpace(snapshot.libraryImportPopupStatusText)
                 ? $"{selectedCount}/{count} selected."

@@ -12,7 +12,9 @@ public static class TheoryPackageFormat
     public const string StemDirectory = "stems";
     public const string AssetsDirectory = "assets";
     public const string EditorDirectory = "editor";
+    public const string UserDirectory = "user";
     public const string EditorStateEntryName = "editor/editor-state.json";
+    public const string ToneLabMappingsEntryName = "user/tone-lab-mappings.json";
     public const string CacheDirectoryName = "TheoryPackageCache";
 
     public static bool IsPackagePath(string path)

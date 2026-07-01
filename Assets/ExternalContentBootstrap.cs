@@ -18,6 +18,7 @@ public static class ExternalContentBootstrap
         EnsureBaseRuntimeContentReady();
         EnsureToneLabContentReady();
         EnsureToneLabEffectsDirectoryReady();
+        EnsureImportersDirectoryReady();
         EnsureSongsDirectoryReady();
     }
 
@@ -102,6 +103,86 @@ public static class ExternalContentBootstrap
         toneLabEffectsDirectoryReadyPath = effectsPath;
     }
 
+    public static void EnsureImportersDirectoryReady()
+    {
+        EnsureDirectory(ExternalContentPaths.PersistentImportersDirectory);
+        RemoveBundledImporterCopiesFromPersistent();
+    }
+
+    private static void RemoveBundledImporterCopiesFromPersistent()
+    {
+        string streamingRoot = ExternalContentPaths.StreamingImportersDirectory;
+        string persistentRoot = ExternalContentPaths.PersistentImportersDirectory;
+        if (!Directory.Exists(streamingRoot) || !Directory.Exists(persistentRoot))
+            return;
+
+        try
+        {
+            foreach (string streamingManifestPath in Directory.GetFiles(streamingRoot, SongImporterRegistry.ManifestFileName, SearchOption.AllDirectories))
+            {
+                string streamingDirectory = Path.GetDirectoryName(streamingManifestPath);
+                if (string.IsNullOrWhiteSpace(streamingDirectory))
+                    continue;
+
+                string relativeDirectory = Path.GetRelativePath(streamingRoot, streamingDirectory);
+                string persistentManifestPath = Path.Combine(persistentRoot, relativeDirectory, SongImporterRegistry.ManifestFileName);
+                if (!File.Exists(persistentManifestPath) ||
+                    !ImporterManifestIdsMatch(streamingManifestPath, persistentManifestPath))
+                {
+                    continue;
+                }
+
+                string persistentImporterDirectory = Path.GetDirectoryName(persistentManifestPath);
+                if (string.IsNullOrWhiteSpace(persistentImporterDirectory) ||
+                    !IsSameOrChildPath(persistentRoot, persistentImporterDirectory))
+                {
+                    continue;
+                }
+
+                Directory.Delete(persistentImporterDirectory, recursive: true);
+                Debug.Log($"[ExternalContentBootstrap] Removed copied bundled importer from user importers: {persistentImporterDirectory}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[ExternalContentBootstrap] Failed to clean copied bundled importers: {ex.Message}");
+        }
+    }
+
+    private static bool ImporterManifestIdsMatch(string leftPath, string rightPath)
+    {
+        return TryReadImporterManifestId(leftPath, out string leftId) &&
+               TryReadImporterManifestId(rightPath, out string rightId) &&
+               string.Equals(leftId, rightId, StringTheoryPlatform.PathComparison);
+    }
+
+    private static bool TryReadImporterManifestId(string manifestPath, out string id)
+    {
+        id = string.Empty;
+        try
+        {
+            SongImporterManifest manifest = JsonUtility.FromJson<SongImporterManifest>(File.ReadAllText(manifestPath));
+            id = manifest?.id?.Trim() ?? string.Empty;
+            return !string.IsNullOrWhiteSpace(id);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsSameOrChildPath(string parentPath, string childPath)
+    {
+        if (string.IsNullOrWhiteSpace(parentPath) || string.IsNullOrWhiteSpace(childPath))
+            return false;
+
+        string parent = Path.GetFullPath(parentPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        string child = Path.GetFullPath(childPath).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        return string.Equals(parent, child, StringTheoryPlatform.PathComparison) ||
+               child.StartsWith(parent + Path.DirectorySeparatorChar, StringTheoryPlatform.PathComparison) ||
+               child.StartsWith(parent + Path.AltDirectorySeparatorChar, StringTheoryPlatform.PathComparison);
+    }
+
     private static void EnsureDirectory(string path)
     {
         if (!Directory.Exists(path))
@@ -141,6 +222,39 @@ public static class ExternalContentBootstrap
             string folderName = Path.GetFileName(sourceSubDirectory);
             string destinationSubDirectory = Path.Combine(destinationDirectory, folderName);
             CopyMissingRecursive(sourceSubDirectory, destinationSubDirectory);
+        }
+    }
+
+    private static void SyncRuntimeContentRecursive(string sourceDirectory, string destinationDirectory)
+    {
+        if (!Directory.Exists(sourceDirectory))
+        {
+            Debug.LogWarning($"[ExternalContentBootstrap] Source directory missing, skipping runtime sync: {sourceDirectory}");
+            return;
+        }
+
+        EnsureDirectory(destinationDirectory);
+
+        foreach (string sourceFilePath in Directory.GetFiles(sourceDirectory))
+        {
+            string fileName = Path.GetFileName(sourceFilePath);
+            if (ShouldSkipRuntimeContentFile(fileName))
+                continue;
+
+            string destinationFilePath = Path.Combine(destinationDirectory, fileName);
+            bool shouldCopy = !File.Exists(destinationFilePath) || !FilesMatch(sourceFilePath, destinationFilePath);
+            if (!shouldCopy)
+                continue;
+
+            CopyFilePreservingTimestamp(sourceFilePath, destinationFilePath, overwrite: true);
+            Debug.Log($"[ExternalContentBootstrap] Synced runtime file: {destinationFilePath}");
+        }
+
+        foreach (string sourceSubDirectory in Directory.GetDirectories(sourceDirectory))
+        {
+            string folderName = Path.GetFileName(sourceSubDirectory);
+            string destinationSubDirectory = Path.Combine(destinationDirectory, folderName);
+            SyncRuntimeContentRecursive(sourceSubDirectory, destinationSubDirectory);
         }
     }
 

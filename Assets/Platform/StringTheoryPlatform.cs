@@ -49,7 +49,6 @@ public static class StringTheoryPlatform
     public static StringComparer PathComparer => IsWindows ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
 
     public static string AlphaTabRenderHelperFileName => IsWindows ? "AlphaTabRenderHelper.exe" : "AlphaTabRenderHelper";
-    public static string RocksmithImportToolFileName => IsWindows ? "RocksmithImportTool.exe" : "RocksmithImportTool";
     public static string StemSeparatorCommandFileName => IsWindows ? "StemSeparator.exe" : "StemSeparator";
     public static string StemSeparatorPythonFileName => IsWindows ? "python.exe" : "python3";
     public static string StemRuntimePackageFileName

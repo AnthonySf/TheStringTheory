@@ -44,6 +44,7 @@ public sealed class SongLibraryEntry
 
 public sealed class SongLibraryImportCandidate
 {
+    public string ImporterId;
     public string SourcePath;
     public string SourceDirectory;
     public string DisplayName;
@@ -159,7 +160,7 @@ public static class SongLibraryService
         HashSet<string> cachedLegacySourceKeys = ReadCachedLegacySourceKeysUnchecked();
         Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources = DiscoverConvertedTheorySourceStamps(songsDirectory);
 
-        AddPsarcImportCandidates(songsDirectory, cachedLegacySourceKeys, convertedTheorySources, seenSources, candidates);
+        AddExternalImporterCandidates(songsDirectory, convertedTheorySources, seenSources, candidates);
         AddNotationImportCandidates(songsDirectory, cachedLegacySourceKeys, convertedTheorySources, seenSources, candidates);
 
         candidates.Sort((a, b) =>
@@ -199,7 +200,27 @@ public static class SongLibraryService
                 continue;
             }
 
-            if (ChartEditorTheoryConversionService.ConvertLibrarySourceToTheoryPackage(
+            string conversionError;
+            bool converted;
+            if (!string.IsNullOrWhiteSpace(candidate.ImporterId))
+            {
+                converted = SongImporterRegistry.ConvertSourceToTheoryPackage(
+                    new SongImporterConversionRequest
+                    {
+                        importerId = candidate.ImporterId,
+                        sourcePath = candidate.SourcePath,
+                        overwriteExisting = false,
+                        validatePackage = true,
+                        requireAudio = true,
+                        useLibrarySongsDirectory = true,
+                        rejectChartEditorOutputDirectory = true
+                    },
+                    out _,
+                    out conversionError);
+            }
+            else
+            {
+                converted = ChartEditorTheoryConversionService.ConvertLibrarySourceToTheoryPackage(
                     new ChartEditorTheoryConversionRequest
                     {
                         sourcePath = candidate.SourcePath,
@@ -209,7 +230,10 @@ public static class SongLibraryService
                         requireAudio = true
                     },
                     out _,
-                    out string conversionError))
+                    out conversionError);
+            }
+
+            if (converted)
             {
                 convertedCount++;
             }
@@ -292,35 +316,108 @@ public static class SongLibraryService
         public long SizeBytes;
     }
 
-    private static void AddPsarcImportCandidates(
+    private static void AddExternalImporterCandidates(
         string songsDirectory,
-        HashSet<string> cachedLegacySourceKeys,
         Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources,
         HashSet<string> seenSources,
         List<SongLibraryImportCandidate> candidates)
     {
-        foreach (string psarcPath in EnumerateFilesSafe(songsDirectory, "*.psarc", SearchOption.AllDirectories))
+        List<SongImporterDescriptor> importers = SongImporterRegistry.GetAvailableImporters(forceRefresh: true);
+        if (importers.Count == 0)
+            return;
+
+        foreach (SongImporterDescriptor importer in importers)
         {
-            if (string.IsNullOrWhiteSpace(psarcPath) ||
-                IsPathInsideImportedCacheDirectory(songsDirectory, psarcPath) ||
-                RocksmithImportService.IsPsarcImportUpToDate(psarcPath) ||
-                SourceHasCurrentTheoryConversion(psarcPath, convertedTheorySources) ||
-                !seenSources.Add(NormalizeFullPathKey(psarcPath)))
+            if (importer?.Extensions != null && importer.Extensions.Count > 0)
+            {
+                for (int extensionIndex = 0; extensionIndex < importer.Extensions.Count; extensionIndex++)
+                {
+                    string extension = NormalizeImporterExtension(importer.Extensions[extensionIndex]);
+                    if (string.IsNullOrWhiteSpace(extension))
+                        continue;
+
+                    foreach (string sourcePath in EnumerateFilesSafe(songsDirectory, $"*{extension}", SearchOption.AllDirectories))
+                    {
+                        if (string.IsNullOrWhiteSpace(sourcePath) ||
+                            IsPathInsideImportedCacheDirectory(songsDirectory, sourcePath) ||
+                            SourceHasCurrentTheoryConversion(sourcePath, convertedTheorySources) ||
+                            !seenSources.Add(NormalizeFullPathKey(sourcePath)))
+                        {
+                            continue;
+                        }
+
+                        string directory = Path.GetDirectoryName(sourcePath) ?? songsDirectory;
+                        candidates.Add(new SongLibraryImportCandidate
+                        {
+                            ImporterId = importer.Id,
+                            SourcePath = Path.GetFullPath(sourcePath),
+                            SourceDirectory = directory,
+                            DisplayName = Path.GetFileNameWithoutExtension(sourcePath),
+                            Subtitle = BuildImportCandidateSubtitle(importer.DisplayName, directory, songsDirectory),
+                            SourceKindLabel = importer.DisplayName,
+                            AudioPath = string.Empty,
+                            NotationKind = SongNotationSourceKind.None
+                        });
+                    }
+                }
+            }
+        }
+
+        foreach (string folderPath in EnumerateDirectoriesSafe(songsDirectory, includeRoot: true))
+        {
+            string sourceKey = NormalizeFullPathKey(folderPath);
+            if (string.IsNullOrWhiteSpace(sourceKey) ||
+                SourceHasCurrentTheoryConversion(folderPath, convertedTheorySources) ||
+                !seenSources.Add(sourceKey))
             {
                 continue;
             }
 
-            string directory = Path.GetDirectoryName(psarcPath) ?? songsDirectory;
+            List<SongImporterFolderMatch> folderMatches = SongImporterRegistry.GetMatchingFolderImporters(folderPath);
+            if (folderMatches.Count == 0)
+                continue;
+
+            SongImporterFolderMatch match = folderMatches[0];
+            SongImporterDescriptor importer = match.importer;
+            if (importer == null)
+                continue;
+
+            string sourceLabel = string.IsNullOrWhiteSpace(match.signature?.displayName)
+                ? importer.DisplayName
+                : match.signature.displayName.Trim();
             candidates.Add(new SongLibraryImportCandidate
             {
-                SourcePath = Path.GetFullPath(psarcPath),
-                SourceDirectory = directory,
-                DisplayName = Path.GetFileNameWithoutExtension(psarcPath),
-                Subtitle = BuildImportCandidateSubtitle("PSARC", directory, songsDirectory),
-                SourceKindLabel = "PSARC",
+                ImporterId = importer.Id,
+                SourcePath = Path.GetFullPath(folderPath),
+                SourceDirectory = folderPath,
+                DisplayName = Path.GetFileName(folderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                Subtitle = BuildImportCandidateSubtitle(sourceLabel, folderPath, songsDirectory),
+                SourceKindLabel = sourceLabel,
                 AudioPath = string.Empty,
                 NotationKind = SongNotationSourceKind.None
             });
+        }
+    }
+
+    private static IEnumerable<string> EnumerateDirectoriesSafe(string directory, bool includeRoot)
+    {
+        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
+            return Enumerable.Empty<string>();
+
+        try
+        {
+            List<string> result = new List<string>();
+            if (includeRoot)
+                result.Add(Path.GetFullPath(directory));
+
+            result.AddRange(Directory.GetDirectories(directory, "*", SearchOption.AllDirectories)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
+            return result;
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[SongLibraryService] Failed to inspect folders under '{directory}': {ex.Message}");
+            return Enumerable.Empty<string>();
         }
     }
 
@@ -494,13 +591,20 @@ public static class SongLibraryService
                 return "Guitar Pro";
             case SongNotationSourceKind.MusicXml:
                 return "MusicXML";
-            case SongNotationSourceKind.ArrangementCache:
-                return "Rocksmith Cache";
             case SongNotationSourceKind.TheoryPackage:
                 return ".theory";
             default:
                 return "Source";
         }
+    }
+
+    private static string NormalizeImporterExtension(string extension)
+    {
+        if (string.IsNullOrWhiteSpace(extension))
+            return string.Empty;
+
+        string trimmed = extension.Trim().ToLowerInvariant();
+        return trimmed.StartsWith(".", StringComparison.Ordinal) ? trimmed : "." + trimmed;
     }
 
     private static IEnumerable<string> EnumerateFilesSafe(string directory, string pattern, SearchOption searchOption)
@@ -535,8 +639,8 @@ public static class SongLibraryService
         for (int i = 0; i < segments.Length; i++)
         {
             string segment = segments[i];
-            if (segment.StartsWith(RocksmithCachedSongFormat.ImportedFolderPrefix, StringComparison.OrdinalIgnoreCase) ||
-                segment.StartsWith(RocksmithCachedSongFormat.LegacyImportedFolderPrefix, StringComparison.OrdinalIgnoreCase))
+            if (segment.StartsWith("__psarc_", StringComparison.OrdinalIgnoreCase) ||
+                segment.StartsWith("__rocksmith_", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -564,7 +668,23 @@ public static class SongLibraryService
     {
         try
         {
-            return !string.IsNullOrWhiteSpace(path) && File.Exists(path) ? File.GetLastWriteTimeUtc(path).Ticks : 0L;
+            if (string.IsNullOrWhiteSpace(path))
+                return 0L;
+            if (File.Exists(path))
+                return File.GetLastWriteTimeUtc(path).Ticks;
+            if (!Directory.Exists(path))
+                return 0L;
+
+            long result = Directory.GetLastWriteTimeUtc(path).Ticks;
+            foreach (string filePath in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                if (IsGeneratedTheoryPackageInDirectorySource(filePath))
+                    continue;
+
+                result = Math.Max(result, File.GetLastWriteTimeUtc(filePath).Ticks);
+            }
+
+            return result;
         }
         catch
         {
@@ -576,12 +696,33 @@ public static class SongLibraryService
     {
         try
         {
-            return !string.IsNullOrWhiteSpace(path) && File.Exists(path) ? new FileInfo(path).Length : 0L;
+            if (string.IsNullOrWhiteSpace(path))
+                return 0L;
+            if (File.Exists(path))
+                return new FileInfo(path).Length;
+            if (!Directory.Exists(path))
+                return 0L;
+
+            long result = 0L;
+            foreach (string filePath in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+            {
+                if (IsGeneratedTheoryPackageInDirectorySource(filePath))
+                    continue;
+
+                result += new FileInfo(filePath).Length;
+            }
+
+            return result;
         }
         catch
         {
             return 0L;
         }
+    }
+
+    private static bool IsGeneratedTheoryPackageInDirectorySource(string filePath)
+    {
+        return string.Equals(Path.GetExtension(filePath), TheoryPackageFormat.Extension, StringComparison.OrdinalIgnoreCase);
     }
 
     public static List<SongLibraryEntry> GetAvailableSongs(
@@ -663,18 +804,7 @@ public static class SongLibraryService
         }
 
         if (refreshImports)
-        {
-            ArrangementCacheImportService.RefreshImports((completed, total, currentFileName) =>
-            {
-                float ratio = total > 0 ? Mathf.Clamp01((float)completed / total) : 1f;
-                string status = total > 0
-                    ? $"Refreshing Rocksmith songs... {completed}/{total}"
-                    : "Refreshing Rocksmith songs...";
-                if (!string.IsNullOrWhiteSpace(currentFileName))
-                    status += $"  {currentFileName}";
-                progress?.Invoke(ratio * 85f, status);
-            });
-        }
+            progress?.Invoke(5f, "Scanning songs...");
 
         List<string> songDirectories = DiscoverSongDirectories(ExternalContentPaths.PersistentSongsDirectory);
 
@@ -696,8 +826,8 @@ public static class SongLibraryService
             }
 
             float scanRatio = (i + 1) / (float)songDirectories.Count;
-            float baseProgress = refreshImports ? 85f : 0f;
-            float remainingProgress = refreshImports ? 15f : 100f;
+            float baseProgress = 0f;
+            float remainingProgress = 100f;
             progress?.Invoke(
                 baseProgress + (scanRatio * remainingProgress),
                 $"Scanning songs... {i + 1}/{songDirectories.Count}");
@@ -833,9 +963,6 @@ public static class SongLibraryService
             return false;
 
         if (!string.IsNullOrWhiteSpace(TheorySongLoader.FindPackageInDirectory(directory, requireLoadable: true)))
-            return true;
-
-        if (!string.IsNullOrWhiteSpace(ArrangementCacheSongLoader.FindManifestInDirectory(directory)))
             return true;
 
         if (!string.IsNullOrWhiteSpace(FindPreferredGpNotation(directory)))
@@ -1016,53 +1143,8 @@ public static class SongLibraryService
             return true;
         }
 
-        if (resolvedNotationKind == SongNotationSourceKind.ArrangementCache &&
-            IsCompleteCachedArrangementEntry(clone))
-        {
-            normalized = clone;
-            return true;
-        }
-
-        if (resolvedNotationKind == SongNotationSourceKind.ArrangementCache &&
-            ArrangementCacheSongLoader.TryLoadManifest(clone.PrimaryNotationPath, out var arrangementCacheManifest))
-        {
-            if ((string.IsNullOrWhiteSpace(clone.Mp3Path) || !File.Exists(clone.Mp3Path)) &&
-                !string.IsNullOrWhiteSpace(arrangementCacheManifest.audioPath) &&
-                File.Exists(arrangementCacheManifest.audioPath))
-            {
-                clone.Mp3Path = arrangementCacheManifest.audioPath;
-            }
-
-            if ((string.IsNullOrWhiteSpace(clone.ArtworkPath) || !File.Exists(clone.ArtworkPath)) &&
-                !string.IsNullOrWhiteSpace(arrangementCacheManifest.artworkPath) &&
-                File.Exists(arrangementCacheManifest.artworkPath))
-            {
-                clone.ArtworkPath = arrangementCacheManifest.artworkPath;
-            }
-
-            if (string.IsNullOrWhiteSpace(clone.DifficultyDisplayLabel))
-                clone.DifficultyDisplayLabel = ArrangementCacheMetadata.BuildDifficultySummary(arrangementCacheManifest);
-
-            if (clone.DurationSeconds <= 0f)
-                clone.DurationSeconds = Mathf.Max(0f, arrangementCacheManifest.durationSeconds);
-        }
-
         normalized = clone;
         return true;
-    }
-
-    private static bool IsCompleteCachedArrangementEntry(SongLibraryEntry entry)
-    {
-        if (entry == null)
-            return false;
-
-        return !string.IsNullOrWhiteSpace(entry.DisplayName) &&
-               !string.IsNullOrWhiteSpace(entry.PrimaryNotationPath) &&
-               File.Exists(entry.PrimaryNotationPath) &&
-               !string.IsNullOrWhiteSpace(entry.Mp3Path) &&
-               File.Exists(entry.Mp3Path) &&
-               !string.IsNullOrWhiteSpace(entry.DifficultyDisplayLabel) &&
-               entry.DurationSeconds > 0.01f;
     }
 
     private static string BuildTheoryDifficultySummary(TheorySongManifest manifest)
@@ -1139,22 +1221,6 @@ public static class SongLibraryService
         if (Directory.Exists(legacyTheoryDirectory))
             AppendLibrarySignatureFilesInDirectory(builder, directory, legacyTheoryDirectory);
 
-        string cacheDirectory = Path.Combine(directory, RocksmithCachedSongFormat.ContentDirectoryName);
-        if (Directory.Exists(cacheDirectory))
-        {
-            try
-            {
-                string[] partFiles = Directory.GetFiles(cacheDirectory, "*.rs2part.json", SearchOption.TopDirectoryOnly)
-                    .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
-                builder.Append("parts:");
-                builder.Append(partFiles.Length);
-                builder.Append('|');
-            }
-            catch
-            {
-            }
-        }
     }
 
     private static void AppendLibrarySignatureFilesInDirectory(StringBuilder builder, string rootDirectory, string directory)
@@ -1502,7 +1568,6 @@ public static class SongLibraryService
         string theoryPackagePath = !string.IsNullOrWhiteSpace(preferredTheoryPackagePath)
             ? preferredTheoryPackagePath
             : TheorySongLoader.FindPackageInDirectory(songDirectory, requireLoadable: true);
-        string arrangementCacheManifestPath = ArrangementCacheSongLoader.FindManifestInDirectory(songDirectory);
         string arcadeChartPath = FindCloneHeroChartFile(songDirectory);
         string arcadeSongIniPath = Path.Combine(songDirectory, "song.ini");
         bool hasArcadeSongIni = File.Exists(arcadeSongIniPath);
@@ -1512,11 +1577,9 @@ public static class SongLibraryService
         string artworkPath = FindArtworkFile(songDirectory);
         string primaryNotationPath = !string.IsNullOrWhiteSpace(theoryPackagePath)
             ? theoryPackagePath
-            : !string.IsNullOrWhiteSpace(arrangementCacheManifestPath)
-                ? arrangementCacheManifestPath
-                : !string.IsNullOrWhiteSpace(gpPath)
-                    ? gpPath
-                    : xmlPath;
+            : !string.IsNullOrWhiteSpace(gpPath)
+                ? gpPath
+                : xmlPath;
         SongNotationSourceKind primaryNotationKind = SongNotationSourceKind.None;
         if (!SongNotationFacade.TryDetectKind(primaryNotationPath, out primaryNotationKind))
             primaryNotationKind = SongNotationSourceKind.None;
@@ -1525,7 +1588,7 @@ public static class SongLibraryService
         {
             if (string.IsNullOrWhiteSpace(arcadeChartPath) || !hasArcadeSongIni)
             {
-                Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: a .theory package, extracted arrangement manifest, supported Guitar Pro/MusicXML notation, or five-lane notes.chart/notes.mid plus song.ini.");
+                Debug.LogWarning($"[SongLibraryService] Skipping invalid song folder '{songDirectory}'. Required files: a .theory package, supported Guitar Pro/MusicXML notation, or five-lane notes.chart/notes.mid plus song.ini.");
                 return false;
             }
 
@@ -1603,36 +1666,6 @@ public static class SongLibraryService
                 XmlPath = null,
                 MetadataPath = theoryMetadataPath,
                 DurationSeconds = Mathf.Max(0f, theoryManifest.durationSeconds),
-                MidiPath = null
-            };
-
-            return true;
-        }
-
-        if (primaryNotationKind == SongNotationSourceKind.ArrangementCache &&
-            ArrangementCacheSongLoader.TryLoadManifest(primaryNotationPath, out var arrangementCacheManifest))
-        {
-            string arrangementCacheMetadataPath = Path.Combine(songDirectory, ExternalContentPaths.SongMetadataFileName);
-            string arrangementDifficultySummary = ArrangementCacheMetadata.BuildDifficultySummary(arrangementCacheManifest);
-            entry = new SongLibraryEntry
-            {
-                SongId = Path.GetFileName(songDirectory),
-                LibraryType = SongLibraryType.Guitar,
-                DisplayName = string.IsNullOrWhiteSpace(arrangementCacheManifest.displayName) ? Path.GetFileName(songDirectory) : arrangementCacheManifest.displayName.Trim(),
-                Artist = string.IsNullOrWhiteSpace(arrangementCacheManifest.artist) ? string.Empty : arrangementCacheManifest.artist.Trim(),
-                Album = string.IsNullOrWhiteSpace(arrangementCacheManifest.album) ? string.Empty : arrangementCacheManifest.album.Trim(),
-                Subtitle = BuildSubtitleDisplay(arrangementCacheManifest.artist, arrangementCacheManifest.subtitle),
-                ArtworkPath = File.Exists(arrangementCacheManifest.artworkPath) ? arrangementCacheManifest.artworkPath : artworkPath,
-                DifficultyRating = Mathf.Clamp(arrangementCacheManifest.difficultyRating, 0, 5),
-                DifficultyDisplayLabel = arrangementDifficultySummary,
-                SongDirectory = songDirectory,
-                Mp3Path = !string.IsNullOrWhiteSpace(arrangementCacheManifest.audioPath) && File.Exists(arrangementCacheManifest.audioPath) ? arrangementCacheManifest.audioPath : mp3Path,
-                PrimaryNotationPath = primaryNotationPath,
-                PrimaryNotationKind = primaryNotationKind,
-                GpPath = null,
-                XmlPath = null,
-                MetadataPath = arrangementCacheMetadataPath,
-                DurationSeconds = Mathf.Max(0f, arrangementCacheManifest.durationSeconds),
                 MidiPath = null
             };
 

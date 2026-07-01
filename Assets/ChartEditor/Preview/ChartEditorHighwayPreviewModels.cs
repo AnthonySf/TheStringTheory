@@ -260,7 +260,7 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
             }
         }
 
-        return RocksmithCachedSongLoader.BuildNormalizedTechniqueSegments(source);
+        return RocksmithTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
     }
 
     private static NoteTechnique ResolvePrimaryTechnique(ChartEditorNote note)

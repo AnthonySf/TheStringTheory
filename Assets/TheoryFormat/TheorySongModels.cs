@@ -162,6 +162,9 @@ public sealed class TheoryToneDefinitionData
 {
     public string name;
     public string key;
+    public string rawToneEntry;
+    public string preferredPresetName;
+    public string fallbackSearchText;
     public TheoryTonePresetData preset = new TheoryTonePresetData();
     public TheoryToneFallbackData fallback = new TheoryToneFallbackData();
 
@@ -196,6 +199,37 @@ public sealed class TheoryTonePedalSlotData
     public string descriptorId;
     public bool enabled = true;
     public string settingsJson;
+}
+
+[Serializable]
+public sealed class TheoryToneLabMappingState
+{
+    public int schemaVersion = TheoryPackageFormat.SchemaVersion;
+    public long modifiedAtUtcTicks;
+    public List<TheoryToneLabPresetMappingData> mappings = new List<TheoryToneLabPresetMappingData>();
+
+    public void EnsureDefaults()
+    {
+        schemaVersion = schemaVersion <= 0 ? TheoryPackageFormat.SchemaVersion : schemaVersion;
+        mappings ??= new List<TheoryToneLabPresetMappingData>();
+        for (int i = 0; i < mappings.Count; i++)
+            mappings[i]?.EnsureDefaults();
+    }
+}
+
+[Serializable]
+public sealed class TheoryToneLabPresetMappingData
+{
+    public string arrangementId;
+    public string toneName;
+    public string presetId;
+    public TheoryTonePresetData presetSnapshot = new TheoryTonePresetData();
+
+    public void EnsureDefaults()
+    {
+        presetSnapshot ??= new TheoryTonePresetData();
+        presetSnapshot.EnsureDefaults();
+    }
 }
 
 [Serializable]
