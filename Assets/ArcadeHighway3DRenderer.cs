@@ -194,6 +194,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     private readonly Material[] endpointMaterials = new Material[MaxLaneCount];
     private readonly Renderer[] endpointRenderers = new Renderer[MaxLaneCount];
     private readonly Renderer[] laneRenderers = new Renderer[MaxLaneCount];
+    private readonly Renderer[] laneGuideRenderers = new Renderer[MaxLaneCount + 1];
     private readonly float[] lanePulseUntil = new float[MaxLaneCount];
     private readonly float[] lanePulseStrength = new float[MaxLaneCount];
     private readonly float[] drumKitLaneGlowStrength = new float[MaxLaneCount];
@@ -275,6 +276,8 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     private Rect originalMainCameraRect;
     private bool originalMainCameraEnabled = true;
     private bool gameplayBuilt;
+    private bool leftHandedLaneMirrorActive;
+    private bool builtLeftHandedLaneMirrorActive;
     private float currentVisualNoteSpeed = 12f;
     private int builtLaneCount = DefaultLaneCount;
     private float missShakeUntil;
@@ -529,6 +532,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
                 }
 
                 bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded || snapshot.showToneLab || snapshot.showTuner || snapshot.showMiniGames;
+                leftHandedLaneMirrorActive = ShouldMirrorLaneLayout(snapshot);
                 bool useDrumHighwayPlacement = !suppressGameplay && IsDrumKitVisualEnabled() && IsDrumKitSnapshot(snapshot);
                 currentRendererRootWorldOffset = useDrumHighwayPlacement ? DrumKitRendererRootWorldPosition : Vector3.zero;
                 ApplyRendererRootPlacement();
@@ -892,6 +896,23 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
         return ContainsDrumText(snapshot.selectedArcadeArrangementDisplayName) ||
                ContainsDrumText(snapshot.selectedArcadeArrangementId);
+    }
+
+    private bool ShouldMirrorLaneLayout(GuitarGameplaySnapshot snapshot)
+    {
+        return owner != null &&
+               owner.leftHandedMode &&
+               snapshot != null &&
+               IsGuitarFamilyArcadeInstrument(snapshot.selectedArcadeInstrument) &&
+               !IsDrumKitSnapshot(snapshot);
+    }
+
+    private static bool IsGuitarFamilyArcadeInstrument(ArcadeInstrument instrument)
+    {
+        return instrument == ArcadeInstrument.Guitar ||
+               instrument == ArcadeInstrument.Bass ||
+               instrument == ArcadeInstrument.Rhythm ||
+               instrument == ArcadeInstrument.CoopGuitar;
     }
 
     private static bool ContainsDrumText(string value)
@@ -3427,11 +3448,22 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
     private void EnsureGameplayVisualsBuilt()
     {
-        if (gameplayBuilt || gameplayRoot == null || owner == null)
+        if (gameplayRoot == null || owner == null)
             return;
 
-        BuildBoard();
-        gameplayBuilt = true;
+        if (!gameplayBuilt)
+        {
+            BuildBoard();
+            builtLeftHandedLaneMirrorActive = leftHandedLaneMirrorActive;
+            gameplayBuilt = true;
+            return;
+        }
+
+        if (builtLeftHandedLaneMirrorActive != leftHandedLaneMirrorActive)
+        {
+            UpdateLaneGeometryLayout();
+            builtLeftHandedLaneMirrorActive = leftHandedLaneMirrorActive;
+        }
     }
 
     private void BuildBoard()
@@ -3479,7 +3511,9 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             laneGuide.transform.localScale = new Vector3(Mathf.Max(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), laneWidth * 0.03f), 0.085f, guideDepth);
             Object.Destroy(laneGuide.GetComponent<Collider>());
             Material guideMaterial = CreateLaneGuideMaterial();
-            laneGuide.GetComponent<Renderer>().material = guideMaterial;
+            Renderer guideRenderer = laneGuide.GetComponent<Renderer>();
+            guideRenderer.material = guideMaterial;
+            laneGuideRenderers[boundary] = guideRenderer;
         }
 
         for (int lane = 0; lane < builtLaneCount; lane++)
@@ -3512,6 +3546,37 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
         CreateSideRail(-1, trackWidth, guideCenterZ, guideDepth);
         CreateSideRail(1, trackWidth, guideCenterZ, guideDepth);
+    }
+
+    private void UpdateLaneGeometryLayout()
+    {
+        int laneCount = GetBuiltLaneCount();
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            if (laneRenderers[lane] != null)
+            {
+                Vector3 position = laneRenderers[lane].transform.localPosition;
+                position.x = GetLaneX(lane);
+                laneRenderers[lane].transform.localPosition = position;
+            }
+
+            if (endpointRenderers[lane] != null)
+            {
+                Vector3 position = endpointRenderers[lane].transform.localPosition;
+                position.x = GetLaneX(lane);
+                endpointRenderers[lane].transform.localPosition = position;
+            }
+        }
+
+        for (int boundary = 0; boundary <= laneCount && boundary < laneGuideRenderers.Length; boundary++)
+        {
+            if (laneGuideRenderers[boundary] == null)
+                continue;
+
+            Vector3 position = laneGuideRenderers[boundary].transform.localPosition;
+            position.x = GetBoundaryX(boundary);
+            laneGuideRenderers[boundary].transform.localPosition = position;
+        }
     }
 
     private void CreateSideRail(int side, float trackWidth, float centerZ, float guideDepth)
@@ -4372,14 +4437,20 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     {
         int laneCount = GetBuiltLaneCount();
         float laneWidth = GetLaneWidth();
-        return ((Mathf.Clamp(lane, 0, laneCount - 1) + 0.5f) * laneWidth) - (laneCount * laneWidth * 0.5f);
+        int clampedLane = Mathf.Clamp(lane, 0, laneCount - 1);
+        if (leftHandedLaneMirrorActive)
+            clampedLane = (laneCount - 1) - clampedLane;
+        return ((clampedLane + 0.5f) * laneWidth) - (laneCount * laneWidth * 0.5f);
     }
 
     private float GetBoundaryX(int boundary)
     {
         int laneCount = GetBuiltLaneCount();
         float laneWidth = GetLaneWidth();
-        return (Mathf.Clamp(boundary, 0, laneCount) * laneWidth) - (laneCount * laneWidth * 0.5f);
+        int clampedBoundary = Mathf.Clamp(boundary, 0, laneCount);
+        if (leftHandedLaneMirrorActive)
+            clampedBoundary = laneCount - clampedBoundary;
+        return (clampedBoundary * laneWidth) - (laneCount * laneWidth * 0.5f);
     }
 
     private Vector3 GetFrettedNoteScale()

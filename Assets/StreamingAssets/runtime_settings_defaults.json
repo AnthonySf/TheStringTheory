@@ -198,6 +198,10 @@
                        "value":  "true"
                    },
                    {
+                       "id":  "core.leftHandedMode",
+                       "value":  "false"
+                   },
+                   {
                        "id":  "core.forceStandardTuning",
                        "value":  "true"
                    },

@@ -242,6 +242,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private float lastFretLightLayoutOpenAnchorFret = float.NaN;
     private float lastFretLightLayoutStrikeLineZ = float.NaN;
     private float lastFretLightLayoutFretSpacing = float.NaN;
+    private bool lastFretLightLayoutLeftHanded;
     private GuitarGameplaySnapshot renderSongTimeCacheSnapshot;
     private float renderSongTimeCacheValue;
     private bool renderSongTimeCacheValid;
@@ -2659,7 +2660,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         GameObject nut = GameObject.CreatePrimitive(PrimitiveType.Cube);
         nut.transform.SetParent(gameplayRoot.transform, false);
-        nut.transform.position = new Vector3(0f, fretLineCenterY, owner.StrikeLineZ + 0.05f);
+        nut.transform.position = new Vector3(GetFretBoundaryX(0), fretLineCenterY, owner.StrikeLineZ + 0.05f);
         nut.transform.localScale = new Vector3(HighwayNutBoundaryBaseWidth, fretLineHeight, HighwayNutBoundaryBaseDepth);
         Renderer nutRenderer = nut.GetComponent<Renderer>();
         Material nutMat = CreateFretBoundaryMaterial(new Color(0.22f, 0.23f, 0.27f, 0.28f));
@@ -2670,7 +2671,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         int boundaryCount = GetFretLightColumnCount();
         for (int fret = 1; fret < boundaryCount; fret++)
         {
-            float wireX = fret * owner.FretSpacing;
+            float wireX = GetFretBoundaryX(fret);
 
             GameObject wire = GameObject.CreatePrimitive(PrimitiveType.Cube);
             wire.transform.SetParent(gameplayRoot.transform, false);
@@ -2950,7 +2951,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             GameObject guide = GameObject.CreatePrimitive(PrimitiveType.Cube);
             guide.name = "LaneGuide_" + lane;
             guide.transform.SetParent(gameplayRoot.transform, false);
-            float xPos = lane * owner.FretSpacing;
+            float xPos = GetFretBoundaryX(lane);
             float guideWidth = Mathf.Max(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), owner.FretSpacing * 0.03f);
             guide.transform.position = new Vector3(xPos, laneSurfaceY + laneGuideLift, centerZ);
             guide.transform.localScale = new Vector3(guideWidth, laneGuideHeight, depth);
@@ -3421,6 +3422,11 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             rightX = centerX + halfWidth;
         }
 
+        float semanticLeftX = UnmirrorFretboardXIfLeftHanded(leftX);
+        float semanticRightX = UnmirrorFretboardXIfLeftHanded(rightX);
+        leftX = Mathf.Min(semanticLeftX, semanticRightX);
+        rightX = Mathf.Max(semanticLeftX, semanticRightX);
+
         lowerBoundary = Mathf.Clamp(Mathf.FloorToInt((leftX / owner.FretSpacing) + 0.0001f), 0, boundaryCount - 1);
         upperBoundary = Mathf.Clamp(Mathf.CeilToInt((rightX / owner.FretSpacing) - 0.0001f), 0, boundaryCount - 1);
         if (upperBoundary <= lowerBoundary)
@@ -3591,8 +3597,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetFretNumberX(int fret)
     {
-        float leftBoundaryX = fret <= 1 ? 0f : (fret - 1) * owner.FretSpacing;
-        float rightBoundaryX = fret * owner.FretSpacing;
+        float leftBoundaryX = GetFretBoundaryX(fret <= 1 ? 0 : fret - 1);
+        float rightBoundaryX = GetFretBoundaryX(fret);
         return (leftBoundaryX + rightBoundaryX) * 0.5f;
     }
 
@@ -4402,8 +4408,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         {
             if (isOpen)
             {
-                float leftX = GetHandWindowStartX(GetGroupHandFret(group));
-                float rightX = GetHandWindowEndX(GetGroupHandFret(group), group);
+                GetHandWindowBoundsX(GetGroupHandFret(group), group, out float leftX, out float rightX);
                 cube.transform.localScale = new Vector3(Mathf.Max(owner.FretSpacing * 0.8f, rightX - leftX), GetScaledOpenHeight(), GetScaledOpenDepth());
             }
             else
@@ -7428,7 +7433,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         return Mathf.Clamp(Mathf.RoundToInt(owner.defaultOpenAnchorFret), 1, owner.TotalFrets - 3);
     }
 
-    private float GetArpeggioHandWindowEndX(int handFret, ArpeggioGuideData guide)
+    private void GetArpeggioHandWindowBoundsX(int handFret, ArpeggioGuideData guide, out float leftX, out float rightX)
     {
         int furthestFret = handFret + 3;
         if (guide?.stringFrets != null)
@@ -7441,7 +7446,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             }
         }
 
-        return GetNoteX(furthestFret) + (owner.FretSpacing * 0.2f);
+        float startX = GetNoteX(handFret - 1);
+        float endX = GetNoteX(furthestFret);
+        leftX = Mathf.Min(startX, endX) - (owner.FretSpacing * 0.2f);
+        rightX = Mathf.Max(startX, endX) + (owner.FretSpacing * 0.2f);
     }
 
     private float GetArpeggioBoxHeight(ArpeggioGuideData guide)
@@ -7470,8 +7478,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private GameObject CreateArpeggioGuideFrame(ArpeggioGuideData guide)
     {
         int handFret = GetArpeggioHandFret(guide);
-        float leftX = GetHandWindowStartX(handFret);
-        float rightX = GetArpeggioHandWindowEndX(handFret, guide);
+        GetArpeggioHandWindowBoundsX(handFret, guide, out float leftX, out float rightX);
         float height = GetArpeggioBoxHeight(guide);
         float width = Mathf.Max(0.5f, rightX - leftX);
         float centerY = GetArpeggioBoxCenterY(guide);
@@ -8095,12 +8102,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         float openAnchorFret = owner.defaultOpenAnchorFret;
         float strikeLineZ = owner.StrikeLineZ;
         float fretSpacing = owner.FretSpacing;
+        bool leftHanded = IsLeftHandedModeActive();
         bool layoutDirty =
             lastFretLightLayoutStringCount != activeStringCount ||
             lastFretLightLayoutColumnCount != fretLightColumns ||
             !Mathf.Approximately(lastFretLightLayoutOpenAnchorFret, openAnchorFret) ||
             !Mathf.Approximately(lastFretLightLayoutStrikeLineZ, strikeLineZ) ||
-            !Mathf.Approximately(lastFretLightLayoutFretSpacing, fretSpacing);
+            !Mathf.Approximately(lastFretLightLayoutFretSpacing, fretSpacing) ||
+            lastFretLightLayoutLeftHanded != leftHanded;
 
         if (!layoutDirty)
             return;
@@ -8126,6 +8135,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         lastFretLightLayoutOpenAnchorFret = openAnchorFret;
         lastFretLightLayoutStrikeLineZ = strikeLineZ;
         lastFretLightLayoutFretSpacing = fretSpacing;
+        lastFretLightLayoutLeftHanded = leftHanded;
     }
 
     private void UpdateSectionCamera(GuitarGameplaySnapshot snapshot)
@@ -8491,7 +8501,8 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetCameraV2ShoulderOffset()
     {
-        return Mathf.Clamp(owner.TotalFrets * owner.FretSpacing * 0.055f, owner.FretSpacing * 0.85f, owner.FretSpacing * 1.65f);
+        float offset = Mathf.Clamp(owner.TotalFrets * owner.FretSpacing * 0.055f, owner.FretSpacing * 0.85f, owner.FretSpacing * 1.65f);
+        return IsLeftHandedModeActive() ? -offset : offset;
     }
 
     private Vector3 GetCameraV2Position(float targetX)
@@ -8642,7 +8653,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         int safeMinFret = Mathf.Clamp(minFret, 1, owner.TotalFrets);
         int safeMaxFret = Mathf.Clamp(Mathf.Max(maxFret, safeMinFret), safeMinFret, owner.TotalFrets);
         float middle = (GetNoteX(safeMinFret) + GetNoteX(safeMaxFret)) * 0.5f;
-        float boardWeighted = owner.TotalFrets * owner.FretSpacing * 0.4f;
+        float boardWeighted = MirrorFretboardXIfLeftHanded(owner.TotalFrets * owner.FretSpacing * 0.4f);
         return Mathf.Lerp(middle, boardWeighted, CameraV2FretEdgeBlend);
     }
 
@@ -8776,8 +8787,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (isGrouped || data.fret == 0)
         {
             int handFret = GetGroupHandFret(group);
-            minX = GetHandWindowStartX(handFret);
-            maxX = GetHandWindowEndX(handFret, group);
+            GetHandWindowBoundsX(handFret, group, out minX, out maxX);
         }
         else
         {
@@ -9111,8 +9121,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 continue;
 
             int handFret = GetGroupHandFret(group);
-            float leftX = GetHandWindowStartX(handFret);
-            float rightX = GetHandWindowEndX(handFret, group);
+            GetHandWindowBoundsX(handFret, group, out float leftX, out float rightX);
             bool repeatStyle = IsRepeatChordFrame(pair.Key);
             float frameHeight = GetChordFrameRenderHeight(pair.Key, group);
             string displayName = repeatStyle ? string.Empty : GetChordDisplayName(group);
@@ -9301,10 +9310,25 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetHandWindowStartX(int handFret)
     {
-        return GetNoteX(handFret - 1) - (owner.FretSpacing * 0.2f);
+        GetHandWindowBoundsX(handFret, null, out float leftX, out _);
+        return leftX;
     }
 
     private float GetHandWindowEndX(int handFret, List<NoteData> group = null)
+    {
+        GetHandWindowBoundsX(handFret, group, out _, out float rightX);
+        return rightX;
+    }
+
+    private void GetHandWindowBoundsX(int handFret, List<NoteData> group, out float leftX, out float rightX)
+    {
+        float startX = GetNoteX(handFret - 1);
+        float endX = GetNoteX(GetHandWindowFurthestFret(handFret, group));
+        leftX = Mathf.Min(startX, endX) - (owner.FretSpacing * 0.2f);
+        rightX = Mathf.Max(startX, endX) + (owner.FretSpacing * 0.2f);
+    }
+
+    private int GetHandWindowFurthestFret(int handFret, List<NoteData> group = null)
     {
         int furthestFret = handFret + 3;
         if (group != null)
@@ -9320,13 +9344,14 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
             furthestFret = Mathf.Max(furthestFret, highestGroupFret);
         }
 
-        return GetNoteX(furthestFret) + (owner.FretSpacing * 0.2f);
+        return furthestFret;
     }
 
     private float GetGroupAnchorX(List<NoteData> group)
     {
         int handFret = GetGroupHandFret(group);
-        return (GetHandWindowStartX(handFret) + GetHandWindowEndX(handFret, group)) * 0.5f;
+        GetHandWindowBoundsX(handFret, group, out float leftX, out float rightX);
+        return (leftX + rightX) * 0.5f;
     }
 
     private float GetVisualNoteX(NoteData data)
@@ -9354,8 +9379,7 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (isGrouped || data.fret == 0)
         {
             int handFret = GetGroupHandFret(group);
-            minX = GetHandWindowStartX(handFret);
-            maxX = GetHandWindowEndX(handFret, group);
+            GetHandWindowBoundsX(handFret, group, out minX, out maxX);
             return;
         }
 
@@ -10428,7 +10452,10 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     {
         int stringCount = GetRenderableStringCount();
         int clampedString = Mathf.Clamp(stringIdx, 0, stringCount - 1);
-        int row = owner.invertStrings ? ((stringCount - 1) - clampedString) : clampedString;
+        bool effectiveInvertStrings = owner.invertStrings;
+        if (IsLeftHandedModeActive())
+            effectiveInvertStrings = !effectiveInvertStrings;
+        int row = effectiveInvertStrings ? ((stringCount - 1) - clampedString) : clampedString;
         return (row * GetStringLaneSpacing()) + GetStringLaneSpacing();
     }
 
@@ -10469,10 +10496,43 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
     private float GetNoteX(int fret)
     {
+        float x;
         if (fret <= 0)
-            return -owner.FretSpacing * 0.5f;
+            x = -owner.FretSpacing * 0.5f;
+        else
+            x = (fret * owner.FretSpacing) - (owner.FretSpacing * 0.5f);
 
-        return (fret * owner.FretSpacing) - (owner.FretSpacing * 0.5f);
+        return MirrorFretboardXIfLeftHanded(x);
+    }
+
+    private float GetFretBoundaryX(int fret)
+    {
+        int lastFretColumn = Mathf.Max(0, GetFretLightColumnCount() - 1);
+        int clampedFret = Mathf.Clamp(fret, 0, lastFretColumn);
+        return MirrorFretboardXIfLeftHanded(clampedFret * owner.FretSpacing);
+    }
+
+    private float MirrorFretboardXIfLeftHanded(float x)
+    {
+        if (!IsLeftHandedModeActive())
+            return x;
+
+        int lastFretColumn = Mathf.Max(1, GetFretLightColumnCount() - 1);
+        return (lastFretColumn * owner.FretSpacing) - x;
+    }
+
+    private float UnmirrorFretboardXIfLeftHanded(float x)
+    {
+        if (!IsLeftHandedModeActive())
+            return x;
+
+        int lastFretColumn = Mathf.Max(1, GetFretLightColumnCount() - 1);
+        return (lastFretColumn * owner.FretSpacing) - x;
+    }
+
+    private bool IsLeftHandedModeActive()
+    {
+        return owner != null && owner.leftHandedMode;
     }
 
     private sealed class HighwayNoteView

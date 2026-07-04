@@ -1216,7 +1216,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         {
             int stringCount = GetRenderableStringCount();
             int clampedString = Mathf.Clamp(stringIdx, 0, stringCount - 1);
-            int row = owner.invertStrings ? clampedString : ((stringCount - 1) - clampedString);
+            bool effectiveInvertStrings = owner.invertStrings;
+            if (owner.leftHandedMode)
+                effectiveInvertStrings = !effectiveInvertStrings;
+            int row = effectiveInvertStrings ? clampedString : ((stringCount - 1) - clampedString);
             float centered = (((stringCount - 1) * 0.5f) - row) * lineSpacing;
             return centered;
         }

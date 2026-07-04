@@ -485,6 +485,8 @@ public sealed class TabsSongHeaderOverlay
         public string Label;
     }
 
+    private const int GlobalSettingsLeftHandedTopIndex = 14;
+
     private static readonly GlobalSettingsTabDefinition[] GlobalSettingsTabs =
     {
         new GlobalSettingsTabDefinition { Key = string.Empty, Label = "General", TopIndex = 0, Categories = new string[0] },
@@ -18784,6 +18786,8 @@ public sealed class TabsSongHeaderOverlay
 
             AddGlobalSettingsTopRow(menuList, 0, "Invert Strings", snapshot.selectedGlobalSettingsTopIndex == 0, snapshot.availableSongNames != null, snapshot.activeGlobalSettingsCategory, snapshot, snapshot.selectedGlobalSettingsTopIndex, snapshot.selectedGlobalSettingsItemIndex, snapshot.runtimeSettingsSections);
 
+            AddGlobalSettingsTopRow(menuList, GlobalSettingsLeftHandedTopIndex, "Left Handed Mode", snapshot.selectedGlobalSettingsTopIndex == GlobalSettingsLeftHandedTopIndex, snapshot.availableSongNames != null, snapshot.activeGlobalSettingsCategory, snapshot, snapshot.selectedGlobalSettingsTopIndex, snapshot.selectedGlobalSettingsItemIndex, snapshot.runtimeSettingsSections);
+
             AddGlobalSettingsTopRow(menuList, 1, "Render Mode", snapshot.selectedGlobalSettingsTopIndex == 1, snapshot.availableSongNames != null, snapshot.activeGlobalSettingsCategory, snapshot, snapshot.selectedGlobalSettingsTopIndex, snapshot.selectedGlobalSettingsItemIndex, snapshot.runtimeSettingsSections);
 
             AddGlobalSettingsTopRow(menuList, 2, "Songs Folder", snapshot.selectedGlobalSettingsTopIndex == 2, snapshot.availableSongNames != null, snapshot.activeGlobalSettingsCategory, snapshot, snapshot.selectedGlobalSettingsTopIndex, snapshot.selectedGlobalSettingsItemIndex, snapshot.runtimeSettingsSections);
@@ -18851,7 +18855,7 @@ public sealed class TabsSongHeaderOverlay
 
             .SelectMany(section => section.settings ?? new List<RuntimeSettingSnapshot>())
 
-            .Where(setting => setting != null && !string.Equals(setting.id, "core.invertStrings", StringComparison.OrdinalIgnoreCase) && !string.Equals(setting.id, "render.mode", StringComparison.OrdinalIgnoreCase))
+            .Where(setting => setting != null && !string.Equals(setting.id, "core.invertStrings", StringComparison.OrdinalIgnoreCase) && !string.Equals(setting.id, "core.leftHandedMode", StringComparison.OrdinalIgnoreCase) && !string.Equals(setting.id, "render.mode", StringComparison.OrdinalIgnoreCase))
 
             .ToList();
 
@@ -18871,6 +18875,14 @@ public sealed class TabsSongHeaderOverlay
         if (index == 0)
         {
             value = ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "core.invertStrings", string.Empty);
+            value = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF";
+            showArrows = true;
+            onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
+            onRight = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1);
+        }
+        else if (index == GlobalSettingsLeftHandedTopIndex)
+        {
+            value = ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "core.leftHandedMode", string.Empty);
             value = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF";
             showArrows = true;
             onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
@@ -19807,6 +19819,18 @@ public sealed class TabsSongHeaderOverlay
             globalSettingsMenuRows.Add(row);
         }
 
+        RuntimeSettingSnapshot leftHandedMode = FindGlobalSetting(snapshot.runtimeSettingsSections, "core.leftHandedMode");
+        if (leftHandedMode != null)
+        {
+            GlobalSettingsMenuRow row = CreateGlobalSettingsSettingBand(
+                leftHandedMode,
+                snapshot.selectedGlobalSettingsTopIndex == GlobalSettingsLeftHandedTopIndex,
+                () => owner?.HoverGlobalSettingsTopSelectionFromUi(GlobalSettingsLeftHandedTopIndex),
+                () => owner?.ActivateGlobalSettingsTopSelectionFromUi(GlobalSettingsLeftHandedTopIndex));
+            parent.Add(row.row);
+            globalSettingsMenuRows.Add(row);
+        }
+
         RuntimeSettingSnapshot renderMode = FindGlobalSetting(snapshot.runtimeSettingsSections, "render.mode");
         if (renderMode != null)
         {
@@ -20174,6 +20198,7 @@ public sealed class TabsSongHeaderOverlay
             return false;
 
         return !string.Equals(setting.id, "core.invertStrings", StringComparison.OrdinalIgnoreCase) &&
+               !string.Equals(setting.id, "core.leftHandedMode", StringComparison.OrdinalIgnoreCase) &&
                !string.Equals(setting.id, "render.mode", StringComparison.OrdinalIgnoreCase);
     }
 
@@ -20820,10 +20845,11 @@ public sealed class TabsSongHeaderOverlay
         switch (snapshot.selectedGlobalSettingsTopIndex)
         {
             case 0: return 0;
-            case 1: return 1;
-            case 2: return 2;
-            case 3: return 3;
-            case 13: return 4;
+            case GlobalSettingsLeftHandedTopIndex: return 1;
+            case 1: return 2;
+            case 2: return 3;
+            case 3: return 4;
+            case 13: return 5;
             default: return 0;
         }
     }
@@ -21015,6 +21041,14 @@ public sealed class TabsSongHeaderOverlay
         if (index == 0)
         {
             value = ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "core.invertStrings", string.Empty);
+            value = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF";
+            showArrows = true;
+            onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);
+            onRight = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, 1);
+        }
+        else if (index == GlobalSettingsLeftHandedTopIndex)
+        {
+            value = ResolveGlobalSettingValue(snapshot.runtimeSettingsSections, "core.leftHandedMode", string.Empty);
             value = string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ? "ON" : "OFF";
             showArrows = true;
             onLeft = () => owner?.AdjustGlobalSettingsTopValueFromUi(index, -1);

@@ -126,6 +126,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         public Material characterPortalFrontMaterial;
         public readonly Renderer[] laneRenderers = new Renderer[MaxLaneCount];
         public readonly Material[] laneMaterials = new Material[MaxLaneCount];
+        public readonly Renderer[] laneGuideRenderers = new Renderer[MaxLaneCount + 1];
         public readonly Renderer[] endpointRenderers = new Renderer[MaxLaneCount];
         public readonly Material[] endpointMaterials = new Material[MaxLaneCount];
         public readonly Dictionary<int, GameplayNoteResult> resolvedFeedbackResults = new Dictionary<int, GameplayNoteResult>();
@@ -139,6 +140,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         public readonly Dictionary<int, MultiplayerNoteView> noteViews = new Dictionary<int, MultiplayerNoteView>();
         public readonly HashSet<int> visibleNoteIds = new HashSet<int>();
         public readonly List<int> removalBuffer = new List<int>();
+        public bool layoutLeftHandedLaneMirrorActive;
     }
 
     private sealed class MultiplayerNoteView
@@ -201,6 +203,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
     private MultiplayerPlayerScene[] playerScenes;
     private float currentVisualNoteSpeed = 12f;
     private TabsSongHeaderOverlay overlay;
+    private bool leftHandedLaneMirrorActive;
 
     public void Initialize(GuitarBridgeServer owner, List<NoteData> chartNotes, List<TabSectionData> sections)
     {
@@ -242,6 +245,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
             EnsureBackgroundMode(targetBackgroundProfile);
             ConfigureMainCamera();
             currentVisualNoteSpeed = GetVisualNoteSpeed(snapshot);
+            leftHandedLaneMirrorActive = ShouldMirrorLaneLayout(snapshot);
             bool suppressGameplay = snapshot.mainMenuFlowActive || snapshot.songEnded || snapshot.showToneLab || snapshot.showTuner || snapshot.showMiniGames;
 
             if (!suppressGameplay && backgroundProfile == BackgroundProfile.Gameplay)
@@ -593,6 +597,7 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
             return;
 
         scene.root.transform.localPosition = new Vector3(GetTrackHorizontalOffset(scene.playerIndex), 0f, 0f);
+        UpdateTrackGeometryLayout(scene);
     }
 
     private void BuildTrackGeometry(MultiplayerPlayerScene scene)
@@ -641,7 +646,9 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
             laneGuide.transform.localScale = new Vector3(Mathf.Max(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), laneWidth * 0.03f), 0.085f, guideDepth);
             Object.Destroy(laneGuide.GetComponent<Collider>());
             Material guideMaterial = CreateLaneGuideMaterial();
-            laneGuide.GetComponent<Renderer>().material = guideMaterial;
+            Renderer guideRenderer = laneGuide.GetComponent<Renderer>();
+            guideRenderer.material = guideMaterial;
+            scene.laneGuideRenderers[boundary] = guideRenderer;
             SetLayerRecursively(laneGuide, 0);
         }
 
@@ -676,6 +683,43 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
 
         CreateSideRail(scene, -1, trackWidth, guideCenterZ, guideDepth);
         CreateSideRail(scene, 1, trackWidth, guideCenterZ, guideDepth);
+        scene.layoutLeftHandedLaneMirrorActive = leftHandedLaneMirrorActive;
+    }
+
+    private void UpdateTrackGeometryLayout(MultiplayerPlayerScene scene)
+    {
+        if (scene == null || scene.layoutLeftHandedLaneMirrorActive == leftHandedLaneMirrorActive)
+            return;
+
+        int laneCount = GetLaneCount();
+        for (int lane = 0; lane < laneCount; lane++)
+        {
+            if (scene.laneRenderers[lane] != null)
+            {
+                Vector3 position = scene.laneRenderers[lane].transform.localPosition;
+                position.x = GetLaneX(lane);
+                scene.laneRenderers[lane].transform.localPosition = position;
+            }
+
+            if (scene.endpointRenderers[lane] != null)
+            {
+                Vector3 position = scene.endpointRenderers[lane].transform.localPosition;
+                position.x = GetLaneX(lane);
+                scene.endpointRenderers[lane].transform.localPosition = position;
+            }
+        }
+
+        for (int boundary = 0; boundary <= laneCount && boundary < scene.laneGuideRenderers.Length; boundary++)
+        {
+            if (scene.laneGuideRenderers[boundary] == null)
+                continue;
+
+            Vector3 position = scene.laneGuideRenderers[boundary].transform.localPosition;
+            position.x = GetBoundaryX(boundary);
+            scene.laneGuideRenderers[boundary].transform.localPosition = position;
+        }
+
+        scene.layoutLeftHandedLaneMirrorActive = leftHandedLaneMirrorActive;
     }
 
     private void CreateSideRail(MultiplayerPlayerScene scene, int side, float trackWidth, float centerZ, float guideDepth)
@@ -1930,6 +1974,44 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
         return Mathf.Max(0.01f, owner.noteSpeed * spacingScale);
     }
 
+    private bool ShouldMirrorLaneLayout(GuitarGameplaySnapshot snapshot)
+    {
+        return owner != null &&
+               owner.leftHandedMode &&
+               snapshot != null &&
+               IsGuitarFamilyArcadeInstrument(snapshot.selectedArcadeInstrument) &&
+               !IsDrumLaneSnapshot(snapshot);
+    }
+
+    private static bool IsGuitarFamilyArcadeInstrument(ArcadeInstrument instrument)
+    {
+        return instrument == ArcadeInstrument.Guitar ||
+               instrument == ArcadeInstrument.Bass ||
+               instrument == ArcadeInstrument.Rhythm ||
+               instrument == ArcadeInstrument.CoopGuitar;
+    }
+
+    private static bool IsDrumLaneSnapshot(GuitarGameplaySnapshot snapshot)
+    {
+        if (snapshot == null)
+            return false;
+
+        if (snapshot.selectedArcadeInstrument == ArcadeInstrument.Drums)
+            return true;
+
+        if (snapshot.arcadeLaneCount >= 8)
+            return true;
+
+        return ContainsDrumText(snapshot.selectedArcadeArrangementDisplayName) ||
+               ContainsDrumText(snapshot.selectedArcadeArrangementId);
+    }
+
+    private static bool ContainsDrumText(string value)
+    {
+        return !string.IsNullOrWhiteSpace(value) &&
+               value.IndexOf("drum", System.StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
     private int GetLaneCount()
     {
         return Mathf.Clamp(owner != null ? owner.ArcadeLaneCount : DefaultLaneCount, 1, MaxLaneCount);
@@ -1981,14 +2063,20 @@ public sealed class MultiplayerRhythm3DRenderer : IGuitarGameplayRenderer
     {
         int laneCount = GetLaneCount();
         float laneWidth = GetLaneWidth();
-        return ((Mathf.Clamp(lane, 0, laneCount - 1) + 0.5f) * laneWidth) - (laneCount * laneWidth * 0.5f);
+        int clampedLane = Mathf.Clamp(lane, 0, laneCount - 1);
+        if (leftHandedLaneMirrorActive)
+            clampedLane = (laneCount - 1) - clampedLane;
+        return ((clampedLane + 0.5f) * laneWidth) - (laneCount * laneWidth * 0.5f);
     }
 
     private float GetBoundaryX(int boundary)
     {
         int laneCount = GetLaneCount();
         float laneWidth = GetLaneWidth();
-        return (Mathf.Clamp(boundary, 0, laneCount) * laneWidth) - (laneCount * laneWidth * 0.5f);
+        int clampedBoundary = Mathf.Clamp(boundary, 0, laneCount);
+        if (leftHandedLaneMirrorActive)
+            clampedBoundary = laneCount - clampedBoundary;
+        return (clampedBoundary * laneWidth) - (laneCount * laneWidth * 0.5f);
     }
 
     private Vector3 GetFrettedNoteScale()

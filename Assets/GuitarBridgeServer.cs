@@ -116,6 +116,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("Settings")]
     public bool invertStrings = true;
+    public bool leftHandedMode = false;
     public float noteSpeed = 12f;
  
     [Header("Timing & Forgiveness")]
@@ -1650,15 +1651,16 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool cachedSongDurationGeneratedAvailable;
     private float cachedSongDurationGeneratedSeconds = -1f;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
-    private const int CurrentGlobalRuntimeSettingsVersion = 15;
+    private const int CurrentGlobalRuntimeSettingsVersion = 16;
     private int loadedGlobalRuntimeSettingsVersion = CurrentGlobalRuntimeSettingsVersion;
     private const int ArcadeControllerSlotCount = 8;
-    private const int GlobalSettingsTopLevelCount = 14;
+    private const int GlobalSettingsTopLevelCount = 15;
     private const int GlobalSettingsSongsFolderTopIndex = 2;
     private const int GlobalSettingsEffectsFolderTopIndex = 3;
     private const int GlobalSettingsFirstCategoryTopIndex = 4;
     private const int GlobalSettingsLastCategoryTopIndex = 12;
     private const int GlobalSettingsResetTopIndex = 13;
+    private const int GlobalSettingsLeftHandedTopIndex = 14;
     private const string SharedAudioAutomaticLabel = "Automatic";
 
     private enum GlobalSettingsSelectionPopupMode
@@ -26988,6 +26990,7 @@ private void OpenOrFocusToneLab()
 
         RegisterFloatSetting("core.noteSpeed", "Settings", "Note Speed", "Controls how quickly notes travel toward the hit line. This also controls the visible distance between notes.", 4f, 30f, 0.1f, () => noteSpeed, v => noteSpeed = v);
         RegisterBoolSetting("core.invertStrings", "Settings", "Invert Strings", "Reverses string order so the low string appears at the top.", () => invertStrings, v => invertStrings = v);
+        RegisterBoolSetting("core.leftHandedMode", "Settings", "Left Handed Mode", "Mirrors strings, lanes, notes, targets, and camera framing for left-handed play.", () => leftHandedMode, v => leftHandedMode = v);
         RegisterBoolSetting("core.forceStandardTuning", "Settings", "Force Standard Tuning", "Uses E Standard pitch validation for songs that are not in E Standard.", () => forceStandardTuning, v =>
         {
             if (forceStandardTuning == v)
@@ -29753,7 +29756,7 @@ private void OpenOrFocusToneLab()
 
     private void MoveGlobalSettingsGeneralSelection(int delta)
     {
-        int[] visibleTopIndices = { 0, 1, GlobalSettingsSongsFolderTopIndex, GlobalSettingsEffectsFolderTopIndex, GlobalSettingsResetTopIndex };
+        int[] visibleTopIndices = { 0, GlobalSettingsLeftHandedTopIndex, 1, GlobalSettingsSongsFolderTopIndex, GlobalSettingsEffectsFolderTopIndex, GlobalSettingsResetTopIndex };
         int currentIndex = Array.IndexOf(visibleTopIndices, selectedGlobalSettingsTopIndex);
         if (currentIndex < 0)
             currentIndex = 0;
@@ -29769,6 +29772,12 @@ private void OpenOrFocusToneLab()
             if (selectedGlobalSettingsTopIndex == 0)
             {
                 ApplyRuntimeSettingValue("core.invertStrings", invertStrings ? "false" : "true", saveMetadata: true);
+                return;
+            }
+
+            if (selectedGlobalSettingsTopIndex == GlobalSettingsLeftHandedTopIndex)
+            {
+                ApplyRuntimeSettingValue("core.leftHandedMode", leftHandedMode ? "false" : "true", saveMetadata: true);
                 return;
             }
 
@@ -29851,6 +29860,9 @@ private void OpenOrFocusToneLab()
                 case 0:
                     ApplyRuntimeSettingValue("core.invertStrings", delta > 0 ? "true" : "false", saveMetadata: true);
                     break;
+                case GlobalSettingsLeftHandedTopIndex:
+                    ApplyRuntimeSettingValue("core.leftHandedMode", delta > 0 ? "true" : "false", saveMetadata: true);
+                    break;
                 case 1:
                     if (runtimeSettingById.TryGetValue("render.mode", out RuntimeSettingDefinition renderDefinition) &&
                         renderDefinition.EnumOptions != null &&
@@ -29931,6 +29943,7 @@ private void OpenOrFocusToneLab()
             .SelectMany(section => (section.settings ?? new List<RuntimeSettingSnapshot>())
                 .Where(setting => setting != null &&
                     !string.Equals(setting.id, "core.invertStrings", StringComparison.OrdinalIgnoreCase) &&
+                    !string.Equals(setting.id, "core.leftHandedMode", StringComparison.OrdinalIgnoreCase) &&
                     !string.Equals(setting.id, "render.mode", StringComparison.OrdinalIgnoreCase) &&
                     IsRuntimeSettingInActiveGlobalSettingsSubtab(section, setting, category, subtab)))
             .ToList();
@@ -30778,6 +30791,7 @@ private void OpenOrFocusToneLab()
         bool liveNeonHorizonSetting = settingId.StartsWith("bg.neonHorizon.", StringComparison.OrdinalIgnoreCase);
         bool requiresRendererRefresh =
             requiresSectionRebuild ||
+            string.Equals(settingId, "core.leftHandedMode", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("render.", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("arcade.highway", StringComparison.OrdinalIgnoreCase) ||
             settingId.StartsWith("arcade.noteSpawn", StringComparison.OrdinalIgnoreCase) ||
@@ -31258,6 +31272,17 @@ private void OpenOrFocusToneLab()
             }
 
             migratedVersion = 15;
+        }
+
+        if (migratedVersion < 16)
+        {
+            if (!values.ContainsKey("core.leftHandedMode"))
+            {
+                SetRuntimeSettingMigrationValue(values, "core.leftHandedMode", "false");
+                migrated = true;
+            }
+
+            migratedVersion = 16;
         }
 
         return migrated;
