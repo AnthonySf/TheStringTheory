@@ -555,6 +555,7 @@ public sealed class ChartEditorOverlay
     private int marqueePointerId = -1;
     private Vector2 marqueeStart;
     private bool marqueeMoved;
+    private bool marqueeToggleSelection;
     private VisualElement marqueeTimeline;
     private VisualElement marqueeBox;
     private readonly Dictionary<string, SidebarExpansionAnimation> sidebarExpansionAnimations = new Dictionary<string, SidebarExpansionAnimation>(StringComparer.OrdinalIgnoreCase);
@@ -731,8 +732,8 @@ public sealed class ChartEditorOverlay
         toneEditorButton.RegisterCallback<MouseEnterEvent>(_ => ApplyToneEditorHeaderButtonState());
         toneEditorButton.RegisterCallback<MouseLeaveEvent>(_ => ApplyToneEditorHeaderButtonState());
         saveButton = CreateHeaderActionButton("Save", () => ShowSaveOptionsPopup(), true);
-        Button settingsButton = CreateHeaderIconButton(NewProjectIconKind.Gear, ShowSongInfoPopup, false);
-        Button closeButton = CreateHeaderIconButton(NewProjectIconKind.Menu, RequestCloseFromUi, false);
+        Button settingsButton = CreateHeaderIconButton(NewProjectIconKind.Gear, ShowProjectSettingsPopup, false);
+        Button closeButton = CreateHeaderIconButton(NewProjectIconKind.Cross, RequestCloseFromUi, false);
 
         headerActions.Add(toneEditorButton);
         headerActions.Add(saveButton);
@@ -2331,9 +2332,9 @@ public sealed class ChartEditorOverlay
         }
         else
         {
-            toneEditorButton.style.backgroundColor = new Color(1f, 1f, 1f, 0.03f);
-            toneEditorButton.style.color = new Color(0.91f, 0.90f, 0.94f, 1f);
-            SetBorderColor(toneEditorButton, new Color(0.75f, 0.72f, 0.82f, 0.22f));
+            toneEditorButton.style.backgroundColor = Color.clear;
+            toneEditorButton.style.color = new Color(1f, 0.70f, 0.30f, 1f);
+            SetBorderColor(toneEditorButton, new Color(1f, 0.62f, 0.22f, 0.74f));
         }
     }
 
@@ -4540,6 +4541,7 @@ public sealed class ChartEditorOverlay
             if (!marqueeSelecting || evt.pointerId != marqueePointerId)
                 return;
 
+            PanTimelineDuringSeekDrag(PointerPosition(evt));
             UpdateMarqueeSelection(timeline.WorldToLocal(evt.position));
             evt.StopPropagation();
         });
@@ -4733,6 +4735,54 @@ public sealed class ChartEditorOverlay
         mode = ChartEditorMode.Notes;
     }
 
+    private void ToggleNoteSelection(ChartEditorTrack track, ChartEditorNote note)
+    {
+        if (project == null || track == null || note == null || string.IsNullOrWhiteSpace(note.id))
+            return;
+
+        bool hadNonNoteSelection = !string.IsNullOrWhiteSpace(selectedSectionId) || HasSelectedAnchors();
+        string previousSelectedTrackId = project.selectedTrackId;
+        List<string> affectedNoteIds = new List<string>(selectedNoteIds);
+        if (!string.IsNullOrWhiteSpace(selectedNoteId))
+        {
+            affectedNoteIds.Add(selectedNoteId);
+            selectedNoteIds.Add(selectedNoteId);
+        }
+        affectedNoteIds.Add(note.id);
+
+        bool selected = selectedNoteIds.Contains(note.id);
+        if (selected)
+        {
+            selectedNoteIds.Remove(note.id);
+            if (string.Equals(selectedNoteId, note.id, StringComparison.OrdinalIgnoreCase))
+                selectedNoteId = selectedNoteIds.FirstOrDefault();
+        }
+        else
+        {
+            selectedNoteIds.Add(note.id);
+            selectedNoteId = note.id;
+            project.selectedTrackId = track.id;
+        }
+
+        if (selectedNoteIds.Count == 0)
+            selectedNoteId = null;
+        else if (string.IsNullOrWhiteSpace(selectedNoteId) || !selectedNoteIds.Contains(selectedNoteId))
+            selectedNoteId = selectedNoteIds.FirstOrDefault();
+
+        selectedSectionId = null;
+        ClearAnchorSelection();
+        mode = ChartEditorMode.Notes;
+
+        affectedNoteIds.AddRange(selectedNoteIds);
+        bool trackChanged = !string.Equals(previousSelectedTrackId ?? string.Empty, project.selectedTrackId ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        if (trackChanged)
+            RefreshTimelineAndSidebar();
+        else if (hadNonNoteSelection)
+            RefreshTimelinePanel();
+        else
+            RefreshNoteSelectionVisuals(affectedNoteIds);
+    }
+
     private bool IsNoteSelected(ChartEditorNote note)
     {
         if (note == null || string.IsNullOrWhiteSpace(note.id))
@@ -4832,7 +4882,7 @@ public sealed class ChartEditorOverlay
             RefreshNoteSelectionVisuals(affectedNoteIds);
     }
 
-    private void SelectNotesInRect(Rect selectionRect)
+    private void SelectNotesInRect(Rect selectionRect, bool toggleSelection)
     {
         List<ChartEditorNoteHit> hits = currentNoteHits
             .Where(hit => hit?.note != null && hit.track != null && selectionRect.Overlaps(hit.rect))
@@ -4842,7 +4892,8 @@ public sealed class ChartEditorOverlay
 
         if (hits.Count == 0)
         {
-            ClearTimelineSelection();
+            if (!toggleSelection)
+                ClearTimelineSelection();
             return;
         }
 
@@ -4850,18 +4901,53 @@ public sealed class ChartEditorOverlay
         string previousSelectedTrackId = project.selectedTrackId;
         List<string> affectedNoteIds = new List<string>(selectedNoteIds);
         if (!string.IsNullOrWhiteSpace(selectedNoteId))
+        {
             affectedNoteIds.Add(selectedNoteId);
+            selectedNoteIds.Add(selectedNoteId);
+        }
 
-        ClearNoteSelection();
-        for (int i = 0; i < hits.Count; i++)
-            selectedNoteIds.Add(hits[i].note.id);
+        if (toggleSelection)
+        {
+            for (int i = 0; i < hits.Count; i++)
+            {
+                string id = hits[i].note.id;
+                if (string.IsNullOrWhiteSpace(id))
+                    continue;
 
-        selectedNoteId = hits[0].note.id;
+                affectedNoteIds.Add(id);
+                if (selectedNoteIds.Contains(id))
+                    selectedNoteIds.Remove(id);
+                else
+                    selectedNoteIds.Add(id);
+            }
+        }
+        else
+        {
+            ClearNoteSelection();
+            for (int i = 0; i < hits.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(hits[i].note.id))
+                    selectedNoteIds.Add(hits[i].note.id);
+            }
+        }
+
+        selectedNoteId = hits
+            .Select(hit => hit.note?.id)
+            .FirstOrDefault(id => !string.IsNullOrWhiteSpace(id) && selectedNoteIds.Contains(id));
+        if (string.IsNullOrWhiteSpace(selectedNoteId))
+            selectedNoteId = selectedNoteIds.FirstOrDefault();
         selectedSectionId = null;
         ClearAnchorSelection();
-        project.selectedTrackId = hits[0].track.id;
+        if (!string.IsNullOrWhiteSpace(selectedNoteId))
+        {
+            ChartEditorNoteHit primaryHit = hits.FirstOrDefault(hit => string.Equals(hit.note?.id, selectedNoteId, StringComparison.OrdinalIgnoreCase));
+            if (primaryHit?.track != null)
+                project.selectedTrackId = primaryHit.track.id;
+        }
         mode = ChartEditorMode.Notes;
-        project.cursorTimeSeconds = hits[0].note.timeSeconds;
+        ChartEditorNoteHit cursorHit = hits.FirstOrDefault(hit => string.Equals(hit.note?.id, selectedNoteId, StringComparison.OrdinalIgnoreCase));
+        if (cursorHit?.note != null)
+            project.cursorTimeSeconds = cursorHit.note.timeSeconds;
         affectedNoteIds.AddRange(selectedNoteIds);
         bool trackChanged = !string.Equals(previousSelectedTrackId ?? string.Empty, project.selectedTrackId ?? string.Empty, StringComparison.OrdinalIgnoreCase);
         if (trackChanged)
@@ -4879,6 +4965,7 @@ public sealed class ChartEditorOverlay
         marqueePointerId = evt.pointerId;
         marqueeStart = localStart;
         marqueeMoved = false;
+        marqueeToggleSelection = evt.ctrlKey || IsControlKeyHeld();
         marqueeTimeline = timeline;
 
         marqueeBox = new VisualElement();
@@ -4921,13 +5008,14 @@ public sealed class ChartEditorOverlay
         bool moved = marqueeMoved || rect.width > 5f || rect.height > 5f;
         VisualElement timeline = marqueeTimeline;
         int pointerId = marqueePointerId;
+        bool toggleSelection = marqueeToggleSelection;
         ClearMarqueeSelection();
         if (timeline != null && timeline.HasPointerCapture(pointerId))
             timeline.ReleasePointer(pointerId);
 
         if (moved)
-            SelectNotesInRect(rect);
-        else
+            SelectNotesInRect(rect, toggleSelection);
+        else if (!toggleSelection)
             ClearTimelineSelection();
     }
 
@@ -4941,6 +5029,7 @@ public sealed class ChartEditorOverlay
         marqueePointerId = -1;
         marqueeSelecting = false;
         marqueeMoved = false;
+        marqueeToggleSelection = false;
     }
 
     private void CaptureCurrentTimelineScrollOffset()
@@ -6570,6 +6659,10 @@ public sealed class ChartEditorOverlay
             note.palmMute = palmMute;
             note.fretHandMute = fretHandMute;
             note.muted = palmMute || fretHandMute;
+            note.hasRuntimeMuted = true;
+            note.runtimeMuted = note.muted;
+            note.hasRuntimePalmMute = true;
+            note.runtimePalmMute = note.palmMute;
             note.harmonic = harmonic;
             note.pinchHarmonic = pinchHarmonic;
             note.accent = accentFlag;
@@ -8200,6 +8293,101 @@ public sealed class ChartEditorOverlay
         lastTapTempoRealtime = now;
     }
 
+    // Swaps the project's audio file. Chart data and the beat map are
+    // authored against song time, so they are kept untouched; the clip reload
+    // refreshes audio duration and every duration-derived cache follows.
+    private bool ReplaceProjectAudioFile(string newAudioPath, out string error)
+    {
+        error = string.Empty;
+        if (project == null)
+        {
+            error = "No project is loaded.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(newAudioPath) || !File.Exists(newAudioPath))
+        {
+            error = "Audio file was not found.";
+            return false;
+        }
+
+        project.audio = new ChartEditorAudioInfo
+        {
+            sourcePath = newAudioPath,
+            displayName = Path.GetFileName(newAudioPath),
+            extension = Path.GetExtension(newAudioPath)?.ToLowerInvariant() ?? string.Empty,
+            durationSeconds = 0.0
+        };
+        project.dirty = true;
+
+        ChartEditorTimingService.InvalidateBeatMapCache(project);
+        ResetEditorAudioCache();
+        return true;
+    }
+
+    // Re-imports tracks/notes/tones from a different chart file while keeping
+    // the user's timing work. The imported notes carry beat positions from the
+    // FILE's own tempo grid; mapping those beats through the project's synced
+    // beat map places them at the user's synced audio times.
+    private bool ReplaceProjectChartFile(string newChartPath, List<int> selectedPartIndices, out string error)
+    {
+        error = string.Empty;
+        if (project == null)
+        {
+            error = "No project is loaded.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(newChartPath) || !File.Exists(newChartPath))
+        {
+            error = "Chart file was not found.";
+            return false;
+        }
+
+        ChartEditorNewProjectRequest request = new ChartEditorNewProjectRequest
+        {
+            chartPath = newChartPath,
+            audioPath = project.audio?.sourcePath,
+            coverImagePath = project.metadata?.coverImagePath,
+            title = project.metadata?.title,
+            artist = project.metadata?.artist,
+            album = project.metadata?.album,
+            genre = project.metadata?.genre,
+            year = project.metadata?.year,
+            selectedPartIndices = selectedPartIndices ?? new List<int>()
+        };
+
+        if (!ChartEditorImportService.CreateNewProject(request, out ChartEditorImportResult result, out error) ||
+            result?.project == null)
+        {
+            if (string.IsNullOrWhiteSpace(error))
+                error = "The chart file could not be imported.";
+            return false;
+        }
+
+        ChartEditorProject imported = result.project;
+
+        // Musical content comes from the new file; the user's timing work
+        // (beat markers/anchors), sections, audio, metadata, and identity
+        // (project id / save path) stay.
+        project.tracks = imported.tracks ?? new List<ChartEditorTrack>();
+        project.selectedTrackId = imported.selectedTrackId;
+        project.sourcePath = newChartPath;
+        project.sourceKind = imported.sourceKind;
+        project.sourceFolder = Path.GetDirectoryName(newChartPath) ?? string.Empty;
+        if (imported.beatMap?.timeSignatures != null && imported.beatMap.timeSignatures.Count > 0)
+            project.beatMap.timeSignatures = imported.beatMap.timeSignatures;
+
+        ClearNoteSelection();
+        selectedToneChange = null;
+        selectedSectionId = null;
+
+        ChartEditorTimingService.InvalidateBeatMapCache(project);
+        ChartEditorTimingService.ApplyBeatMapToContent(project);
+        project.dirty = true;
+        return true;
+    }
+
     private void ShowSongInfoPopup()
     {
         if (project?.metadata == null)
@@ -9302,6 +9490,7 @@ public sealed class ChartEditorOverlay
         int pointerId = -1;
         HashSet<string> dragPreviewTrackIds = null;
         Vector2 startPointer = Vector2.zero;
+        float startTimelineScrollX = 0f;
         double startAudio = 0.0;
         double minAudio = 0.0;
         double maxAudio = 0.0;
@@ -9336,7 +9525,8 @@ public sealed class ChartEditorOverlay
 
             if (evt.button == 1)
             {
-                SeekAndRevealTime(marker.audioTimeSeconds, syncAudio: true, rebuild: false);
+                // No seek here: moving the cursor to the right-clicked beat
+                // made "Move Anchor to Cursor" a no-op.
                 ShowBeatMarkerContextMenu(evt.position, marker);
                 evt.StopPropagation();
                 return;
@@ -9358,6 +9548,7 @@ public sealed class ChartEditorOverlay
             moved = false;
             pointerId = evt.pointerId;
             startPointer = PointerPosition(evt);
+            startTimelineScrollX = timelineScrollOffset.x;
             startAudio = marker.audioTimeSeconds;
             moveContentWithBeatMap = !evt.shiftKey;
             tempoProbeBeatPosition = marker.beatPosition;
@@ -9377,14 +9568,15 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
-            Vector2 delta = PointerPosition(evt) - startPointer;
-            if (!moved && Mathf.Abs(delta.x) <= 2f)
+            Vector2 pointer = PointerPosition(evt);
+            float horizontalDragPixels = GetTimelineDragPixelsWithAutoPan(pointer, startPointer, startTimelineScrollX);
+            if (!moved && Mathf.Abs(horizontalDragPixels) <= 2f)
                 return;
 
             moved = true;
             if (tempoProbeDrag)
             {
-                lastTempoProbeAudio = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), startAudio + PixelDeltaToSeconds(delta.x)));
+                lastTempoProbeAudio = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), startAudio + PixelDeltaToSeconds(horizontalDragPixels)));
 
                 // Pointer-move events can fire several times per frame and the
                 // live preview remaps every beat-timed note in the project.
@@ -9416,7 +9608,7 @@ public sealed class ChartEditorOverlay
             if (liveAnchor.locked)
                 return;
 
-            double newAudio = Math.Max(minAudio, Math.Min(maxAudio, startAudio + PixelDeltaToSeconds(delta.x)));
+            double newAudio = Math.Max(minAudio, Math.Min(maxAudio, startAudio + PixelDeltaToSeconds(horizontalDragPixels)));
             liveAnchor.audioTimeSeconds = newAudio;
             project.dirty = true;
             if (lastPreviewFrame != Time.frameCount)
@@ -9513,6 +9705,7 @@ public sealed class ChartEditorOverlay
         bool moved = false;
         int pointerId = -1;
         Vector2 startPointer = Vector2.zero;
+        float startTimelineScrollX = 0f;
         float startTime = 0f;
 
         hit.RegisterCallback<PointerDownEvent>(evt =>
@@ -9539,6 +9732,7 @@ public sealed class ChartEditorOverlay
             moved = false;
             pointerId = evt.pointerId;
             startPointer = PointerPosition(evt);
+            startTimelineScrollX = timelineScrollOffset.x;
             startTime = change.timeSeconds;
             hit.CapturePointer(pointerId);
             evt.StopPropagation();
@@ -9549,11 +9743,12 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
-            Vector2 delta = PointerPosition(evt) - startPointer;
-            if (Mathf.Abs(delta.x) > 1f)
+            Vector2 pointer = PointerPosition(evt);
+            float horizontalDragPixels = GetTimelineDragPixelsWithAutoPan(pointer, startPointer, startTimelineScrollX);
+            if (Mathf.Abs(horizontalDragPixels) > 1f)
                 moved = true;
 
-            float nextTime = Mathf.Clamp(startTime + (float)PixelDeltaToSeconds(delta.x), 0f, Mathf.Max(0f, GetProjectDurationSeconds()));
+            float nextTime = Mathf.Clamp(startTime + (float)PixelDeltaToSeconds(horizontalDragPixels), 0f, Mathf.Max(0f, GetProjectDurationSeconds()));
             change.timeSeconds = nextTime;
             if (project != null)
                 project.dirty = true;
@@ -12915,6 +13110,7 @@ public sealed class ChartEditorOverlay
         int pointerId = -1;
         int dragMode = 0; // 1 = move, 2 = left edge, 3 = right edge
         Vector2 startPointer = Vector2.zero;
+        float startTimelineScrollX = 0f;
         float startOffset = 0f;
         float endOffset = 0f;
 
@@ -12930,6 +13126,7 @@ public sealed class ChartEditorOverlay
             pointerId = evt.pointerId;
             dragMode = mode;
             startPointer = PointerPosition(evt);
+            startTimelineScrollX = timelineScrollOffset.x;
             startOffset = Mathf.Max(0f, segment.startOffset);
             endOffset = Mathf.Max(startOffset + TechniqueSegmentMinimumSeconds, segment.endOffset);
             SelectSingleNote(track, note);
@@ -12961,7 +13158,9 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
-            float deltaSeconds = (float)PixelDeltaToSeconds(PointerPosition(evt).x - startPointer.x);
+            Vector2 pointer = PointerPosition(evt);
+            float horizontalDragPixels = GetTimelineDragPixelsWithAutoPan(pointer, startPointer, startTimelineScrollX);
+            float deltaSeconds = (float)PixelDeltaToSeconds(horizontalDragPixels);
             float newStart = startOffset;
             float newEnd = endOffset;
             float maxEnd = Mathf.Max(TechniqueSegmentMinimumSeconds, (float)((project != null ? GetProjectDurationSeconds() : note.timeSeconds + endOffset + 4.0) - note.timeSeconds));
@@ -13162,6 +13361,7 @@ public sealed class ChartEditorOverlay
         bool dragging = false;
         int pointerId = -1;
         Vector2 startPointer = Vector2.zero;
+        float startTimelineScrollX = 0f;
         double startDuration = 0.0;
 
         handle.RegisterCallback<PointerDownEvent>(evt =>
@@ -13175,6 +13375,7 @@ public sealed class ChartEditorOverlay
             dragging = true;
             pointerId = evt.pointerId;
             startPointer = PointerPosition(evt);
+            startTimelineScrollX = timelineScrollOffset.x;
             startDuration = GetNoteEffectiveDurationSeconds(note);
             SelectSingleNote(track, note);
             handle.CapturePointer(pointerId);
@@ -13186,7 +13387,9 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
-            double requestedDuration = startDuration + PixelDeltaToSeconds(PointerPosition(evt).x - startPointer.x);
+            Vector2 pointer = PointerPosition(evt);
+            float horizontalDragPixels = GetTimelineDragPixelsWithAutoPan(pointer, startPointer, startTimelineScrollX);
+            double requestedDuration = startDuration + PixelDeltaToSeconds(horizontalDragPixels);
             double maxDuration = Math.Max(0.01, GetProjectDurationSeconds() - note.timeSeconds);
             double? nextTime = GetNextNoteTimeInLane(track, note, laneCount, selectedTrack);
             if (nextTime.HasValue)
@@ -13622,6 +13825,11 @@ public sealed class ChartEditorOverlay
         return new Vector2(evt.position.x, evt.position.y);
     }
 
+    private static bool IsControlKeyHeld()
+    {
+        return Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+    }
+
     private void AddSeekDragHandlers(VisualElement target, Func<Vector2, float> timelinePixelFromWorld)
     {
         bool dragging = false;
@@ -13722,6 +13930,12 @@ public sealed class ChartEditorOverlay
             ApplyTimelineScrollX(timelineScrollOffset.x + panPixels);
     }
 
+    private float GetTimelineDragPixelsWithAutoPan(Vector2 pointerWorldPosition, Vector2 startPointerWorldPosition, float startScrollX)
+    {
+        PanTimelineDuringSeekDrag(pointerWorldPosition);
+        return (pointerWorldPosition.x - startPointerWorldPosition.x) + (timelineScrollOffset.x - startScrollX);
+    }
+
     private void AddNoteDragHandlers(VisualElement block, ChartEditorTrack track, ChartEditorNote note, int laneCount, float laneHeight, float laneTop, bool selectedTrack, float noteHeight)
     {
         bool dragging = false;
@@ -13729,6 +13943,7 @@ public sealed class ChartEditorOverlay
         bool clearedNonNoteSelection = false;
         int pointerId = -1;
         Vector2 startPointer = Vector2.zero;
+        float startTimelineScrollX = 0f;
         double startTime = 0.0;
         double pendingTimeDelta = 0.0;
         int pendingVisualLaneDelta = 0;
@@ -13741,6 +13956,13 @@ public sealed class ChartEditorOverlay
 
             if (evt.button != 0 || note == null || track == null)
                 return;
+
+            if (evt.ctrlKey || IsControlKeyHeld())
+            {
+                ToggleNoteSelection(track, note);
+                evt.StopImmediatePropagation();
+                return;
+            }
 
             clearedNonNoteSelection = !string.IsNullOrWhiteSpace(selectedSectionId) || HasSelectedAnchors();
             List<string> affectedSelectionIds = new List<string>(selectedNoteIds);
@@ -13802,6 +14024,7 @@ public sealed class ChartEditorOverlay
             moved = false;
             pointerId = evt.pointerId;
             startPointer = PointerPosition(evt);
+            startTimelineScrollX = timelineScrollOffset.x;
             startTime = note.timeSeconds;
             pendingTimeDelta = 0.0;
             pendingVisualLaneDelta = 0;
@@ -13815,15 +14038,16 @@ public sealed class ChartEditorOverlay
                 return;
 
             Vector2 pointer = PointerPosition(evt);
-            Vector2 delta = pointer - startPointer;
-            if (Mathf.Abs(delta.x) > 1f || Mathf.Abs(delta.y) > 1f)
+            float horizontalDragPixels = GetTimelineDragPixelsWithAutoPan(pointer, startPointer, startTimelineScrollX);
+            float verticalDragPixels = pointer.y - startPointer.y;
+            if (Mathf.Abs(horizontalDragPixels) > 1f || Mathf.Abs(verticalDragPixels) > 1f)
                 moved = true;
 
-            double requestedTimeDelta = PixelDeltaToSeconds(delta.x);
+            double requestedTimeDelta = PixelDeltaToSeconds(horizontalDragPixels);
             double minTimeDelta = dragStarts.Count == 0 ? -startTime : -dragStarts.Min(start => start.timeSeconds);
             double maxTimeDelta = dragStarts.Count == 0 ? GetProjectDurationSeconds() - startTime : GetProjectDurationSeconds() - dragStarts.Max(start => start.timeSeconds);
             pendingTimeDelta = Math.Max(minTimeDelta, Math.Min(maxTimeDelta, requestedTimeDelta));
-            pendingVisualLaneDelta = selectedTrack ? Mathf.RoundToInt(delta.y / Mathf.Max(1f, laneHeight)) : 0;
+            pendingVisualLaneDelta = selectedTrack ? Mathf.RoundToInt(verticalDragPixels / Mathf.Max(1f, laneHeight)) : 0;
             float pixelDelta = (float)pendingTimeDelta * GetTimelinePixelsPerSecond();
             for (int i = 0; i < dragStarts.Count; i++)
             {
@@ -13904,6 +14128,7 @@ public sealed class ChartEditorOverlay
         bool moved = false;
         int pointerId = -1;
         Vector2 startPointer = Vector2.zero;
+        float startTimelineScrollX = 0f;
         double startTime = 0.0;
         double startEnd = 0.0;
         double startChart = 0.0;
@@ -13921,6 +14146,7 @@ public sealed class ChartEditorOverlay
             moved = false;
             pointerId = evt.pointerId;
             startPointer = PointerPosition(evt);
+            startTimelineScrollX = timelineScrollOffset.x;
             startTime = section.startTimeSeconds;
             startEnd = section.endTimeSeconds;
             startChart = section.chartStartTimeSeconds;
@@ -13938,11 +14164,12 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
-            Vector2 delta = PointerPosition(evt) - startPointer;
-            if (Mathf.Abs(delta.x) > 1f)
+            Vector2 pointer = PointerPosition(evt);
+            float horizontalDragPixels = GetTimelineDragPixelsWithAutoPan(pointer, startPointer, startTimelineScrollX);
+            if (Mathf.Abs(horizontalDragPixels) > 1f)
                 moved = true;
 
-            double newStart = SnapTime(startTime + PixelDeltaToSeconds(delta.x));
+            double newStart = SnapTime(startTime + PixelDeltaToSeconds(horizontalDragPixels));
             double timeDelta = newStart - startTime;
             section.startTimeSeconds = newStart;
             section.endTimeSeconds = Math.Max(section.startTimeSeconds + 0.05, startEnd + timeDelta);
@@ -13984,6 +14211,7 @@ public sealed class ChartEditorOverlay
         bool moved = false;
         int pointerId = -1;
         Vector2 startPointer = Vector2.zero;
+        float startTimelineScrollX = 0f;
         double startAudio = 0.0;
         double minAudio = 0.0;
         double maxAudio = 0.0;
@@ -14022,6 +14250,7 @@ public sealed class ChartEditorOverlay
             moved = false;
             pointerId = evt.pointerId;
             startPointer = PointerPosition(evt);
+            startTimelineScrollX = timelineScrollOffset.x;
             startAudio = point.audioTimeSeconds;
             ResolveAnchorDragBounds(point, out minAudio, out maxAudio);
             if (!IsAnchorSelected(point) || GetSelectedAnchorCount() <= 1)
@@ -14037,11 +14266,12 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
-            Vector2 delta = PointerPosition(evt) - startPointer;
-            if (Mathf.Abs(delta.x) > 1f)
+            Vector2 pointer = PointerPosition(evt);
+            float horizontalDragPixels = GetTimelineDragPixelsWithAutoPan(pointer, startPointer, startTimelineScrollX);
+            if (Mathf.Abs(horizontalDragPixels) > 1f)
                 moved = true;
 
-            double newAudio = startAudio + PixelDeltaToSeconds(delta.x);
+            double newAudio = startAudio + PixelDeltaToSeconds(horizontalDragPixels);
             point.audioTimeSeconds = Math.Max(minAudio, Math.Min(maxAudio, newAudio));
             project.cursorTimeSeconds = point.audioTimeSeconds;
             project.dirty = true;
@@ -14271,14 +14501,32 @@ public sealed class ChartEditorOverlay
         panel.Add(CreateKeyValue("Source", project.sourceKind.ToString()));
     }
 
-    private void ShowNewProjectPopup()
+    private void ShowNewProjectPopup() => ShowProjectFormPopup(editExisting: false);
+
+    private void ShowProjectSettingsPopup()
+    {
+        if (project == null)
+            return;
+
+        ShowProjectFormPopup(editExisting: true);
+    }
+
+    // One form, two modes: creating a new project, or editing the current one
+    // (same visuals, pre-filled; picking a chart/audio file stages a
+    // replacement that is applied with correct re-alignment semantics).
+    private void ShowProjectFormPopup(bool editExisting)
     {
         HideContextMenu();
         HideEditPopup();
 
+        string currentChartName = editExisting ? Path.GetFileName(project.sourcePath ?? string.Empty) : string.Empty;
+        string currentAudioName = editExisting ? (project.audio?.displayName ?? string.Empty) : string.Empty;
+
+        // In edit mode these hold a PENDING replacement; empty means "keep the
+        // current file".
         string chartPath = string.Empty;
         string audioPath = string.Empty;
-        string coverImagePath = string.Empty;
+        string coverImagePath = editExisting ? (project.metadata?.coverImagePath ?? string.Empty) : string.Empty;
         SongNotationSourceKind chartKind = SongNotationSourceKind.None;
         List<MusicXmlLoader.MusicXmlPartSummary> arrangements = new List<MusicXmlLoader.MusicXmlPartSummary>();
         HashSet<int> selectedArrangementIndices = new HashSet<int>();
@@ -14298,11 +14546,11 @@ public sealed class ChartEditorOverlay
         Color cardBorderColor = new Color(0.75f, 0.72f, 0.82f, 0.22f);
         Color hairline = new Color(0.75f, 0.72f, 0.82f, 0.16f);
 
-        TextField titleField = CreateNewProjectTextField("Title", string.Empty);
-        TextField artistField = CreateNewProjectTextField("Artist", string.Empty);
-        TextField albumField = CreateNewProjectTextField("Album", string.Empty);
-        TextField genreField = CreateNewProjectTextField("Genre", string.Empty);
-        TextField yearField = CreateNewProjectTextField("Year", string.Empty);
+        TextField titleField = CreateNewProjectTextField("Title", editExisting ? project.metadata?.title ?? string.Empty : string.Empty);
+        TextField artistField = CreateNewProjectTextField("Artist", editExisting ? project.metadata?.artist ?? string.Empty : string.Empty);
+        TextField albumField = CreateNewProjectTextField("Album", editExisting ? project.metadata?.album ?? string.Empty : string.Empty);
+        TextField genreField = CreateNewProjectTextField("Genre", editExisting ? project.metadata?.genre ?? string.Empty : string.Empty);
+        TextField yearField = CreateNewProjectTextField("Year", editExisting ? project.metadata?.year ?? string.Empty : string.Empty);
 
         Label chartPathLabel = CreateLabel("No chart selected", 28f, textMuted, false, TextAnchor.MiddleLeft, false);
         chartPathLabel.style.whiteSpace = WhiteSpace.Normal;
@@ -14575,16 +14823,28 @@ public sealed class ChartEditorOverlay
         {
             bool hasChart = !string.IsNullOrWhiteSpace(chartPath);
             if (selectChartButton != null)
-                selectChartButton.text = hasChart ? "Replace" : "Browse";
+                selectChartButton.text = hasChart || editExisting ? "Replace" : "Browse";
             if (clearChartButton != null)
                 clearChartButton.style.display = hasChart ? DisplayStyle.Flex : DisplayStyle.None;
 
             if (!hasChart)
             {
-                chartPathLabel.text = "No chart selected";
-                chartPathLabel.style.color = textMuted;
-                chartPathLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
-                chartDetailLabel.text = "Start blank, or import a Guitar Pro / MusicXML file.";
+                if (editExisting)
+                {
+                    bool hasCurrent = !string.IsNullOrEmpty(currentChartName);
+                    chartPathLabel.text = hasCurrent ? currentChartName : "No chart file";
+                    chartPathLabel.style.color = hasCurrent ? textPrimary : textMuted;
+                    chartPathLabel.style.unityFontStyleAndWeight = hasCurrent ? FontStyle.Bold : FontStyle.Normal;
+                    chartDetailLabel.text = "Current chart source. Replacing re-imports every track, note and tone from the new file.";
+                }
+                else
+                {
+                    chartPathLabel.text = "No chart selected";
+                    chartPathLabel.style.color = textMuted;
+                    chartPathLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+                    chartDetailLabel.text = "Start blank, or import a Guitar Pro / MusicXML file.";
+                }
+
                 return;
             }
 
@@ -14592,23 +14852,37 @@ public sealed class ChartEditorOverlay
             chartPathLabel.text = Path.GetFileName(chartPath);
             chartPathLabel.style.color = textPrimary;
             chartPathLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-            chartDetailLabel.text = $"{FormatChartKind(chartKind)}  ·  {selectedCount} of {arrangements.Count} arrangements selected";
+            chartDetailLabel.text = editExisting
+                ? $"{FormatChartKind(chartKind)}  ·  {selectedCount} of {arrangements.Count} arrangements  ·  Applying REPLACES all tracks, notes and tones. Your beat map, sections, audio and details are kept, and notes are re-aligned to your beat map."
+                : $"{FormatChartKind(chartKind)}  ·  {selectedCount} of {arrangements.Count} arrangements selected";
         }
 
         void RefreshAudioLabels()
         {
             bool hasAudio = !string.IsNullOrWhiteSpace(audioPath);
             if (selectAudioButton != null)
-                selectAudioButton.text = hasAudio ? "Replace" : "Browse";
+                selectAudioButton.text = hasAudio || editExisting ? "Replace" : "Browse";
             if (clearAudioButton != null)
                 clearAudioButton.style.display = hasAudio ? DisplayStyle.Flex : DisplayStyle.None;
 
             if (!hasAudio)
             {
-                audioPathLabel.text = "No audio selected";
-                audioPathLabel.style.color = textMuted;
-                audioPathLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
-                audioDetailLabel.text = "Audio can be added now or later.";
+                if (editExisting)
+                {
+                    bool hasCurrent = !string.IsNullOrEmpty(currentAudioName);
+                    audioPathLabel.text = hasCurrent ? currentAudioName : "No audio file";
+                    audioPathLabel.style.color = hasCurrent ? textPrimary : textMuted;
+                    audioPathLabel.style.unityFontStyleAndWeight = hasCurrent ? FontStyle.Bold : FontStyle.Normal;
+                    audioDetailLabel.text = "Current audio. Replacing swaps the file only — notes and the beat map keep their timing.";
+                }
+                else
+                {
+                    audioPathLabel.text = "No audio selected";
+                    audioPathLabel.style.color = textMuted;
+                    audioPathLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+                    audioDetailLabel.text = "Audio can be added now or later.";
+                }
+
                 return;
             }
 
@@ -14616,7 +14890,9 @@ public sealed class ChartEditorOverlay
             audioPathLabel.style.color = textPrimary;
             audioPathLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
             string extension = Path.GetExtension(audioPath)?.TrimStart('.').ToUpperInvariant();
-            audioDetailLabel.text = string.IsNullOrEmpty(extension) ? "Audio file" : $"{extension} audio file";
+            audioDetailLabel.text = editExisting
+                ? $"{(string.IsNullOrEmpty(extension) ? "Audio file" : extension + " audio file")}  ·  Will replace the current audio. Notes and the beat map keep their timing — re-sync if this is a different mix or edit."
+                : (string.IsNullOrEmpty(extension) ? "Audio file" : $"{extension} audio file");
         }
 
         void SelectChart()
@@ -14722,6 +14998,50 @@ public sealed class ChartEditorOverlay
                 }
 
                 SetDialogStatus(error, true);
+            });
+        }
+
+        void ApplyProjectSettings()
+        {
+            bool replaceChart = !string.IsNullOrWhiteSpace(chartPath);
+            bool replaceAudio = !string.IsNullOrWhiteSpace(audioPath);
+            List<int> selectedPartIndices = arrangements
+                .Where(summary => summary != null && selectedArrangementIndices.Contains(summary.Index))
+                .Select(summary => summary.Index)
+                .ToList();
+
+            if (replaceChart && selectedPartIndices.Count == 0)
+            {
+                SetDialogStatus("Select at least one arrangement to import from the new chart file.", true);
+                return;
+            }
+
+            project.metadata.title = titleField.value?.Trim() ?? string.Empty;
+            project.metadata.artist = artistField.value?.Trim() ?? string.Empty;
+            project.metadata.album = albumField.value?.Trim() ?? string.Empty;
+            project.metadata.genre = genreField.value?.Trim() ?? string.Empty;
+            project.metadata.year = yearField.value?.Trim() ?? string.Empty;
+            project.metadata.coverImagePath = coverImagePath?.Trim() ?? string.Empty;
+            project.dirty = true;
+
+            SetDialogStatus("Applying changes...", false);
+            RunWithEditorLoadingOverlay("Applying project changes...", () =>
+            {
+                if (replaceChart && !ReplaceProjectChartFile(chartPath, selectedPartIndices, out string chartError))
+                {
+                    SetDialogStatus(chartError, true);
+                    return;
+                }
+
+                if (replaceAudio && !ReplaceProjectAudioFile(audioPath, out string audioError))
+                {
+                    SetDialogStatus(audioError, true);
+                    return;
+                }
+
+                HideEditPopup();
+                Rebuild();
+                SetStatus(replaceChart || replaceAudio ? "Project files updated." : "Project details updated.");
             });
         }
 
@@ -14863,6 +15183,8 @@ public sealed class ChartEditorOverlay
         clearChartButton = CreateNewProjectIconButton(NewProjectIconKind.Cross, ClearChart, danger: true, size: 72f);
         selectAudioButton = CreateNewProjectGhostButton("Browse", SelectAudio);
         clearAudioButton = CreateNewProjectIconButton(NewProjectIconKind.Cross, ClearAudio, danger: true, size: 72f);
+        RefreshChartLabels();
+        RefreshAudioLabels();
 
         Button CreateFooterButton(string text, Action action, bool primary)
         {
@@ -14955,9 +15277,13 @@ public sealed class ChartEditorOverlay
         headerText.style.flexGrow = 1f;
         headerText.style.flexShrink = 1f;
         headerText.style.minWidth = 0f;
-        Label title = CreateLabel("New Project", 42f, textPrimary, true, TextAnchor.MiddleLeft, false);
+        Label title = CreateLabel(editExisting ? "Project Settings" : "New Project", 42f, textPrimary, true, TextAnchor.MiddleLeft, false);
         headerText.Add(title);
-        Label subtitle = CreateLabel("Import a chart and audio, or start from a blank project.", 22f, textMuted, false, TextAnchor.MiddleLeft, false);
+        Label subtitle = CreateLabel(
+            editExisting
+                ? "Update the song details, or replace the chart and audio files."
+                : "Import a chart and audio, or start from a blank project.",
+            22f, textMuted, false, TextAnchor.MiddleLeft, false);
         subtitle.style.whiteSpace = WhiteSpace.Normal;
         subtitle.style.marginTop = 6f;
         headerText.Add(subtitle);
@@ -14978,8 +15304,8 @@ public sealed class ChartEditorOverlay
         body.contentContainer.style.paddingBottom = 40f;
         body.contentContainer.style.flexShrink = 0f;
 
-        VisualElement chartCard = BuildFileCard(NewProjectIconKind.Note, accentBlue, "Chart", "Optional", chartPathLabel, chartDetailLabel, selectChartButton, clearChartButton, arrangementList);
-        VisualElement audioCard = BuildFileCard(NewProjectIconKind.Waveform, accentGreen, "Audio", "Optional", audioPathLabel, audioDetailLabel, selectAudioButton, clearAudioButton, null);
+        VisualElement chartCard = BuildFileCard(NewProjectIconKind.Note, accentBlue, "Chart", editExisting ? "Current" : "Optional", chartPathLabel, chartDetailLabel, selectChartButton, clearChartButton, arrangementList);
+        VisualElement audioCard = BuildFileCard(NewProjectIconKind.Waveform, accentGreen, "Audio", editExisting ? "Current" : "Optional", audioPathLabel, audioDetailLabel, selectAudioButton, clearAudioButton, null);
         audioCard.style.marginBottom = 0f;
 
         VisualElement detailsCard = CreateCard();
@@ -15102,7 +15428,10 @@ public sealed class ChartEditorOverlay
         footerBand.style.borderTopColor = hairline;
         footerBand.Add(statusLabel);
         Button cancel = CreateFooterButton("Cancel", HideEditPopup, primary: false);
-        Button create = CreateFooterButton("Create Project", CreateProject, primary: true);
+        Button create = CreateFooterButton(
+            editExisting ? "Apply Changes" : "Create Project",
+            editExisting ? ApplyProjectSettings : (Action)CreateProject,
+            primary: true);
         cancel.style.marginRight = 20f;
         footerBand.Add(cancel);
         footerBand.Add(create);
@@ -16926,6 +17255,10 @@ public sealed class ChartEditorOverlay
         if (enabled)
             note.fretHandMute = false;
         note.muted = note.palmMute || note.fretHandMute;
+        note.hasRuntimeMuted = true;
+        note.runtimeMuted = note.muted;
+        note.hasRuntimePalmMute = true;
+        note.runtimePalmMute = note.palmMute;
     }
 
     private static void SetFretHandMute(ChartEditorNote note, bool enabled)
@@ -16937,6 +17270,10 @@ public sealed class ChartEditorOverlay
         if (enabled)
             note.palmMute = false;
         note.muted = note.palmMute || note.fretHandMute;
+        note.hasRuntimeMuted = true;
+        note.runtimeMuted = note.muted;
+        note.hasRuntimePalmMute = true;
+        note.runtimePalmMute = note.palmMute;
     }
 
     private void ShowSustainThenVibratoPopup(List<ChartEditorNoteReference> refs)

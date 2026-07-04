@@ -536,6 +536,7 @@ public sealed class PsarcTheoryParityIntegrationTests
                 FormatFloat(note.bendVisualStartTime),
                 FormatFloat(note.bendVisualDuration),
                 note.isMuted.ToString(),
+                note.isPalmMute.ToString(),
                 SegmentDigest(note.techniqueSegments)));
         }
 

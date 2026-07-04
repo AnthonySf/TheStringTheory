@@ -82,6 +82,12 @@ public static class TheorySongLoader
                 ? BuildStoredTechniqueSegments(source)
                 : BuildNormalizedTechniqueSegments(source);
             NoteTechnique primaryTechnique = ResolveRuntimePrimaryTechnique(source, preserveRuntimeFields);
+            bool runtimeMuted = source.hasRuntimeMuted
+                ? source.runtimeMuted
+                : source.muted && !source.palmMute;
+            bool runtimePalmMute = source.hasRuntimePalmMute
+                ? source.runtimePalmMute
+                : source.palmMute;
             notes.Add(new NoteData(
                 source.id,
                 source.time,
@@ -104,9 +110,9 @@ public static class TheorySongLoader
                 // Palm mutes are a playing technique, not dead/x notes — the
                 // exporter ORs palmMute into muted for legacy compatibility,
                 // so split them back apart for gameplay.
-                source.muted && !source.palmMute,
+                runtimeMuted,
                 source.chordName,
-                palmMuted: source.palmMute));
+                palmMuted: runtimePalmMute));
         }
 
         if (!arrangement.preserveImportedRuntimeNotes)

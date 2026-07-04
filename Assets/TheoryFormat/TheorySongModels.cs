@@ -288,6 +288,10 @@ public sealed class TheoryNoteData
     public bool muted;
     public bool palmMute;
     public bool fretHandMute;
+    public bool hasRuntimeMuted;
+    public bool runtimeMuted;
+    public bool hasRuntimePalmMute;
+    public bool runtimePalmMute;
     public bool harmonic;
     public bool accent;
     public bool tap;

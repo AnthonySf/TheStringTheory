@@ -9,13 +9,14 @@ namespace SynchTheory
             if (audio == null || !audio.IsValid)
                 return Empty(startTimeSeconds, options);
 
-            double frameRate = Math.Max(10.0, options?.frameRate ?? 25.0);
+            double requestedFrameRate = Math.Max(10.0, options?.frameRate ?? 25.0);
             startTimeSeconds = Math.Max(0.0, startTimeSeconds);
             endTimeSeconds = Math.Max(startTimeSeconds + 0.05, Math.Min(audio.DurationSeconds, endTimeSeconds));
 
             int startSample = Clamp((int)Math.Round(startTimeSeconds * audio.sampleRate), 0, audio.monoSamples.Length - 1);
             int endSample = Clamp((int)Math.Round(endTimeSeconds * audio.sampleRate), startSample + 1, audio.monoSamples.Length);
-            int hop = Math.Max(64, (int)Math.Round(audio.sampleRate / frameRate));
+            int hop = Math.Max(64, (int)Math.Round(audio.sampleRate / requestedFrameRate));
+            double frameRate = audio.sampleRate / (double)hop;
             int window = Math.Max(256, Math.Min(4096, hop * 3));
             int frameCount = Math.Max(2, (int)Math.Ceiling((endSample - startSample) / (double)hop));
 

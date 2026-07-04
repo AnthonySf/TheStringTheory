@@ -637,11 +637,14 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
     {
         backgroundEffect?.Dispose();
         backgroundProfile = profile;
+        if (profile == BackgroundProfile.MiniGames && !IsMiniGameEnviroSkyActive())
+            ConfigureMiniGameBackgroundCamera();
+
         GuitarBridgeServer.TabsBackgroundContext ownerContext = ToOwnerBackgroundContext(profile);
         bool applyHighwayOverrides = profile == BackgroundProfile.Gameplay;
         backgroundEffect = TabsBackgroundFactory.Create(owner, applyHighwayOverrides, ownerContext);
         backgroundSignature = GetBackgroundSignature(profile);
-        SetBackgroundEffectRenderCamera(mainCamera);
+        SetBackgroundEffectRenderCamera(GetBackgroundEffectRenderCamera(profile));
         if (backgroundEffect != null && backgroundRoot != null)
         {
             backgroundEffect.Initialize(backgroundRoot.transform, owner);
@@ -3260,6 +3263,38 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         return owner.GetBackgroundSignatureForContext(ToOwnerBackgroundContext(profile));
     }
 
+    private void ConfigureMiniGameBackgroundCamera()
+    {
+        if (backgroundCamera == null || owner == null)
+            return;
+
+        backgroundCamera.enabled = true;
+        backgroundCamera.orthographic = true;
+        backgroundCamera.orthographicSize = owner.tabCameraSize;
+        backgroundCamera.clearFlags = CameraClearFlags.SolidColor;
+        backgroundCamera.backgroundColor = GetCameraBackgroundColor();
+        backgroundCamera.cullingMask = 1 << BackgroundLayer;
+        backgroundCamera.depth = originalMainCameraDepth - 1f;
+        backgroundCamera.nearClipPlane = 0.01f;
+        backgroundCamera.farClipPlane = Mathf.Max(100f, owner.highwayCameraFarClip);
+        backgroundCamera.transform.position = new Vector3(0f, 0f, owner.tabCameraZ);
+        backgroundCamera.transform.rotation = Quaternion.identity;
+    }
+
+    private bool IsMiniGameEnviroSkyActive()
+    {
+        return owner != null &&
+               owner.GetBackgroundModeForContext(GuitarBridgeServer.TabsBackgroundContext.MiniGames) == GuitarBridgeServer.TabsBackgroundMode.NeonStage &&
+               owner.GetNeonStageSkyDesign(false) == GuitarBridgeServer.TabsNeonStageSkyDesign.Enviro3;
+    }
+
+    private Camera GetBackgroundEffectRenderCamera(BackgroundProfile profile)
+    {
+        return profile == BackgroundProfile.MiniGames && backgroundCamera != null && !IsMiniGameEnviroSkyActive()
+            ? backgroundCamera
+            : mainCamera;
+    }
+
     private bool ShouldUsePerspectiveBackgroundCamera()
     {
         if (owner == null || backgroundProfile == BackgroundProfile.Gameplay)
@@ -3296,7 +3331,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         if (mainCamera == null || owner == null)
             return;
 
-        if (backgroundProfile != BackgroundProfile.Gameplay)
+        if (backgroundProfile == BackgroundProfile.MainMenu)
         {
             bool usePerspectiveCamera = ShouldUsePerspectiveBackgroundCamera();
             if (backgroundCamera != null)
@@ -3324,6 +3359,40 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
 
             mainCamera.backgroundColor = GetCameraBackgroundColor();
             SetBackgroundEffectRenderCamera(mainCamera);
+            ApplyHostCameraOverrides();
+            return;
+        }
+
+        if (backgroundProfile == BackgroundProfile.MiniGames)
+        {
+            bool useEnviroSkyCamera = IsMiniGameEnviroSkyActive();
+            if (useEnviroSkyCamera)
+            {
+                if (backgroundCamera != null)
+                    backgroundCamera.enabled = false;
+            }
+            else
+            {
+                ConfigureMiniGameBackgroundCamera();
+            }
+
+            mainCamera.orthographic = false;
+            mainCamera.clearFlags = useEnviroSkyCamera
+                ? CameraClearFlags.Skybox
+                : backgroundCamera != null
+                    ? CameraClearFlags.Depth
+                    : CameraClearFlags.SolidColor;
+            if (originalMainCameraCullingMask >= 0)
+                mainCamera.cullingMask = useEnviroSkyCamera
+                    ? (originalMainCameraCullingMask | (1 << BackgroundLayer) | MiniGameFightStage3DRenderer.StageUnityLayerMask)
+                    : (originalMainCameraCullingMask & ~(1 << BackgroundLayer)) | MiniGameFightStage3DRenderer.StageUnityLayerMask;
+            mainCamera.depth = originalMainCameraDepth;
+            mainCamera.farClipPlane = Mathf.Max(mainCamera.farClipPlane, owner.highwayCameraFarClip);
+            mainCamera.transform.position = new Vector3(0f, owner.highwayCameraY, owner.highwayCameraZ);
+            mainCamera.transform.rotation = Quaternion.Euler(owner.highwayCameraPitch, 0f, 0f);
+            mainCamera.fieldOfView = 60f;
+            mainCamera.backgroundColor = GetCameraBackgroundColor();
+            SetBackgroundEffectRenderCamera(GetBackgroundEffectRenderCamera(backgroundProfile));
             ApplyHostCameraOverrides();
             return;
         }
@@ -3378,7 +3447,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         GameObject deck = GameObject.CreatePrimitive(PrimitiveType.Cube);
         deck.name = "ArcadeHighwayDeck";
         deck.transform.SetParent(gameplayRoot.transform, false);
-        deck.transform.position = new Vector3(0f, LaneSurfaceY - 0.025f, surfaceCenterZ);
+        deck.transform.localPosition = new Vector3(0f, LaneSurfaceY - 0.025f, surfaceCenterZ);
         deck.transform.localScale = new Vector3(trackWidth + laneWidth * 0.30f, 0.030f, surfaceDepth);
         Object.Destroy(deck.GetComponent<Collider>());
         Material deckMaterial = owner.CreateSharedTransparentMaterial(new Color(0.010f, 0.014f, 0.024f, 0.64f), 0.04f);
@@ -3390,7 +3459,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             GameObject laneSurface = GameObject.CreatePrimitive(PrimitiveType.Cube);
             laneSurface.name = $"ArcadeLane_{lane}";
             laneSurface.transform.SetParent(gameplayRoot.transform, false);
-            laneSurface.transform.position = new Vector3(GetLaneX(lane), LaneSurfaceY, surfaceCenterZ);
+            laneSurface.transform.localPosition = new Vector3(GetLaneX(lane), LaneSurfaceY, surfaceCenterZ);
             laneSurface.transform.localScale = new Vector3(laneWidth, 0.025f, surfaceDepth);
             Object.Destroy(laneSurface.GetComponent<Collider>());
 
@@ -3406,7 +3475,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             GameObject laneGuide = GameObject.CreatePrimitive(PrimitiveType.Cube);
             laneGuide.name = $"ArcadeLaneGuide_{boundary}";
             laneGuide.transform.SetParent(gameplayRoot.transform, false);
-            laneGuide.transform.position = new Vector3(GetBoundaryX(boundary), LaneSurfaceY + 0.064f, guideCenterZ);
+            laneGuide.transform.localPosition = new Vector3(GetBoundaryX(boundary), LaneSurfaceY + 0.064f, guideCenterZ);
             laneGuide.transform.localScale = new Vector3(Mathf.Max(Mathf.Max(0.02f, owner.highwayLaneGuideThickness), laneWidth * 0.03f), 0.085f, guideDepth);
             Object.Destroy(laneGuide.GetComponent<Collider>());
             Material guideMaterial = CreateLaneGuideMaterial();
@@ -3419,7 +3488,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
             GameObject endpoint = GameObject.CreatePrimitive(PrimitiveType.Cube);
             endpoint.name = $"ArcadeEndpoint_{lane}";
             endpoint.transform.SetParent(gameplayRoot.transform, false);
-            endpoint.transform.position = new Vector3(GetLaneX(lane), EndpointY, owner.StrikeLineZ);
+            endpoint.transform.localPosition = new Vector3(GetLaneX(lane), EndpointY, owner.StrikeLineZ);
             endpoint.transform.localScale = new Vector3(laneWidth * 0.56f, 0.16f, EndpointDepth);
             Object.Destroy(endpoint.GetComponent<Collider>());
 
@@ -3434,7 +3503,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         GameObject strikeLine = GameObject.CreatePrimitive(PrimitiveType.Cube);
         strikeLine.name = "ArcadeStrikeLine";
         strikeLine.transform.SetParent(gameplayRoot.transform, false);
-        strikeLine.transform.position = new Vector3(0f, EndpointY - 0.04f, owner.StrikeLineZ - 0.04f);
+        strikeLine.transform.localPosition = new Vector3(0f, EndpointY - 0.04f, owner.StrikeLineZ - 0.04f);
         strikeLine.transform.localScale = new Vector3(trackWidth + laneWidth * 0.18f, 0.055f, 0.08f);
         Object.Destroy(strikeLine.GetComponent<Collider>());
         Material strikeMaterial = owner.CreateSharedTransparentMaterial(new Color(0.92f, 0.96f, 1f, 0.74f), 0.35f);
@@ -3451,7 +3520,7 @@ public sealed class ArcadeHighway3DRenderer : IGuitarGameplayRenderer
         rail.name = side < 0 ? "ArcadeLeftRail" : "ArcadeRightRail";
         rail.transform.SetParent(gameplayRoot.transform, false);
         float laneWidth = GetLaneWidth();
-        rail.transform.position = new Vector3(side * ((trackWidth * 0.5f) + laneWidth * 0.08f), LaneSurfaceY + 0.05f, centerZ);
+        rail.transform.localPosition = new Vector3(side * ((trackWidth * 0.5f) + laneWidth * 0.08f), LaneSurfaceY + 0.05f, centerZ);
         rail.transform.localScale = new Vector3(Mathf.Max(0.04f, laneWidth * 0.04f), 0.075f, guideDepth);
         Object.Destroy(rail.GetComponent<Collider>());
         Material railMaterial = owner.CreateSharedTransparentMaterial(new Color(0.74f, 0.86f, 1f, 0.20f), 0.12f);

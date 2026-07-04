@@ -25,13 +25,14 @@ public static class TheoryChartEditorExporter
 
         try
         {
+            bool preserveExistingGeneratedPlayback = !project.dirty;
             project.EnsureDefaults();
             ChartEditorRuntimeNoteSanitizer.SanitizeProjectNotes(project);
             ChartEditorTimingService.EnsureBeatMap(project, attachContentToBeatMap: true);
 
             Directory.CreateDirectory(exportDirectory);
             packagePath = Path.Combine(exportDirectory, $"{BuildPackageFileName(project)}{TheoryPackageFormat.Extension}");
-            TheoryPackageWriteRequest request = BuildWriteRequest(project, packagePath);
+            TheoryPackageWriteRequest request = BuildWriteRequest(project, packagePath, preserveExistingGeneratedPlayback);
             return TheoryPackageIO.WritePackage(packagePath, request, out error);
         }
         catch (Exception ex)
@@ -58,6 +59,7 @@ public static class TheoryChartEditorExporter
 
         try
         {
+            bool preserveExistingGeneratedPlayback = !project.dirty;
             project.EnsureDefaults();
             ChartEditorRuntimeNoteSanitizer.SanitizeProjectNotes(project);
             ChartEditorTimingService.EnsureBeatMap(project, attachContentToBeatMap: true);
@@ -66,7 +68,7 @@ public static class TheoryChartEditorExporter
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
 
-            TheoryPackageWriteRequest request = BuildWriteRequest(project, packagePath);
+            TheoryPackageWriteRequest request = BuildWriteRequest(project, packagePath, preserveExistingGeneratedPlayback);
             return TheoryPackageIO.WritePackage(packagePath, request, out error);
         }
         catch (Exception ex)
@@ -76,9 +78,15 @@ public static class TheoryChartEditorExporter
         }
     }
 
-    private static TheoryPackageWriteRequest BuildWriteRequest(ChartEditorProject project, string packagePath)
+    private static TheoryPackageWriteRequest BuildWriteRequest(
+        ChartEditorProject project,
+        string packagePath,
+        bool preserveExistingGeneratedPlayback)
     {
         ChartEditorToneScopeService.NormalizeProjectToneGroups(project);
+        bool preserveGeneratedPlaybackSet =
+            preserveExistingGeneratedPlayback &&
+            ProjectHasExistingGeneratedPlayback(project);
         float duration = Mathf.Max(project.DurationSeconds, 0.1f);
         List<TheoryArrangementData> arrangements = new List<TheoryArrangementData>();
         List<TheoryArrangementSummary> summaries = new List<TheoryArrangementSummary>();
@@ -94,7 +102,14 @@ public static class TheoryChartEditorExporter
             string arrangementId = SanitizeIdentifier(string.IsNullOrWhiteSpace(track.id) ? $"track_{i + 1}" : track.id);
             string groupId = BuildArrangementGroupId(track, arrangementId);
             bool hasDifficultyVariants = variantCounts.TryGetValue(groupId, out int variantCount) && variantCount > 1;
-            TheoryArrangementData arrangement = BuildArrangement(project, track, arrangementId, groupId, hasDifficultyVariants, duration);
+            TheoryArrangementData arrangement = BuildArrangement(
+                project,
+                track,
+                arrangementId,
+                groupId,
+                hasDifficultyVariants,
+                duration,
+                preserveGeneratedPlaybackSet);
             string entry = TheoryPackageFormat.BuildArrangementEntryName(arrangementId);
             arrangements.Add(arrangement);
             summaries.Add(new TheoryArrangementSummary
@@ -185,13 +200,28 @@ public static class TheoryChartEditorExporter
         }
 
         DateTime now = DateTime.UtcNow;
+
+        // Deterministic timestamps so a no-edit re-export produces an
+        // identical package: creation time is carried from the existing
+        // package, and modified time is the project's last save time (not the
+        // moment the export button was pressed).
+        long createdTicks = now.Ticks;
+        if (TheoryPackageIO.TryReadManifest(packagePath, out TheorySongManifest priorManifest, out _) &&
+            priorManifest != null &&
+            priorManifest.createdAtUtcTicks > 0)
+        {
+            createdTicks = priorManifest.createdAtUtcTicks;
+        }
+
+        long modifiedTicks = ResolveDeterministicModifiedTicks(project);
+
         TheorySongManifest manifest = new TheorySongManifest
         {
             formatId = TheoryPackageFormat.FormatId,
             schemaVersion = TheoryPackageFormat.SchemaVersion,
             packageId = string.IsNullOrWhiteSpace(project.projectId) ? Guid.NewGuid().ToString("N") : project.projectId,
-            createdAtUtcTicks = now.Ticks,
-            modifiedAtUtcTicks = now.Ticks,
+            createdAtUtcTicks = createdTicks,
+            modifiedAtUtcTicks = modifiedTicks,
             title = string.IsNullOrWhiteSpace(project.metadata?.title) ? "Edited Chart" : project.metadata.title.Trim(),
             artist = project.metadata?.artist ?? string.Empty,
             album = project.metadata?.album ?? string.Empty,
@@ -210,7 +240,7 @@ public static class TheoryChartEditorExporter
                 sourcePath = project.sourcePath ?? string.Empty,
                 sourceLastWriteUtcTicks = TryGetLastWriteUtcTicks(project.sourcePath),
                 sourceSizeBytes = TryGetFileSize(project.sourcePath),
-                importedAtUtcTicks = now.Ticks,
+                importedAtUtcTicks = modifiedTicks,
                 converterName = "String Theory Chart Editor",
                 converterVersion = TheoryPackageFormat.SchemaVersion.ToString()
             },
@@ -364,6 +394,12 @@ public static class TheoryChartEditorExporter
         return counts;
     }
 
+    private static bool ProjectHasExistingGeneratedPlayback(ChartEditorProject project)
+    {
+        return project?.tracks != null &&
+               project.tracks.Any(track => track?.generatedNotes != null && track.generatedNotes.Count > 0);
+    }
+
     private static string BuildArrangementGroupId(ChartEditorTrack track, string arrangementId)
     {
         string groupId = FirstNonEmpty(track?.arrangementGroupId, arrangementId);
@@ -418,7 +454,8 @@ public static class TheoryChartEditorExporter
         string arrangementId,
         string groupId,
         bool hasDifficultyVariants,
-        float duration)
+        float duration,
+        bool preserveExistingGeneratedPlayback)
     {
         List<ChartEditorNote> orderedNotes = ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(track.notes?
             .Where(note => note != null)
@@ -455,7 +492,7 @@ public static class TheoryChartEditorExporter
             notes = new List<TheoryNoteData>(),
             arpeggioGuides = BuildArpeggioGuides(track),
             generatedChannels = BuildGeneratedChannels(track),
-            generatedNotes = BuildGeneratedNotes(track, arrangementId)
+            generatedNotes = BuildGeneratedNotes(track, arrangementId, preserveExistingGeneratedPlayback)
         };
 
         // Editor-added notes (sourceNoteId = -1) must not fall back to their
@@ -609,7 +646,7 @@ public static class TheoryChartEditorExporter
         TheoryToneLabMappingState state = new TheoryToneLabMappingState
         {
             schemaVersion = TheoryPackageFormat.SchemaVersion,
-            modifiedAtUtcTicks = DateTime.UtcNow.Ticks,
+            modifiedAtUtcTicks = ResolveDeterministicModifiedTicks(project),
             mappings = new List<TheoryToneLabPresetMappingData>()
         };
 
@@ -740,12 +777,26 @@ public static class TheoryChartEditorExporter
         return result;
     }
 
-    private static List<TheoryGeneratedNoteEvent> BuildGeneratedNotes(ChartEditorTrack track, string arrangementId)
+    private static List<TheoryGeneratedNoteEvent> BuildGeneratedNotes(
+        ChartEditorTrack track,
+        string arrangementId,
+        bool preserveExistingGeneratedPlayback)
     {
         List<TheoryGeneratedNoteEvent> result = new List<TheoryGeneratedNoteEvent>();
-        List<ChartEditorGeneratedNoteEvent> sourceNotes = ChartEditorGeneratedPlaybackIntegrity.CanReuseGeneratedPlayback(track)
-            ? track.generatedNotes
-            : ChartEditorGeneratedPlaybackBuilder.BuildFromChartNotes(track, arrangementId);
+        bool hasExistingGeneratedPlayback = track?.generatedNotes != null && track.generatedNotes.Count > 0;
+        List<ChartEditorGeneratedNoteEvent> sourceNotes;
+        if (preserveExistingGeneratedPlayback)
+        {
+            sourceNotes = hasExistingGeneratedPlayback
+                ? track.generatedNotes
+                : new List<ChartEditorGeneratedNoteEvent>();
+        }
+        else
+        {
+            sourceNotes = ChartEditorGeneratedPlaybackIntegrity.CanReuseGeneratedPlayback(track)
+                ? track.generatedNotes
+                : ChartEditorGeneratedPlaybackBuilder.BuildFromChartNotes(track, arrangementId);
+        }
 
         for (int i = 0; i < sourceNotes.Count; i++)
         {
@@ -802,9 +853,14 @@ public static class TheoryChartEditorExporter
         bool isHammerOn = IsEditorTechniqueEnabled(note, NoteTechnique.HammerOn);
         bool isPullOff = IsEditorTechniqueEnabled(note, NoteTechnique.PullOff);
         bool hasVibrato = IsEditorTechniqueEnabled(note, NoteTechnique.Vibrato);
-        bool hasSpecificMute = note.palmMute || note.fretHandMute;
-        bool palmMute = note.palmMute || (note.muted && !hasSpecificMute);
+        // Palm mute is exported verbatim: the old fallback that promoted any
+        // muted note to a palm mute turned dead/x notes into PM notes on the
+        // first save (imports now set palmMute properly, so the guess is
+        // never needed).
+        bool palmMute = note.palmMute;
         bool muted = note.muted || note.palmMute || note.fretHandMute;
+        bool runtimeMuted = note.hasRuntimeMuted ? note.runtimeMuted : note.muted;
+        bool runtimePalmMute = note.hasRuntimePalmMute ? note.runtimePalmMute : note.palmMute;
 
         TheoryNoteData result = new TheoryNoteData
         {
@@ -826,6 +882,10 @@ public static class TheoryChartEditorExporter
             muted = muted,
             palmMute = palmMute,
             fretHandMute = note.fretHandMute,
+            hasRuntimeMuted = true,
+            runtimeMuted = runtimeMuted,
+            hasRuntimePalmMute = true,
+            runtimePalmMute = runtimePalmMute,
             harmonic = note.harmonic,
             accent = note.accent,
             tap = note.tap,
@@ -1199,6 +1259,15 @@ public static class TheoryChartEditorExporter
         {
             return 0L;
         }
+    }
+
+    // Exports must be reproducible: a no-edit re-export should produce an
+    // identical package, so "modified" derives from the project's last save
+    // time rather than the wall clock at export.
+    private static long ResolveDeterministicModifiedTicks(ChartEditorProject project)
+    {
+        long ticks = TryGetLastWriteUtcTicks(project?.savedProjectPath);
+        return ticks > 0 ? ticks : DateTime.UtcNow.Ticks;
     }
 
     private static long TryGetLastWriteUtcTicks(string path)

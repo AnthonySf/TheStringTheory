@@ -490,6 +490,10 @@ public sealed class ChartEditorNote
     public bool muted;
     public bool palmMute;
     public bool fretHandMute;
+    public bool hasRuntimeMuted;
+    public bool runtimeMuted;
+    public bool hasRuntimePalmMute;
+    public bool runtimePalmMute;
     public bool harmonic;
     public bool accent;
     public bool tap;
@@ -699,7 +703,12 @@ public static class ChartEditorGeneratedPlaybackIntegrity
 {
     public static string ComputeNoteFingerprint(ChartEditorTrack track)
     {
-        return ComputeNoteFingerprint(track?.notes);
+        if (track == null)
+            return ComputeNoteFingerprint((IEnumerable<ChartEditorNote>)null);
+
+        return ComputeNoteFingerprint(ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(
+            track.notes,
+            !track.preserveImportedRuntimeNotes));
     }
 
     public static string ComputeNoteFingerprint(IEnumerable<ChartEditorNote> notes)
@@ -730,6 +739,10 @@ public static class ChartEditorGeneratedPlaybackIntegrity
                 .Append(note.muted).Append('|')
                 .Append(note.palmMute).Append('|')
                 .Append(note.fretHandMute).Append('|')
+                .Append(note.hasRuntimeMuted).Append('|')
+                .Append(note.runtimeMuted).Append('|')
+                .Append(note.hasRuntimePalmMute).Append('|')
+                .Append(note.runtimePalmMute).Append('|')
                 .Append(note.harmonic).Append('|')
                 .Append(note.accent).Append('|')
                 .Append(note.tap).Append('|')

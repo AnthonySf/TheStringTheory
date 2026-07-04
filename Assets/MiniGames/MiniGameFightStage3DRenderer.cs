@@ -9,7 +9,7 @@ public sealed class MiniGameFightStage3DRenderer
 {
     private const string RootName = "MiniGameFightStage3D";
     private const string StageCameraName = "MiniGameFightStage3DCamera";
-    private const string RuntimeRevisionMarkerName = "FightClubStageRuntimeRevision_28";
+    private const string RuntimeRevisionMarkerName = "FightClubStageRuntimeRevision_29";
     private const string LeftSpotlightName = "FightClubLeftSpotlight";
     private const string RightSpotlightName = "FightClubRightSpotlight";
     private const string FloorName = "FightClubFlatFloor";
@@ -19,6 +19,10 @@ public sealed class MiniGameFightStage3DRenderer
     private const string FightClubActionJumpFileName = "NEW_Elize_Jumping.png";
     private const string FightClubActionHeadbangFileName = "NEW_Elize_Headbanging.png";
     private const string FightClubIdlePoseFileName = "NEW_Elize_Idle.png";
+    private const string SkullheadIdleFileName = "Skullhead_Idle.png";
+    private const string SkullheadHitFileName = "Skullhead_Hit.png";
+    private const string SkullheadMissFileName = "Skullhead_Miss.png";
+    private const string SkullheadSuperFileName = "Skullhead_Super.png";
     private const int IdleFrameCount = 6;
     private const float IdleFps = 7.5f;
     private const float ActionHoldSeconds = 0.58f;
@@ -36,6 +40,10 @@ public sealed class MiniGameFightStage3DRenderer
     private const float IdleFramePixelWidth = 120f;
     private const float IdleFramePixelHeight = 160f;
     private const float ReferenceVisiblePixelHeight = 124f;
+    private const float SkullheadVisualScale = 1.16f;
+    private const float SkullheadRightBaseXOffset = -0.46f;
+    private const float SkullheadIdleBreathHeight = 0.024f;
+    private const float SkullheadIdleBreathWidth = 0.015f;
     private const float CharacterFootSink = -0.02f;
     private const float LeftCharacterBaseX = -5.05f;
     private const float RightCharacterBaseX = 5.05f;
@@ -104,7 +112,12 @@ public sealed class MiniGameFightStage3DRenderer
     private Texture2D actionJumpTexture;
     private Texture2D actionHeadbangTexture;
     private Texture2D idlePoseTexture;
+    private Texture2D skullheadIdleTexture;
+    private Texture2D skullheadHitTexture;
+    private Texture2D skullheadMissTexture;
+    private Texture2D skullheadSuperTexture;
     private static Texture2D floorAlbedoTexture;
+    private bool fightClubTexturesLoaded;
     private bool staleRootScanDone;
     private int lastRound = -1;
     private int lastActiveChordIndex = -2;
@@ -317,8 +330,9 @@ public sealed class MiniGameFightStage3DRenderer
             ConfigureRenderer(floorRenderer, ShadowCastingMode.Off, receiveShadows: true);
         }
 
+        float rightBaseX = GetRightCharacterPoseBaseX();
         RefreshStageSpotLight(LeftSpotlightName, new Vector3(-8.15f, 3.95f, -6.10f), new Vector3(LeftCharacterBaseX + 0.20f, FloorY + 0.03f, 0.82f), LeftSpotColor);
-        RefreshStageSpotLight(RightSpotlightName, new Vector3(8.15f, 3.95f, -6.10f), new Vector3(RightCharacterBaseX - 0.20f, FloorY + 0.03f, 0.82f), RightSpotColor);
+        RefreshStageSpotLight(RightSpotlightName, new Vector3(8.15f, 3.95f, -6.10f), new Vector3(rightBaseX - 0.20f, FloorY + 0.03f, 0.82f), RightSpotColor);
     }
 
     private void EnsureStageRuntimeState()
@@ -818,27 +832,37 @@ public sealed class MiniGameFightStage3DRenderer
         bool opponentActionActive = now < opponentActionUntil;
         float idleBreath = (Mathf.Sin(now * 2.0f) + 1f) * 0.5f;
         float idleSway = Mathf.Sin(now * 1.35f);
+        bool rightUsesSkullhead = skullheadIdleTexture != null;
         Texture2D leftTexture = idleSheetTexture;
-        Texture2D rightTexture = idleSheetTexture;
-        Vector2 leftScale = GetIdleUvScale();
-        Vector2 rightScale = leftScale;
-        Vector2 leftOffset = GetIdleUvOffset(now, 0f);
-        Vector2 rightOffset = GetIdleUvOffset(now, 0.18f);
+        Texture2D rightTexture = rightUsesSkullhead ? skullheadIdleTexture : idleSheetTexture;
+        Vector2 leftScale = GetCharacterUvScale(leftTexture, idleSheetTexture);
+        Vector2 rightScale = GetCharacterUvScale(rightTexture, idleSheetTexture);
+        Vector2 leftOffset = GetCharacterUvOffset(leftTexture, idleSheetTexture, now, 0f);
+        Vector2 rightOffset = GetCharacterUvOffset(rightTexture, idleSheetTexture, now, 0.18f);
         Color leftTint = HitTint;
         Color rightTint = HitTint;
-        float poseHeight = GetPoseHeight(leftTexture);
-        float poseWidth = GetPoseWidth(leftTexture, leftScale, poseHeight);
-        float scaledPoseHeight = poseHeight * (1f + (idleBreath * 0.018f));
+        float leftPoseHeight = GetPoseHeight(leftTexture);
+        float leftPoseWidth = GetPoseWidth(leftTexture, leftScale, leftPoseHeight);
+        float rightPoseHeight = GetPoseHeight(rightTexture);
+        float rightPoseWidth = GetPoseWidth(rightTexture, rightScale, rightPoseHeight);
+        float rightIdlePulse = rightUsesSkullhead ? Mathf.Sin(now * 2.35f + 0.45f) : idleBreath;
+        float leftScaledPoseHeight = leftPoseHeight * (1f + (idleBreath * 0.018f));
+        float rightScaledPoseHeight = rightPoseHeight * (rightUsesSkullhead
+            ? 1f + (rightIdlePulse * SkullheadIdleBreathHeight)
+            : 1f + (idleBreath * 0.018f));
         float leftX = LeftCharacterBaseX;
-        float rightX = RightCharacterBaseX;
-        float leftY = GetPoseCenterY(leftTexture, scaledPoseHeight);
-        float rightY = leftY;
+        float rightBaseX = GetRightCharacterPoseBaseX();
+        float rightX = rightBaseX;
+        float leftY = GetPoseCenterY(leftTexture, leftScaledPoseHeight);
+        float rightY = GetPoseCenterY(rightTexture, rightScaledPoseHeight);
         float leftRot = idleSway * 1.1f;
-        float rightRot = -leftRot;
-        float leftScaleX = poseWidth * (1f - (idleBreath * 0.012f));
-        float rightScaleX = -leftScaleX;
-        float leftScaleY = scaledPoseHeight;
-        float rightScaleY = scaledPoseHeight;
+        float rightRot = rightUsesSkullhead ? 0f : -idleSway * 1.1f;
+        float leftScaleX = leftPoseWidth * (1f - (idleBreath * 0.012f));
+        float rightScaleX = -rightPoseWidth * (rightUsesSkullhead
+            ? 1f - (rightIdlePulse * SkullheadIdleBreathWidth)
+            : 1f - (idleBreath * 0.012f));
+        float leftScaleY = leftScaledPoseHeight;
+        float rightScaleY = rightScaledPoseHeight;
 
         if (missActive)
         {
@@ -847,16 +871,17 @@ public sealed class MiniGameFightStage3DRenderer
             float settle = Mathf.SmoothStep(1f, 0f, Mathf.Clamp01(t / 0.58f));
             float recoil = -0.24f * hitPulse;
             float shake = Mathf.Sin(t * 28f) * 0.035f * settle;
-            leftTexture = idlePoseTexture != null ? idlePoseTexture : idleSheetTexture;
-            bool useIdlePose = idlePoseTexture != null;
-            leftScale = useIdlePose ? Vector2.one : GetIdleUvScale();
-            leftOffset = useIdlePose ? Vector2.zero : GetIdleUvOffset(now, 0f);
+            leftTexture = idlePoseTexture;
+            if (leftTexture == null)
+                leftTexture = idleSheetTexture;
+            leftScale = GetCharacterUvScale(leftTexture, idleSheetTexture);
+            leftOffset = GetCharacterUvOffset(leftTexture, idleSheetTexture, now, 0f);
             leftTint = Color.Lerp(MissTint, MissPulseTint, hitPulse * 0.28f);
             rightTint = HitTint;
-            poseHeight = GetPoseHeight(leftTexture);
-            poseWidth = GetPoseWidth(leftTexture, leftScale, poseHeight);
-            leftScaleX = poseWidth * (1f + (hitPulse * 0.075f));
-            leftScaleY = poseHeight * (1f - (hitPulse * 0.028f));
+            leftPoseHeight = GetPoseHeight(leftTexture);
+            leftPoseWidth = GetPoseWidth(leftTexture, leftScale, leftPoseHeight);
+            leftScaleX = leftPoseWidth * (1f + (hitPulse * 0.075f));
+            leftScaleY = leftPoseHeight * (1f - (hitPulse * 0.028f));
             leftX = LeftCharacterBaseX + recoil + shake;
             leftY = GetPoseCenterY(leftTexture, leftScaleY);
             leftRot = 0f;
@@ -870,45 +895,65 @@ public sealed class MiniGameFightStage3DRenderer
             if (actionTexture != null)
             {
                 leftTexture = actionTexture;
-                leftScale = Vector2.one;
-                leftOffset = Vector2.zero;
+                leftScale = GetCharacterUvScale(leftTexture, idleSheetTexture);
+                leftOffset = GetCharacterUvOffset(leftTexture, idleSheetTexture, now, 0f);
             }
 
-            poseHeight = GetPoseHeight(leftTexture);
-            poseWidth = GetPoseWidth(leftTexture, leftScale, poseHeight);
-            leftScaleY = poseHeight * (1f + (power * 0.055f));
+            leftPoseHeight = GetPoseHeight(leftTexture);
+            leftPoseWidth = GetPoseWidth(leftTexture, leftScale, leftPoseHeight);
+            leftScaleY = leftPoseHeight * (1f + (power * 0.055f));
             leftX = LeftCharacterBaseX + (0.64f * power);
             leftY = GetPoseCenterY(leftTexture, leftScaleY) + (0.34f * power);
             leftRot = useJump ? -5.0f * power : 4.0f * power;
-            leftScaleX = poseWidth * (1f + (power * 0.10f));
+            leftScaleX = leftPoseWidth * (1f + (power * 0.10f));
         }
 
         if (opponentActionActive)
         {
             float t = Mathf.Clamp01((now - opponentActionStartedAt) / ActionHoldSeconds);
             float power = Mathf.Sin(t * Mathf.PI);
-            bool useJump = (lastOpponentActionChordIndex & 1) == 0;
-            Texture2D actionTexture = useJump ? actionJumpTexture : actionHeadbangTexture;
+            bool useSuper = (lastOpponentActionChordIndex & 1) != 0;
+            Texture2D actionTexture = null;
+            bool usedSkullheadAction = false;
+            if (rightUsesSkullhead)
+            {
+                actionTexture = useSuper && skullheadSuperTexture != null ? skullheadSuperTexture : skullheadHitTexture;
+                if (actionTexture == null)
+                    actionTexture = skullheadSuperTexture;
+                if (actionTexture == null)
+                    actionTexture = skullheadIdleTexture;
+                usedSkullheadAction = actionTexture != null;
+            }
+            if (actionTexture == null)
+            {
+                bool useJump = (lastOpponentActionChordIndex & 1) == 0;
+                actionTexture = useJump ? actionJumpTexture : actionHeadbangTexture;
+            }
             if (actionTexture != null)
             {
                 rightTexture = actionTexture;
-                rightScale = Vector2.one;
-                rightOffset = Vector2.zero;
+                rightScale = GetCharacterUvScale(rightTexture, idleSheetTexture);
+                rightOffset = GetCharacterUvOffset(rightTexture, idleSheetTexture, now, 0.18f);
             }
 
-            float rightPoseHeight = GetPoseHeight(rightTexture);
-            float rightPoseWidth = GetPoseWidth(rightTexture, rightScale, rightPoseHeight);
-            rightScaleY = rightPoseHeight * (1f + (power * 0.055f));
-            rightX = RightCharacterBaseX - (0.64f * power);
-            rightY = GetPoseCenterY(rightTexture, rightScaleY) + (0.34f * power);
-            rightRot = useJump ? 5.0f * power : -4.0f * power;
-            rightScaleX = -rightPoseWidth * (1f + (power * 0.10f));
+            float opponentPoseHeight = GetPoseHeight(rightTexture);
+            float opponentPoseWidth = GetPoseWidth(rightTexture, rightScale, opponentPoseHeight);
+            rightScaleY = opponentPoseHeight * (1f + (power * (usedSkullheadAction ? 0.025f : 0.055f)));
+            rightX = rightBaseX - ((usedSkullheadAction ? (useSuper ? 0.34f : 0.52f) : 0.64f) * power);
+            rightY = GetPoseCenterY(rightTexture, rightScaleY) + (usedSkullheadAction ? 0f : 0.34f * power);
+            rightRot = usedSkullheadAction ? 0f : ((lastOpponentActionChordIndex & 1) == 0 ? 5.0f * power : -4.0f * power);
+            rightScaleX = -opponentPoseWidth * (1f + (power * (usedSkullheadAction ? 0.050f : 0.10f)));
         }
 
         ApplyCharacter(leftCharacter, leftCharacterMaterial, leftTexture, leftScale, leftOffset, leftTint, leftX, leftY, leftScaleX, leftScaleY, leftRot);
         ApplyCharacter(rightCharacter, rightCharacterMaterial, rightTexture, rightScale, rightOffset, rightTint, rightX, rightY, rightScaleX, rightScaleY, rightRot);
         ApplyCharacter(leftShadowCaster, leftShadowCasterMaterial, leftTexture, leftScale, leftOffset, Color.white, leftX, leftY, leftScaleX, leftScaleY, leftRot);
         ApplyCharacter(rightShadowCaster, rightShadowCasterMaterial, rightTexture, rightScale, rightOffset, Color.white, rightX, rightY, rightScaleX, rightScaleY, rightRot);
+    }
+
+    private float GetRightCharacterPoseBaseX()
+    {
+        return skullheadIdleTexture != null ? RightCharacterBaseX + SkullheadRightBaseXOffset : RightCharacterBaseX;
     }
 
     private void ApplyCharacter(
@@ -975,13 +1020,18 @@ public sealed class MiniGameFightStage3DRenderer
 
     private void EnsureTextures()
     {
-        if (idleSheetTexture != null)
+        if (fightClubTexturesLoaded)
             return;
 
         idleSheetTexture = LoadFightClubTexture(FightClubIdleSheetFileName);
         actionJumpTexture = LoadFightClubTexture(FightClubActionJumpFileName);
         actionHeadbangTexture = LoadFightClubTexture(FightClubActionHeadbangFileName);
         idlePoseTexture = LoadFightClubTexture(FightClubIdlePoseFileName);
+        skullheadIdleTexture = LoadFightClubTexture(SkullheadIdleFileName);
+        skullheadHitTexture = LoadFightClubTexture(SkullheadHitFileName);
+        skullheadMissTexture = LoadFightClubTexture(SkullheadMissFileName);
+        skullheadSuperTexture = LoadFightClubTexture(SkullheadSuperFileName);
+        fightClubTexturesLoaded = true;
     }
 
     private static Vector2 GetIdleUvScale()
@@ -997,12 +1047,23 @@ public sealed class MiniGameFightStage3DRenderer
         return new Vector2(frame / (float)IdleFrameCount, 0f);
     }
 
+    private static Vector2 GetCharacterUvScale(Texture2D texture, Texture2D idleSheet)
+    {
+        return texture != null && idleSheet != null && texture == idleSheet ? GetIdleUvScale() : Vector2.one;
+    }
+
+    private static Vector2 GetCharacterUvOffset(Texture2D texture, Texture2D idleSheet, float now, float phaseOffset)
+    {
+        return texture != null && idleSheet != null && texture == idleSheet ? GetIdleUvOffset(now, phaseOffset) : Vector2.zero;
+    }
+
     private static float GetPoseHeight(Texture2D texture)
     {
         float referenceVisibleHeight = CharacterHeight * (ReferenceVisiblePixelHeight / IdleFramePixelHeight);
         float frameHeight = GetFramePixelHeight(texture);
         float visibleHeight = Mathf.Max(1f, GetVisiblePixelHeight(texture));
-        return referenceVisibleHeight * (frameHeight / visibleHeight);
+        float poseHeight = referenceVisibleHeight * (frameHeight / visibleHeight);
+        return IsSkullheadTexture(texture) ? poseHeight * SkullheadVisualScale : poseHeight;
     }
 
     private static float GetPoseWidth(Texture2D texture, Vector2 textureScale, float poseHeight)
@@ -1028,6 +1089,8 @@ public sealed class MiniGameFightStage3DRenderer
             return IdleFramePixelHeight;
 
         string name = texture.name ?? string.Empty;
+        if (IsSkullheadTexture(texture))
+            return Mathf.Max(1f, texture.height);
         if (name.IndexOf("Headbanging", StringComparison.OrdinalIgnoreCase) >= 0 ||
             name.IndexOf("NEW_Elize_Idle", StringComparison.OrdinalIgnoreCase) >= 0)
             return 128f;
@@ -1042,6 +1105,14 @@ public sealed class MiniGameFightStage3DRenderer
             return ReferenceVisiblePixelHeight;
 
         string name = texture.name ?? string.Empty;
+        if (name.IndexOf("Skullhead_Idle", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 160f;
+        if (name.IndexOf("Skullhead_Hit", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 157f;
+        if (name.IndexOf("Skullhead_Miss", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 143f;
+        if (name.IndexOf("Skullhead_Super", StringComparison.OrdinalIgnoreCase) >= 0)
+            return 187f;
         if (name.IndexOf("Headbanging", StringComparison.OrdinalIgnoreCase) >= 0)
             return 126f;
         return ReferenceVisiblePixelHeight;
@@ -1053,10 +1124,18 @@ public sealed class MiniGameFightStage3DRenderer
             return 16f;
 
         string name = texture.name ?? string.Empty;
+        if (IsSkullheadTexture(texture))
+            return 0f;
         if (name.IndexOf("Headbanging", StringComparison.OrdinalIgnoreCase) >= 0 ||
             name.IndexOf("NEW_Elize_Idle", StringComparison.OrdinalIgnoreCase) >= 0)
             return 0f;
         return 16f;
+    }
+
+    private static bool IsSkullheadTexture(Texture2D texture)
+    {
+        return texture != null &&
+               (texture.name ?? string.Empty).IndexOf("Skullhead", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private static Texture2D LoadFightClubTexture(string fileName)

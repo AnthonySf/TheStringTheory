@@ -18,6 +18,8 @@ public static class ChartEditorDrumNoteSanitizer
             note.muted ||
             note.palmMute ||
             note.fretHandMute ||
+            note.runtimeMuted ||
+            note.runtimePalmMute ||
             note.harmonic ||
             note.accent ||
             note.tap ||
@@ -41,6 +43,10 @@ public static class ChartEditorDrumNoteSanitizer
         note.muted = false;
         note.palmMute = false;
         note.fretHandMute = false;
+        note.hasRuntimeMuted = true;
+        note.runtimeMuted = false;
+        note.hasRuntimePalmMute = true;
+        note.runtimePalmMute = false;
         note.harmonic = false;
         note.accent = false;
         note.tap = false;

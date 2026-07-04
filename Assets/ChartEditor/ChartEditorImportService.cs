@@ -528,6 +528,7 @@ public static class ChartEditorImportService
         track.tones.EnsureDefaults();
         string resolvedToneName = toneName.Trim();
         ChartEditorToneDefinition definition = FindToneDefinition(track.tones, resolvedToneName);
+        bool createdDefinition = false;
         if (definition == null)
         {
             definition = new ChartEditorToneDefinition
@@ -536,6 +537,7 @@ public static class ChartEditorImportService
                 key = BuildNeutralTonePresetId(resolvedToneName, presetId)
             };
             track.tones.definitions.Add(definition);
+            createdDefinition = true;
         }
 
         if (string.IsNullOrWhiteSpace(definition.name))
@@ -549,8 +551,11 @@ public static class ChartEditorImportService
         if (string.IsNullOrWhiteSpace(definition.preset.presetName))
             definition.preset.presetName = definition.name;
         definition.fallback ??= new ChartEditorToneFallbackData();
-        definition.fallback.preferredPresetName = FirstNonEmpty(definition.fallback.preferredPresetName, definition.preset.presetName, definition.name);
-        definition.fallback.searchText = FirstNonEmpty(definition.fallback.searchText, definition.name, definition.key);
+        if (createdDefinition)
+        {
+            definition.fallback.preferredPresetName = FirstNonEmpty(definition.fallback.preferredPresetName, definition.preset.presetName, definition.name);
+            definition.fallback.searchText = FirstNonEmpty(definition.fallback.searchText, definition.name, definition.key);
+        }
     }
 
     private static ChartEditorToneDefinition FindToneDefinition(ChartEditorToneData tones, string toneName)
@@ -1010,6 +1015,13 @@ public static class ChartEditorImportService
         {
             return fallback;
         }
+
+        // Definitions carrying a full pedal chain are self-sufficient —
+        // synthesizing a fallback for them breaks round-trip fidelity of
+        // editor-authored tones. The guess only helps external packages whose
+        // preset could not be reconstructed.
+        if (source?.preset?.pedalChain != null && source.preset.pedalChain.Count > 0)
+            return fallback;
 
         return new ChartEditorToneFallbackData
         {
@@ -1687,6 +1699,10 @@ public static class ChartEditorImportService
             muted = source.isMuted,
             palmMute = source.isPalmMute,
             fretHandMute = false,
+            hasRuntimeMuted = true,
+            runtimeMuted = source.isMuted,
+            hasRuntimePalmMute = true,
+            runtimePalmMute = source.isPalmMute,
             maxBend = Mathf.Max(0f, source.bendStep),
             legato = source.isLegato,
             requiresPluck = source.requiresPluck,
@@ -1752,6 +1768,10 @@ public static class ChartEditorImportService
             muted = muted,
             palmMute = palmMute || (muted && !fretHandMute && !palmMute),
             fretHandMute = fretHandMute,
+            hasRuntimeMuted = true,
+            runtimeMuted = source.isMuted,
+            hasRuntimePalmMute = true,
+            runtimePalmMute = false,
             harmonic = source.isHarmonic,
             accent = source.isAccent,
             tap = source.isTap,
@@ -1818,6 +1838,12 @@ public static class ChartEditorImportService
         if (source == null)
             return null;
 
+        bool runtimeMuted = source.hasRuntimeMuted
+            ? source.runtimeMuted
+            : source.muted && !source.palmMute;
+        bool runtimePalmMute = source.hasRuntimePalmMute
+            ? source.runtimePalmMute
+            : source.palmMute;
         bool muted = source.muted || source.palmMute || source.fretHandMute;
         ChartEditorNote note = new ChartEditorNote
         {
@@ -1842,6 +1868,10 @@ public static class ChartEditorImportService
             muted = muted,
             palmMute = source.palmMute || (muted && !source.fretHandMute && !source.palmMute),
             fretHandMute = source.fretHandMute,
+            hasRuntimeMuted = true,
+            runtimeMuted = runtimeMuted,
+            hasRuntimePalmMute = true,
+            runtimePalmMute = runtimePalmMute,
             harmonic = source.harmonic,
             accent = source.accent,
             tap = source.tap,
@@ -3206,6 +3236,26 @@ public static class ChartEditorTheoryConversionService
         result.packageWasWritten = importerResult.packageWasWritten;
         if (importerResult.warnings != null)
             result.warnings.AddRange(importerResult.warnings.Where(warning => !string.IsNullOrWhiteSpace(warning)));
+
+        if (!string.IsNullOrWhiteSpace(result.packagePath) && File.Exists(result.packagePath))
+        {
+            if (ChartEditorImportService.ImportTheoryPackage(result.packagePath, out ChartEditorImportResult importResult, out string importError))
+            {
+                result.project = importResult?.project;
+                if (importResult?.warnings != null)
+                    result.warnings.AddRange(importResult.warnings.Where(warning => !string.IsNullOrWhiteSpace(warning)));
+            }
+            else if (request.validatePackage)
+            {
+                error = $"Converted .theory package could not be opened in the chart editor: {importError}";
+                return false;
+            }
+            else if (!string.IsNullOrWhiteSpace(importError))
+            {
+                result.warnings.Add(importError);
+            }
+        }
+
         return true;
     }
 

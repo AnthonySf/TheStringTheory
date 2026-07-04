@@ -508,7 +508,9 @@ public sealed class ChartEditorRoundTripTests
             linkedFromNoteId = 12
         };
 
-        ChartEditorNote note = (ChartEditorNote)method.Invoke(null, new object[] { source, 0, true });
+        // Reflection does not apply C# default parameter values, so the
+        // optional preserveRuntimeFields argument must be passed explicitly.
+        ChartEditorNote note = (ChartEditorNote)method.Invoke(null, new object[] { source, 0, true, false });
 
         Assert.AreEqual(DrumLaneMapper.CrashLane, note.stringOrLane);
         Assert.AreEqual(49, note.fret);

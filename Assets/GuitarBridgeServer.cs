@@ -1171,7 +1171,6 @@ public class GuitarBridgeServer : MonoBehaviour
     private int selectedMiniGameIndex;
     private int selectedMiniGamePauseActionIndex;
     private bool miniGameTextInputFocused;
-    private TabsBackgroundMode miniGameBackgroundMode = TabsBackgroundMode.NeonStage;
     private MiniGameManager miniGameManager;
     private bool showStartMenu;
     private bool showCharacterSelection;
@@ -27340,7 +27339,6 @@ private void OpenOrFocusToneLab()
 
         if (showMiniGames && miniGameManager != null && miniGameManager.IsFightClubActive)
         {
-            HandleMiniGameBackgroundSecretShortcut(toggleSkyPressed);
             return;
         }
 
@@ -27377,33 +27375,6 @@ private void OpenOrFocusToneLab()
         runtimeSettingsSnapshotDirty = true;
         backgroundMoodSetterSnapshotDirty = true;
         SaveGlobalRuntimeSettingsMetadata();
-    }
-
-    private void HandleMiniGameBackgroundSecretShortcut(bool toggleSkyPressed)
-    {
-        if (toggleSkyPressed)
-        {
-            if (miniGameBackgroundMode == TabsBackgroundMode.NeonStage && neonStageSkyDesign == TabsNeonStageSkyDesign.Enviro3)
-            {
-                miniGameBackgroundMode = TabsBackgroundMode.BlueSky;
-            }
-            else
-            {
-                miniGameBackgroundMode = TabsBackgroundMode.NeonStage;
-                neonStageSkyDesign = TabsNeonStageSkyDesign.Enviro3;
-            }
-        }
-        else
-        {
-            miniGameBackgroundMode = TabsBackgroundMode.NeonStage;
-            neonStageSkyDesign = TabsNeonStageSkyDesign.Enviro3;
-            int nextMood = ((int)neonStageEnviroMood + 1) % EnviroSkyMoodOptions.Length;
-            neonStageEnviroMood = (TabsEnviroSkyMood)nextMood;
-            SyncLegacyEnviroGroundModeToCurrentMood();
-        }
-
-        runtimeSettingsSnapshotDirty = true;
-        backgroundMoodSetterSnapshotDirty = true;
     }
 
     private bool ShouldSuppressBackgroundSecretShortcut()
@@ -27654,7 +27625,7 @@ private void OpenOrFocusToneLab()
             case TabsBackgroundContext.MainMenu:
                 return MainMenuBackground.backgroundMode;
             case TabsBackgroundContext.MiniGames:
-                return miniGameBackgroundMode;
+                return TabsBackgroundMode.BlueSky;
             case TabsBackgroundContext.Gameplay:
             default:
                 return tabBackgroundMode;
@@ -27930,9 +27901,7 @@ private void OpenOrFocusToneLab()
         {
             return string.Join("|",
                 "minigames",
-                miniGameBackgroundMode,
-                neonStageSkyDesign,
-                neonStageEnviroMood,
+                TabsBackgroundMode.BlueSky,
                 tabSkyMood,
                 tabSkyStarsEnabled,
                 tabSkyStarCount,

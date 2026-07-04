@@ -13,7 +13,6 @@ using UnityEditor;
 public static class ChartEditorFilePicker
 {
     private const int MaxPathBuffer = 4096;
-    private static string lastInputDirectory;
 
     public static bool TryPickChartFile(out string path)
     {
@@ -94,22 +93,15 @@ public static class ChartEditorFilePicker
             return false;
 
         path = selected;
-        RememberInputDirectory(path);
         return true;
 #else
-        bool picked = WindowsFolderPicker.TryPickFolder(title, resolvedInitialDirectory, out path);
-        if (picked)
-            RememberInputDirectory(path);
-        return picked;
+        return WindowsFolderPicker.TryPickFolder(title, resolvedInitialDirectory, out path);
 #endif
     }
 
     private static bool TryPickInputFile(string title, string filterName, string filterPattern, out string path)
     {
-        bool picked = TryPickFile(title, filterName, filterPattern, ResolveInputInitialDirectory(), out path);
-        if (picked)
-            RememberInputDirectory(path);
-        return picked;
+        return TryPickFile(title, filterName, filterPattern, ResolveInputInitialDirectory(), out path);
     }
 
     private static string BuildExtensionPattern(IReadOnlyList<string> extensions)
@@ -165,9 +157,8 @@ public static class ChartEditorFilePicker
 
     private static string ResolveInputInitialDirectory()
     {
-        if (!string.IsNullOrWhiteSpace(lastInputDirectory) && Directory.Exists(lastInputDirectory))
-            return lastInputDirectory;
-
+        // Always start in the songs folder: reopening wherever the user last
+        // browsed (possibly sessions ago) made the pickers feel random.
         return ResolveInitialDirectory(ExternalContentPaths.PersistentSongsDirectory, createDirectory: true);
     }
 
@@ -190,18 +181,6 @@ public static class ChartEditorFilePicker
         }
 
         return string.Empty;
-    }
-
-    private static void RememberInputDirectory(string path)
-    {
-        if (string.IsNullOrWhiteSpace(path))
-            return;
-
-        string directory = Directory.Exists(path) ? path : Path.GetDirectoryName(path);
-        if (string.IsNullOrWhiteSpace(directory) || !Directory.Exists(directory))
-            return;
-
-        lastInputDirectory = directory;
     }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
