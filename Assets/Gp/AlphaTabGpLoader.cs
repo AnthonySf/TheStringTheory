@@ -116,6 +116,7 @@ internal static class AlphaTabGpLoader
             float bendVisualStartTime = -1f;
             float bendVisualDuration = 0f;
             bool isMuted = source != null && source.IsDead;
+            bool isPalmMute = source != null && source.IsPalmMute;
             List<NoteTechniqueSegmentData> segments = BuildTechniqueSegments(note, matchedBySource, durationSeconds, data.tempoPoints, data.midiDivision);
 
             if (HasBendTechniqueSegments(segments))
@@ -201,7 +202,8 @@ internal static class AlphaTabGpLoader
                 bendVisualStartTime,
                 bendVisualDuration,
                 segments,
-                isMuted));
+                isMuted,
+                palmMuted: isPalmMute));
         }
 
         ApplyLegatoVisualLinks(result);

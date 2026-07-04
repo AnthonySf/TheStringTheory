@@ -538,6 +538,8 @@ MonoBehaviour:
   - {r: 1, g: 0.5, b: 0, a: 1}
   - {r: 0, g: 1, b: 0, a: 1}
   - {r: 1, g: 0, b: 1, a: 1}
+  - {r: 0.35, g: 0.78, b: 0.78, a: 1}
+  - {r: 0.85, g: 0.45, b: 0.65, a: 1}
   highwayHitColor: {r: 1, g: 0.92, b: 0.62, a: 1}
   highwayMissColor: {r: 1, g: 0.25, b: 0.25, a: 1}
   tabHitColor: {r: 0.32, g: 1, b: 0.45, a: 1}
@@ -563,11 +565,11 @@ MonoBehaviour:
   highwayBackgroundDistance: 100
   highwayBackgroundCenterY: -200
   highwayBackgroundScale: 100
-  highwayBackgroundCloudYOffset: 3.5
+  highwayBackgroundCloudYOffset: 6
   highwayBackgroundStarScale: 0.6
-  highwayBackgroundCloudScale: 0.6
+  highwayBackgroundCloudScale: 0.75
   highwayBackgroundStarSpread: 0.6
-  highwayBackgroundCloudSpread: 0.6
+  highwayBackgroundCloudSpread: 0.42
   highwayLaneGuideThickness: 0.14
   highwayLaneGuideYOffset: -1.84
   highwayCharacterScale: 1
@@ -642,9 +644,9 @@ MonoBehaviour:
   tabStringThickness: 0.035
   tabStringDepth: 0.08
   tabPanelBackdropColor: {r: 0.02, g: 0.03, b: 0.06, a: 0.42}
-  tabBackgroundMode: 1
+  tabBackgroundMode: 4
   neonStageSkyDesign: 3
-  neonStageEnviroMood: 5
+  neonStageEnviroMood: 0
   neonStageEnviroMoonMode: 2
   neonStageEnviroCloudsEnabled: 1
   neonStageEnviroCloudAmount: 1
@@ -780,9 +782,9 @@ MonoBehaviour:
   neonStageEnviroHorizonEnabled: 1
   neonHorizonLineDistance: 150
   neonHorizonLineY: 2.6
-  neonHorizonLineWidth: 620
-  neonHorizonGlowBlurHeight: 2.85
-  neonHorizonCoreLineHeight: 0.085
+  neonHorizonLineWidth: 390
+  neonHorizonGlowBlurHeight: 1.7
+  neonHorizonCoreLineHeight: 0.25
   neonHorizonCoreLineYOffset: 0.012
   neonHorizonCenterGlowWidth: 230
   neonHorizonCenterGlowHeight: 2.2
@@ -790,11 +792,11 @@ MonoBehaviour:
   neonHorizonFloorHorizonOverlap: 0.035
   neonHorizonColorStrength: 1.2
   neonHorizonColorSaturation: 2.1
-  neonHorizonSoftGlowIntensity: 2.1
-  neonHorizonCoreGlowIntensity: 1.7
+  neonHorizonSoftGlowIntensity: 4
+  neonHorizonCoreGlowIntensity: 4.65
   neonHorizonCenterGlowIntensity: 0.85
-  neonHorizonSoftAlpha: 0.44
-  neonHorizonCoreAlpha: 0.82
+  neonHorizonSoftAlpha: 0.48
+  neonHorizonCoreAlpha: 0.42
   neonHorizonCenterAlpha: 0.22
   neonHorizonSoftBlurFalloff: 3.1
   neonHorizonCoreBlurFalloff: 36
@@ -863,7 +865,7 @@ MonoBehaviour:
   neonHorizonCloudOpacity: 0.62
   neonHorizonCloudSpeed: 0.22
   tabStarSeed: 1337
-  tabSkyMood: 0
+  tabSkyMood: 2
   tabSkyUseStageBackdrop: 0
   tabSkyWidth: 54
   tabSkyNearZ: 1.4
@@ -894,7 +896,7 @@ MonoBehaviour:
   tabSkyCloudScaleMaxMid: 2.8
   tabSkyCloudScaleMinFar: 1
   tabSkyCloudScaleMaxFar: 2.1
-  tabSkyCloudGlobalScale: 2.65
+  tabSkyCloudGlobalScale: 3
   tabSkyDayCloudTopTint: {r: 0.98, g: 0.99, b: 1, a: 1}
   tabSkyDayCloudBottomTint: {r: 0.9, g: 0.95, b: 1, a: 1}
   tabSkySunsetCloudTopTint: {r: 1, g: 0.84, b: 0.68, a: 1}
@@ -902,14 +904,14 @@ MonoBehaviour:
   tabSkyMidnightCloudTopTint: {r: 0.22, g: 0.24, b: 0.34, a: 1}
   tabSkyMidnightCloudBottomTint: {r: 0.035, g: 0.042, b: 0.085, a: 1}
   tabSkyStarsEnabled: 1
-  tabSkyStarCount: 320
+  tabSkyStarCount: 500
   tabSkyStarSizeMin: 0.015
   tabSkyStarSizeMax: 0.065
   tabSkyStarAlpha: 0.78
-  tabSkyStarTwinkleFraction: 0.28
-  tabSkyStarTwinkleStrength: 0.16
-  tabSkyStarTwinkleSpeedMin: 0.45
-  tabSkyStarTwinkleSpeedMax: 1.2
+  tabSkyStarTwinkleFraction: 0.83
+  tabSkyStarTwinkleStrength: 0.6
+  tabSkyStarTwinkleSpeedMin: 0.57
+  tabSkyStarTwinkleSpeedMax: 1
   tabSkyCloudVerticalBob: 0.04
   tabLabelFontSize: 2.2
   tabHeaderCurrentColor: {r: 1, g: 0.88, b: 0.32, a: 1}

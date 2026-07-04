@@ -54,6 +54,10 @@ public sealed class ChartEditorProject
     public double cursorTimeSeconds;
     public bool dirty;
 
+    /// <summary>
+    /// O(total notes across all tracks) per access — never call inside loops,
+    /// per-marker lambdas, or per-frame code; read once and reuse the value.
+    /// </summary>
     public float DurationSeconds
     {
         get
@@ -113,6 +117,22 @@ public sealed class ChartEditorProject
             selectedTrackId = tracks[0]?.id;
             return tracks[0];
         }
+    }
+
+    [NonSerialized] private int lastEnsureDefaultsFrame = -1;
+
+    /// <summary>
+    /// Per-frame throttled EnsureDefaults for hot read paths (timing rebuilds,
+    /// preview snapshots): the full pass walks every note of every track for
+    /// id dedup. Mutating flows must call EnsureDefaults directly.
+    /// </summary>
+    public void EnsureDefaultsThrottled()
+    {
+        if (Application.isPlaying && lastEnsureDefaultsFrame == Time.frameCount)
+            return;
+
+        lastEnsureDefaultsFrame = Time.frameCount;
+        EnsureDefaults();
     }
 
     public void EnsureDefaults()
@@ -223,6 +243,9 @@ public sealed class ChartEditorTrack
     public string difficultyLabel = "Full";
     public int difficultyUiIndex = 0;
     public bool hasDifficultyVariants;
+    public int importedSelectionScore = -1;
+    public int importedTabCount = -1;
+    public bool preserveImportedRuntimeNotes;
     public ChartEditorTuningInfo tuning = new ChartEditorTuningInfo();
     public string colorHex;
     public bool visible = true;
@@ -232,6 +255,7 @@ public sealed class ChartEditorTrack
     public ChartEditorToneData tones = new ChartEditorToneData();
     public List<ChartEditorNote> notes = new List<ChartEditorNote>();
     public List<ChartEditorArpeggioGuide> arpeggioGuides = new List<ChartEditorArpeggioGuide>();
+    public List<ChartEditorGeneratedChannelAssignment> generatedChannels = new List<ChartEditorGeneratedChannelAssignment>();
     public List<ChartEditorGeneratedNoteEvent> generatedNotes = new List<ChartEditorGeneratedNoteEvent>();
     public string generatedPlaybackNoteFingerprint;
 
@@ -255,6 +279,7 @@ public sealed class ChartEditorTrack
         tones.EnsureDefaults();
         notes ??= new List<ChartEditorNote>();
         arpeggioGuides ??= new List<ChartEditorArpeggioGuide>();
+        generatedChannels ??= new List<ChartEditorGeneratedChannelAssignment>();
         generatedNotes ??= new List<ChartEditorGeneratedNoteEvent>();
         for (int i = 0; i < generatedNotes.Count; i++)
             generatedNotes[i]?.EnsureDefaults();
@@ -300,6 +325,11 @@ public sealed class ChartEditorToneChange
     public float timeSeconds;
     public string toneName;
     public int toneId = -1;
+    // Beat-map tracking so tone switches move with beat/tempo edits like
+    // notes and sections do. Attach derives it from timeSeconds; older saves
+    // load with usesBeatMapTiming=false and get attached on first rebuild.
+    public double beatPosition;
+    public bool usesBeatMapTiming;
 }
 
 [Serializable]
@@ -365,6 +395,19 @@ public sealed class ChartEditorGeneratedPartInfo
 }
 
 [Serializable]
+public sealed class ChartEditorGeneratedChannelAssignment
+{
+    public int channel;
+    public int bank = -1;
+    public int preset = 29;
+    public bool isDrum;
+    public string label;
+    public string sourcePartId;
+    public string sourcePartName;
+    public int pitchBendRangeSemitones;
+}
+
+[Serializable]
 public sealed class ChartEditorGeneratedNoteEvent
 {
     public float startTimeSeconds;
@@ -406,6 +449,11 @@ public sealed class ChartEditorArpeggioGuide
     public float endTime;
     public string chordName;
     public int[] stringFrets;
+    // Beat-map tracking so guides move with beat/tempo edits (see
+    // ChartEditorToneChange for the attach contract).
+    public double startBeat;
+    public double endBeat;
+    public bool usesBeatMapTiming;
 }
 
 [Serializable]
@@ -761,7 +809,9 @@ public static class ChartEditorGeneratedPlaybackBuilder
         bool isDrum = track.role == ChartEditorTrackRole.Drums || track.generatedPart?.isDrum == true;
         int[] tuning = ResolveTuning(track);
 
-        List<ChartEditorNote> notes = ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(track.notes)
+        List<ChartEditorNote> notes = ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(
+                track.notes,
+                !track.preserveImportedRuntimeNotes)
             .Where(note => note != null)
             .OrderBy(note => note.timeSeconds)
             .ThenBy(note => note.stringOrLane)
@@ -988,6 +1038,21 @@ public sealed class ChartEditorImportResult
 {
     public ChartEditorProject project;
     public List<string> warnings = new List<string>();
+}
+
+[Serializable]
+public sealed class ChartEditorNewProjectRequest
+{
+    public string chartPath;
+    public string audioPath;
+    public string coverImagePath;
+    public string title;
+    public string artist;
+    public string album;
+    public string genre;
+    public string year;
+    public double previewStartTimeSeconds;
+    public List<int> selectedPartIndices = new List<int>();
 }
 
 [Serializable]

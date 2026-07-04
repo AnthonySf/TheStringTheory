@@ -132,9 +132,10 @@ public static class GeneratedPlaybackArrangementFilter
         if (filteredNotes == null || filteredNotes.Count == 0)
             return new List<GeneratedPlaybackChannelAssignment>();
 
-        Dictionary<int, GeneratedPlaybackChannelAssignment> sourceRoutesByChannel = (source.channelAssignments ?? new List<GeneratedPlaybackChannelAssignment>())
-            .GroupBy(route => route.channel)
-            .ToDictionary(group => group.Key, group => CloneChannel(group.First()));
+        List<GeneratedPlaybackChannelAssignment> sourceRoutes = (source.channelAssignments ?? new List<GeneratedPlaybackChannelAssignment>())
+            .Where(route => route != null)
+            .Select(CloneChannel)
+            .ToList();
 
         Dictionary<ChannelRouteKey, GeneratedPlaybackChannelAssignment> sharedRoutes = new Dictionary<ChannelRouteKey, GeneratedPlaybackChannelAssignment>();
         Dictionary<ChannelRouteKey, List<ChannelLaneState>> pitchRoutes = new Dictionary<ChannelRouteKey, List<ChannelLaneState>>();
@@ -154,7 +155,7 @@ public static class GeneratedPlaybackArrangementFilter
 
         foreach (GeneratedPlaybackNoteEvent note in filteredNotes)
         {
-            GeneratedPlaybackChannelAssignment sourceRoute = ResolveSourceRoute(note, sourceRoutesByChannel);
+            GeneratedPlaybackChannelAssignment sourceRoute = ResolveSourceRoute(note, sourceRoutes);
             ChannelRouteKey key = new ChannelRouteKey(
                 sourceRoute.sourcePartId ?? note.partId,
                 sourceRoute.isDrum,
@@ -179,10 +180,28 @@ public static class GeneratedPlaybackArrangementFilter
 
     private static GeneratedPlaybackChannelAssignment ResolveSourceRoute(
         GeneratedPlaybackNoteEvent note,
-        Dictionary<int, GeneratedPlaybackChannelAssignment> sourceRoutesByChannel)
+        List<GeneratedPlaybackChannelAssignment> sourceRoutes)
     {
-        if (sourceRoutesByChannel.TryGetValue(note.channel, out GeneratedPlaybackChannelAssignment sourceRoute))
-            return sourceRoute;
+        if (sourceRoutes != null && sourceRoutes.Count > 0)
+        {
+            GeneratedPlaybackChannelAssignment byPartId = sourceRoutes.FirstOrDefault(route =>
+                route.channel == note.channel &&
+                !string.IsNullOrWhiteSpace(note.partId) &&
+                string.Equals(route.sourcePartId ?? string.Empty, note.partId, StringComparison.OrdinalIgnoreCase));
+            if (byPartId != null)
+                return byPartId;
+
+            GeneratedPlaybackChannelAssignment byPartName = sourceRoutes.FirstOrDefault(route =>
+                route.channel == note.channel &&
+                !string.IsNullOrWhiteSpace(note.partName) &&
+                string.Equals(route.sourcePartName ?? string.Empty, note.partName, StringComparison.OrdinalIgnoreCase));
+            if (byPartName != null)
+                return byPartName;
+
+            GeneratedPlaybackChannelAssignment byChannel = sourceRoutes.FirstOrDefault(route => route.channel == note.channel);
+            if (byChannel != null)
+                return byChannel;
+        }
 
         return new GeneratedPlaybackChannelAssignment
         {

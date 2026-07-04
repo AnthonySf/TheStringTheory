@@ -77,8 +77,11 @@ public static class TheorySongLoader
         for (int i = 0; i < ordered.Count; i++)
         {
             TheoryNoteData source = ordered[i];
-            List<NoteTechniqueSegmentData> segments = BuildNormalizedTechniqueSegments(source);
-            NoteTechnique primaryTechnique = ResolveRuntimePrimaryTechnique(source);
+            bool preserveRuntimeFields = arrangement.preserveImportedRuntimeNotes;
+            List<NoteTechniqueSegmentData> segments = preserveRuntimeFields
+                ? BuildStoredTechniqueSegments(source)
+                : BuildNormalizedTechniqueSegments(source);
+            NoteTechnique primaryTechnique = ResolveRuntimePrimaryTechnique(source, preserveRuntimeFields);
             notes.Add(new NoteData(
                 source.id,
                 source.time,
@@ -98,11 +101,16 @@ public static class TheorySongLoader
                 source.bendVisualStartTime,
                 source.bendVisualDuration,
                 segments,
-                source.muted,
-                source.chordName));
+                // Palm mutes are a playing technique, not dead/x notes — the
+                // exporter ORs palmMute into muted for legacy compatibility,
+                // so split them back apart for gameplay.
+                source.muted && !source.palmMute,
+                source.chordName,
+                palmMuted: source.palmMute));
         }
 
-        NormalizeTheoryLegatoTransitions(notes);
+        if (!arrangement.preserveImportedRuntimeNotes)
+            NormalizeTheoryLegatoTransitions(notes);
         return notes;
     }
 
@@ -172,17 +180,25 @@ public static class TheorySongLoader
                 });
             }
 
-            result.channelAssignments.Add(new GeneratedPlaybackChannelAssignment
+            bool hasExplicitGeneratedChannels = arrangement.generatedChannels != null && arrangement.generatedChannels.Count > 0;
+            if (hasExplicitGeneratedChannels)
             {
-                channel = Mathf.Clamp(nextChannel, 0, 15),
-                bank = -1,
-                preset = arrangement.generatedPart != null ? arrangement.generatedPart.sourceMidiProgram : 29,
-                isDrum = arrangement.generatedPart != null && arrangement.generatedPart.isDrum,
-                label = arrangement.displayName,
-                sourcePartId = arrangement.arrangementId,
-                sourcePartName = arrangement.displayName,
-                pitchBendRangeSemitones = GetMaxPitchBendRange(arrangement.generatedNotes)
-            });
+                AddExplicitGeneratedChannels(result.channelAssignments, arrangement);
+            }
+            else
+            {
+                result.channelAssignments.Add(new GeneratedPlaybackChannelAssignment
+                {
+                    channel = Mathf.Clamp(nextChannel, 0, 15),
+                    bank = -1,
+                    preset = arrangement.generatedPart != null ? arrangement.generatedPart.sourceMidiProgram : 29,
+                    isDrum = arrangement.generatedPart != null && arrangement.generatedPart.isDrum,
+                    label = arrangement.displayName,
+                    sourcePartId = arrangement.arrangementId,
+                    sourcePartName = arrangement.displayName,
+                    pitchBendRangeSemitones = GetMaxPitchBendRange(arrangement.generatedNotes)
+                });
+            }
 
             if (arrangement.generatedNotes != null)
             {
@@ -199,7 +215,7 @@ public static class TheorySongLoader
                         pitchPreRollSeconds = source.pitchPreRollSeconds,
                         midiNote = source.midiNote,
                         velocity = source.velocity,
-                        channel = Mathf.Clamp(nextChannel, 0, 15),
+                        channel = hasExplicitGeneratedChannels ? source.channel : Mathf.Clamp(nextChannel, 0, 15),
                         partId = source.partId ?? arrangement.arrangementId,
                         partName = source.partName ?? arrangement.displayName,
                         techniqueVariant = (GeneratedTechniqueVariant)Mathf.Clamp(source.techniqueVariant, 0, (int)GeneratedTechniqueVariant.Harmonic),
@@ -241,6 +257,31 @@ public static class TheorySongLoader
             result.durationSeconds = result.notes.Max(note => note.EndTimeSeconds);
 
         return result;
+    }
+
+    private static void AddExplicitGeneratedChannels(
+        List<GeneratedPlaybackChannelAssignment> destination,
+        TheoryArrangementData arrangement)
+    {
+        if (destination == null || arrangement?.generatedChannels == null)
+            return;
+
+        foreach (TheoryGeneratedChannelAssignment source in arrangement.generatedChannels
+                     .Where(channel => channel != null)
+                     .OrderBy(channel => channel.channel))
+        {
+            destination.Add(new GeneratedPlaybackChannelAssignment
+            {
+                channel = source.channel,
+                bank = source.bank,
+                preset = source.preset,
+                isDrum = source.isDrum,
+                label = string.IsNullOrWhiteSpace(source.label) ? arrangement.displayName : source.label,
+                sourcePartId = string.IsNullOrWhiteSpace(source.sourcePartId) ? arrangement.arrangementId : source.sourcePartId,
+                sourcePartName = string.IsNullOrWhiteSpace(source.sourcePartName) ? arrangement.displayName : source.sourcePartName,
+                pitchBendRangeSemitones = Mathf.Max(0, source.pitchBendRangeSemitones)
+            });
+        }
     }
 
     public static string TryReadDisplayName(string packagePath)
@@ -333,11 +374,38 @@ public static class TheorySongLoader
         out TheoryArrangementSummary summary,
         out TheoryArrangementData arrangement)
     {
-        return TryLoadArrangementByPredicate(
+        return TryLoadBestArrangementByPredicate(
             packagePath,
             candidate => string.Equals(candidate?.groupId ?? string.Empty, groupId ?? string.Empty, StringComparison.OrdinalIgnoreCase),
             out summary,
             out arrangement);
+    }
+
+    private static bool TryLoadBestArrangementByPredicate(
+        string packagePath,
+        Func<TheoryArrangementSummary, bool> predicate,
+        out TheoryArrangementSummary summary,
+        out TheoryArrangementData arrangement)
+    {
+        summary = null;
+        arrangement = null;
+        if (predicate == null ||
+            !TheoryPackageIO.TryReadManifest(packagePath, out TheorySongManifest manifest, out _) ||
+            manifest.arrangements == null)
+        {
+            return false;
+        }
+
+        TheoryArrangementSummary best = manifest.arrangements
+            .Where(candidate => candidate != null && predicate(candidate))
+            .OrderBy(candidate => NormalizeDifficultyUiIndex(candidate.difficultyUiIndex, candidate.difficultyLabel))
+            .ThenByDescending(candidate => candidate.score)
+            .FirstOrDefault();
+        if (best == null)
+            return false;
+
+        summary = best;
+        return TheoryPackageIO.TryReadArrangement(packagePath, best, out arrangement, out _);
     }
 
     private static bool TryLoadArrangementByPredicate(
@@ -424,10 +492,12 @@ public static class TheorySongLoader
         return bestIndex;
     }
 
-    private static NoteTechnique ResolveRuntimePrimaryTechnique(TheoryNoteData source)
+    private static NoteTechnique ResolveRuntimePrimaryTechnique(TheoryNoteData source, bool preserveRuntimeFields = false)
     {
         if (source == null)
             return NoteTechnique.None;
+        if (preserveRuntimeFields)
+            return (NoteTechnique)Mathf.Clamp(source.primaryTechnique, (int)NoteTechnique.None, (int)NoteTechnique.Vibrato);
         if (source.hammerOn)
             return NoteTechnique.HammerOn;
         if (source.pullOff)
@@ -438,6 +508,31 @@ public static class TheorySongLoader
     private static List<NoteTechniqueSegmentData> BuildNormalizedTechniqueSegments(TheoryNoteData source)
     {
         return TheoryTechniqueSegmentNormalizer.Build(source);
+    }
+
+    private static List<NoteTechniqueSegmentData> BuildStoredTechniqueSegments(TheoryNoteData source)
+    {
+        if (source?.techniqueSegments == null || source.techniqueSegments.Count == 0)
+            return null;
+
+        List<NoteTechniqueSegmentData> segments = new List<NoteTechniqueSegmentData>(source.techniqueSegments.Count);
+        for (int i = 0; i < source.techniqueSegments.Count; i++)
+        {
+            TheoryTechniqueSegmentData segment = source.techniqueSegments[i];
+            if (segment == null)
+                continue;
+
+            segments.Add(new NoteTechniqueSegmentData(
+                (NoteTechniqueSegmentType)Mathf.Clamp(segment.type, 0, (int)NoteTechniqueSegmentType.Vibrato),
+                segment.startOffset,
+                segment.endOffset,
+                segment.startFret,
+                segment.endFret,
+                segment.startBend,
+                segment.endBend));
+        }
+
+        return segments.Count > 0 ? segments : null;
     }
 
     private static void NormalizeTheoryLegatoTransitions(List<NoteData> notes)
@@ -519,11 +614,26 @@ public static class TheorySongLoader
         return arrangements
             .GroupBy(arrangement => string.IsNullOrWhiteSpace(arrangement?.groupId) ? arrangement?.arrangementId ?? string.Empty : arrangement.groupId, StringComparer.OrdinalIgnoreCase)
             .Select(group => group
-                .OrderBy(arrangement => arrangement?.difficultyUiIndex ?? int.MaxValue)
+                .OrderBy(arrangement => NormalizeDifficultyUiIndex(arrangement?.difficultyUiIndex ?? -1, arrangement?.difficultyLabel))
                 .ThenByDescending(arrangement => arrangement?.score ?? 0)
                 .FirstOrDefault())
             .Where(arrangement => arrangement != null)
             .ToList();
+    }
+
+    private static int NormalizeDifficultyUiIndex(int difficultyUiIndex, string difficultyLabel)
+    {
+        if (difficultyUiIndex >= 0)
+            return difficultyUiIndex;
+        if (string.Equals(difficultyLabel?.Trim(), "Full", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(difficultyLabel?.Trim(), "Max", StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+
+        return int.TryParse(difficultyLabel, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out int parsed)
+            ? Mathf.Max(0, parsed)
+            : int.MaxValue;
     }
 
     private static int GetMaxPitchBendRange(List<TheoryGeneratedNoteEvent> notes)

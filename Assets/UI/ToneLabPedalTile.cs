@@ -7,6 +7,7 @@ public sealed class ToneLabPedalTile : VisualElement
     private readonly ToneLabPedalAppearance appearance;
     private readonly ToneLabPedalVisualParts visualParts;
     private readonly Button deleteButton;
+    private readonly float visualScale;
     private bool isSelected;
     private bool isHovered;
     private bool isDragging;
@@ -18,11 +19,12 @@ public sealed class ToneLabPedalTile : VisualElement
     public Button DeleteButton => deleteButton;
     public bool IsPedalEnabled { get; private set; }
 
-    public ToneLabPedalTile(string pedalInstanceId, IToneLabPedalDescriptor descriptor)
+    public ToneLabPedalTile(string pedalInstanceId, IToneLabPedalDescriptor descriptor, float visualScale = 1f)
     {
         if (descriptor == null)
             throw new ArgumentNullException(nameof(descriptor));
 
+        this.visualScale = Mathf.Clamp(visualScale, 0.75f, 1.60f);
         PedalInstanceId = pedalInstanceId ?? string.Empty;
         PedalType = descriptor.PedalType;
         DescriptorId = descriptor.DescriptorId;
@@ -31,24 +33,28 @@ public sealed class ToneLabPedalTile : VisualElement
 
         name = $"tone-lab-pedal-{PedalInstanceId}";
         pickingMode = PickingMode.Position;
-        style.width = ToneLabPedalVisualBuilder.BoardTileWidth;
-        style.minWidth = ToneLabPedalVisualBuilder.BoardTileWidth;
-        style.height = ToneLabPedalVisualBuilder.BoardTileHeight;
-        style.marginRight = 18f;
-        style.marginTop = 4f;
-        style.marginBottom = 22f;
+        style.width = ToneLabPedalVisualBuilder.BoardTileWidth * this.visualScale;
+        style.minWidth = ToneLabPedalVisualBuilder.BoardTileWidth * this.visualScale;
+        style.height = ToneLabPedalVisualBuilder.BoardTileHeight * this.visualScale;
+        style.marginRight = 18f * this.visualScale;
+        style.marginTop = 4f * this.visualScale;
+        style.marginBottom = 22f * this.visualScale;
         style.alignItems = Align.Center;
         style.justifyContent = Justify.Center;
+        style.overflow = Overflow.Visible;
 
+        if (!Mathf.Approximately(this.visualScale, 1f))
+            visualParts.Root.style.scale = new Scale(new Vector3(this.visualScale, this.visualScale, 1f));
         Add(visualParts.Root);
 
         deleteButton = new Button { text = "X" };
+        deleteButton.pickingMode = PickingMode.Position;
         deleteButton.style.position = Position.Absolute;
-        deleteButton.style.top = -8f;
-        deleteButton.style.right = 0f;
-        deleteButton.style.width = 48f;
-        deleteButton.style.minWidth = 48f;
-        deleteButton.style.height = 48f;
+        deleteButton.style.top = 0f;
+        deleteButton.style.right = 2f * this.visualScale;
+        deleteButton.style.width = 48f * this.visualScale;
+        deleteButton.style.minWidth = 48f * this.visualScale;
+        deleteButton.style.height = 48f * this.visualScale;
         deleteButton.style.paddingLeft = 0f;
         deleteButton.style.paddingRight = 0f;
         deleteButton.style.paddingTop = 0f;
@@ -56,15 +62,13 @@ public sealed class ToneLabPedalTile : VisualElement
         deleteButton.style.marginRight = 0f;
         deleteButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         deleteButton.style.color = new Color(1f, 0.08f, 0.12f, 1f);
-        deleteButton.style.fontSize = 32f;
+        deleteButton.style.fontSize = 32f * this.visualScale;
         deleteButton.style.unityFontStyleAndWeight = FontStyle.Bold;
         deleteButton.style.borderTopWidth = 0f;
         deleteButton.style.borderRightWidth = 0f;
         deleteButton.style.borderBottomWidth = 0f;
         deleteButton.style.borderLeftWidth = 0f;
         deleteButton.style.display = DisplayStyle.None;
-        deleteButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
-        deleteButton.RegisterCallback<PointerUpEvent>(evt => evt.StopPropagation());
         deleteButton.RegisterCallback<MouseEnterEvent>(_ =>
         {
             deleteButton.style.color = new Color(1f, 0.0f, 0.05f, 1f);

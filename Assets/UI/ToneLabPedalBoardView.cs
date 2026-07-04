@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
 public sealed class ToneLabPedalBoardView
@@ -9,6 +10,10 @@ public sealed class ToneLabPedalBoardView
     private const float PedalTileSpacing = 18f;
     private static Texture2D addEffectGradientTexture;
 
+    private readonly float pedalVisualScale;
+    private readonly float textScale;
+    private readonly bool singleRowBoard;
+    private readonly FontDefinition? fontDefinition;
     private readonly VisualElement root;
     private readonly VisualElement headerControls;
     private readonly ScrollView chainScrollView;
@@ -19,6 +24,7 @@ public sealed class ToneLabPedalBoardView
     private ToneLabPedalTile dragPreviewTile;
     private VisualElement dragPlaceholder;
     private Vector2 dragStartPosition;
+    private List<string> dragStartOrder = new List<string>();
     private int dragPointerId = -1;
     private bool dragMoved;
     private int dragTargetIndex = -1;
@@ -32,40 +38,58 @@ public sealed class ToneLabPedalBoardView
     public event Action<IReadOnlyList<string>> PedalOrderCommitted;
     public event Action AddPedalRequested;
 
-    public ToneLabPedalBoardView()
+    private float ScaledTileWidth => ToneLabPedalVisualBuilder.BoardTileWidth * pedalVisualScale;
+    private float ScaledTileHeight => ToneLabPedalVisualBuilder.BoardTileHeight * pedalVisualScale;
+    private float ScaledTileSpacing => PedalTileSpacing * pedalVisualScale;
+
+    public ToneLabPedalBoardView(
+        float pedalVisualScale = 1f,
+        bool singleRowBoard = false,
+        FontDefinition? fontDefinition = null,
+        float textScale = 1f)
     {
+        this.pedalVisualScale = Mathf.Clamp(pedalVisualScale, 0.75f, 1.60f);
+        this.singleRowBoard = singleRowBoard;
+        this.fontDefinition = fontDefinition;
+        this.textScale = Mathf.Clamp(textScale, 0.75f, 1.80f);
         root = new VisualElement();
+        ApplyFont(root);
         root.style.flexGrow = 1f;
         root.style.minHeight = 0f;
         root.style.flexDirection = FlexDirection.Column;
 
         VisualElement boardHeader = new VisualElement();
-        boardHeader.style.height = 78f;
+        boardHeader.style.height = (this.singleRowBoard ? 86f : 78f) * this.pedalVisualScale;
         boardHeader.style.flexShrink = 0f;
         boardHeader.style.flexDirection = FlexDirection.Row;
         boardHeader.style.alignItems = Align.Center;
         boardHeader.style.justifyContent = Justify.SpaceBetween;
         boardHeader.style.borderBottomWidth = 1f;
         boardHeader.style.borderBottomColor = new Color(1f, 1f, 1f, 0.16f);
-        boardHeader.style.marginBottom = 10f;
+        boardHeader.style.marginBottom = 10f * this.pedalVisualScale;
         root.Add(boardHeader);
 
         VisualElement copyColumn = new VisualElement();
         copyColumn.style.flexGrow = 1f;
         copyColumn.style.flexShrink = 1f;
-        copyColumn.style.minWidth = 170f;
-        copyColumn.style.translate = new Translate(0f, -3f, 0f);
+        copyColumn.style.minWidth = 170f * this.pedalVisualScale;
+        copyColumn.style.translate = new Translate(0f, -3f * this.pedalVisualScale, 0f);
+        copyColumn.style.display = this.singleRowBoard ? DisplayStyle.None : DisplayStyle.Flex;
         boardHeader.Add(copyColumn);
 
         Label boardTitle = new Label("Pedalboard");
+        ApplyFont(boardTitle);
         boardTitle.style.color = Color.white;
-        boardTitle.style.fontSize = 24f;
+        boardTitle.style.fontSize = 24f * this.pedalVisualScale * this.textScale;
         boardTitle.style.unityFontStyleAndWeight = FontStyle.Bold;
         copyColumn.Add(boardTitle);
 
-        Label boardSubtitle = new Label("Signal flows left to right, then wraps to the next row.");
+        Label boardSubtitle = new Label(this.singleRowBoard
+            ? "Signal flows left to right. Scroll horizontally for longer chains."
+            : "Signal flows left to right, then wraps to the next row.");
+        ApplyFont(boardSubtitle);
         boardSubtitle.style.color = new Color(0.86f, 0.88f, 0.92f, 0.66f);
-        boardSubtitle.style.fontSize = 12f;
+        boardSubtitle.style.fontSize = 12f * this.pedalVisualScale * this.textScale;
         boardSubtitle.style.marginTop = 0f;
         copyColumn.Add(boardSubtitle);
 
@@ -76,23 +100,26 @@ public sealed class ToneLabPedalBoardView
         headerControls.style.flexGrow = 1f;
         headerControls.style.flexShrink = 1f;
         headerControls.style.minWidth = 0f;
-        headerControls.style.marginLeft = 18f;
-        headerControls.style.marginRight = 18f;
+        headerControls.style.marginLeft = (this.singleRowBoard ? 0f : 18f) * this.pedalVisualScale;
+        headerControls.style.marginRight = (this.singleRowBoard ? 10f : 18f) * this.pedalVisualScale;
         boardHeader.Add(headerControls);
 
+        float addButtonTextScale = this.singleRowBoard ? Mathf.Clamp(this.textScale, 1f, 1.15f) : 1f;
+        float addButtonWidth = 198f * this.pedalVisualScale * addButtonTextScale;
         Button addPedalButton = new Button(() => AddPedalRequested?.Invoke())
         {
             text = "+ ADD EFFECT"
         };
-        addPedalButton.style.width = 198f;
-        addPedalButton.style.minWidth = 198f;
-        addPedalButton.style.height = 52f;
+        ApplyFont(addPedalButton);
+        addPedalButton.style.width = addButtonWidth;
+        addPedalButton.style.minWidth = addButtonWidth;
+        addPedalButton.style.height = 52f * this.pedalVisualScale;
         addPedalButton.style.marginRight = 0f;
-        addPedalButton.style.paddingLeft = 18f;
-        addPedalButton.style.paddingRight = 18f;
+        addPedalButton.style.paddingLeft = 18f * this.pedalVisualScale;
+        addPedalButton.style.paddingRight = 18f * this.pedalVisualScale;
         addPedalButton.style.paddingTop = 0f;
         addPedalButton.style.paddingBottom = 0f;
-        addPedalButton.style.fontSize = 18f;
+        addPedalButton.style.fontSize = 18f * this.pedalVisualScale * this.textScale;
         addPedalButton.style.unityFontStyleAndWeight = FontStyle.Bold;
         addPedalButton.style.backgroundColor = new Color(1f, 0.58f, 0.08f, 0.92f);
         addPedalButton.style.backgroundImage = new StyleBackground(GetAddEffectGradientTexture());
@@ -105,10 +132,10 @@ public sealed class ToneLabPedalBoardView
         addPedalButton.style.borderRightColor = new Color(1f, 0.64f, 0.48f, 0.78f);
         addPedalButton.style.borderBottomColor = new Color(0.84f, 0.34f, 0.24f, 0.74f);
         addPedalButton.style.borderLeftColor = new Color(1f, 0.78f, 0.24f, 0.78f);
-        addPedalButton.style.borderTopLeftRadius = 10f;
-        addPedalButton.style.borderTopRightRadius = 10f;
-        addPedalButton.style.borderBottomLeftRadius = 10f;
-        addPedalButton.style.borderBottomRightRadius = 10f;
+        addPedalButton.style.borderTopLeftRadius = 10f * this.pedalVisualScale;
+        addPedalButton.style.borderTopRightRadius = 10f * this.pedalVisualScale;
+        addPedalButton.style.borderBottomLeftRadius = 10f * this.pedalVisualScale;
+        addPedalButton.style.borderBottomRightRadius = 10f * this.pedalVisualScale;
         addPedalButton.RegisterCallback<MouseEnterEvent>(_ =>
         {
             addPedalButton.style.unityBackgroundImageTintColor = new Color(1.08f, 1.08f, 1.08f, 1f);
@@ -121,7 +148,7 @@ public sealed class ToneLabPedalBoardView
         });
         boardHeader.Add(addPedalButton);
 
-        chainScrollView = new ScrollView(ScrollViewMode.Vertical);
+        chainScrollView = new ScrollView(this.singleRowBoard ? ScrollViewMode.Horizontal : ScrollViewMode.Vertical);
         chainScrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
         chainScrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
         chainScrollView.style.flexGrow = 1f;
@@ -137,25 +164,35 @@ public sealed class ToneLabPedalBoardView
 
         chainGrid = new VisualElement();
         chainGrid.style.flexDirection = FlexDirection.Row;
-        chainGrid.style.flexWrap = Wrap.Wrap;
+        chainGrid.style.flexWrap = this.singleRowBoard ? Wrap.NoWrap : Wrap.Wrap;
         chainGrid.style.alignItems = Align.FlexStart;
         chainGrid.style.alignContent = Align.FlexStart;
         chainGrid.style.justifyContent = Justify.FlexStart;
-        chainGrid.style.paddingTop = 8f;
-        chainGrid.style.paddingLeft = 2f;
-        chainGrid.style.paddingRight = 2f;
-        chainGrid.style.paddingBottom = 28f;
+        chainGrid.style.paddingTop = 8f * this.pedalVisualScale;
+        chainGrid.style.paddingLeft = 2f * this.pedalVisualScale;
+        chainGrid.style.paddingRight = 2f * this.pedalVisualScale;
+        chainGrid.style.paddingBottom = 28f * this.pedalVisualScale;
         chainScrollView.Add(chainGrid);
 
         emptyLabel = new Label("No pedals in the chain. Open the library or press + to add one.");
+        ApplyFont(emptyLabel);
         emptyLabel.style.display = DisplayStyle.None;
         emptyLabel.style.color = new Color(0.92f, 0.94f, 0.98f, 0.72f);
-        emptyLabel.style.fontSize = 17f;
+        emptyLabel.style.fontSize = 17f * this.pedalVisualScale * this.textScale;
         emptyLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
         emptyLabel.style.unityTextAlign = TextAnchor.MiddleCenter;
-        emptyLabel.style.marginTop = 90f;
+        emptyLabel.style.marginTop = 90f * this.pedalVisualScale;
         emptyLabel.style.whiteSpace = WhiteSpace.Normal;
         chainGrid.Add(emptyLabel);
+    }
+
+    private void ApplyFont(VisualElement element)
+    {
+        if (element == null || !fontDefinition.HasValue)
+            return;
+
+        element.style.unityFontDefinition = fontDefinition.Value;
+        element.style.letterSpacing = 0f;
     }
 
     public void Refresh(IReadOnlyList<UnityToneLabRuntime.ToneLabPedalSlot> pedalChain, string selectedPedalInstanceId)
@@ -179,7 +216,7 @@ public sealed class ToneLabPedalBoardView
                 continue;
 
             IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(slot);
-            ToneLabPedalTile tile = new ToneLabPedalTile(slot.pedal_instance_id, descriptor);
+            ToneLabPedalTile tile = new ToneLabPedalTile(slot.pedal_instance_id, descriptor, pedalVisualScale);
             tile.SetPedalEnabledVisual(slot.enabled);
             tile.SetSelected(string.Equals(selectedPedalInstanceId, slot.pedal_instance_id, StringComparison.Ordinal));
             AttachTileInteractions(tile);
@@ -195,8 +232,8 @@ public sealed class ToneLabPedalBoardView
         if (!float.IsFinite(availableWidth) || availableWidth <= 1f)
             availableWidth = Screen.width;
 
-        float tileStride = ToneLabPedalVisualBuilder.BoardTileWidth + PedalTileSpacing;
-        return Mathf.Max(1, Mathf.FloorToInt((availableWidth + PedalTileSpacing) / tileStride));
+        float tileStride = ScaledTileWidth + ScaledTileSpacing;
+        return Mathf.Max(1, Mathf.FloorToInt((availableWidth + ScaledTileSpacing) / tileStride));
     }
 
     public void ScrollPedalIntoView(string pedalInstanceId)
@@ -225,8 +262,22 @@ public sealed class ToneLabPedalBoardView
 
     private void AttachTileInteractions(ToneLabPedalTile tile)
     {
-        tile.BypassButton.clicked += () => PedalEnabledChanged?.Invoke(tile.PedalInstanceId, !tile.IsPedalEnabled);
-        tile.DeleteButton.clicked += () => PedalRemoveRequested?.Invoke(tile.PedalInstanceId);
+        if (tile.BypassButton != null)
+        {
+            tile.BypassButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+            tile.BypassButton.RegisterCallback<PointerUpEvent>(evt => evt.StopPropagation());
+            tile.BypassButton.RegisterCallback<ClickEvent>(evt => evt.StopPropagation());
+            tile.BypassButton.clicked += () => PedalEnabledChanged?.Invoke(tile.PedalInstanceId, !tile.IsPedalEnabled);
+        }
+
+        if (tile.DeleteButton != null)
+        {
+            tile.DeleteButton.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+            tile.DeleteButton.RegisterCallback<PointerUpEvent>(evt => evt.StopPropagation());
+            tile.DeleteButton.RegisterCallback<ClickEvent>(evt => evt.StopPropagation());
+            tile.DeleteButton.clicked += () => PedalRemoveRequested?.Invoke(tile.PedalInstanceId);
+        }
+
         tile.RegisterCallback<PointerDownEvent>(evt => OnTilePointerDown(tile, evt));
         tile.RegisterCallback<PointerMoveEvent>(evt => OnTilePointerMove(tile, evt));
         tile.RegisterCallback<PointerUpEvent>(evt => OnTilePointerUp(tile, evt));
@@ -235,13 +286,14 @@ public sealed class ToneLabPedalBoardView
 
     private void OnTilePointerDown(ToneLabPedalTile tile, PointerDownEvent evt)
     {
-        if (evt.button != 0 || draggingTile != null)
+        if (evt.button != 0 || draggingTile != null || IsInteractiveTileChild(evt.target as VisualElement, tile))
             return;
 
         evt.StopPropagation();
         draggingTile = tile;
         dragPointerId = evt.pointerId;
         dragStartPosition = new Vector2(evt.position.x, evt.position.y);
+        dragStartOrder = GetCurrentOrder();
         dragMoved = false;
         dragTargetIndex = GetTileFlowIndex(tile);
         tile.CapturePointer(dragPointerId);
@@ -273,19 +325,34 @@ public sealed class ToneLabPedalBoardView
             return;
 
         evt.StopPropagation();
-        if (tile.HasPointerCapture(dragPointerId))
-            tile.ReleasePointer(dragPointerId);
-
         bool reordered = dragMoved;
+        IReadOnlyList<string> originalOrder = dragStartOrder != null
+            ? new List<string>(dragStartOrder)
+            : GetCurrentOrder();
         IReadOnlyList<string> committedOrder = reordered
             ? BuildCommittedOrder(tile.PedalInstanceId, GetPlaceholderIndex())
             : null;
+
+        if (tile.HasPointerCapture(dragPointerId))
+            tile.ReleasePointer(dragPointerId);
+
         ResetDraggingTile(tile);
 
-        if (reordered && committedOrder != null && !OrdersMatch(committedOrder))
+        if (reordered && committedOrder != null && !OrdersMatch(originalOrder, committedOrder))
             PedalOrderCommitted?.Invoke(committedOrder);
         else if (!reordered)
             PedalSelected?.Invoke(tile.PedalInstanceId);
+    }
+
+    private static bool IsInteractiveTileChild(VisualElement target, ToneLabPedalTile tile)
+    {
+        for (VisualElement current = target; current != null && current != tile; current = current.parent)
+        {
+            if (current is Button || current is Slider || current is TextField)
+                return true;
+        }
+
+        return false;
     }
 
     private void BeginDrag(ToneLabPedalTile tile)
@@ -314,6 +381,7 @@ public sealed class ToneLabPedalBoardView
         DestroyDragPlaceholder();
         draggingTile = null;
         dragPointerId = -1;
+        dragStartOrder.Clear();
         dragMoved = false;
         dragTargetIndex = -1;
     }
@@ -355,7 +423,7 @@ public sealed class ToneLabPedalBoardView
             return;
 
         IToneLabPedalDescriptor descriptor = ToneLabPedalRegistry.GetDescriptor(tile.DescriptorId);
-        dragPreviewTile = new ToneLabPedalTile(tile.PedalInstanceId, descriptor);
+        dragPreviewTile = new ToneLabPedalTile(tile.PedalInstanceId, descriptor, pedalVisualScale);
         dragPreviewTile.pickingMode = PickingMode.Ignore;
         dragPreviewTile.style.position = Position.Absolute;
         dragPreviewTile.style.marginRight = 0f;
@@ -374,8 +442,8 @@ public sealed class ToneLabPedalBoardView
         if (dragPreviewTile == null)
             return;
 
-        dragPreviewTile.style.left = Mathf.Max(0f, panelPosition.x - root.worldBound.x - (ToneLabPedalVisualBuilder.BoardTileWidth * 0.5f));
-        dragPreviewTile.style.top = Mathf.Max(0f, panelPosition.y - root.worldBound.y - (ToneLabPedalVisualBuilder.BoardTileHeight * 0.5f));
+        dragPreviewTile.style.left = Mathf.Max(0f, panelPosition.x - root.worldBound.x - (ScaledTileWidth * 0.5f));
+        dragPreviewTile.style.top = Mathf.Max(0f, panelPosition.y - root.worldBound.y - (ScaledTileHeight * 0.5f));
     }
 
     private void DestroyDragPreview()
@@ -394,12 +462,12 @@ public sealed class ToneLabPedalBoardView
 
         dragPlaceholder = new VisualElement();
         dragPlaceholder.name = "tone-lab-pedal-placeholder";
-        dragPlaceholder.style.width = ToneLabPedalVisualBuilder.BoardTileWidth;
-        dragPlaceholder.style.minWidth = ToneLabPedalVisualBuilder.BoardTileWidth;
-        dragPlaceholder.style.height = ToneLabPedalVisualBuilder.BoardTileHeight;
-        dragPlaceholder.style.marginRight = PedalTileSpacing;
-        dragPlaceholder.style.marginTop = 4f;
-        dragPlaceholder.style.marginBottom = 22f;
+        dragPlaceholder.style.width = ScaledTileWidth;
+        dragPlaceholder.style.minWidth = ScaledTileWidth;
+        dragPlaceholder.style.height = ScaledTileHeight;
+        dragPlaceholder.style.marginRight = ScaledTileSpacing;
+        dragPlaceholder.style.marginTop = 4f * pedalVisualScale;
+        dragPlaceholder.style.marginBottom = 22f * pedalVisualScale;
         dragPlaceholder.style.borderTopWidth = 1f;
         dragPlaceholder.style.borderRightWidth = 1f;
         dragPlaceholder.style.borderBottomWidth = 1f;
@@ -528,15 +596,14 @@ public sealed class ToneLabPedalBoardView
         return ordered;
     }
 
-    private bool OrdersMatch(IReadOnlyList<string> candidateOrder)
+    private static bool OrdersMatch(IReadOnlyList<string> left, IReadOnlyList<string> right)
     {
-        List<string> currentOrder = GetCurrentOrder();
-        if (candidateOrder == null || candidateOrder.Count != currentOrder.Count)
+        if (left == null || right == null || left.Count != right.Count)
             return false;
 
-        for (int i = 0; i < currentOrder.Count; i++)
+        for (int i = 0; i < left.Count; i++)
         {
-            if (!string.Equals(candidateOrder[i], currentOrder[i], StringComparison.Ordinal))
+            if (!string.Equals(left[i], right[i], StringComparison.Ordinal))
                 return false;
         }
 

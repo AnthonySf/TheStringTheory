@@ -60,6 +60,14 @@ public static class SongLibraryService
     private const int SongLibraryCacheVersion = 11;
     private const int MaxSongDirectoryDiscoveryDepth = 12;
     private const string LegacyTheoryPackageFolderName = "theory";
+    private static readonly string[] SupportedAudioExtensions = { ".ogg", ".mp3", ".wav", ".flac", ".m4a", ".aiff", ".aif" };
+    private static readonly string[] PrimaryAudioExtensions = { ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aiff", ".aif" };
+    private static readonly string[] SupportedAudioPatterns = SupportedAudioExtensions
+        .Select(extension => "*" + extension)
+        .ToArray();
+    private static readonly string[] PrimaryAudioPatterns = PrimaryAudioExtensions
+        .Select(extension => "*" + extension)
+        .ToArray();
 
     [Serializable]
     private sealed class SongLibraryCacheManifest
@@ -162,6 +170,33 @@ public static class SongLibraryService
 
         AddExternalImporterCandidates(songsDirectory, convertedTheorySources, seenSources, candidates);
         AddNotationImportCandidates(songsDirectory, cachedLegacySourceKeys, convertedTheorySources, seenSources, candidates);
+
+        candidates.Sort((a, b) =>
+        {
+            int nameCompare = string.Compare(a?.DisplayName ?? string.Empty, b?.DisplayName ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+            return nameCompare != 0
+                ? nameCompare
+                : string.Compare(a?.SourcePath ?? string.Empty, b?.SourcePath ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        });
+        return candidates;
+    }
+
+    public static List<SongLibraryImportCandidate> DiscoverExistingRawNotationTheoryConversionCandidates()
+    {
+        List<SongLibraryImportCandidate> candidates = new List<SongLibraryImportCandidate>();
+        string songsDirectory = ExternalContentPaths.PersistentSongsDirectory;
+        if (string.IsNullOrWhiteSpace(songsDirectory) || !Directory.Exists(songsDirectory))
+            return candidates;
+
+        HashSet<string> seenSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources = DiscoverConvertedTheorySourceStamps(songsDirectory);
+        AddNotationImportCandidates(
+            songsDirectory,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+            convertedTheorySources,
+            seenSources,
+            candidates,
+            skipCachedLegacySources: false);
 
         candidates.Sort((a, b) =>
         {
@@ -426,7 +461,8 @@ public static class SongLibraryService
         HashSet<string> cachedLegacySourceKeys,
         Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources,
         HashSet<string> seenSources,
-        List<SongLibraryImportCandidate> candidates)
+        List<SongLibraryImportCandidate> candidates,
+        bool skipCachedLegacySources = true)
     {
         List<string> songDirectories = DiscoverSongDirectories(songsDirectory);
         for (int i = 0; i < songDirectories.Count; i++)
@@ -451,7 +487,7 @@ public static class SongLibraryService
 
             string sourceKey = NormalizeFullPathKey(entry.PrimaryNotationPath);
             if (string.IsNullOrWhiteSpace(sourceKey) ||
-                cachedLegacySourceKeys.Contains(sourceKey) ||
+                (skipCachedLegacySources && cachedLegacySourceKeys.Contains(sourceKey)) ||
                 SourceHasCurrentTheoryConversion(entry.PrimaryNotationPath, convertedTheorySources) ||
                 !seenSources.Add(sourceKey))
             {
@@ -1562,9 +1598,7 @@ public static class SongLibraryService
     {
         entry = null;
 
-        string mp3Path = FindFirstFile(songDirectory, "*.mp3")
-                         ?? FindFirstFile(songDirectory, "*.wav")
-                         ?? FindFirstFile(songDirectory, "*.ogg");
+        string mp3Path = FindPreferredAudioFile(songDirectory);
         string theoryPackagePath = !string.IsNullOrWhiteSpace(preferredTheoryPackagePath)
             ? preferredTheoryPackagePath
             : TheorySongLoader.FindPackageInDirectory(songDirectory, requireLoadable: true);
@@ -1805,45 +1839,35 @@ public static class SongLibraryService
         if (!Directory.Exists(directory))
             return results;
 
-        string[] preferredNames =
+        string[] preferredStems =
         {
-            "song.ogg",
-            "guitar.ogg",
-            "rhythm.ogg",
-            "bass.ogg",
-            "drums.ogg",
-            "drums_1.ogg",
-            "drums_2.ogg",
-            "drums_3.ogg",
-            "drums_4.ogg",
-            "keys.ogg",
-            "crowd.ogg",
-            "song.mp3",
-            "guitar.mp3",
-            "rhythm.mp3",
-            "bass.mp3",
-            "drums.mp3",
-            "keys.mp3",
-            "song.wav",
-            "guitar.wav",
-            "rhythm.wav",
-            "bass.wav",
-            "drums.wav",
-            "keys.wav"
+            "song",
+            "guitar",
+            "rhythm",
+            "bass",
+            "drums",
+            "drums_1",
+            "drums_2",
+            "drums_3",
+            "drums_4",
+            "keys",
+            "crowd"
         };
 
         HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        for (int i = 0; i < preferredNames.Length; i++)
+        for (int stemIndex = 0; stemIndex < preferredStems.Length; stemIndex++)
         {
-            string candidate = Path.Combine(directory, preferredNames[i]);
-            if (File.Exists(candidate) && seen.Add(candidate))
-                results.Add(candidate);
+            for (int extensionIndex = 0; extensionIndex < SupportedAudioExtensions.Length; extensionIndex++)
+            {
+                string candidate = Path.Combine(directory, preferredStems[stemIndex] + SupportedAudioExtensions[extensionIndex]);
+                if (File.Exists(candidate) && seen.Add(candidate))
+                    results.Add(candidate);
+            }
         }
 
-        string[] patterns = { "*.ogg", "*.mp3", "*.wav" };
-        for (int patternIndex = 0; patternIndex < patterns.Length; patternIndex++)
+        for (int patternIndex = 0; patternIndex < SupportedAudioPatterns.Length; patternIndex++)
         {
-            foreach (string candidate in Directory.GetFiles(directory, patterns[patternIndex]).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
+            foreach (string candidate in Directory.GetFiles(directory, SupportedAudioPatterns[patternIndex]).OrderBy(path => path, StringComparer.OrdinalIgnoreCase))
             {
                 string fileName = Path.GetFileName(candidate);
                 if (IsCloneHeroIgnoredMediaFile(fileName))
@@ -1855,6 +1879,42 @@ public static class SongLibraryService
         }
 
         return results;
+    }
+
+    private static string FindPreferredAudioFile(string directory)
+    {
+        if (!Directory.Exists(directory))
+            return null;
+
+        string[] preferredStems =
+        {
+            "song",
+            "audio",
+            "music",
+            "backing",
+            "guitar"
+        };
+
+        for (int stemIndex = 0; stemIndex < preferredStems.Length; stemIndex++)
+        {
+            for (int extensionIndex = 0; extensionIndex < PrimaryAudioExtensions.Length; extensionIndex++)
+            {
+                string candidate = Path.Combine(directory, preferredStems[stemIndex] + PrimaryAudioExtensions[extensionIndex]);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        for (int patternIndex = 0; patternIndex < PrimaryAudioPatterns.Length; patternIndex++)
+        {
+            string candidate = Directory.GetFiles(directory, PrimaryAudioPatterns[patternIndex])
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(candidate))
+                return candidate;
+        }
+
+        return null;
     }
 
     private static bool IsCloneHeroIgnoredMediaFile(string fileName)
@@ -1876,6 +1936,7 @@ public static class SongLibraryService
 
         string[] patterns =
         {
+            "*.gp8",
             "*.gp5",
             "*.gp4",
             "*.gp3",

@@ -10,7 +10,7 @@ public static class ChartEditorImportService
 {
     private static readonly HashSet<string> ChartExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        ".theory", ".gp", ".gp3", ".gp4", ".gp5", ".gpx", ".musicxml", ".xml"
+        ".theory", ".gp", ".gp3", ".gp4", ".gp5", ".gp8", ".gpx", ".musicxml", ".xml"
     };
 
     private static readonly HashSet<string> AudioExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -51,6 +51,112 @@ public static class ChartEditorImportService
             return ImportTheoryPackage(chartPath, out result, out error);
 
         result = ImportNotationProject(chartPath, kind, audioPath, ChartEditorSourceKindFromNotation(kind));
+        return true;
+    }
+
+    public static bool TryReadNewProjectChartInfo(
+        string chartPath,
+        out SongNotationSourceKind kind,
+        out List<MusicXmlLoader.MusicXmlPartSummary> summaries,
+        out string title,
+        out string artist,
+        out string error)
+    {
+        kind = SongNotationSourceKind.None;
+        summaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
+        title = string.Empty;
+        artist = string.Empty;
+        error = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(chartPath) || !File.Exists(chartPath))
+        {
+            error = "Chart file was not found.";
+            return false;
+        }
+
+        if (!SongNotationFacade.TryDetectKind(chartPath, out kind) || kind == SongNotationSourceKind.None)
+        {
+            error = $"Unsupported chart file: {Path.GetExtension(chartPath)}";
+            return false;
+        }
+
+        if (kind == SongNotationSourceKind.TheoryPackage)
+        {
+            error = "Use Open .theory Package for existing theory files.";
+            return false;
+        }
+
+        summaries = GetNotationSummariesForImport(chartPath, kind);
+        title = FirstNonEmpty(SongNotationFacade.TryReadDisplayName(chartPath, kind), Path.GetFileNameWithoutExtension(chartPath));
+        artist = SongNotationFacade.TryReadCreator(chartPath, kind) ?? string.Empty;
+        return true;
+    }
+
+    public static bool CreateNewProject(ChartEditorNewProjectRequest request, out ChartEditorImportResult result, out string error)
+    {
+        result = null;
+        error = string.Empty;
+        request ??= new ChartEditorNewProjectRequest();
+
+        string chartPath = request.chartPath?.Trim() ?? string.Empty;
+        string audioPath = request.audioPath?.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(audioPath) && !File.Exists(audioPath))
+        {
+            error = "Audio file was not found.";
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(chartPath))
+        {
+            result = CreateBlankProject(request);
+            return true;
+        }
+
+        if (!File.Exists(chartPath))
+        {
+            error = "Chart file was not found.";
+            return false;
+        }
+
+        if (!SongNotationFacade.TryDetectKind(chartPath, out SongNotationSourceKind kind) || kind == SongNotationSourceKind.None)
+        {
+            error = $"Unsupported chart file: {Path.GetExtension(chartPath)}";
+            return false;
+        }
+
+        if (kind == SongNotationSourceKind.TheoryPackage)
+        {
+            if (!ImportTheoryPackage(chartPath, out result, out error))
+                return false;
+
+            ApplyNewProjectMetadata(result.project, request, Path.GetFileNameWithoutExtension(chartPath));
+            result.project.dirty = true;
+            return true;
+        }
+
+        if (request.selectedPartIndices != null && request.selectedPartIndices.Count == 0)
+        {
+            error = "Select at least one arrangement or remove the chart file.";
+            return false;
+        }
+
+        if (request.selectedPartIndices != null && request.selectedPartIndices.Count > 0)
+        {
+            HashSet<int> selected = new HashSet<int>(request.selectedPartIndices);
+            if (!GetNotationSummariesForImport(chartPath, kind).Any(summary => summary != null && selected.Contains(summary.Index)))
+            {
+                error = "Selected arrangements were not found in the chart file.";
+                return false;
+            }
+        }
+
+        result = ImportNotationProject(
+            chartPath,
+            kind,
+            audioPath,
+            ChartEditorSourceKindFromNotation(kind),
+            request.selectedPartIndices,
+            request);
         return true;
     }
 
@@ -101,6 +207,7 @@ public static class ChartEditorImportService
             project.tracks.Add(BuildTrack(summary, arrangement, packagePath));
         }
 
+        ApplyTheoryToneLabMappings(project, packagePath);
         ImportTheoryTiming(packagePath, manifest, project);
         ApplyTheoryEditorState(packagePath, project);
         FinishProject(project);
@@ -219,7 +326,9 @@ public static class ChartEditorImportService
         string notationPath,
         SongNotationSourceKind kind,
         string audioPath,
-        ChartEditorSourceKind sourceKind)
+        ChartEditorSourceKind sourceKind,
+        IReadOnlyCollection<int> selectedPartIndices = null,
+        ChartEditorNewProjectRequest metadataOverride = null)
     {
         ChartEditorProject project = CreateBaseProject(notationPath, sourceKind);
         project.sourceFolder = Path.GetDirectoryName(notationPath) ?? string.Empty;
@@ -227,22 +336,16 @@ public static class ChartEditorImportService
             SongNotationFacade.TryReadDisplayName(notationPath, kind),
             Path.GetFileNameWithoutExtension(notationPath));
         project.metadata.artist = SongNotationFacade.TryReadCreator(notationPath, kind) ?? string.Empty;
+        ApplyNewProjectMetadata(project, metadataOverride, project.metadata.title);
         project.audio = BuildAudioInfo(audioPath, 0f);
 
-        List<MusicXmlLoader.MusicXmlPartSummary> summaries = OrderImportedSummaries(SongNotationFacade.GetPartSummaries(notationPath, kind));
-        if (summaries == null || summaries.Count == 0)
+        List<MusicXmlLoader.MusicXmlPartSummary> summaries = GetNotationSummariesForImport(notationPath, kind);
+        if (selectedPartIndices != null && selectedPartIndices.Count > 0)
         {
-            summaries = new List<MusicXmlLoader.MusicXmlPartSummary>
-            {
-                new MusicXmlLoader.MusicXmlPartSummary
-                {
-                    Index = -1,
-                    PartId = "track_1",
-                    Name = "Track",
-                    GroupId = "track_1",
-                    GroupDisplayName = "Track"
-                }
-            };
+            HashSet<int> selected = new HashSet<int>(selectedPartIndices);
+            summaries = summaries
+                .Where(summary => summary != null && selected.Contains(summary.Index))
+                .ToList();
         }
 
         GeneratedPlaybackArrangement generatedArrangement = SongNotationFacade.LoadGeneratedArrangement(notationPath, kind);
@@ -273,6 +376,69 @@ public static class ChartEditorImportService
         return result;
     }
 
+    private static ChartEditorImportResult CreateBlankProject(ChartEditorNewProjectRequest request)
+    {
+        ChartEditorProject project = CreateBaseProject(string.Empty, ChartEditorSourceKind.Empty);
+        ApplyNewProjectMetadata(project, request, "Untitled Song");
+        project.audio = BuildAudioInfo(request?.audioPath?.Trim(), 0f);
+        project.tracks.Add(CreateDefaultBlankTrack());
+        FinishProject(project);
+
+        ChartEditorImportResult result = new ChartEditorImportResult { project = project };
+        result.warnings.AddRange(ChartEditorValidationService.BuildWarnings(project));
+        if (!string.IsNullOrWhiteSpace(request?.audioPath) && !IsSupportedAudioPath(request.audioPath))
+            result.warnings.Add($"Audio extension '{Path.GetExtension(request.audioPath)}' is referenced but may not decode on every Unity platform.");
+        return result;
+    }
+
+    private static ChartEditorTrack CreateDefaultBlankTrack()
+    {
+        ChartEditorTrack track = new ChartEditorTrack
+        {
+            id = "lead",
+            importedName = "Lead Guitar",
+            displayName = "Lead Guitar",
+            role = ChartEditorTrackRole.LeadGuitar,
+            arrangementGroupId = "lead",
+            arrangementGroupDisplayName = "Lead Guitar",
+            arrangementRoute = "Lead",
+            arrangementInstrumentType = "guitar",
+            difficultyLabel = "Full",
+            difficultyUiIndex = 0,
+            hasDifficultyVariants = false,
+            colorHex = ColorForRole(ChartEditorTrackRole.LeadGuitar),
+            tuning = new ChartEditorTuningInfo
+            {
+                displayName = "Standard E",
+                stringPitches = new[] { 40, 45, 50, 55, 59, 64 }
+            },
+            generatedPart = FromGeneratedPlaybackPart(null, "lead", "Lead Guitar", ChartEditorTrackRole.LeadGuitar),
+            notes = new List<ChartEditorNote>(),
+            arpeggioGuides = new List<ChartEditorArpeggioGuide>(),
+            generatedChannels = new List<ChartEditorGeneratedChannelAssignment>(),
+            generatedNotes = new List<ChartEditorGeneratedNoteEvent>()
+        };
+        track.EnsureDefaults();
+        return track;
+    }
+
+    private static void ApplyNewProjectMetadata(
+        ChartEditorProject project,
+        ChartEditorNewProjectRequest request,
+        string fallbackTitle)
+    {
+        if (project?.metadata == null || request == null)
+            return;
+
+        project.metadata.title = FirstNonEmpty(request.title, project.metadata.title, fallbackTitle, "Untitled Song");
+        project.metadata.artist = request.artist?.Trim() ?? string.Empty;
+        project.metadata.album = request.album?.Trim() ?? string.Empty;
+        project.metadata.genre = request.genre?.Trim() ?? string.Empty;
+        project.metadata.year = request.year?.Trim() ?? string.Empty;
+        project.metadata.coverImagePath = request.coverImagePath?.Trim() ?? string.Empty;
+        project.metadata.previewStartTimeSeconds = Math.Max(0.0, request.previewStartTimeSeconds);
+    }
+
     private static ChartEditorProject CreateBaseProject(string sourcePath, ChartEditorSourceKind sourceKind)
     {
         return new ChartEditorProject
@@ -292,6 +458,7 @@ public static class ChartEditorImportService
     private static void FinishProject(ChartEditorProject project)
     {
         project.EnsureDefaults();
+        ChartEditorToneScopeService.NormalizeProjectToneGroups(project);
         bool hasValidSelection = !string.IsNullOrWhiteSpace(project.selectedTrackId) &&
                                  project.tracks.Any(track => track != null &&
                                                              string.Equals(track.id, project.selectedTrackId, StringComparison.OrdinalIgnoreCase));
@@ -306,6 +473,98 @@ public static class ChartEditorImportService
         ChartEditorTimingService.EnsureBeatMap(project, attachContentToBeatMap: true);
         RefreshGeneratedPlaybackFingerprints(project);
         project.dirty = false;
+    }
+
+    private static void ApplyTheoryToneLabMappings(ChartEditorProject project, string packagePath)
+    {
+        if (project?.tracks == null ||
+            string.IsNullOrWhiteSpace(packagePath) ||
+            !TheoryPackageIO.TryReadToneLabMappings(packagePath, out TheoryToneLabMappingState mappingState, out _) ||
+            mappingState?.mappings == null ||
+            mappingState.mappings.Count == 0)
+        {
+            return;
+        }
+
+        for (int i = 0; i < mappingState.mappings.Count; i++)
+        {
+            TheoryToneLabPresetMappingData mapping = mappingState.mappings[i];
+            if (mapping == null ||
+                string.IsNullOrWhiteSpace(mapping.arrangementId) ||
+                string.IsNullOrWhiteSpace(mapping.toneName))
+            {
+                continue;
+            }
+
+            ChartEditorTonePresetData preset = FromTheoryTonePreset(mapping.presetSnapshot);
+            if (!HasUsableTonePreset(preset))
+                continue;
+
+            foreach (ChartEditorTrack track in project.tracks.Where(track => ToneMappingAppliesToTrack(track, mapping.arrangementId)))
+                ApplyTheoryToneLabMapping(track, mapping.toneName, mapping.presetId, preset);
+        }
+    }
+
+    private static bool ToneMappingAppliesToTrack(ChartEditorTrack track, string arrangementId)
+    {
+        if (track == null || string.IsNullOrWhiteSpace(arrangementId))
+            return false;
+
+        string normalizedArrangement = arrangementId.Trim();
+        return string.Equals(track.arrangementGroupId ?? string.Empty, normalizedArrangement, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(track.id ?? string.Empty, normalizedArrangement, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void ApplyTheoryToneLabMapping(
+        ChartEditorTrack track,
+        string toneName,
+        string presetId,
+        ChartEditorTonePresetData preset)
+    {
+        if (track == null || string.IsNullOrWhiteSpace(toneName) || !HasUsableTonePreset(preset))
+            return;
+
+        track.tones ??= new ChartEditorToneData();
+        track.tones.EnsureDefaults();
+        string resolvedToneName = toneName.Trim();
+        ChartEditorToneDefinition definition = FindToneDefinition(track.tones, resolvedToneName);
+        if (definition == null)
+        {
+            definition = new ChartEditorToneDefinition
+            {
+                name = resolvedToneName,
+                key = BuildNeutralTonePresetId(resolvedToneName, presetId)
+            };
+            track.tones.definitions.Add(definition);
+        }
+
+        if (string.IsNullOrWhiteSpace(definition.name))
+            definition.name = resolvedToneName;
+        if (string.IsNullOrWhiteSpace(definition.key))
+            definition.key = BuildNeutralTonePresetId(definition.name, presetId);
+
+        definition.preset = preset;
+        if (string.IsNullOrWhiteSpace(definition.preset.presetId))
+            definition.preset.presetId = BuildNeutralTonePresetId(definition.name, presetId);
+        if (string.IsNullOrWhiteSpace(definition.preset.presetName))
+            definition.preset.presetName = definition.name;
+        definition.fallback ??= new ChartEditorToneFallbackData();
+        definition.fallback.preferredPresetName = FirstNonEmpty(definition.fallback.preferredPresetName, definition.preset.presetName, definition.name);
+        definition.fallback.searchText = FirstNonEmpty(definition.fallback.searchText, definition.name, definition.key);
+    }
+
+    private static ChartEditorToneDefinition FindToneDefinition(ChartEditorToneData tones, string toneName)
+    {
+        if (tones?.definitions == null || string.IsNullOrWhiteSpace(toneName))
+            return null;
+
+        string normalized = toneName.Trim();
+        return tones.definitions.FirstOrDefault(definition =>
+            definition != null &&
+            (string.Equals(definition.name ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(definition.key ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(definition.preset?.presetName ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(definition.preset?.presetId ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase)));
     }
 
     private static void RefreshGeneratedPlaybackFingerprints(ChartEditorProject project)
@@ -332,6 +591,28 @@ public static class ChartEditorImportService
             .ThenByDescending(summary => summary.NoteCount)
             .ThenBy(summary => summary.Name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static List<MusicXmlLoader.MusicXmlPartSummary> GetNotationSummariesForImport(
+        string notationPath,
+        SongNotationSourceKind kind)
+    {
+        List<MusicXmlLoader.MusicXmlPartSummary> summaries = OrderImportedSummaries(
+            SongNotationFacade.GetPartSummaries(notationPath, kind));
+        if (summaries != null && summaries.Count > 0)
+            return summaries;
+
+        return new List<MusicXmlLoader.MusicXmlPartSummary>
+        {
+            new MusicXmlLoader.MusicXmlPartSummary
+            {
+                Index = -1,
+                PartId = "track_1",
+                Name = "Track",
+                GroupId = "track_1",
+                GroupDisplayName = "Track"
+            }
+        };
     }
 
     private static ChartEditorTrack SelectDefaultImportedTrack(ChartEditorProject project)
@@ -412,6 +693,9 @@ public static class ChartEditorImportService
             difficultyLabel = NormalizeDifficultyLabel(summary?.DifficultyLabel, summary?.DifficultyUiIndex ?? -1),
             difficultyUiIndex = NormalizeDifficultyUiIndex(summary?.DifficultyUiIndex ?? -1, summary?.DifficultyLabel),
             hasDifficultyVariants = summary?.HasDifficultyVariants ?? false,
+            importedSelectionScore = summary?.Score ?? -1,
+            importedTabCount = summary?.TabCount ?? -1,
+            preserveImportedRuntimeNotes = true,
             colorHex = ColorForRole(role),
             tuning = new ChartEditorTuningInfo
             {
@@ -421,6 +705,7 @@ public static class ChartEditorImportService
             generatedPart = FromGeneratedPlaybackPart(generatedPart, FirstNonEmpty(summary?.PartId, summary?.GroupId), importedName, role),
             notes = new List<ChartEditorNote>(),
             arpeggioGuides = new List<ChartEditorArpeggioGuide>(),
+            generatedChannels = FromGeneratedPlaybackChannels(generatedArrangement, summary, generatedPart),
             generatedNotes = FromGeneratedPlaybackNotes(generatedArrangement, summary, generatedPart)
         };
 
@@ -461,6 +746,9 @@ public static class ChartEditorImportService
             difficultyLabel = NormalizeDifficultyLabel(FirstNonEmpty(summary?.DifficultyLabel, part?.difficultyLabel), summary?.DifficultyUiIndex ?? part?.difficultyUiIndex ?? -1),
             difficultyUiIndex = NormalizeDifficultyUiIndex(summary?.DifficultyUiIndex ?? part?.difficultyUiIndex ?? -1, FirstNonEmpty(summary?.DifficultyLabel, part?.difficultyLabel)),
             hasDifficultyVariants = (summary?.HasDifficultyVariants ?? false) || (part?.hasDifficultyVariants ?? false),
+            importedSelectionScore = summary?.Score ?? -1,
+            importedTabCount = summary?.TabCount ?? -1,
+            preserveImportedRuntimeNotes = true,
             colorHex = ColorForRole(role),
             tuning = new ChartEditorTuningInfo
             {
@@ -473,6 +761,7 @@ public static class ChartEditorImportService
             tones = FromCachedToneData(part?.tones, part?.route ?? summary?.Name ?? summary?.GroupDisplayName),
             notes = new List<ChartEditorNote>(),
             arpeggioGuides = new List<ChartEditorArpeggioGuide>(),
+            generatedChannels = new List<ChartEditorGeneratedChannelAssignment>(),
             generatedNotes = FromCachedGeneratedNotes(part?.generatedNotes)
         };
 
@@ -536,6 +825,9 @@ public static class ChartEditorImportService
             difficultyLabel = NormalizeDifficultyLabel(FirstNonEmpty(summary?.DifficultyLabel, arrangement?.difficultyLabel), summary?.DifficultyUiIndex ?? arrangement?.difficultyUiIndex ?? -1),
             difficultyUiIndex = NormalizeDifficultyUiIndex(summary?.DifficultyUiIndex ?? arrangement?.difficultyUiIndex ?? -1, FirstNonEmpty(summary?.DifficultyLabel, arrangement?.difficultyLabel)),
             hasDifficultyVariants = (summary?.HasDifficultyVariants ?? false) || (arrangement?.hasDifficultyVariants ?? false),
+            importedSelectionScore = summary?.Score ?? -1,
+            importedTabCount = summary?.TabCount ?? -1,
+            preserveImportedRuntimeNotes = arrangement?.preserveImportedRuntimeNotes ?? false,
             colorHex = ColorForRole(role),
             tuning = new ChartEditorTuningInfo
             {
@@ -548,12 +840,17 @@ public static class ChartEditorImportService
             tones = FromTheoryToneData(arrangement?.tones, packagePath, arrangementRoute),
             notes = new List<ChartEditorNote>(),
             arpeggioGuides = new List<ChartEditorArpeggioGuide>(),
+            generatedChannels = FromTheoryGeneratedChannels(arrangement?.generatedChannels),
             generatedNotes = FromTheoryGeneratedNotes(arrangement?.generatedNotes)
         };
 
         List<TheoryNoteData> sourceNotes = arrangement?.notes ?? new List<TheoryNoteData>();
         for (int i = 0; i < sourceNotes.Count; i++)
-            track.notes.Add(FromTheoryNoteData(sourceNotes[i], i, role == ChartEditorTrackRole.Drums));
+            track.notes.Add(FromTheoryNoteData(
+                sourceNotes[i],
+                i,
+                role == ChartEditorTrackRole.Drums,
+                arrangement?.preserveImportedRuntimeNotes ?? false));
 
         if (arrangement?.arpeggioGuides != null)
         {
@@ -724,9 +1021,8 @@ public static class ChartEditorImportService
     private static bool HasUsableTonePreset(ChartEditorTonePresetData preset)
     {
         return preset != null &&
-               (!string.IsNullOrWhiteSpace(preset.presetId) ||
-                !string.IsNullOrWhiteSpace(preset.presetName) ||
-                (preset.pedalChain != null && preset.pedalChain.Count > 0));
+               preset.pedalChain != null &&
+               preset.pedalChain.Count > 0;
     }
 
     private static string ReadTheoryRawToneJson(string packagePath, string rawToneEntry)
@@ -1118,6 +1414,34 @@ public static class ChartEditorImportService
         return result;
     }
 
+    private static List<ChartEditorGeneratedChannelAssignment> FromTheoryGeneratedChannels(List<TheoryGeneratedChannelAssignment> source)
+    {
+        List<ChartEditorGeneratedChannelAssignment> result = new List<ChartEditorGeneratedChannelAssignment>();
+        if (source == null)
+            return result;
+
+        for (int i = 0; i < source.Count; i++)
+        {
+            TheoryGeneratedChannelAssignment channel = source[i];
+            if (channel == null)
+                continue;
+
+            result.Add(new ChartEditorGeneratedChannelAssignment
+            {
+                channel = channel.channel,
+                bank = channel.bank,
+                preset = channel.preset,
+                isDrum = channel.isDrum,
+                label = channel.label ?? string.Empty,
+                sourcePartId = channel.sourcePartId ?? string.Empty,
+                sourcePartName = channel.sourcePartName ?? string.Empty,
+                pitchBendRangeSemitones = Mathf.Max(0, channel.pitchBendRangeSemitones)
+            });
+        }
+
+        return result;
+    }
+
     private static GeneratedPlaybackPartInfo ResolveGeneratedPlaybackPart(
         GeneratedPlaybackArrangement arrangement,
         MusicXmlLoader.MusicXmlPartSummary summary)
@@ -1157,6 +1481,7 @@ public static class ChartEditorImportService
         HashSet<string> candidateIds = BuildGeneratedPlaybackCandidateIds(summary, generatedPart);
         HashSet<int> candidateChannels = BuildGeneratedPlaybackCandidateChannels(arrangement, candidateIds);
         bool includeAll = arrangement.parts != null && arrangement.parts.Count == 1 && candidateChannels.Count == 0;
+        bool hasCandidateIds = candidateIds.Count > 0;
 
         for (int i = 0; i < arrangement.notes.Count; i++)
         {
@@ -1165,7 +1490,8 @@ public static class ChartEditorImportService
                 continue;
 
             bool idMatch = candidateIds.Contains(note.partId ?? string.Empty);
-            bool channelMatch = candidateChannels.Contains(note.channel);
+            bool channelMatch = (!hasCandidateIds || string.IsNullOrWhiteSpace(note.partId)) &&
+                                candidateChannels.Contains(note.channel);
             if (!includeAll && !idMatch && !channelMatch)
                 continue;
 
@@ -1193,6 +1519,45 @@ public static class ChartEditorImportService
                         normalizedTime = point.normalizedTime,
                         semitoneOffset = point.semitoneOffset
                     })));
+        }
+
+        return result;
+    }
+
+    private static List<ChartEditorGeneratedChannelAssignment> FromGeneratedPlaybackChannels(
+        GeneratedPlaybackArrangement arrangement,
+        MusicXmlLoader.MusicXmlPartSummary summary,
+        GeneratedPlaybackPartInfo generatedPart)
+    {
+        List<ChartEditorGeneratedChannelAssignment> result = new List<ChartEditorGeneratedChannelAssignment>();
+        if (arrangement?.channelAssignments == null || arrangement.channelAssignments.Count == 0)
+            return result;
+
+        HashSet<string> candidateIds = BuildGeneratedPlaybackCandidateIds(summary, generatedPart);
+        bool includeAll = arrangement.parts != null && arrangement.parts.Count == 1;
+        foreach (GeneratedPlaybackChannelAssignment channel in arrangement.channelAssignments
+                     .Where(channel => channel != null)
+                     .OrderBy(channel => channel.channel))
+        {
+            bool hasSourceIdentity = !string.IsNullOrWhiteSpace(channel.sourcePartId) ||
+                                     !string.IsNullOrWhiteSpace(channel.sourcePartName);
+            bool idMatch = candidateIds.Contains(channel.sourcePartId ?? string.Empty) ||
+                           candidateIds.Contains(channel.sourcePartName ?? string.Empty) ||
+                           (!hasSourceIdentity && candidateIds.Contains(channel.label ?? string.Empty));
+            if (!includeAll && !idMatch)
+                continue;
+
+            result.Add(new ChartEditorGeneratedChannelAssignment
+            {
+                channel = channel.channel,
+                bank = channel.bank,
+                preset = channel.preset,
+                isDrum = channel.isDrum,
+                label = channel.label ?? string.Empty,
+                sourcePartId = channel.sourcePartId ?? string.Empty,
+                sourcePartName = channel.sourcePartName ?? string.Empty,
+                pitchBendRangeSemitones = Mathf.Max(0, channel.pitchBendRangeSemitones)
+            });
         }
 
         return result;
@@ -1226,9 +1591,11 @@ public static class ChartEditorImportService
             if (channel == null)
                 continue;
 
+            bool hasSourceIdentity = !string.IsNullOrWhiteSpace(channel.sourcePartId) ||
+                                     !string.IsNullOrWhiteSpace(channel.sourcePartName);
             if (candidateIds.Contains(channel.sourcePartId ?? string.Empty) ||
                 candidateIds.Contains(channel.sourcePartName ?? string.Empty) ||
-                candidateIds.Contains(channel.label ?? string.Empty))
+                (!hasSourceIdentity && candidateIds.Contains(channel.label ?? string.Empty)))
             {
                 channels.Add(channel.channel);
             }
@@ -1318,7 +1685,7 @@ public static class ChartEditorImportService
             bendPreBend = source.bendPreBend,
             bendRelease = source.bendRelease,
             muted = source.isMuted,
-            palmMute = source.isMuted,
+            palmMute = source.isPalmMute,
             fretHandMute = false,
             maxBend = Mathf.Max(0f, source.bendStep),
             legato = source.isLegato,
@@ -1442,7 +1809,11 @@ public static class ChartEditorImportService
         return note;
     }
 
-    private static ChartEditorNote FromTheoryNoteData(TheoryNoteData source, int fallbackIndex, bool drumTrack = false)
+    private static ChartEditorNote FromTheoryNoteData(
+        TheoryNoteData source,
+        int fallbackIndex,
+        bool drumTrack = false,
+        bool preserveRuntimeFields = false)
     {
         if (source == null)
             return null;
@@ -1461,7 +1832,7 @@ public static class ChartEditorImportService
             noteName = source.noteName ?? string.Empty,
             chordId = source.chordId,
             chordName = source.chordName ?? string.Empty,
-            technique = ResolveTheoryPrimaryTechnique(source),
+            technique = ResolveTheoryPrimaryTechnique(source, preserveRuntimeFields),
             slideTargetFret = source.slideTargetFret,
             bendStep = source.bendStep,
             bendVisualStartTime = source.bendVisualStartTime,
@@ -1478,7 +1849,9 @@ public static class ChartEditorImportService
             pinchHarmonic = source.pinchHarmonic,
             vibratoStrength = source.vibratoStrength,
             maxBend = Mathf.Max(source.maxBend, source.bendStep),
-            legato = source.legato || source.hammerOn || source.pullOff || source.hopo,
+            legato = preserveRuntimeFields
+                ? source.legato
+                : source.legato || source.hammerOn || source.pullOff || source.hopo,
             requiresPluck = source.requiresPluck,
             linkedFromNoteId = source.linkedFromNoteId,
             bendPoints = new List<ChartEditorBendPoint>(),
@@ -1565,10 +1938,12 @@ public static class ChartEditorImportService
         return (NoteTechnique)Mathf.Clamp(source.technique, (int)NoteTechnique.None, (int)NoteTechnique.Vibrato);
     }
 
-    private static NoteTechnique ResolveTheoryPrimaryTechnique(TheoryNoteData source)
+    private static NoteTechnique ResolveTheoryPrimaryTechnique(TheoryNoteData source, bool preserveRuntimeFields = false)
     {
         if (source == null)
             return NoteTechnique.None;
+        if (preserveRuntimeFields)
+            return (NoteTechnique)Mathf.Clamp(source.primaryTechnique, (int)NoteTechnique.None, (int)NoteTechnique.Vibrato);
         if (source.hammerOn)
             return NoteTechnique.HammerOn;
         if (source.pullOff)
@@ -1637,12 +2012,7 @@ public static class ChartEditorImportService
             "theory_beat");
 
         project.beatMap.timeSignatures.Clear();
-        project.beatMap.timeSignatures.Add(new ChartEditorTimeSignatureChange
-        {
-            beatPosition = 0.0,
-            numerator = 4,
-            denominator = 4
-        });
+        project.beatMap.timeSignatures.Add(DeriveImportedTimeSignature(beats));
     }
 
     private static void ApplyTheoryEditorState(string packagePath, ChartEditorProject project)
@@ -1689,7 +2059,9 @@ public static class ChartEditorImportService
                     bpm = Math.Max(0.0, marker.bpm),
                     generatedBySynchTheory = marker.generatedBySynchTheory,
                     synchTheoryConfidence = Math.Max(0.0, marker.synchTheoryConfidence),
-                    synchTheorySource = marker.synchTheorySource ?? string.Empty
+                    synchTheorySource = marker.synchTheorySource ?? string.Empty,
+                    locked = marker.locked,
+                    linkedSectionId = marker.linkedSectionId ?? string.Empty
                 });
             }
 
@@ -1738,7 +2110,9 @@ public static class ChartEditorImportService
                     id = string.IsNullOrWhiteSpace(point.id) ? Guid.NewGuid().ToString("N") : point.id,
                     chartTimeSeconds = Math.Max(0.0, point.chartTimeSeconds),
                     audioTimeSeconds = Math.Max(0.0, point.audioTimeSeconds),
-                    name = point.label ?? string.Empty
+                    name = point.label ?? string.Empty,
+                    locked = point.locked,
+                    linkedSectionId = point.linkedSectionId ?? string.Empty
                 });
             }
         }
@@ -1746,46 +2120,44 @@ public static class ChartEditorImportService
 
     private static void ImportGpSections(string path, ChartEditorProject project)
     {
-        Gp5Song song = Gp5Loader.GetParsedSong(path);
-        if (song?.measureHeaders == null || song.measureHeaders.Count == 0)
+        if (!AlphaTabGpTimelineLoader.TryLoadTimeline(path, out AlphaTabGpTimelineData timeline) ||
+            timeline?.sections == null ||
+            timeline.sections.Count == 0)
+        {
             return;
+        }
 
-        List<GpTempoPoint> tempoMap = BuildGpTempoMap(song);
         BuildSectionsFromStartMarkers(
             project,
-            song.measureHeaders
-                .Where(header => header != null && !string.IsNullOrWhiteSpace(header.markerName))
-                .Select((header, index) => new SectionMarker(
-                    header.markerName,
-                    (float)GpQuarterToSeconds(header.startQuarter, tempoMap),
-                    index)));
+            timeline.sections.Select(section => new SectionMarker(section.name, section.timeSeconds, section.index)));
     }
 
     private static void ImportGpBeatMap(string path, ChartEditorProject project)
     {
         try
         {
-            Gp5Song song = Gp5Loader.GetParsedSong(path);
-            if (song == null || project?.beatMap == null)
+            if (!AlphaTabGpTimelineLoader.TryLoadTimeline(path, out AlphaTabGpTimelineData timeline) ||
+                timeline == null ||
+                project?.beatMap == null)
+            {
                 return;
+            }
 
-            List<GpTempoPoint> tempoMap = BuildGpTempoMap(song);
-            if (tempoMap.Count > 0)
-                project.beatMap.defaultTempoBpm = Math.Max(1.0, tempoMap[0].bpm);
+            project.beatMap.defaultTempoBpm = Math.Max(1.0, timeline.defaultTempoBpm);
 
             project.beatMap.beatMarkers.Clear();
-            foreach (GpTempoPoint tempoPoint in tempoMap
-                         .GroupBy(point => Math.Round(point.quarterPos, 4))
+            foreach (AlphaTabGpTimelineTempoChange tempoPoint in timeline.tempoChanges
+                         .GroupBy(point => Math.Round(point.beatPosition, 4))
                          .Select(group => group.First())
-                         .OrderBy(point => point.quarterPos))
+                         .OrderBy(point => point.beatPosition))
             {
-                double beatPosition = Math.Max(0.0, tempoPoint.quarterPos);
+                double beatPosition = Math.Max(0.0, tempoPoint.beatPosition);
                 bool tempoChangeAnchor = beatPosition > 0.0001;
                 project.beatMap.beatMarkers.Add(new ChartEditorBeatMarker
                 {
                     id = Guid.NewGuid().ToString("N"),
                     beatPosition = beatPosition,
-                    audioTimeSeconds = Math.Max(0.0, GpQuarterToSeconds(beatPosition, tempoMap)),
+                    audioTimeSeconds = Math.Max(0.0, tempoPoint.timeSeconds),
                     isAnchor = tempoChangeAnchor,
                     label = beatPosition <= 0.0001 ? "Start" : $"{tempoPoint.bpm:0.###} BPM",
                     bpm = Math.Max(1.0, tempoPoint.bpm)
@@ -1808,21 +2180,21 @@ public static class ChartEditorImportService
             project.beatMap.timeSignatures.Clear();
             int lastNumerator = -1;
             int lastDenominator = -1;
-            if (song.measureHeaders != null)
+            if (timeline.timeSignatures != null)
             {
-                foreach (Gp5MeasureHeader header in song.measureHeaders.OrderBy(header => header.startQuarter))
+                foreach (AlphaTabGpTimelineTimeSignatureChange signature in timeline.timeSignatures.OrderBy(signature => signature.beatPosition))
                 {
-                    if (header == null)
+                    if (signature == null)
                         continue;
 
-                    int numerator = Math.Max(1, header.numerator);
-                    int denominator = Math.Max(1, header.denominator);
+                    int numerator = Math.Max(1, signature.numerator);
+                    int denominator = Math.Max(1, signature.denominator);
                     if (numerator == lastNumerator && denominator == lastDenominator)
                         continue;
 
                     project.beatMap.timeSignatures.Add(new ChartEditorTimeSignatureChange
                     {
-                        beatPosition = Math.Max(0.0, header.startQuarter),
+                        beatPosition = Math.Max(0.0, signature.beatPosition),
                         numerator = numerator,
                         denominator = denominator
                     });
@@ -1882,18 +2254,31 @@ public static class ChartEditorImportService
                 if (int.TryParse(divisionsText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedDivisions) && parsedDivisions > 0)
                     divisions = parsedDivisions;
 
-                foreach (XElement note in measure.Elements().Where(e => e.Name.LocalName == "note"))
+                foreach (XElement child in measure.Elements())
                 {
-                    if (note.Elements().Any(e => e.Name.LocalName == "chord"))
-                        continue;
+                    if (child.Name.LocalName == "note")
+                    {
+                        if (child.Elements().Any(e => e.Name.LocalName == "chord"))
+                            continue;
 
-                    string durationText = note.Elements().FirstOrDefault(e => e.Name.LocalName == "duration")?.Value;
-                    if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out double durationDivisions))
-                        continue;
+                        string durationText = child.Elements().FirstOrDefault(e => e.Name.LocalName == "duration")?.Value;
+                        if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out double durationDivisions))
+                            continue;
 
-                    double durationQuarter = durationDivisions / Math.Max(1, divisions);
-                    currentQuarter += durationQuarter;
-                    seconds += durationQuarter * (60.0 / Math.Max(1.0, bpm));
+                        double durationQuarter = durationDivisions / Math.Max(1, divisions);
+                        currentQuarter += durationQuarter;
+                        seconds += durationQuarter * (60.0 / Math.Max(1.0, bpm));
+                    }
+                    else if (child.Name.LocalName == "backup" || child.Name.LocalName == "forward")
+                    {
+                        string durationText = child.Elements().FirstOrDefault(e => e.Name.LocalName == "duration")?.Value;
+                        if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out double moveDivisions))
+                            continue;
+
+                        double moveQuarter = (moveDivisions / Math.Max(1, divisions)) * (child.Name.LocalName == "backup" ? -1.0 : 1.0);
+                        currentQuarter = Math.Max(0.0, currentQuarter + moveQuarter);
+                        seconds = Math.Max(0.0, seconds + moveQuarter * (60.0 / Math.Max(1.0, bpm)));
+                    }
                 }
             }
 
@@ -2000,7 +2385,20 @@ public static class ChartEditorImportService
                             }
 
                             if (currentQuarter > 0.0001)
-                                AddTempoAnchor(currentQuarter, seconds, bpm, currentQuarter <= 0.0001 ? "Start" : $"{bpm:0.###} BPM");
+                            {
+                                AddTempoAnchor(currentQuarter, seconds, bpm, $"{bpm:0.###} BPM");
+                            }
+                            else
+                            {
+                                // Tempo declared before the first note (the
+                                // standard MusicXML layout): update the beat-0
+                                // marker instead of leaving the grid at the
+                                // hard-coded 120 BPM default.
+                                ChartEditorBeatMarker origin = project.beatMap.beatMarkers
+                                    .FirstOrDefault(marker => marker != null && Math.Abs(marker.beatPosition) <= 0.0001);
+                                if (origin != null)
+                                    origin.bpm = Math.Max(1.0, bpm);
+                            }
                         }
                     }
                     else if (child.Name.LocalName == "note")
@@ -2015,6 +2413,19 @@ public static class ChartEditorImportService
                         double durationQuarter = durationDivisions / Math.Max(1, divisions);
                         currentQuarter += durationQuarter;
                         seconds += durationQuarter * (60.0 / Math.Max(1.0, bpm));
+                    }
+                    else if (child.Name.LocalName == "backup" || child.Name.LocalName == "forward")
+                    {
+                        // Multi-voice/multi-staff measures rewind the cursor
+                        // with <backup>; ignoring it double-counts every such
+                        // measure and drifts the whole beat grid.
+                        string durationText = child.Elements().FirstOrDefault(e => e.Name.LocalName == "duration")?.Value;
+                        if (!double.TryParse(durationText, NumberStyles.Float, CultureInfo.InvariantCulture, out double moveDivisions))
+                            continue;
+
+                        double moveQuarter = (moveDivisions / Math.Max(1, divisions)) * (child.Name.LocalName == "backup" ? -1.0 : 1.0);
+                        currentQuarter = Math.Max(0.0, currentQuarter + moveQuarter);
+                        seconds = Math.Max(0.0, seconds + moveQuarter * (60.0 / Math.Max(1.0, bpm)));
                     }
                 }
             }
@@ -2075,21 +2486,21 @@ public static class ChartEditorImportService
         }
     }
 
-    private static void BuildImportedTempoAnchors(
+    private static int BuildImportedTempoAnchors(
         ChartEditorProject project,
         IReadOnlyList<double> beatTimes,
         double fallbackBpm,
         string idPrefix)
     {
         if (project?.beatMap == null || beatTimes == null || beatTimes.Count == 0)
-            return;
+            return 0;
 
         List<double> orderedTimes = beatTimes
             .Where(time => time >= 0.0)
             .OrderBy(time => time)
             .ToList();
         if (orderedTimes.Count == 0)
-            return;
+            return 0;
 
         double firstInterval = orderedTimes.Count > 1
             ? Math.Max(0.001, orderedTimes[1] - orderedTimes[0])
@@ -2097,42 +2508,117 @@ public static class ChartEditorImportService
         project.beatMap.defaultTempoBpm = Math.Max(1.0, 60.0 / firstInterval);
         project.beatMap.beatMarkers.Clear();
 
-        void AddImportedBeatMarker(int beatIndex, double audioTime, double bpm, bool isAnchor, string label)
+        // Back-extend the grid to audio zero at the first measured tempo so
+        // notes before the first detected beat (intro/pickup) keep real beat
+        // positions instead of collapsing onto beat 0.
+        int leadInBeats = orderedTimes[0] > 0.01
+            ? Math.Max(0, (int)Math.Ceiling(orderedTimes[0] / firstInterval - 0.0001))
+            : 0;
+        double originAudio = Math.Max(0.0, orderedTimes[0] - leadInBeats * firstInterval);
+
+        project.beatMap.beatMarkers.Add(new ChartEditorBeatMarker
         {
-            beatIndex = Math.Max(0, beatIndex);
-            if (project.beatMap.beatMarkers.Any(marker => marker != null && Math.Abs(marker.beatPosition - beatIndex) <= 0.0001))
-                return;
+            id = $"{idPrefix}_start",
+            index = 0,
+            beatPosition = 0.0,
+            audioTimeSeconds = originAudio,
+            isAnchor = false,
+            isDownbeat = true,
+            label = string.Empty,
+            bpm = project.beatMap.defaultTempoBpm
+        });
+
+        // Keep the measured grid faithfully: every detected beat becomes a
+        // generated timing control (like SynchTheory output). The old sparse
+        // 3%-threshold anchors let wobbly live-performance tempo drift off
+        // the real beats between anchors.
+        for (int beatIndex = 0; beatIndex < orderedTimes.Count; beatIndex++)
+        {
+            int beat = leadInBeats + beatIndex;
+            if (beat <= 0)
+                continue;
 
             project.beatMap.beatMarkers.Add(new ChartEditorBeatMarker
             {
-                id = beatIndex == 0 ? $"{idPrefix}_start" : $"{idPrefix}_tempo_{beatIndex}",
-                index = beatIndex,
-                beatPosition = beatIndex,
-                audioTimeSeconds = Math.Max(0.0, audioTime),
-                isAnchor = isAnchor,
-                isDownbeat = beatIndex == 0,
-                label = isAnchor ? label : string.Empty,
-                bpm = Math.Max(1.0, bpm)
+                id = $"{idPrefix}_beat_{beat}",
+                index = beat,
+                beatPosition = beat,
+                audioTimeSeconds = Math.Max(0.0, orderedTimes[beatIndex]),
+                isAnchor = false,
+                generatedBySynchTheory = true,
+                synchTheoryConfidence = 1.0,
+                synchTheorySource = idPrefix,
+                // Locked: probe drags and manual anchor edits must not delete
+                // an imported measured grid (see the Clear* guards).
+                locked = true,
+                label = string.Empty
             });
-        }
-
-        AddImportedBeatMarker(0, orderedTimes[0], project.beatMap.defaultTempoBpm, false, string.Empty);
-        double activeInterval = firstInterval;
-        for (int beatIndex = 1; beatIndex + 1 < orderedTimes.Count; beatIndex++)
-        {
-            double nextInterval = Math.Max(0.001, orderedTimes[beatIndex + 1] - orderedTimes[beatIndex]);
-            double relativeChange = Math.Abs(nextInterval - activeInterval) / Math.Max(0.001, activeInterval);
-            if (relativeChange < 0.03)
-                continue;
-
-            double nextBpm = 60.0 / nextInterval;
-            AddImportedBeatMarker(beatIndex, orderedTimes[beatIndex], nextBpm, true, $"{nextBpm:0.###} BPM");
-            activeInterval = nextInterval;
         }
 
         project.beatMap.beatMarkers = project.beatMap.beatMarkers
             .OrderBy(marker => marker.beatPosition)
             .ToList();
+        return leadInBeats;
+    }
+
+    private static ChartEditorTimeSignatureChange DeriveImportedTimeSignature(List<TheoryBeatData> beats)
+    {
+        // Pick the dominant beats-per-measure from the measured beat data so
+        // 3/4 or 6/8 material stops being force-labeled 4/4. Partial first and
+        // last measures are excluded from the vote.
+        Dictionary<int, int> votes = new Dictionary<int, int>();
+        if (beats != null)
+        {
+            int runMeasure = int.MinValue;
+            int runLength = 0;
+            bool firstRun = true;
+            void Vote(bool isFinalRun)
+            {
+                // Runs of length 1 also arise from downbeat-only measure
+                // numbering conventions — never vote a 1/4 signature off them.
+                if (runLength >= 2 && runLength <= 32 && !firstRun && !isFinalRun)
+                {
+                    votes.TryGetValue(runLength, out int count);
+                    votes[runLength] = count + 1;
+                }
+            }
+
+            for (int i = 0; i < beats.Count; i++)
+            {
+                short measure = beats[i]?.measure ?? -1;
+                if (measure < 0)
+                    continue;
+
+                if (measure != runMeasure)
+                {
+                    Vote(false);
+                    if (runMeasure != int.MinValue)
+                        firstRun = false;
+                    runMeasure = measure;
+                    runLength = 0;
+                }
+
+                runLength++;
+            }
+        }
+
+        int numerator = 4;
+        int best = 0;
+        foreach (KeyValuePair<int, int> vote in votes)
+        {
+            if (vote.Value > best || (vote.Value == best && vote.Key > numerator))
+            {
+                best = vote.Value;
+                numerator = vote.Key;
+            }
+        }
+
+        return new ChartEditorTimeSignatureChange
+        {
+            beatPosition = 0.0,
+            numerator = numerator,
+            denominator = 4
+        };
     }
 
     private static ChartEditorAudioInfo BuildAudioInfo(string path, float durationSeconds)
@@ -2306,12 +2792,14 @@ public static class ChartEditorImportService
                 return 1;
             case ".gpx":
                 return 2;
-            case ".gp5":
+            case ".gp8":
                 return 3;
-            case ".musicxml":
+            case ".gp5":
                 return 4;
-            case ".xml":
+            case ".musicxml":
                 return 5;
+            case ".xml":
+                return 6;
             default:
                 return 10;
         }
@@ -2329,62 +2817,6 @@ public static class ChartEditorImportService
         }
 
         return string.Empty;
-    }
-
-    private static List<GpTempoPoint> BuildGpTempoMap(Gp5Song song)
-    {
-        List<GpTempoPoint> tempoMap = new List<GpTempoPoint>();
-        if (song?.tempoChanges != null)
-        {
-            for (int i = 0; i < song.tempoChanges.Count; i++)
-            {
-                Gp5TempoChange change = song.tempoChanges[i];
-                if (change != null)
-                    tempoMap.Add(new GpTempoPoint(Math.Max(0.0, change.quarterPos), Math.Max(1.0, change.bpm)));
-            }
-        }
-
-        tempoMap = tempoMap.OrderBy(point => point.quarterPos).ToList();
-        if (tempoMap.Count == 0 || tempoMap[0].quarterPos > 0.0001)
-            tempoMap.Insert(0, new GpTempoPoint(0.0, Math.Max(1.0, song?.initialTempo ?? 120)));
-        return tempoMap;
-    }
-
-    private static double GpQuarterToSeconds(double quarterPos, List<GpTempoPoint> tempoMap)
-    {
-        if (tempoMap == null || tempoMap.Count == 0)
-            return Math.Max(0.0, quarterPos) * 0.5;
-
-        double targetQuarter = Math.Max(0.0, quarterPos);
-        double seconds = 0.0;
-        GpTempoPoint current = tempoMap[0];
-        for (int i = 1; i < tempoMap.Count; i++)
-        {
-            GpTempoPoint next = tempoMap[i];
-            if (targetQuarter <= next.quarterPos)
-            {
-                seconds += Math.Max(0.0, targetQuarter - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
-                return seconds;
-            }
-
-            seconds += Math.Max(0.0, next.quarterPos - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
-            current = next;
-        }
-
-        seconds += Math.Max(0.0, targetQuarter - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
-        return seconds;
-    }
-
-    private readonly struct GpTempoPoint
-    {
-        public readonly double quarterPos;
-        public readonly double bpm;
-
-        public GpTempoPoint(double quarterPos, double bpm)
-        {
-            this.quarterPos = quarterPos;
-            this.bpm = bpm;
-        }
     }
 
     private readonly struct SectionMarker
@@ -2670,7 +3102,9 @@ public static class ChartEditorTheoryConversionService
             ChartEditorTrack sourceTrack = sourceTracks != null && i < sourceTracks.Count ? sourceTracks[i] : null;
             if (sourceTrack != null)
             {
-                int expectedNoteCount = ChartEditorRuntimeNoteSanitizer.PrepareChartNotesForRuntime(sourceTrack.notes).Count;
+                int expectedNoteCount = ChartEditorRuntimeNoteSanitizer
+                    .PrepareChartNotesForRuntime(sourceTrack.notes, !sourceTrack.preserveImportedRuntimeNotes)
+                    .Count;
                 if (expectedNoteCount != exportedNoteCount)
                 {
                     error = $"Converted .theory package lost notes for '{summary.arrangementId}' ({exportedNoteCount}/{expectedNoteCount}).";

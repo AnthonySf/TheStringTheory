@@ -23,7 +23,7 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
         if (project == null)
             return null;
 
-        project.EnsureDefaults();
+        project.EnsureDefaultsThrottled();
         ChartEditorTrack track = project.SelectedTrack;
         if (track == null || !IsSupportedPreviewTrack(track))
             return new ChartEditorHighwayPreviewFrame
@@ -34,7 +34,7 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
                 role = track?.role ?? ChartEditorTrackRole.Custom,
                 laneCount = 0,
                 songTime = Mathf.Max(0f, (float)project.cursorTimeSeconds),
-                songDurationSeconds = Mathf.Max(0.1f, project.DurationSeconds),
+                songDurationSeconds = Mathf.Max(0.1f, (float)ChartEditorTimingService.GetCachedDurationSeconds(project)),
                 notes = new List<NoteData>(),
                 arpeggioGuides = new List<ArpeggioGuideData>()
             };

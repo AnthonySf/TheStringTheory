@@ -26,6 +26,7 @@ public static class ChartEditorProjectStore
         }
 
         project.EnsureDefaults();
+        ChartEditorToneScopeService.NormalizeProjectToneGroups(project);
         if (project.tracks == null || project.tracks.Count == 0)
         {
             error = "Project has no tracks to save.";
@@ -70,6 +71,7 @@ public static class ChartEditorProjectStore
         }
 
         project.EnsureDefaults();
+        ChartEditorToneScopeService.NormalizeProjectToneGroups(project);
         ChartEditorRuntimeNoteSanitizer.SanitizeProjectNotes(project);
         ChartEditorTimingService.EnsureBeatMap(project, attachContentToBeatMap: true);
         try
@@ -253,6 +255,7 @@ public static class ChartEditorProjectStore
         }
 
         project.EnsureDefaults();
+        ChartEditorToneScopeService.NormalizeProjectToneGroups(project);
         if (project.tracks == null || project.tracks.Count == 0)
         {
             error = "Project has no tracks to export.";

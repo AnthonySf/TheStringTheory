@@ -567,8 +567,10 @@ public sealed class GuitarTabsRenderer : IGuitarGameplayRenderer
         private readonly GuitarBridgeServer owner;
         private readonly float lineSpacing;
         private readonly List<Renderer> staticRenderers = new List<Renderer>();
-        private readonly Transform[] stringLineTransforms = new Transform[6];
-        private readonly Renderer[] stringLineRenderers = new Renderer[6];
+        // Sized for extended-range instruments (7/8-string GP tunings), same
+        // as the 3D highway; the row math and clamps key off ActiveStringCount.
+        private readonly Transform[] stringLineTransforms = new Transform[8];
+        private readonly Renderer[] stringLineRenderers = new Renderer[8];
         private readonly List<GameObject> dynamicObjects = new List<GameObject>();
         private Renderer backdropRenderer;
         private float panelAlpha = 1f;

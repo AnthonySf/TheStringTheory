@@ -4,8 +4,6 @@ using UnityEngine;
 
 public static class ChartEditorRuntimeNoteSanitizer
 {
-    private const float SameStringEndGapSeconds = 0.001f;
-
     public static void SanitizeProjectNotes(ChartEditorProject project)
     {
         if (project?.tracks == null)
@@ -20,21 +18,24 @@ public static class ChartEditorRuntimeNoteSanitizer
         if (track == null)
             return;
 
-        track.notes = PrepareChartNotesForRuntime(track.notes)
+        track.notes = PrepareChartNotesForRuntime(track.notes, !track.preserveImportedRuntimeNotes)
             .OrderBy(note => note.timeSeconds)
             .ThenBy(note => note.stringOrLane)
             .ToList();
         track.EnsureDefaults();
     }
 
-    public static List<ChartEditorNote> PrepareChartNotesForRuntime(IEnumerable<ChartEditorNote> sourceNotes)
+    public static List<ChartEditorNote> PrepareChartNotesForRuntime(
+        IEnumerable<ChartEditorNote> sourceNotes,
+        bool trimSameStringOverlaps = true)
     {
         List<ChartEditorNote> notes = sourceNotes?
             .Where(note => note != null)
             .Select(CloneNote)
             .ToList() ?? new List<ChartEditorNote>();
 
-        TrimSameStringChartNoteOverlaps(notes);
+        if (trimSameStringOverlaps)
+            TrimSameStringChartNoteOverlaps(notes);
         return notes;
     }
 
@@ -62,7 +63,7 @@ public static class ChartEditorRuntimeNoteSanitizer
                 if (next.time <= current.time + 0.0001f)
                     continue;
 
-                float maxOffset = Mathf.Max(0f, next.time - current.time - SameStringEndGapSeconds);
+                float maxOffset = Mathf.Max(0f, next.time - current.time);
                 if (GetVisualNoteEndOffset(current) <= maxOffset + 0.0005f)
                     continue;
 
@@ -95,7 +96,7 @@ public static class ChartEditorRuntimeNoteSanitizer
                 if (next.timeSeconds <= current.timeSeconds + 0.0001)
                     continue;
 
-                double maxOffset = System.Math.Max(0.0, next.timeSeconds - current.timeSeconds - SameStringEndGapSeconds);
+                double maxOffset = System.Math.Max(0.0, next.timeSeconds - current.timeSeconds);
                 if (GetChartNoteVisualEndOffset(current) <= maxOffset + 0.0005)
                     continue;
 

@@ -43,6 +43,9 @@ public static class WindowsFolderPicker
 
     [DllImport("ole32.dll")]
     private static extern void CoTaskMemFree(IntPtr pv);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetActiveWindow();
 #endif
 
     public static bool TryPickFolder(string title, string initialDirectory, out string selectedPath)
@@ -63,7 +66,7 @@ public static class WindowsFolderPicker
             BrowseCallbackProc callback = BrowseCallback;
             BrowseInfo info = new BrowseInfo
             {
-                hwndOwner = IntPtr.Zero,
+                hwndOwner = GetActiveWindow(),
                 pidlRoot = IntPtr.Zero,
                 pszDisplayName = displayNameBuffer,
                 lpszTitle = string.IsNullOrWhiteSpace(title) ? "Select Folder" : title,

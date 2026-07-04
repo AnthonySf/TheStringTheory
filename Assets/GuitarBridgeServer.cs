@@ -208,7 +208,10 @@ public class GuitarBridgeServer : MonoBehaviour
         new Color(0.20f, 0.60f, 0.86f, 1f),
         new Color(0.90f, 0.49f, 0.13f, 1f),
         new Color(0.18f, 0.80f, 0.44f, 1f),
-        new Color(0.61f, 0.35f, 0.71f, 1f)
+        new Color(0.61f, 0.35f, 0.71f, 1f),
+        // Extended-range strings (7/8-string tunings from GP imports).
+        new Color(0.35f, 0.78f, 0.78f, 1f),
+        new Color(0.85f, 0.45f, 0.65f, 1f)
     };
 
     [Header("Colors - Status")]
@@ -238,14 +241,14 @@ public class GuitarBridgeServer : MonoBehaviour
     public float highwayStuckOutlineThickness = 0.06f;
     public float highwayStuckOutlineDepth = 0.04f;
     public float highwayCameraFarClip = 5000f;
-    public float highwayBackgroundDistance = 1200f;
-    public float highwayBackgroundCenterY = -1500f;
-    public float highwayBackgroundScale = 250f;
-    public float highwayBackgroundCloudYOffset = 0f;
-    public float highwayBackgroundStarScale = 1f;
-    public float highwayBackgroundCloudScale = 1f;
-    public float highwayBackgroundStarSpread = 1f;
-    public float highwayBackgroundCloudSpread = 1f;
+    public float highwayBackgroundDistance = 100f;
+    public float highwayBackgroundCenterY = -200f;
+    public float highwayBackgroundScale = 100f;
+    public float highwayBackgroundCloudYOffset = 6f;
+    public float highwayBackgroundStarScale = 0.6f;
+    public float highwayBackgroundCloudScale = 0.75f;
+    public float highwayBackgroundStarSpread = 0.6f;
+    public float highwayBackgroundCloudSpread = 0.42f;
     public float highwayLaneGuideThickness = 0.14f;
     public float highwayLaneGuideYOffset = 0f;
     public float highwayCharacterScale = 1f;
@@ -330,7 +333,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     [Header("Background - Neon Horizon")]
     public TabsNeonStageSkyDesign neonStageSkyDesign = TabsNeonStageSkyDesign.Enviro3;
-    public TabsEnviroSkyMood neonStageEnviroMood = TabsEnviroSkyMood.CloudyGiantMoon;
+    public TabsEnviroSkyMood neonStageEnviroMood = TabsEnviroSkyMood.AuroraBorealis;
     public TabsEnviroMoonMode neonStageEnviroMoonMode = TabsEnviroMoonMode.Giant;
     public bool neonStageEnviroCloudsEnabled = true;
     public float neonStageEnviroCloudAmount = 1f;
@@ -356,9 +359,9 @@ public class GuitarBridgeServer : MonoBehaviour
     public bool neonStageEnviroHorizonEnabled = true;
     public float neonHorizonLineDistance = 150f;
     public float neonHorizonLineY = 2.6f;
-    public float neonHorizonLineWidth = 620f;
-    public float neonHorizonGlowBlurHeight = 2.85f;
-    public float neonHorizonCoreLineHeight = 0.085f;
+    public float neonHorizonLineWidth = 390f;
+    public float neonHorizonGlowBlurHeight = 1.7f;
+    public float neonHorizonCoreLineHeight = 0.25f;
     public float neonHorizonCoreLineYOffset = 0.012f;
     public float neonHorizonCenterGlowWidth = 230f;
     public float neonHorizonCenterGlowHeight = 2.20f;
@@ -366,11 +369,11 @@ public class GuitarBridgeServer : MonoBehaviour
     public float neonHorizonFloorHorizonOverlap = 0.035f;
     public float neonHorizonColorStrength = 1.20f;
     public float neonHorizonColorSaturation = 2.10f;
-    public float neonHorizonSoftGlowIntensity = 2.10f;
-    public float neonHorizonCoreGlowIntensity = 1.70f;
+    public float neonHorizonSoftGlowIntensity = 4f;
+    public float neonHorizonCoreGlowIntensity = 4.65f;
     public float neonHorizonCenterGlowIntensity = 0.85f;
-    public float neonHorizonSoftAlpha = 0.44f;
-    public float neonHorizonCoreAlpha = 0.82f;
+    public float neonHorizonSoftAlpha = 0.48f;
+    public float neonHorizonCoreAlpha = 0.42f;
     public float neonHorizonCenterAlpha = 0.22f;
     public float neonHorizonSoftBlurFalloff = 3.10f;
     public float neonHorizonCoreBlurFalloff = 36.0f;
@@ -444,7 +447,7 @@ public class GuitarBridgeServer : MonoBehaviour
     public int tabStarSeed = 1337;
 
     [Header("Background - Blue Sky")]
-    public TabsSkyMood tabSkyMood = TabsSkyMood.Day;
+    public TabsSkyMood tabSkyMood = TabsSkyMood.Midnight;
     public bool tabSkyUseStageBackdrop = false;
     [Min(0.01f)] public float tabSkyWidth = 54f;
     public float tabSkyNearZ = 1.4f;
@@ -475,7 +478,7 @@ public class GuitarBridgeServer : MonoBehaviour
     [Min(0.1f)] public float tabSkyCloudScaleMaxMid = 2.8f;
     [Min(0.1f)] public float tabSkyCloudScaleMinFar = 1.0f;
     [Min(0.1f)] public float tabSkyCloudScaleMaxFar = 2.1f;
-    [Min(0.2f)] public float tabSkyCloudGlobalScale = 2.65f;
+    [Min(0.2f)] public float tabSkyCloudGlobalScale = 3f;
     public Color tabSkyDayCloudTopTint = new Color(0.98f, 0.99f, 1f, 1f);
     public Color tabSkyDayCloudBottomTint = new Color(0.90f, 0.95f, 1f, 1f);
     public Color tabSkySunsetCloudTopTint = new Color(1f, 0.84f, 0.68f, 1f);
@@ -487,10 +490,10 @@ public class GuitarBridgeServer : MonoBehaviour
     [Min(0.001f)] public float tabSkyStarSizeMin = 0.015f;
     [Min(0.001f)] public float tabSkyStarSizeMax = 0.065f;
     [Range(0f, 1f)] public float tabSkyStarAlpha = 0.78f;
-    [Range(0f, 1f)] public float tabSkyStarTwinkleFraction = 0.28f;
-    [Range(0f, 1f)] public float tabSkyStarTwinkleStrength = 0.16f;
-    [Min(0.05f)] public float tabSkyStarTwinkleSpeedMin = 0.45f;
-    [Min(0.05f)] public float tabSkyStarTwinkleSpeedMax = 1.2f;
+    [Range(0f, 1f)] public float tabSkyStarTwinkleFraction = 0.83f;
+    [Range(0f, 1f)] public float tabSkyStarTwinkleStrength = 0.6f;
+    [Min(0.05f)] public float tabSkyStarTwinkleSpeedMin = 0.57f;
+    [Min(0.05f)] public float tabSkyStarTwinkleSpeedMax = 1f;
     [Range(0f, 0.2f)] public float tabSkyCloudVerticalBob = 0.04f;
 
     [Header("Tabs Header")]
@@ -1034,7 +1037,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         public TabsBackgroundMode backgroundMode = TabsBackgroundMode.NeonStage;
         public TabsNeonStageSkyDesign skyDesign = TabsNeonStageSkyDesign.Enviro3;
-        public TabsEnviroSkyMood enviroMood = TabsEnviroSkyMood.StarryCloudNight;
+        public TabsEnviroSkyMood enviroMood = TabsEnviroSkyMood.GoldenSunset;
         public int neonHorizonTheme = 1;
         public int neonHorizonColorPalette = 0;
         public int neonHorizonSkyLineColorPalette = 0;
@@ -1048,12 +1051,12 @@ public class GuitarBridgeServer : MonoBehaviour
         public float[] enviroCloudConnectivityByMood = CreateDefaultMainMenuEnviroCloudConnectivityValues();
         public float[] enviroCloudContrastByMood = CreateDefaultMainMenuEnviroCloudContrastValues();
         public float[] enviroMountainOpacityByMood = CreateDefaultEnviroMountainOpacityValues();
-        public float[] enviroMountainFarOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.34f);
-        public float[] enviroMountainMidOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.58f);
-        public float[] enviroMountainNearOpacityByMood = CreateDefaultEnviroMountainLayerOpacityValues(0.96f);
+        public float[] enviroMountainFarOpacityByMood = CreateDefaultMainMenuEnviroMountainLayerOpacityValues(0.34f);
+        public float[] enviroMountainMidOpacityByMood = CreateDefaultMainMenuEnviroMountainLayerOpacityValues(0.58f);
+        public float[] enviroMountainNearOpacityByMood = CreateDefaultMainMenuEnviroMountainLayerOpacityValues(0.96f);
         public float[] enviroSkyCameraPitchByMood = CreateDefaultMainMenuEnviroSkyCameraPitchValues();
-        public float[] enviroStarAnimationByMood = CreateDefaultEnviroStarAnimationValues();
-        public float[] enviroStarDensityByMood = CreateDefaultEnviroStarDensityValues();
+        public float[] enviroStarAnimationByMood = CreateDefaultMainMenuEnviroStarAnimationValues();
+        public float[] enviroStarDensityByMood = CreateDefaultMainMenuEnviroStarDensityValues();
         public bool domeStarsEnabled = true;
         public int domeStarsCount = 420;
         public float domeStarsBrightness = 0.95f;
@@ -1168,7 +1171,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private int selectedMiniGameIndex;
     private int selectedMiniGamePauseActionIndex;
     private bool miniGameTextInputFocused;
-    private TabsBackgroundMode miniGameBackgroundMode = TabsBackgroundMode.BlueSky;
+    private TabsBackgroundMode miniGameBackgroundMode = TabsBackgroundMode.NeonStage;
     private MiniGameManager miniGameManager;
     private bool showStartMenu;
     private bool showCharacterSelection;
@@ -1194,6 +1197,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool libraryRefreshShowsProgress;
     private bool showLibraryImportPopup;
     private string libraryImportPopupStatusText = string.Empty;
+    private bool pendingLibraryImportIncludesCachedLegacySources;
     private readonly List<SongLibraryImportCandidate> pendingLibraryImportCandidates = new List<SongLibraryImportCandidate>();
     private readonly List<bool> pendingLibraryImportCandidateSelected = new List<bool>();
     private bool firstStartCompleted;
@@ -1372,6 +1376,10 @@ public class GuitarBridgeServer : MonoBehaviour
     private int startupTuningReminderShownFrame = -1;
     private SongLibraryEntry currentSongEntry;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> currentSongPartSummaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
+    // Theory manifest's default arrangement id: auto track selection must
+    // resolve to the SAME arrangement the note loader picks, or tuning/drum
+    // mode/tones come from a different arrangement than the loaded notes.
+    private string currentSongDefaultPartId = string.Empty;
     private SongLibraryType selectedSongLibraryType = SongLibraryType.Guitar;
     private ArcadeChartData currentArcadeChart = new ArcadeChartData();
     private readonly List<ArcadeArrangementSummary> currentArcadeArrangementSummaries = new List<ArcadeArrangementSummary>();
@@ -1643,7 +1651,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool cachedSongDurationGeneratedAvailable;
     private float cachedSongDurationGeneratedSeconds = -1f;
     private const string GlobalRuntimeSettingsFileName = "runtime_settings_metadata.json";
-    private const int CurrentGlobalRuntimeSettingsVersion = 14;
+    private const int CurrentGlobalRuntimeSettingsVersion = 15;
     private int loadedGlobalRuntimeSettingsVersion = CurrentGlobalRuntimeSettingsVersion;
     private const int ArcadeControllerSlotCount = 8;
     private const int GlobalSettingsTopLevelCount = 14;
@@ -3046,7 +3054,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if ((string.IsNullOrWhiteSpace(presetId) && presetSnapshot == null) || unityToneLabRuntime == null)
             return false;
 
-        if (!string.IsNullOrWhiteSpace(presetId) && RocksmithTonePresetBuilder.IsGeneratedPresetId(presetId))
+        if (!string.IsNullOrWhiteSpace(presetId))
         {
             if (generatedRocksmithTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset) &&
                 unityToneLabRuntime.SetPlaybackPresetOverride(generatedPreset))
@@ -3187,8 +3195,10 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void ClearToneLabSongTonePlaybackOverride()
     {
-        unityToneLabRuntime?.ClearPlaybackPresetOverride();
-
+        // True no-op when this system holds no override: the unconditional
+        // runtime clear ran every frame while the chart editor was open
+        // (mainMenuFlowActive early-out) and wiped the editor's own playback
+        // tone override before it could ever take effect.
         if (string.IsNullOrWhiteSpace(activeSongToneMappingPresetId) &&
             string.IsNullOrWhiteSpace(activeSongToneMappingToneName) &&
             string.IsNullOrWhiteSpace(activeSongToneMappingArrangementKey) &&
@@ -3197,6 +3207,7 @@ public class GuitarBridgeServer : MonoBehaviour
             return;
         }
 
+        unityToneLabRuntime?.ClearPlaybackPresetOverride();
         activeSongToneMappingSongKey = string.Empty;
         activeSongToneMappingArrangementKey = string.Empty;
         activeSongToneMappingToneName = string.Empty;
@@ -5951,9 +5962,32 @@ public class GuitarBridgeServer : MonoBehaviour
                 return selected;
         }
 
+        // Auto mode must mirror the note loader's resolution (manifest default
+        // arrangement) — the score-based fallback picked a different
+        // arrangement's tuning/drum-mode/tones than the loaded notes.
+        if (!string.IsNullOrWhiteSpace(currentSongDefaultPartId))
+        {
+            MusicXmlLoader.MusicXmlPartSummary defaultSummary = currentSongPartSummaries
+                .FirstOrDefault(summary => string.Equals(summary.PartId, currentSongDefaultPartId, StringComparison.OrdinalIgnoreCase));
+            if (defaultSummary != null)
+                return defaultSummary;
+        }
+
         return currentSongPartSummaries
             .OrderByDescending(summary => summary.Score)
             .FirstOrDefault();
+    }
+
+    private string ResolveDefaultPartIdForCurrentSong()
+    {
+        if (currentSongEntry == null ||
+            currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.TheoryPackage ||
+            !TheoryPackageIO.TryReadManifest(currentSongEntry.PrimaryNotationPath, out TheorySongManifest manifest, out _))
+        {
+            return string.Empty;
+        }
+
+        return manifest?.defaultArrangementId ?? string.Empty;
     }
 
     private MusicXmlLoader.MusicXmlPartSummary GetPendingSelectedTrackSummary()
@@ -6594,11 +6628,57 @@ public class GuitarBridgeServer : MonoBehaviour
         {
             pendingLibraryImportCandidates.Clear();
             pendingLibraryImportCandidates.AddRange(candidates);
+            pendingLibraryImportIncludesCachedLegacySources = false;
             pendingLibraryImportCandidateSelected.Clear();
             for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
                 pendingLibraryImportCandidateSelected.Add(true);
 
             libraryImportPopupStatusText = $"{candidates.Count} new song{(candidates.Count == 1 ? string.Empty : "s")} found.";
+            showSongSelection = true;
+            showLibraryImportPopup = true;
+            showLibraryLoadingOverlay = false;
+            SetSongLibraryRefreshOverlayState(false, 0f, string.Empty, false);
+            songLibraryRefreshRoutine = null;
+            runtimeSettingsSnapshotDirty = true;
+            yield break;
+        }
+
+        songLibraryRefreshRoutine = null;
+        BeginSongLibraryRefresh(refreshImports: false);
+    }
+
+    private System.Collections.IEnumerator DiscoverExistingRawNotationImportsDeferred(int requestId)
+    {
+        yield return null;
+
+        Task<List<SongLibraryImportCandidate>> discoverTask = Task.Run(SongLibraryService.DiscoverExistingRawNotationTheoryConversionCandidates);
+        while (!discoverTask.IsCompleted)
+            yield return null;
+
+        if (requestId != songLibraryRefreshRequestId)
+            yield break;
+
+        if (discoverTask.IsFaulted || discoverTask.IsCanceled)
+        {
+            Exception exception = discoverTask.Exception?.GetBaseException();
+            if (exception != null)
+                Debug.LogWarning($"[SongLibrary] Existing raw notation discovery failed: {exception.Message}");
+            songLibraryRefreshRoutine = null;
+            BeginSongLibraryRefresh(refreshImports: false);
+            yield break;
+        }
+
+        List<SongLibraryImportCandidate> candidates = discoverTask.Result ?? new List<SongLibraryImportCandidate>();
+        if (candidates.Count > 0)
+        {
+            pendingLibraryImportCandidates.Clear();
+            pendingLibraryImportCandidates.AddRange(candidates);
+            pendingLibraryImportIncludesCachedLegacySources = true;
+            pendingLibraryImportCandidateSelected.Clear();
+            for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
+                pendingLibraryImportCandidateSelected.Add(true);
+
+            libraryImportPopupStatusText = $"{candidates.Count} raw song{(candidates.Count == 1 ? string.Empty : "s")} ready to convert.";
             showSongSelection = true;
             showLibraryImportPopup = true;
             showLibraryLoadingOverlay = false;
@@ -6664,7 +6744,8 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private System.Collections.IEnumerator ConvertSelectedLibraryImportsDeferred(
         int requestId,
-        List<SongLibraryImportCandidate> selectedCandidates)
+        List<SongLibraryImportCandidate> selectedCandidates,
+        bool includeCachedLegacySourcesForRemaining)
     {
         yield return null;
 
@@ -6723,7 +6804,9 @@ public class GuitarBridgeServer : MonoBehaviour
             SongLibraryService.ClearCache();
             List<SongLibraryEntry> songs = SongLibraryService.GetAvailableSongs(forceRefresh: true, refreshImports: false);
             List<SongLibraryImportCandidate> remainingCandidates = conversionErrors.Count > 0
-                ? SongLibraryService.DiscoverPendingTheoryConversionCandidates()
+                ? includeCachedLegacySourcesForRemaining
+                    ? SongLibraryService.DiscoverExistingRawNotationTheoryConversionCandidates()
+                    : SongLibraryService.DiscoverPendingTheoryConversionCandidates()
                 : new List<SongLibraryImportCandidate>();
 
             return new LibraryImportConversionTaskResult
@@ -6786,6 +6869,7 @@ public class GuitarBridgeServer : MonoBehaviour
                     pendingLibraryImportCandidates.Clear();
                     if (conversionResult.RemainingCandidates != null)
                         pendingLibraryImportCandidates.AddRange(conversionResult.RemainingCandidates);
+                    pendingLibraryImportIncludesCachedLegacySources = includeCachedLegacySourcesForRemaining;
 
                     pendingLibraryImportCandidateSelected.Clear();
                     for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
@@ -6803,6 +6887,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 else
                 {
                     pendingLibraryImportCandidates.Clear();
+                    pendingLibraryImportIncludesCachedLegacySources = false;
                     pendingLibraryImportCandidateSelected.Clear();
                     showLibraryImportPopup = false;
                     libraryImportPopupStatusText = string.Empty;
@@ -6861,6 +6946,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showLibraryImportPopup = false;
         libraryImportPopupStatusText = string.Empty;
+        pendingLibraryImportIncludesCachedLegacySources = false;
         pendingLibraryImportCandidates.Clear();
         pendingLibraryImportCandidateSelected.Clear();
     }
@@ -9687,6 +9773,29 @@ public class GuitarBridgeServer : MonoBehaviour
             pendingCurrentSongReloadFromChartEditorSave = true;
     }
 
+    public UnityToneLabRuntime GetChartEditorToneLabRuntime()
+    {
+        EnsureToneLabRuntimeComponent();
+        // Only kick background monitoring when it is not already running.
+        // StartBackgroundMonitoring restores the working rig from the selected
+        // preset, which would discard unsaved chain edits made in the chart
+        // editor's embedded Tone Lab if it ran on every lookup.
+        if (unityToneLabRuntime != null && !unityToneLabRuntime.IsMonitoring && !unityToneLabRuntime.IsAwaitingStartup)
+            unityToneLabRuntime.StartBackgroundMonitoring();
+        return unityToneLabRuntime;
+    }
+
+    public bool ApplyChartEditorTonePresetOverride(UnityToneLabRuntime.ToneLabPreset preset)
+    {
+        EnsureToneLabRuntimeComponent();
+        return unityToneLabRuntime != null && preset != null && unityToneLabRuntime.SetPlaybackPresetOverride(preset);
+    }
+
+    public void ClearChartEditorTonePresetOverride()
+    {
+        unityToneLabRuntime?.ClearPlaybackPresetOverride();
+    }
+
     private bool ShouldReloadCurrentSongAfterChartEditorSave(string changedTheoryPackagePath)
     {
         if (currentSongEntry == null ||
@@ -11363,6 +11472,7 @@ public class GuitarBridgeServer : MonoBehaviour
         useAutoTrackSelection = true;
         selectedMusicXmlPartId = string.Empty;
         currentSongPartSummaries.Clear();
+        currentSongDefaultPartId = string.Empty;
         latestDetectedPitches.Clear();
         recentNoteEvents.Clear();
         latestNoteEventId = 0;
@@ -12353,6 +12463,25 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
     }
 
+    public void ConvertExistingRawNotationSongsFromUi()
+    {
+        if (songLibraryRefreshRoutine != null)
+            return;
+
+        ClearSongSelectionCaches();
+        SongLibraryService.ClearCache();
+        songLibraryRefreshRequestId++;
+        showLibraryLoadingOverlay = true;
+        ClearLibraryImportPopupState();
+        SetSongLibraryRefreshOverlayState(
+            inProgress: true,
+            progressPercent: 0f,
+            statusText: "Searching for raw GP and MusicXML songs...",
+            showProgress: false);
+        songLibraryRefreshRoutine = StartCoroutine(DiscoverExistingRawNotationImportsDeferred(songLibraryRefreshRequestId));
+        songSelectionSongConfirmed = false;
+    }
+
     public void ToggleLibraryImportCandidateFromUi(int candidateIndex)
     {
         if (!showLibraryImportPopup ||
@@ -12392,12 +12521,13 @@ public class GuitarBridgeServer : MonoBehaviour
         songLibraryRefreshRequestId++;
         showLibraryImportPopup = false;
         showLibraryLoadingOverlay = true;
+        bool includeCachedLegacySources = pendingLibraryImportIncludesCachedLegacySources;
         SetSongLibraryRefreshOverlayState(
             inProgress: true,
             progressPercent: 0f,
             statusText: "Converting selected songs to .theory...",
             showProgress: true);
-        songLibraryRefreshRoutine = StartCoroutine(ConvertSelectedLibraryImportsDeferred(songLibraryRefreshRequestId, selectedCandidates));
+        songLibraryRefreshRoutine = StartCoroutine(ConvertSelectedLibraryImportsDeferred(songLibraryRefreshRequestId, selectedCandidates, includeCachedLegacySources));
     }
 
     public void CloseLibraryImportPopupFromUi()
@@ -14429,6 +14559,15 @@ private void OpenOrFocusToneLab()
         {
             if (currentSongPartSummaries.Count == 0)
                 return string.Empty;
+
+            // Mirror GetResolvedActiveTrackSummary: auto mode resolves to the
+            // theory manifest's default arrangement, so offsets and generated
+            // playback must key off the same arrangement the loader picks.
+            if (!string.IsNullOrWhiteSpace(currentSongDefaultPartId) &&
+                currentSongPartSummaries.Any(s => string.Equals(s.PartId, currentSongDefaultPartId, StringComparison.OrdinalIgnoreCase)))
+            {
+                return currentSongDefaultPartId;
+            }
 
             MusicXmlLoader.MusicXmlPartSummary best = currentSongPartSummaries.OrderByDescending(s => s.Score).FirstOrDefault();
             return best != null ? (best.PartId ?? string.Empty) : string.Empty;
@@ -17098,8 +17237,10 @@ private void OpenOrFocusToneLab()
             if (resolved <= 0)
                 resolved = 6;
 
-            int colorSlotCount = stringColors != null && stringColors.Length > 0 ? stringColors.Length : 6;
-            return Mathf.Clamp(resolved, 1, colorSlotCount);
+            // The color palette no longer caps the playable string count —
+            // scene-serialized palettes may still hold 6 entries, and strings
+            // beyond the palette fall back to white via GetStringColor.
+            return Mathf.Clamp(resolved, 1, 8);
         }
     }
 
@@ -19562,6 +19703,33 @@ private void OpenOrFocusToneLab()
         List<int> candidateConsumeKeys = chordMatchCandidateConsumeKeys;
         candidateConsumeKeys.Clear();
 
+        // Count the distinct pitches a correct performance must actually
+        // produce: detection stores pitches in a set, so unison chord notes —
+        // including bend-converged unisons, where one note's BENT target
+        // equals a sibling's base pitch — collapse to a single detected pitch
+        // and must not inflate the requirement.
+        int requiredDistinctPitches = 0;
+        for (int distinctIndex = 0; distinctIndex < chordMatchScratchStates.Count; distinctIndex++)
+        {
+            GameplayNoteState distinctState = chordMatchScratchStates[distinctIndex];
+            int targetPitch = GetBaseTargetPitch(distinctState);
+            bool hasBent = TryGetBentTargetPitch(distinctState, out int bentPitch);
+            bool sharesPitch = false;
+            for (int priorIndex = 0; priorIndex < distinctIndex && !sharesPitch; priorIndex++)
+            {
+                GameplayNoteState priorState = chordMatchScratchStates[priorIndex];
+                int priorPitch = GetBaseTargetPitch(priorState);
+                bool priorHasBent = TryGetBentTargetPitch(priorState, out int priorBent);
+                sharesPitch = priorPitch == targetPitch ||
+                              (hasBent && bentPitch == priorPitch) ||
+                              (priorHasBent && priorBent == targetPitch) ||
+                              (hasBent && priorHasBent && bentPitch == priorBent);
+            }
+
+            if (!sharesPitch)
+                requiredDistinctPitches++;
+        }
+
         for (int i = recentNoteEvents.Count - 1; i >= 0; i--)
         {
             NoteEvent ev = recentNoteEvents[i];
@@ -19569,7 +19737,7 @@ private void OpenOrFocusToneLab()
                 break;
             if (ev.time > windowEnd)
                 continue;
-            if (ev.pitches == null || ev.pitches.Count < chordMatchScratchStates.Count)
+            if (ev.pitches == null || ev.pitches.Count < requiredDistinctPitches)
             {
                 if (Application.isEditor && notesDetectorGameplayTestActive)
                     LogChordMatchAttempt("CANDIDATE_REJECT", note, ev, chordMatchScratchStates, null, "reason=insufficient-pitch-count");
@@ -19593,7 +19761,7 @@ private void OpenOrFocusToneLab()
                     break;
                 }
 
-                if (ev.consumedKeys.Contains(acceptedConsumeKey) || candidateConsumeKeys.Contains(acceptedConsumeKey))
+                if (ev.consumedKeys.Contains(acceptedConsumeKey))
                 {
                     validEvent = false;
                     invalidReason = ChordMatchRejectReason.ConsumeKeyCollision;
@@ -19601,6 +19769,10 @@ private void OpenOrFocusToneLab()
                     break;
                 }
 
+                // A sibling note of THIS chord claiming the same key is fine:
+                // a single detected pitch cannot be attributed to one of two
+                // unison strings. Only consumption by earlier, separate notes
+                // (ev.consumedKeys above) is a real collision.
                 candidateConsumeKeys.Add(acceptedConsumeKey);
             }
 
@@ -19816,7 +19988,7 @@ private void OpenOrFocusToneLab()
             if (ev.time < candidateWindowStart || ev.time > candidateWindowEnd)
                 continue;
 
-            if (candidate.data.chordId >= 0 && ev.pitches.Count < GetUnresolvedChordStateCount(candidate.data.chordId))
+            if (candidate.data.chordId >= 0 && ev.pitches.Count < GetUnresolvedChordDistinctPitchCount(candidate.data.chordId))
                 continue;
 
             if (!TryGetAcceptedConsumeKey(candidate, ev.pitches, out int candidateConsumeKey))
@@ -19843,6 +20015,40 @@ private void OpenOrFocusToneLab()
         {
             GameplayNoteState state = noteStates[i];
             if (state != null && !state.IsResolved && state.data.chordId == chordId)
+                count++;
+        }
+
+        return count;
+    }
+
+    // Distinct-pitch variant for detector-event gating: unison chord notes
+    // (same base pitch on two strings) collapse to one entry in a detected
+    // pitch set, so comparing against the raw note count starves them.
+    private int GetUnresolvedChordDistinctPitchCount(int chordId)
+    {
+        if (chordId < 0 || noteStates == null)
+            return 0;
+
+        int count = 0;
+        for (int i = 0; i < noteStates.Count; i++)
+        {
+            GameplayNoteState state = noteStates[i];
+            if (state == null || state.IsResolved || state.data.chordId != chordId)
+                continue;
+
+            int pitch = GetBaseTargetPitch(state);
+            bool duplicate = false;
+            for (int priorIndex = 0; priorIndex < i && !duplicate; priorIndex++)
+            {
+                GameplayNoteState prior = noteStates[priorIndex];
+                if (prior != null && !prior.IsResolved && prior.data.chordId == chordId &&
+                    GetBaseTargetPitch(prior) == pitch)
+                {
+                    duplicate = true;
+                }
+            }
+
+            if (!duplicate)
                 count++;
         }
 
@@ -21881,6 +22087,7 @@ private void OpenOrFocusToneLab()
             libraryImportCandidateKindLabels = libraryImportCandidateKindLabels,
             libraryImportCandidateSelected = libraryImportCandidateSelected,
             libraryImportPopupStatusText = libraryImportPopupStatusText,
+            libraryImportIncludesCachedLegacySources = pendingLibraryImportIncludesCachedLegacySources,
             selectedStartMenuStepIndex = (int)startMenuStep,
             selectedStartMenuModeIndex = selectedStartMenuModeIndex,
             selectedStartMenuArcadeSetupIndex = selectedStartMenuArcadeSetupIndex,
@@ -22391,6 +22598,7 @@ private void OpenOrFocusToneLab()
         {
             RefreshAvailableSongs();
             currentSongPartSummaries.Clear();
+            currentSongDefaultPartId = string.Empty;
 
             int currentAvailableIndex = currentSongEntry == null
                 ? -1
@@ -22437,6 +22645,7 @@ private void OpenOrFocusToneLab()
                     selectedMusicXmlPartId = persistedSelectedMusicXmlPartId;
 
                     currentSongPartSummaries.AddRange(GetPartSummariesWithFallback(currentSongEntry));
+                    currentSongDefaultPartId = ResolveDefaultPartIdForCurrentSong();
                     if (!useAutoTrackSelection &&
                         SupportsArrangementTrackGroups(currentSongEntry.PrimaryNotationKind) &&
                         !string.IsNullOrWhiteSpace(selectedMusicXmlPartId))
@@ -22494,6 +22703,7 @@ private void OpenOrFocusToneLab()
             {
                 gameplayMode = GuitarGameplayMode.Guitar;
                 currentSongPartSummaries.Clear();
+                currentSongDefaultPartId = string.Empty;
                 Debug.LogWarning("[GuitarBridgeServer] No valid runtime songs were found in persistent storage.");
             }
         }
@@ -27309,10 +27519,10 @@ private void OpenOrFocusToneLab()
     private static TabsEnviroMoonMode[] CreateDefaultMainMenuEnviroMoonModes()
     {
         return CreateEnviroMoonModeArray(
+            TabsEnviroMoonMode.Giant,
+            TabsEnviroMoonMode.Giant,
             TabsEnviroMoonMode.Off,
-            TabsEnviroMoonMode.Off,
-            TabsEnviroMoonMode.Off,
-            TabsEnviroMoonMode.Normal,
+            TabsEnviroMoonMode.Giant,
             TabsEnviroMoonMode.Normal,
             TabsEnviroMoonMode.Off,
             TabsEnviroMoonMode.Off,
@@ -27338,7 +27548,7 @@ private void OpenOrFocusToneLab()
 
     private static bool[] CreateDefaultMainMenuEnviroCloudEnabledValues()
     {
-        return CreateBoolArray(true, true, true, false, true, true, true, true, true, true);
+        return CreateBoolArray(false, true, true, false, true, true, true, true, true, true);
     }
 
     private static float[] CreateDefaultMainMenuEnviroCloudAmountValues()
@@ -27363,7 +27573,26 @@ private void OpenOrFocusToneLab()
 
     private static float[] CreateDefaultMainMenuEnviroSkyCameraPitchValues()
     {
-        return CreateFloatArray(18f, 18f, -18f, 0f, 0f, -18f, -18f, 0f, -18f, 0f);
+        return CreateFloatArray(1f, 18f, -18f, -1.5f, 0f, -18f, -18f, 0f, -18f, 0f);
+    }
+
+    private static float[] CreateDefaultMainMenuEnviroMountainLayerOpacityValues(float defaultValue)
+    {
+        float[] values = new float[EnviroSkyMoodOptions.Length];
+        float clampedDefault = Mathf.Clamp01(defaultValue);
+        for (int i = 0; i < values.Length; i++)
+            values[i] = clampedDefault;
+        return values;
+    }
+
+    private static float[] CreateDefaultMainMenuEnviroStarAnimationValues()
+    {
+        return CreateFloatArray(1f, 1f, 1.5f, 1f, 1f, 1f, 1f, 1f, 1f, 1f);
+    }
+
+    private static float[] CreateDefaultMainMenuEnviroStarDensityValues()
+    {
+        return CreateFloatArray(1f, 1f, 0.35f, 1f, 1f, 1f, 1f, 1f, 1f, 1f);
     }
 
     private static TabsEnviroMoonMode[] CreateEnviroMoonModeArray(params TabsEnviroMoonMode[] source)
@@ -30835,7 +31064,11 @@ private void OpenOrFocusToneLab()
                Mathf.Abs(parsedValue - expectedValue) <= 0.0001f;
     }
 
-    private static bool ApplyGlobalRuntimeSettingsMigrations(Dictionary<string, string> values, int sourceVersion, out int migratedVersion)
+    private static bool ApplyGlobalRuntimeSettingsMigrations(
+        Dictionary<string, string> values,
+        int sourceVersion,
+        Dictionary<string, string> defaultValues,
+        out int migratedVersion)
     {
         migratedVersion = Mathf.Max(0, sourceVersion);
         if (values == null)
@@ -31041,7 +31274,33 @@ private void OpenOrFocusToneLab()
             migrated = true;
         }
 
+        if (migratedVersion < 15)
+        {
+            if (defaultValues != null)
+            {
+                foreach (KeyValuePair<string, string> pair in defaultValues)
+                {
+                    if (IsBackgroundRuntimeSettingId(pair.Key))
+                    {
+                        SetRuntimeSettingMigrationValue(values, pair.Key, pair.Value);
+                        migrated = true;
+                    }
+                }
+            }
+
+            migratedVersion = 15;
+        }
+
         return migrated;
+    }
+
+    private static bool IsBackgroundRuntimeSettingId(string settingId)
+    {
+        return !string.IsNullOrWhiteSpace(settingId) &&
+               (settingId.StartsWith("bg.", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("highway.background", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("highway.cloud", StringComparison.OrdinalIgnoreCase) ||
+                settingId.StartsWith("highway.star", StringComparison.OrdinalIgnoreCase));
     }
 
     private static void SetRuntimeSettingMigrationValue(Dictionary<string, string> values, string settingId, string value)
@@ -31079,10 +31338,20 @@ private void OpenOrFocusToneLab()
             string json = File.ReadAllText(path);
             GlobalRuntimeSettingsMetadata metadata = JsonUtility.FromJson<GlobalRuntimeSettingsMetadata>(json);
             loadedGlobalRuntimeSettingsVersion = Mathf.Max(0, metadata?.settingsVersion ?? 0);
+            int sourceSettingsVersion = loadedGlobalRuntimeSettingsVersion;
             selectedHighwayCharacter = ParseHighwayCharacterChoice(metadata?.selectedHighwayCharacterId);
             selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
             mainMenuBackgroundProfile = metadata?.mainMenuBackgroundProfile ?? new MainMenuBackgroundProfile();
             MainMenuBackground.Ensure();
+            GlobalRuntimeSettingsMetadata defaultsMetadata = LoadRuntimeSettingDefaultsMetadataFromFile();
+            Dictionary<string, string> defaults = BuildRuntimeSettingDefaults(defaultsMetadata);
+            bool appliedMainMenuBackgroundMigration = false;
+            if (sourceSettingsVersion < 15 && defaultsMetadata?.mainMenuBackgroundProfile != null)
+            {
+                mainMenuBackgroundProfile = defaultsMetadata.mainMenuBackgroundProfile;
+                MainMenuBackground.Ensure();
+                appliedMainMenuBackgroundMigration = true;
+            }
 
             List<RuntimeSettingValueEntry> metadataValues = metadata?.values ?? new List<RuntimeSettingValueEntry>();
             foreach (RuntimeSettingValueEntry entry in metadataValues)
@@ -31100,12 +31369,12 @@ private void OpenOrFocusToneLab()
             bool appliedRuntimeSettingsMigrations = ApplyGlobalRuntimeSettingsMigrations(
                 pendingGlobalRuntimeSettingValues,
                 loadedGlobalRuntimeSettingsVersion,
+                defaults,
                 out loadedGlobalRuntimeSettingsVersion);
 
             foreach (KeyValuePair<string, string> pair in pendingGlobalRuntimeSettingValues)
                 ApplyRuntimeSettingValue(pair.Key, pair.Value, saveMetadata: false);
 
-            Dictionary<string, string> defaults = LoadRuntimeSettingDefaultsFromFile();
             bool appliedMissingDefaults = false;
 
             foreach (RuntimeSettingDefinition definition in runtimeSettingDefinitions)
@@ -31130,7 +31399,7 @@ private void OpenOrFocusToneLab()
 
             selectedCharacterSelectionIndex = GetCurrentCharacterSelectionIndex();
 
-            if (appliedMissingDefaults || normalizedLegacyBindings || appliedRuntimeSettingsMigrations)
+            if (appliedMissingDefaults || normalizedLegacyBindings || appliedRuntimeSettingsMigrations || appliedMainMenuBackgroundMigration)
                 SaveGlobalRuntimeSettingsMetadata();
         }
         catch (Exception ex)
@@ -31184,7 +31453,14 @@ private void OpenOrFocusToneLab()
 
     private void ApplyDefaultRuntimeSettings()
     {
-        Dictionary<string, string> defaults = LoadRuntimeSettingDefaultsFromFile();
+        GlobalRuntimeSettingsMetadata defaultsMetadata = LoadRuntimeSettingDefaultsMetadataFromFile();
+        if (defaultsMetadata?.mainMenuBackgroundProfile != null)
+        {
+            mainMenuBackgroundProfile = defaultsMetadata.mainMenuBackgroundProfile;
+            MainMenuBackground.Ensure();
+        }
+
+        Dictionary<string, string> defaults = BuildRuntimeSettingDefaults(defaultsMetadata);
 
         foreach (RuntimeSettingDefinition definition in runtimeSettingDefinitions)
         {
@@ -31201,30 +31477,41 @@ private void OpenOrFocusToneLab()
 
     private static Dictionary<string, string> LoadRuntimeSettingDefaultsFromFile()
     {
-        Dictionary<string, string> result = new Dictionary<string, string>();
+        return BuildRuntimeSettingDefaults(LoadRuntimeSettingDefaultsMetadataFromFile());
+    }
+
+    private static GlobalRuntimeSettingsMetadata LoadRuntimeSettingDefaultsMetadataFromFile()
+    {
         string path = Path.Combine(ExternalContentPaths.StreamingRoot, "runtime_settings_defaults.json");
 
         try
         {
             if (!File.Exists(path))
-                return result;
+                return null;
 
             string json = File.ReadAllText(path);
-            GlobalRuntimeSettingsMetadata metadata = JsonUtility.FromJson<GlobalRuntimeSettingsMetadata>(json);
-            if (metadata?.values == null)
-                return result;
-
-            foreach (RuntimeSettingValueEntry entry in metadata.values)
-            {
-                if (entry == null || string.IsNullOrEmpty(entry.id))
-                    continue;
-
-                result[entry.id] = entry.value ?? string.Empty;
-            }
+            return JsonUtility.FromJson<GlobalRuntimeSettingsMetadata>(json);
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"Failed to load runtime setting defaults: {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static Dictionary<string, string> BuildRuntimeSettingDefaults(GlobalRuntimeSettingsMetadata metadata)
+    {
+        Dictionary<string, string> result = new Dictionary<string, string>();
+        if (metadata?.values == null)
+            return result;
+
+        foreach (RuntimeSettingValueEntry entry in metadata.values)
+        {
+            if (entry == null || string.IsNullOrEmpty(entry.id))
+                continue;
+
+            result[entry.id] = entry.value ?? string.Empty;
         }
 
         return result;
@@ -31581,7 +31868,7 @@ private void OpenOrFocusToneLab()
         }
         else if (currentSongEntry != null && currentSongEntry.PrimaryNotationKind == SongNotationSourceKind.Gp5)
         {
-            AddGp5TimelineSections(duration);
+            AddGpTimelineSections(duration);
         }
 
         if (songTimelineSections.Count == 0)
@@ -31723,13 +32010,7 @@ private void OpenOrFocusToneLab()
         return true;
     }
 
-    private struct Gp5TimelineTempoPoint
-    {
-        public double quarterPos;
-        public double bpm;
-    }
-
-    private void AddGp5TimelineSections(float duration)
+    private void AddGpTimelineSections(float duration)
     {
         if (currentSongEntry == null ||
             currentSongEntry.PrimaryNotationKind != SongNotationSourceKind.Gp5 ||
@@ -31738,99 +32019,40 @@ private void OpenOrFocusToneLab()
             return;
         }
 
-        Gp5Song song = Gp5Loader.GetParsedSong(currentSongEntry.PrimaryNotationPath);
-        if (song?.measureHeaders == null || song.measureHeaders.Count == 0)
+        if (!AlphaTabGpTimelineLoader.TryLoadTimeline(currentSongEntry.PrimaryNotationPath, out AlphaTabGpTimelineData timeline) ||
+            timeline?.sections == null ||
+            timeline.sections.Count == 0)
+        {
             return;
+        }
 
-        List<Gp5TimelineTempoPoint> tempoMap = BuildGp5TimelineTempoMap(song);
         int index = 0;
         float lastStartTime = -1f;
-        foreach (Gp5MeasureHeader header in song.measureHeaders.OrderBy(header => header.startQuarter))
+        foreach (AlphaTabGpTimelineSectionMarker section in timeline.sections.OrderBy(section => section.timeSeconds))
         {
-            if (header == null || string.IsNullOrWhiteSpace(header.markerName))
+            if (section == null || string.IsNullOrWhiteSpace(section.name))
                 continue;
 
-            float startTime = Mathf.Max(0f, (float)Gp5QuarterToSeconds(header.startQuarter, tempoMap));
+            float startTime = Mathf.Max(0f, section.timeSeconds);
             if (startTime > duration + 2f)
                 continue;
 
             if (songTimelineSections.Count > 0 && Mathf.Abs(lastStartTime - startTime) <= 0.001f)
             {
-                songTimelineSections[songTimelineSections.Count - 1].name = FormatTimelineSectionName(header.markerName, index);
+                songTimelineSections[songTimelineSections.Count - 1].name = FormatTimelineSectionName(section.name, index);
                 continue;
             }
 
             songTimelineSections.Add(new SongTimelineSectionData
             {
                 index = index,
-                name = FormatTimelineSectionName(header.markerName, index),
+                name = FormatTimelineSectionName(section.name, index),
                 startTime = startTime,
                 endTime = Mathf.Max(startTime + 0.05f, duration)
             });
             index++;
             lastStartTime = startTime;
         }
-    }
-
-    private static List<Gp5TimelineTempoPoint> BuildGp5TimelineTempoMap(Gp5Song song)
-    {
-        List<Gp5TimelineTempoPoint> tempoMap = new List<Gp5TimelineTempoPoint>();
-        if (song?.tempoChanges != null)
-        {
-            for (int i = 0; i < song.tempoChanges.Count; i++)
-            {
-                Gp5TempoChange change = song.tempoChanges[i];
-                if (change == null)
-                    continue;
-
-                tempoMap.Add(new Gp5TimelineTempoPoint
-                {
-                    quarterPos = Math.Max(0.0, change.quarterPos),
-                    bpm = Math.Max(1.0, change.bpm)
-                });
-            }
-        }
-
-        tempoMap = tempoMap
-            .OrderBy(point => point.quarterPos)
-            .ToList();
-
-        if (tempoMap.Count == 0 || tempoMap[0].quarterPos > 0.0001)
-        {
-            tempoMap.Insert(0, new Gp5TimelineTempoPoint
-            {
-                quarterPos = 0.0,
-                bpm = Math.Max(1.0, song != null ? song.initialTempo : 120)
-            });
-        }
-
-        return tempoMap;
-    }
-
-    private static double Gp5QuarterToSeconds(double quarterPos, List<Gp5TimelineTempoPoint> tempoMap)
-    {
-        if (tempoMap == null || tempoMap.Count == 0)
-            return Math.Max(0.0, quarterPos) * 0.5;
-
-        double targetQuarter = Math.Max(0.0, quarterPos);
-        double seconds = 0.0;
-        Gp5TimelineTempoPoint current = tempoMap[0];
-
-        for (int i = 1; i < tempoMap.Count; i++)
-        {
-            Gp5TimelineTempoPoint next = tempoMap[i];
-            if (targetQuarter <= next.quarterPos)
-            {
-                seconds += Math.Max(0.0, targetQuarter - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
-                return seconds;
-            }
-
-            seconds += Math.Max(0.0, next.quarterPos - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
-            current = next;
-        }
-
-        seconds += Math.Max(0.0, targetQuarter - current.quarterPos) * (60.0 / Math.Max(1.0, current.bpm));
-        return seconds;
     }
 
     private void AddArrangementTimelineSections(List<RocksmithCachedSectionData> sections, float duration)

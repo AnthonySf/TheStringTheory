@@ -93,6 +93,7 @@ public sealed class TheoryArrangementSummary
     public int tabCount;
     public int score;
     public int difficultyRating;
+    public bool preserveImportedRuntimeNotes;
     public int[] tuningPitches;
     public string tuningDisplayName;
 }
@@ -112,6 +113,7 @@ public sealed class TheoryArrangementData
     public bool hasDifficultyVariants;
     public float durationSeconds;
     public int difficultyRating;
+    public bool preserveImportedRuntimeNotes;
     public int[] tuningPitches;
     public string tuningDisplayName;
     public TheoryTimingData timing = new TheoryTimingData();
@@ -119,6 +121,7 @@ public sealed class TheoryArrangementData
     public TheoryGeneratedPartInfo generatedPart = new TheoryGeneratedPartInfo();
     public List<TheoryNoteData> notes = new List<TheoryNoteData>();
     public List<TheoryArpeggioGuideData> arpeggioGuides = new List<TheoryArpeggioGuideData>();
+    public List<TheoryGeneratedChannelAssignment> generatedChannels = new List<TheoryGeneratedChannelAssignment>();
     public List<TheoryGeneratedNoteEvent> generatedNotes = new List<TheoryGeneratedNoteEvent>();
 
     public void EnsureDefaults()
@@ -129,6 +132,7 @@ public sealed class TheoryArrangementData
         generatedPart ??= new TheoryGeneratedPartInfo();
         notes ??= new List<TheoryNoteData>();
         arpeggioGuides ??= new List<TheoryArpeggioGuideData>();
+        generatedChannels ??= new List<TheoryGeneratedChannelAssignment>();
         generatedNotes ??= new List<TheoryGeneratedNoteEvent>();
     }
 }
@@ -346,6 +350,19 @@ public sealed class TheoryGeneratedPartInfo
 }
 
 [Serializable]
+public sealed class TheoryGeneratedChannelAssignment
+{
+    public int channel;
+    public int bank = -1;
+    public int preset = 29;
+    public bool isDrum;
+    public string label;
+    public string sourcePartId;
+    public string sourcePartName;
+    public int pitchBendRangeSemitones;
+}
+
+[Serializable]
 public sealed class TheoryGeneratedNoteEvent
 {
     public float startTimeSeconds;
@@ -415,6 +432,8 @@ public sealed class TheoryEditorBeatMarker
     public bool generatedBySynchTheory;
     public double synchTheoryConfidence;
     public string synchTheorySource;
+    public bool locked;
+    public string linkedSectionId;
 }
 
 [Serializable]
@@ -424,4 +443,6 @@ public sealed class TheoryEditorSyncPoint
     public double chartTimeSeconds;
     public double audioTimeSeconds;
     public string label;
+    public bool locked;
+    public string linkedSectionId;
 }

@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using Unity.Profiling;
 using UnityEngine;
 using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
@@ -227,6 +228,75 @@ public sealed class ChartEditorOverlay
         public Label label;
     }
 
+    private sealed class TimelineNotesMeshElement : VisualElement
+    {
+        private struct NoteQuad
+        {
+            public float x;
+            public float y;
+            public float width;
+            public float height;
+            public Color color;
+        }
+
+        private const int MaxQuadsPerMesh = 4000;
+        private readonly List<NoteQuad> quads = new List<NoteQuad>();
+
+        public TimelineNotesMeshElement()
+        {
+            pickingMode = PickingMode.Ignore;
+            generateVisualContent += OnGenerateVisualContent;
+        }
+
+        public void AddQuad(float x, float y, float width, float height, Color color)
+        {
+            quads.Add(new NoteQuad { x = x, y = y, width = Mathf.Max(1f, width), height = height, color = color });
+        }
+
+        public void Commit()
+        {
+            MarkDirtyRepaint();
+        }
+
+        private void OnGenerateVisualContent(MeshGenerationContext context)
+        {
+            int index = 0;
+            while (index < quads.Count)
+            {
+                int count = Mathf.Min(MaxQuadsPerMesh, quads.Count - index);
+                MeshWriteData mesh = context.Allocate(count * 4, count * 6);
+                ushort vertexBase = 0;
+                for (int i = 0; i < count; i++)
+                {
+                    NoteQuad quad = quads[index + i];
+                    Color32 tint = quad.color;
+                    mesh.SetNextVertex(new Vertex { position = new Vector3(quad.x, quad.y, 0f), tint = tint });
+                    mesh.SetNextVertex(new Vertex { position = new Vector3(quad.x + quad.width, quad.y, 0f), tint = tint });
+                    mesh.SetNextVertex(new Vertex { position = new Vector3(quad.x + quad.width, quad.y + quad.height, 0f), tint = tint });
+                    mesh.SetNextVertex(new Vertex { position = new Vector3(quad.x, quad.y + quad.height, 0f), tint = tint });
+                    mesh.SetNextIndex(vertexBase);
+                    mesh.SetNextIndex((ushort)(vertexBase + 1));
+                    mesh.SetNextIndex((ushort)(vertexBase + 2));
+                    mesh.SetNextIndex(vertexBase);
+                    mesh.SetNextIndex((ushort)(vertexBase + 2));
+                    mesh.SetNextIndex((ushort)(vertexBase + 3));
+                    vertexBase += 4;
+                }
+
+                index += count;
+            }
+        }
+    }
+
+    private sealed class ToneMarkerVisual
+    {
+        public ChartEditorToneChange change;
+        public VisualElement hit;
+        public VisualElement line;
+        public VisualElement cap;
+        public Label label;
+    }
+
     private sealed class TechniqueSegmentVisual
     {
         public ChartEditorTrack track;
@@ -283,6 +353,7 @@ public sealed class ChartEditorOverlay
     private const int SidebarMaxSectionRows = 14;
     private const string SidebarTracksKey = "tracks";
     private const string SidebarDifficultiesKey = "difficulties";
+    private const string SidebarTonesKey = "tones";
     private const string SidebarSectionsKey = "sections";
     private const string SidebarAnchorsKey = "anchors";
     private const string SidebarProjectInfoKey = "project-info";
@@ -299,6 +370,11 @@ public sealed class ChartEditorOverlay
     private const float ContextSubmenuWidth = 500f;
     private const float ContextMenuRowHeight = 72f;
     private const float BeatMarkerHitWidth = 28f;
+    private const float ToneMarkerHitWidth = 38f;
+    private const float ToneMarkerCapWidth = 136f;
+    private const float ToneMarkerCapHeight = 40f;
+    private const float ToneMarkerLaneTop = WaveformTop + 18f;
+    private const float ToneMarkerLaneHeight = 58f;
     private const float AnchorPinTop = WaveformTop + WaveformHeight - 6f;
     private const float AnchorPinSize = 46f;
     private const float SelectedTrackHeight = 690f;
@@ -341,6 +417,8 @@ public sealed class ChartEditorOverlay
     private const float SeekDragEdgePanMaxPixels = 58f;
     private const float HighwayPreviewDefaultHeight = 780f;
     private const float HighwayPreviewMinHeight = 320f;
+    private const float ToneEditorPreferredHeight = 560f;
+    private const float ToneEditorMinHeight = 460f;
     private const float HighwayPreviewMinTimelineHeight = 360f;
     private const float HighwayPreviewSplitterHeight = 26f;
     private const float HighwayPreviewPlayingInterval = 1f / 24f;
@@ -358,12 +436,41 @@ public sealed class ChartEditorOverlay
     private readonly Label headerTimeLabel;
     private readonly VisualElement headerProgressFill;
     private readonly Label statusLabel;
+    private readonly Button toneEditorButton;
     private readonly Button saveButton;
     private readonly Button transportPlayButton;
+    private VisualElement transportPlayIcon;
+    private VisualElement transportPauseIcon;
+    private VisualElement leftPanelElement;
+    private VisualElement editorLoadingOverlay;
+    private UnityToneLabRuntime cachedToneLabRuntime;
+    private VisualElement timelinePanelElement;
+    private bool timelineRefreshQueued;
+    private float builtTimelineWindowStartPx = float.MinValue;
+    private float builtTimelineWindowEndPx = float.MaxValue;
+    private bool timelineScrollRestorePending;
+    private VisualElement timelineWindowedLayer;
+    private bool timelineWindowRefillQueued;
+    private int timelineNoteBuildGeneration;
+    private static readonly ProfilerMarker RebuildMarker = new ProfilerMarker("ChartEditor.Rebuild");
+    private static readonly ProfilerMarker TimelinePanelMarker = new ProfilerMarker("ChartEditor.RefreshTimelinePanel");
+    private static readonly ProfilerMarker WindowRefillMarker = new ProfilerMarker("ChartEditor.RefreshTimelineWindowContent");
+    private static readonly ProfilerMarker LeftPanelMarker = new ProfilerMarker("ChartEditor.RefreshLeftPanel");
+    private static readonly ProfilerMarker BuildNotesMarker = new ProfilerMarker("ChartEditor.BuildNotes.Gather");
+    private static readonly ProfilerMarker NoteChunkMarker = new ProfilerMarker("ChartEditor.BuildNoteChunk");
+    private static readonly ProfilerMarker CompactRowMarker = new ProfilerMarker("ChartEditor.BuildCompactTrackRow");
+    private static readonly ProfilerMarker ToneWorkspaceMarker = new ProfilerMarker("ChartEditor.RefreshToneEditorPanel");
+    private static readonly ProfilerMarker BeatGridVisualsMarker = new ProfilerMarker("ChartEditor.UpdateBeatGridVisuals");
+    private static readonly ProfilerMarker NoteTimingVisualsMarker = new ProfilerMarker("ChartEditor.UpdateNoteTimingVisuals");
+    private VisualElement toneMarkerTimelineElement;
+    private readonly List<VisualElement> toneMarkerLaneElements = new List<VisualElement>();
     private Label playbackSpeedLabel;
     private Slider playbackSpeedSlider;
 
     private ChartEditorProject project;
+    private float cachedProjectDurationSeconds;
+    private int cachedProjectDurationFrame = -1;
+    private ChartEditorProject cachedProjectDurationSource;
     private ChartEditorScreen screen = ChartEditorScreen.Startup;
     private ChartEditorMode mode = ChartEditorMode.SyncTiming;
     private List<string> currentWarnings = new List<string>();
@@ -371,11 +478,23 @@ public sealed class ChartEditorOverlay
     private readonly HashSet<string> selectedNoteIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private readonly List<ChartEditorNoteHit> currentNoteHits = new List<ChartEditorNoteHit>();
     private readonly Dictionary<string, VisualElement> currentNoteBlocks = new Dictionary<string, VisualElement>(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (Color baseColor, bool selectedTrack)> currentNoteBlockStyles = new Dictionary<string, (Color, bool)>(StringComparer.OrdinalIgnoreCase);
+    private sealed class NoteBlockTimingRef
+    {
+        public VisualElement block;
+        public ChartEditorTrack track;
+        public ChartEditorNote note;
+        public int laneCount;
+        public bool selectedTrack;
+    }
+    private readonly List<NoteBlockTimingRef> currentNoteBlockTimings = new List<NoteBlockTimingRef>();
     private readonly List<TechniqueSegmentVisual> currentTechniqueSegmentVisuals = new List<TechniqueSegmentVisual>();
     private readonly List<ChartEditorCopiedNote> noteClipboard = new List<ChartEditorCopiedNote>();
     private readonly List<BeatMarkerVisual> currentBeatMarkerVisuals = new List<BeatMarkerVisual>();
+    private readonly List<ToneMarkerVisual> currentToneMarkerVisuals = new List<ToneMarkerVisual>();
     private string selectedSectionId;
     private string selectedSyncPointId;
+    private ChartEditorToneChange selectedToneChange;
     private readonly HashSet<string> selectedSyncPointIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private Vector2 timelineScrollOffset;
     private bool timelineScrollInitialized;
@@ -442,8 +561,17 @@ public sealed class ChartEditorOverlay
     private bool sectionsExpanded;
     private bool tracksExpanded = true;
     private bool difficultiesExpanded;
+    private bool toneChangesExpanded;
     private bool anchorsExpanded;
     private bool projectInfoExpanded;
+    private bool toneEditorEnabled;
+    private bool toneLabPanelFocused;
+    private string toneLabSelectedPedalInstanceId = string.Empty;
+    private ChartEditorToneLabEmbeddedView.SidePanelMode toneLabSidePanelMode = ChartEditorToneLabEmbeddedView.SidePanelMode.Presets;
+    private string toneLabLoadedToneKey = string.Empty;
+    private string appliedToneEditorPlaybackKey = string.Empty;
+    private string toneLabWorkingLibraryPresetId = string.Empty;
+    private bool toneLabWorkingToneEditedAfterLibrarySelection;
     private bool seekDragging;
     private bool seekWasPlaying;
     private IGuitarGameplayRenderer highwayPreviewRenderer;
@@ -460,6 +588,9 @@ public sealed class ChartEditorOverlay
     private string cachedHighwayPreviewSignature;
     private int highwayPreviewRevision;
     private int cachedHighwayPreviewRevision = -1;
+    // While a timeline drag is live, the 3D preview keeps rendering its last
+    // snapshot instead of rebuilding note GameObjects every dirty tick.
+    private bool suppressHighwayPreviewRebuild;
     private float nextHighwayPreviewRenderTime;
     private double lastHighwayPreviewRenderTime = -1.0;
     private bool forceHighwayPreviewRender = true;
@@ -489,37 +620,46 @@ public sealed class ChartEditorOverlay
         VisualElement header = new VisualElement();
         header.style.flexDirection = FlexDirection.Row;
         header.style.alignItems = Align.Center;
-        header.style.justifyContent = Justify.SpaceBetween;
-        header.style.height = 112f;
-        header.style.minHeight = 112f;
+        header.style.height = 128f;
+        header.style.minHeight = 128f;
         header.style.paddingLeft = 28f;
-        header.style.paddingRight = 28f;
-        header.style.backgroundColor = new Color(0.030f, 0.036f, 0.046f, 0.985f);
-        header.style.borderBottomWidth = 1f;
-        header.style.borderBottomColor = new Color(0.11f, 0.15f, 0.20f, 1f);
+        header.style.paddingRight = 24f;
+        header.style.backgroundColor = new Color(0.083f, 0.080f, 0.094f, 1f);
+        header.style.borderBottomWidth = 2f;
+        header.style.borderBottomColor = new Color(0.75f, 0.72f, 0.82f, 0.14f);
+
+        VisualElement CreateHeaderSeparator()
+        {
+            VisualElement separator = new VisualElement();
+            separator.style.width = 2f;
+            separator.style.minWidth = 2f;
+            separator.style.height = 60f;
+            separator.style.flexShrink = 0f;
+            separator.style.alignSelf = Align.Center;
+            separator.style.backgroundColor = new Color(0.75f, 0.72f, 0.82f, 0.12f);
+            SetRadius(separator, 1f);
+            return separator;
+        }
 
         VisualElement brandBlock = new VisualElement();
-        brandBlock.style.width = 410f;
-        brandBlock.style.minWidth = 410f;
+        brandBlock.style.width = 400f;
+        brandBlock.style.minWidth = 400f;
         brandBlock.style.height = 76f;
         brandBlock.style.justifyContent = Justify.Center;
         brandBlock.style.alignItems = Align.FlexStart;
         brandBlock.style.paddingRight = 28f;
-        brandBlock.style.borderRightWidth = 1f;
-        brandBlock.style.borderRightColor = new Color(0.10f, 0.14f, 0.20f, 1f);
         brandBlock.Add(CreateHeaderStringTheoryWordmark(30f));
 
         VisualElement songBlock = new VisualElement();
         songBlock.style.width = 560f;
         songBlock.style.minWidth = 440f;
-        songBlock.style.paddingLeft = 34f;
+        songBlock.style.paddingLeft = 30f;
         songBlock.style.paddingRight = 30f;
-        songBlock.style.borderRightWidth = 1f;
-        songBlock.style.borderRightColor = new Color(0.10f, 0.14f, 0.20f, 1f);
-        headerTitleLabel = CreateLabel("String Theory", 31f, Color.white, true, TextAnchor.MiddleLeft, false);
+        headerTitleLabel = CreateLabel("String Theory", 30f, new Color(0.97f, 0.96f, 0.98f, 1f), true, TextAnchor.MiddleLeft, false);
         headerTitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
-        headerSubtitleLabel = CreateLabel(string.Empty, 22f, new Color(0.72f, 0.76f, 0.82f, 1f), false, TextAnchor.MiddleLeft, false);
+        headerSubtitleLabel = CreateLabel(string.Empty, 20f, new Color(0.60f, 0.58f, 0.66f, 1f), false, TextAnchor.MiddleLeft, false);
         headerSubtitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+        headerSubtitleLabel.style.marginTop = 2f;
         songBlock.Add(headerTitleLabel);
         songBlock.Add(headerSubtitleLabel);
 
@@ -527,15 +667,31 @@ public sealed class ChartEditorOverlay
         transportBlock.style.flexDirection = FlexDirection.Row;
         transportBlock.style.alignItems = Align.Center;
         transportBlock.style.justifyContent = Justify.Center;
-        transportBlock.style.paddingLeft = 30f;
-        transportBlock.style.paddingRight = 30f;
-        transportBlock.style.borderRightWidth = 1f;
-        transportBlock.style.borderRightColor = new Color(0.10f, 0.14f, 0.20f, 1f);
-        transportBlock.Add(CreateHeaderIconButton("|<", () => SeekTransportTo(0.0), false));
-        transportPlayButton = CreateHeaderIconButton("▶", TogglePlayback, true);
-        transportBlock.Add(transportPlayButton);
-        transportBlock.Add(CreateHeaderIconButton(">|", () => SeekTransportTo(project?.DurationSeconds ?? 0f), false));
-        transportBlock.Add(CreateHeaderIconButton("■", StopPlayback, false));
+        transportBlock.style.paddingLeft = 26f;
+        transportBlock.style.paddingRight = 26f;
+
+        VisualElement transportGroup = new VisualElement();
+        transportGroup.style.flexDirection = FlexDirection.Row;
+        transportGroup.style.alignItems = Align.Center;
+        transportGroup.style.paddingLeft = 8f;
+        transportGroup.style.paddingRight = 8f;
+        transportGroup.style.paddingTop = 8f;
+        transportGroup.style.paddingBottom = 8f;
+        transportGroup.style.backgroundColor = new Color(0.040f, 0.038f, 0.046f, 1f);
+        SetRadius(transportGroup, 14f);
+        SetBorderWidth(transportGroup, 2f);
+        SetBorderColor(transportGroup, new Color(0.75f, 0.72f, 0.82f, 0.16f));
+
+        transportGroup.Add(CreateHeaderIconButton(NewProjectIconKind.SkipStart, () => SeekTransportTo(0.0), false, grouped: true));
+        transportPlayButton = CreateHeaderIconButton(NewProjectIconKind.Play, TogglePlayback, true, grouped: true);
+        transportPlayIcon = transportPlayButton.childCount > 0 ? transportPlayButton.ElementAt(0) : null;
+        transportPauseIcon = CreateNewProjectIcon(NewProjectIconKind.Pause, Color.white, 68f * 0.48f);
+        transportPauseIcon.style.display = DisplayStyle.None;
+        transportPlayButton.Add(transportPauseIcon);
+        transportGroup.Add(transportPlayButton);
+        transportGroup.Add(CreateHeaderIconButton(NewProjectIconKind.SkipEnd, () => SeekTransportTo(GetProjectDurationSeconds()), false, grouped: true));
+        transportGroup.Add(CreateHeaderIconButton(NewProjectIconKind.Stop, StopPlayback, false, grouped: true));
+        transportBlock.Add(transportGroup);
 
         VisualElement speedControl = CreatePlaybackSpeedControl(out playbackSpeedLabel, out playbackSpeedSlider);
         transportBlock.Add(speedControl);
@@ -546,27 +702,20 @@ public sealed class ChartEditorOverlay
         timeBlock.style.justifyContent = Justify.Center;
         timeBlock.style.paddingLeft = 38f;
         timeBlock.style.paddingRight = 38f;
-        timeBlock.style.borderRightWidth = 1f;
-        timeBlock.style.borderRightColor = new Color(0.10f, 0.14f, 0.20f, 1f);
-        headerTimeLabel = CreateLabel("00:00.000 / 00:00.000", 32f, Color.white, true, TextAnchor.MiddleCenter, false);
+        headerTimeLabel = CreateLabel("00:00.000 / 00:00.000", 30f, new Color(0.97f, 0.96f, 0.98f, 1f), true, TextAnchor.MiddleCenter, false);
         headerTimeLabel.style.whiteSpace = WhiteSpace.NoWrap;
         timeBlock.Add(headerTimeLabel);
         VisualElement progressTrack = new VisualElement();
-        progressTrack.style.height = 5f;
+        progressTrack.style.height = 6f;
         progressTrack.style.marginTop = 12f;
-        progressTrack.style.backgroundColor = new Color(0.10f, 0.13f, 0.17f, 1f);
-        progressTrack.style.borderTopLeftRadius = 2f;
-        progressTrack.style.borderTopRightRadius = 2f;
-        progressTrack.style.borderBottomLeftRadius = 2f;
-        progressTrack.style.borderBottomRightRadius = 2f;
+        progressTrack.style.backgroundColor = new Color(1f, 1f, 1f, 0.09f);
+        SetRadius(progressTrack, 3f);
+        progressTrack.style.overflow = Overflow.Hidden;
         headerProgressFill = new VisualElement();
-        headerProgressFill.style.height = 5f;
+        headerProgressFill.style.height = 6f;
         headerProgressFill.style.width = Length.Percent(0f);
-        headerProgressFill.style.backgroundColor = new Color(0.64f, 0.35f, 1f, 1f);
-        headerProgressFill.style.borderTopLeftRadius = 2f;
-        headerProgressFill.style.borderTopRightRadius = 2f;
-        headerProgressFill.style.borderBottomLeftRadius = 2f;
-        headerProgressFill.style.borderBottomRightRadius = 2f;
+        headerProgressFill.style.backgroundColor = new Color(0.62f, 0.38f, 1f, 1f);
+        SetRadius(headerProgressFill, 3f);
         progressTrack.Add(headerProgressFill);
         timeBlock.Add(progressTrack);
 
@@ -576,19 +725,27 @@ public sealed class ChartEditorOverlay
         headerActions.style.justifyContent = Justify.FlexEnd;
         headerActions.style.minWidth = 620f;
         headerActions.style.flexGrow = 1f;
-        headerActions.style.paddingLeft = 30f;
+        headerActions.style.paddingLeft = 26f;
 
-        saveButton = CreateHeaderActionButton("▣ Save", () => ShowSaveOptionsPopup(), true);
-        Button settingsButton = CreateHeaderIconButton("⚙", ShowSongInfoPopup, false);
-        Button closeButton = CreateHeaderIconButton("☰", RequestCloseFromUi, false);
+        toneEditorButton = CreateHeaderActionButton("Tone Editor", ToggleToneEditorFromHeader, false);
+        toneEditorButton.RegisterCallback<MouseEnterEvent>(_ => ApplyToneEditorHeaderButtonState());
+        toneEditorButton.RegisterCallback<MouseLeaveEvent>(_ => ApplyToneEditorHeaderButtonState());
+        saveButton = CreateHeaderActionButton("Save", () => ShowSaveOptionsPopup(), true);
+        Button settingsButton = CreateHeaderIconButton(NewProjectIconKind.Gear, ShowSongInfoPopup, false);
+        Button closeButton = CreateHeaderIconButton(NewProjectIconKind.Menu, RequestCloseFromUi, false);
 
+        headerActions.Add(toneEditorButton);
         headerActions.Add(saveButton);
         headerActions.Add(settingsButton);
         headerActions.Add(closeButton);
         header.Add(brandBlock);
+        header.Add(CreateHeaderSeparator());
         header.Add(songBlock);
+        header.Add(CreateHeaderSeparator());
         header.Add(transportBlock);
+        header.Add(CreateHeaderSeparator());
         header.Add(timeBlock);
+        header.Add(CreateHeaderSeparator());
         header.Add(headerActions);
 
         contentHost = new VisualElement();
@@ -598,18 +755,19 @@ public sealed class ChartEditorOverlay
         contentHost.style.paddingRight = 18f;
         contentHost.style.paddingTop = 18f;
 
-        statusLabel = CreateLabel(string.Empty, 32f, new Color(0.74f, 0.80f, 0.88f, 0.96f), false, TextAnchor.MiddleLeft, false);
+        statusLabel = CreateLabel(string.Empty, 26f, new Color(0.78f, 0.76f, 0.82f, 1f), false, TextAnchor.MiddleLeft, false);
         statusLabel.style.height = 60f;
         statusLabel.style.minHeight = 60f;
         statusLabel.style.paddingLeft = 24f;
         statusLabel.style.paddingRight = 24f;
-        statusLabel.style.backgroundColor = new Color(0.028f, 0.034f, 0.044f, 0.98f);
-        statusLabel.style.borderTopWidth = 1f;
-        statusLabel.style.borderTopColor = new Color(0.16f, 0.20f, 0.26f, 1f);
+        statusLabel.style.backgroundColor = new Color(0.083f, 0.080f, 0.094f, 1f);
+        statusLabel.style.borderTopWidth = 2f;
+        statusLabel.style.borderTopColor = new Color(0.75f, 0.72f, 0.82f, 0.14f);
         statusLabel.style.whiteSpace = WhiteSpace.NoWrap;
 
         RootElement.Add(header);
         RootElement.Add(contentHost);
+        RootElement.schedule.Execute(CheckTimelineWindowRefill).Every(200);
         Rebuild();
     }
 
@@ -640,20 +798,27 @@ public sealed class ChartEditorOverlay
     private VisualElement CreatePlaybackSpeedControl(out Label speedLabel, out Slider speedSlider)
     {
         VisualElement control = new VisualElement();
-        control.style.width = 210f;
-        control.style.minWidth = 210f;
-        control.style.height = 72f;
-        control.style.marginLeft = 18f;
+        control.style.width = 300f;
+        control.style.minWidth = 300f;
+        control.style.height = 84f;
+        control.style.marginLeft = 20f;
         control.style.justifyContent = Justify.Center;
+        control.style.paddingLeft = 22f;
+        control.style.paddingRight = 22f;
+        control.style.backgroundColor = new Color(0.040f, 0.038f, 0.046f, 1f);
+        SetRadius(control, 14f);
+        SetBorderWidth(control, 2f);
+        SetBorderColor(control, new Color(0.75f, 0.72f, 0.82f, 0.16f));
 
         VisualElement labelRow = new VisualElement();
         labelRow.style.flexDirection = FlexDirection.Row;
         labelRow.style.justifyContent = Justify.SpaceBetween;
         labelRow.style.alignItems = Align.Center;
 
-        Label title = CreateLabel("Speed", 18f, new Color(0.68f, 0.74f, 0.84f, 1f), true, TextAnchor.MiddleLeft, false);
-        speedLabel = CreateLabel("100%", 18f, new Color(0.92f, 0.95f, 1f, 1f), true, TextAnchor.MiddleRight, false);
-        speedLabel.style.width = 66f;
+        Label title = CreateLabel("SPEED", 17f, new Color(0.60f, 0.58f, 0.66f, 1f), true, TextAnchor.MiddleLeft, false);
+        title.style.letterSpacing = 2f;
+        speedLabel = CreateLabel("100%", 21f, new Color(0.97f, 0.96f, 0.98f, 1f), true, TextAnchor.MiddleRight, false);
+        speedLabel.style.width = 80f;
         labelRow.Add(title);
         labelRow.Add(speedLabel);
         control.Add(labelRow);
@@ -697,6 +862,7 @@ public sealed class ChartEditorOverlay
         {
             RequestCloseFromUi();
             AdvancePlayback(Mathf.Max(0f, deltaTime));
+            UpdateToneEditorPlaybackOverride();
             UpdateHighwayPreview();
             return;
         }
@@ -704,12 +870,14 @@ public sealed class ChartEditorOverlay
         if (HandleOverlayKeyboardInput())
         {
             AdvancePlayback(Mathf.Max(0f, deltaTime));
+            UpdateToneEditorPlaybackOverride();
             UpdateHighwayPreview();
             return;
         }
 
         HandleKeyboardShortcuts();
         AdvancePlayback(Mathf.Max(0f, deltaTime));
+        UpdateToneEditorPlaybackOverride();
         UpdateHighwayPreview();
     }
 
@@ -814,6 +982,11 @@ public sealed class ChartEditorOverlay
         StopPlayback();
         ResetEditorAudioCache();
         project = null;
+        // Release the duration cache's strong reference so the closed
+        // project's note graph can be collected at the startup screen.
+        cachedProjectDurationSource = null;
+        cachedProjectDurationFrame = -1;
+        suppressHighwayPreviewRebuild = false;
         screen = ChartEditorScreen.Startup;
         mode = ChartEditorMode.SyncTiming;
         currentWarnings = new List<string>();
@@ -821,11 +994,23 @@ public sealed class ChartEditorOverlay
         noteClipboard.Clear();
         selectedSectionId = null;
         selectedSyncPointId = null;
+        selectedToneChange = null;
         sidebarExpansionAnimations.Clear();
         tracksExpanded = true;
+        difficultiesExpanded = false;
+        toneChangesExpanded = false;
         sectionsExpanded = false;
         anchorsExpanded = false;
         projectInfoExpanded = false;
+        ClearToneEditorPlaybackOverride();
+        toneEditorEnabled = false;
+        toneLabPanelFocused = false;
+        toneLabSelectedPedalInstanceId = string.Empty;
+        toneLabSidePanelMode = ChartEditorToneLabEmbeddedView.SidePanelMode.Presets;
+        toneLabLoadedToneKey = string.Empty;
+        toneLabWorkingLibraryPresetId = string.Empty;
+        toneLabWorkingToneEditedAfterLibrarySelection = false;
+        appliedToneEditorPlaybackKey = string.Empty;
         timelineScrollOffset = Vector2.zero;
         timelineScrollInitialized = false;
         timelineZoom = 1f;
@@ -845,6 +1030,10 @@ public sealed class ChartEditorOverlay
 
     private void Rebuild()
     {
+        using ProfilerMarker.AutoScope rebuildScope = RebuildMarker.Auto();
+        // A full rebuild destroys any in-flight timeline drag's elements, so
+        // never leave the 3D preview frozen behind an abandoned drag flag.
+        suppressHighwayPreviewRebuild = false;
         if (skipTimelineScrollCaptureOnce)
             skipTimelineScrollCaptureOnce = false;
         else
@@ -858,7 +1047,10 @@ public sealed class ChartEditorOverlay
         waveformVectorElement = null;
         currentNoteHits.Clear();
         currentNoteBlocks.Clear();
+        currentNoteBlockStyles.Clear();
+        currentNoteBlockTimings.Clear();
         currentTechniqueSegmentVisuals.Clear();
+        currentToneMarkerVisuals.Clear();
         MarkHighwayPreviewDirty();
         InvalidateAuditionCache();
         EnsureAudioClipRequested();
@@ -869,12 +1061,14 @@ public sealed class ChartEditorOverlay
             : FirstNonEmpty(project.metadata?.artist, project.sourceKind.ToString(), "Unknown Artist");
         headerTimeLabel.text = project == null
             ? "00:00.000 / 00:00.000"
-            : $"{FormatTime(project.cursorTimeSeconds)} / {FormatTime(project.DurationSeconds)}";
+            : $"{FormatTime(project.cursorTimeSeconds)} / {FormatTime(GetProjectDurationSeconds())}";
         UpdateHeaderProgress();
         bool hasProject = project != null;
+        ApplyToneEditorHeaderButtonState();
         saveButton.SetEnabled(hasProject);
+        toneEditorButton.SetEnabled(hasProject);
         transportPlayButton.SetEnabled(hasProject);
-        transportPlayButton.text = editorPlaying ? "Ⅱ" : "▶";
+        UpdateTransportPlayButtonIcon();
 
         playbackSpeedSlider?.SetEnabled(hasProject);
         UpdatePlaybackSpeedControl();
@@ -895,68 +1089,202 @@ public sealed class ChartEditorOverlay
 
     private void BuildStartup()
     {
+        Color accentPurple = new Color(0.62f, 0.38f, 1f, 1f);
+        Color panelBackground = new Color(0.072f, 0.069f, 0.080f, 1f);
+        Color bandBackground = new Color(0.100f, 0.096f, 0.112f, 1f);
+        Color hairline = new Color(0.75f, 0.72f, 0.82f, 0.16f);
+        Color textPrimary = new Color(0.97f, 0.96f, 0.98f, 1f);
+        Color textMuted = new Color(0.78f, 0.76f, 0.82f, 1f);
+        Color textFaint = new Color(0.60f, 0.58f, 0.66f, 1f);
+
         VisualElement shell = new VisualElement();
         shell.style.flexGrow = 1f;
         shell.style.alignItems = Align.Center;
         shell.style.justifyContent = Justify.Center;
 
         VisualElement panel = new VisualElement();
-        panel.style.width = 1120f;
+        panel.style.width = 1560f;
         panel.style.maxWidth = Length.Percent(92f);
-        panel.style.paddingLeft = 42f;
-        panel.style.paddingRight = 42f;
-        panel.style.paddingTop = 38f;
-        panel.style.paddingBottom = 38f;
-        StylePanel(panel, new Color(0.030f, 0.036f, 0.048f, 0.98f), new Color(0.22f, 0.25f, 0.30f, 0.88f), 16f);
+        panel.style.maxHeight = Length.Percent(88f);
+        panel.style.flexDirection = FlexDirection.Column;
+        panel.style.backgroundColor = panelBackground;
+        panel.style.overflow = Overflow.Hidden;
+        SetRadius(panel, 26f);
+        SetBorderWidth(panel, 3f);
+        SetBorderColor(panel, new Color(0.78f, 0.75f, 0.88f, 0.36f));
 
-        Label title = CreateLabel("Create or Open", 56f, Color.white, true, TextAnchor.MiddleCenter, true);
-        title.style.marginBottom = 12f;
-        Label subtitle = CreateLabel("Choose a source to start editing.", 27f, new Color(0.76f, 0.82f, 0.90f, 0.94f), false, TextAnchor.MiddleCenter, false);
+        VisualElement headerBand = new VisualElement();
+        headerBand.style.flexDirection = FlexDirection.Row;
+        headerBand.style.alignItems = Align.Center;
+        headerBand.style.flexShrink = 0f;
+        headerBand.style.backgroundColor = bandBackground;
+        headerBand.style.paddingLeft = 44f;
+        headerBand.style.paddingRight = 44f;
+        headerBand.style.paddingTop = 34f;
+        headerBand.style.paddingBottom = 34f;
+        headerBand.style.borderBottomWidth = 2f;
+        headerBand.style.borderBottomColor = hairline;
+
+        headerBand.Add(CreateNewProjectIconTile(NewProjectIconKind.Note, accentPurple, 92f));
+
+        VisualElement headerText = new VisualElement();
+        headerText.style.marginLeft = 26f;
+        headerText.style.flexGrow = 1f;
+        headerText.style.flexShrink = 1f;
+        headerText.style.minWidth = 0f;
+        headerText.Add(CreateLabel("Get Started", 42f, textPrimary, true, TextAnchor.MiddleLeft, false));
+        Label subtitle = CreateLabel("Create a new project, or open an existing chart.", 22f, textMuted, false, TextAnchor.MiddleLeft, false);
         subtitle.style.whiteSpace = WhiteSpace.Normal;
-        subtitle.style.marginBottom = 26f;
+        subtitle.style.marginTop = 6f;
+        headerText.Add(subtitle);
+        headerBand.Add(headerText);
+        panel.Add(headerBand);
 
-        panel.Add(title);
-        panel.Add(subtitle);
-        panel.Add(CreateStartupAction("Open .theory Package", ImportTheoryPackage));
-        panel.Add(CreateStartupAction("Create from Guitar Pro / MusicXML + Audio", ImportChartAndAudio));
-        AddExternalImporterStartupActions(panel);
-        panel.Add(CreateStartupAction("Open Unpacked Chart Folder", ImportFolder));
+        ScrollView body = new ScrollView(ScrollViewMode.Vertical);
+        ConfigureScrollView(body);
+        body.style.flexGrow = 1f;
+        body.style.minHeight = 0f;
+        body.contentContainer.style.paddingLeft = 44f;
+        body.contentContainer.style.paddingRight = 44f;
+        body.contentContainer.style.paddingTop = 40f;
+        body.contentContainer.style.paddingBottom = 28f;
+        body.contentContainer.style.flexShrink = 0f;
 
+        body.Add(CreateStartupHeroAction(
+            "New Project",
+            "Start from a blank chart, or import Guitar Pro / MusicXML with audio.",
+            ShowNewProjectPopup));
+
+        Label openCaption = CreateLabel("OPEN EXISTING", 19f, textFaint, true, TextAnchor.MiddleLeft, false);
+        openCaption.style.letterSpacing = 3f;
+        openCaption.style.marginTop = 40f;
+        openCaption.style.marginBottom = 18f;
+        openCaption.style.flexShrink = 0f;
+        body.Add(openCaption);
+
+        body.Add(CreateStartupAction("Open .theory Package", ImportTheoryPackage));
+        AddExternalImporterStartupActions(body);
+        body.Add(CreateStartupAction("Open Unpacked Chart Folder", ImportFolder));
+
+        panel.Add(body);
         shell.Add(panel);
         contentHost.Add(shell);
         SetStatus("Ready.");
     }
 
-    private VisualElement CreateStartupAction(string label, Action action)
+    private Button CreateStartupHeroAction(string label, string description, Action action)
     {
+        Color accent = new Color(0.62f, 0.38f, 1f, 1f);
         Button button = new Button(action) { text = string.Empty };
         button.focusable = false;
-        button.style.height = 88f;
         button.style.width = Length.Percent(100f);
-        button.style.marginTop = 9f;
-        button.style.marginBottom = 9f;
-        button.style.paddingLeft = 24f;
-        button.style.paddingRight = 24f;
         button.style.flexDirection = FlexDirection.Row;
         button.style.alignItems = Align.Center;
-        button.style.justifyContent = Justify.SpaceBetween;
+        button.style.flexShrink = 0f;
+        button.style.marginLeft = 0f;
+        button.style.marginRight = 0f;
+        button.style.marginTop = 0f;
+        button.style.marginBottom = 0f;
+        button.style.paddingLeft = 34f;
+        button.style.paddingRight = 34f;
+        button.style.paddingTop = 30f;
+        button.style.paddingBottom = 30f;
         button.style.unityFontDefinition = bodyFont;
-        Color accent = label.IndexOf("Folder", StringComparison.OrdinalIgnoreCase) >= 0
-            ? new Color(0.47f, 0.88f, 0.64f, 1f)
-            : label.IndexOf("Existing", StringComparison.OrdinalIgnoreCase) >= 0
-                ? new Color(0.98f, 0.72f, 0.36f, 1f)
-                : new Color(0.68f, 0.44f, 1f, 1f);
-        StyleSoftButton(button, accent);
-        SetRadius(button, 12f);
+        SetRadius(button, 20f);
 
-        Label title = CreateLabel(label, 29f, new Color(0.96f, 0.98f, 1f, 1f), true, TextAnchor.MiddleLeft, false);
-        title.style.flexGrow = 1f;
+        button.Add(CreateNewProjectIconTile(NewProjectIconKind.Plus, accent, 84f));
+
+        VisualElement text = new VisualElement();
+        text.style.marginLeft = 26f;
+        text.style.flexGrow = 1f;
+        text.style.flexShrink = 1f;
+        text.style.minWidth = 0f;
+        Label title = CreateLabel(label, 32f, new Color(0.97f, 0.96f, 1f, 1f), true, TextAnchor.MiddleLeft, false);
         title.style.whiteSpace = WhiteSpace.NoWrap;
+        text.Add(title);
+        Label detail = CreateLabel(description, 21f, new Color(0.80f, 0.78f, 0.95f, 1f), false, TextAnchor.MiddleLeft, false);
+        detail.style.whiteSpace = WhiteSpace.Normal;
+        detail.style.marginTop = 6f;
+        text.Add(detail);
+        button.Add(text);
+
+        VisualElement chevron = CreateNewProjectIcon(NewProjectIconKind.ChevronRight, new Color(0.85f, 0.80f, 1f, 0.95f), 44f);
+        chevron.style.marginLeft = 20f;
+        button.Add(chevron);
+
+        void Apply(bool hover)
+        {
+            button.style.backgroundColor = hover
+                ? new Color(accent.r * 0.30f, accent.g * 0.30f, accent.b * 0.34f, 1f)
+                : new Color(accent.r * 0.20f, accent.g * 0.20f, accent.b * 0.25f, 1f);
+            SetBorderWidth(button, 3f);
+            SetBorderColor(button, new Color(accent.r, accent.g, accent.b, hover ? 0.85f : 0.55f));
+            button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
+        }
+
+        Apply(false);
+        button.RegisterCallback<MouseEnterEvent>(_ => Apply(true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => Apply(false));
+        return button;
+    }
+
+    private VisualElement CreateStartupAction(string label, Action action)
+    {
+        bool isFolder = label.IndexOf("Folder", StringComparison.OrdinalIgnoreCase) >= 0;
+        bool isPackage = label.IndexOf("Package", StringComparison.OrdinalIgnoreCase) >= 0;
+        Color accent = isFolder
+            ? new Color(0.52f, 0.84f, 0.72f, 1f)
+            : isPackage
+                ? new Color(0.98f, 0.72f, 0.36f, 1f)
+                : new Color(0.48f, 0.74f, 1f, 1f);
+        NewProjectIconKind icon = isFolder ? NewProjectIconKind.Folder : NewProjectIconKind.File;
+
+        Button button = new Button(action) { text = string.Empty };
+        button.focusable = false;
+        button.style.width = Length.Percent(100f);
+        button.style.flexDirection = FlexDirection.Row;
+        button.style.alignItems = Align.Center;
+        button.style.flexShrink = 0f;
+        button.style.marginLeft = 0f;
+        button.style.marginRight = 0f;
+        button.style.marginTop = 0f;
+        button.style.marginBottom = 16f;
+        button.style.paddingLeft = 26f;
+        button.style.paddingRight = 26f;
+        button.style.paddingTop = 22f;
+        button.style.paddingBottom = 22f;
+        button.style.unityFontDefinition = bodyFont;
+        SetRadius(button, 16f);
+
+        button.Add(CreateNewProjectIconTile(icon, accent, 64f));
+
+        Label title = CreateLabel(label, 26f, new Color(0.94f, 0.93f, 0.96f, 1f), true, TextAnchor.MiddleLeft, false);
+        title.style.flexGrow = 1f;
+        title.style.flexShrink = 1f;
+        title.style.minWidth = 0f;
+        title.style.marginLeft = 22f;
+        title.style.whiteSpace = WhiteSpace.Normal;
         button.Add(title);
 
-        Label actionLabel = CreateLabel("Open", 23f, new Color(accent.r, accent.g, accent.b, 0.96f), true, TextAnchor.MiddleRight, false);
-        actionLabel.style.width = 116f;
-        button.Add(actionLabel);
+        VisualElement chevron = CreateNewProjectIcon(NewProjectIconKind.ChevronRight, new Color(0.63f, 0.61f, 0.70f, 0.90f), 36f);
+        chevron.style.marginLeft = 18f;
+        button.Add(chevron);
+
+        void Apply(bool hover)
+        {
+            button.style.backgroundColor = hover
+                ? new Color(0.068f, 0.064f, 0.078f, 1f)
+                : new Color(0.042f, 0.040f, 0.048f, 1f);
+            SetBorderWidth(button, 2f);
+            SetBorderColor(button, hover
+                ? new Color(accent.r, accent.g, accent.b, 0.60f)
+                : new Color(0.75f, 0.72f, 0.82f, 0.22f));
+            button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
+        }
+
+        Apply(false);
+        button.RegisterCallback<MouseEnterEvent>(_ => Apply(true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => Apply(false));
         return button;
     }
 
@@ -1139,11 +1467,13 @@ public sealed class ChartEditorOverlay
         center.style.minWidth = 0f;
         center.style.minHeight = 0f;
         center.style.flexDirection = FlexDirection.Column;
-        center.Add(BuildTimelinePanel());
+        timelinePanelElement = BuildTimelinePanel();
+        center.Add(timelinePanelElement);
         center.Add(BuildTimelinePreviewSplitter());
         center.Add(BuildHighwayPreviewPanel());
 
-        main.Add(BuildLeftPanel());
+        leftPanelElement = BuildLeftPanel();
+        main.Add(leftPanelElement);
         main.Add(center);
         root.Add(main);
         contentHost.Add(root);
@@ -1159,14 +1489,14 @@ public sealed class ChartEditorOverlay
         splitter.style.marginRight = 18f;
         splitter.style.justifyContent = Justify.Center;
         splitter.style.alignItems = Align.Center;
-        splitter.style.backgroundColor = new Color(0.012f, 0.016f, 0.024f, 0.92f);
+        splitter.style.backgroundColor = new Color(0.016f, 0.015f, 0.019f, 0.92f);
         splitter.pickingMode = PickingMode.Position;
         SetElementCursor(splitter, ChartEditorCursorKind.ResizeVertical);
 
         VisualElement grip = new VisualElement();
-        grip.style.width = 104f;
-        grip.style.height = 6f;
-        grip.style.backgroundColor = new Color(0.78f, 0.84f, 0.94f, 0.32f);
+        grip.style.width = 120f;
+        grip.style.height = 8f;
+        grip.style.backgroundColor = new Color(0.80f, 0.78f, 0.88f, 0.30f);
         grip.pickingMode = PickingMode.Ignore;
         SetRadius(grip, 999f);
         splitter.Add(grip);
@@ -1177,6 +1507,9 @@ public sealed class ChartEditorOverlay
 
     private VisualElement BuildHighwayPreviewPanel()
     {
+        if (toneEditorEnabled)
+            return BuildToneEditorPanel();
+
         EnsureHighwayPreviewTexture();
 
         VisualElement panel = new VisualElement();
@@ -1186,24 +1519,19 @@ public sealed class ChartEditorOverlay
         panel.style.flexShrink = 0f;
         panel.style.flexDirection = FlexDirection.Row;
         panel.style.alignItems = Align.Stretch;
-        panel.style.marginTop = 10f;
+        panel.style.marginTop = 12f;
         panel.style.marginRight = 18f;
-        panel.style.paddingLeft = 12f;
-        panel.style.paddingRight = 12f;
-        panel.style.paddingTop = 12f;
-        panel.style.paddingBottom = 12f;
-        StylePanel(panel, new Color(0.032f, 0.038f, 0.050f, 0.99f), new Color(0.17f, 0.21f, 0.27f, 1f), 0f);
 
         VisualElement previewFrame = new VisualElement();
         previewFrame.style.flexGrow = 1f;
         previewFrame.style.minWidth = 0f;
         previewFrame.style.height = Length.Percent(100f);
         previewFrame.style.minHeight = 0f;
-        previewFrame.style.backgroundColor = new Color(0.006f, 0.008f, 0.012f, 1f);
+        previewFrame.style.backgroundColor = new Color(0.006f, 0.006f, 0.009f, 1f);
         previewFrame.style.overflow = Overflow.Hidden;
-        SetRadius(previewFrame, 22f);
-        SetBorderWidth(previewFrame, 1f);
-        SetBorderColor(previewFrame, new Color(0.18f, 0.23f, 0.31f, 0.85f));
+        SetRadius(previewFrame, 20f);
+        SetBorderWidth(previewFrame, 2f);
+        SetBorderColor(previewFrame, new Color(0.75f, 0.72f, 0.82f, 0.18f));
 
         highwayPreviewTextureElement = new VisualElement();
         highwayPreviewTextureElement.style.position = Position.Absolute;
@@ -1218,19 +1546,21 @@ public sealed class ChartEditorOverlay
 
         VisualElement overlay = new VisualElement();
         overlay.style.position = Position.Absolute;
-        overlay.style.left = 24f;
-        overlay.style.top = 22f;
-        overlay.style.paddingLeft = 18f;
-        overlay.style.paddingRight = 18f;
-        overlay.style.paddingTop = 12f;
-        overlay.style.paddingBottom = 12f;
-        overlay.style.backgroundColor = new Color(0.010f, 0.014f, 0.022f, 0.62f);
-        SetRadius(overlay, 16f);
-        highwayPreviewTitleLabel = CreateLabel("3D Highway Preview", 34f, Color.white, true, TextAnchor.MiddleLeft, false);
+        overlay.style.left = 22f;
+        overlay.style.top = 20f;
+        overlay.style.paddingLeft = 22f;
+        overlay.style.paddingRight = 22f;
+        overlay.style.paddingTop = 14f;
+        overlay.style.paddingBottom = 14f;
+        overlay.style.backgroundColor = new Color(0.030f, 0.029f, 0.036f, 0.80f);
+        SetRadius(overlay, 14f);
+        SetBorderWidth(overlay, 2f);
+        SetBorderColor(overlay, new Color(0.75f, 0.72f, 0.82f, 0.14f));
+        highwayPreviewTitleLabel = CreateLabel("3D Highway Preview", 30f, new Color(0.97f, 0.96f, 0.98f, 1f), true, TextAnchor.MiddleLeft, false);
         highwayPreviewTitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
-        highwayPreviewMetaLabel = CreateLabel(string.Empty, 24f, new Color(0.70f, 0.76f, 0.84f, 1f), false, TextAnchor.MiddleLeft, false);
+        highwayPreviewMetaLabel = CreateLabel(string.Empty, 21f, new Color(0.72f, 0.70f, 0.78f, 1f), false, TextAnchor.MiddleLeft, false);
         highwayPreviewMetaLabel.style.whiteSpace = WhiteSpace.Normal;
-        highwayPreviewMetaLabel.style.marginTop = 4f;
+        highwayPreviewMetaLabel.style.marginTop = 5f;
         overlay.Add(highwayPreviewTitleLabel);
         overlay.Add(highwayPreviewMetaLabel);
         previewFrame.Add(overlay);
@@ -1238,6 +1568,90 @@ public sealed class ChartEditorOverlay
 
         UpdateHighwayPreview();
         return panel;
+    }
+
+    private VisualElement BuildToneEditorPanel()
+    {
+        DisposeHighwayPreview();
+        EnsureToneSelectionForCurrentTrack();
+
+        VisualElement panel = new VisualElement();
+        highwayPreviewPanelElement = panel;
+        ApplyHighwayPreviewHeight(ClampHighwayPreviewHeight(Mathf.Max(highwayPreviewPanelHeight, ToneEditorPreferredHeight)));
+        panel.style.minHeight = ToneEditorMinHeight;
+        panel.style.flexShrink = 0f;
+        panel.style.flexDirection = FlexDirection.Row;
+        panel.style.alignItems = Align.Stretch;
+        panel.style.marginTop = 10f;
+        panel.style.marginRight = 18f;
+        panel.style.paddingLeft = 12f;
+        panel.style.paddingRight = 12f;
+        panel.style.paddingTop = 12f;
+        panel.style.paddingBottom = 12f;
+        StylePanel(panel, new Color(0.026f, 0.036f, 0.042f, 0.99f), new Color(0.00f, 0.48f, 0.44f, 0.74f), 0f);
+        panel.RegisterCallback<PointerDownEvent>(_ => FocusToneLabPanel());
+
+        UnityToneLabRuntime runtime = GetToneLabRuntime();
+        if (runtime == null)
+        {
+            Label unavailable = CreateLabel("Tone Lab unavailable", 30f, new Color(0.82f, 0.88f, 0.92f, 1f), true, TextAnchor.MiddleCenter, false);
+            unavailable.style.flexGrow = 1f;
+            unavailable.style.unityTextAlign = TextAnchor.MiddleCenter;
+            panel.Add(unavailable);
+            return panel;
+        }
+
+        ChartEditorToneLabEmbeddedView embedded = new ChartEditorToneLabEmbeddedView(new ChartEditorToneLabEmbeddedView.Options
+        {
+            Runtime = runtime,
+            SelectedPedalInstanceId = toneLabSelectedPedalInstanceId,
+            SidePanel = toneLabSidePanelMode,
+            SetSelectedPedalInstanceId = value => toneLabSelectedPedalInstanceId = value ?? string.Empty,
+            SetSidePanel = mode => toneLabSidePanelMode = mode,
+            Focus = FocusToneLabPanel,
+            MarkWorkingToneChanged = () =>
+            {
+                toneLabWorkingToneEditedAfterLibrarySelection = true;
+                // Keep the loaded-tone key so the selected switch does not reload
+                // its saved tone over unassigned edits in the embedded Tone Lab.
+                appliedToneEditorPlaybackKey = string.Empty;
+            },
+            MarkPresetSelected = presetId =>
+            {
+                toneLabWorkingLibraryPresetId = presetId ?? string.Empty;
+                toneLabWorkingToneEditedAfterLibrarySelection = false;
+                appliedToneEditorPlaybackKey = string.Empty;
+            },
+            IsWorkingToneCustom = () =>
+                toneLabWorkingToneEditedAfterLibrarySelection ||
+                string.IsNullOrWhiteSpace(runtime.CurrentPresetId),
+            RequestRebuild = () => RefreshToneEditorPanelOnly(),
+            AssignToSelectedToneSwitch = () =>
+            {
+                EnsureToneSelectionForCurrentTrack();
+                if (selectedToneChange != null)
+                    AssignCurrentToneToChange(selectedToneChange);
+                else
+                    AddToneChangeAtCursor();
+            },
+            AddToneSwitchAtCursor = AddToneChangeAtCursor,
+            SetStatus = SetStatus,
+            RegisterTextFieldKeyboardCapture = RegisterTextFieldKeyboardCapture,
+            BodyFont = bodyFont,
+            TitleFont = titleFont,
+            FontScale = EditorFontScale
+        });
+        panel.Add(embedded.Root);
+        return panel;
+    }
+
+    private void FocusToneLabPanel()
+    {
+        if (!toneEditorEnabled)
+            return;
+
+        toneLabPanelFocused = true;
+        ClearToneEditorPlaybackOverride();
     }
 
     private void AddPreviewSplitterDragHandlers(VisualElement splitter)
@@ -1300,21 +1714,22 @@ public sealed class ChartEditorOverlay
             return;
 
         highwayPreviewPanelElement.style.height = highwayPreviewPanelHeight;
-        highwayPreviewPanelElement.style.minHeight = HighwayPreviewMinHeight;
+        highwayPreviewPanelElement.style.minHeight = toneEditorEnabled ? ToneEditorMinHeight : HighwayPreviewMinHeight;
         highwayPreviewPanelElement.MarkDirtyRepaint();
     }
 
     private float ClampHighwayPreviewHeight(float height)
     {
+        float minHeight = toneEditorEnabled ? ToneEditorMinHeight : HighwayPreviewMinHeight;
         float maxHeight = HighwayPreviewDefaultHeight * 1.7f;
         if (chartEditorCenterElement != null && chartEditorCenterElement.resolvedStyle.height > 1f)
         {
             maxHeight = Mathf.Max(
-                HighwayPreviewMinHeight,
+                minHeight,
                 chartEditorCenterElement.resolvedStyle.height - HighwayPreviewMinTimelineHeight - HighwayPreviewSplitterHeight);
         }
 
-        return Mathf.Clamp(height, HighwayPreviewMinHeight, Mathf.Max(HighwayPreviewMinHeight, maxHeight));
+        return Mathf.Clamp(height, minHeight, Mathf.Max(minHeight, maxHeight));
     }
 
     private void EnsureHighwayPreviewTexture()
@@ -1447,10 +1862,15 @@ public sealed class ChartEditorOverlay
 
     private void UpdateHighwayPreview()
     {
+        if (toneEditorEnabled)
+            return;
+
         if (!visible || screen != ChartEditorScreen.Editor || project == null)
             return;
 
         bool previewDataDirty = cachedHighwayPreviewFrame == null || cachedHighwayPreviewRevision != highwayPreviewRevision;
+        if (suppressHighwayPreviewRebuild && cachedHighwayPreviewFrame != null)
+            previewDataDirty = false;
         double cursorTime = project.cursorTimeSeconds;
         bool timeChanged = lastHighwayPreviewRenderTime < 0.0 ||
                            Math.Abs(cursorTime - lastHighwayPreviewRenderTime) > HighwayPreviewTimeEpsilon;
@@ -1473,7 +1893,7 @@ public sealed class ChartEditorOverlay
         else
         {
             frame.songTime = Mathf.Max(0f, (float)cursorTime);
-            frame.songDurationSeconds = Mathf.Max(0.1f, project.DurationSeconds);
+            frame.songDurationSeconds = Mathf.Max(0.1f, GetProjectDurationSeconds());
             EnsureHighwayPreviewRenderer(frame, cachedHighwayPreviewSignature, cachedHighwayPreviewTabSections);
             highwayPreviewRenderer?.Render(BuildHighwayPreviewSnapshot(frame));
         }
@@ -1500,7 +1920,7 @@ public sealed class ChartEditorOverlay
                 string tuning = FirstNonEmpty(track?.tuning?.displayName, track?.role.ToString(), "Unknown tuning");
                 int laneCount = ChartEditorHighwayPreviewSnapshotBuilder.ResolveLaneCount(track);
                 string laneLabel = track?.role == ChartEditorTrackRole.Drums ? "lanes" : "strings";
-                highwayPreviewMetaLabel.text = $"{tuning}  -  {laneCount} {laneLabel}  -  {track?.notes?.Count ?? 0} notes  -  {FormatTime(project.cursorTimeSeconds)}";
+                highwayPreviewMetaLabel.text = $"{tuning}  ·  {laneCount} {laneLabel}  ·  {track?.notes?.Count ?? 0} notes  ·  {FormatTime(project.cursorTimeSeconds)}";
             }
             else
             {
@@ -1691,6 +2111,12 @@ public sealed class ChartEditorOverlay
                     hash = (hash * 31) + Mathf.RoundToInt(note.bendStep * 1000f);
                     hash = (hash * 31) + (note.isMuted ? 1 : 0);
                     hash = (hash * 31) + (note.isLegato ? 1 : 0);
+                    // These feed the renderer's creation-time caches (slide/bend
+                    // ribbon endpoints, legato curves, chord grouping) — edits
+                    // to them must invalidate the cached preview.
+                    hash = (hash * 31) + (note.requiresPluck ? 1 : 0);
+                    hash = (hash * 31) + note.linkedFromNoteId;
+                    hash = (hash * 31) + note.chordId;
                     if (note.techniqueSegments != null)
                     {
                         hash = (hash * 31) + note.techniqueSegments.Count;
@@ -1780,6 +2206,13 @@ public sealed class ChartEditorOverlay
         highwayPreviewTextureElement = null;
         highwayPreviewTitleLabel = null;
         highwayPreviewMetaLabel = null;
+        leftPanelElement = null;
+        cachedToneLabRuntime = null;
+        timelinePanelElement = null;
+        toneMarkerTimelineElement = null;
+        toneMarkerLaneElements.Clear();
+        timelineWindowedLayer = null;
+        timelineNoteBuildGeneration++;
     }
 
     private VisualElement BuildModeTabs()
@@ -1806,10 +2239,13 @@ public sealed class ChartEditorOverlay
         bool selected = mode == tabMode;
         Button button = CreateButton(label, () =>
         {
+            if (toneEditorEnabled)
+                SetToneEditorEnabled(false, rebuild: false);
             mode = tabMode;
             ClearNoteSelection();
             selectedSectionId = null;
             selectedSyncPointId = null;
+            selectedToneChange = null;
             Rebuild();
         });
         button.style.height = 84f;
@@ -1826,6 +2262,81 @@ public sealed class ChartEditorOverlay
         parent.Add(button);
     }
 
+    private void ToggleToneEditorFromHeader()
+    {
+        SetToneEditorEnabled(!toneEditorEnabled, rebuild: true);
+    }
+
+    private void SetToneEditorEnabled(bool enabled, bool rebuild)
+    {
+        if (toneEditorEnabled == enabled && (!enabled || toneChangesExpanded))
+        {
+            if (rebuild)
+                Rebuild();
+            return;
+        }
+
+        toneEditorEnabled = enabled;
+        toneLabPanelFocused = false;
+        if (enabled)
+        {
+            ClearNoteSelection();
+            selectedSectionId = null;
+            selectedSyncPointId = null;
+            ClearAnchorSelection();
+            tracksExpanded = false;
+            difficultiesExpanded = false;
+            sectionsExpanded = false;
+            anchorsExpanded = false;
+            projectInfoExpanded = false;
+            toneChangesExpanded = true;
+            toneLabSidePanelMode = ChartEditorToneLabEmbeddedView.SidePanelMode.Presets;
+            highwayPreviewPanelHeight = Mathf.Max(highwayPreviewPanelHeight, ToneEditorPreferredHeight);
+            EnsureToneSelectionForCurrentTrack();
+            LoadSelectedToneIntoToneLab(forceReload: true);
+            SetStatus("Tone editor enabled.");
+        }
+        else
+        {
+            selectedToneChange = null;
+            toneLabPanelFocused = false;
+            toneLabSelectedPedalInstanceId = string.Empty;
+            toneLabSidePanelMode = ChartEditorToneLabEmbeddedView.SidePanelMode.Presets;
+            toneLabLoadedToneKey = string.Empty;
+            toneLabWorkingLibraryPresetId = string.Empty;
+            toneLabWorkingToneEditedAfterLibrarySelection = false;
+            ClearToneEditorPlaybackOverride();
+            appliedToneEditorPlaybackKey = string.Empty;
+            SetStatus(project?.dirty == true ? "Unsaved changes." : "Project saved.");
+        }
+
+        if (rebuild)
+            Rebuild();
+        else
+            ApplyToneEditorHeaderButtonState();
+    }
+
+    private void ApplyToneEditorHeaderButtonState()
+    {
+        if (toneEditorButton == null)
+            return;
+
+        toneEditorButton.text = toneEditorEnabled ? "Tone Editor On" : "Tone Editor";
+        SetBorderWidth(toneEditorButton, 2f);
+        if (toneEditorEnabled)
+        {
+            toneEditorButton.style.backgroundColor = new Color(0.00f, 0.42f, 0.37f, 0.32f);
+            toneEditorButton.style.color = Color.white;
+            SetBorderColor(toneEditorButton, new Color(0.10f, 0.85f, 0.74f, 0.60f));
+        }
+        else
+        {
+            toneEditorButton.style.backgroundColor = new Color(1f, 1f, 1f, 0.03f);
+            toneEditorButton.style.color = new Color(0.91f, 0.90f, 0.94f, 1f);
+            SetBorderColor(toneEditorButton, new Color(0.75f, 0.72f, 0.82f, 0.22f));
+        }
+    }
+
     private VisualElement BuildLeftPanel()
     {
         ScrollView panel = new ScrollView(ScrollViewMode.Vertical);
@@ -1837,7 +2348,10 @@ public sealed class ChartEditorOverlay
         panel.style.paddingRight = 0f;
         panel.style.paddingTop = 10f;
         panel.style.paddingBottom = 22f;
-        StylePanel(panel, new Color(0.050f, 0.058f, 0.070f, 0.99f), new Color(0.17f, 0.21f, 0.27f, 1f), 0f);
+        panel.style.backgroundColor = new Color(0.055f, 0.053f, 0.063f, 1f);
+        SetRadius(panel, 18f);
+        SetBorderWidth(panel, 2f);
+        SetBorderColor(panel, new Color(0.75f, 0.72f, 0.82f, 0.16f));
 
         List<ChartEditorTrackViewGroup> groups = BuildTrackViewGroups();
         int sectionCount = project.sections?.Count ?? 0;
@@ -1852,6 +2366,7 @@ public sealed class ChartEditorOverlay
             Mathf.Max(0, groups.Count).ToString(CultureInfo.InvariantCulture)));
         ChartEditorTrackViewGroup selectedGroup = GetSelectedTrackViewGroup(groups);
         int difficultyCount = selectedGroup?.tracks?.Count ?? 0;
+        int toneChangeCount = GetSelectedTrackToneChanges().Count;
         panel.Add(CreateCollapsibleSidebarSection(
             SidebarDifficultiesKey,
             "DIFFICULTIES",
@@ -1860,6 +2375,15 @@ public sealed class ChartEditorOverlay
             () => CreateDifficultiesSidebarContent(selectedGroup),
             EstimateDifficultiesSidebarContentHeight(selectedGroup),
             difficultyCount > 1 ? difficultyCount.ToString(CultureInfo.InvariantCulture) : string.Empty));
+        panel.Add(CreateCollapsibleSidebarSection(
+            SidebarTonesKey,
+            "TONE CHANGES",
+            toneChangesExpanded,
+            ToggleToneChangesExpanded,
+            CreateToneChangesSidebarContent,
+            EstimateToneChangesSidebarContentHeight(),
+            toneChangeCount > 0 ? toneChangeCount.ToString(CultureInfo.InvariantCulture) : string.Empty,
+            AddToneChangeAtCursor));
         panel.Add(CreateCollapsibleSidebarSection(
             SidebarSectionsKey,
             "SECTIONS",
@@ -1931,10 +2455,11 @@ public sealed class ChartEditorOverlay
         section.style.marginTop = SidebarSectionTopGap;
         section.style.marginBottom = SidebarSectionBottomGap;
         section.style.overflow = Overflow.Hidden;
-        section.style.backgroundColor = new Color(0.044f, 0.052f, 0.066f, 0.92f);
+        section.style.flexShrink = 0f;
+        section.style.backgroundColor = new Color(0.096f, 0.092f, 0.108f, 1f);
         SetRadius(section, 14f);
-        SetBorderWidth(section, 1f);
-        SetBorderColor(section, new Color(0.17f, 0.21f, 0.28f, 0.94f));
+        SetBorderWidth(section, 2f);
+        SetBorderColor(section, new Color(0.75f, 0.72f, 0.82f, 0.16f));
         return section;
     }
 
@@ -1952,9 +2477,8 @@ public sealed class ChartEditorOverlay
         row.style.flexDirection = FlexDirection.Row;
         row.style.alignItems = Align.Center;
         row.style.justifyContent = Justify.SpaceBetween;
-        row.style.paddingLeft = 18f;
-        row.style.paddingRight = 14f;
-        row.style.backgroundColor = new Color(0.030f, 0.037f, 0.050f, 0.34f);
+        row.style.paddingLeft = 22f;
+        row.style.paddingRight = 16f;
 
         if (collapsible && toggle != null)
         {
@@ -1966,6 +2490,8 @@ public sealed class ChartEditorOverlay
                 toggle();
                 evt.StopPropagation();
             });
+            row.RegisterCallback<MouseEnterEvent>(_ => row.style.backgroundColor = new Color(1f, 1f, 1f, 0.03f));
+            row.RegisterCallback<MouseLeaveEvent>(_ => row.style.backgroundColor = Color.clear);
         }
 
         VisualElement labelGroup = new VisualElement();
@@ -1973,9 +2499,9 @@ public sealed class ChartEditorOverlay
         labelGroup.style.alignItems = Align.Center;
         labelGroup.style.flexGrow = 1f;
         labelGroup.style.minWidth = 0f;
-        labelGroup.Add(CreateSidebarGripIcon());
 
-        Label label = CreateLabel(title.ToUpperInvariant(), 20f, new Color(0.88f, 0.92f, 0.98f, 0.98f), true, TextAnchor.MiddleLeft, false);
+        Label label = CreateLabel(title.ToUpperInvariant(), 19f, new Color(0.62f, 0.60f, 0.70f, 1f), true, TextAnchor.MiddleLeft, false);
+        label.style.letterSpacing = 2f;
         label.style.whiteSpace = WhiteSpace.NoWrap;
         labelGroup.Add(label);
 
@@ -1990,122 +2516,86 @@ public sealed class ChartEditorOverlay
         actions.style.flexShrink = 0f;
 
         if (addAction != null)
-            actions.Add(CreateSidebarSectionActionButton("+", addAction, 48f));
+            actions.Add(CreateSidebarSectionIconButton(NewProjectIconKind.Plus, addAction));
 
         if (collapsible && toggle != null)
-            actions.Add(CreateSidebarSectionActionButton(expanded ? "Hide  v" : "Show  >", toggle, 104f));
+        {
+            VisualElement chevron = CreateNewProjectIcon(NewProjectIconKind.ChevronRight, new Color(0.62f, 0.60f, 0.70f, 0.95f), 30f);
+            chevron.style.marginLeft = 12f;
+            chevron.style.rotate = expanded ? new Rotate(90f) : new Rotate(0f);
+            actions.Add(chevron);
+        }
         else if (!string.IsNullOrWhiteSpace(metadata))
+        {
             actions.Add(CreateSidebarSectionMetadataButton(metadata));
+        }
 
         row.Add(actions);
         return row;
     }
 
-    private VisualElement CreateSidebarGripIcon()
+    private Button CreateSidebarSectionIconButton(NewProjectIconKind icon, Action action)
     {
-        VisualElement icon = new VisualElement();
-        icon.style.width = 30f;
-        icon.style.height = 30f;
-        icon.style.marginRight = 12f;
-        icon.style.flexDirection = FlexDirection.Column;
-        icon.style.alignItems = Align.Center;
-        icon.style.justifyContent = Justify.Center;
-        icon.style.flexShrink = 0f;
+        Button button = new Button(action) { text = string.Empty };
+        button.focusable = false;
+        button.style.width = 44f;
+        button.style.height = 44f;
+        button.style.minWidth = 44f;
+        button.style.minHeight = 44f;
+        button.style.marginLeft = 8f;
+        button.style.marginRight = 0f;
+        button.style.marginTop = 0f;
+        button.style.marginBottom = 0f;
+        button.style.paddingLeft = 0f;
+        button.style.paddingRight = 0f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.alignItems = Align.Center;
+        button.style.justifyContent = Justify.Center;
+        button.style.flexShrink = 0f;
+        SetRadius(button, 10f);
+        button.Add(CreateNewProjectIcon(icon, new Color(0.83f, 0.82f, 0.88f, 0.95f), 22f));
 
-        for (int rowIndex = 0; rowIndex < 3; rowIndex++)
+        void Apply(bool hover)
         {
-            VisualElement dotRow = new VisualElement();
-            dotRow.style.flexDirection = FlexDirection.Row;
-            dotRow.style.height = 7f;
-            for (int column = 0; column < 3; column++)
-            {
-                VisualElement dot = new VisualElement();
-                dot.style.width = 4f;
-                dot.style.height = 4f;
-                dot.style.marginLeft = 2f;
-                dot.style.marginRight = 2f;
-                dot.style.backgroundColor = new Color(0.58f, 0.64f, 0.72f, 0.88f);
-                SetRadius(dot, 999f);
-                dotRow.Add(dot);
-            }
-
-            icon.Add(dotRow);
+            button.style.backgroundColor = hover ? new Color(1f, 1f, 1f, 0.09f) : new Color(1f, 1f, 1f, 0.03f);
+            SetBorderWidth(button, 2f);
+            SetBorderColor(button, hover ? new Color(0.80f, 0.78f, 0.88f, 0.50f) : new Color(0.75f, 0.72f, 0.82f, 0.20f));
         }
 
-        return icon;
+        Apply(false);
+        button.RegisterCallback<MouseEnterEvent>(_ => Apply(true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => Apply(false));
+        button.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+        return button;
     }
 
     private VisualElement CreateSidebarMetadataPill(string text)
     {
-        Label pill = CreateLabel(text, 17f, new Color(0.68f, 0.74f, 0.84f, 0.92f), true, TextAnchor.MiddleCenter, false);
+        Label pill = CreateLabel(text, 16f, new Color(0.78f, 0.76f, 0.82f, 1f), true, TextAnchor.MiddleCenter, false);
         pill.style.height = 30f;
         pill.style.minWidth = 34f;
         pill.style.marginLeft = 12f;
         pill.style.paddingLeft = 10f;
         pill.style.paddingRight = 10f;
-        pill.style.backgroundColor = new Color(0.090f, 0.105f, 0.132f, 0.62f);
-        SetRadius(pill, 8f);
-        SetBorderWidth(pill, 1f);
-        SetBorderColor(pill, new Color(0.20f, 0.24f, 0.31f, 0.76f));
+        pill.style.backgroundColor = new Color(1f, 1f, 1f, 0.05f);
+        SetRadius(pill, 9f);
+        SetBorderWidth(pill, 2f);
+        SetBorderColor(pill, new Color(0.75f, 0.72f, 0.82f, 0.20f));
         return pill;
-    }
-
-    private Button CreateSidebarSectionActionButton(string text, Action action, float width)
-    {
-        Button button = new Button(action) { text = text };
-        button.focusable = false;
-        button.style.width = width;
-        button.style.height = 42f;
-        button.style.marginLeft = 8f;
-        button.style.fontSize = UiFont(text.Length > 1 ? 17f : 24f);
-        button.style.unityFontDefinition = bodyFont;
-        button.style.unityFontStyleAndWeight = FontStyle.Bold;
-        StyleSidebarSectionButton(button, new Color(0.78f, 0.84f, 0.94f, 0.96f));
-        button.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
-        return button;
     }
 
     private VisualElement CreateSidebarSectionMetadataButton(string text)
     {
-        Label label = CreateLabel(text, 17f, new Color(0.72f, 0.78f, 0.88f, 0.96f), true, TextAnchor.MiddleCenter, false);
+        Label label = CreateLabel(text, 17f, new Color(1f, 0.80f, 0.56f, 1f), true, TextAnchor.MiddleCenter, false);
         label.style.width = 48f;
         label.style.height = 42f;
         label.style.marginLeft = 8f;
-        label.style.backgroundColor = new Color(0.058f, 0.068f, 0.086f, 0.70f);
-        SetRadius(label, 8f);
-        SetBorderWidth(label, 1f);
-        SetBorderColor(label, new Color(0.18f, 0.22f, 0.29f, 0.90f));
+        label.style.backgroundColor = new Color(1f, 0.65f, 0.30f, 0.10f);
+        SetRadius(label, 10f);
+        SetBorderWidth(label, 2f);
+        SetBorderColor(label, new Color(1f, 0.65f, 0.30f, 0.38f));
         return label;
-    }
-
-    private static void StyleSidebarSectionButton(Button button, Color textColor)
-    {
-        if (button == null)
-            return;
-
-        SetRadius(button, 8f);
-        SetBorderWidth(button, 1f);
-        ApplySidebarSectionButtonState(button, textColor, false);
-        button.RegisterCallback<MouseEnterEvent>(_ => ApplySidebarSectionButtonState(button, textColor, true));
-        button.RegisterCallback<MouseLeaveEvent>(_ => ApplySidebarSectionButtonState(button, textColor, false));
-        button.style.paddingLeft = 0f;
-        button.style.paddingRight = 0f;
-    }
-
-    private static void ApplySidebarSectionButtonState(Button button, Color textColor, bool hover)
-    {
-        if (button == null)
-            return;
-
-        button.style.backgroundColor = hover
-            ? new Color(0.100f, 0.116f, 0.146f, 0.94f)
-            : new Color(0.058f, 0.068f, 0.086f, 0.70f);
-        button.style.color = hover ? Color.white : textColor;
-        SetBorderColor(button, hover
-            ? new Color(0.42f, 0.48f, 0.58f, 0.92f)
-            : new Color(0.18f, 0.22f, 0.29f, 0.92f));
-        button.style.opacity = hover ? 1f : 0.96f;
-        button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
     }
 
     private VisualElement CreateSidebarStaticContent(Func<VisualElement> buildContent)
@@ -2113,8 +2603,8 @@ public sealed class ChartEditorOverlay
         VisualElement clip = new VisualElement();
         clip.style.paddingTop = SidebarSectionContentPaddingTop;
         clip.style.paddingBottom = SidebarSectionContentPaddingBottom;
-        clip.style.borderTopWidth = 1f;
-        clip.style.borderTopColor = new Color(0.12f, 0.15f, 0.20f, 0.88f);
+        clip.style.borderTopWidth = 2f;
+        clip.style.borderTopColor = new Color(0.75f, 0.72f, 0.82f, 0.10f);
 
         VisualElement content = buildContent?.Invoke();
         if (content != null)
@@ -2128,8 +2618,8 @@ public sealed class ChartEditorOverlay
         VisualElement clip = new VisualElement();
         clip.style.overflow = Overflow.Hidden;
         clip.style.minHeight = 0f;
-        clip.style.borderTopWidth = 1f;
-        clip.style.borderTopColor = new Color(0.12f, 0.15f, 0.20f, 0.88f);
+        clip.style.borderTopWidth = 2f;
+        clip.style.borderTopColor = new Color(0.75f, 0.72f, 0.82f, 0.10f);
 
         VisualElement inner = new VisualElement();
         inner.style.paddingTop = SidebarSectionContentPaddingTop;
@@ -2163,7 +2653,7 @@ public sealed class ChartEditorOverlay
 
             if (animation.collapsing)
             {
-                Rebuild();
+                RefreshLeftPanel();
                 return;
             }
 
@@ -2237,6 +2727,28 @@ public sealed class ChartEditorOverlay
         return container;
     }
 
+    private VisualElement CreateToneChangesSidebarContent()
+    {
+        VisualElement container = new VisualElement();
+        ChartEditorTrack track = project?.SelectedTrack;
+        if (track == null)
+        {
+            container.Add(CreateSidebarText("No arrangement selected.", new Color(0.70f, 0.74f, 0.82f, 0.92f)));
+            return container;
+        }
+
+        List<ChartEditorToneChange> changes = GetSelectedTrackToneChanges();
+        if (changes.Count == 0)
+        {
+            container.Add(CreateSidebarText("No tone changes yet.", new Color(0.70f, 0.74f, 0.82f, 0.92f)));
+            return container;
+        }
+
+        for (int i = 0; i < changes.Count; i++)
+            container.Add(CreateToneChangeSidebarRow(track, changes[i], i));
+        return container;
+    }
+
     private VisualElement CreateWarningsSidebarContent()
     {
         VisualElement container = new VisualElement();
@@ -2256,7 +2768,7 @@ public sealed class ChartEditorOverlay
         VisualElement container = new VisualElement();
         container.Add(CreateProjectInfoRow("Source", project.sourceKind.ToString()));
         container.Add(CreateProjectInfoRow("Audio", string.IsNullOrWhiteSpace(project.audio?.displayName) ? "None" : project.audio.displayName));
-        container.Add(CreateProjectInfoRow("Length", FormatTime(project.DurationSeconds)));
+        container.Add(CreateProjectInfoRow("Length", FormatTime(GetProjectDurationSeconds())));
         container.Add(CreateProjectInfoRow("Beat Map", $"{ChartEditorTimingService.GetBeatMarkers(project).Count} beats / {ChartEditorTimingService.GetAnchors(project).Count} anchors"));
         container.Add(CreateProjectInfoRow("Tempo", $"{ChartEditorTimingService.GetTempoAtBeat(project, ChartEditorTimingService.GetBeatPositionForAudioTime(project, project.cursorTimeSeconds)):0.###} BPM"));
         container.Add(CreateSidebarButton("Edit Song Info", ShowSongInfoPopup));
@@ -2278,6 +2790,12 @@ public sealed class ChartEditorOverlay
     private float EstimateSectionsSidebarContentHeight()
     {
         int count = project.sections == null ? 0 : Mathf.Min(project.sections.Count, SidebarMaxSectionRows);
+        return EstimateSidebarContentHeight(count, SidebarListRowHeight + SidebarListRowGap);
+    }
+
+    private float EstimateToneChangesSidebarContentHeight()
+    {
+        int count = Mathf.Min(GetSelectedTrackToneChanges().Count, SidebarMaxSectionRows);
         return EstimateSidebarContentHeight(count, SidebarListRowHeight + SidebarListRowGap);
     }
 
@@ -2313,6 +2831,11 @@ public sealed class ChartEditorOverlay
         ToggleSidebarSectionExpanded(SidebarDifficultiesKey, ref difficultiesExpanded);
     }
 
+    private void ToggleToneChangesExpanded()
+    {
+        ToggleSidebarSectionExpanded(SidebarTonesKey, ref toneChangesExpanded);
+    }
+
     private void ToggleAnchorsExpanded()
     {
         ToggleSidebarSectionExpanded(SidebarAnchorsKey, ref anchorsExpanded);
@@ -2331,7 +2854,28 @@ public sealed class ChartEditorOverlay
         {
             collapsing = wasExpanded
         };
-        Rebuild();
+        RefreshLeftPanel();
+    }
+
+    private void RefreshLeftPanel()
+    {
+        using ProfilerMarker.AutoScope scope = LeftPanelMarker.Auto();
+        if (screen != ChartEditorScreen.Editor ||
+            project == null ||
+            leftPanelElement == null ||
+            leftPanelElement.panel == null ||
+            leftPanelElement.parent == null)
+        {
+            Rebuild();
+            return;
+        }
+
+        VisualElement parent = leftPanelElement.parent;
+        int index = parent.IndexOf(leftPanelElement);
+        VisualElement fresh = BuildLeftPanel();
+        parent.Insert(index, fresh);
+        leftPanelElement.RemoveFromHierarchy();
+        leftPanelElement = fresh;
     }
 
     private VisualElement CreateAnchorsList()
@@ -2419,7 +2963,11 @@ public sealed class ChartEditorOverlay
         row.style.marginLeft = 16f;
         row.style.marginRight = 16f;
         row.style.marginBottom = SidebarTrackRowGap;
-        row.style.backgroundColor = selected ? new Color(0.070f, 0.078f, 0.096f, 0.72f) : new Color(0f, 0f, 0f, 0f);
+        Color trackIdleBackground = selected ? new Color(0.078f, 0.075f, 0.090f, 0.72f) : new Color(0f, 0f, 0f, 0f);
+        row.style.backgroundColor = trackIdleBackground;
+        AddSidebarRowHoverEffect(row, trackIdleBackground, selected
+            ? new Color(0.094f, 0.090f, 0.106f, 0.80f)
+            : new Color(1f, 1f, 1f, 0.05f));
         SetRadius(row, 10f);
         SetBorderWidth(row, selected ? 2f : 0f);
         if (selected)
@@ -2478,16 +3026,15 @@ public sealed class ChartEditorOverlay
         row.style.marginLeft = 20f;
         row.style.marginRight = 20f;
         row.style.marginBottom = SidebarListRowGap;
-        row.style.backgroundColor = selected ? new Color(0.078f, 0.086f, 0.108f, 0.86f) : new Color(0f, 0f, 0f, 0f);
+        Color difficultyIdleBackground = selected ? new Color(0.086f, 0.083f, 0.098f, 0.86f) : new Color(0f, 0f, 0f, 0f);
+        row.style.backgroundColor = difficultyIdleBackground;
         SetRadius(row, 8f);
-        SetBorderWidth(row, selected ? 1.5f : 0f);
+        SetBorderWidth(row, selected ? 2f : 0f);
         if (selected)
-        {
-            row.style.borderTopColor = new Color(0.70f, 0.76f, 0.92f, 1f);
-            row.style.borderRightColor = new Color(0.70f, 0.76f, 0.92f, 1f);
-            row.style.borderBottomColor = new Color(0.70f, 0.76f, 0.92f, 1f);
-            row.style.borderLeftColor = new Color(0.70f, 0.76f, 0.92f, 1f);
-        }
+            SetBorderColor(row, new Color(0.78f, 0.76f, 0.90f, 1f));
+        AddSidebarRowHoverEffect(row, difficultyIdleBackground, selected
+            ? new Color(0.100f, 0.096f, 0.114f, 0.90f)
+            : new Color(1f, 1f, 1f, 0.05f));
 
         Label name = CreateLabel(FormatDifficultyLabel(track), 23f, Color.white, selected, TextAnchor.MiddleLeft, false);
         name.style.flexGrow = 1f;
@@ -2534,10 +3081,15 @@ public sealed class ChartEditorOverlay
         row.style.marginLeft = 12f;
         row.style.marginRight = 12f;
         row.style.marginBottom = SidebarListRowGap;
-        row.style.backgroundColor = string.Equals(selectedSectionId, section?.id, StringComparison.OrdinalIgnoreCase)
+        bool sectionSelected = string.Equals(selectedSectionId, section?.id, StringComparison.OrdinalIgnoreCase);
+        Color sectionIdleBackground = sectionSelected
             ? new Color(0.080f, 0.070f, 0.110f, 0.94f)
-            : new Color(0.040f, 0.047f, 0.058f, 0.48f);
+            : new Color(0.046f, 0.044f, 0.053f, 0.48f);
+        row.style.backgroundColor = sectionIdleBackground;
         SetRadius(row, 12f);
+        AddSidebarRowHoverEffect(row, sectionIdleBackground, sectionSelected
+            ? new Color(0.100f, 0.088f, 0.135f, 0.96f)
+            : new Color(1f, 1f, 1f, 0.06f));
 
         VisualElement dot = new VisualElement();
         dot.style.width = 11f;
@@ -2556,6 +3108,1073 @@ public sealed class ChartEditorOverlay
         time.style.width = 132f;
         row.Add(time);
         return row;
+    }
+
+    private VisualElement CreateToneChangeSidebarRow(ChartEditorTrack track, ChartEditorToneChange change, int index)
+    {
+        bool selected = ReferenceEquals(selectedToneChange, change);
+        VisualElement row = new VisualElement();
+        row.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (change == null)
+                return;
+
+            if (evt.button == 1)
+            {
+                toneLabPanelFocused = false;
+                SelectToneChange(change, seek: false, rebuild: false, focusToneLab: false);
+                ShowToneChangeContextMenu(evt.position, change);
+                evt.StopPropagation();
+                return;
+            }
+
+            if (evt.button != 0)
+                return;
+
+            toneLabPanelFocused = false;
+            SelectToneChange(change, seek: true, rebuild: true, focusToneLab: true);
+            evt.StopPropagation();
+        });
+        row.style.height = SidebarListRowHeight;
+        row.style.minHeight = SidebarListRowHeight;
+        row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.Center;
+        row.style.paddingLeft = 30f;
+        row.style.paddingRight = 24f;
+        row.style.marginLeft = 12f;
+        row.style.marginRight = 12f;
+        row.style.marginBottom = SidebarListRowGap;
+        Color toneIdleBackground = selected
+            ? new Color(0.000f, 0.135f, 0.130f, 0.94f)
+            : new Color(0.046f, 0.044f, 0.053f, 0.48f);
+        row.style.backgroundColor = toneIdleBackground;
+        SetRadius(row, 12f);
+        SetBorderWidth(row, selected ? 2f : 0f);
+        if (selected)
+            SetBorderColor(row, ToneMarkerSelectedColor());
+        AddSidebarRowHoverEffect(row, toneIdleBackground, selected
+            ? new Color(0.000f, 0.165f, 0.158f, 0.96f)
+            : new Color(1f, 1f, 1f, 0.06f));
+
+        VisualElement dot = new VisualElement();
+        dot.style.width = 12f;
+        dot.style.height = 12f;
+        dot.style.marginRight = 16f;
+        dot.style.backgroundColor = ToneMarkerColor(index, selected);
+        SetRadius(dot, 999f);
+        row.Add(dot);
+
+        Label name = CreateLabel(FirstNonEmpty(ResolveToneChangeName(track, change), $"Tone {index + 1}"), 24f, new Color(0.90f, 0.96f, 0.96f, 1f), selected, TextAnchor.MiddleLeft, false);
+        name.style.flexGrow = 1f;
+        name.style.whiteSpace = WhiteSpace.NoWrap;
+        row.Add(name);
+
+        Label time = CreateLabel(FormatTime(change?.timeSeconds ?? 0.0), 24f, new Color(0.66f, 0.76f, 0.76f, 1f), false, TextAnchor.MiddleRight, false);
+        time.style.width = 132f;
+        row.Add(time);
+        return row;
+    }
+
+    private List<ChartEditorToneChange> GetSelectedTrackToneChanges()
+    {
+        ChartEditorTrack track = project?.SelectedTrack;
+        if (track?.tones == null)
+            return new List<ChartEditorToneChange>();
+
+        track.tones.EnsureDefaults();
+        return track.tones.changes
+            .Where(change => change != null)
+            .OrderBy(change => change.timeSeconds)
+            .ThenBy(change => change.toneName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static void EnsureToneData(ChartEditorTrack track)
+    {
+        if (track == null)
+            return;
+
+        track.tones ??= new ChartEditorToneData();
+        track.tones.EnsureDefaults();
+    }
+
+    private void NormalizeToneChanges(ChartEditorTrack track)
+    {
+        EnsureToneData(track);
+        if (track?.tones?.changes == null)
+            return;
+
+        track.tones.changes = track.tones.changes
+            .Where(change => change != null)
+            .OrderBy(change => change.timeSeconds)
+            .ThenBy(change => change.toneName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // All tone-change time edits funnel through here — keep the beat-map
+        // tracking in sync or the next beat edit snaps the change back to its
+        // stale beat position.
+        foreach (ChartEditorToneChange change in track.tones.changes)
+        {
+            change.beatPosition = ChartEditorTimingService.GetBeatPositionForAudioTime(project, change.timeSeconds);
+            change.usesBeatMapTiming = true;
+        }
+
+        ChartEditorToneScopeService.PropagateToneDataFromTrack(project, track);
+    }
+
+    private void EnsureToneSelectionForCurrentTrack()
+    {
+        List<ChartEditorToneChange> changes = GetSelectedTrackToneChanges();
+        if (changes.Count == 0)
+        {
+            selectedToneChange = null;
+            return;
+        }
+
+        if (selectedToneChange != null && changes.Contains(selectedToneChange))
+            return;
+
+        double cursorTime = project?.cursorTimeSeconds ?? 0.0;
+        selectedToneChange = changes.LastOrDefault(change => change.timeSeconds <= cursorTime + 0.0001)
+                             ?? changes.FirstOrDefault();
+    }
+
+    private void SelectToneChange(ChartEditorToneChange change, bool seek, bool rebuild, bool focusToneLab)
+    {
+        if (project == null || change == null)
+            return;
+
+        selectedToneChange = change;
+        toneEditorEnabled = true;
+        selectedSectionId = null;
+        selectedSyncPointId = null;
+        ClearAnchorSelection();
+        ClearNoteSelection();
+        if (seek)
+            SeekAndRevealTime(change.timeSeconds, syncAudio: true, rebuild: false);
+        if (focusToneLab)
+        {
+            toneLabPanelFocused = true;
+            ClearToneEditorPlaybackOverride();
+            LoadSelectedToneIntoToneLab(forceReload: true);
+        }
+
+        if (rebuild)
+            RefreshToneEditorWorkspace();
+        else
+            UpdateToneEditorPlaybackOverride();
+    }
+
+    private void RefreshToneEditorWorkspace()
+    {
+        if (!RefreshToneEditorPanelOnly())
+            return;
+
+        RefreshLeftPanel();
+        RefreshToneMarkerSelectionVisuals();
+        UpdateToneMarkerVisuals();
+    }
+
+    private bool RefreshToneEditorPanelOnly()
+    {
+        using ProfilerMarker.AutoScope scope = ToneWorkspaceMarker.Auto();
+        if (screen != ChartEditorScreen.Editor ||
+            project == null ||
+            highwayPreviewPanelElement == null ||
+            highwayPreviewPanelElement.panel == null ||
+            highwayPreviewPanelElement.parent == null)
+        {
+            Rebuild();
+            return false;
+        }
+
+        VisualElement previousPanel = highwayPreviewPanelElement;
+        VisualElement parent = previousPanel.parent;
+        int index = parent.IndexOf(previousPanel);
+        VisualElement fresh = BuildHighwayPreviewPanel();
+        parent.Insert(index, fresh);
+        previousPanel.RemoveFromHierarchy();
+        ApplyToneEditorHeaderButtonState();
+        return true;
+    }
+
+    private void RefreshTimelinePanel()
+    {
+        using ProfilerMarker.AutoScope scope = TimelinePanelMarker.Auto();
+        if (screen != ChartEditorScreen.Editor ||
+            project == null ||
+            timelinePanelElement == null ||
+            timelinePanelElement.panel == null ||
+            timelinePanelElement.parent == null)
+        {
+            Rebuild();
+            return;
+        }
+
+        HideContextMenu();
+        ClearMarqueeSelection();
+        cursorElement = null;
+        cursorHandleElement = null;
+        waveformTextureElement = null;
+        waveformVectorElement = null;
+        currentNoteHits.Clear();
+        currentNoteBlocks.Clear();
+        currentNoteBlockStyles.Clear();
+        currentNoteBlockTimings.Clear();
+        currentTechniqueSegmentVisuals.Clear();
+        currentToneMarkerVisuals.Clear();
+        MarkHighwayPreviewDirty();
+        InvalidateAuditionCache();
+
+        VisualElement previousPanel = timelinePanelElement;
+        VisualElement parent = previousPanel.parent;
+        int index = parent.IndexOf(previousPanel);
+        VisualElement fresh = BuildTimelinePanel();
+        parent.Insert(index, fresh);
+        previousPanel.RemoveFromHierarchy();
+        timelinePanelElement = fresh;
+    }
+
+    private void QueueTimelineRefresh()
+    {
+        if (timelineRefreshQueued)
+            return;
+
+        timelineRefreshQueued = true;
+        ScheduleQueuedTimelineRefresh(45);
+    }
+
+    private void ScheduleQueuedTimelineRefresh(long delayMs)
+    {
+        RootElement.schedule.Execute(() =>
+        {
+            // Never tear the timeline down while the user is mid-gesture:
+            // rebuilding would destroy the element holding the pointer capture.
+            if (marqueeSelecting || IsAnyPointerCaptured())
+            {
+                ScheduleQueuedTimelineRefresh(90);
+                return;
+            }
+
+            timelineRefreshQueued = false;
+            RefreshTimelinePanel();
+        }).ExecuteLater(delayMs);
+    }
+
+    private bool IsAnyPointerCaptured()
+    {
+        IPanel panel = RootElement?.panel;
+        if (panel == null)
+            return false;
+
+        // Touch and pen drags capture non-mouse pointer ids; checking only the
+        // mouse let the refill watchdog tear the timeline down mid-touch-drag.
+        for (int pointerId = 0; pointerId < PointerId.maxPointers; pointerId++)
+        {
+            if (panel.GetCapturingElement(pointerId) != null)
+                return true;
+        }
+
+        return false;
+    }
+
+    private void GetTimelineBuildWindowSeconds(out double windowStartSeconds, out double windowEndSeconds)
+    {
+        float viewportWidth = timelineViewportWidth > 1f ? timelineViewportWidth : 2600f;
+        float margin = viewportWidth * 1.0f;
+        float scrollX = Mathf.Max(0f, timelineScrollOffset.x);
+        builtTimelineWindowStartPx = Mathf.Max(0f, scrollX - margin);
+        builtTimelineWindowEndPx = scrollX + viewportWidth + margin;
+        windowStartSeconds = PixelsToSeconds(Mathf.Max(0f, scrollX - TimelineLabelWidth - margin));
+        windowEndSeconds = PixelsToSeconds(Mathf.Max(0f, scrollX + viewportWidth - TimelineLabelWidth + margin));
+    }
+
+    private void CheckTimelineWindowRefill()
+    {
+        if (!visible ||
+            screen != ChartEditorScreen.Editor ||
+            project == null ||
+            timelinePanelElement == null ||
+            timelinePanelElement.panel == null ||
+            builtTimelineWindowEndPx <= builtTimelineWindowStartPx)
+        {
+            return;
+        }
+
+        float viewStart = Mathf.Max(0f, timelineScrollOffset.x);
+        float viewEnd = viewStart + Mathf.Max(1f, timelineViewportWidth);
+        float slack = Mathf.Max(1f, timelineViewportWidth) * 0.5f;
+        bool needsLeft = builtTimelineWindowStartPx > 1f && viewStart < builtTimelineWindowStartPx + slack;
+        bool needsRight = viewEnd > builtTimelineWindowEndPx - slack;
+        if (needsLeft || needsRight)
+            QueueTimelineWindowRefill();
+    }
+
+    private void QueueTimelineWindowRefill()
+    {
+        if (timelineWindowRefillQueued || timelineRefreshQueued)
+            return;
+
+        timelineWindowRefillQueued = true;
+        ScheduleQueuedTimelineWindowRefill(30);
+    }
+
+    private void ScheduleQueuedTimelineWindowRefill(long delayMs)
+    {
+        RootElement.schedule.Execute(() =>
+        {
+            if (marqueeSelecting || IsAnyPointerCaptured())
+            {
+                ScheduleQueuedTimelineWindowRefill(90);
+                return;
+            }
+
+            timelineWindowRefillQueued = false;
+            RefreshTimelineWindowContent();
+        }).ExecuteLater(delayMs);
+    }
+
+    private void RefreshTimelineWindowContent()
+    {
+        using ProfilerMarker.AutoScope scope = WindowRefillMarker.Auto();
+        if (screen != ChartEditorScreen.Editor ||
+            project == null ||
+            timelineWindowedLayer == null ||
+            timelineWindowedLayer.panel == null)
+        {
+            RefreshTimelinePanel();
+            return;
+        }
+
+        timelineNoteBuildGeneration++;
+        timelineWindowedLayer.Clear();
+        currentNoteHits.Clear();
+        currentNoteBlocks.Clear();
+        currentNoteBlockStyles.Clear();
+        currentNoteBlockTimings.Clear();
+        currentTechniqueSegmentVisuals.Clear();
+        BuildBeatGrid(timelineWindowedLayer);
+        BuildNotes(timelineWindowedLayer);
+    }
+
+    private void RefreshNoteSelectionVisuals(IEnumerable<string> affectedNoteIds)
+    {
+        if (affectedNoteIds == null)
+            return;
+
+        foreach (string id in affectedNoteIds)
+        {
+            if (string.IsNullOrWhiteSpace(id) ||
+                !currentNoteBlocks.TryGetValue(id, out VisualElement block) ||
+                block == null ||
+                !currentNoteBlockStyles.TryGetValue(id, out (Color baseColor, bool selectedTrack) style))
+            {
+                continue;
+            }
+
+            bool isSelected = selectedNoteIds.Contains(id) ||
+                              string.Equals(selectedNoteId, id, StringComparison.OrdinalIgnoreCase);
+            Color accent = isSelected ? new Color(1f, 0.88f, 0.42f, 1f) : style.baseColor;
+            block.style.backgroundColor = new Color(accent.r, accent.g, accent.b, style.selectedTrack ? 0.82f : 0.42f);
+            SetBorderColor(block, accent);
+        }
+    }
+
+    private void RefreshTimelineAndSidebar()
+    {
+        RefreshTimelinePanel();
+        RefreshLeftPanel();
+    }
+
+    private void RefreshToneMarkerLane()
+    {
+        if (screen != ChartEditorScreen.Editor ||
+            toneMarkerTimelineElement == null ||
+            toneMarkerTimelineElement.panel == null)
+        {
+            Rebuild();
+            return;
+        }
+
+        for (int i = 0; i < currentToneMarkerVisuals.Count; i++)
+        {
+            ToneMarkerVisual visual = currentToneMarkerVisuals[i];
+            visual?.hit?.RemoveFromHierarchy();
+            visual?.cap?.RemoveFromHierarchy();
+            visual?.line?.RemoveFromHierarchy();
+        }
+
+        for (int i = 0; i < toneMarkerLaneElements.Count; i++)
+            toneMarkerLaneElements[i]?.RemoveFromHierarchy();
+
+        BuildToneMarkers(toneMarkerTimelineElement);
+    }
+
+    private void RefreshToneMarkerSelectionVisuals()
+    {
+        if (currentToneMarkerVisuals.Count == 0)
+            return;
+
+        List<ChartEditorToneChange> changes = GetSelectedTrackToneChanges();
+        for (int i = 0; i < currentToneMarkerVisuals.Count; i++)
+        {
+            ToneMarkerVisual visual = currentToneMarkerVisuals[i];
+            ChartEditorToneChange change = visual?.change;
+            if (change == null)
+                continue;
+
+            bool selected = ReferenceEquals(selectedToneChange, change);
+            int changeIndex = changes.IndexOf(change);
+            Color markerColor = ToneMarkerColor(changeIndex < 0 ? i : changeIndex, selected);
+            if (visual.line != null)
+            {
+                visual.line.style.width = selected ? 6f : 4f;
+                visual.line.style.marginLeft = selected ? -3f : -2f;
+                visual.line.style.backgroundColor = new Color(markerColor.r, markerColor.g, markerColor.b, selected ? 0.98f : 0.86f);
+            }
+
+            if (visual.cap != null)
+            {
+                visual.cap.style.backgroundColor = new Color(markerColor.r, markerColor.g, markerColor.b, selected ? 0.94f : 0.76f);
+                SetBorderWidth(visual.cap, selected ? 2f : 1f);
+                SetBorderColor(visual.cap, selected ? Color.white : new Color(0.94f, 1f, 0.98f, 0.62f));
+            }
+        }
+    }
+
+    private string ResolveToneChangeName(ChartEditorTrack track, ChartEditorToneChange change)
+    {
+        ChartEditorToneDefinition definition = ResolveToneDefinitionForChange(track, change);
+        return FirstNonEmpty(
+            change?.toneName,
+            definition?.name,
+            definition?.key,
+            track?.tones?.baseToneName,
+            "Tone");
+    }
+
+    private ChartEditorToneDefinition ResolveToneDefinitionForChange(ChartEditorTrack track, ChartEditorToneChange change)
+    {
+        EnsureToneData(track);
+        if (track?.tones?.definitions == null || track.tones.definitions.Count == 0)
+            return null;
+
+        string toneName = change?.toneName?.Trim();
+        ChartEditorToneDefinition byName = FindToneDefinition(track, toneName);
+        if (byName != null)
+            return byName;
+
+        int toneId = change?.toneId ?? -1;
+        if (toneId >= 0 && toneId < track.tones.definitions.Count)
+            return track.tones.definitions[toneId];
+
+        return FindToneDefinition(track, track.tones.baseToneName);
+    }
+
+    private static ChartEditorToneDefinition FindToneDefinition(ChartEditorTrack track, string toneName)
+    {
+        if (track?.tones?.definitions == null || string.IsNullOrWhiteSpace(toneName))
+            return null;
+
+        // Tiered matching: an exact definition name/key match must always win
+        // over fuzzy preset-name matches. Multiple definitions can share the
+        // same source preset name (for example a base tone and a customized
+        // copy captured from it), and the fuzzy match would otherwise resolve
+        // to whichever one appears first in the list.
+        string normalized = toneName.Trim();
+        List<ChartEditorToneDefinition> definitions = track.tones.definitions;
+
+        ChartEditorToneDefinition match = definitions.FirstOrDefault(definition =>
+            definition != null &&
+            string.Equals(definition.name ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase));
+        if (match != null)
+            return match;
+
+        match = definitions.FirstOrDefault(definition =>
+            definition != null &&
+            string.Equals(definition.key ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase));
+        if (match != null)
+            return match;
+
+        match = definitions.FirstOrDefault(definition =>
+            definition != null &&
+            string.Equals(definition.preset?.presetName ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase));
+        if (match != null)
+            return match;
+
+        return definitions.FirstOrDefault(definition =>
+            definition != null &&
+            string.Equals(definition.preset?.presetId ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private ChartEditorToneChange GetToneChangeAtTime(ChartEditorTrack track, double timeSeconds)
+    {
+        EnsureToneData(track);
+        if (track?.tones?.changes == null || track.tones.changes.Count == 0)
+            return null;
+
+        float safeTime = Mathf.Max(0f, (float)timeSeconds);
+        return track.tones.changes
+            .Where(change => change != null && change.timeSeconds <= safeTime + 0.0001f)
+            .OrderBy(change => change.timeSeconds)
+            .LastOrDefault()
+            ?? track.tones.changes
+                .Where(change => change != null)
+                .OrderBy(change => change.timeSeconds)
+                .FirstOrDefault();
+    }
+
+    private static Color ToneMarkerSelectedColor()
+    {
+        return new Color(1.00f, 0.70f, 0.18f, 1f);
+    }
+
+    private static Color ToneMarkerBaseColor()
+    {
+        return new Color(0.00f, 0.88f, 0.78f, 1f);
+    }
+
+    private static Color ToneMarkerColor(int index, bool selected)
+    {
+        if (selected)
+            return ToneMarkerSelectedColor();
+
+        Color baseColor = ToneMarkerBaseColor();
+        float hueShift = (index % 5) * 0.045f;
+        Color.RGBToHSV(baseColor, out float h, out float s, out float v);
+        return Color.HSVToRGB(Mathf.Repeat(h + hueShift, 1f), Mathf.Clamp01(s * 0.92f), Mathf.Clamp01(v));
+    }
+
+    private string MakeUniqueToneDefinitionName(
+        ChartEditorTrack track,
+        string requestedName,
+        ChartEditorToneDefinition allowedExisting = null)
+    {
+        EnsureToneData(track);
+        string seed = FirstNonEmpty(requestedName, "Tone").Trim();
+        HashSet<string> existing = new HashSet<string>(
+            track?.tones?.definitions?
+                .Where(definition => definition != null)
+                .Where(definition => allowedExisting == null || !ReferenceEquals(definition, allowedExisting))
+                .Select(definition => definition.name ?? string.Empty)
+                .Where(name => !string.IsNullOrWhiteSpace(name)) ?? Enumerable.Empty<string>(),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (!existing.Contains(seed))
+            return seed;
+
+        for (int i = 2; i < 1000; i++)
+        {
+            string candidate = $"{seed} {i}";
+            if (!existing.Contains(candidate))
+                return candidate;
+        }
+
+        return $"{seed} {DateTime.Now:HHmmss}";
+    }
+
+    private static string BuildNeutralToneKey(string toneName)
+    {
+        string source = string.IsNullOrWhiteSpace(toneName) ? "tone" : toneName.Trim().ToLowerInvariant();
+        char[] chars = source.Select(ch => char.IsLetterOrDigit(ch) ? ch : '_').ToArray();
+        string normalized = new string(chars).Trim('_');
+        while (normalized.Contains("__"))
+            normalized = normalized.Replace("__", "_");
+        return string.IsNullOrWhiteSpace(normalized) ? "tone" : $"tone_{normalized}";
+    }
+
+    private UnityToneLabRuntime GetToneLabRuntime()
+    {
+        if (cachedToneLabRuntime == null)
+            cachedToneLabRuntime = owner?.GetChartEditorToneLabRuntime();
+        return cachedToneLabRuntime;
+    }
+
+    private void AddToneChangeAtCursor()
+    {
+        AddToneChangeAtTime(project?.cursorTimeSeconds ?? 0.0);
+    }
+
+    private void AddToneChangeAtTime(double timeSeconds)
+    {
+        ChartEditorTrack track = project?.SelectedTrack;
+        if (track == null)
+            return;
+
+        EnsureToneData(track);
+        double safeTime = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), timeSeconds));
+        ChartEditorToneChange existingAtTime = GetToneChangeAtTime(track, safeTime);
+        string toneName = ResolveToneChangeName(track, existingAtTime);
+        UnityToneLabRuntime.ToneLabPreset currentPreset = toneLabPanelFocused
+            ? CaptureCurrentToneLabPresetSnapshot(FirstNonEmpty(toneName, "Tone"))
+            : null;
+
+        ChartEditorToneChange change = new ChartEditorToneChange
+        {
+            timeSeconds = (float)safeTime,
+            toneName = FirstNonEmpty(currentPreset?.preset_name, toneName, track.tones.baseToneName, $"Tone {track.tones.changes.Count + 1}"),
+            toneId = -1
+        };
+        track.tones.changes.Add(change);
+        if (currentPreset != null)
+            UpsertToneDefinition(track, change, change.toneName, currentPreset);
+        else
+            UpdateToneChangeToneId(track, change);
+
+        NormalizeToneChanges(track);
+        project.dirty = true;
+        bool enteringToneEditor = !toneEditorEnabled;
+        SelectToneChange(change, seek: true, rebuild: false, focusToneLab: currentPreset != null);
+        if (enteringToneEditor)
+        {
+            Rebuild();
+            return;
+        }
+
+        RefreshToneMarkerLane();
+        RefreshToneEditorWorkspace();
+    }
+
+    private void DuplicateToneChange(ChartEditorToneChange source)
+    {
+        ChartEditorTrack track = project?.SelectedTrack;
+        if (track == null || source == null)
+            return;
+
+        EnsureToneData(track);
+        ChartEditorToneChange clone = new ChartEditorToneChange
+        {
+            timeSeconds = Mathf.Clamp(source.timeSeconds + 0.10f, 0f, (float)Math.Max(0.0, GetProjectDurationSeconds())),
+            toneName = source.toneName ?? string.Empty,
+            toneId = source.toneId
+        };
+        track.tones.changes.Add(clone);
+        UpdateToneChangeToneId(track, clone);
+        NormalizeToneChanges(track);
+        project.dirty = true;
+        SelectToneChange(clone, seek: true, rebuild: false, focusToneLab: true);
+        RefreshToneMarkerLane();
+        RefreshToneEditorWorkspace();
+    }
+
+    private void DeleteToneChange(ChartEditorToneChange change)
+    {
+        ChartEditorTrack track = project?.SelectedTrack;
+        if (track?.tones?.changes == null || change == null)
+            return;
+
+        track.tones.changes.Remove(change);
+        NormalizeToneChanges(track);
+        selectedToneChange = null;
+        EnsureToneSelectionForCurrentTrack();
+        project.dirty = true;
+        toneLabLoadedToneKey = string.Empty;
+        appliedToneEditorPlaybackKey = string.Empty;
+        RefreshToneMarkerLane();
+        RefreshToneEditorWorkspace();
+    }
+
+    private void ShowToneChangeContextMenu(Vector2 worldPosition, ChartEditorToneChange change)
+    {
+        if (change == null)
+            return;
+
+        SelectToneChange(change, seek: false, rebuild: false, focusToneLab: false);
+        ShowContextMenu(worldPosition,
+            new ContextMenuItem("Assign Current Tone", () => AssignCurrentToneToChange(change)),
+            new ContextMenuItem("Settings...", () => ShowToneChangeSettingsPopup(change)),
+            new ContextMenuItem("Move to Cursor", () => MoveToneChangeToCursor(change)),
+            new ContextMenuItem("Duplicate Tone Change", () => DuplicateToneChange(change)),
+            new ContextMenuItem("Delete Tone Change", () => DeleteToneChange(change)));
+    }
+
+    private void MoveToneChangeToCursor(ChartEditorToneChange change)
+    {
+        if (project == null || change == null)
+            return;
+
+        change.timeSeconds = Mathf.Clamp((float)project.cursorTimeSeconds, 0f, (float)Math.Max(0.0, GetProjectDurationSeconds()));
+        NormalizeToneChanges(project.SelectedTrack);
+        project.dirty = true;
+        SelectToneChange(change, seek: true, rebuild: true, focusToneLab: true);
+    }
+
+    private void ShowToneChangeSettingsPopup(ChartEditorToneChange change)
+    {
+        ChartEditorTrack track = project?.SelectedTrack;
+        if (track == null || change == null)
+            return;
+
+        string currentName = ResolveToneChangeName(track, change);
+        TextField nameField = CreatePopupTextField("Tone Name", currentName);
+        TextField timeField = CreatePopupTextField("Time Seconds", change.timeSeconds.ToString("0.000", CultureInfo.InvariantCulture));
+        ShowEditPopup("Tone Change Settings", new VisualElement[] { nameField, timeField }, () =>
+        {
+            string nextName = FirstNonEmpty(nameField.value, currentName, "Tone").Trim();
+            if (!double.TryParse(timeField.value, NumberStyles.Float, CultureInfo.InvariantCulture, out double nextTime))
+            {
+                SetStatus("Tone change time must be a number.");
+                return false;
+            }
+
+            nextTime = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), nextTime));
+            RenameToneChange(track, change, nextName);
+            change.timeSeconds = (float)nextTime;
+            NormalizeToneChanges(track);
+            project.cursorTimeSeconds = nextTime;
+            project.dirty = true;
+            toneLabLoadedToneKey = string.Empty;
+            appliedToneEditorPlaybackKey = string.Empty;
+            HideEditPopup();
+            SelectToneChange(change, seek: true, rebuild: true, focusToneLab: true);
+            return true;
+        });
+    }
+
+    private void RenameToneChange(ChartEditorTrack track, ChartEditorToneChange change, string nextName)
+    {
+        EnsureToneData(track);
+        if (track == null || change == null)
+            return;
+
+        string oldName = ResolveToneChangeName(track, change);
+        ChartEditorToneDefinition oldDefinition = ResolveToneDefinitionForChange(track, change);
+        ChartEditorToneDefinition existingDefinition = FindToneDefinition(track, nextName);
+        int oldDefinitionIndex = oldDefinition != null ? track.tones.definitions.IndexOf(oldDefinition) : -1;
+        List<ChartEditorToneChange> changesSharingOldDefinition = new List<ChartEditorToneChange>();
+        bool updateBaseToneName = false;
+        if (existingDefinition == null && oldDefinition != null)
+        {
+            if (track.tones.changes != null)
+            {
+                changesSharingOldDefinition = track.tones.changes
+                    .Where(candidate =>
+                        candidate != null &&
+                        (ReferenceEquals(candidate, change) ||
+                         ReferenceEquals(ResolveToneDefinitionForChange(track, candidate), oldDefinition) ||
+                         (oldDefinitionIndex >= 0 && candidate.toneId == oldDefinitionIndex) ||
+                         string.Equals(candidate.toneName ?? string.Empty, oldName, StringComparison.OrdinalIgnoreCase)))
+                    .ToList();
+            }
+
+            updateBaseToneName = ReferenceEquals(FindToneDefinition(track, track.tones.baseToneName), oldDefinition) ||
+                                 string.Equals(track.tones.baseToneName ?? string.Empty, oldName, StringComparison.OrdinalIgnoreCase);
+            oldDefinition.name = nextName;
+            oldDefinition.key = BuildNeutralToneKey(nextName);
+            existingDefinition = oldDefinition;
+        }
+        else if (existingDefinition == null && oldDefinition == null)
+        {
+            existingDefinition = new ChartEditorToneDefinition
+            {
+                name = nextName,
+                key = BuildNeutralToneKey(nextName),
+                preset = new ChartEditorTonePresetData
+                {
+                    presetId = BuildNeutralToneKey(nextName),
+                    presetName = nextName
+                },
+                fallback = new ChartEditorToneFallbackData
+                {
+                    preferredPresetName = nextName,
+                    searchText = FirstNonEmpty(oldName, nextName)
+                }
+            };
+            track.tones.definitions.Add(existingDefinition);
+        }
+
+        if (changesSharingOldDefinition.Count > 0)
+        {
+            for (int i = 0; i < changesSharingOldDefinition.Count; i++)
+            {
+                ChartEditorToneChange sharedChange = changesSharingOldDefinition[i];
+                sharedChange.toneName = nextName;
+                UpdateToneChangeToneId(track, sharedChange);
+            }
+
+            if (updateBaseToneName)
+                track.tones.baseToneName = nextName;
+        }
+        else
+        {
+            change.toneName = nextName;
+            UpdateToneChangeToneId(track, change);
+        }
+    }
+
+    private void AssignCurrentToneToChange(ChartEditorToneChange change)
+    {
+        ChartEditorTrack track = project?.SelectedTrack;
+        if (track == null || change == null)
+            return;
+
+        FocusToneLabPanel();
+        string toneName = ResolveToneChangeName(track, change);
+        UnityToneLabRuntime.ToneLabPreset preset = CaptureCurrentToneLabPresetSnapshot(toneName);
+        if (preset == null || preset.pedal_chain == null || preset.pedal_chain.Count == 0)
+        {
+            SetStatus("Tone Lab does not have a current tone chain to assign.");
+            return;
+        }
+
+        string resolvedName = FirstNonEmpty(preset.preset_name, toneName, $"Tone {(track.tones?.definitions?.Count ?? 0) + 1}");
+        UpsertToneDefinition(track, change, resolvedName, preset);
+        ChartEditorToneScopeService.PropagateToneDataFromTrack(project, track);
+        project.dirty = true;
+        toneLabLoadedToneKey = string.Empty;
+        appliedToneEditorPlaybackKey = string.Empty;
+        SetStatus($"Assigned current tone to \"{resolvedName}\".");
+        SelectToneChange(change, seek: false, rebuild: true, focusToneLab: true);
+    }
+
+    private UnityToneLabRuntime.ToneLabPreset CaptureCurrentToneLabPresetSnapshot(string fallbackName)
+    {
+        UnityToneLabRuntime runtime = GetToneLabRuntime();
+        if (runtime == null)
+            return null;
+
+        string currentPresetName = runtime.CurrentPresets
+            .FirstOrDefault(preset => string.Equals(preset?.preset_id, runtime.CurrentPresetId, StringComparison.Ordinal))
+            ?.preset_name;
+        string sourcePresetId = !toneLabWorkingToneEditedAfterLibrarySelection
+            ? FirstNonEmpty(toneLabWorkingLibraryPresetId, runtime.CurrentPresetId)
+            : string.Empty;
+        string name = FirstNonEmpty(currentPresetName, fallbackName, "Tone");
+        string id = FirstNonEmpty(sourcePresetId, BuildNeutralToneKey($"{name}_{Guid.NewGuid():N}"));
+        return runtime.CaptureCurrentPresetSnapshot(name, id);
+    }
+
+    private void UpsertToneDefinition(ChartEditorTrack track, ChartEditorToneChange change, string toneName, UnityToneLabRuntime.ToneLabPreset preset)
+    {
+        EnsureToneData(track);
+        if (track == null || change == null || preset == null)
+            return;
+
+        string resolvedName = FirstNonEmpty(toneName, preset.preset_name, "Tone");
+        ChartEditorToneDefinition currentDefinition = ResolveToneDefinitionForChange(track, change);
+        bool createDedicatedDefinition = ShouldCreateDedicatedToneDefinition(track, change, currentDefinition);
+        ChartEditorToneDefinition definition = createDedicatedDefinition ? null : currentDefinition;
+        if (definition == null)
+        {
+            resolvedName = MakeUniqueToneDefinitionName(track, resolvedName);
+            definition = new ChartEditorToneDefinition
+            {
+                name = resolvedName,
+                key = BuildNeutralToneKey(resolvedName),
+                fallback = new ChartEditorToneFallbackData()
+            };
+            track.tones.definitions.Add(definition);
+        }
+        else
+        {
+            resolvedName = MakeUniqueToneDefinitionName(track, resolvedName, definition);
+        }
+
+        definition.name = resolvedName;
+        definition.key = BuildNeutralToneKey(resolvedName);
+        preset.preset_name = FirstNonEmpty(preset.preset_name, resolvedName);
+        if (string.IsNullOrWhiteSpace(preset.preset_id))
+            preset.preset_id = BuildNeutralToneKey($"{resolvedName}_{Guid.NewGuid():N}");
+        definition.preset = ToChartEditorTonePreset(preset);
+        definition.fallback ??= new ChartEditorToneFallbackData();
+        definition.fallback.preferredPresetName = FirstNonEmpty(preset.preset_name, resolvedName);
+        definition.fallback.searchText = FirstNonEmpty(resolvedName, preset.preset_name);
+        change.toneName = definition.name;
+        change.toneId = track.tones.definitions.IndexOf(definition);
+    }
+
+    private bool ShouldCreateDedicatedToneDefinition(
+        ChartEditorTrack track,
+        ChartEditorToneChange change,
+        ChartEditorToneDefinition currentDefinition)
+    {
+        EnsureToneData(track);
+        if (track?.tones == null || change == null || currentDefinition == null)
+            return true;
+
+        if (ReferenceEquals(FindToneDefinition(track, track.tones.baseToneName), currentDefinition))
+            return true;
+
+        if (track.tones.changes == null)
+            return false;
+
+        for (int i = 0; i < track.tones.changes.Count; i++)
+        {
+            ChartEditorToneChange other = track.tones.changes[i];
+            if (other == null || ReferenceEquals(other, change))
+                continue;
+
+            if (ReferenceEquals(ResolveToneDefinitionForChange(track, other), currentDefinition))
+                return true;
+        }
+
+        return false;
+    }
+
+    private void UpdateToneChangeToneId(ChartEditorTrack track, ChartEditorToneChange change)
+    {
+        EnsureToneData(track);
+        if (track?.tones?.definitions == null || change == null)
+            return;
+
+        ChartEditorToneDefinition definition = FindToneDefinition(track, change.toneName) ?? ResolveToneDefinitionForChange(track, change);
+        int index = definition == null ? -1 : track.tones.definitions.IndexOf(definition);
+        change.toneId = index;
+    }
+
+    private void LoadSelectedToneIntoToneLab(bool forceReload = false)
+    {
+        ChartEditorTrack track = project?.SelectedTrack;
+        if (track == null || selectedToneChange == null)
+            return;
+
+        ChartEditorToneDefinition definition = ResolveToneDefinitionForChange(track, selectedToneChange);
+        UnityToneLabRuntime.ToneLabPreset preset = ToUnityToneLabPreset(definition);
+        if (preset == null || preset.pedal_chain == null || preset.pedal_chain.Count == 0)
+            return;
+
+        string key = BuildToneRuntimeKey(track, selectedToneChange, definition, preset);
+        if (!forceReload && string.Equals(toneLabLoadedToneKey, key, StringComparison.Ordinal))
+            return;
+
+        UnityToneLabRuntime runtime = GetToneLabRuntime();
+        if (runtime != null && runtime.LoadWorkingPresetSnapshot(preset))
+        {
+            toneLabLoadedToneKey = key;
+            toneLabSelectedPedalInstanceId = runtime.CurrentPedalChain.FirstOrDefault()?.pedal_instance_id ?? string.Empty;
+            toneLabWorkingLibraryPresetId = runtime.CurrentPresetId ?? string.Empty;
+            toneLabWorkingToneEditedAfterLibrarySelection = false;
+            appliedToneEditorPlaybackKey = string.Empty;
+        }
+    }
+
+    private void UpdateToneEditorPlaybackOverride()
+    {
+        if (!toneEditorEnabled || toneLabPanelFocused || project == null)
+            return;
+
+        ChartEditorTrack track = project.SelectedTrack;
+        ChartEditorToneChange change = GetToneChangeAtTime(track, project.cursorTimeSeconds);
+        ChartEditorToneDefinition definition = ResolveToneDefinitionForChange(track, change);
+        UnityToneLabRuntime.ToneLabPreset preset = ToUnityToneLabPreset(definition);
+        if (preset == null || preset.pedal_chain == null || preset.pedal_chain.Count == 0)
+        {
+            ClearToneEditorPlaybackOverride();
+            return;
+        }
+
+        string key = BuildToneRuntimeKey(track, change, definition, preset);
+        if (string.Equals(appliedToneEditorPlaybackKey, key, StringComparison.Ordinal))
+            return;
+
+        if (owner != null && owner.ApplyChartEditorTonePresetOverride(preset))
+            appliedToneEditorPlaybackKey = key;
+    }
+
+    private void ClearToneEditorPlaybackOverride()
+    {
+        if (!string.IsNullOrWhiteSpace(appliedToneEditorPlaybackKey) || toneEditorEnabled)
+            owner?.ClearChartEditorTonePresetOverride();
+        appliedToneEditorPlaybackKey = string.Empty;
+    }
+
+    private static string BuildToneRuntimeKey(
+        ChartEditorTrack track,
+        ChartEditorToneChange change,
+        ChartEditorToneDefinition definition,
+        UnityToneLabRuntime.ToneLabPreset preset)
+    {
+        int pedalCount = preset?.pedal_chain?.Count ?? 0;
+        return string.Join("|",
+            track?.id ?? string.Empty,
+            change?.timeSeconds.ToString("0.000", CultureInfo.InvariantCulture) ?? string.Empty,
+            definition?.name ?? string.Empty,
+            definition?.key ?? string.Empty,
+            preset?.preset_id ?? string.Empty,
+            preset?.preset_name ?? string.Empty,
+            pedalCount.ToString(CultureInfo.InvariantCulture),
+            (preset?.input_gain_db ?? 0f).ToString("0.###", CultureInfo.InvariantCulture),
+            (preset?.output_gain_db ?? 0f).ToString("0.###", CultureInfo.InvariantCulture),
+            JsonUtility.ToJson(preset, false) ?? string.Empty);
+    }
+
+    private static UnityToneLabRuntime.ToneLabPreset ToUnityToneLabPreset(ChartEditorToneDefinition definition)
+    {
+        return ToUnityToneLabPreset(definition?.preset, definition?.name, definition?.key);
+    }
+
+    private static UnityToneLabRuntime.ToneLabPreset ToUnityToneLabPreset(ChartEditorTonePresetData source, string fallbackName, string fallbackKey)
+    {
+        if (source == null)
+            return null;
+
+        UnityToneLabRuntime.ToneLabPreset preset = new UnityToneLabRuntime.ToneLabPreset
+        {
+            preset_id = FirstNonEmpty(source.presetId, BuildNeutralToneKey(FirstNonEmpty(fallbackName, fallbackKey, "Tone"))),
+            preset_name = FirstNonEmpty(source.presetName, fallbackName, fallbackKey, "Tone"),
+            input_gain_db = source.inputGainDb,
+            output_gain_db = source.outputGainDb,
+            pedal_chain = new List<UnityToneLabRuntime.ToneLabPedalSlot>()
+        };
+
+        if (source.pedalChain != null)
+        {
+            for (int i = 0; i < source.pedalChain.Count; i++)
+            {
+                ChartEditorTonePedalSlotData slot = source.pedalChain[i];
+                if (slot == null)
+                    continue;
+
+                UnityToneLabRuntime.ToneLabPedalType pedalType = UnityToneLabRuntime.ToneLabPedalType.Amp;
+                if (!string.IsNullOrWhiteSpace(slot.pedalType))
+                    Enum.TryParse(slot.pedalType, ignoreCase: true, out pedalType);
+
+                preset.pedal_chain.Add(new UnityToneLabRuntime.ToneLabPedalSlot
+                {
+                    pedal_instance_id = slot.instanceId ?? string.Empty,
+                    pedal_type = pedalType,
+                    descriptor_id = slot.descriptorId ?? string.Empty,
+                    enabled = slot.enabled,
+                    settings_json = slot.settingsJson ?? string.Empty
+                });
+            }
+        }
+
+        return preset;
+    }
+
+    private static ChartEditorTonePresetData ToChartEditorTonePreset(UnityToneLabRuntime.ToneLabPreset source)
+    {
+        ChartEditorTonePresetData result = new ChartEditorTonePresetData
+        {
+            presetId = source?.preset_id ?? string.Empty,
+            presetName = source?.preset_name ?? string.Empty,
+            inputGainDb = source?.input_gain_db ?? 0f,
+            outputGainDb = source?.output_gain_db ?? 0f,
+            pedalChain = new List<ChartEditorTonePedalSlotData>()
+        };
+
+        if (source?.pedal_chain != null)
+        {
+            for (int i = 0; i < source.pedal_chain.Count; i++)
+            {
+                UnityToneLabRuntime.ToneLabPedalSlot slot = source.pedal_chain[i];
+                if (slot == null)
+                    continue;
+
+                result.pedalChain.Add(new ChartEditorTonePedalSlotData
+                {
+                    instanceId = slot.pedal_instance_id ?? string.Empty,
+                    pedalType = slot.pedal_type.ToString(),
+                    descriptorId = slot.descriptor_id ?? string.Empty,
+                    enabled = slot.enabled,
+                    settingsJson = slot.settings_json ?? string.Empty
+                });
+            }
+        }
+
+        result.EnsureDefaults();
+        return result;
     }
 
     private VisualElement CreateAnchorSidebarRow(ChartEditorBeatMarker anchor, int index)
@@ -2590,10 +4209,14 @@ public sealed class ChartEditorOverlay
         row.style.marginLeft = 12f;
         row.style.marginRight = 12f;
         row.style.marginBottom = SidebarListRowGap;
-        row.style.backgroundColor = selected
+        Color anchorIdleBackground = selected
             ? new Color(0.080f, 0.070f, 0.110f, 0.94f)
-            : new Color(0.040f, 0.047f, 0.058f, 0.48f);
+            : new Color(0.046f, 0.044f, 0.053f, 0.48f);
+        row.style.backgroundColor = anchorIdleBackground;
         SetRadius(row, 12f);
+        AddSidebarRowHoverEffect(row, anchorIdleBackground, selected
+            ? new Color(0.100f, 0.088f, 0.135f, 0.96f)
+            : new Color(1f, 1f, 1f, 0.06f));
 
         VisualElement dot = new VisualElement();
         dot.style.width = 11f;
@@ -2646,19 +4269,18 @@ public sealed class ChartEditorOverlay
 
         Color titleColor = synchTheoryAccent
             ? new Color(1f, 0.90f, 0.70f, 1f)
-            : new Color(0.91f, 0.94f, 0.98f, 1f);
+            : new Color(0.94f, 0.93f, 0.96f, 1f);
         Color actionColor = synchTheoryAccent
-            ? new Color(1f, 0.66f, 0.24f, 0.98f)
-            : new Color(0.74f, 0.80f, 0.90f, 0.95f);
+            ? new Color(1f, 0.70f, 0.30f, 0.95f)
+            : new Color(0.63f, 0.61f, 0.70f, 0.90f);
 
         Label label = CreateLabel(text, 23f, titleColor, true, TextAnchor.MiddleLeft, false);
         label.style.flexGrow = 1f;
         label.style.whiteSpace = WhiteSpace.NoWrap;
-        Label actionLabel = CreateLabel("Open", 19f, actionColor, true, TextAnchor.MiddleRight, false);
-        actionLabel.style.width = 72f;
-        actionLabel.style.flexShrink = 0f;
+        VisualElement chevron = CreateNewProjectIcon(NewProjectIconKind.ChevronRight, actionColor, 30f);
+        chevron.style.marginLeft = 12f;
         button.Add(label);
-        button.Add(actionLabel);
+        button.Add(chevron);
         return button;
     }
 
@@ -2667,8 +4289,8 @@ public sealed class ChartEditorOverlay
         if (button == null)
             return;
 
-        SetRadius(button, 10f);
-        SetBorderWidth(button, 1f);
+        SetRadius(button, 12f);
+        SetBorderWidth(button, 2f);
         ApplySidebarActionButtonState(button, false);
         button.RegisterCallback<MouseEnterEvent>(_ => ApplySidebarActionButtonState(button, true));
         button.RegisterCallback<MouseLeaveEvent>(_ => ApplySidebarActionButtonState(button, false));
@@ -2680,12 +4302,12 @@ public sealed class ChartEditorOverlay
             return;
 
         button.style.backgroundColor = hover
-            ? new Color(0.082f, 0.096f, 0.124f, 0.94f)
-            : new Color(0.048f, 0.058f, 0.074f, 0.74f);
+            ? new Color(1f, 1f, 1f, 0.07f)
+            : new Color(0.040f, 0.038f, 0.046f, 1f);
         SetBorderColor(button, hover
-            ? new Color(0.33f, 0.39f, 0.50f, 0.92f)
-            : new Color(0.18f, 0.22f, 0.29f, 0.88f));
-        button.style.opacity = hover ? 1f : 0.96f;
+            ? new Color(0.80f, 0.78f, 0.88f, 0.50f)
+            : new Color(0.75f, 0.72f, 0.82f, 0.20f));
+        button.style.opacity = hover ? 1f : 0.98f;
         button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
     }
 
@@ -2694,7 +4316,7 @@ public sealed class ChartEditorOverlay
         if (button == null)
             return;
 
-        SetRadius(button, 10f);
+        SetRadius(button, 12f);
         SetBorderWidth(button, 2f);
         ApplySynchTheorySidebarButtonState(button, false);
         button.RegisterCallback<MouseEnterEvent>(_ => ApplySynchTheorySidebarButtonState(button, true));
@@ -2707,14 +4329,23 @@ public sealed class ChartEditorOverlay
             return;
 
         button.style.backgroundColor = hover
-            ? new Color(0.18f, 0.11f, 0.040f, 0.72f)
-            : new Color(0.10f, 0.070f, 0.040f, 0.52f);
+            ? new Color(0.16f, 0.10f, 0.045f, 0.85f)
+            : new Color(0.10f, 0.070f, 0.040f, 0.75f);
         SetBorderWidth(button, 2f);
         SetBorderColor(button, hover
-            ? new Color(1f, 0.66f, 0.24f, 0.98f)
-            : new Color(0.96f, 0.54f, 0.18f, 0.86f));
+            ? new Color(1f, 0.70f, 0.30f, 0.85f)
+            : new Color(1f, 0.62f, 0.22f, 0.55f));
         button.style.opacity = hover ? 1f : 0.98f;
         button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
+    }
+
+    private static void AddSidebarRowHoverEffect(VisualElement row, Color idleBackground, Color hoverBackground)
+    {
+        if (row == null)
+            return;
+
+        row.RegisterCallback<MouseEnterEvent>(_ => row.style.backgroundColor = hoverBackground);
+        row.RegisterCallback<MouseLeaveEvent>(_ => row.style.backgroundColor = idleBackground);
     }
 
     private Label CreateSidebarText(string text, Color color)
@@ -2731,15 +4362,27 @@ public sealed class ChartEditorOverlay
     {
         VisualElement row = new VisualElement();
         row.style.flexDirection = FlexDirection.Row;
+        row.style.alignItems = Align.FlexStart;
         row.style.paddingLeft = 26f;
         row.style.paddingRight = 22f;
         row.style.marginBottom = 12f;
-        Label marker = CreateLabel("!", 26f, new Color(1f, 0.65f, 0.30f, 1f), true, TextAnchor.MiddleCenter, false);
-        marker.style.width = 32f;
+        Label marker = CreateLabel("!", 20f, new Color(1f, 0.78f, 0.52f, 1f), true, TextAnchor.MiddleCenter, false);
+        marker.style.width = 34f;
+        marker.style.height = 34f;
+        marker.style.minWidth = 34f;
+        marker.style.marginRight = 12f;
+        marker.style.flexShrink = 0f;
+        marker.style.backgroundColor = new Color(1f, 0.65f, 0.30f, 0.10f);
+        SetRadius(marker, 9f);
+        SetBorderWidth(marker, 2f);
+        SetBorderColor(marker, new Color(1f, 0.65f, 0.30f, 0.35f));
         row.Add(marker);
-        Label detail = CreateLabel(text, 22f, new Color(0.88f, 0.78f, 0.66f, 1f), false, TextAnchor.MiddleLeft, false);
+        Label detail = CreateLabel(text, 21f, new Color(0.86f, 0.82f, 0.78f, 1f), false, TextAnchor.MiddleLeft, false);
         detail.style.whiteSpace = WhiteSpace.Normal;
         detail.style.flexGrow = 1f;
+        detail.style.flexShrink = 1f;
+        detail.style.minWidth = 0f;
+        detail.style.marginTop = 3f;
         row.Add(detail);
         return row;
     }
@@ -2751,9 +4394,10 @@ public sealed class ChartEditorOverlay
         row.style.paddingLeft = 26f;
         row.style.paddingRight = 22f;
         row.style.marginBottom = 14f;
-        Label left = CreateLabel(label.ToUpperInvariant(), 19f, new Color(0.64f, 0.70f, 0.80f, 1f), true, TextAnchor.MiddleLeft, false);
-        left.style.marginBottom = 2f;
-        Label right = CreateLabel(value ?? string.Empty, 22f, new Color(0.90f, 0.94f, 0.98f, 1f), false, TextAnchor.MiddleLeft, false);
+        Label left = CreateLabel(label.ToUpperInvariant(), 17f, new Color(0.60f, 0.58f, 0.66f, 1f), true, TextAnchor.MiddleLeft, false);
+        left.style.letterSpacing = 1.5f;
+        left.style.marginBottom = 3f;
+        Label right = CreateLabel(value ?? string.Empty, 22f, new Color(0.94f, 0.93f, 0.96f, 1f), false, TextAnchor.MiddleLeft, false);
         right.style.whiteSpace = WhiteSpace.Normal;
         right.style.overflow = Overflow.Hidden;
         row.Add(left);
@@ -2771,7 +4415,7 @@ public sealed class ChartEditorOverlay
         header.style.justifyContent = Justify.SpaceBetween;
         header.style.marginBottom = 22f;
         header.style.borderBottomWidth = 1f;
-        header.style.borderBottomColor = new Color(0.16f, 0.20f, 0.26f, 1f);
+        header.style.borderBottomColor = new Color(0.20f, 0.19f, 0.24f, 1f);
         Label title = CreateLabel("INSPECTOR", 30f, Color.white, true, TextAnchor.MiddleLeft, false);
         Label type = CreateLabel(context ?? string.Empty, 23f, new Color(0.70f, 0.74f, 0.80f, 1f), true, TextAnchor.MiddleRight, false);
         header.Add(title);
@@ -2789,7 +4433,7 @@ public sealed class ChartEditorOverlay
         panel.style.paddingRight = 0f;
         panel.style.paddingTop = 0f;
         panel.style.paddingBottom = 0f;
-        StylePanel(panel, new Color(0.030f, 0.036f, 0.048f, 0.99f), new Color(0.17f, 0.21f, 0.27f, 1f), 0f);
+        StylePanel(panel, new Color(0.030f, 0.036f, 0.048f, 0.99f), new Color(0.22f, 0.21f, 0.26f, 1f), 0f);
 
         ScrollView scrollView = new ScrollView(ScrollViewMode.VerticalAndHorizontal);
         currentTimelineScrollView = scrollView;
@@ -2804,8 +4448,13 @@ public sealed class ChartEditorOverlay
         {
             if (evt.ctrlKey)
             {
+                // Anchor on the authoritative stored offset, not the live
+                // ScrollView offset: right after a zoom rebuild the fresh
+                // ScrollView reports offset 0 until its scheduled restore
+                // runs, which would anchor the zoom at the song start and
+                // make the view leap.
                 Vector2 local = scrollView.WorldToLocal(evt.mousePosition);
-                float contentX = scrollView.scrollOffset.x + local.x;
+                float contentX = timelineScrollOffset.x + local.x;
                 double anchorTime = PixelsToSeconds(Mathf.Max(0f, contentX - TimelineLabelWidth));
                 AdjustTimelineZoom(evt.delta.y < 0f ? 1 : -1, anchorTime, local.x);
                 evt.StopPropagation();
@@ -2869,6 +4518,15 @@ public sealed class ChartEditorOverlay
                 return;
 
             HideContextMenu();
+            if (toneEditorEnabled)
+            {
+                toneLabPanelFocused = false;
+                ClearToneEditorPlaybackOverride();
+                UpdateToneEditorPlaybackOverride();
+                evt.StopPropagation();
+                return;
+            }
+
             Vector2 local = timeline.WorldToLocal(evt.position);
             if (local.x >= TimelineLabelWidth && local.y >= NotesTop)
                 StartMarqueeSelection(timeline, evt, local);
@@ -2897,14 +4555,25 @@ public sealed class ChartEditorOverlay
         BuildSectionBar(timeline);
         BuildWaveform(timeline);
         BuildWaveformSeekLayer(timeline);
-        BuildBeatGrid(timeline);
-        BuildNotes(timeline);
+        timelineWindowedLayer = new VisualElement();
+        timelineWindowedLayer.style.position = Position.Absolute;
+        timelineWindowedLayer.style.left = 0f;
+        timelineWindowedLayer.style.right = 0f;
+        timelineWindowedLayer.style.top = 0f;
+        timelineWindowedLayer.style.bottom = 0f;
+        timelineWindowedLayer.pickingMode = PickingMode.Ignore;
+        timeline.Add(timelineWindowedLayer);
+        BuildBeatGrid(timelineWindowedLayer);
+        BuildNotes(timelineWindowedLayer);
         BuildSyncPoints(timeline);
+        BuildToneMarkers(timeline);
         BuildCursorLine(timeline);
         scrollView.Add(timeline);
+        timelineScrollRestorePending = true;
         scrollView.schedule.Execute(() =>
         {
             timelineViewportWidth = Mathf.Max(1f, scrollView.contentViewport.layout.width);
+            timelineScrollRestorePending = false;
             scrollView.scrollOffset = timelineScrollOffset;
             CaptureTimelineScrollOffset(scrollView);
             MarkWaveformDirty();
@@ -2920,8 +4589,16 @@ public sealed class ChartEditorOverlay
             return;
         }
 
+        bool hadNonNoteSelection = !string.IsNullOrWhiteSpace(selectedSectionId) || HasSelectedAnchors();
+        List<string> affectedNoteIds = new List<string>(selectedNoteIds);
+        if (!string.IsNullOrWhiteSpace(selectedNoteId))
+            affectedNoteIds.Add(selectedNoteId);
+
         ClearTimelineSelectionState();
-        Rebuild();
+        if (hadNonNoteSelection)
+            RefreshTimelinePanel();
+        else
+            RefreshNoteSelectionVisuals(affectedNoteIds);
     }
 
     private bool HasTimelineSelection()
@@ -3077,22 +4754,33 @@ public sealed class ChartEditorOverlay
         if (ids.Count == 0)
             return selected;
 
+        // A marquee can legitimately capture notes on several visible rows, and
+        // the highlight is id-based across all of them — operations must act on
+        // everything that renders selected, not just the selected track. The
+        // selected track is scanned first so duplicated ids (difficulty clones)
+        // deterministically resolve there.
         ChartEditorTrack selectedTrack = project.SelectedTrack;
-        IEnumerable<ChartEditorTrack> selectableTracks = selectedTrack != null
-            ? new[] { selectedTrack }
-            : project.tracks.Where(track => track != null && track.visible);
 
-        foreach (ChartEditorTrack track in selectableTracks)
+        void CollectFromTrack(ChartEditorTrack track)
         {
-            if (track?.notes == null)
-                continue;
+            if (track?.notes == null || ids.Count == 0)
+                return;
 
             for (int noteIndex = 0; noteIndex < track.notes.Count; noteIndex++)
             {
                 ChartEditorNote note = track.notes[noteIndex];
-                if (note != null && !string.IsNullOrWhiteSpace(note.id) && ids.Contains(note.id))
+                if (note != null && !string.IsNullOrWhiteSpace(note.id) && ids.Remove(note.id))
                     selected.Add(new ChartEditorNoteReference { track = track, note = note });
             }
+        }
+
+        CollectFromTrack(selectedTrack);
+        foreach (ChartEditorTrack track in project.tracks)
+        {
+            if (track == null || ReferenceEquals(track, selectedTrack) || !track.visible)
+                continue;
+
+            CollectFromTrack(track);
         }
 
         return selected;
@@ -3119,6 +4807,11 @@ public sealed class ChartEditorOverlay
             return;
         }
 
+        bool hadNonNoteSelection = !string.IsNullOrWhiteSpace(selectedSectionId) || HasSelectedAnchors();
+        List<string> affectedNoteIds = new List<string>(selectedNoteIds);
+        if (!string.IsNullOrWhiteSpace(selectedNoteId))
+            affectedNoteIds.Add(selectedNoteId);
+
         ClearNoteSelection();
         for (int i = 0; i < notes.Count; i++)
             selectedNoteIds.Add(notes[i].id);
@@ -3132,7 +4825,11 @@ public sealed class ChartEditorOverlay
         SetStatus(sameStringOnly
             ? $"Selected {notes.Count} notes after this note on string {anchorNote.stringOrLane + 1}."
             : $"Selected {notes.Count} notes after this note.");
-        Rebuild();
+        affectedNoteIds.AddRange(selectedNoteIds);
+        if (hadNonNoteSelection)
+            RefreshTimelinePanel();
+        else
+            RefreshNoteSelectionVisuals(affectedNoteIds);
     }
 
     private void SelectNotesInRect(Rect selectionRect)
@@ -3149,6 +4846,12 @@ public sealed class ChartEditorOverlay
             return;
         }
 
+        bool hadNonNoteSelection = !string.IsNullOrWhiteSpace(selectedSectionId) || HasSelectedAnchors();
+        string previousSelectedTrackId = project.selectedTrackId;
+        List<string> affectedNoteIds = new List<string>(selectedNoteIds);
+        if (!string.IsNullOrWhiteSpace(selectedNoteId))
+            affectedNoteIds.Add(selectedNoteId);
+
         ClearNoteSelection();
         for (int i = 0; i < hits.Count; i++)
             selectedNoteIds.Add(hits[i].note.id);
@@ -3159,7 +4862,14 @@ public sealed class ChartEditorOverlay
         project.selectedTrackId = hits[0].track.id;
         mode = ChartEditorMode.Notes;
         project.cursorTimeSeconds = hits[0].note.timeSeconds;
-        Rebuild();
+        affectedNoteIds.AddRange(selectedNoteIds);
+        bool trackChanged = !string.Equals(previousSelectedTrackId ?? string.Empty, project.selectedTrackId ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+        if (trackChanged)
+            RefreshTimelineAndSidebar();
+        else if (hadNonNoteSelection)
+            RefreshTimelinePanel();
+        else
+            RefreshNoteSelectionVisuals(affectedNoteIds);
     }
 
     private void StartMarqueeSelection(VisualElement timeline, PointerDownEvent evt, Vector2 localStart)
@@ -3243,6 +4953,15 @@ public sealed class ChartEditorOverlay
         if (scrollView == null)
             return;
 
+        // A freshly rebuilt timeline sits at scroll offset zero until its
+        // scheduled restore runs. Capturing during that window would stomp
+        // the stored position and snap the view back to the song start.
+        // Likewise, while a zoom refresh is queued the stored offset was
+        // computed for the NEW zoom level — capturing the old view's offset
+        // would pair the new zoom with a stale position and drift the view.
+        if (timelineScrollRestorePending || timelineRefreshQueued)
+            return;
+
         Vector2 previous = timelineScrollOffset;
         timelineScrollOffset = scrollView.scrollOffset;
         timelineScrollOffset.y = ClampTimelineVerticalScroll(timelineScrollOffset.y, GetTimelineContentHeight());
@@ -3265,7 +4984,25 @@ public sealed class ChartEditorOverlay
         if (project == null)
             return;
 
-        double safeTime = Math.Max(0.0, Math.Min(project.DurationSeconds, timeSeconds));
+        double safeTime = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), timeSeconds));
+        if (toneEditorEnabled)
+        {
+            ShowContextMenu(worldPosition,
+                new ContextMenuItem($"Add Tone Change at {FormatTime(safeTime)}", () => AddToneChangeAtTime(safeTime)),
+                new ContextMenuItem("Assign Current Tone to Selected", () =>
+                {
+                    EnsureToneSelectionForCurrentTrack();
+                    if (selectedToneChange != null)
+                        AssignCurrentToneToChange(selectedToneChange);
+                    else
+                        AddToneChangeAtTime(safeTime);
+                }),
+                new ContextMenuItem("Zoom In", () => AdjustTimelineZoomAroundViewportCenter(1)),
+                new ContextMenuItem("Zoom Out", () => AdjustTimelineZoomAroundViewportCenter(-1)),
+                new ContextMenuItem("Reset Zoom", ResetTimelineZoom));
+            return;
+        }
+
         ChartEditorBeatMarker nearestBeat = ChartEditorTimingService.GetNearestBeatMarker(project, safeTime);
         List<ContextMenuItem> items = new List<ContextMenuItem>
         {
@@ -4226,9 +5963,9 @@ public sealed class ChartEditorOverlay
                 return false;
             }
 
-            if (!TryParseDoubleInRange(timeField.value, 0.0, project.DurationSeconds, out double time))
+            if (!TryParseDoubleInRange(timeField.value, 0.0, GetProjectDurationSeconds(), out double time))
             {
-                SetStatus($"Time must be between 0 and {project.DurationSeconds:0.000} seconds.");
+                SetStatus($"Time must be between 0 and {GetProjectDurationSeconds():0.000} seconds.");
                 return false;
             }
 
@@ -4260,7 +5997,7 @@ public sealed class ChartEditorOverlay
         if (note == null || segment == null)
             return;
 
-        double noteLimit = Math.Max(0.06, (project?.DurationSeconds ?? note.timeSeconds + GetNoteEffectiveDurationSeconds(note)) - note.timeSeconds);
+        double noteLimit = Math.Max(0.06, (project != null ? GetProjectDurationSeconds() : note.timeSeconds + GetNoteEffectiveDurationSeconds(note)) - note.timeSeconds);
         TextField typeField = CreatePopupTextField("Type", segment.type.ToString());
         TextField startField = CreatePopupTextField("Start Offset Seconds", Mathf.Max(0f, segment.startOffset).ToString("0.000", CultureInfo.InvariantCulture));
         TextField endField = CreatePopupTextField("End Offset Seconds", Mathf.Max(segment.startOffset + TechniqueSegmentMinimumSeconds, segment.endOffset).ToString("0.000", CultureInfo.InvariantCulture));
@@ -5271,7 +7008,7 @@ public sealed class ChartEditorOverlay
         SetRadius(chip, 7f);
         SetTechniqueSettingsBorder(chip, TechniqueSettingsBorderColor, 2f, 7f);
 
-        Label label = CreateTechniqueSettingsLabel(text, 22f, new Color(0.90f, 0.92f, 0.96f, 1f), true, TextAnchor.MiddleLeft);
+        Label label = CreateTechniqueSettingsLabel(text, 22f, new Color(0.91f, 0.90f, 0.94f, 1f), true, TextAnchor.MiddleLeft);
         label.style.whiteSpace = WhiteSpace.NoWrap;
         chip.Add(label);
 
@@ -5779,7 +7516,7 @@ public sealed class ChartEditorOverlay
             return;
 
         float start = rowStates.Count == 0 ? 0f : rowStates.Max(state => Mathf.Max(state.segment.startOffset, state.segment.endOffset));
-        float projectLimit = Mathf.Max(TechniqueSegmentMinimumSeconds, (float)((project?.DurationSeconds ?? note.timeSeconds + start + 1.0) - note.timeSeconds));
+        float projectLimit = Mathf.Max(TechniqueSegmentMinimumSeconds, (float)((project != null ? GetProjectDurationSeconds() : note.timeSeconds + start + 1.0) - note.timeSeconds));
         float end = Mathf.Min(projectLimit, start + 0.5f);
         if (end <= start + TechniqueSegmentMinimumSeconds)
         {
@@ -5838,7 +7575,7 @@ public sealed class ChartEditorOverlay
             return false;
         }
 
-        double noteLimit = Math.Max(0.06, (project?.DurationSeconds ?? note.timeSeconds + GetNoteEffectiveDurationSeconds(note)) - note.timeSeconds);
+        double noteLimit = Math.Max(0.06, (project != null ? GetProjectDurationSeconds() : note.timeSeconds + GetNoteEffectiveDurationSeconds(note)) - note.timeSeconds);
         if (!TryParseDoubleInRange(state.startField?.value, 0.0, noteLimit, out double start))
         {
             if (showError)
@@ -6070,13 +7807,13 @@ public sealed class ChartEditorOverlay
 
         ShowEditPopup("Edit Anchor", new VisualElement[] { nameField, audioField, beatField }, () =>
         {
-            if (!TryParseDoubleInRange(audioField.value, 0.0, project.DurationSeconds, out double audioTime))
+            if (!TryParseDoubleInRange(audioField.value, 0.0, GetProjectDurationSeconds(), out double audioTime))
             {
-                SetStatus($"Audio time must be between 0 and {project.DurationSeconds:0.000} seconds.");
+                SetStatus($"Audio time must be between 0 and {GetProjectDurationSeconds():0.000} seconds.");
                 return false;
             }
 
-            if (!TryParseDoubleInRange(beatField.value, 0.0, Math.Max(project.DurationSeconds * 8.0, 16.0), out double beatPosition))
+            if (!TryParseDoubleInRange(beatField.value, 0.0, Math.Max(GetProjectDurationSeconds() * 8.0, 16.0), out double beatPosition))
             {
                 SetStatus("Beat position must be a valid non-negative value.");
                 return false;
@@ -6504,13 +8241,13 @@ public sealed class ChartEditorOverlay
 
         ShowEditPopup("Edit Section", new VisualElement[] { nameField, startField, endField }, () =>
         {
-            if (!TryParseDoubleInRange(startField.value, 0.0, project.DurationSeconds, out double start))
+            if (!TryParseDoubleInRange(startField.value, 0.0, GetProjectDurationSeconds(), out double start))
             {
-                SetStatus($"Section start must be between 0 and {project.DurationSeconds:0.000} seconds.");
+                SetStatus($"Section start must be between 0 and {GetProjectDurationSeconds():0.000} seconds.");
                 return false;
             }
 
-            if (!TryParseDoubleInRange(endField.value, start + 0.05, Math.Max(project.DurationSeconds + 60.0, start + 0.05), out double end))
+            if (!TryParseDoubleInRange(endField.value, start + 0.05, Math.Max(GetProjectDurationSeconds() + 60.0, start + 0.05), out double end))
             {
                 SetStatus("Section end must be after section start.");
                 return false;
@@ -6575,7 +8312,7 @@ public sealed class ChartEditorOverlay
             ChartEditorNoteReference noteRef = refs[i];
             ChartEditorNote note = noteRef.note;
             double originalTime = note.timeSeconds;
-            note.timeSeconds = Math.Max(0.0, Math.Min(project.DurationSeconds, note.timeSeconds + timeDelta));
+            note.timeSeconds = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), note.timeSeconds + timeDelta));
             note.chartTimeSeconds = Math.Max(0.0, note.chartTimeSeconds + (note.timeSeconds - originalTime));
             note.stringOrLane = Mathf.Clamp(note.stringOrLane + laneDelta, 0, Math.Max(0, GetTrackLaneCount(noteRef.track) - 1));
             ChartEditorTimingService.UpdateNoteBeatTiming(project, note);
@@ -6775,10 +8512,10 @@ public sealed class ChartEditorOverlay
         field.style.paddingRight = 16f;
         field.style.paddingTop = 14f;
         field.style.paddingBottom = 14f;
-        field.style.backgroundColor = new Color(0.018f, 0.022f, 0.030f, 0.98f);
+        field.style.backgroundColor = new Color(0.024f, 0.023f, 0.028f, 0.98f);
         SetRadius(field, 11f);
         SetBorderWidth(field, 1f);
-        SetBorderColor(field, new Color(0.24f, 0.27f, 0.33f, 0.95f));
+        SetBorderColor(field, new Color(0.28f, 0.27f, 0.32f, 0.95f));
 
         Label label = CreateLabel("Image", 17f, new Color(0.72f, 0.78f, 0.88f, 1f), true, TextAnchor.MiddleLeft, false);
         label.style.marginBottom = 10f;
@@ -6797,7 +8534,7 @@ public sealed class ChartEditorOverlay
         preview.style.backgroundColor = new Color(0.010f, 0.013f, 0.018f, 1f);
         SetRadius(preview, 10f);
         SetBorderWidth(preview, 1f);
-        SetBorderColor(preview, new Color(0.26f, 0.29f, 0.35f, 0.95f));
+        SetBorderColor(preview, new Color(0.30f, 0.29f, 0.34f, 0.95f));
         row.Add(preview);
 
         VisualElement details = new VisualElement();
@@ -6907,15 +8644,15 @@ public sealed class ChartEditorOverlay
             return;
 
         field.style.color = Color.white;
-        field.style.backgroundColor = new Color(0.018f, 0.022f, 0.030f, 0.98f);
+        field.style.backgroundColor = new Color(0.024f, 0.023f, 0.028f, 0.98f);
         field.style.borderTopWidth = 1f;
         field.style.borderRightWidth = 1f;
         field.style.borderBottomWidth = 1f;
         field.style.borderLeftWidth = 1f;
         SetToneLabBorder(field,
-            new Color(0.38f, 0.40f, 0.44f, 0.84f),
-            new Color(0.22f, 0.24f, 0.28f, 0.95f),
-            new Color(0.13f, 0.15f, 0.18f, 1f));
+            new Color(0.42f, 0.41f, 0.45f, 0.84f),
+            new Color(0.25f, 0.24f, 0.28f, 0.95f),
+            new Color(0.16f, 0.155f, 0.185f, 1f));
         SetRadius(field, 11f);
         field.style.paddingLeft = 14f;
         field.style.paddingRight = 14f;
@@ -7003,7 +8740,7 @@ public sealed class ChartEditorOverlay
         panel.style.paddingRight = 30f;
         panel.style.paddingTop = 26f;
         panel.style.paddingBottom = 26f;
-        StylePanel(panel, new Color(0.050f, 0.058f, 0.070f, 0.99f), new Color(0.17f, 0.21f, 0.27f, 1f), 0f);
+        StylePanel(panel, new Color(0.058f, 0.056f, 0.066f, 0.99f), new Color(0.22f, 0.21f, 0.26f, 1f), 0f);
 
         string inspectorContext = mode == ChartEditorMode.Notes && FindSelectedNote() != null
             ? "NOTE"
@@ -7103,6 +8840,9 @@ public sealed class ChartEditorOverlay
             float width = Mathf.Max(90f, TimeToPixels(section.endTimeSeconds) - left);
             Button block = new Button(() =>
             {
+                if (toneEditorEnabled)
+                    return;
+
                 selectedSectionId = section.id;
                 ClearNoteSelection();
                 selectedSyncPointId = null;
@@ -7129,6 +8869,9 @@ public sealed class ChartEditorOverlay
             block.style.borderBottomColor = Color.white;
             block.RegisterCallback<MouseDownEvent>(evt =>
             {
+                if (toneEditorEnabled)
+                    return;
+
                 if (evt.button == 0 && evt.clickCount >= 2)
                 {
                     ShowSectionEditPopup(section);
@@ -7137,6 +8880,9 @@ public sealed class ChartEditorOverlay
             });
             block.RegisterCallback<PointerDownEvent>(evt =>
             {
+                if (toneEditorEnabled)
+                    return;
+
                 if (evt.button == 1)
                 {
                     selectedSectionId = section.id;
@@ -7251,11 +8997,15 @@ public sealed class ChartEditorOverlay
         float beatSpacingPixels = Mathf.Max(1f, (float)secondsPerBeat * pixelsPerSecond);
         bool drawRegularBeats = beatSpacingPixels >= 14f;
         bool drawLabels = beatSpacingPixels >= 42f;
+        GetTimelineBuildWindowSeconds(out double windowStartSeconds, out double windowEndSeconds);
 
         for (int i = 0; i < markers.Count; i++)
         {
             ChartEditorBeatMarker marker = markers[i];
             if (marker == null)
+                continue;
+
+            if (marker.audioTimeSeconds < windowStartSeconds || marker.audioTimeSeconds > windowEndSeconds)
                 continue;
 
             bool important = marker.isDownbeat || marker.isAnchor;
@@ -7314,10 +9064,149 @@ public sealed class ChartEditorOverlay
         }
     }
 
+    private void BuildToneMarkers(VisualElement timeline)
+    {
+        currentToneMarkerVisuals.Clear();
+        toneMarkerLaneElements.Clear();
+        toneMarkerTimelineElement = timeline;
+        if (!toneEditorEnabled || timeline == null)
+            return;
+
+        ChartEditorTrack track = project?.SelectedTrack;
+        List<ChartEditorToneChange> changes = GetSelectedTrackToneChanges();
+        if (track == null || changes.Count == 0)
+            return;
+
+        float timelineHeight = GetTimelineContentHeight();
+        VisualElement lane = new VisualElement();
+        lane.style.position = Position.Absolute;
+        lane.style.left = TimelineLabelWidth;
+        lane.style.right = 0f;
+        lane.style.top = ToneMarkerLaneTop;
+        lane.style.height = ToneMarkerLaneHeight;
+        lane.style.backgroundColor = Color.clear;
+        lane.pickingMode = PickingMode.Ignore;
+        timeline.Add(lane);
+        toneMarkerLaneElements.Add(lane);
+
+        Label laneLabel = CreateLabel("TONES", 20f, new Color(0.00f, 0.90f, 0.82f, 0.94f), true, TextAnchor.MiddleCenter, false);
+        laneLabel.style.position = Position.Absolute;
+        laneLabel.style.left = 0f;
+        laneLabel.style.top = ToneMarkerLaneTop;
+        laneLabel.style.width = TimelineLabelWidth;
+        laneLabel.style.height = ToneMarkerLaneHeight;
+        laneLabel.style.backgroundColor = new Color(0.030f, 0.055f, 0.056f, 0.88f);
+        laneLabel.pickingMode = PickingMode.Ignore;
+        timeline.Add(laneLabel);
+        toneMarkerLaneElements.Add(laneLabel);
+
+        VisualElement visualLayer = new VisualElement();
+        visualLayer.style.position = Position.Absolute;
+        visualLayer.style.left = TimelineLabelWidth;
+        visualLayer.style.right = 0f;
+        visualLayer.style.top = 0f;
+        visualLayer.style.bottom = 0f;
+        visualLayer.pickingMode = PickingMode.Ignore;
+        timeline.Add(visualLayer);
+        toneMarkerLaneElements.Add(visualLayer);
+
+        for (int i = 0; i < changes.Count; i++)
+        {
+            ChartEditorToneChange change = changes[i];
+            if (change == null)
+                continue;
+
+            bool selected = ReferenceEquals(selectedToneChange, change);
+            Color markerColor = ToneMarkerColor(i, selected);
+            float left = TimeToPixels(change.timeSeconds);
+
+            ToneMarkerVisual visual = new ToneMarkerVisual { change = change };
+            VisualElement line = new VisualElement();
+            line.style.position = Position.Absolute;
+            line.style.left = left;
+            line.style.top = WaveformTop;
+            line.style.width = selected ? 6f : 4f;
+            line.style.height = Mathf.Max(1f, timelineHeight - WaveformTop - 20f);
+            line.style.marginLeft = selected ? -3f : -2f;
+            line.style.backgroundColor = new Color(markerColor.r, markerColor.g, markerColor.b, selected ? 0.98f : 0.86f);
+            line.pickingMode = PickingMode.Ignore;
+            visualLayer.Add(line);
+            visual.line = line;
+
+            VisualElement cap = new VisualElement();
+            cap.style.position = Position.Absolute;
+            cap.style.left = TimelineLabelWidth + Mathf.Max(0f, left - ToneMarkerCapWidth * 0.5f);
+            cap.style.top = ToneMarkerLaneTop + 9f;
+            cap.style.width = ToneMarkerCapWidth;
+            cap.style.height = ToneMarkerCapHeight;
+            cap.style.alignItems = Align.Center;
+            cap.style.justifyContent = Justify.Center;
+            cap.style.backgroundColor = new Color(markerColor.r, markerColor.g, markerColor.b, selected ? 0.94f : 0.76f);
+            SetRadius(cap, 10f);
+            SetBorderWidth(cap, selected ? 2f : 1f);
+            SetBorderColor(cap, selected ? Color.white : new Color(0.94f, 1f, 0.98f, 0.62f));
+            cap.pickingMode = PickingMode.Position;
+            SetElementCursor(cap, ChartEditorCursorKind.ResizeHorizontal);
+
+            Label label = CreateLabel(ResolveToneChangeName(track, change), 16f, Color.white, true, TextAnchor.MiddleCenter, false);
+            label.style.whiteSpace = WhiteSpace.NoWrap;
+            label.style.maxWidth = ToneMarkerCapWidth - 16f;
+            label.pickingMode = PickingMode.Ignore;
+            cap.Add(label);
+            AddToneMarkerInteractionHandlers(cap, change);
+            visual.cap = cap;
+            visual.label = label;
+
+            VisualElement hit = new VisualElement();
+            hit.style.position = Position.Absolute;
+            hit.style.left = TimelineLabelWidth + left - ToneMarkerHitWidth * 0.5f;
+            hit.style.top = WaveformTop;
+            hit.style.width = ToneMarkerHitWidth;
+            hit.style.height = Mathf.Max(1f, timelineHeight - WaveformTop);
+            hit.style.backgroundColor = Color.clear;
+            hit.pickingMode = PickingMode.Position;
+            SetElementCursor(hit, ChartEditorCursorKind.ResizeHorizontal);
+            AddToneMarkerInteractionHandlers(hit, change);
+            timeline.Add(hit);
+            visual.hit = hit;
+            timeline.Add(cap);
+            cap.BringToFront();
+
+            currentToneMarkerVisuals.Add(visual);
+        }
+    }
+
+    private void UpdateToneMarkerVisuals()
+    {
+        if (!toneEditorEnabled || currentToneMarkerVisuals.Count == 0)
+            return;
+
+        ChartEditorTrack track = project?.SelectedTrack;
+        for (int i = 0; i < currentToneMarkerVisuals.Count; i++)
+        {
+            ToneMarkerVisual visual = currentToneMarkerVisuals[i];
+            ChartEditorToneChange change = visual?.change;
+            if (visual == null || change == null)
+                continue;
+
+            float left = TimeToPixels(change.timeSeconds);
+            if (visual.hit != null)
+                visual.hit.style.left = TimelineLabelWidth + left - ToneMarkerHitWidth * 0.5f;
+            if (visual.line != null)
+                visual.line.style.left = left;
+            if (visual.cap != null)
+                visual.cap.style.left = TimelineLabelWidth + Mathf.Max(0f, left - ToneMarkerCapWidth * 0.5f);
+            if (visual.label != null)
+                visual.label.text = ResolveToneChangeName(track, change);
+        }
+    }
+
     private void UpdateBeatGridVisuals()
     {
         if (project?.beatMap?.beatMarkers == null || currentBeatMarkerVisuals.Count == 0)
             return;
+
+        using ProfilerMarker.AutoScope scope = BeatGridVisualsMarker.Auto();
 
         Dictionary<string, ChartEditorBeatMarker> markersById = project.beatMap.beatMarkers
             .Where(marker => marker != null && !string.IsNullOrWhiteSpace(marker.id))
@@ -7359,30 +9248,23 @@ public sealed class ChartEditorOverlay
         if (project == null)
             return;
 
+        using ProfilerMarker.AutoScope scope = NoteTimingVisualsMarker.Auto();
         MarkHighwayPreviewDirty(renderImmediately: false);
         InvalidateAuditionCache();
 
-        foreach (ChartEditorTrackViewGroup group in BuildTrackViewGroups())
+        // Walk only the on-screen note blocks (captured at build time) instead
+        // of probing the block dictionary with every note of every visible
+        // track — with large projects the latter is O(all notes) per frame.
+        for (int i = 0; i < currentNoteBlockTimings.Count; i++)
         {
-            ChartEditorTrack track = group?.activeTrack;
-            if (group == null || track?.notes == null || !group.Visible)
+            NoteBlockTimingRef timing = currentNoteBlockTimings[i];
+            if (timing?.block == null || timing.track == null || timing.note == null)
                 continue;
 
-            bool selectedTrack = group.ContainsSelected(project.selectedTrackId);
-            int laneCount = selectedTrack ? GetTrackLaneCount(track) : 1;
-            foreach (ChartEditorNote note in track.notes)
-            {
-                if (note == null || string.IsNullOrWhiteSpace(note.id))
-                    continue;
-
-                if (!currentNoteBlocks.TryGetValue(note.id, out VisualElement block) || block == null)
-                    continue;
-
-                float noteLeft = TimeToPixels(note.timeSeconds);
-                float noteWidth = GetNoteDrawWidth(track, note, laneCount, selectedTrack, noteLeft);
-                block.style.left = noteLeft;
-                block.style.width = noteWidth;
-            }
+            float noteLeft = TimeToPixels(timing.note.timeSeconds);
+            float noteWidth = GetNoteDrawWidth(timing.track, timing.note, timing.laneCount, timing.selectedTrack, noteLeft);
+            timing.block.style.left = noteLeft;
+            timing.block.style.width = noteWidth;
         }
 
         float pixelsPerSecond = GetTimelinePixelsPerSecond();
@@ -7398,6 +9280,18 @@ public sealed class ChartEditorOverlay
         }
     }
 
+    // The set of tracks whose notes are actually drawn as movable blocks in
+    // the timeline (the selected group's active difficulty). Live drag
+    // previews only remap these; everything else updates on commit.
+    private HashSet<string> BuildDragPreviewTrackIds()
+    {
+        ChartEditorTrack active = GetSelectedTrackViewGroup(BuildTrackViewGroups())?.activeTrack;
+        if (string.IsNullOrWhiteSpace(active?.id))
+            return null; // null falls back to the visible-tracks preview, never "skip everything"
+
+        return new HashSet<string>(StringComparer.OrdinalIgnoreCase) { active.id };
+    }
+
     private void AddBeatMarkerInteractionHandlers(VisualElement hit, ChartEditorBeatMarker marker)
     {
         if (hit == null || marker == null)
@@ -7406,6 +9300,7 @@ public sealed class ChartEditorOverlay
         bool dragging = false;
         bool moved = false;
         int pointerId = -1;
+        HashSet<string> dragPreviewTrackIds = null;
         Vector2 startPointer = Vector2.zero;
         double startAudio = 0.0;
         double minAudio = 0.0;
@@ -7415,10 +9310,23 @@ public sealed class ChartEditorOverlay
         bool tempoProbeDrag = false;
         double tempoProbeBeatPosition = 0.0;
         double lastTempoProbeAudio = 0.0;
+        int lastPreviewFrame = -1;
         SetElementCursor(hit, ChartEditorCursorKind.ResizeHorizontal);
 
         hit.RegisterCallback<PointerDownEvent>(evt =>
         {
+            if (toneEditorEnabled)
+                return;
+
+            // Extra buttons pressed while a drag is captured would rebuild the
+            // timeline out from under the capturing element and abandon the
+            // drag commit — ignore them until the drag resolves.
+            if (dragging)
+            {
+                evt.StopPropagation();
+                return;
+            }
+
             if (evt.button == 2)
             {
                 ToggleBeatMarkerAnchor(marker);
@@ -7458,6 +9366,8 @@ public sealed class ChartEditorOverlay
             liveAnchor = marker.isAnchor ? marker : null;
             if (liveAnchor != null)
                 ResolveAnchorDragBounds(liveAnchor, out minAudio, out maxAudio);
+            dragPreviewTrackIds = BuildDragPreviewTrackIds();
+            suppressHighwayPreviewRebuild = true;
             hit.CapturePointer(pointerId);
             evt.StopPropagation();
         });
@@ -7474,9 +9384,16 @@ public sealed class ChartEditorOverlay
             moved = true;
             if (tempoProbeDrag)
             {
-                lastTempoProbeAudio = Math.Max(0.0, Math.Min(project.DurationSeconds, startAudio + PixelDeltaToSeconds(delta.x)));
-                if (ChartEditorTimingService.MoveTrailingBeatAsTempoProbe(project, tempoProbeBeatPosition, lastTempoProbeAudio, moveContentWithBeatMap))
+                lastTempoProbeAudio = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), startAudio + PixelDeltaToSeconds(delta.x)));
+
+                // Pointer-move events can fire several times per frame and the
+                // live preview remaps every beat-timed note in the project.
+                // Run the heavy preview at most once per rendered frame; the
+                // latest pointer position is kept above so nothing is lost.
+                if (lastPreviewFrame != Time.frameCount &&
+                    ChartEditorTimingService.MoveTrailingBeatAsTempoProbe(project, tempoProbeBeatPosition, lastTempoProbeAudio, moveContentWithBeatMap, visibleTracksOnly: true, previewTrackIds: dragPreviewTrackIds))
                 {
+                    lastPreviewFrame = Time.frameCount;
                     UpdateBeatGridVisuals();
                     UpdateNoteTimingVisuals();
                     UpdatePlaybackVisuals();
@@ -7488,7 +9405,7 @@ public sealed class ChartEditorOverlay
 
             if (liveAnchor == null)
             {
-                liveAnchor = ChartEditorTimingService.AddAnchorAtBeat(project, marker.beatPosition, startAudio, moveContentWithBeatMap);
+                liveAnchor = ChartEditorTimingService.AddAnchorAtBeat(project, marker.beatPosition, startAudio, moveContentWithBeatMap, dragPreviewTrackIds);
                 if (liveAnchor == null)
                     return;
 
@@ -7502,10 +9419,15 @@ public sealed class ChartEditorOverlay
             double newAudio = Math.Max(minAudio, Math.Min(maxAudio, startAudio + PixelDeltaToSeconds(delta.x)));
             liveAnchor.audioTimeSeconds = newAudio;
             project.dirty = true;
-            ChartEditorTimingService.PreviewBeatMapChange(project, moveContentWithBeatMap);
-            UpdateBeatGridVisuals();
-            UpdateNoteTimingVisuals();
-            UpdatePlaybackVisuals();
+            if (lastPreviewFrame != Time.frameCount)
+            {
+                lastPreviewFrame = Time.frameCount;
+                ChartEditorTimingService.PreviewBeatMapChange(project, moveContentWithBeatMap, visibleTracksOnly: true, previewTrackIds: dragPreviewTrackIds);
+                UpdateBeatGridVisuals();
+                UpdateNoteTimingVisuals();
+                UpdatePlaybackVisuals();
+            }
+
             evt.StopPropagation();
         });
 
@@ -7514,7 +9436,14 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
+            // Only a primary-button release commits: releasing a stray
+            // right/middle press mid-drag arrives on the captured pointer and
+            // would otherwise commit the drag early.
+            if (evt.button != 0)
+                return;
+
             dragging = false;
+            suppressHighwayPreviewRebuild = false;
             if (hit.HasPointerCapture(pointerId))
                 hit.ReleasePointer(pointerId);
 
@@ -7526,7 +9455,7 @@ public sealed class ChartEditorOverlay
                 ClearNoteSelection();
                 mode = ChartEditorMode.SyncTiming;
                 evt.StopImmediatePropagation();
-                hit.schedule.Execute(Rebuild);
+                hit.schedule.Execute(RefreshTimelineAndSidebar);
                 return;
             }
 
@@ -7535,7 +9464,7 @@ public sealed class ChartEditorOverlay
                 ChartEditorTimingService.MoveAnchor(project, liveAnchor, liveAnchor.audioTimeSeconds, moveContentWithBeatMap);
                 SelectSingleAnchor(liveAnchor);
                 evt.StopImmediatePropagation();
-                hit.schedule.Execute(Rebuild);
+                hit.schedule.Execute(RefreshTimelineAndSidebar);
                 return;
             }
 
@@ -7543,13 +9472,123 @@ public sealed class ChartEditorOverlay
             {
                 SelectSingleAnchor(marker);
                 project.cursorTimeSeconds = marker.audioTimeSeconds;
-                Rebuild();
+                RefreshTimelineAndSidebar();
             }
             else
             {
                 SeekAndRevealTime(marker.audioTimeSeconds, syncAudio: true, rebuild: false);
             }
 
+            evt.StopPropagation();
+        });
+
+        hit.RegisterCallback<PointerCaptureOutEvent>(evt =>
+        {
+            if (!dragging || evt.pointerId != pointerId)
+                return;
+
+            // The drag was interrupted (element rebuilt, pointer cancelled)
+            // before PointerUp could commit. Heal the preview-scoped remap
+            // with a full pass so no track keeps stale timing, and release
+            // the 3D preview freeze.
+            dragging = false;
+            suppressHighwayPreviewRebuild = false;
+            if (moved && project != null)
+            {
+                if (moveContentWithBeatMap)
+                    ChartEditorTimingService.ApplyBeatMapToContent(project);
+                else
+                    ChartEditorTimingService.AttachContentToBeatMap(project);
+                RootElement?.schedule.Execute(RefreshTimelineAndSidebar);
+            }
+        });
+    }
+
+    private void AddToneMarkerInteractionHandlers(VisualElement hit, ChartEditorToneChange change)
+    {
+        if (hit == null || change == null)
+            return;
+
+        bool dragging = false;
+        bool moved = false;
+        int pointerId = -1;
+        Vector2 startPointer = Vector2.zero;
+        float startTime = 0f;
+
+        hit.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (!toneEditorEnabled)
+                return;
+
+            if (evt.button == 1)
+            {
+                toneLabPanelFocused = false;
+                SelectToneChange(change, seek: false, rebuild: false, focusToneLab: false);
+                ShowToneChangeContextMenu(evt.position, change);
+                evt.StopPropagation();
+                return;
+            }
+
+            if (evt.button != 0)
+                return;
+
+            HideContextMenu();
+            toneLabPanelFocused = false;
+            SelectToneChange(change, seek: false, rebuild: false, focusToneLab: true);
+            dragging = true;
+            moved = false;
+            pointerId = evt.pointerId;
+            startPointer = PointerPosition(evt);
+            startTime = change.timeSeconds;
+            hit.CapturePointer(pointerId);
+            evt.StopPropagation();
+        });
+
+        hit.RegisterCallback<PointerMoveEvent>(evt =>
+        {
+            if (!dragging || evt.pointerId != pointerId)
+                return;
+
+            Vector2 delta = PointerPosition(evt) - startPointer;
+            if (Mathf.Abs(delta.x) > 1f)
+                moved = true;
+
+            float nextTime = Mathf.Clamp(startTime + (float)PixelDeltaToSeconds(delta.x), 0f, Mathf.Max(0f, GetProjectDurationSeconds()));
+            change.timeSeconds = nextTime;
+            if (project != null)
+                project.dirty = true;
+
+            appliedToneEditorPlaybackKey = string.Empty;
+            UpdateToneMarkerVisuals();
+            UpdatePlaybackVisuals();
+            evt.StopPropagation();
+        });
+
+        hit.RegisterCallback<PointerUpEvent>(evt =>
+        {
+            if (!dragging || evt.pointerId != pointerId)
+                return;
+
+            if (evt.button != 0)
+                return;
+
+            dragging = false;
+            if (hit.HasPointerCapture(pointerId))
+                hit.ReleasePointer(pointerId);
+
+            NormalizeToneChanges(project?.SelectedTrack);
+            if (moved)
+            {
+                evt.StopImmediatePropagation();
+                hit.schedule.Execute(() =>
+                {
+                    RefreshToneMarkerLane();
+                    RefreshLeftPanel();
+                });
+                return;
+            }
+
+            SelectToneChange(change, seek: false, rebuild: true, focusToneLab: true);
             evt.StopPropagation();
         });
     }
@@ -7631,7 +9670,7 @@ public sealed class ChartEditorOverlay
         selectedSectionId = null;
         ClearNoteSelection();
         mode = ChartEditorMode.SyncTiming;
-        project.cursorTimeSeconds = Math.Max(0.0, Math.Min(project.DurationSeconds, marker.audioTimeSeconds));
+        project.cursorTimeSeconds = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), marker.audioTimeSeconds));
         project.dirty = true;
         Rebuild();
     }
@@ -7874,12 +9913,114 @@ public sealed class ChartEditorOverlay
         return NotesTop;
     }
 
+    private void BuildCompactTrackRow(
+        VisualElement noteLayer,
+        ChartEditorTrack track,
+        Color accent,
+        float rowTop,
+        double windowStartSeconds,
+        double windowEndSeconds)
+    {
+        using ProfilerMarker.AutoScope scope = CompactRowMarker.Auto();
+        TimelineNotesMeshElement meshElement = new TimelineNotesMeshElement();
+        meshElement.style.position = Position.Absolute;
+        meshElement.style.left = 0f;
+        meshElement.style.right = 0f;
+        meshElement.style.top = 0f;
+        meshElement.style.bottom = 0f;
+        noteLayer.Add(meshElement);
+
+        List<ChartEditorNote> notes = track.notes ?? new List<ChartEditorNote>();
+        for (int i = 0; i < notes.Count; i++)
+        {
+            ChartEditorNote note = notes[i];
+            if (note == null)
+                continue;
+
+            EnsureNoteDurationCoversTechniqueSegments(note);
+            float left = TimeToPixels(note.timeSeconds);
+            float width = GetNoteDrawWidth(track, note, 1, false, left);
+            Color color = IsNoteSelected(note)
+                ? new Color(1f, 0.88f, 0.42f, 0.62f)
+                : new Color(accent.r, accent.g, accent.b, 0.42f);
+            meshElement.AddQuad(left, 44f, width, CompactNoteHeight, color);
+
+            if (note.timeSeconds <= windowEndSeconds &&
+                note.timeSeconds + Math.Max(0.0, GetNoteEffectiveDurationSeconds(note)) >= windowStartSeconds)
+            {
+                currentNoteHits.Add(new ChartEditorNoteHit
+                {
+                    track = track,
+                    note = note,
+                    rect = new Rect(TimelineLabelWidth + left, rowTop + 44f, width, CompactNoteHeight)
+                });
+            }
+        }
+
+        meshElement.Commit();
+
+        noteLayer.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            if (toneEditorEnabled)
+                return;
+
+            if (evt.button != 0 && evt.button != 1)
+                return;
+
+            ChartEditorNote nearest = FindNearestNoteAtPixel(track, evt.localPosition.x);
+            if (nearest == null)
+                return;
+
+            SelectSingleNote(track, nearest);
+            if (evt.button == 1)
+                ShowNoteContextMenu(evt.position, track, nearest);
+            evt.StopPropagation();
+            noteLayer.schedule.Execute(RefreshTimelineAndSidebar);
+        });
+    }
+
+    private ChartEditorNote FindNearestNoteAtPixel(ChartEditorTrack track, float localX)
+    {
+        if (track?.notes == null || track.notes.Count == 0)
+            return null;
+
+        double time = PixelsToSeconds(Mathf.Max(0f, localX));
+        double tolerance = Math.Max(0.05, PixelDeltaToSeconds(14f));
+        ChartEditorNote best = null;
+        double bestDistance = double.MaxValue;
+        for (int i = 0; i < track.notes.Count; i++)
+        {
+            ChartEditorNote note = track.notes[i];
+            if (note == null)
+                continue;
+
+            double distance = Math.Abs(note.timeSeconds - time);
+            double end = note.timeSeconds + Math.Max(0.0, GetNoteEffectiveDurationSeconds(note));
+            if (time >= note.timeSeconds && time <= end)
+                distance = 0.0;
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = note;
+            }
+        }
+
+        return bestDistance <= tolerance ? best : null;
+    }
+
     private void BuildNotes(VisualElement timeline)
     {
+        using ProfilerMarker.AutoScope scope = BuildNotesMarker.Auto();
         List<ChartEditorTrackViewGroup> groups = BuildTrackViewGroups();
         if (groups.Count == 0)
             return;
 
+        GetTimelineBuildWindowSeconds(out double windowStartSeconds, out double windowEndSeconds);
+        int generation = ++timelineNoteBuildGeneration;
+        List<Action> pendingNoteBuilders = new List<Action>();
+        List<double> pendingNoteTimes = new List<double>();
+        List<VisualElement> pendingTechniqueLayers = new List<VisualElement>();
         float rowTop = NotesTop;
         for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
         {
@@ -7903,8 +10044,8 @@ public sealed class ChartEditorOverlay
                 : new Color(0.026f, 0.031f, 0.040f, 0.92f);
             rowBackground.style.borderTopWidth = 1f;
             rowBackground.style.borderBottomWidth = 1f;
-            rowBackground.style.borderTopColor = new Color(0.12f, 0.15f, 0.20f, 1f);
-            rowBackground.style.borderBottomColor = new Color(0.12f, 0.15f, 0.20f, 1f);
+            rowBackground.style.borderTopColor = new Color(0.15f, 0.145f, 0.18f, 1f);
+            rowBackground.style.borderBottomColor = new Color(0.15f, 0.145f, 0.18f, 1f);
             rowBackground.pickingMode = PickingMode.Ignore;
             timeline.Add(rowBackground);
 
@@ -7989,12 +10130,36 @@ public sealed class ChartEditorOverlay
                 noteLayer.Add(laneLine);
             }
 
+            if (!selectedTrack)
+            {
+                // Non-selected tracks are density strips: draw every note as a
+                // quad in a single mesh instead of thousands of picked
+                // elements. One row-level handler covers click-to-select.
+                BuildCompactTrackRow(noteLayer, track, accent, rowTop, windowStartSeconds, windowEndSeconds);
+                rowTop += rowHeight + TrackRowGap;
+                continue;
+            }
+
+            float[] laneDrawnRight = new float[Mathf.Max(1, laneCount)];
+            for (int laneIndex = 0; laneIndex < laneDrawnRight.Length; laneIndex++)
+                laneDrawnRight[laneIndex] = float.MinValue;
+
             foreach (ChartEditorNote note in track.notes ?? new List<ChartEditorNote>())
             {
                 if (note == null)
                     continue;
 
                 EnsureNoteDurationCoversTechniqueSegments(note);
+
+                // Timeline virtualization: only notes near the visible viewport
+                // get elements. Offscreen ranges are filled in on demand when
+                // the view scrolls (see CheckTimelineWindowRefill).
+                if (note.timeSeconds > windowEndSeconds ||
+                    note.timeSeconds + Math.Max(0.0, GetNoteEffectiveDurationSeconds(note)) < windowStartSeconds)
+                {
+                    continue;
+                }
+
                 int lane = selectedTrack ? GetVisualLaneForNote(track, note, laneCount) : 0;
                 float left = TimeToPixels(note.timeSeconds);
                 float width = GetNoteDrawWidth(track, note, laneCount, selectedTrack, left);
@@ -8006,6 +10171,23 @@ public sealed class ChartEditorOverlay
                     note = note,
                     rect = new Rect(TimelineLabelWidth + left, rowTop + noteTop, width, noteHeight)
                 });
+
+                // When zoomed far out, notes shrink below a pixel; drawing
+                // every one produces tens of thousands of invisible elements.
+                // Skip blocks that add less than ~1px of new coverage in their
+                // lane (hit records above are still added, so selection data
+                // stays complete). Normal zoom levels are unaffected.
+                int drawnLane = Mathf.Clamp(lane, 0, laneDrawnRight.Length - 1);
+                bool subPixel = selectedTrack ? width < 2f : true;
+                if (subPixel && left + Mathf.Max(1f, width) <= laneDrawnRight[drawnLane] + 1f)
+                    continue;
+                laneDrawnRight[drawnLane] = Mathf.Max(laneDrawnRight[drawnLane], left + Mathf.Max(1f, width));
+
+                // The visual itself is created lazily in per-frame slices so a
+                // dense window never stalls a single frame.
+                pendingNoteTimes.Add(note.timeSeconds);
+                pendingNoteBuilders.Add(() =>
+                {
                 VisualElement block = new VisualElement();
                 block.style.position = Position.Absolute;
                 block.style.left = left;
@@ -8037,7 +10219,18 @@ public sealed class ChartEditorOverlay
                 block.style.borderBottomColor = noteAccent;
                 block.style.borderLeftColor = noteAccent;
                 if (!string.IsNullOrWhiteSpace(note.id))
+                {
                     currentNoteBlocks[note.id] = block;
+                    currentNoteBlockStyles[note.id] = (noteBaseColor, selectedTrack);
+                    currentNoteBlockTimings.Add(new NoteBlockTimingRef
+                    {
+                        block = block,
+                        track = track,
+                        note = note,
+                        laneCount = laneCount,
+                        selectedTrack = selectedTrack
+                    });
+                }
                 if (selectedTrack && track.role != ChartEditorTrackRole.Drums)
                 {
                     float fretFontSize = width < 26f ? 17f : width < 42f ? 21f : 26f;
@@ -8054,6 +10247,9 @@ public sealed class ChartEditorOverlay
 
                 block.RegisterCallback<MouseDownEvent>(evt =>
                 {
+                    if (toneEditorEnabled)
+                        return;
+
                     if (evt.button == 0 && evt.clickCount >= 2)
                     {
                         SelectSingleNote(track, note);
@@ -8063,6 +10259,9 @@ public sealed class ChartEditorOverlay
                 });
                 block.RegisterCallback<PointerDownEvent>(evt =>
                 {
+                    if (toneEditorEnabled)
+                        return;
+
                     if (evt.button == 1)
                     {
                         if (!IsNoteSelected(note))
@@ -8075,12 +10274,52 @@ public sealed class ChartEditorOverlay
                 noteLayer.Add(block);
                 if (selectedTrack)
                     AddTechniqueSegmentBoxes(noteLayer, block, track, note, laneCount, selectedTrack, left, noteTop, width);
+                });
             }
 
             if (selectedTrack && techniqueLayer != null)
+            {
                 noteLayer.Add(techniqueLayer);
+                pendingTechniqueLayers.Add(techniqueLayer);
+            }
 
             rowTop += rowHeight + TrackRowGap;
+        }
+
+        if (pendingNoteBuilders.Count == 0)
+            return;
+
+        // Build the strictly visible viewport first so the screen fills
+        // instantly, then stream the margin notes in over following frames.
+        float buildScrollX = Mathf.Max(0f, timelineScrollOffset.x);
+        float buildViewportWidth = timelineViewportWidth > 1f ? timelineViewportWidth : 2600f;
+        double strictStartSeconds = PixelsToSeconds(Mathf.Max(0f, buildScrollX - TimelineLabelWidth));
+        double strictEndSeconds = PixelsToSeconds(Mathf.Max(0f, buildScrollX + buildViewportWidth));
+        int[] buildOrder = Enumerable.Range(0, pendingNoteBuilders.Count)
+            .OrderBy(i => pendingNoteTimes[i] >= strictStartSeconds && pendingNoteTimes[i] <= strictEndSeconds ? 0 : 1)
+            .ToArray();
+
+        int buildCursor = 0;
+        void BuildNoteChunk(int budget)
+        {
+            using ProfilerMarker.AutoScope chunkScope = NoteChunkMarker.Auto();
+            while (buildCursor < buildOrder.Length && budget-- > 0)
+                pendingNoteBuilders[buildOrder[buildCursor++]]?.Invoke();
+
+            for (int i = 0; i < pendingTechniqueLayers.Count; i++)
+                pendingTechniqueLayers[i]?.BringToFront();
+        }
+
+        BuildNoteChunk(700);
+        if (buildCursor < buildOrder.Length)
+        {
+            timeline.schedule.Execute(() =>
+            {
+                if (generation != timelineNoteBuildGeneration)
+                    return;
+
+                BuildNoteChunk(450);
+            }).Every(16).Until(() => generation != timelineNoteBuildGeneration || buildCursor >= buildOrder.Length);
         }
     }
 
@@ -8481,7 +10720,7 @@ public sealed class ChartEditorOverlay
         if (project == null || waveformData == null || !waveformData.IsValid)
             return 0.0;
 
-        return Math.Min(Math.Max(0.001, project.DurationSeconds), Math.Max(0.001, waveformData.durationSeconds));
+        return Math.Min(Math.Max(0.001, GetProjectDurationSeconds()), Math.Max(0.001, waveformData.durationSeconds));
     }
 
     private void GetVisibleWaveformPixelRange(float waveformWidth, out float visibleLeft, out float visibleRight)
@@ -8535,7 +10774,7 @@ public sealed class ChartEditorOverlay
     private WaveformRenderRange CalculateWaveformRenderRange()
     {
         WaveformRenderRange range = new WaveformRenderRange();
-        if (project == null || waveformData == null || !waveformData.IsValid || project.DurationSeconds <= 0.001)
+        if (project == null || waveformData == null || !waveformData.IsValid || GetProjectDurationSeconds() <= 0.001)
             return range;
 
         double audioEndSeconds = GetWaveformAudioEndSeconds();
@@ -8877,14 +11116,14 @@ public sealed class ChartEditorOverlay
             PlayBeatMapAudition(previousTime, nextTime);
         lastAuditionTimeSeconds = nextTime;
 
-        if (nextTime >= project.DurationSeconds - 0.0001)
+        if (nextTime >= GetProjectDurationSeconds() - 0.0001)
         {
             editorPlaying = false;
             if (editorAudioSource != null)
                 editorAudioSource.Stop();
             lastAuditionTimeSeconds = -1.0;
             InvalidateAuditionCache();
-            SetCursorTime(project.DurationSeconds, rebuild: false, syncAudio: false);
+            SetCursorTime(GetProjectDurationSeconds(), rebuild: false, syncAudio: false);
         }
         else
         {
@@ -8918,12 +11157,13 @@ public sealed class ChartEditorOverlay
         if (project == null)
             return;
 
-        project.cursorTimeSeconds = Math.Max(0.0, Math.Min(project.DurationSeconds, seconds));
+        project.cursorTimeSeconds = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), seconds));
         if (syncAudio)
             lastAuditionTimeSeconds = project.cursorTimeSeconds;
         if (syncAudio)
             SyncEditorAudioToCursor(playImmediately: editorPlaying);
         UpdatePlaybackVisuals();
+        UpdateToneEditorPlaybackOverride();
         if (editorPlaying && !seekDragging)
             FollowTimelineTime(project.cursorTimeSeconds);
         if (rebuild)
@@ -8932,7 +11172,7 @@ public sealed class ChartEditorOverlay
 
     private void SeekAndRevealTime(double seconds, bool syncAudio, bool rebuild)
     {
-        double target = Math.Max(0.0, Math.Min(project?.DurationSeconds ?? seconds, seconds));
+        double target = Math.Max(0.0, project != null ? Math.Min((double)GetProjectDurationSeconds(), seconds) : seconds);
         SetCursorTime(target, rebuild: false, syncAudio: syncAudio);
         ScrollTimelineToTime(project?.cursorTimeSeconds ?? target, 0.28f);
         if (rebuild)
@@ -9122,13 +11362,31 @@ public sealed class ChartEditorOverlay
         auditionCursorAnchorSeconds = -1.0;
     }
 
+    // ChartEditorProject.DurationSeconds scans every note of every track per
+    // access, which is far too slow for per-frame and per-pointer-move code.
+    // All overlay reads go through this once-per-frame cache instead.
+    private float GetProjectDurationSeconds()
+    {
+        if (project == null)
+            return 0f;
+
+        if (cachedProjectDurationFrame != Time.frameCount || !ReferenceEquals(cachedProjectDurationSource, project))
+        {
+            cachedProjectDurationSeconds = project.DurationSeconds;
+            cachedProjectDurationFrame = Time.frameCount;
+            cachedProjectDurationSource = project;
+        }
+
+        return cachedProjectDurationSeconds;
+    }
+
     private void UpdatePlaybackVisuals()
     {
         if (project != null)
-            headerTimeLabel.text = $"{FormatTime(project.cursorTimeSeconds)} / {FormatTime(project.DurationSeconds)}";
+            headerTimeLabel.text = $"{FormatTime(project.cursorTimeSeconds)} / {FormatTime(GetProjectDurationSeconds())}";
         UpdateHeaderProgress();
         if (transportPlayButton != null)
-            transportPlayButton.text = editorPlaying ? "Ⅱ" : "▶";
+            UpdateTransportPlayButtonIcon();
         if (cursorElement != null && project != null)
             cursorElement.style.left = TimeToPixels(project.cursorTimeSeconds);
         if (cursorHandleElement != null && project != null)
@@ -9140,15 +11398,21 @@ public sealed class ChartEditorOverlay
         if (headerProgressFill == null)
             return;
 
-        float progress = project == null || project.DurationSeconds <= 0.0001
+        float progress = project == null || GetProjectDurationSeconds() <= 0.0001
             ? 0f
-            : Mathf.Clamp01((float)(project.cursorTimeSeconds / project.DurationSeconds));
+            : Mathf.Clamp01((float)(project.cursorTimeSeconds / GetProjectDurationSeconds()));
         headerProgressFill.style.width = Length.Percent(progress * 100f);
     }
 
     private void HandleKeyboardShortcuts()
     {
-        if (project == null || IsTextFieldFocused())
+        // No global shortcuts while a modal popup or context menu is open
+        // (Delete/Space would act on the timeline behind the dialog), or while
+        // a pointer drag is captured (shortcuts that Rebuild() would destroy
+        // the capturing element mid-gesture and abandon the drag commit).
+        if (project == null || IsTextFieldFocused() ||
+            editPopupElement != null || contextMenuElement != null || contextSubmenuElement != null ||
+            IsAnyPointerCaptured())
         {
             ResetArrowRepeat();
             return;
@@ -9169,6 +11433,19 @@ public sealed class ChartEditorOverlay
 
             TogglePlayback();
             ResetArrowRepeat();
+            return;
+        }
+
+        if (toneEditorEnabled)
+        {
+            if (HandleToneEditorKeyboardShortcuts(controlHeld, shiftHeld, altHeld))
+            {
+                ResetArrowRepeat();
+                return;
+            }
+
+            if (!IsAnyArrowKeyHeld())
+                ResetArrowRepeat();
             return;
         }
 
@@ -9240,6 +11517,65 @@ public sealed class ChartEditorOverlay
 
         if (!handledArrow && !IsAnyArrowKeyHeld())
             ResetArrowRepeat();
+    }
+
+    private bool HandleToneEditorKeyboardShortcuts(bool controlHeld, bool shiftHeld, bool altHeld)
+    {
+        if (!controlHeld && Input.GetKeyDown(KeyCode.A))
+        {
+            AddToneChangeAtCursor();
+            return true;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Delete))
+        {
+            EnsureToneSelectionForCurrentTrack();
+            if (selectedToneChange != null)
+                DeleteToneChange(selectedToneChange);
+            return true;
+        }
+
+        if (HandlePageNavigation(controlHeld, shiftHeld: false, altHeld: false))
+            return true;
+
+        bool handledArrow =
+            HandleArrowRepeat(KeyCode.LeftArrow, () => ApplyToneEditorHorizontalNudge(-1, controlHeld)) ||
+            HandleArrowRepeat(KeyCode.RightArrow, () => ApplyToneEditorHorizontalNudge(1, controlHeld));
+
+        if (handledArrow)
+            return true;
+
+        if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.DownArrow))
+            return true;
+
+        return false;
+    }
+
+    private void ApplyToneEditorHorizontalNudge(int direction, bool moveCursorOnly)
+    {
+        if (project == null)
+            return;
+
+        double delta = (moveCursorOnly ? GetSnapStepSeconds() : GetKeyboardNudgeSeconds()) * direction;
+        if (moveCursorOnly || selectedToneChange == null)
+        {
+            SetCursorTimeFromKeyboard(project.cursorTimeSeconds + delta);
+            FollowTimelineTime(project.cursorTimeSeconds);
+            return;
+        }
+
+        ChartEditorTrack track = project.SelectedTrack;
+        selectedToneChange.timeSeconds = Mathf.Clamp(
+            selectedToneChange.timeSeconds + (float)delta,
+            0f,
+            (float)Math.Max(0.0, GetProjectDurationSeconds()));
+        NormalizeToneChanges(track);
+        project.cursorTimeSeconds = selectedToneChange.timeSeconds;
+        project.dirty = true;
+        appliedToneEditorPlaybackKey = string.Empty;
+        UpdateToneMarkerVisuals();
+        UpdatePlaybackVisuals();
+        UpdateToneEditorPlaybackOverride();
     }
 
     private bool HandleArrowRepeat(KeyCode key, Action action)
@@ -9608,7 +11944,7 @@ public sealed class ChartEditorOverlay
 
     private float GetTimelineSecondsWidth()
     {
-        return Mathf.Max(TimelineMinSecondsWidth, project.DurationSeconds * GetTimelinePixelsPerSecond() + TimelineRightPadding);
+        return Mathf.Max(TimelineMinSecondsWidth, GetProjectDurationSeconds() * GetTimelinePixelsPerSecond() + TimelineRightPadding);
     }
 
     private float GetTimelineContentWidth()
@@ -10584,6 +12920,9 @@ public sealed class ChartEditorOverlay
 
         void BeginDrag(PointerDownEvent evt, int mode)
         {
+            if (toneEditorEnabled)
+                return;
+
             if (evt.button != 0)
                 return;
 
@@ -10601,6 +12940,9 @@ public sealed class ChartEditorOverlay
 
         box.RegisterCallback<PointerDownEvent>(evt =>
         {
+            if (toneEditorEnabled)
+                return;
+
             if (evt.button == 1)
             {
                 SelectSingleNote(track, note);
@@ -10622,7 +12964,7 @@ public sealed class ChartEditorOverlay
             float deltaSeconds = (float)PixelDeltaToSeconds(PointerPosition(evt).x - startPointer.x);
             float newStart = startOffset;
             float newEnd = endOffset;
-            float maxEnd = Mathf.Max(TechniqueSegmentMinimumSeconds, (float)((project?.DurationSeconds ?? note.timeSeconds + endOffset + 4.0) - note.timeSeconds));
+            float maxEnd = Mathf.Max(TechniqueSegmentMinimumSeconds, (float)((project != null ? GetProjectDurationSeconds() : note.timeSeconds + endOffset + 4.0) - note.timeSeconds));
             float minLength = TechniqueSegmentMinimumSeconds;
 
             if (dragMode == 1)
@@ -10661,7 +13003,7 @@ public sealed class ChartEditorOverlay
             ChartEditorTimingService.UpdateNoteBeatTiming(project, note);
             project.dirty = true;
             evt.StopImmediatePropagation();
-            box.schedule.Execute(Rebuild);
+            box.schedule.Execute(RefreshTimelinePanel);
         });
     }
 
@@ -10824,6 +13166,9 @@ public sealed class ChartEditorOverlay
 
         handle.RegisterCallback<PointerDownEvent>(evt =>
         {
+            if (toneEditorEnabled)
+                return;
+
             if (evt.button != 0)
                 return;
 
@@ -10842,7 +13187,7 @@ public sealed class ChartEditorOverlay
                 return;
 
             double requestedDuration = startDuration + PixelDeltaToSeconds(PointerPosition(evt).x - startPointer.x);
-            double maxDuration = Math.Max(0.01, project.DurationSeconds - note.timeSeconds);
+            double maxDuration = Math.Max(0.01, GetProjectDurationSeconds() - note.timeSeconds);
             double? nextTime = GetNextNoteTimeInLane(track, note, laneCount, selectedTrack);
             if (nextTime.HasValue)
                 maxDuration = Math.Max(0.01, Math.Min(maxDuration, nextTime.Value - note.timeSeconds - GetPasteVisualGapSeconds()));
@@ -10858,12 +13203,19 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
+            if (evt.button != 0)
+                return;
+
             dragging = false;
             if (handle.HasPointerCapture(pointerId))
                 handle.ReleasePointer(pointerId);
 
+            // Commit the resize into beat-map space too — otherwise the next
+            // beat-map pass restores the old durationBeats and silently
+            // reverts the resize.
+            ChartEditorTimingService.UpdateNoteBeatTiming(project, note);
             evt.StopImmediatePropagation();
-            handle.schedule.Execute(Rebuild);
+            handle.schedule.Execute(RefreshTimelinePanel);
         });
 
         block.Add(handle);
@@ -11260,7 +13612,7 @@ public sealed class ChartEditorOverlay
 
     private double SnapTime(double seconds)
     {
-        double clamped = Math.Max(0.0, Math.Min(project.DurationSeconds, seconds));
+        double clamped = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), seconds));
         double snap = project?.settings?.snapEnabled == true ? Math.Max(0.001, project.settings.snapSeconds) : 0.0;
         return snap > 0.0 ? Math.Round(clamped / snap) * snap : clamped;
     }
@@ -11374,6 +13726,7 @@ public sealed class ChartEditorOverlay
     {
         bool dragging = false;
         bool moved = false;
+        bool clearedNonNoteSelection = false;
         int pointerId = -1;
         Vector2 startPointer = Vector2.zero;
         double startTime = 0.0;
@@ -11383,8 +13736,16 @@ public sealed class ChartEditorOverlay
 
         block.RegisterCallback<PointerDownEvent>(evt =>
         {
+            if (toneEditorEnabled)
+                return;
+
             if (evt.button != 0 || note == null || track == null)
                 return;
+
+            clearedNonNoteSelection = !string.IsNullOrWhiteSpace(selectedSectionId) || HasSelectedAnchors();
+            List<string> affectedSelectionIds = new List<string>(selectedNoteIds);
+            if (!string.IsNullOrWhiteSpace(selectedNoteId))
+                affectedSelectionIds.Add(selectedNoteId);
 
             if (!IsNoteSelected(note))
                 SelectSingleNote(track, note);
@@ -11396,6 +13757,9 @@ public sealed class ChartEditorOverlay
                 project.selectedTrackId = track.id;
                 mode = ChartEditorMode.Notes;
             }
+
+            affectedSelectionIds.AddRange(selectedNoteIds);
+            RefreshNoteSelectionVisuals(affectedSelectionIds);
 
             List<ChartEditorNoteReference> selectedNotes = GetSelectedNoteReferences();
             if (selectedNotes.Count == 0)
@@ -11457,7 +13821,7 @@ public sealed class ChartEditorOverlay
 
             double requestedTimeDelta = PixelDeltaToSeconds(delta.x);
             double minTimeDelta = dragStarts.Count == 0 ? -startTime : -dragStarts.Min(start => start.timeSeconds);
-            double maxTimeDelta = dragStarts.Count == 0 ? project.DurationSeconds - startTime : project.DurationSeconds - dragStarts.Max(start => start.timeSeconds);
+            double maxTimeDelta = dragStarts.Count == 0 ? GetProjectDurationSeconds() - startTime : GetProjectDurationSeconds() - dragStarts.Max(start => start.timeSeconds);
             pendingTimeDelta = Math.Max(minTimeDelta, Math.Min(maxTimeDelta, requestedTimeDelta));
             pendingVisualLaneDelta = selectedTrack ? Mathf.RoundToInt(delta.y / Mathf.Max(1f, laneHeight)) : 0;
             float pixelDelta = (float)pendingTimeDelta * GetTimelinePixelsPerSecond();
@@ -11484,6 +13848,9 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
+            if (evt.button != 0)
+                return;
+
             dragging = false;
             if (block.HasPointerCapture(pointerId))
                 block.ReleasePointer(pointerId);
@@ -11493,7 +13860,7 @@ public sealed class ChartEditorOverlay
                 for (int i = 0; i < dragStarts.Count; i++)
                 {
                     ChartEditorNoteDragStart start = dragStarts[i];
-                    double targetTime = Math.Max(0.0, Math.Min(project.DurationSeconds, start.timeSeconds + pendingTimeDelta));
+                    double targetTime = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), start.timeSeconds + pendingTimeDelta));
                     double appliedDelta = targetTime - start.timeSeconds;
                     start.note.timeSeconds = targetTime;
                     start.note.chartTimeSeconds = Math.Max(0.0, start.chartTimeSeconds + appliedDelta);
@@ -11507,16 +13874,25 @@ public sealed class ChartEditorOverlay
 
                 foreach (ChartEditorTrack dirtyTrack in dragStarts.Select(start => start.track).Where(dirtyTrack => dirtyTrack != null).Distinct())
                     dirtyTrack.notes = dirtyTrack.notes?.OrderBy(n => n?.timeSeconds ?? 0.0).ThenBy(n => n?.stringOrLane ?? 0).ToList() ?? new List<ChartEditorNote>();
+
+                // RefreshTimelineWindowContent (the common commit path) never
+                // marks the 3D preview dirty, so without this the highway kept
+                // rendering pre-drag note data.
+                MarkHighwayPreviewDirty(renderImmediately: false);
+                InvalidateAuditionCache();
             }
 
             if (moved)
             {
                 evt.StopImmediatePropagation();
-                block.schedule.Execute(Rebuild);
+                block.schedule.Execute(clearedNonNoteSelection
+                    ? (Action)RefreshTimelinePanel
+                    : RefreshTimelineWindowContent);
             }
             else
             {
-                block.schedule.Execute(Rebuild);
+                if (clearedNonNoteSelection)
+                    block.schedule.Execute(RefreshTimelinePanel);
                 evt.StopImmediatePropagation();
             }
         });
@@ -11535,6 +13911,9 @@ public sealed class ChartEditorOverlay
 
         block.RegisterCallback<PointerDownEvent>(evt =>
         {
+            if (toneEditorEnabled)
+                return;
+
             if (evt.button != 0 || section == null)
                 return;
 
@@ -11582,6 +13961,9 @@ public sealed class ChartEditorOverlay
             if (!dragging || evt.pointerId != pointerId)
                 return;
 
+            if (evt.button != 0)
+                return;
+
             dragging = false;
             if (block.HasPointerCapture(pointerId))
                 block.ReleasePointer(pointerId);
@@ -11591,7 +13973,7 @@ public sealed class ChartEditorOverlay
             {
                 ChartEditorTimingService.UpdateSectionBeatTiming(project, section);
                 evt.StopImmediatePropagation();
-                block.schedule.Execute(Rebuild);
+                block.schedule.Execute(RefreshTimelineAndSidebar);
             }
         });
     }
@@ -11608,6 +13990,9 @@ public sealed class ChartEditorOverlay
 
         marker.RegisterCallback<PointerDownEvent>(evt =>
         {
+            if (toneEditorEnabled)
+                return;
+
             if (evt.button == 2 && point != null)
             {
                 ToggleBeatMarkerAnchor(point);
@@ -11620,7 +14005,7 @@ public sealed class ChartEditorOverlay
             if (evt.ctrlKey)
             {
                 ToggleAnchorSelection(point);
-                marker.schedule.Execute(Rebuild);
+                marker.schedule.Execute(RefreshTimelineAndSidebar);
                 evt.StopImmediatePropagation();
                 return;
             }
@@ -11677,7 +14062,7 @@ public sealed class ChartEditorOverlay
             {
                 ChartEditorTimingService.MoveAnchor(project, point, point.audioTimeSeconds);
                 evt.StopImmediatePropagation();
-                marker.schedule.Execute(Rebuild);
+                marker.schedule.Execute(RefreshTimelineAndSidebar);
             }
             else
             {
@@ -11686,7 +14071,7 @@ public sealed class ChartEditorOverlay
                 else
                     selectedSyncPointId = point.id;
                 evt.StopPropagation();
-                marker.schedule.Execute(Rebuild);
+                marker.schedule.Execute(RefreshTimelineAndSidebar);
             }
         });
     }
@@ -11694,7 +14079,7 @@ public sealed class ChartEditorOverlay
     private void ResolveAnchorDragBounds(ChartEditorBeatMarker point, out double minAudio, out double maxAudio)
     {
         minAudio = 0.0;
-        maxAudio = project?.DurationSeconds ?? 0.0;
+        maxAudio = GetProjectDurationSeconds();
         if (project == null || point == null)
             return;
 
@@ -11886,6 +14271,868 @@ public sealed class ChartEditorOverlay
         panel.Add(CreateKeyValue("Source", project.sourceKind.ToString()));
     }
 
+    private void ShowNewProjectPopup()
+    {
+        HideContextMenu();
+        HideEditPopup();
+
+        string chartPath = string.Empty;
+        string audioPath = string.Empty;
+        string coverImagePath = string.Empty;
+        SongNotationSourceKind chartKind = SongNotationSourceKind.None;
+        List<MusicXmlLoader.MusicXmlPartSummary> arrangements = new List<MusicXmlLoader.MusicXmlPartSummary>();
+        HashSet<int> selectedArrangementIndices = new HashSet<int>();
+        string lastAutoFilledTitle = string.Empty;
+        string lastAutoFilledArtist = string.Empty;
+
+        Color accentPurple = new Color(0.62f, 0.38f, 1f, 1f);
+        Color accentBlue = new Color(0.48f, 0.74f, 1f, 1f);
+        Color accentGreen = new Color(0.52f, 0.84f, 0.72f, 1f);
+        Color textPrimary = new Color(0.97f, 0.96f, 0.98f, 1f);
+        Color textMuted = new Color(0.78f, 0.76f, 0.82f, 1f);
+        Color textFaint = new Color(0.60f, 0.58f, 0.66f, 1f);
+        Color panelBackground = new Color(0.072f, 0.069f, 0.080f, 1f);
+        Color bandBackground = new Color(0.100f, 0.096f, 0.112f, 1f);
+        Color cardBackground = new Color(0.108f, 0.103f, 0.122f, 1f);
+        Color insetBackground = new Color(0.042f, 0.040f, 0.048f, 1f);
+        Color cardBorderColor = new Color(0.75f, 0.72f, 0.82f, 0.22f);
+        Color hairline = new Color(0.75f, 0.72f, 0.82f, 0.16f);
+
+        TextField titleField = CreateNewProjectTextField("Title", string.Empty);
+        TextField artistField = CreateNewProjectTextField("Artist", string.Empty);
+        TextField albumField = CreateNewProjectTextField("Album", string.Empty);
+        TextField genreField = CreateNewProjectTextField("Genre", string.Empty);
+        TextField yearField = CreateNewProjectTextField("Year", string.Empty);
+
+        Label chartPathLabel = CreateLabel("No chart selected", 28f, textMuted, false, TextAnchor.MiddleLeft, false);
+        chartPathLabel.style.whiteSpace = WhiteSpace.Normal;
+        chartPathLabel.style.marginTop = 20f;
+        Label chartDetailLabel = CreateLabel("Start blank, or import a Guitar Pro / MusicXML file.", 22f, textFaint, false, TextAnchor.MiddleLeft, false);
+        chartDetailLabel.style.whiteSpace = WhiteSpace.Normal;
+        chartDetailLabel.style.marginTop = 6f;
+        VisualElement arrangementList = new VisualElement();
+
+        Label audioPathLabel = CreateLabel("No audio selected", 28f, textMuted, false, TextAnchor.MiddleLeft, false);
+        audioPathLabel.style.whiteSpace = WhiteSpace.Normal;
+        audioPathLabel.style.marginTop = 20f;
+        Label audioDetailLabel = CreateLabel("Audio can be added now or later.", 22f, textFaint, false, TextAnchor.MiddleLeft, false);
+        audioDetailLabel.style.whiteSpace = WhiteSpace.Normal;
+        audioDetailLabel.style.marginTop = 6f;
+
+        Button selectChartButton = null;
+        Button clearChartButton = null;
+        Button selectAudioButton = null;
+        Button clearAudioButton = null;
+
+        Label statusLabel = CreateLabel(string.Empty, 24f, new Color(1f, 0.64f, 0.54f, 1f), true, TextAnchor.MiddleLeft, false);
+        statusLabel.style.whiteSpace = WhiteSpace.Normal;
+        statusLabel.style.flexGrow = 1f;
+        statusLabel.style.flexShrink = 1f;
+        statusLabel.style.minWidth = 0f;
+        statusLabel.style.marginRight = 24f;
+        statusLabel.style.alignSelf = Align.Center;
+        statusLabel.style.display = DisplayStyle.None;
+
+        void SetDialogStatus(string text, bool isError)
+        {
+            statusLabel.text = text ?? string.Empty;
+            statusLabel.style.color = isError
+                ? new Color(1f, 0.60f, 0.52f, 1f)
+                : new Color(0.80f, 0.74f, 1f, 1f);
+            statusLabel.style.display = string.IsNullOrWhiteSpace(statusLabel.text)
+                ? DisplayStyle.None
+                : DisplayStyle.Flex;
+            if (!string.IsNullOrWhiteSpace(statusLabel.text))
+                SetStatus(statusLabel.text);
+        }
+
+        VisualElement CreateCard()
+        {
+            VisualElement card = new VisualElement();
+            card.style.backgroundColor = cardBackground;
+            SetRadius(card, 20f);
+            SetBorderWidth(card, 3f);
+            SetBorderColor(card, new Color(0.75f, 0.72f, 0.82f, 0.28f));
+            card.style.paddingLeft = 30f;
+            card.style.paddingRight = 30f;
+            card.style.paddingTop = 28f;
+            card.style.paddingBottom = 28f;
+            card.style.marginBottom = 28f;
+            card.style.flexShrink = 0f;
+            return card;
+        }
+
+        Label CreateChipLabel(string text)
+        {
+            Label chip = CreateLabel((text ?? string.Empty).ToUpperInvariant(), 17f, textFaint, true, TextAnchor.MiddleCenter, false);
+            chip.style.letterSpacing = 2f;
+            chip.style.paddingLeft = 14f;
+            chip.style.paddingRight = 14f;
+            chip.style.paddingTop = 5f;
+            chip.style.paddingBottom = 5f;
+            chip.style.marginLeft = 16f;
+            chip.style.backgroundColor = new Color(0.75f, 0.72f, 0.82f, 0.10f);
+            SetRadius(chip, 10f);
+            SetBorderWidth(chip, 2f);
+            SetBorderColor(chip, new Color(0.75f, 0.72f, 0.82f, 0.28f));
+            chip.style.flexShrink = 0f;
+            return chip;
+        }
+
+        Label CreateSectionCaption(string text)
+        {
+            Label caption = CreateLabel((text ?? string.Empty).ToUpperInvariant(), 19f, textFaint, true, TextAnchor.MiddleLeft, false);
+            caption.style.letterSpacing = 3f;
+            return caption;
+        }
+
+        VisualElement BuildFileCard(
+            NewProjectIconKind iconKind,
+            Color accent,
+            string cardTitle,
+            string chipText,
+            Label nameLabel,
+            Label detailLabel,
+            Button browseButton,
+            Button clearButton,
+            VisualElement extraContent)
+        {
+            VisualElement card = CreateCard();
+
+            VisualElement header = new VisualElement();
+            header.style.flexDirection = FlexDirection.Row;
+            header.style.alignItems = Align.Center;
+
+            header.Add(CreateNewProjectIconTile(iconKind, accent, 68f));
+
+            VisualElement titleRow = new VisualElement();
+            titleRow.style.flexDirection = FlexDirection.Row;
+            titleRow.style.alignItems = Align.Center;
+            titleRow.style.flexGrow = 1f;
+            titleRow.style.flexShrink = 1f;
+            titleRow.style.minWidth = 0f;
+            titleRow.style.marginLeft = 20f;
+            Label cardTitleLabel = CreateLabel(cardTitle, 31f, textPrimary, true, TextAnchor.MiddleLeft, false);
+            cardTitleLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            titleRow.Add(cardTitleLabel);
+            if (!string.IsNullOrEmpty(chipText))
+                titleRow.Add(CreateChipLabel(chipText));
+            header.Add(titleRow);
+
+            VisualElement headerActions = new VisualElement();
+            headerActions.style.flexDirection = FlexDirection.Row;
+            headerActions.style.alignItems = Align.Center;
+            headerActions.style.flexShrink = 0f;
+            headerActions.style.marginLeft = 20f;
+            headerActions.Add(browseButton);
+            clearButton.style.marginLeft = 12f;
+            headerActions.Add(clearButton);
+            header.Add(headerActions);
+
+            card.Add(header);
+            card.Add(nameLabel);
+            card.Add(detailLabel);
+            if (extraContent != null)
+                card.Add(extraContent);
+            return card;
+        }
+
+        string FormatChartKind(SongNotationSourceKind kind)
+        {
+            switch (kind)
+            {
+                case SongNotationSourceKind.Gp5:
+                    return "Guitar Pro";
+                case SongNotationSourceKind.MusicXml:
+                    return "MusicXML";
+                default:
+                    return "Chart";
+            }
+        }
+
+        string FormatArrangementTitle(MusicXmlLoader.MusicXmlPartSummary summary)
+        {
+            string name = FirstNonEmpty(summary?.GroupDisplayName, summary?.Name, "Track");
+            string difficulty = summary?.DifficultyLabel?.Trim();
+            if (string.IsNullOrWhiteSpace(difficulty) ||
+                string.Equals(difficulty, "Full", StringComparison.OrdinalIgnoreCase))
+            {
+                return name;
+            }
+
+            return $"{name} - {difficulty}";
+        }
+
+        string FormatArrangementDetail(MusicXmlLoader.MusicXmlPartSummary summary)
+        {
+            List<string> parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(summary?.Route))
+                parts.Add(summary.Route.Trim());
+            if (!string.IsNullOrWhiteSpace(summary?.InstrumentType))
+                parts.Add(summary.InstrumentType.Trim());
+            parts.Add($"{Math.Max(0, summary?.NoteCount ?? 0)} notes");
+            if (!string.IsNullOrWhiteSpace(summary?.TuningDisplayName))
+                parts.Add(summary.TuningDisplayName.Trim());
+            return string.Join("  ·  ", parts);
+        }
+
+        void RefreshArrangementList()
+        {
+            arrangementList.Clear();
+            arrangementList.style.marginTop = 0f;
+
+            if (string.IsNullOrWhiteSpace(chartPath))
+                return;
+
+            arrangementList.style.marginTop = 28f;
+
+            if (arrangements.Count == 0)
+            {
+                Label warn = CreateLabel("No arrangements were detected in this file.", 22f, new Color(1f, 0.74f, 0.50f, 1f), false, TextAnchor.MiddleLeft, false);
+                warn.style.whiteSpace = WhiteSpace.Normal;
+                arrangementList.Add(warn);
+                return;
+            }
+
+            int selectedCount = arrangements.Count(summary => summary != null && selectedArrangementIndices.Contains(summary.Index));
+
+            VisualElement listHeader = new VisualElement();
+            listHeader.style.flexDirection = FlexDirection.Row;
+            listHeader.style.alignItems = Align.Center;
+            listHeader.style.justifyContent = Justify.SpaceBetween;
+            listHeader.style.marginBottom = 14f;
+            listHeader.Add(CreateSectionCaption("Arrangements"));
+            listHeader.Add(CreateLabel($"{selectedCount} of {arrangements.Count} selected", 20f, textFaint, false, TextAnchor.MiddleRight, false));
+            arrangementList.Add(listHeader);
+
+            ScrollView rowScroll = new ScrollView(ScrollViewMode.Vertical);
+            ConfigureScrollView(rowScroll);
+            rowScroll.style.maxHeight = 640f;
+            rowScroll.style.minHeight = 0f;
+            rowScroll.style.flexShrink = 0f;
+
+            int visibleCount = 0;
+            for (int i = 0; i < arrangements.Count; i++)
+            {
+                MusicXmlLoader.MusicXmlPartSummary summary = arrangements[i];
+                if (summary == null || !selectedArrangementIndices.Contains(summary.Index))
+                    continue;
+
+                visibleCount++;
+                int arrangementIndex = summary.Index;
+                VisualElement row = new VisualElement();
+                row.style.flexDirection = FlexDirection.Row;
+                row.style.alignItems = Align.Center;
+                row.style.marginBottom = 12f;
+                row.style.paddingLeft = 22f;
+                row.style.paddingRight = 16f;
+                row.style.paddingTop = 18f;
+                row.style.paddingBottom = 18f;
+                row.style.backgroundColor = insetBackground;
+                row.style.flexShrink = 0f;
+                SetRadius(row, 14f);
+                SetBorderWidth(row, 2f);
+                SetBorderColor(row, new Color(0.75f, 0.72f, 0.82f, 0.20f));
+
+                VisualElement text = new VisualElement();
+                text.style.flexGrow = 1f;
+                text.style.flexShrink = 1f;
+                text.style.minWidth = 0f;
+                Label nameLabel = CreateLabel(FormatArrangementTitle(summary), 26f, textPrimary, true, TextAnchor.MiddleLeft, false);
+                nameLabel.style.whiteSpace = WhiteSpace.Normal;
+                Label detailLabel = CreateLabel(FormatArrangementDetail(summary), 20f, textFaint, false, TextAnchor.MiddleLeft, false);
+                detailLabel.style.whiteSpace = WhiteSpace.Normal;
+                detailLabel.style.marginTop = 5f;
+                text.Add(nameLabel);
+                text.Add(detailLabel);
+                row.Add(text);
+
+                Button remove = CreateNewProjectIconButton(NewProjectIconKind.Cross, () =>
+                {
+                    selectedArrangementIndices.Remove(arrangementIndex);
+                    RefreshArrangementList();
+                    RefreshChartLabels();
+                }, danger: true, size: 60f);
+                remove.style.marginLeft = 18f;
+                row.Add(remove);
+
+                rowScroll.Add(row);
+            }
+
+            if (visibleCount == 0)
+            {
+                Label none = CreateLabel("No arrangements selected.", 22f, new Color(1f, 0.62f, 0.54f, 1f), false, TextAnchor.MiddleLeft, false);
+                none.style.whiteSpace = WhiteSpace.Normal;
+                arrangementList.Add(none);
+            }
+            else
+            {
+                arrangementList.Add(rowScroll);
+            }
+        }
+
+        void RefreshChartLabels()
+        {
+            bool hasChart = !string.IsNullOrWhiteSpace(chartPath);
+            if (selectChartButton != null)
+                selectChartButton.text = hasChart ? "Replace" : "Browse";
+            if (clearChartButton != null)
+                clearChartButton.style.display = hasChart ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (!hasChart)
+            {
+                chartPathLabel.text = "No chart selected";
+                chartPathLabel.style.color = textMuted;
+                chartPathLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+                chartDetailLabel.text = "Start blank, or import a Guitar Pro / MusicXML file.";
+                return;
+            }
+
+            int selectedCount = arrangements.Count(summary => summary != null && selectedArrangementIndices.Contains(summary.Index));
+            chartPathLabel.text = Path.GetFileName(chartPath);
+            chartPathLabel.style.color = textPrimary;
+            chartPathLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            chartDetailLabel.text = $"{FormatChartKind(chartKind)}  ·  {selectedCount} of {arrangements.Count} arrangements selected";
+        }
+
+        void RefreshAudioLabels()
+        {
+            bool hasAudio = !string.IsNullOrWhiteSpace(audioPath);
+            if (selectAudioButton != null)
+                selectAudioButton.text = hasAudio ? "Replace" : "Browse";
+            if (clearAudioButton != null)
+                clearAudioButton.style.display = hasAudio ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (!hasAudio)
+            {
+                audioPathLabel.text = "No audio selected";
+                audioPathLabel.style.color = textMuted;
+                audioPathLabel.style.unityFontStyleAndWeight = FontStyle.Normal;
+                audioDetailLabel.text = "Audio can be added now or later.";
+                return;
+            }
+
+            audioPathLabel.text = Path.GetFileName(audioPath);
+            audioPathLabel.style.color = textPrimary;
+            audioPathLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+            string extension = Path.GetExtension(audioPath)?.TrimStart('.').ToUpperInvariant();
+            audioDetailLabel.text = string.IsNullOrEmpty(extension) ? "Audio file" : $"{extension} audio file";
+        }
+
+        void SelectChart()
+        {
+            if (!ChartEditorFilePicker.TryPickNotationFile(out string pickedPath))
+                return;
+
+            if (!ChartEditorImportService.TryReadNewProjectChartInfo(
+                    pickedPath,
+                    out SongNotationSourceKind detectedKind,
+                    out List<MusicXmlLoader.MusicXmlPartSummary> detectedArrangements,
+                    out string detectedTitle,
+                    out string detectedArtist,
+                    out string error))
+            {
+                SetDialogStatus(error, true);
+                return;
+            }
+
+            chartPath = pickedPath;
+            chartKind = detectedKind;
+            arrangements = detectedArrangements ?? new List<MusicXmlLoader.MusicXmlPartSummary>();
+            selectedArrangementIndices = new HashSet<int>(arrangements
+                .Where(summary => summary != null)
+                .Select(summary => summary.Index));
+
+            bool shouldAutoFillTitle = string.IsNullOrWhiteSpace(titleField.value) ||
+                                       string.Equals(titleField.value?.Trim() ?? string.Empty, lastAutoFilledTitle, StringComparison.Ordinal);
+            bool shouldAutoFillArtist = string.IsNullOrWhiteSpace(artistField.value) ||
+                                        string.Equals(artistField.value?.Trim() ?? string.Empty, lastAutoFilledArtist, StringComparison.Ordinal);
+            if (shouldAutoFillTitle)
+            {
+                lastAutoFilledTitle = detectedTitle ?? string.Empty;
+                titleField.value = lastAutoFilledTitle;
+            }
+            if (shouldAutoFillArtist)
+            {
+                lastAutoFilledArtist = detectedArtist ?? string.Empty;
+                artistField.value = lastAutoFilledArtist;
+            }
+
+            SetDialogStatus(string.Empty, false);
+            RefreshChartLabels();
+            RefreshArrangementList();
+        }
+
+        void ClearChart()
+        {
+            chartPath = string.Empty;
+            chartKind = SongNotationSourceKind.None;
+            arrangements = new List<MusicXmlLoader.MusicXmlPartSummary>();
+            selectedArrangementIndices = new HashSet<int>();
+            SetDialogStatus(string.Empty, false);
+            RefreshChartLabels();
+            RefreshArrangementList();
+        }
+
+        void SelectAudio()
+        {
+            if (!ChartEditorFilePicker.TryPickAudioFile(out string pickedPath))
+                return;
+
+            audioPath = pickedPath;
+            SetDialogStatus(string.Empty, false);
+            RefreshAudioLabels();
+        }
+
+        void ClearAudio()
+        {
+            audioPath = string.Empty;
+            SetDialogStatus(string.Empty, false);
+            RefreshAudioLabels();
+        }
+
+        void CreateProject()
+        {
+            List<int> selectedPartIndices = arrangements
+                .Where(summary => summary != null && selectedArrangementIndices.Contains(summary.Index))
+                .Select(summary => summary.Index)
+                .ToList();
+
+            ChartEditorNewProjectRequest request = new ChartEditorNewProjectRequest
+            {
+                chartPath = chartPath,
+                audioPath = audioPath,
+                coverImagePath = coverImagePath,
+                title = titleField.value?.Trim() ?? string.Empty,
+                artist = artistField.value?.Trim() ?? string.Empty,
+                album = albumField.value?.Trim() ?? string.Empty,
+                genre = genreField.value?.Trim() ?? string.Empty,
+                year = yearField.value?.Trim() ?? string.Empty,
+                selectedPartIndices = selectedPartIndices
+            };
+
+            SetDialogStatus("Creating project...", false);
+            RunWithEditorLoadingOverlay("Creating project...", () =>
+            {
+                if (ChartEditorImportService.CreateNewProject(request, out ChartEditorImportResult result, out string error))
+                {
+                    HideEditPopup();
+                    AcceptImport(result, "Project created.");
+                    return;
+                }
+
+                SetDialogStatus(error, true);
+            });
+        }
+
+        VisualElement BuildCoverPicker()
+        {
+            VisualElement container = new VisualElement();
+            container.style.flexShrink = 0f;
+            container.style.width = 300f;
+
+            VisualElement art = new VisualElement();
+            art.style.width = 300f;
+            art.style.height = 300f;
+            art.style.alignItems = Align.Center;
+            art.style.justifyContent = Justify.Center;
+            art.style.overflow = Overflow.Hidden;
+            art.style.backgroundColor = insetBackground;
+            art.style.backgroundSize = new BackgroundSize(BackgroundSizeType.Cover);
+            SetRadius(art, 18f);
+            SetBorderWidth(art, 2f);
+            SetBorderColor(art, new Color(0.75f, 0.72f, 0.82f, 0.26f));
+
+            VisualElement emptyState = new VisualElement();
+            emptyState.style.alignItems = Align.Center;
+            emptyState.pickingMode = PickingMode.Ignore;
+            VisualElement emptyIcon = CreateNewProjectIcon(NewProjectIconKind.Image, new Color(0.60f, 0.58f, 0.66f, 0.80f), 84f);
+            emptyState.Add(emptyIcon);
+            Label emptyLabel = CreateLabel("Add cover", 22f, textFaint, true, TextAnchor.MiddleCenter, false);
+            emptyLabel.pickingMode = PickingMode.Ignore;
+            emptyLabel.style.marginTop = 12f;
+            emptyState.Add(emptyLabel);
+            art.Add(emptyState);
+
+            Texture2D previewTexture = null;
+
+            void ReleasePreviewTexture()
+            {
+                if (previewTexture == null)
+                    return;
+
+                UnityEngine.Object.Destroy(previewTexture);
+                previewTexture = null;
+            }
+
+            Label fileLabel = CreateLabel("No image selected", 20f, textFaint, false, TextAnchor.MiddleCenter, false);
+            fileLabel.style.marginTop = 12f;
+            fileLabel.style.width = 300f;
+            fileLabel.style.overflow = Overflow.Hidden;
+            fileLabel.style.whiteSpace = WhiteSpace.NoWrap;
+            fileLabel.style.textOverflow = TextOverflow.Ellipsis;
+
+            Button removeButton = null;
+
+            void Refresh()
+            {
+                ReleasePreviewTexture();
+                art.style.backgroundImage = StyleKeyword.None;
+
+                string path = coverImagePath ?? string.Empty;
+                bool hasImage = false;
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    try
+                    {
+                        Texture2D texture = new Texture2D(2, 2, TextureFormat.RGBA32, false)
+                        {
+                            hideFlags = HideFlags.HideAndDontSave,
+                            filterMode = FilterMode.Bilinear,
+                            wrapMode = TextureWrapMode.Clamp
+                        };
+
+                        if (texture.LoadImage(File.ReadAllBytes(path)))
+                        {
+                            previewTexture = texture;
+                            art.style.backgroundImage = new StyleBackground(previewTexture);
+                            hasImage = true;
+                        }
+                        else
+                        {
+                            UnityEngine.Object.Destroy(texture);
+                        }
+                    }
+                    catch
+                    {
+                        ReleasePreviewTexture();
+                        art.style.backgroundImage = StyleKeyword.None;
+                    }
+                }
+
+                bool hasPath = !string.IsNullOrWhiteSpace(path);
+                fileLabel.text = hasPath ? Path.GetFileName(path) : "No image selected";
+                emptyState.style.display = hasImage ? DisplayStyle.None : DisplayStyle.Flex;
+                removeButton.style.display = hasPath ? DisplayStyle.Flex : DisplayStyle.None;
+            }
+
+            void ClearCover()
+            {
+                coverImagePath = string.Empty;
+                Refresh();
+            }
+
+            removeButton = CreateNewProjectIconButton(NewProjectIconKind.Cross, ClearCover, danger: true, size: 56f, solid: true);
+            removeButton.style.position = Position.Absolute;
+            removeButton.style.top = 12f;
+            removeButton.style.right = 12f;
+            removeButton.style.display = DisplayStyle.None;
+            art.Add(removeButton);
+
+            art.RegisterCallback<ClickEvent>(evt =>
+            {
+                VisualElement target = evt.target as VisualElement;
+                if (target != null && (target == removeButton || removeButton.Contains(target)))
+                    return;
+
+                if (!ChartEditorFilePicker.TryPickImageFile(out string path))
+                    return;
+
+                coverImagePath = path;
+                Refresh();
+            });
+            art.RegisterCallback<MouseEnterEvent>(_ =>
+            {
+                SetBorderColor(art, new Color(accentPurple.r, accentPurple.g, accentPurple.b, 0.65f));
+                art.style.backgroundColor = new Color(0.060f, 0.056f, 0.070f, 1f);
+            });
+            art.RegisterCallback<MouseLeaveEvent>(_ =>
+            {
+                SetBorderColor(art, new Color(0.75f, 0.72f, 0.82f, 0.26f));
+                art.style.backgroundColor = insetBackground;
+            });
+            container.RegisterCallback<DetachFromPanelEvent>(_ => ReleasePreviewTexture());
+
+            container.Add(art);
+            container.Add(fileLabel);
+            Refresh();
+            return container;
+        }
+
+        selectChartButton = CreateNewProjectGhostButton("Browse", SelectChart);
+        clearChartButton = CreateNewProjectIconButton(NewProjectIconKind.Cross, ClearChart, danger: true, size: 72f);
+        selectAudioButton = CreateNewProjectGhostButton("Browse", SelectAudio);
+        clearAudioButton = CreateNewProjectIconButton(NewProjectIconKind.Cross, ClearAudio, danger: true, size: 72f);
+
+        Button CreateFooterButton(string text, Action action, bool primary)
+        {
+            Button button = new Button(action) { text = text ?? string.Empty };
+            button.focusable = false;
+            button.style.unityFontDefinition = bodyFont;
+            button.style.unityFontStyleAndWeight = FontStyle.Bold;
+            button.style.fontSize = 31f;
+            button.style.height = 92f;
+            button.style.minWidth = primary ? 380f : 230f;
+            button.style.marginLeft = 0f;
+            button.style.marginRight = 0f;
+            button.style.marginTop = 0f;
+            button.style.marginBottom = 0f;
+            button.style.paddingLeft = 44f;
+            button.style.paddingRight = 44f;
+            button.style.unityTextAlign = TextAnchor.MiddleCenter;
+            SetRadius(button, 16f);
+
+            void Apply(bool hover)
+            {
+                if (primary)
+                {
+                    button.style.backgroundColor = hover ? Color.Lerp(accentPurple, Color.white, 0.12f) : accentPurple;
+                    SetBorderWidth(button, 2f);
+                    SetBorderColor(button, Color.Lerp(accentPurple, Color.white, hover ? 0.50f : 0.30f));
+                    button.style.color = Color.white;
+                }
+                else
+                {
+                    button.style.backgroundColor = hover ? new Color(1f, 1f, 1f, 0.10f) : new Color(1f, 1f, 1f, 0.03f);
+                    SetBorderWidth(button, 2f);
+                    SetBorderColor(button, hover ? new Color(0.84f, 0.82f, 0.92f, 0.60f) : new Color(0.80f, 0.78f, 0.88f, 0.30f));
+                    button.style.color = hover ? Color.white : new Color(0.92f, 0.91f, 0.95f, 1f);
+                }
+
+                button.style.scale = hover ? new Scale(new Vector3(1.02f, 1.02f, 1f)) : new Scale(Vector3.one);
+            }
+
+            Apply(false);
+            button.RegisterCallback<MouseEnterEvent>(_ => Apply(true));
+            button.RegisterCallback<MouseLeaveEvent>(_ => Apply(false));
+            return button;
+        }
+
+        VisualElement overlay = new VisualElement();
+        overlay.style.position = Position.Absolute;
+        overlay.style.left = 0f;
+        overlay.style.right = 0f;
+        overlay.style.top = 0f;
+        overlay.style.bottom = 0f;
+        overlay.style.alignItems = Align.Center;
+        overlay.style.justifyContent = Justify.Center;
+        overlay.style.backgroundColor = new Color(0.004f, 0.004f, 0.006f, 0.72f);
+        overlay.pickingMode = PickingMode.Position;
+        overlay.RegisterCallback<PointerDownEvent>(evt =>
+        {
+            HideEditPopup();
+            evt.StopPropagation();
+        });
+
+        VisualElement panel = new VisualElement();
+        panel.style.width = 2280f;
+        panel.style.maxWidth = Length.Percent(94f);
+        panel.style.maxHeight = Length.Percent(92f);
+        panel.style.flexDirection = FlexDirection.Column;
+        panel.style.backgroundColor = panelBackground;
+        panel.style.overflow = Overflow.Hidden;
+        SetRadius(panel, 26f);
+        SetBorderWidth(panel, 3f);
+        SetBorderColor(panel, new Color(0.78f, 0.75f, 0.88f, 0.36f));
+        panel.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
+
+        VisualElement headerBand = new VisualElement();
+        headerBand.style.flexDirection = FlexDirection.Row;
+        headerBand.style.alignItems = Align.Center;
+        headerBand.style.flexShrink = 0f;
+        headerBand.style.backgroundColor = bandBackground;
+        headerBand.style.paddingLeft = 44f;
+        headerBand.style.paddingRight = 36f;
+        headerBand.style.paddingTop = 34f;
+        headerBand.style.paddingBottom = 34f;
+        headerBand.style.borderBottomWidth = 2f;
+        headerBand.style.borderBottomColor = hairline;
+
+        headerBand.Add(CreateNewProjectIconTile(NewProjectIconKind.Note, accentPurple, 92f));
+
+        VisualElement headerText = new VisualElement();
+        headerText.style.marginLeft = 26f;
+        headerText.style.flexGrow = 1f;
+        headerText.style.flexShrink = 1f;
+        headerText.style.minWidth = 0f;
+        Label title = CreateLabel("New Project", 42f, textPrimary, true, TextAnchor.MiddleLeft, false);
+        headerText.Add(title);
+        Label subtitle = CreateLabel("Import a chart and audio, or start from a blank project.", 22f, textMuted, false, TextAnchor.MiddleLeft, false);
+        subtitle.style.whiteSpace = WhiteSpace.Normal;
+        subtitle.style.marginTop = 6f;
+        headerText.Add(subtitle);
+        headerBand.Add(headerText);
+
+        Button closeButton = CreateNewProjectIconButton(NewProjectIconKind.Cross, HideEditPopup, danger: false, size: 76f);
+        closeButton.style.marginLeft = 20f;
+        headerBand.Add(closeButton);
+        panel.Add(headerBand);
+
+        ScrollView body = new ScrollView(ScrollViewMode.Vertical);
+        ConfigureScrollView(body);
+        body.style.flexGrow = 1f;
+        body.style.minHeight = 0f;
+        body.contentContainer.style.paddingLeft = 44f;
+        body.contentContainer.style.paddingRight = 44f;
+        body.contentContainer.style.paddingTop = 40f;
+        body.contentContainer.style.paddingBottom = 40f;
+        body.contentContainer.style.flexShrink = 0f;
+
+        VisualElement chartCard = BuildFileCard(NewProjectIconKind.Note, accentBlue, "Chart", "Optional", chartPathLabel, chartDetailLabel, selectChartButton, clearChartButton, arrangementList);
+        VisualElement audioCard = BuildFileCard(NewProjectIconKind.Waveform, accentGreen, "Audio", "Optional", audioPathLabel, audioDetailLabel, selectAudioButton, clearAudioButton, null);
+        audioCard.style.marginBottom = 0f;
+
+        VisualElement detailsCard = CreateCard();
+        detailsCard.style.marginBottom = 0f;
+
+        VisualElement detailsHeader = new VisualElement();
+        detailsHeader.style.flexDirection = FlexDirection.Row;
+        detailsHeader.style.alignItems = Align.Center;
+        detailsHeader.Add(CreateNewProjectIconTile(NewProjectIconKind.Image, accentPurple, 68f));
+
+        VisualElement detailsInfo = new VisualElement();
+        detailsInfo.style.flexGrow = 1f;
+        detailsInfo.style.flexShrink = 1f;
+        detailsInfo.style.minWidth = 0f;
+        detailsInfo.style.marginLeft = 20f;
+        detailsInfo.Add(CreateLabel("Song Details", 31f, textPrimary, true, TextAnchor.MiddleLeft, false));
+        Label detailsHint = CreateLabel("Shown in the song library. Everything can be edited later.", 21f, textFaint, false, TextAnchor.MiddleLeft, false);
+        detailsHint.style.whiteSpace = WhiteSpace.Normal;
+        detailsHint.style.marginTop = 5f;
+        detailsInfo.Add(detailsHint);
+        detailsHeader.Add(detailsInfo);
+        detailsCard.Add(detailsHeader);
+
+        VisualElement detailsBody = new VisualElement();
+        detailsBody.style.marginTop = 30f;
+
+        VisualElement coverRow = new VisualElement();
+        coverRow.style.flexDirection = FlexDirection.Row;
+        coverRow.style.alignItems = Align.FlexStart;
+        coverRow.Add(BuildCoverPicker());
+
+        VisualElement titleArtistColumn = new VisualElement();
+        titleArtistColumn.style.flexGrow = 1f;
+        titleArtistColumn.style.flexShrink = 1f;
+        titleArtistColumn.style.minWidth = 0f;
+        titleArtistColumn.style.marginLeft = 32f;
+        titleArtistColumn.Add(titleField);
+        artistField.style.marginBottom = 0f;
+        titleArtistColumn.Add(artistField);
+        coverRow.Add(titleArtistColumn);
+        detailsBody.Add(coverRow);
+
+        albumField.style.marginTop = 28f;
+        detailsBody.Add(albumField);
+
+        VisualElement genreYearRow = new VisualElement();
+        genreYearRow.style.flexDirection = FlexDirection.Row;
+        genreField.style.flexGrow = 1f;
+        genreField.style.flexShrink = 1f;
+        genreField.style.flexBasis = 0f;
+        genreField.style.minWidth = 0f;
+        genreField.style.marginRight = 24f;
+        genreField.style.marginBottom = 0f;
+        yearField.style.width = 300f;
+        yearField.style.flexShrink = 0f;
+        yearField.style.marginBottom = 0f;
+        genreYearRow.Add(genreField);
+        genreYearRow.Add(yearField);
+        detailsBody.Add(genreYearRow);
+        detailsCard.Add(detailsBody);
+
+        VisualElement columns = new VisualElement();
+        columns.style.flexDirection = FlexDirection.Row;
+        columns.style.alignItems = Align.FlexStart;
+        columns.style.flexShrink = 0f;
+
+        VisualElement filesColumn = new VisualElement();
+        filesColumn.style.flexGrow = 1f;
+        filesColumn.style.flexShrink = 1f;
+        filesColumn.style.flexBasis = 0f;
+        filesColumn.style.minWidth = 0f;
+        filesColumn.style.marginRight = 36f;
+        filesColumn.Add(chartCard);
+        filesColumn.Add(audioCard);
+
+        VisualElement detailsColumn = new VisualElement();
+        detailsColumn.style.flexGrow = 1f;
+        detailsColumn.style.flexShrink = 1f;
+        detailsColumn.style.flexBasis = 0f;
+        detailsColumn.style.minWidth = 0f;
+        detailsColumn.Add(detailsCard);
+
+        columns.Add(filesColumn);
+        columns.Add(detailsColumn);
+        body.Add(columns);
+        panel.Add(body);
+
+        bool stackedLayout = false;
+        bool layoutInitialized = false;
+        void ApplyResponsiveLayout(float panelWidth)
+        {
+            bool stacked = panelWidth < 1720f;
+            if (layoutInitialized && stacked == stackedLayout)
+                return;
+
+            layoutInitialized = true;
+            stackedLayout = stacked;
+            columns.style.flexDirection = stacked ? FlexDirection.Column : FlexDirection.Row;
+            columns.style.alignItems = stacked ? Align.Stretch : Align.FlexStart;
+            filesColumn.style.marginRight = stacked ? 0f : 36f;
+            filesColumn.style.marginBottom = stacked ? 28f : 0f;
+            filesColumn.style.flexShrink = stacked ? 0f : 1f;
+            detailsColumn.style.flexShrink = stacked ? 0f : 1f;
+            filesColumn.style.flexBasis = stacked ? new StyleLength(StyleKeyword.Auto) : new StyleLength(0f);
+            detailsColumn.style.flexBasis = stacked ? new StyleLength(StyleKeyword.Auto) : new StyleLength(0f);
+        }
+        panel.RegisterCallback<GeometryChangedEvent>(evt => ApplyResponsiveLayout(evt.newRect.width));
+
+        VisualElement footerBand = new VisualElement();
+        footerBand.style.flexDirection = FlexDirection.Row;
+        footerBand.style.alignItems = Align.Center;
+        footerBand.style.justifyContent = Justify.FlexEnd;
+        footerBand.style.flexShrink = 0f;
+        footerBand.style.backgroundColor = bandBackground;
+        footerBand.style.paddingLeft = 44f;
+        footerBand.style.paddingRight = 44f;
+        footerBand.style.paddingTop = 28f;
+        footerBand.style.paddingBottom = 28f;
+        footerBand.style.borderTopWidth = 2f;
+        footerBand.style.borderTopColor = hairline;
+        footerBand.Add(statusLabel);
+        Button cancel = CreateFooterButton("Cancel", HideEditPopup, primary: false);
+        Button create = CreateFooterButton("Create Project", CreateProject, primary: true);
+        cancel.style.marginRight = 20f;
+        footerBand.Add(cancel);
+        footerBand.Add(create);
+        panel.Add(footerBand);
+
+        panel.style.transitionProperty = new List<StylePropertyName> { new StylePropertyName("opacity"), new StylePropertyName("translate") };
+        panel.style.transitionDuration = new List<TimeValue> { new TimeValue(180, TimeUnit.Millisecond), new TimeValue(180, TimeUnit.Millisecond) };
+        panel.style.transitionTimingFunction = new List<EasingFunction> { new EasingFunction(EasingMode.EaseOutCubic), new EasingFunction(EasingMode.EaseOutCubic) };
+        panel.style.opacity = 0f;
+        panel.style.translate = new Translate(0f, 18f);
+
+        overlay.Add(panel);
+        editPopupElement = overlay;
+        editPopupKind = ChartEditorPopupKind.Generic;
+        RootElement.Add(editPopupElement);
+        editPopupElement.BringToFront();
+        SetChartEditorKeyboardCaptureActive(true);
+
+        panel.schedule.Execute(() =>
+        {
+            panel.style.opacity = 1f;
+            panel.style.translate = new Translate(0f, 0f);
+        }).ExecuteLater(30);
+
+        RefreshChartLabels();
+        RefreshAudioLabels();
+        RefreshArrangementList();
+        titleField.schedule.Execute(() => titleField.Focus());
+    }
+
     private void ImportChartAndAudio()
     {
         if (!ChartEditorFilePicker.TryPickChartFile(out string chartPath))
@@ -11900,10 +15147,13 @@ public sealed class ChartEditorOverlay
         if (!ChartEditorFilePicker.TryPickAudioFile(out string audioPath))
             audioPath = string.Empty;
 
-        if (ChartEditorImportService.ImportChartAndAudio(chartPath, audioPath, out ChartEditorImportResult result, out string error))
-            AcceptImport(result, "Chart imported.");
-        else
-            SetStatus(error);
+        RunWithEditorLoadingOverlay("Importing chart...", () =>
+        {
+            if (ChartEditorImportService.ImportChartAndAudio(chartPath, audioPath, out ChartEditorImportResult result, out string error))
+                AcceptImport(result, "Chart imported.");
+            else
+                SetStatus(error);
+        });
     }
 
     private void ImportTheoryPackage()
@@ -11916,10 +15166,101 @@ public sealed class ChartEditorOverlay
 
     private void ImportTheoryPackage(string packagePath)
     {
-        if (ChartEditorImportService.ImportTheoryPackage(packagePath, out ChartEditorImportResult result, out string error))
-            AcceptImport(result, "Theory package imported.");
-        else
-            SetStatus(error);
+        RunWithEditorLoadingOverlay("Opening theory package...", () =>
+        {
+            if (ChartEditorImportService.ImportTheoryPackage(packagePath, out ChartEditorImportResult result, out string error))
+                AcceptImport(result, "Theory package imported.");
+            else
+                SetStatus(error);
+        });
+    }
+
+    private void ShowEditorLoadingOverlay(string message)
+    {
+        HideEditorLoadingOverlay();
+
+        VisualElement overlay = new VisualElement();
+        overlay.style.position = Position.Absolute;
+        overlay.style.left = 0f;
+        overlay.style.right = 0f;
+        overlay.style.top = 0f;
+        overlay.style.bottom = 0f;
+        overlay.style.alignItems = Align.Center;
+        overlay.style.justifyContent = Justify.Center;
+        overlay.style.backgroundColor = new Color(0.004f, 0.004f, 0.006f, 0.84f);
+        overlay.pickingMode = PickingMode.Position;
+
+        VisualElement card = new VisualElement();
+        card.style.alignItems = Align.Center;
+        card.pickingMode = PickingMode.Ignore;
+
+        Color accent = new Color(0.62f, 0.38f, 1f, 1f);
+        VisualElement spinner = new VisualElement();
+        spinner.style.width = 96f;
+        spinner.style.height = 96f;
+        spinner.pickingMode = PickingMode.Ignore;
+        spinner.generateVisualContent += context =>
+        {
+            Rect rect = context.visualElement.contentRect;
+            if (rect.width <= 1f || rect.height <= 1f)
+                return;
+
+            Painter2D painter = context.painter2D;
+            Vector2 center = new Vector2(rect.width * 0.5f, rect.height * 0.5f);
+            float radius = Mathf.Min(rect.width, rect.height) * 0.5f - 7f;
+            painter.lineWidth = 10f;
+            painter.lineCap = LineCap.Round;
+            painter.strokeColor = new Color(accent.r, accent.g, accent.b, 0.16f);
+            painter.BeginPath();
+            painter.Arc(center, radius, 0f, 360f);
+            painter.Stroke();
+            painter.strokeColor = accent;
+            painter.BeginPath();
+            painter.Arc(center, radius, 0f, 100f);
+            painter.Stroke();
+        };
+        float spinAngle = 0f;
+        spinner.schedule.Execute(() =>
+        {
+            spinAngle = (spinAngle + 7f) % 360f;
+            spinner.style.rotate = new Rotate(spinAngle);
+        }).Every(16);
+        card.Add(spinner);
+
+        Label messageLabel = CreateLabel(string.IsNullOrWhiteSpace(message) ? "Loading..." : message, 30f, new Color(0.97f, 0.96f, 0.98f, 1f), true, TextAnchor.MiddleCenter, false);
+        messageLabel.style.marginTop = 30f;
+        card.Add(messageLabel);
+
+        Label hintLabel = CreateLabel("This can take a moment for large songs.", 20f, new Color(0.60f, 0.58f, 0.66f, 1f), false, TextAnchor.MiddleCenter, false);
+        hintLabel.style.marginTop = 8f;
+        card.Add(hintLabel);
+
+        overlay.Add(card);
+        RootElement.Add(overlay);
+        overlay.BringToFront();
+        editorLoadingOverlay = overlay;
+    }
+
+    private void HideEditorLoadingOverlay()
+    {
+        editorLoadingOverlay?.RemoveFromHierarchy();
+        editorLoadingOverlay = null;
+    }
+
+    private void RunWithEditorLoadingOverlay(string message, Action operation)
+    {
+        ShowEditorLoadingOverlay(message);
+        RootElement.schedule.Execute(() =>
+        {
+            try
+            {
+                operation?.Invoke();
+            }
+            finally
+            {
+                HideEditorLoadingOverlay();
+            }
+        }).ExecuteLater(50);
     }
 
     private void ImportExternalImporterFile(string importerId)
@@ -11934,10 +15275,13 @@ public sealed class ChartEditorOverlay
             return;
 
         SetStatus($"Importing {importer.DisplayName}...");
-        if (ChartEditorImportService.ImportExternalImporterSource(sourcePath, out ChartEditorImportResult result, out string error, importer.Id))
-            AcceptImport(result, $"{importer.DisplayName} imported.");
-        else
-            SetStatus(error);
+        RunWithEditorLoadingOverlay($"Importing {importer.DisplayName}...", () =>
+        {
+            if (ChartEditorImportService.ImportExternalImporterSource(sourcePath, out ChartEditorImportResult result, out string error, importer.Id))
+                AcceptImport(result, $"{importer.DisplayName} imported.");
+            else
+                SetStatus(error);
+        });
     }
 
     private void ImportExternalImporterFolder(string importerId, int signatureIndex)
@@ -11962,10 +15306,13 @@ public sealed class ChartEditorOverlay
 
         string sourceLabel = FirstNonEmpty(signature?.displayName, importer.DisplayName);
         SetStatus($"Importing {sourceLabel}...");
-        if (ChartEditorImportService.ImportExternalImporterSource(sourcePath, out ChartEditorImportResult result, out string error, importer.Id))
-            AcceptImport(result, $"{sourceLabel} imported.");
-        else
-            SetStatus(error);
+        RunWithEditorLoadingOverlay($"Importing {sourceLabel}...", () =>
+        {
+            if (ChartEditorImportService.ImportExternalImporterSource(sourcePath, out ChartEditorImportResult result, out string error, importer.Id))
+                AcceptImport(result, $"{sourceLabel} imported.");
+            else
+                SetStatus(error);
+        });
     }
 
     private void ImportFolder()
@@ -11973,10 +15320,13 @@ public sealed class ChartEditorOverlay
         if (!ChartEditorFilePicker.TryPickFolder("Open Unpacked Chart Folder", ExternalContentPaths.PersistentSongsDirectory, out string folderPath))
             return;
 
-        if (ChartEditorImportService.ImportFolder(folderPath, out ChartEditorImportResult result, out string error))
-            AcceptImport(result, "Folder imported.");
-        else
-            SetStatus(error);
+        RunWithEditorLoadingOverlay("Opening chart folder...", () =>
+        {
+            if (ChartEditorImportService.ImportFolder(folderPath, out ChartEditorImportResult result, out string error))
+                AcceptImport(result, "Folder imported.");
+            else
+                SetStatus(error);
+        });
     }
 
     private void OpenExistingProject()
@@ -11984,6 +15334,11 @@ public sealed class ChartEditorOverlay
         if (!ChartEditorFilePicker.TryPickProjectFile(out string path))
             return;
 
+        RunWithEditorLoadingOverlay("Opening project...", () => OpenExistingProjectFromPath(path));
+    }
+
+    private void OpenExistingProjectFromPath(string path)
+    {
         if (ChartEditorProjectStore.LoadProject(path, out ChartEditorProject loaded, out string error))
         {
             project = loaded;
@@ -12306,7 +15661,7 @@ public sealed class ChartEditorOverlay
         if (track == null)
             return;
 
-        double safeTime = Math.Max(0.0, Math.Min(project.DurationSeconds, timeSeconds));
+        double safeTime = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), timeSeconds));
         ChartEditorNote note = new ChartEditorNote
         {
             id = Guid.NewGuid().ToString("N"),
@@ -12335,7 +15690,7 @@ public sealed class ChartEditorOverlay
 
     private void AddSectionAtTime(double timeSeconds)
     {
-        double safeTime = Math.Max(0.0, Math.Min(project.DurationSeconds, timeSeconds));
+        double safeTime = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), timeSeconds));
         ChartEditorSection section = new ChartEditorSection
         {
             id = Guid.NewGuid().ToString("N"),
@@ -12364,7 +15719,7 @@ public sealed class ChartEditorOverlay
 
     private void AddSyncPointAtTime(double timeSeconds)
     {
-        double safeTime = Math.Max(0.0, Math.Min(project.DurationSeconds, timeSeconds));
+        double safeTime = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), timeSeconds));
         ChartEditorBeatMarker point = ChartEditorTimingService.AddAnchorAtAudioTime(project, safeTime);
         SelectSingleAnchor(point);
         project.cursorTimeSeconds = point?.audioTimeSeconds ?? safeTime;
@@ -12399,7 +15754,7 @@ public sealed class ChartEditorOverlay
         timelineScrollOffset.x = Mathf.Max(0f, TimeToPixels(anchorTimeSeconds) + TimelineLabelWidth - Mathf.Max(0f, anchorViewportX));
         timelineScrollInitialized = true;
         skipTimelineScrollCaptureOnce = true;
-        Rebuild();
+        QueueTimelineRefresh();
     }
 
     private void ResetTimelineZoom()
@@ -12417,7 +15772,7 @@ public sealed class ChartEditorOverlay
         }
         timelineScrollInitialized = true;
         skipTimelineScrollCaptureOnce = true;
-        Rebuild();
+        QueueTimelineRefresh();
     }
 
     private static float ResolveDefaultTimelineZoom(ChartEditorProject sourceProject)
@@ -12489,7 +15844,7 @@ public sealed class ChartEditorOverlay
         {
             ChartEditorNote note = refs[i].note;
             double originalTime = note.timeSeconds;
-            note.timeSeconds = Math.Max(0.0, Math.Min(project.DurationSeconds, note.timeSeconds + delta));
+            note.timeSeconds = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), note.timeSeconds + delta));
             note.chartTimeSeconds = Math.Max(0.0, note.chartTimeSeconds + (note.timeSeconds - originalTime));
             ChartEditorTimingService.UpdateNoteBeatTiming(project, note);
         }
@@ -12517,7 +15872,7 @@ public sealed class ChartEditorOverlay
         {
             ChartEditorNote note = refs[i].note;
             double beat = Math.Round(ChartEditorTimingService.GetBeatPositionForAudioTime(project, note.timeSeconds));
-            double quantizedTime = Math.Max(0.0, Math.Min(project.DurationSeconds, ChartEditorTimingService.GetAudioTimeForBeat(project, beat)));
+            double quantizedTime = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), ChartEditorTimingService.GetAudioTimeForBeat(project, beat)));
             double delta = quantizedTime - note.timeSeconds;
             note.timeSeconds = quantizedTime;
             note.chartTimeSeconds = Math.Max(0.0, note.chartTimeSeconds + delta);
@@ -12567,8 +15922,12 @@ public sealed class ChartEditorOverlay
 
     private void CopySelectedNotes()
     {
+        // Paste always targets a single track, so cross-track selections must
+        // not feed foreign-role notes (e.g. drum lanes) into the clipboard.
+        ChartEditorTrack copySourceTrack = project?.SelectedTrack;
         List<ChartEditorNoteReference> refs = GetSelectedNoteReferences()
-            .Where(noteRef => noteRef?.note != null)
+            .Where(noteRef => noteRef?.note != null &&
+                              (copySourceTrack == null || ReferenceEquals(noteRef.track, copySourceTrack)))
             .OrderBy(noteRef => noteRef.note.timeSeconds)
             .ThenBy(noteRef => noteRef.note.stringOrLane)
             .ToList();
@@ -12816,7 +16175,7 @@ public sealed class ChartEditorOverlay
             ChartEditorNote clone = JsonUtility.FromJson<ChartEditorNote>(json);
             clone.id = Guid.NewGuid().ToString("N");
             clone.sourceNoteId = -1;
-            clone.timeSeconds = Math.Max(0.0, Math.Min(project.DurationSeconds, clone.timeSeconds + 0.1));
+            clone.timeSeconds = Math.Max(0.0, Math.Min(GetProjectDurationSeconds(), clone.timeSeconds + 0.1));
             clone.chartTimeSeconds = Math.Max(0.0, clone.chartTimeSeconds + 0.1);
             ChartEditorTimingService.UpdateNoteBeatTiming(project, clone);
             noteRef.track.notes.Add(clone);
@@ -12957,53 +16316,102 @@ public sealed class ChartEditorOverlay
         return button;
     }
 
-    private Button CreateHeaderIconButton(string text, Action action, bool primary)
+    private Button CreateHeaderIconButton(NewProjectIconKind icon, Action action, bool primary, bool grouped = false)
     {
-        Button button = new Button(action) { text = text };
+        Button button = new Button(action) { text = string.Empty };
         button.focusable = false;
-        button.style.width = primary ? 74f : 58f;
-        button.style.minWidth = primary ? 74f : 58f;
-        button.style.height = 58f;
-        button.style.marginLeft = 8f;
-        button.style.marginRight = 8f;
+        button.style.width = primary ? 84f : 68f;
+        button.style.minWidth = primary ? 84f : 68f;
+        button.style.height = 68f;
+        button.style.marginLeft = grouped ? 4f : 8f;
+        button.style.marginRight = grouped ? 4f : 8f;
         button.style.paddingLeft = 0f;
         button.style.paddingRight = 0f;
-        button.style.unityTextAlign = TextAnchor.MiddleCenter;
-        button.style.unityFontDefinition = bodyFont;
-        button.style.unityFontStyleAndWeight = FontStyle.Bold;
-        button.style.fontSize = UiFont(primary ? 26f : 23f);
-        Color accent = primary ? new Color(0.72f, 0.50f, 1f, 1f) : new Color(0.74f, 0.80f, 0.92f, 1f);
-        if (primary)
-            StyleFilledButton(button, new Color(0.42f, 0.24f, 0.74f, 1f), darkText: false);
-        else
-            StyleSoftButton(button, accent);
-        SetRadius(button, primary ? 12f : 10f);
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.alignItems = Align.Center;
+        button.style.justifyContent = Justify.Center;
+        SetRadius(button, 12f);
+
+        Color iconColor = primary ? Color.white : new Color(0.83f, 0.82f, 0.88f, 0.95f);
+        button.Add(CreateNewProjectIcon(icon, iconColor, 68f * 0.48f));
+
+        void Apply(bool hover)
+        {
+            if (primary)
+            {
+                Color accent = new Color(0.62f, 0.38f, 1f, 1f);
+                button.style.backgroundColor = hover ? Color.Lerp(accent, Color.white, 0.12f) : accent;
+                SetBorderWidth(button, 2f);
+                SetBorderColor(button, Color.Lerp(accent, Color.white, hover ? 0.45f : 0.28f));
+            }
+            else if (grouped)
+            {
+                button.style.backgroundColor = hover ? new Color(1f, 1f, 1f, 0.09f) : Color.clear;
+                SetBorderWidth(button, 0f);
+            }
+            else
+            {
+                button.style.backgroundColor = hover ? new Color(1f, 1f, 1f, 0.09f) : new Color(1f, 1f, 1f, 0.03f);
+                SetBorderWidth(button, 2f);
+                SetBorderColor(button, hover ? new Color(0.80f, 0.78f, 0.88f, 0.55f) : new Color(0.75f, 0.72f, 0.82f, 0.22f));
+            }
+        }
+
+        Apply(false);
+        button.RegisterCallback<MouseEnterEvent>(_ => Apply(true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => Apply(false));
         return button;
+    }
+
+    private void UpdateTransportPlayButtonIcon()
+    {
+        if (transportPlayIcon != null)
+            transportPlayIcon.style.display = editorPlaying ? DisplayStyle.None : DisplayStyle.Flex;
+        if (transportPauseIcon != null)
+            transportPauseIcon.style.display = editorPlaying ? DisplayStyle.Flex : DisplayStyle.None;
     }
 
     private Button CreateHeaderActionButton(string text, Action action, bool primary)
     {
         Button button = new Button(action) { text = text };
         button.focusable = false;
-        button.style.height = 58f;
-        button.style.minWidth = primary ? 178f : 154f;
+        button.style.height = 68f;
+        button.style.minWidth = primary ? 210f : 190f;
         button.style.marginLeft = 10f;
         button.style.marginRight = 10f;
-        button.style.paddingLeft = 22f;
-        button.style.paddingRight = 22f;
+        button.style.paddingLeft = 30f;
+        button.style.paddingRight = 30f;
         button.style.unityTextAlign = TextAnchor.MiddleCenter;
         button.style.unityFontDefinition = bodyFont;
         button.style.unityFontStyleAndWeight = FontStyle.Bold;
-        button.style.fontSize = UiFont(21f);
-        if (primary)
+        button.style.fontSize = UiFont(24f);
+        SetRadius(button, 14f);
+
+        void Apply(bool hover)
         {
-            StyleFilledButton(button, new Color(0.54f, 0.30f, 0.92f, 1f), darkText: false);
+            if (primary)
+            {
+                Color accent = new Color(0.62f, 0.38f, 1f, 1f);
+                button.style.backgroundColor = hover ? Color.Lerp(accent, Color.white, 0.12f) : accent;
+                SetBorderWidth(button, 2f);
+                SetBorderColor(button, Color.Lerp(accent, Color.white, hover ? 0.45f : 0.28f));
+                button.style.color = Color.white;
+            }
+            else
+            {
+                button.style.backgroundColor = hover ? new Color(1f, 1f, 1f, 0.09f) : new Color(1f, 1f, 1f, 0.03f);
+                SetBorderWidth(button, 2f);
+                SetBorderColor(button, hover ? new Color(0.80f, 0.78f, 0.88f, 0.55f) : new Color(0.75f, 0.72f, 0.82f, 0.22f));
+                button.style.color = hover ? Color.white : new Color(0.91f, 0.90f, 0.94f, 1f);
+            }
+
+            button.style.scale = hover ? new Scale(new Vector3(1.02f, 1.02f, 1f)) : new Scale(Vector3.one);
         }
-        else
-        {
-            StyleSoftButton(button, new Color(0.80f, 0.86f, 0.94f, 1f));
-        }
-        SetRadius(button, 11f);
+
+        Apply(false);
+        button.RegisterCallback<MouseEnterEvent>(_ => Apply(true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => Apply(false));
         return button;
     }
 
@@ -13254,7 +16662,7 @@ public sealed class ChartEditorOverlay
         label.style.top = top;
         label.style.width = TimelineLabelWidth;
         label.style.height = height;
-        label.style.backgroundColor = new Color(0.030f, 0.036f, 0.046f, 1f);
+        label.style.backgroundColor = new Color(0.038f, 0.036f, 0.044f, 1f);
         label.style.borderRightWidth = 1f;
         label.style.borderRightColor = new Color(0.16f, 0.19f, 0.24f, 1f);
         label.style.whiteSpace = WhiteSpace.Normal;
@@ -13395,7 +16803,7 @@ public sealed class ChartEditorOverlay
 
         note.techniqueSegments ??= new List<ChartEditorTechniqueSegment>();
         float start = Mathf.Max(0f, startOverride ?? GetTechniqueSegmentMaxEnd(note));
-        float projectLimit = Mathf.Max(TechniqueSegmentMinimumSeconds, (float)((project?.DurationSeconds ?? note.timeSeconds + start + 1.0) - note.timeSeconds));
+        float projectLimit = Mathf.Max(TechniqueSegmentMinimumSeconds, (float)((project != null ? GetProjectDurationSeconds() : note.timeSeconds + start + 1.0) - note.timeSeconds));
         float length = Mathf.Min(0.5f, Mathf.Max(TechniqueSegmentMinimumSeconds, projectLimit - start));
         if (length <= TechniqueSegmentMinimumSeconds && start > 0f)
         {
@@ -13541,7 +16949,7 @@ public sealed class ChartEditorOverlay
 
         double defaultDuration = refs.Max(noteRef => Math.Max(0.25, GetNoteEffectiveDurationSeconds(noteRef.note)));
         double defaultSustain = Math.Min(2.0, Math.Max(0.0, defaultDuration - 0.25));
-        double maxDuration = refs.Min(noteRef => Math.Max(0.01, (project?.DurationSeconds ?? defaultDuration) - noteRef.note.timeSeconds));
+        double maxDuration = refs.Min(noteRef => Math.Max(0.01, (project != null ? GetProjectDurationSeconds() : defaultDuration) - noteRef.note.timeSeconds));
 
         TextField sustainField = CreatePopupTextField("Sustain Before Vibrato Seconds", defaultSustain.ToString("0.000", CultureInfo.InvariantCulture));
         TextField totalField = CreatePopupTextField("Total Note Duration Seconds", Math.Min(defaultDuration, maxDuration).ToString("0.000", CultureInfo.InvariantCulture));
@@ -13901,7 +17309,7 @@ public sealed class ChartEditorOverlay
         SetToneLabBorder(row,
             new Color(0.36f, 0.38f, 0.44f, 0.84f),
             new Color(0.22f, 0.24f, 0.30f, 0.90f),
-            new Color(0.13f, 0.15f, 0.19f, 0.96f));
+            new Color(0.16f, 0.155f, 0.19f, 0.96f));
         Label titleLabel = CreateLabel(title, 32f, titleColor ?? Color.white, true, TextAnchor.MiddleLeft, false);
         Label detailLabel = CreateLabel(detail, 24f, new Color(0.76f, 0.86f, 0.96f, 0.96f), false, TextAnchor.MiddleLeft, false);
         detailLabel.style.whiteSpace = WhiteSpace.Normal;
@@ -13937,15 +17345,15 @@ public sealed class ChartEditorOverlay
             return;
 
         field.style.color = Color.white;
-        field.style.backgroundColor = new Color(0.018f, 0.022f, 0.030f, 0.98f);
+        field.style.backgroundColor = new Color(0.024f, 0.023f, 0.028f, 0.98f);
         field.style.borderTopWidth = 1f;
         field.style.borderRightWidth = 1f;
         field.style.borderBottomWidth = 1f;
         field.style.borderLeftWidth = 1f;
         SetToneLabBorder(field,
-            new Color(0.38f, 0.40f, 0.44f, 0.84f),
-            new Color(0.22f, 0.24f, 0.28f, 0.95f),
-            new Color(0.13f, 0.15f, 0.18f, 1f));
+            new Color(0.42f, 0.41f, 0.45f, 0.84f),
+            new Color(0.25f, 0.24f, 0.28f, 0.95f),
+            new Color(0.16f, 0.155f, 0.185f, 1f));
         field.style.borderTopLeftRadius = 11f;
         field.style.borderTopRightRadius = 11f;
         field.style.borderBottomLeftRadius = 11f;
@@ -14084,6 +17492,460 @@ public sealed class ChartEditorOverlay
         button.style.scale = hover ? new Scale(new Vector3(1.01f, 1.01f, 1f)) : new Scale(Vector3.one);
     }
 
+    private enum NewProjectIconKind
+    {
+        Note,
+        Waveform,
+        Image,
+        Cross,
+        Plus,
+        Folder,
+        File,
+        ChevronRight,
+        Play,
+        Pause,
+        Stop,
+        SkipStart,
+        SkipEnd,
+        Menu,
+        Gear
+    }
+
+    private static VisualElement CreateNewProjectIcon(NewProjectIconKind kind, Color color, float size)
+    {
+        VisualElement icon = new VisualElement();
+        icon.style.width = size;
+        icon.style.height = size;
+        icon.style.minWidth = size;
+        icon.style.minHeight = size;
+        icon.style.flexShrink = 0f;
+        icon.pickingMode = PickingMode.Ignore;
+        icon.generateVisualContent += context => DrawNewProjectIcon(context, kind, color);
+        return icon;
+    }
+
+    private static void DrawNewProjectIcon(MeshGenerationContext context, NewProjectIconKind kind, Color color)
+    {
+        Rect rect = context.visualElement.contentRect;
+        float w = rect.width;
+        float h = rect.height;
+        if (w <= 1f || h <= 1f)
+            return;
+
+        Painter2D painter = context.painter2D;
+        float unit = Mathf.Min(w, h);
+        painter.lineWidth = Mathf.Max(1.5f, unit * 0.09f);
+        painter.strokeColor = color;
+        painter.fillColor = color;
+        painter.lineCap = LineCap.Round;
+        painter.lineJoin = LineJoin.Round;
+
+        switch (kind)
+        {
+            case NewProjectIconKind.Note:
+            {
+                float headRadius = unit * 0.14f;
+                Vector2 head1 = new Vector2(w * 0.28f, h * 0.76f);
+                Vector2 head2 = new Vector2(w * 0.70f, h * 0.68f);
+                float stemX1 = head1.x + headRadius;
+                float stemX2 = head2.x + headRadius;
+                float stemTop1 = h * 0.28f;
+                float stemTop2 = h * 0.20f;
+
+                painter.BeginPath();
+                painter.Arc(head1, headRadius, 0f, 360f);
+                painter.Fill();
+                painter.BeginPath();
+                painter.Arc(head2, headRadius, 0f, 360f);
+                painter.Fill();
+
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(stemX1, head1.y));
+                painter.LineTo(new Vector2(stemX1, stemTop1));
+                painter.MoveTo(new Vector2(stemX2, head2.y));
+                painter.LineTo(new Vector2(stemX2, stemTop2));
+                painter.Stroke();
+
+                painter.lineWidth = unit * 0.16f;
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(stemX1, stemTop1));
+                painter.LineTo(new Vector2(stemX2, stemTop2));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Waveform:
+            {
+                float centerY = h * 0.5f;
+                float[] positions = { 0.12f, 0.31f, 0.50f, 0.69f, 0.88f };
+                float[] halfHeights = { 0.14f, 0.30f, 0.42f, 0.24f, 0.11f };
+                painter.lineWidth = Mathf.Max(2f, unit * 0.11f);
+                painter.BeginPath();
+                for (int i = 0; i < positions.Length; i++)
+                {
+                    float x = w * positions[i];
+                    float half = h * halfHeights[i];
+                    painter.MoveTo(new Vector2(x, centerY - half));
+                    painter.LineTo(new Vector2(x, centerY + half));
+                }
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Image:
+            {
+                float left = w * 0.14f;
+                float top = h * 0.18f;
+                float right = w * 0.86f;
+                float bottom = h * 0.82f;
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(left, top));
+                painter.LineTo(new Vector2(right, top));
+                painter.LineTo(new Vector2(right, bottom));
+                painter.LineTo(new Vector2(left, bottom));
+                painter.ClosePath();
+                painter.Stroke();
+
+                painter.BeginPath();
+                painter.Arc(new Vector2(w * 0.38f, h * 0.40f), unit * 0.065f, 0f, 360f);
+                painter.Fill();
+
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.20f, h * 0.74f));
+                painter.LineTo(new Vector2(w * 0.44f, h * 0.52f));
+                painter.LineTo(new Vector2(w * 0.58f, h * 0.65f));
+                painter.LineTo(new Vector2(w * 0.70f, h * 0.54f));
+                painter.LineTo(new Vector2(w * 0.82f, h * 0.74f));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Cross:
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.32f, h * 0.32f));
+                painter.LineTo(new Vector2(w * 0.68f, h * 0.68f));
+                painter.MoveTo(new Vector2(w * 0.68f, h * 0.32f));
+                painter.LineTo(new Vector2(w * 0.32f, h * 0.68f));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Plus:
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.50f, h * 0.22f));
+                painter.LineTo(new Vector2(w * 0.50f, h * 0.78f));
+                painter.MoveTo(new Vector2(w * 0.22f, h * 0.50f));
+                painter.LineTo(new Vector2(w * 0.78f, h * 0.50f));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Folder:
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.14f, h * 0.72f));
+                painter.LineTo(new Vector2(w * 0.14f, h * 0.30f));
+                painter.LineTo(new Vector2(w * 0.40f, h * 0.30f));
+                painter.LineTo(new Vector2(w * 0.48f, h * 0.40f));
+                painter.LineTo(new Vector2(w * 0.86f, h * 0.40f));
+                painter.LineTo(new Vector2(w * 0.86f, h * 0.72f));
+                painter.ClosePath();
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.File:
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.26f, h * 0.14f));
+                painter.LineTo(new Vector2(w * 0.60f, h * 0.14f));
+                painter.LineTo(new Vector2(w * 0.74f, h * 0.28f));
+                painter.LineTo(new Vector2(w * 0.74f, h * 0.86f));
+                painter.LineTo(new Vector2(w * 0.26f, h * 0.86f));
+                painter.ClosePath();
+                painter.Stroke();
+
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.60f, h * 0.14f));
+                painter.LineTo(new Vector2(w * 0.60f, h * 0.28f));
+                painter.LineTo(new Vector2(w * 0.74f, h * 0.28f));
+                painter.Stroke();
+
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.36f, h * 0.50f));
+                painter.LineTo(new Vector2(w * 0.64f, h * 0.50f));
+                painter.MoveTo(new Vector2(w * 0.36f, h * 0.64f));
+                painter.LineTo(new Vector2(w * 0.56f, h * 0.64f));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.ChevronRight:
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.40f, h * 0.26f));
+                painter.LineTo(new Vector2(w * 0.62f, h * 0.50f));
+                painter.LineTo(new Vector2(w * 0.40f, h * 0.74f));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Play:
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.34f, h * 0.24f));
+                painter.LineTo(new Vector2(w * 0.78f, h * 0.50f));
+                painter.LineTo(new Vector2(w * 0.34f, h * 0.76f));
+                painter.ClosePath();
+                painter.Fill();
+                break;
+            }
+            case NewProjectIconKind.Pause:
+            {
+                painter.lineWidth = unit * 0.16f;
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.38f, h * 0.28f));
+                painter.LineTo(new Vector2(w * 0.38f, h * 0.72f));
+                painter.MoveTo(new Vector2(w * 0.62f, h * 0.28f));
+                painter.LineTo(new Vector2(w * 0.62f, h * 0.72f));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Stop:
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.30f, h * 0.30f));
+                painter.LineTo(new Vector2(w * 0.70f, h * 0.30f));
+                painter.LineTo(new Vector2(w * 0.70f, h * 0.70f));
+                painter.LineTo(new Vector2(w * 0.30f, h * 0.70f));
+                painter.ClosePath();
+                painter.Fill();
+                break;
+            }
+            case NewProjectIconKind.SkipStart:
+            {
+                painter.lineWidth = unit * 0.12f;
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.28f, h * 0.28f));
+                painter.LineTo(new Vector2(w * 0.28f, h * 0.72f));
+                painter.Stroke();
+
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.74f, h * 0.26f));
+                painter.LineTo(new Vector2(w * 0.40f, h * 0.50f));
+                painter.LineTo(new Vector2(w * 0.74f, h * 0.74f));
+                painter.ClosePath();
+                painter.Fill();
+                break;
+            }
+            case NewProjectIconKind.SkipEnd:
+            {
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.26f, h * 0.26f));
+                painter.LineTo(new Vector2(w * 0.60f, h * 0.50f));
+                painter.LineTo(new Vector2(w * 0.26f, h * 0.74f));
+                painter.ClosePath();
+                painter.Fill();
+
+                painter.lineWidth = unit * 0.12f;
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.72f, h * 0.28f));
+                painter.LineTo(new Vector2(w * 0.72f, h * 0.72f));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Menu:
+            {
+                painter.lineWidth = unit * 0.10f;
+                painter.BeginPath();
+                painter.MoveTo(new Vector2(w * 0.24f, h * 0.30f));
+                painter.LineTo(new Vector2(w * 0.76f, h * 0.30f));
+                painter.MoveTo(new Vector2(w * 0.24f, h * 0.50f));
+                painter.LineTo(new Vector2(w * 0.76f, h * 0.50f));
+                painter.MoveTo(new Vector2(w * 0.24f, h * 0.70f));
+                painter.LineTo(new Vector2(w * 0.76f, h * 0.70f));
+                painter.Stroke();
+                break;
+            }
+            case NewProjectIconKind.Gear:
+            {
+                Vector2 center = new Vector2(w * 0.5f, h * 0.5f);
+                painter.lineWidth = unit * 0.11f;
+                painter.BeginPath();
+                painter.Arc(center, unit * 0.21f, 0f, 360f);
+                painter.Stroke();
+
+                painter.lineWidth = unit * 0.13f;
+                painter.BeginPath();
+                for (int i = 0; i < 8; i++)
+                {
+                    float angle = i * Mathf.PI * 0.25f;
+                    Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                    painter.MoveTo(center + direction * unit * 0.27f);
+                    painter.LineTo(center + direction * unit * 0.38f);
+                }
+                painter.Stroke();
+
+                painter.BeginPath();
+                painter.Arc(center, unit * 0.06f, 0f, 360f);
+                painter.Fill();
+                break;
+            }
+        }
+    }
+
+    private static VisualElement CreateNewProjectIconTile(NewProjectIconKind kind, Color accent, float size)
+    {
+        VisualElement tile = new VisualElement();
+        tile.style.width = size;
+        tile.style.height = size;
+        tile.style.minWidth = size;
+        tile.style.minHeight = size;
+        tile.style.flexShrink = 0f;
+        tile.style.alignItems = Align.Center;
+        tile.style.justifyContent = Justify.Center;
+        tile.style.backgroundColor = new Color(accent.r * 0.16f, accent.g * 0.16f, accent.b * 0.22f, 1f);
+        SetRadius(tile, size * 0.26f);
+        SetBorderWidth(tile, 2f);
+        SetBorderColor(tile, new Color(accent.r, accent.g, accent.b, 0.40f));
+        tile.Add(CreateNewProjectIcon(kind, new Color(accent.r, accent.g, accent.b, 0.96f), size * 0.54f));
+        return tile;
+    }
+
+    private TextField CreateNewProjectTextField(string label, string value)
+    {
+        TextField field = new TextField((label ?? string.Empty).ToUpperInvariant());
+        field.value = value ?? string.Empty;
+        field.style.flexDirection = FlexDirection.Column;
+        field.style.alignItems = Align.Stretch;
+        field.style.marginLeft = 0f;
+        field.style.marginRight = 0f;
+        field.style.marginTop = 0f;
+        field.style.marginBottom = 24f;
+        field.style.backgroundColor = Color.clear;
+        field.style.fontSize = 34f;
+        field.style.unityFontDefinition = bodyFont;
+        RegisterTextFieldKeyboardCapture(field);
+
+        Color idleBorder = new Color(0.75f, 0.72f, 0.82f, 0.28f);
+        Color focusBorder = new Color(0.62f, 0.38f, 1f, 0.90f);
+        Color idleBackground = new Color(0.042f, 0.040f, 0.048f, 1f);
+        Color focusBackground = new Color(0.058f, 0.054f, 0.070f, 1f);
+
+        void StyleInput(bool focused)
+        {
+            VisualElement input = field.Q<VisualElement>(TextField.textInputUssName) ?? field.Q<VisualElement>("unity-text-input");
+            if (input == null)
+                return;
+
+            input.style.backgroundColor = focused ? focusBackground : idleBackground;
+            SetBorderWidth(input, 2f);
+            SetBorderColor(input, focused ? focusBorder : idleBorder);
+            SetRadius(input, 14f);
+            input.style.height = 84f;
+            input.style.minHeight = 84f;
+            input.style.paddingLeft = 26f;
+            input.style.paddingRight = 26f;
+            input.style.color = new Color(0.97f, 0.96f, 0.98f, 1f);
+            input.style.fontSize = 34f;
+            input.style.unityTextAlign = TextAnchor.MiddleLeft;
+        }
+
+        field.schedule.Execute(() =>
+        {
+            Label fieldLabel = field.Q<Label>();
+            if (fieldLabel != null)
+            {
+                fieldLabel.style.color = new Color(0.62f, 0.60f, 0.70f, 1f);
+                fieldLabel.style.fontSize = 25f;
+                fieldLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
+                fieldLabel.style.letterSpacing = 3f;
+                fieldLabel.style.marginBottom = 12f;
+                fieldLabel.style.marginLeft = 4f;
+                fieldLabel.style.minWidth = 0f;
+                fieldLabel.style.width = StyleKeyword.Auto;
+                fieldLabel.style.paddingLeft = 0f;
+                fieldLabel.style.paddingRight = 0f;
+            }
+
+            StyleInput(false);
+        });
+
+        field.RegisterCallback<FocusInEvent>(_ => StyleInput(true));
+        field.RegisterCallback<FocusOutEvent>(_ => StyleInput(false));
+        return field;
+    }
+
+    private Button CreateNewProjectGhostButton(string text, Action action)
+    {
+        Button button = new Button(action) { text = text ?? string.Empty };
+        button.focusable = false;
+        button.style.unityFontDefinition = bodyFont;
+        button.style.unityFontStyleAndWeight = FontStyle.Bold;
+        button.style.fontSize = 27f;
+        button.style.height = 76f;
+        button.style.minWidth = 190f;
+        button.style.marginLeft = 0f;
+        button.style.marginRight = 0f;
+        button.style.marginTop = 0f;
+        button.style.marginBottom = 0f;
+        button.style.paddingLeft = 32f;
+        button.style.paddingRight = 32f;
+        button.style.unityTextAlign = TextAnchor.MiddleCenter;
+        SetRadius(button, 14f);
+
+        void Apply(bool hover)
+        {
+            button.style.backgroundColor = hover ? new Color(1f, 1f, 1f, 0.10f) : new Color(1f, 1f, 1f, 0.045f);
+            SetBorderWidth(button, 2f);
+            SetBorderColor(button, hover ? new Color(0.84f, 0.82f, 0.92f, 0.60f) : new Color(0.80f, 0.78f, 0.88f, 0.30f));
+            button.style.color = hover ? Color.white : new Color(0.91f, 0.90f, 0.94f, 1f);
+            button.style.scale = hover ? new Scale(new Vector3(1.02f, 1.02f, 1f)) : new Scale(Vector3.one);
+        }
+
+        Apply(false);
+        button.RegisterCallback<MouseEnterEvent>(_ => Apply(true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => Apply(false));
+        return button;
+    }
+
+    private Button CreateNewProjectIconButton(NewProjectIconKind kind, Action action, bool danger = false, float size = 44f, bool solid = false)
+    {
+        Button button = new Button(action) { text = string.Empty };
+        button.focusable = false;
+        button.style.width = size;
+        button.style.height = size;
+        button.style.minWidth = size;
+        button.style.minHeight = size;
+        button.style.marginLeft = 0f;
+        button.style.marginRight = 0f;
+        button.style.marginTop = 0f;
+        button.style.marginBottom = 0f;
+        button.style.paddingLeft = 0f;
+        button.style.paddingRight = 0f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.alignItems = Align.Center;
+        button.style.justifyContent = Justify.Center;
+        button.style.flexShrink = 0f;
+        SetRadius(button, size * 0.22f);
+        button.Add(CreateNewProjectIcon(kind, new Color(0.83f, 0.82f, 0.88f, 0.95f), size * 0.46f));
+
+        Color hoverTint = danger ? new Color(1f, 0.42f, 0.38f, 1f) : Color.white;
+        Color idleBackground = solid ? new Color(0.035f, 0.033f, 0.042f, 0.88f) : new Color(1f, 1f, 1f, 0.035f);
+        Color hoverBackground = solid
+            ? (danger ? new Color(0.30f, 0.10f, 0.10f, 0.90f) : new Color(0.17f, 0.16f, 0.20f, 0.90f))
+            : new Color(hoverTint.r, hoverTint.g, hoverTint.b, danger ? 0.14f : 0.10f);
+
+        void Apply(bool hover)
+        {
+            button.style.backgroundColor = hover ? hoverBackground : idleBackground;
+            SetBorderWidth(button, 2f);
+            SetBorderColor(button, hover
+                ? new Color(hoverTint.r, hoverTint.g, hoverTint.b, danger ? 0.60f : 0.42f)
+                : new Color(0.78f, 0.76f, 0.86f, 0.26f));
+        }
+
+        Apply(false);
+        button.RegisterCallback<MouseEnterEvent>(_ => Apply(true));
+        button.RegisterCallback<MouseLeaveEvent>(_ => Apply(false));
+        return button;
+    }
+
     private Button CreateToggleButton(string text, bool enabled, Action action)
     {
         Button button = new Button(action) { text = string.Empty };
@@ -14198,7 +18060,7 @@ public sealed class ChartEditorOverlay
 
         StylePopupPanel(element, background, radius);
         SetBorderWidth(element, 2f);
-        SetBorderColor(element, new Color(0.42f, 0.48f, 0.58f, 0.96f));
+        SetBorderColor(element, new Color(0.50f, 0.48f, 0.56f, 0.96f));
     }
 
     private static void SetElementCursor(VisualElement element, ChartEditorCursorKind cursor)
@@ -14407,7 +18269,7 @@ public sealed class ChartEditorOverlay
                 new Color(0f, 0f, 0f, 0f),
                 new Color(0.78f, 0.84f, 0.92f, 1f),
                 new Color(0.36f, 0.38f, 0.42f, 0.82f),
-                new Color(0.22f, 0.24f, 0.28f, 0.95f),
+                new Color(0.25f, 0.24f, 0.28f, 0.95f),
                 new Color(0.14f, 0.16f, 0.20f, 1f),
                 new Color(1f, 1f, 1f, 0.070f),
                 Color.white,
@@ -14510,10 +18372,10 @@ public sealed class ChartEditorOverlay
         if (element == null)
             return;
 
-        element.style.borderTopColor = top;
+        element.style.borderTopColor = side;
         element.style.borderRightColor = side;
         element.style.borderLeftColor = side;
-        element.style.borderBottomColor = bottom;
+        element.style.borderBottomColor = side;
     }
 
     private static void ApplyChartSliderStyle(Slider slider)

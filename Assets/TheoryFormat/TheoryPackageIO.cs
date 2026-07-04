@@ -10,6 +10,7 @@ public sealed class TheoryPackageWriteRequest
     public TheorySongManifest manifest;
     public List<TheoryArrangementData> arrangements = new List<TheoryArrangementData>();
     public TheoryEditorState editorState;
+    public TheoryToneLabMappingState toneLabMappingState;
     public string primaryAudioSourcePath;
     public string coverArtSourcePath;
     public string preservedPackageSourcePath;
@@ -251,6 +252,13 @@ public static class TheoryPackageIO
                 {
                     WriteTextEntry(archive, TheoryPackageFormat.EditorStateEntryName, JsonUtility.ToJson(request.editorState, true));
                     writtenEntries.Add(NormalizeEntryName(TheoryPackageFormat.EditorStateEntryName));
+                }
+
+                if (request.toneLabMappingState != null)
+                {
+                    request.toneLabMappingState.EnsureDefaults();
+                    WriteTextEntry(archive, TheoryPackageFormat.ToneLabMappingsEntryName, JsonUtility.ToJson(request.toneLabMappingState, true));
+                    writtenEntries.Add(NormalizeEntryName(TheoryPackageFormat.ToneLabMappingsEntryName));
                 }
 
                 if (!string.IsNullOrWhiteSpace(request.primaryAudioSourcePath) && File.Exists(request.primaryAudioSourcePath))
@@ -743,6 +751,9 @@ public static class TheoryPackageIO
             case ".wav": return "audio/wav";
             case ".mp3": return "audio/mpeg";
             case ".flac": return "audio/flac";
+            case ".m4a": return "audio/mp4";
+            case ".aif":
+            case ".aiff": return "audio/aiff";
             default: return "application/octet-stream";
         }
     }

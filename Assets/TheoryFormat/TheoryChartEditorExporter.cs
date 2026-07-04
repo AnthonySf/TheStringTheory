@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using UnityEngine;
@@ -77,6 +78,7 @@ public static class TheoryChartEditorExporter
 
     private static TheoryPackageWriteRequest BuildWriteRequest(ChartEditorProject project, string packagePath)
     {
+        ChartEditorToneScopeService.NormalizeProjectToneGroups(project);
         float duration = Mathf.Max(project.DurationSeconds, 0.1f);
         List<TheoryArrangementData> arrangements = new List<TheoryArrangementData>();
         List<TheoryArrangementSummary> summaries = new List<TheoryArrangementSummary>();
@@ -108,8 +110,8 @@ public static class TheoryChartEditorExporter
                 hasDifficultyVariants = arrangement.hasDifficultyVariants,
                 entry = entry,
                 noteCount = arrangement.notes?.Count ?? 0,
-                tabCount = arrangement.notes?.Count ?? 0,
-                score = Mathf.Clamp(arrangement.notes?.Count ?? 0, 0, 100000),
+                tabCount = ResolveArrangementTabCount(track, arrangement),
+                score = ResolveArrangementScore(track, arrangement),
                 difficultyRating = arrangement.difficultyRating,
                 tuningPitches = arrangement.tuningPitches != null ? (int[])arrangement.tuningPitches.Clone() : null,
                 tuningDisplayName = arrangement.tuningDisplayName
@@ -132,6 +134,56 @@ public static class TheoryChartEditorExporter
             if (!preservedEntryNames.Any(entry => string.Equals(entry, TheoryPackageFormat.ToneLabMappingsEntryName, StringComparison.OrdinalIgnoreCase)))
                 preservedEntryNames.Add(TheoryPackageFormat.ToneLabMappingsEntryName);
         }
+
+        // Never silently strip embedded audio/cover on save: if the cached
+        // source file no longer exists (e.g. the TheoryPackageCache extraction
+        // was cleaned up), carry the existing package's entries forward
+        // instead of writing a package without audio.
+        TheoryAudioAsset preservedAudioAsset = null;
+        if (string.IsNullOrWhiteSpace(audioEntry) || string.IsNullOrWhiteSpace(coverEntry))
+        {
+            List<string> preserveCandidates = new List<string>();
+            AddPreservedPackageCandidate(preserveCandidates, project.sourcePath);
+            AddPreservedPackageCandidate(preserveCandidates, packagePath);
+            foreach (string candidate in preserveCandidates)
+            {
+                bool candidateUsable = string.IsNullOrWhiteSpace(preservedPackageSourcePath) ||
+                                       string.Equals(Path.GetFullPath(preservedPackageSourcePath), Path.GetFullPath(candidate), StringComparison.OrdinalIgnoreCase);
+                if (!candidateUsable ||
+                    !TheoryPackageIO.TryReadManifest(candidate, out TheorySongManifest sourceManifest, out _) ||
+                    sourceManifest == null)
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(audioEntry) &&
+                    !string.IsNullOrWhiteSpace(sourceManifest.primaryAudioEntry) &&
+                    TheoryPackageIO.EntryExists(candidate, sourceManifest.primaryAudioEntry))
+                {
+                    audioEntry = sourceManifest.primaryAudioEntry;
+                    preservedAudioAsset = sourceManifest.audio?.FirstOrDefault(asset =>
+                        asset != null && string.Equals(asset.entry, sourceManifest.primaryAudioEntry, StringComparison.OrdinalIgnoreCase));
+                    preservedPackageSourcePath = candidate;
+                    if (!preservedEntryNames.Any(entry => string.Equals(entry, audioEntry, StringComparison.OrdinalIgnoreCase)))
+                        preservedEntryNames.Add(audioEntry);
+                    Debug.LogWarning("[ChartEditor] Audio source file is missing; preserving the embedded audio from the existing package instead of dropping it.");
+                }
+
+                if (string.IsNullOrWhiteSpace(coverEntry) &&
+                    !string.IsNullOrWhiteSpace(sourceManifest.coverArtEntry) &&
+                    TheoryPackageIO.EntryExists(candidate, sourceManifest.coverArtEntry))
+                {
+                    coverEntry = sourceManifest.coverArtEntry;
+                    preservedPackageSourcePath = candidate;
+                    if (!preservedEntryNames.Any(entry => string.Equals(entry, coverEntry, StringComparison.OrdinalIgnoreCase)))
+                        preservedEntryNames.Add(coverEntry);
+                }
+
+                if (!string.IsNullOrWhiteSpace(audioEntry) && !string.IsNullOrWhiteSpace(coverEntry))
+                    break;
+            }
+        }
+
         DateTime now = DateTime.UtcNow;
         TheorySongManifest manifest = new TheorySongManifest
         {
@@ -169,18 +221,29 @@ public static class TheoryChartEditorExporter
 
         if (!string.IsNullOrWhiteSpace(audioEntry))
         {
-            manifest.audio.Add(new TheoryAudioAsset
-            {
-                id = "full",
-                entry = audioEntry,
-                displayName = string.IsNullOrWhiteSpace(project.audio?.displayName)
-                    ? Path.GetFileName(project.audio?.sourcePath)
-                    : project.audio.displayName,
-                role = "full",
-                contentType = BuildAudioContentType(project.audio?.sourcePath),
-                sourceSizeBytes = TryGetFileSize(project.audio?.sourcePath),
-                defaultForPlayback = true
-            });
+            manifest.audio.Add(preservedAudioAsset != null
+                ? new TheoryAudioAsset
+                {
+                    id = string.IsNullOrWhiteSpace(preservedAudioAsset.id) ? "full" : preservedAudioAsset.id,
+                    entry = audioEntry,
+                    displayName = preservedAudioAsset.displayName ?? string.Empty,
+                    role = string.IsNullOrWhiteSpace(preservedAudioAsset.role) ? "full" : preservedAudioAsset.role,
+                    contentType = preservedAudioAsset.contentType ?? string.Empty,
+                    sourceSizeBytes = preservedAudioAsset.sourceSizeBytes,
+                    defaultForPlayback = true
+                }
+                : new TheoryAudioAsset
+                {
+                    id = "full",
+                    entry = audioEntry,
+                    displayName = string.IsNullOrWhiteSpace(project.audio?.displayName)
+                        ? Path.GetFileName(project.audio?.sourcePath)
+                        : project.audio.displayName,
+                    role = "full",
+                    contentType = BuildAudioContentType(project.audio?.sourcePath),
+                    sourceSizeBytes = TryGetFileSize(project.audio?.sourcePath),
+                    defaultForPlayback = true
+                });
         }
 
         return new TheoryPackageWriteRequest
@@ -188,6 +251,7 @@ public static class TheoryChartEditorExporter
             manifest = manifest,
             arrangements = arrangements,
             editorState = BuildEditorState(project),
+            toneLabMappingState = BuildToneLabMappingState(project),
             primaryAudioSourcePath = project.audio?.sourcePath,
             coverArtSourcePath = project.metadata?.coverImagePath,
             preservedPackageSourcePath = preservedPackageSourcePath,
@@ -306,6 +370,22 @@ public static class TheoryChartEditorExporter
         return SanitizeIdentifier(groupId);
     }
 
+    private static int ResolveArrangementScore(ChartEditorTrack track, TheoryArrangementData arrangement)
+    {
+        if (track != null && track.importedSelectionScore >= 0)
+            return Mathf.Max(0, track.importedSelectionScore);
+
+        return Mathf.Max(0, arrangement?.notes?.Count ?? 0);
+    }
+
+    private static int ResolveArrangementTabCount(ChartEditorTrack track, TheoryArrangementData arrangement)
+    {
+        if (track != null && track.importedTabCount >= 0)
+            return Mathf.Max(0, track.importedTabCount);
+
+        return Mathf.Max(0, arrangement?.notes?.Count ?? 0);
+    }
+
     private static string ResolveDefaultArrangementId(ChartEditorProject project, List<TheoryArrangementSummary> summaries)
     {
         if (summaries == null || summaries.Count == 0)
@@ -344,7 +424,7 @@ public static class TheoryChartEditorExporter
             .Where(note => note != null)
             .OrderBy(note => note.timeSeconds)
             .ThenBy(note => note.stringOrLane)
-            .ToList() ?? new List<ChartEditorNote>());
+            .ToList() ?? new List<ChartEditorNote>(), !track.preserveImportedRuntimeNotes);
 
         TheoryArrangementData arrangement = new TheoryArrangementData
         {
@@ -360,6 +440,7 @@ public static class TheoryChartEditorExporter
             hasDifficultyVariants = hasDifficultyVariants,
             durationSeconds = duration,
             difficultyRating = EstimateDifficulty(track),
+            preserveImportedRuntimeNotes = track.preserveImportedRuntimeNotes,
             tuningPitches = track.tuning?.stringPitches != null ? (int[])track.tuning.stringPitches.Clone() : null,
             tuningDisplayName = track.tuning?.displayName ?? string.Empty,
             timing = new TheoryTimingData
@@ -373,11 +454,28 @@ public static class TheoryChartEditorExporter
             generatedPart = BuildGeneratedPart(track, arrangementId),
             notes = new List<TheoryNoteData>(),
             arpeggioGuides = BuildArpeggioGuides(track),
+            generatedChannels = BuildGeneratedChannels(track),
             generatedNotes = BuildGeneratedNotes(track, arrangementId)
         };
 
+        // Editor-added notes (sourceNoteId = -1) must not fall back to their
+        // list index: imported notes already own the sequential loader ids
+        // 0..N-1, so an index id would collide with an imported note and
+        // corrupt legato links and scoring lookups keyed by note id.
+        int nextGeneratedNoteId = orderedNotes.Count;
         for (int i = 0; i < orderedNotes.Count; i++)
-            arrangement.notes.Add(ToTheoryNote(orderedNotes[i], i));
+        {
+            ChartEditorNote candidate = orderedNotes[i];
+            if (candidate != null && candidate.sourceNoteId >= nextGeneratedNoteId)
+                nextGeneratedNoteId = candidate.sourceNoteId + 1;
+        }
+
+        for (int i = 0; i < orderedNotes.Count; i++)
+        {
+            ChartEditorNote note = orderedNotes[i];
+            int noteId = note.sourceNoteId >= 0 ? note.sourceNoteId : nextGeneratedNoteId++;
+            arrangement.notes.Add(ToTheoryNote(note, noteId));
+        }
 
         return arrangement;
     }
@@ -399,10 +497,14 @@ public static class TheoryChartEditorExporter
                 if (source == null)
                     continue;
 
+                ChartEditorToneDefinition definitionByName = FindToneDefinition(track, source.toneName);
+                ChartEditorToneDefinition definition = definitionByName ?? ResolveToneDefinitionForChange(track, source);
                 result.changes.Add(new TheoryToneChangeData
                 {
                     timeSeconds = Mathf.Max(0f, source.timeSeconds),
-                    toneName = source.toneName ?? string.Empty,
+                    toneName = definitionByName != null
+                        ? source.toneName ?? string.Empty
+                        : FirstNonEmpty(definition?.name, source.toneName, definition?.key),
                     toneId = source.toneId
                 });
             }
@@ -428,6 +530,35 @@ public static class TheoryChartEditorExporter
 
         result.EnsureDefaults();
         return result;
+    }
+
+    private static ChartEditorToneDefinition ResolveToneDefinitionForChange(ChartEditorTrack track, ChartEditorToneChange change)
+    {
+        if (track?.tones?.definitions == null || track.tones.definitions.Count == 0 || change == null)
+            return null;
+
+        ChartEditorToneDefinition byName = FindToneDefinition(track, change.toneName);
+        if (byName != null)
+            return byName;
+
+        if (change.toneId >= 0 && change.toneId < track.tones.definitions.Count)
+            return track.tones.definitions[change.toneId];
+
+        return null;
+    }
+
+    private static ChartEditorToneDefinition FindToneDefinition(ChartEditorTrack track, string toneName)
+    {
+        if (track?.tones?.definitions == null || string.IsNullOrWhiteSpace(toneName))
+            return null;
+
+        string normalized = toneName.Trim();
+        return track.tones.definitions.FirstOrDefault(definition =>
+            definition != null &&
+            (string.Equals(definition.name ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(definition.key ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(definition.preset?.presetName ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(definition.preset?.presetId ?? string.Empty, normalized, StringComparison.OrdinalIgnoreCase)));
     }
 
     private static TheoryTonePresetData ToTheoryTonePreset(ChartEditorTonePresetData source)
@@ -473,6 +604,65 @@ public static class TheoryChartEditorExporter
         };
     }
 
+    private static TheoryToneLabMappingState BuildToneLabMappingState(ChartEditorProject project)
+    {
+        TheoryToneLabMappingState state = new TheoryToneLabMappingState
+        {
+            schemaVersion = TheoryPackageFormat.SchemaVersion,
+            modifiedAtUtcTicks = DateTime.UtcNow.Ticks,
+            mappings = new List<TheoryToneLabPresetMappingData>()
+        };
+
+        if (project?.tracks == null)
+        {
+            state.EnsureDefaults();
+            return state;
+        }
+
+        Dictionary<string, TheoryToneLabPresetMappingData> mappings = new Dictionary<string, TheoryToneLabPresetMappingData>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < project.tracks.Count; i++)
+        {
+            ChartEditorTrack track = project.tracks[i];
+            if (track?.tones?.definitions == null)
+                continue;
+
+            string arrangementId = SanitizeIdentifier(string.IsNullOrWhiteSpace(track.id) ? $"track_{i + 1}" : track.id);
+            string groupId = BuildArrangementGroupId(track, arrangementId);
+            if (string.IsNullOrWhiteSpace(groupId))
+                continue;
+
+            for (int definitionIndex = 0; definitionIndex < track.tones.definitions.Count; definitionIndex++)
+            {
+                ChartEditorToneDefinition definition = track.tones.definitions[definitionIndex];
+                if (definition == null || string.IsNullOrWhiteSpace(definition.name) || !HasUsableTonePreset(definition.preset))
+                    continue;
+
+                string toneName = definition.name.Trim();
+                TheoryTonePresetData presetSnapshot = ToTheoryTonePreset(definition.preset);
+                string key = $"{groupId}\n{toneName}";
+                mappings[key] = new TheoryToneLabPresetMappingData
+                {
+                    arrangementId = groupId,
+                    toneName = toneName,
+                    presetId = FirstNonEmpty(definition.preset.presetId, definition.key, definition.name),
+                    presetSnapshot = presetSnapshot
+                };
+            }
+        }
+
+        state.mappings = mappings.Values
+            .OrderBy(mapping => mapping.arrangementId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(mapping => mapping.toneName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        state.EnsureDefaults();
+        return state;
+    }
+
+    private static bool HasUsableTonePreset(ChartEditorTonePresetData preset)
+    {
+        return preset?.pedalChain != null && preset.pedalChain.Count > 0;
+    }
+
     private static TheoryGeneratedPartInfo BuildGeneratedPart(ChartEditorTrack track, string arrangementId)
     {
         string displayName = track?.displayName ?? track?.importedName ?? arrangementId;
@@ -486,8 +676,8 @@ public static class TheoryChartEditorExporter
         return new TheoryGeneratedPartInfo
         {
             partId = FirstNonEmpty(source?.partId, arrangementId),
-            displayName = FirstNonEmpty(source?.displayName, displayName),
-            instrumentName = FirstNonEmpty(source?.instrumentName, fallbackInstrument),
+            displayName = !string.IsNullOrWhiteSpace(source?.displayName) ? source.displayName : FirstNonEmpty(displayName),
+            instrumentName = !string.IsNullOrWhiteSpace(source?.instrumentName) ? source.instrumentName : fallbackInstrument,
             sourceMidiChannel = source != null ? source.sourceMidiChannel : fallbackChannel,
             sourceMidiProgram = source != null ? source.sourceMidiProgram : fallbackProgram,
             preferredBank = source != null ? source.preferredBank : -1,
@@ -506,6 +696,48 @@ public static class TheoryChartEditorExporter
                 !string.IsNullOrWhiteSpace(source.instrumentName) ||
                 !string.IsNullOrWhiteSpace(track?.generatedPlaybackNoteFingerprint) ||
                 (track?.generatedNotes?.Count ?? 0) > 0);
+    }
+
+    private static List<TheoryGeneratedChannelAssignment> BuildGeneratedChannels(ChartEditorTrack track)
+    {
+        List<TheoryGeneratedChannelAssignment> result = new List<TheoryGeneratedChannelAssignment>();
+        if (track?.generatedChannels == null || track.generatedChannels.Count == 0)
+            return result;
+
+        HashSet<string> seenRoutes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (ChartEditorGeneratedChannelAssignment source in track.generatedChannels
+                     .Where(channel => channel != null)
+                     .OrderBy(channel => channel.channel)
+                     .ThenBy(channel => channel.sourcePartId ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(channel => channel.sourcePartName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(channel => channel.label ?? string.Empty, StringComparer.OrdinalIgnoreCase))
+        {
+            string routeKey = string.Join("\n",
+                source.channel.ToString(CultureInfo.InvariantCulture),
+                source.bank.ToString(CultureInfo.InvariantCulture),
+                source.preset.ToString(CultureInfo.InvariantCulture),
+                source.isDrum.ToString(),
+                source.label ?? string.Empty,
+                source.sourcePartId ?? string.Empty,
+                source.sourcePartName ?? string.Empty,
+                Mathf.Max(0, source.pitchBendRangeSemitones).ToString(CultureInfo.InvariantCulture));
+            if (!seenRoutes.Add(routeKey))
+                continue;
+
+            result.Add(new TheoryGeneratedChannelAssignment
+            {
+                channel = source.channel,
+                bank = source.bank,
+                preset = source.preset,
+                isDrum = source.isDrum,
+                label = source.label,
+                sourcePartId = source.sourcePartId,
+                sourcePartName = source.sourcePartName,
+                pitchBendRangeSemitones = Mathf.Max(0, source.pitchBendRangeSemitones)
+            });
+        }
+
+        return result;
     }
 
     private static List<TheoryGeneratedNoteEvent> BuildGeneratedNotes(ChartEditorTrack track, string arrangementId)
@@ -564,9 +796,8 @@ public static class TheoryChartEditorExporter
         return result;
     }
 
-    private static TheoryNoteData ToTheoryNote(ChartEditorNote note, int index)
+    private static TheoryNoteData ToTheoryNote(ChartEditorNote note, int noteId)
     {
-        int noteId = note.sourceNoteId >= 0 ? note.sourceNoteId : index;
         NoteTechnique primaryTechnique = ResolvePrimaryTechnique(note);
         bool isHammerOn = IsEditorTechniqueEnabled(note, NoteTechnique.HammerOn);
         bool isPullOff = IsEditorTechniqueEnabled(note, NoteTechnique.PullOff);
@@ -606,8 +837,8 @@ public static class TheoryChartEditorExporter
             vibrato = hasVibrato,
             vibratoStrength = note.vibratoStrength,
             maxBend = Mathf.Max(note.maxBend, note.bendStep),
-            legato = note.legato || isHammerOn || isPullOff,
-            requiresPluck = (isHammerOn || isPullOff) ? false : note.requiresPluck,
+            legato = note.legato,
+            requiresPluck = note.requiresPluck,
             linkedFromNoteId = note.linkedFromNoteId,
             bendPoints = new List<TheoryBendPointData>(),
             techniqueSegments = new List<TheoryTechniqueSegmentData>()
@@ -691,12 +922,18 @@ public static class TheoryChartEditorExporter
                     isDownbeat = marker.isDownbeat,
                     isAnchor = marker.isAnchor,
                     label = marker.label ?? string.Empty,
-                    bpm = GetTempoAtBeat(project, marker.beatPosition),
+                    // Prefer the marker's own bpm: for the last anchor the
+                    // region lookup returns the PREVIOUS region's tempo, which
+                    // would drop the trailing tempo set via probe drags and
+                    // corrupt the grid after reload.
+                    bpm = marker.bpm > 0.0 ? marker.bpm : GetTempoAtBeat(project, marker.beatPosition),
                     timeSignatureNumerator = signature?.numerator ?? 4,
                     timeSignatureDenominator = signature?.denominator ?? 4,
                     generatedBySynchTheory = marker.generatedBySynchTheory,
                     synchTheoryConfidence = marker.synchTheoryConfidence,
-                    synchTheorySource = marker.synchTheorySource ?? string.Empty
+                    synchTheorySource = marker.synchTheorySource ?? string.Empty,
+                    locked = marker.locked,
+                    linkedSectionId = marker.linkedSectionId ?? string.Empty
                 });
             }
         }
@@ -714,7 +951,9 @@ public static class TheoryChartEditorExporter
                     id = point.id,
                     chartTimeSeconds = point.chartTimeSeconds,
                     audioTimeSeconds = point.audioTimeSeconds,
-                    label = point.name
+                    label = point.name,
+                    locked = point.locked,
+                    linkedSectionId = point.linkedSectionId ?? string.Empty
                 });
             }
         }
@@ -814,7 +1053,7 @@ public static class TheoryChartEditorExporter
     {
         if (note == null)
             return NoteTechnique.None;
-        if (note.technique == NoteTechnique.HammerOn || note.technique == NoteTechnique.PullOff)
+        if (note.technique != NoteTechnique.None)
             return note.technique;
         if (IsEditorTechniqueEnabled(note, NoteTechnique.Slide))
             return NoteTechnique.Slide;
@@ -943,6 +1182,9 @@ public static class TheoryChartEditorExporter
             case ".mp3": return "audio/mpeg";
             case ".wav": return "audio/wav";
             case ".flac": return "audio/flac";
+            case ".m4a": return "audio/mp4";
+            case ".aif":
+            case ".aiff": return "audio/aiff";
             default: return "application/octet-stream";
         }
     }

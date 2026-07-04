@@ -25,6 +25,7 @@ public static class SongNotationFacade
         }
 
         if (extension == ".gp5" ||
+            extension == ".gp8" ||
             extension == ".gp4" ||
             extension == ".gp3" ||
             extension == ".gpx" ||

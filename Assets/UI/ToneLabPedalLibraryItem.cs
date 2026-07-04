@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.TextCore.Text;
 using UnityEngine.UIElements;
 
 public sealed class ToneLabPedalLibraryItem : VisualElement
@@ -7,11 +8,19 @@ public sealed class ToneLabPedalLibraryItem : VisualElement
     public Button ActionButton { get; }
     public bool SuppressNextClick { get; set; }
 
-    public ToneLabPedalLibraryItem(IToneLabPedalDescriptor descriptor, Action onAdd)
+    public ToneLabPedalLibraryItem(
+        IToneLabPedalDescriptor descriptor,
+        Action onAdd,
+        float visualScale = 1f,
+        FontDefinition? fontDefinition = null,
+        float textScale = 1f)
     {
         if (descriptor == null)
             throw new ArgumentNullException(nameof(descriptor));
 
+        float scale = Mathf.Clamp(visualScale, 0.80f, 1.50f);
+        float resolvedTextScale = Mathf.Clamp(textScale, 0.75f, 1.80f);
+        ApplyFont(this, fontDefinition);
         style.flexDirection = FlexDirection.Row;
         style.alignItems = Align.Center;
         style.backgroundColor = new Color(0f, 0f, 0f, 0f);
@@ -24,54 +33,59 @@ public sealed class ToneLabPedalLibraryItem : VisualElement
         style.borderTopRightRadius = 0f;
         style.borderBottomLeftRadius = 0f;
         style.borderBottomRightRadius = 0f;
-        style.minHeight = 116f;
-        style.paddingLeft = 4f;
-        style.paddingRight = 4f;
-        style.paddingTop = 10f;
-        style.paddingBottom = 10f;
-        style.marginBottom = 2f;
+        style.minHeight = 116f * scale;
+        style.paddingLeft = 4f * scale;
+        style.paddingRight = 4f * scale;
+        style.paddingTop = 10f * scale;
+        style.paddingBottom = 10f * scale;
+        style.marginBottom = 2f * scale;
 
         VisualElement previewWrap = new VisualElement();
-        previewWrap.style.width = 86f;
-        previewWrap.style.height = 112f;
-        previewWrap.style.marginRight = 14f;
+        previewWrap.style.width = 86f * scale;
+        previewWrap.style.height = 112f * scale;
+        previewWrap.style.marginRight = 14f * scale;
         previewWrap.style.alignItems = Align.Center;
         previewWrap.style.justifyContent = Justify.Center;
-        previewWrap.style.scale = new Scale(new Vector3(0.74f, 0.74f, 1f));
+        previewWrap.style.scale = new Scale(new Vector3(0.74f * scale, 0.74f * scale, 1f));
         previewWrap.Add(ToneLabPedalVisualBuilder.BuildLibraryPreview(descriptor.Appearance, descriptor.ShortName));
         Add(previewWrap);
 
         VisualElement copyColumn = new VisualElement();
         copyColumn.style.flexGrow = 1f;
-        copyColumn.style.marginRight = 14f;
+        copyColumn.style.marginRight = 14f * scale;
         Add(copyColumn);
 
         Label titleLabel = new Label(descriptor.DisplayName);
+        ApplyFont(titleLabel, fontDefinition);
         titleLabel.style.color = new Color(0.95f, 0.95f, 0.93f, 1f);
-        titleLabel.style.fontSize = 18f;
+        titleLabel.style.fontSize = 18f * scale * resolvedTextScale;
         titleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-        titleLabel.style.marginBottom = 4f;
+        titleLabel.style.marginBottom = 4f * scale;
         copyColumn.Add(titleLabel);
 
         Label typeLabel = new Label(GetCategoryLabel(descriptor.PedalType));
+        ApplyFont(typeLabel, fontDefinition);
         typeLabel.style.color = new Color(0.78f, 0.71f, 0.60f, 0.98f);
-        typeLabel.style.fontSize = 12f;
+        typeLabel.style.fontSize = 12f * scale * resolvedTextScale;
         typeLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
-        typeLabel.style.marginBottom = 6f;
+        typeLabel.style.marginBottom = 6f * scale;
         copyColumn.Add(typeLabel);
 
         Label descriptionLabel = new Label(descriptor.Description);
+        ApplyFont(descriptionLabel, fontDefinition);
         descriptionLabel.style.color = new Color(0.63f, 0.66f, 0.70f, 0.98f);
-        descriptionLabel.style.fontSize = 13f;
+        descriptionLabel.style.fontSize = 13f * scale * resolvedTextScale;
         descriptionLabel.style.whiteSpace = WhiteSpace.Normal;
-        descriptionLabel.style.maxWidth = 230f;
+        descriptionLabel.style.maxWidth = 230f * scale;
         copyColumn.Add(descriptionLabel);
 
         ActionButton = new Button(onAdd) { text = "Add" };
-        ActionButton.style.minWidth = 82f;
-        ActionButton.style.height = 38f;
-        ActionButton.style.paddingLeft = 16f;
-        ActionButton.style.paddingRight = 16f;
+        ApplyFont(ActionButton, fontDefinition);
+        ActionButton.style.minWidth = 82f * scale;
+        ActionButton.style.height = 38f * scale;
+        ActionButton.style.paddingLeft = 16f * scale;
+        ActionButton.style.paddingRight = 16f * scale;
+        ActionButton.style.fontSize = 15f * scale * resolvedTextScale;
         ActionButton.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
         ActionButton.style.color = new Color(0.92f, 0.93f, 0.95f, 1f);
         ActionButton.style.borderTopWidth = 1f;
@@ -126,6 +140,15 @@ public sealed class ToneLabPedalLibraryItem : VisualElement
 
         RegisterCallback<MouseEnterEvent>(_ => SetControllerHovered(true));
         RegisterCallback<MouseLeaveEvent>(_ => SetControllerHovered(false));
+    }
+
+    private static void ApplyFont(VisualElement element, FontDefinition? fontDefinition)
+    {
+        if (element == null || !fontDefinition.HasValue)
+            return;
+
+        element.style.unityFontDefinition = fontDefinition.Value;
+        element.style.letterSpacing = 0f;
     }
 
     public void SetControllerHovered(bool hovered)

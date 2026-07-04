@@ -20,7 +20,16 @@ public static class ChartEditorFilePicker
         return TryPickInputFile(
             "Select Chart File",
             "Chart Files",
-            "*.theory;*.gp;*.gp3;*.gp4;*.gp5;*.gpx;*.musicxml;*.xml",
+            "*.theory;*.gp;*.gp3;*.gp4;*.gp5;*.gp8;*.gpx;*.musicxml;*.xml",
+            out path);
+    }
+
+    public static bool TryPickNotationFile(out string path)
+    {
+        return TryPickInputFile(
+            "Select Chart File",
+            "GP / MusicXML Files",
+            "*.gp;*.gp3;*.gp4;*.gp5;*.gp8;*.gpx;*.musicxml;*.xml",
             out path);
     }
 
@@ -227,6 +236,9 @@ public static class ChartEditorFilePicker
     [DllImport("comdlg32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     private static extern bool GetOpenFileName([In, Out] OpenFileName ofn);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetActiveWindow();
+
     private static bool TryPickWindowsFile(string title, string filterName, string filterPattern, string initialDirectory, out string path)
     {
         path = string.Empty;
@@ -234,6 +246,7 @@ public static class ChartEditorFilePicker
         OpenFileName ofn = new OpenFileName
         {
             lStructSize = Marshal.SizeOf(typeof(OpenFileName)),
+            hwndOwner = GetActiveWindow(),
             lpstrFilter = filter,
             lpstrFile = new StringBuilder(MaxPathBuffer),
             nMaxFile = MaxPathBuffer,

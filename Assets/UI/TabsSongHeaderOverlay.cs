@@ -2115,6 +2115,8 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Button selectionRefreshButton;
 
+    private readonly Button selectionConvertRawButton;
+
     private readonly Button selectionCharacterButton;
 
     private readonly Button selectionStartButton;
@@ -9183,14 +9185,19 @@ public sealed class TabsSongHeaderOverlay
 
         selectionRefreshButton = CreateLibraryFooterButton("Refresh", new Color(0.149f, 0.169f, 0.20f, 1f), () => owner?.RefreshSongsFromUi());
 
+        selectionConvertRawButton = CreateLibraryFooterButton("Convert Raw", new Color(0.108f, 0.134f, 0.158f, 1f), () => owner?.ConvertExistingRawNotationSongsFromUi());
+
         selectionCharacterButton = CreateLibraryFooterButton("Character Selection", new Color(0.149f, 0.169f, 0.20f, 1f), () => owner?.OpenCharacterSelectionFromUi());
 
         selectionSongsFolderButton.style.marginRight = 14f;
         selectionRefreshButton.style.marginRight = 14f;
+        selectionConvertRawButton.style.marginRight = 14f;
 
         selectionUtilityButtons.Add(selectionSongsFolderButton);
 
         selectionUtilityButtons.Add(selectionRefreshButton);
+
+        selectionUtilityButtons.Add(selectionConvertRawButton);
 
         selectionUtilityButtons.Add(selectionCharacterButton);
 
@@ -17678,9 +17685,13 @@ public sealed class TabsSongHeaderOverlay
 
         int selectedCount = snapshot.libraryImportCandidateSelected?.Count(value => value) ?? 0;
         if (libraryImportPopupTitleLabel != null)
-            libraryImportPopupTitleLabel.text = count == 1 ? "New Song Found" : "New Songs Found";
+            libraryImportPopupTitleLabel.text = snapshot.libraryImportIncludesCachedLegacySources
+                ? (count == 1 ? "Raw Song Found" : "Raw Songs Found")
+                : (count == 1 ? "New Song Found" : "New Songs Found");
         if (libraryImportPopupSummaryLabel != null)
-            libraryImportPopupSummaryLabel.text = "Convert selected sources into .theory packages before adding them to the library.";
+            libraryImportPopupSummaryLabel.text = snapshot.libraryImportIncludesCachedLegacySources
+                ? "Convert selected raw GP and MusicXML sources into .theory packages."
+                : "Convert selected sources into .theory packages before adding them to the library.";
         if (libraryImportPopupStatusLabel != null)
             libraryImportPopupStatusLabel.text = string.IsNullOrWhiteSpace(snapshot.libraryImportPopupStatusText)
                 ? $"{selectedCount}/{count} selected."
@@ -30518,7 +30529,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        foreach (Button button in new[] { selectionSongsFolderButton, selectionRefreshButton, selectionCharacterButton, selectionBackButton, selectionStartButton })
+        foreach (Button button in new[] { selectionSongsFolderButton, selectionRefreshButton, selectionConvertRawButton, selectionCharacterButton, selectionBackButton, selectionStartButton })
 
         {
 
@@ -31396,6 +31407,8 @@ public sealed class TabsSongHeaderOverlay
 
         selectionRefreshButton.style.minWidth = compactSelection ? 188f * menuLayoutScale : 230f * menuLayoutScale;
 
+        selectionConvertRawButton.style.minWidth = compactSelection ? 194f * menuLayoutScale : 232f * menuLayoutScale;
+
         selectionCharacterButton.style.minWidth = compactSelection ? 254f * menuLayoutScale : 308f * menuLayoutScale;
 
         selectionStartButton.style.minWidth = compactSelection ? 244f * menuLayoutScale : 284f * menuLayoutScale;
@@ -31405,6 +31418,8 @@ public sealed class TabsSongHeaderOverlay
         selectionSongsFolderButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
 
         selectionRefreshButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
+
+        selectionConvertRawButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
 
         selectionCharacterButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
 

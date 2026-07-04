@@ -180,6 +180,9 @@ public struct NoteData
     public bool bendPreBend;
     public bool bendRelease;
     public bool isMuted;
+    // Palm mute is a distinct technique from dead/x notes (isMuted) — loaders
+    // that conflate them lose PM passages on import.
+    public bool isPalmMute;
     public bool isLegato;
     public bool requiresPluck;
     public int linkedFromNoteId;
@@ -204,6 +207,7 @@ public struct NoteData
         bendPreBend = false;
         bendRelease = false;
         isMuted = false;
+        isPalmMute = false;
         isLegato = false;
         requiresPluck = true;
         linkedFromNoteId = -1;
@@ -215,7 +219,7 @@ public struct NoteData
                     NoteTechnique tech = NoteTechnique.None, int slideTo = -1, float bend = 0, bool legato = false,
                     bool pluckRequired = true, int linkedFrom = -1, bool preBend = false, bool release = false,
                     float visualBendStartTime = -1f, float visualBendDuration = 0f, List<NoteTechniqueSegmentData> segments = null,
-                    bool muted = false, string chordDisplayName = null)
+                    bool muted = false, string chordDisplayName = null, bool palmMuted = false)
     {
         id = noteId;
         time = t;
@@ -233,6 +237,7 @@ public struct NoteData
         bendPreBend = preBend;
         bendRelease = release;
         isMuted = muted;
+        isPalmMute = palmMuted;
         isLegato = legato;
         requiresPluck = pluckRequired;
         linkedFromNoteId = linkedFrom;
@@ -512,6 +517,7 @@ public sealed class GuitarGameplaySnapshot
     public List<string> libraryImportCandidateKindLabels;
     public List<bool> libraryImportCandidateSelected;
     public string libraryImportPopupStatusText;
+    public bool libraryImportIncludesCachedLegacySources;
     public int selectedStartMenuStepIndex;
     public int selectedStartMenuModeIndex;
     public int selectedStartMenuArcadeSetupIndex;

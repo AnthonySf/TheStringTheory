@@ -127,6 +127,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private ToneLabPreset playbackPresetOverride;
     private bool playbackPresetOverrideActive;
     private string playbackPresetOverrideId = string.Empty;
+    private bool workingPresetSnapshotActive;
+    private string workingPresetSnapshotLibraryPresetId = string.Empty;
 
     private sealed class SoftClipDistortionEffect
     {
@@ -704,6 +706,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         {
             EnsureSettingsLoaded();
             EnsurePresetLibrary(settings);
+            if (workingPresetSnapshotActive)
+                return workingPresetSnapshotLibraryPresetId ?? string.Empty;
+
             return settings.selected_preset_id ?? string.Empty;
         }
     }
@@ -1718,6 +1723,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         playbackPresetOverrideActive = false;
         playbackPresetOverride = null;
         playbackPresetOverrideId = string.Empty;
+        workingPresetSnapshotActive = false;
+        workingPresetSnapshotLibraryPresetId = string.Empty;
         RestoreWorkingRigFromSelectedPreset();
         RebuildCompiledPedalChain();
     }
@@ -1973,6 +1980,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
     public void SelectPreset(string presetId)
     {
+        workingPresetSnapshotActive = false;
+        workingPresetSnapshotLibraryPresetId = string.Empty;
         UpdateSettings(toneSettings =>
         {
             EnsurePresetLibrary(toneSettings);
@@ -1982,6 +1991,49 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
 
             ApplyPresetToSettings(toneSettings, preset);
         }, restartMonitoring: false);
+    }
+
+    public ToneLabPreset CaptureCurrentPresetSnapshot(string presetName = null, string presetId = null)
+    {
+        EnsureSettingsLoaded();
+        if (settings == null)
+            return null;
+
+        string resolvedName = string.IsNullOrWhiteSpace(presetName)
+            ? GetCurrentDiagnosticPresetName()
+            : presetName.Trim();
+        string resolvedId = string.IsNullOrWhiteSpace(presetId)
+            ? settings.selected_preset_id
+            : presetId.Trim();
+        return CaptureCurrentPreset(settings, resolvedName, resolvedId);
+    }
+
+    public bool LoadWorkingPresetSnapshot(ToneLabPreset preset)
+    {
+        if (preset == null || preset.pedal_chain == null || preset.pedal_chain.Count == 0)
+            return false;
+
+        EnsureSettingsLoaded();
+        if (settings == null)
+            return false;
+
+        EnsurePresetLibrary(settings);
+        string libraryPresetId = FindPreset(settings, preset.preset_id)?.preset_id ?? string.Empty;
+        string stableSelectedPresetId = !string.IsNullOrWhiteSpace(libraryPresetId)
+            ? libraryPresetId
+            : (FindPreset(settings, settings.selected_preset_id)?.preset_id ?? GetDefaultPreset(settings)?.preset_id ?? string.Empty);
+
+        UpdateSettings(toneSettings =>
+        {
+            toneSettings.input_gain_db = Mathf.Clamp(preset.input_gain_db, MinRigGainDb, MaxRigGainDb);
+            toneSettings.output_gain_db = Mathf.Clamp(preset.output_gain_db, MinRigGainDb, MaxRigGainDb);
+            toneSettings.pedal_chain = ClonePedalChain(preset.pedal_chain);
+            toneSettings.selected_preset_id = stableSelectedPresetId;
+            SyncLegacySettingsFromChain(toneSettings);
+        }, restartMonitoring: false);
+        workingPresetSnapshotActive = true;
+        workingPresetSnapshotLibraryPresetId = libraryPresetId;
+        return true;
     }
 
     public bool SetPlaybackPresetOverride(string presetId)
@@ -2020,14 +2072,6 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         EnsureSettingsLoaded();
         if (settings == null)
             return false;
-
-        string presetId = preset.preset_id ?? string.Empty;
-        if (playbackPresetOverrideActive &&
-            string.Equals(playbackPresetOverrideId, presetId, StringComparison.Ordinal) &&
-            playbackPresetOverride != null)
-        {
-            return true;
-        }
 
         playbackPresetOverride = ClonePreset(preset);
         playbackPresetOverrideId = playbackPresetOverride?.preset_id ?? string.Empty;

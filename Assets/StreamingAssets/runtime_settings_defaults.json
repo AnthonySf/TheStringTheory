@@ -1,4 +1,193 @@
-{
+﻿{
+    "mainMenuBackgroundProfile":  {
+                                      "backgroundMode":  4,
+                                      "skyDesign":  3,
+                                      "enviroMood":  6,
+                                      "neonHorizonTheme":  1,
+                                      "neonHorizonColorPalette":  0,
+                                      "neonHorizonSkyLineColorPalette":  0,
+                                      "neonHorizonUseUnifiedSideColors":  true,
+                                      "enviroHorizonEnabled":  false,
+                                      "enviroMoonModeByMood":  [
+                                                                   2,
+                                                                   2,
+                                                                   3,
+                                                                   2,
+                                                                   0,
+                                                                   3,
+                                                                   3,
+                                                                   0,
+                                                                   3,
+                                                                   0
+                                                               ],
+                                      "enviroGroundModeByMood":  [
+                                                                     0,
+                                                                     0,
+                                                                     0,
+                                                                     0,
+                                                                     0,
+                                                                     0,
+                                                                     0,
+                                                                     0,
+                                                                     0,
+                                                                     0
+                                                                 ],
+                                      "enviroCloudsEnabledByMood":  [
+                                                                        false,
+                                                                        true,
+                                                                        true,
+                                                                        false,
+                                                                        true,
+                                                                        true,
+                                                                        true,
+                                                                        true,
+                                                                        true,
+                                                                        true
+                                                                    ],
+                                      "enviroCloudAmountByMood":  [
+                                                                      1.0,
+                                                                      1.0,
+                                                                      0.949999988079071,
+                                                                      1.0,
+                                                                      1.0,
+                                                                      0.5,
+                                                                      1.0,
+                                                                      1.0,
+                                                                      1.0499999523162842,
+                                                                      1.0
+                                                                  ],
+                                      "enviroCloudThicknessByMood":  [
+                                                                         1.0,
+                                                                         1.0,
+                                                                         1.0,
+                                                                         1.0,
+                                                                         1.0,
+                                                                         1.2000000476837159,
+                                                                         1.0,
+                                                                         1.0,
+                                                                         0.0,
+                                                                         1.0
+                                                                     ],
+                                      "enviroCloudConnectivityByMood":  [
+                                                                            1.0,
+                                                                            1.0,
+                                                                            1.2999999523162842,
+                                                                            1.0,
+                                                                            1.0,
+                                                                            2.0,
+                                                                            2.0,
+                                                                            1.0,
+                                                                            2.0,
+                                                                            1.0
+                                                                        ],
+                                      "enviroCloudContrastByMood":  [
+                                                                        1.0,
+                                                                        1.0,
+                                                                        2.0,
+                                                                        1.0,
+                                                                        1.0,
+                                                                        1.0,
+                                                                        2.0,
+                                                                        1.0,
+                                                                        2.0,
+                                                                        1.0
+                                                                    ],
+                                      "enviroMountainOpacityByMood":  [
+                                                                          1.0,
+                                                                          1.0,
+                                                                          1.0,
+                                                                          1.0,
+                                                                          1.0,
+                                                                          1.0,
+                                                                          1.0,
+                                                                          1.0,
+                                                                          1.0,
+                                                                          1.0
+                                                                      ],
+                                      "enviroMountainFarOpacityByMood":  [
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787,
+                                                                             0.3400000035762787
+                                                                         ],
+                                      "enviroMountainMidOpacityByMood":  [
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995,
+                                                                             0.5799999833106995
+                                                                         ],
+                                      "enviroMountainNearOpacityByMood":  [
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279,
+                                                                              0.9599999785423279
+                                                                          ],
+                                      "enviroSkyCameraPitchByMood":  [
+                                                                         1.0,
+                                                                         18.0,
+                                                                         -18.0,
+                                                                         -1.5,
+                                                                         0.0,
+                                                                         -18.0,
+                                                                         -18.0,
+                                                                         0.0,
+                                                                         -18.0,
+                                                                         0.0
+                                                                     ],
+                                      "enviroStarAnimationByMood":  [
+                                                                        1.0,
+                                                                        1.0,
+                                                                        1.5,
+                                                                        1.0,
+                                                                        1.0,
+                                                                        1.0,
+                                                                        1.0,
+                                                                        1.0,
+                                                                        1.0,
+                                                                        1.0
+                                                                    ],
+                                      "enviroStarDensityByMood":  [
+                                                                      1.0,
+                                                                      1.0,
+                                                                      0.3499999940395355,
+                                                                      1.0,
+                                                                      1.0,
+                                                                      1.0,
+                                                                      1.0,
+                                                                      1.0,
+                                                                      1.0,
+                                                                      1.0
+                                                                  ],
+                                      "domeStarsEnabled":  true,
+                                      "domeStarsCount":  420,
+                                      "domeStarsBrightness":  0.949999988079071,
+                                      "domeStarsTwinkleStrength":  0.3499999940395355,
+                                      "domeStarsTwinkleSpeed":  0.6499999761581421,
+                                      "domeStarsSize":  1.0,
+                                      "domeStarsSeed":  1729,
+                                      "domeMountainsEnabled":  false,
+                                      "domeMountainFarOpacity":  0.3400000035762787,
+                                      "domeMountainMidOpacity":  0.5799999833106995,
+                                      "domeMountainNearOpacity":  0.9599999785423279
+                                  },
     "values":  [
                    {
                        "id":  "core.noteSpeed",
@@ -141,74 +330,6 @@
                        "value":  "0.33"
                    },
                    {
-                       "id":  "bg.mode",
-                       "value":  "NeonStage"
-                   },
-                   {
-                       "id":  "bg.skyMood",
-                       "value":  "Midnight"
-                   },
-                   {
-                       "id":  "bg.skyUseStage",
-                       "value":  "false"
-                   },
-                   {
-                       "id":  "bg.skyStars",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.skyStarCount",
-                       "value":  "500"
-                   },
-                   {
-                       "id":  "bg.skyStarTwinkleFraction",
-                       "value":  "0.83"
-                   },
-                   {
-                       "id":  "bg.skyStarTwinkleStrength",
-                       "value":  "0.6"
-                   },
-                   {
-                       "id":  "bg.skyStarTwinkleSpeedMin",
-                       "value":  "0.57"
-                   },
-                   {
-                       "id":  "bg.skyStarTwinkleSpeedMax",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.starStyle",
-                       "value":  "SoftDots"
-                   },
-                   {
-                       "id":  "bg.starSeed",
-                       "value":  "1337"
-                   },
-                   {
-                       "id":  "bg.starDriftSpeed",
-                       "value":  "0.55"
-                   },
-                   {
-                       "id":  "bg.shootingStars",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.skyCloudNearSpeed",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.skyCloudMidSpeed",
-                       "value":  "0.2"
-                   },
-                   {
-                       "id":  "bg.skyCloudFarSpeed",
-                       "value":  "0.11"
-                   },
-                   {
-                       "id":  "bg.skyCloudGlobalScale",
-                       "value":  "3"
-                   },
-                   {
                        "id":  "highway.totalFrets",
                        "value":  "24"
                    },
@@ -313,6 +434,942 @@
                        "value":  "true"
                    },
                    {
+                       "id":  "highway.laneGuideThickness",
+                       "value":  "0.14"
+                   },
+                   {
+                       "id":  "highway.laneGuideYOffset",
+                       "value":  "-1.84"
+                   },
+                   {
+                       "id":  "highway.highlightFretBoundaries",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "highway.fretNumberYOffset",
+                       "value":  "0.45"
+                   },
+                   {
+                       "id":  "highway.fretNumberZOffset",
+                       "value":  "0.12"
+                   },
+                   {
+                       "id":  "bg.moodSetter",
+                       "value":  "OPEN"
+                   },
+                   {
+                       "id":  "bg.mode",
+                       "value":  "NeonStage"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.theme",
+                       "value":  "Custom"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyDesign",
+                       "value":  "Enviro 3"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood",
+                       "value":  "Aurora Borealis"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.moonMode",
+                       "value":  "Giant"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityFar",
+                       "value":  "0.39"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.clouds",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.0.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.1.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.moonMode",
+                       "value":  "Giant"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.clouds",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.2.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.3.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.clouds",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.4.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.moonMode",
+                       "value":  "Giant"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityNear",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityMid",
+                       "value":  "0.88"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityFar",
+                       "value":  "0.59"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.clouds",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.5.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.6.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.7.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.moonMode",
+                       "value":  "Normal"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.8.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.moonMode",
+                       "value":  "Giant"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.groundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.skyCameraPitch",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.starAnimation",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.starDensity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityNear",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityMid",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityFar",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.clouds",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.cloudAmount",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.cloudThickness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.cloudConnectivity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroMood.9.cloudContrast",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroGroundMode",
+                       "value":  "Distant Mountains"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroGround",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.enviroHorizon",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.unifiedSideColors",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyLineStyle",
+                       "value":  "Horizon Wave Beams"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyLinePalette",
+                       "value":  "Deep Blue"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyCoreBrightness",
+                       "value":  "1.42"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyCoreSize",
+                       "value":  "0.28"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyCoreHeight",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyCoreXOffset",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyCoreFalloff",
+                       "value":  "2.85"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyOutsideDarkness",
+                       "value":  "1.72"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyCorePurpleStrength",
+                       "value":  "1.08"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyCorePurpleFalloff",
+                       "value":  "1.18"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyAuroraRidgeStrength",
+                       "value":  "2.6"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyAuroraRidgeWhiteFalloffPosition",
+                       "value":  "0.38"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyAuroraRidgeWhiteFalloffSharpness",
+                       "value":  "0.62"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyAuroraWaveBumpiness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyLineStrength",
+                       "value":  "8.1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyLineOpacity",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyLineReflectionStrength",
+                       "value":  "0.35"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skyDotStrength",
+                       "value":  "1.85"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.skySideWashStrength",
+                       "value":  "1.65"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.cloudsEnabled",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.cloudOpacity",
+                       "value":  "0.62"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.cloudSpeed",
+                       "value":  "0.22"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.distance",
+                       "value":  "150"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.y",
+                       "value":  "2.6"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.width",
+                       "value":  "390"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.glowHeight",
+                       "value":  "1.7"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreHeight",
+                       "value":  "0.25"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreYOffset",
+                       "value":  "0.012"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.floorOverlap",
+                       "value":  "0.035"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.groundDarkness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.groundGradientStart",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.groundGradientBrightness",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeStars.enabled",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeStars.count",
+                       "value":  "260"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeStars.brightness",
+                       "value":  "0.82"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeStars.twinkleStrength",
+                       "value":  "0.35"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeStars.twinkleSpeed",
+                       "value":  "0.65"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeStars.size",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeStars.seed",
+                       "value":  "1729"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeMountains",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeMountainNearOpacity",
+                       "value":  "0.96"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeMountainMidOpacity",
+                       "value":  "0.58"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.domeMountainFarOpacity",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.palette",
+                       "value":  "Violet Pulse"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.colorStrength",
+                       "value":  "1.2"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.colorSaturation",
+                       "value":  "2.1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.softGlow",
+                       "value":  "4"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreGlow",
+                       "value":  "4.65"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.softAlpha",
+                       "value":  "0.48"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreAlpha",
+                       "value":  "0.42"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.softBlurFalloff",
+                       "value":  "3.1"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreBlurFalloff",
+                       "value":  "36"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.softColorFalloff",
+                       "value":  "0.55"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreColorFalloff",
+                       "value":  "0.22"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.centerBlendWidth",
+                       "value":  "0.14"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.centerBlendFalloff",
+                       "value":  "6.5"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.centerBlendStrength",
+                       "value":  "0.52"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.softCoreWidth",
+                       "value":  "0.03"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.softCoreSoftness",
+                       "value":  "0.09"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreWidth",
+                       "value":  "0.04"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreSoftness",
+                       "value":  "0.018"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.softShimmer",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.coreShimmer",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.edgeBlurStrength",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.edgeBlurStart",
+                       "value":  "0.72"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.edgeBlurSharpness",
+                       "value":  "2"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.curveDown",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.neonHorizon.curveTowardCamera",
+                       "value":  "0"
+                   },
+                   {
+                       "id":  "bg.skyMood",
+                       "value":  "Midnight"
+                   },
+                   {
+                       "id":  "bg.skyUseStage",
+                       "value":  "false"
+                   },
+                   {
+                       "id":  "bg.skyStars",
+                       "value":  "true"
+                   },
+                   {
+                       "id":  "bg.skyStarCount",
+                       "value":  "500"
+                   },
+                   {
+                       "id":  "bg.skyStarTwinkleFraction",
+                       "value":  "0.83"
+                   },
+                   {
+                       "id":  "bg.skyStarTwinkleStrength",
+                       "value":  "0.6"
+                   },
+                   {
+                       "id":  "bg.skyStarTwinkleSpeedMin",
+                       "value":  "0.57"
+                   },
+                   {
+                       "id":  "bg.skyStarTwinkleSpeedMax",
+                       "value":  "1"
+                   },
+                   {
+                       "id":  "bg.skyCloudNearSpeed",
+                       "value":  "0.34"
+                   },
+                   {
+                       "id":  "bg.skyCloudMidSpeed",
+                       "value":  "0.2"
+                   },
+                   {
+                       "id":  "bg.skyCloudFarSpeed",
+                       "value":  "0.11"
+                   },
+                   {
+                       "id":  "bg.skyCloudGlobalScale",
+                       "value":  "3"
+                   },
+                   {
                        "id":  "highway.backgroundDistance",
                        "value":  "100"
                    },
@@ -359,606 +1416,6 @@
                    {
                        "id":  "highway.backgroundColorA",
                        "value":  "1"
-                   },
-                   {
-                       "id":  "highway.laneGuideThickness",
-                       "value":  "0.14"
-                   },
-                   {
-                       "id":  "highway.laneGuideYOffset",
-                       "value":  "-1.84"
-                   },
-                   {
-                       "id":  "highway.highlightFretBoundaries",
-                       "value":  "false"
-                   },
-                   {
-                       "id":  "highway.fretNumberYOffset",
-                       "value":  "0.45"
-                   },
-                   {
-                       "id":  "highway.fretNumberZOffset",
-                       "value":  "0.12"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroGround",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroGroundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroHorizon",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood",
-                       "value":  "Cloudy Giant Moon"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.clouds",
-                       "value":  "false"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.moonMode",
-                       "value":  "Giant"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityFar",
-                       "value":  "0.39"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.0.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.clouds",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.moonMode",
-                       "value":  "Normal"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityFar",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.1.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.clouds",
-                       "value":  "false"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.moonMode",
-                       "value":  "Giant"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityFar",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.2.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.clouds",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.moonMode",
-                       "value":  "Normal"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityFar",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.3.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.clouds",
-                       "value":  "false"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.moonMode",
-                       "value":  "Normal"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityFar",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.4.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.clouds",
-                       "value":  "false"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.moonMode",
-                       "value":  "Giant"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityFar",
-                       "value":  "0.59"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityMid",
-                       "value":  "0.88"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.mountainOpacityNear",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.5.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.clouds",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.moonMode",
-                       "value":  "Normal"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityFar",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.6.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.clouds",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.moonMode",
-                       "value":  "Normal"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityFar",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.7.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.clouds",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.moonMode",
-                       "value":  "Normal"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityFar",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.8.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.cloudAmount",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.cloudConnectivity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.cloudContrast",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.clouds",
-                       "value":  "true"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.cloudThickness",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.groundMode",
-                       "value":  "Distant Mountains"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.moonMode",
-                       "value":  "Giant"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityFar",
-                       "value":  "0.34"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityMid",
-                       "value":  "0.58"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.mountainOpacityNear",
-                       "value":  "0.96"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.skyCameraPitch",
-                       "value":  "0"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.starAnimation",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.enviroMood.9.starDensity",
-                       "value":  "1"
-                   },
-                   {
-                       "id":  "bg.neonHorizon.skyDesign",
-                       "value":  "Enviro 3"
                    }
                ]
 }

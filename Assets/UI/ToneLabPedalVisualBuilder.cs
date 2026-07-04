@@ -453,8 +453,6 @@ public static class ToneLabPedalVisualBuilder
         button.style.borderBottomLeftRadius = 7f;
         button.style.borderBottomRightRadius = 7f;
         button.style.marginLeft = 4f;
-        button.RegisterCallback<PointerDownEvent>(evt => evt.StopPropagation());
-        button.RegisterCallback<PointerUpEvent>(evt => evt.StopPropagation());
         return button;
     }
 

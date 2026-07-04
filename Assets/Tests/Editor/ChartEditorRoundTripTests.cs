@@ -181,6 +181,24 @@ public sealed class ChartEditorRoundTripTests
     }
 
     [Test]
+    public void SongNotationFacade_DetectsGp8AsGuitarPro()
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"string_theory_gp8_detection_{Guid.NewGuid():N}.gp8");
+        try
+        {
+            File.WriteAllBytes(path, Array.Empty<byte>());
+
+            Assert.IsTrue(SongNotationFacade.TryDetectKind(path, out SongNotationSourceKind kind));
+            Assert.AreEqual(SongNotationSourceKind.Gp5, kind);
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Test]
     public void LibraryScanner_FindsTheoryPackagesInsideNestedGroupingFolders()
     {
         using ExternalContentRootScope scope = new ExternalContentRootScope();
@@ -544,6 +562,88 @@ public sealed class ChartEditorRoundTripTests
         AssertTheoryPackageJsonIsNeutral(theoryEditorStateJson);
     }
 
+    [Test]
+    public void ExportToneChanges_CanonicalizesStaleToneNameWhenToneIdResolvesDefinition()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        AttachFixtureAudio(project, scope.RootPath);
+        AttachToneData(project.tracks[0]);
+        project.tracks[0].tones.changes[0].toneName = "Old Clean Label";
+        project.tracks[0].tones.changes[0].toneId = 0;
+        PrepareProjectForNoEditRoundTrip(project);
+
+        Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(project, out _, out string packagePath, out string exportError), exportError);
+        Assert.IsTrue(TheorySongLoader.TryLoadArrangementByPartId(packagePath, "lead", out _, out TheoryArrangementData theoryLead), "The .theory package did not contain the lead arrangement.");
+
+        TheoryToneChangeData exportedChange = theoryLead.tones.changes.FirstOrDefault(change => Math.Abs(change.timeSeconds - 0.5f) < 0.001f);
+        Assert.IsNotNull(exportedChange, "Expected the first tone change to export.");
+        Assert.AreEqual("Clean Intro", exportedChange.toneName, "Exported tone changes must use a definition name the game can resolve.");
+        Assert.AreEqual(0, exportedChange.toneId, "Export should not discard the source tone id.");
+    }
+
+    [Test]
+    public void ExportDifficultyVariants_SharesToneDataWithinArrangementGroup()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        AttachFixtureAudio(project, scope.RootPath);
+        ChartEditorTrack fullLead = project.tracks[0];
+        fullLead.arrangementGroupId = "lead";
+        fullLead.difficultyLabel = "Full";
+        fullLead.difficultyUiIndex = 0;
+        AttachToneData(fullLead);
+
+        ChartEditorTrack easyLead = JsonUtility.FromJson<ChartEditorTrack>(JsonUtility.ToJson(fullLead));
+        easyLead.id = "lead_easy";
+        easyLead.displayName = "Lead Guitar Easy";
+        easyLead.arrangementGroupId = "lead";
+        easyLead.difficultyLabel = "1";
+        easyLead.difficultyUiIndex = 1;
+        AttachAlternateToneData(easyLead);
+        project.tracks.Insert(1, easyLead);
+        PrepareProjectForNoEditRoundTrip(project);
+
+        Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(project, out _, out string packagePath, out string exportError), exportError);
+        Assert.IsTrue(TheorySongLoader.TryLoadArrangementByPartId(packagePath, "lead", out _, out TheoryArrangementData exportedFull), "The .theory package did not contain the full lead arrangement.");
+        Assert.IsTrue(TheorySongLoader.TryLoadArrangementByPartId(packagePath, "lead_easy", out _, out TheoryArrangementData exportedEasy), "The .theory package did not contain the easy lead arrangement.");
+
+        CollectionAssert.AreEqual(
+            BuildTheoryToneDigest(exportedFull.tones),
+            BuildTheoryToneDigest(exportedEasy.tones),
+            "Difficulty variants in the same arrangement group should share one tone map.");
+        Assert.AreEqual("Clean Intro", exportedEasy.tones.baseToneName);
+    }
+
+    [Test]
+    public void LoadArrangementByGroupId_PrefersFullDifficultyWhenManifestOrderDiffers()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        AttachFixtureAudio(project, scope.RootPath);
+        ChartEditorTrack fullLead = project.tracks[0];
+        fullLead.id = "lead_full";
+        fullLead.arrangementGroupId = "lead";
+        fullLead.difficultyLabel = "Full";
+        fullLead.difficultyUiIndex = 0;
+
+        ChartEditorTrack easyLead = JsonUtility.FromJson<ChartEditorTrack>(JsonUtility.ToJson(fullLead));
+        easyLead.id = "lead_easy";
+        easyLead.displayName = "Lead Guitar Easy";
+        easyLead.arrangementGroupId = "lead";
+        easyLead.difficultyLabel = "1";
+        easyLead.difficultyUiIndex = 1;
+        project.tracks.Clear();
+        project.tracks.Add(easyLead);
+        project.tracks.Add(fullLead);
+        PrepareProjectForNoEditRoundTrip(project);
+
+        Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(project, out _, out string packagePath, out string exportError), exportError);
+        Assert.IsTrue(TheorySongLoader.TryLoadArrangementByGroupId(packagePath, "lead", out TheoryArrangementSummary summary, out _), "The .theory package did not contain the lead group.");
+
+        Assert.AreEqual("lead_full", summary.arrangementId);
+    }
+
     private static void AssertTheoryPackageJsonIsNeutral(string json)
     {
         StringAssert.DoesNotContain("rawJson", json);
@@ -582,6 +682,48 @@ public sealed class ChartEditorRoundTripTests
             BuildEditorToneDigest(project.tracks[0].tones),
             BuildTheoryToneDigest(reexportedLead.tones),
             "Re-exporting an imported .theory package should preserve tone changes and tone definitions.");
+    }
+
+    [Test]
+    public void ImportTheoryPackage_AppliesEmbeddedToneLabMappingsToEditorTones()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        ChartEditorProject project = CreateRoundTripProject(scope.RootPath);
+        AttachFixtureAudio(project, scope.RootPath);
+        AttachToneData(project.tracks[0]);
+        PrepareProjectForNoEditRoundTrip(project);
+
+        Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(project, out _, out string packagePath, out string exportError), exportError);
+        TheoryToneLabMappingState mappingState = new TheoryToneLabMappingState
+        {
+            mappings = new List<TheoryToneLabPresetMappingData>
+            {
+                new TheoryToneLabPresetMappingData
+                {
+                    arrangementId = "lead",
+                    toneName = "Clean Intro",
+                    presetId = "mapped_clean",
+                    presetSnapshot = CreateTheoryTonePreset("mapped_clean", "Mapped Clean", "Amp", "mapped-amp")
+                }
+            }
+        };
+        Assert.IsTrue(TheoryPackageIO.TryWriteToneLabMappings(packagePath, mappingState, out string mappingWriteError), mappingWriteError);
+
+        Assert.IsTrue(ChartEditorImportService.ImportTheoryPackage(packagePath, out ChartEditorImportResult importResult, out string importError), importError);
+        ChartEditorTrack importedLead = importResult.project.tracks.First(track => track.id == "lead");
+        ChartEditorToneDefinition importedClean = importedLead.tones.definitions.FirstOrDefault(definition => definition.name == "Clean Intro");
+
+        Assert.IsNotNull(importedClean, "Expected the mapped tone definition to exist after import.");
+        Assert.AreEqual("mapped_clean", importedClean.preset.presetId);
+        Assert.AreEqual("Mapped Clean", importedClean.preset.presetName);
+        Assert.AreEqual("mapped-amp", importedClean.preset.pedalChain[0].descriptorId);
+
+        Assert.IsTrue(ChartEditorProjectStore.ExportPlayableProject(importResult.project, out _, out string reexportedPackagePath, out string reexportError), reexportError);
+        Assert.IsTrue(TheoryPackageIO.TryReadToneLabMappings(reexportedPackagePath, out TheoryToneLabMappingState reexportedMappings, out string mappingReadError), mappingReadError);
+        TheoryToneLabPresetMappingData reexportedMapping = reexportedMappings.mappings.FirstOrDefault(mapping => mapping.arrangementId == "lead" && mapping.toneName == "Clean Intro");
+        Assert.IsNotNull(reexportedMapping, "Re-export should write the effective editor tone mapping back into the .theory package.");
+        Assert.AreEqual("mapped_clean", reexportedMapping.presetId);
+        Assert.AreEqual("Mapped Clean", reexportedMapping.presetSnapshot.presetName);
     }
 
     [Test]
@@ -1028,6 +1170,27 @@ public sealed class ChartEditorRoundTripTests
             "Importer-backed cache folders should appear as pending conversion candidates.");
     }
 
+    [Test]
+    public void SongLibrary_RawNotationImportCandidate_UsesSupportedNonMp3Audio()
+    {
+        using ExternalContentRootScope scope = new ExternalContentRootScope();
+        string songDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, "Flac Audio Song");
+        Directory.CreateDirectory(songDirectory);
+        string xmlPath = WriteInstrumentTaggedMusicXmlFixture(songDirectory);
+        string audioPath = Path.Combine(songDirectory, "song.flac");
+        File.WriteAllBytes(audioPath, new byte[] { 0x66, 0x4c, 0x61, 0x43 });
+
+        SongLibraryService.ClearCache();
+        List<SongLibraryImportCandidate> candidates = SongLibraryService.DiscoverPendingTheoryConversionCandidates();
+        SongLibraryImportCandidate candidate = candidates.FirstOrDefault(item =>
+            item != null &&
+            string.Equals(Path.GetFullPath(item.SourcePath), Path.GetFullPath(xmlPath), StringComparison.OrdinalIgnoreCase));
+
+        Assert.IsNotNull(candidate, "Raw MusicXML song should be offered for .theory conversion.");
+        Assert.IsFalse(string.IsNullOrWhiteSpace(candidate.AudioPath), "Raw notation conversion should include a paired audio path.");
+        Assert.AreEqual(Path.GetFullPath(audioPath), Path.GetFullPath(candidate.AudioPath), "Raw notation conversion should pair every supported editor audio type, not only MP3/WAV/OGG.");
+    }
+
     private static void PrepareProjectForNoEditRoundTrip(ChartEditorProject project)
     {
         project.EnsureDefaults();
@@ -1133,6 +1296,32 @@ public sealed class ChartEditorRoundTripTests
         };
     }
 
+    private static void AttachAlternateToneData(ChartEditorTrack track)
+    {
+        track.tones = new ChartEditorToneData
+        {
+            baseToneName = "Easy Placeholder",
+            changes = new List<ChartEditorToneChange>
+            {
+                new ChartEditorToneChange
+                {
+                    timeSeconds = 0.25f,
+                    toneName = "Easy Placeholder",
+                    toneId = 0
+                }
+            },
+            definitions = new List<ChartEditorToneDefinition>
+            {
+                new ChartEditorToneDefinition
+                {
+                    name = "Easy Placeholder",
+                    key = "easy_placeholder",
+                    preset = CreateTonePreset("tone_easy_placeholder", "Easy Placeholder", UnityToneLabRuntime.ToneLabPedalType.Amp, "easy-amp")
+                }
+            }
+        };
+    }
+
     private static void AssertTheorySummaryTag(
         IEnumerable<MusicXmlLoader.MusicXmlPartSummary> summaries,
         string partId,
@@ -1168,6 +1357,32 @@ public sealed class ChartEditorRoundTripTests
                     descriptorId = descriptorId,
                     enabled = true,
                     settingsJson = "{\"level\":0.75}"
+                }
+            }
+        };
+    }
+
+    private static TheoryTonePresetData CreateTheoryTonePreset(
+        string presetId,
+        string presetName,
+        string pedalType,
+        string descriptorId)
+    {
+        return new TheoryTonePresetData
+        {
+            presetId = presetId,
+            presetName = presetName,
+            inputGainDb = -2f,
+            outputGainDb = 1.25f,
+            pedalChain = new List<TheoryTonePedalSlotData>
+            {
+                new TheoryTonePedalSlotData
+                {
+                    instanceId = $"{presetId}_slot",
+                    pedalType = pedalType,
+                    descriptorId = descriptorId,
+                    enabled = true,
+                    settingsJson = "{\"level\":0.55}"
                 }
             }
         };

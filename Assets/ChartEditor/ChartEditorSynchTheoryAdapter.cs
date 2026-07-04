@@ -177,6 +177,11 @@ public static class ChartEditorSynchTheoryAdapter
             .ThenBy(marker => marker.audioTimeSeconds)
             .ToList();
 
+        // The generated markers were written directly into beatMap.beatMarkers;
+        // without this, ApplyBeatMapToContent's EnsureBeatMap can hit the
+        // same-frame cache and remap content against the pre-sync tempo
+        // regions, silently discarding the alignment.
+        ChartEditorTimingService.InvalidateBeatMapCache(project);
         if (moveContentWithBeatMap)
             ChartEditorTimingService.ApplyBeatMapToContent(project);
         else

@@ -157,13 +157,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     private Vector2 highwayCharacterTextureScale = Vector2.one;
     private Vector2 highwayCharacterTextureOffset = Vector2.zero;
     private HighwayCharacterChoice loadedHighwayCharacterChoice = HighwayCharacterChoice.Hero;
-    private readonly GameObject[] stringVisuals = new GameObject[6];
-    private readonly Material[] stringVisualMats = new Material[6];
-    private readonly Renderer[] stringVisualRenderers = new Renderer[6];
-    private readonly GameObject[] loopStartMarkerLines = new GameObject[6];
-    private readonly GameObject[] loopEndMarkerLines = new GameObject[6];
-    private readonly Renderer[] loopStartMarkerRenderers = new Renderer[6];
-    private readonly Renderer[] loopEndMarkerRenderers = new Renderer[6];
+    // Sized for extended-range instruments: GP files chart 7/8-string tunings,
+    // and clamping to 6 stacked their top strings onto lane 6.
+    private readonly GameObject[] stringVisuals = new GameObject[8];
+    private readonly Material[] stringVisualMats = new Material[8];
+    private readonly Renderer[] stringVisualRenderers = new Renderer[8];
+    private readonly GameObject[] loopStartMarkerLines = new GameObject[8];
+    private readonly GameObject[] loopEndMarkerLines = new GameObject[8];
+    private readonly Renderer[] loopStartMarkerRenderers = new Renderer[8];
+    private readonly Renderer[] loopEndMarkerRenderers = new Renderer[8];
     private readonly Dictionary<int, TextMeshPro> fretNumberLabels = new Dictionary<int, TextMeshPro>();
     private Material[] fretBoundaryMats;
     private Renderer[] fretBoundaryRenderers;
@@ -657,6 +659,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
     public void ResetRenderer(List<NoteData> chartNotes, List<TabSectionData> sections)
     {
         DestroyInactiveVisualCaches();
+
+        // Destroying the root does not destroy the per-view Material
+        // instances — release them per view or every reset (each editor
+        // preview edit) leaks the whole set.
+        foreach (KeyValuePair<int, HighwayNoteView> pair in noteViews)
+            pair.Value?.Destroy();
 
         if (root != null)
             Object.Destroy(root);
@@ -10558,6 +10566,28 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
 
         public void Destroy()
         {
+            // Destroying a GameObject does not destroy the Material instances
+            // its renderers hold — the per-view instances below leaked on
+            // every rebuild (hundreds per editor-preview edit). The shared
+            // static caches (technique/continuous-ribbon/bend-arrow/mute
+            // materials) are deliberately NOT touched.
+            DestroyOwnedMaterial(noteMaterial);
+            DestroyOwnedMaterial(tetherMaterial);
+            DestroyOwnedMaterial(markerMaterial);
+            DestroyOwnedMaterial(resolvedFeedbackMaterial);
+            DestroyOwnedMaterial(legatoCurveMaterial);
+            if (label != null && label.fontSharedMaterial != null)
+                DestroyOwnedMaterial(label.fontMaterial);
+            if (laneTagLabel != null && laneTagLabel.fontSharedMaterial != null)
+                DestroyOwnedMaterial(laneTagLabel.fontMaterial);
+            if (tail != null)
+                DestroyOwnedMaterial(tail.GetComponent<Renderer>()?.sharedMaterial);
+            if (outlineRoot != null)
+            {
+                foreach (Renderer outlineRenderer in outlineRoot.GetComponentsInChildren<Renderer>(true))
+                    DestroyOwnedMaterial(outlineRenderer != null ? outlineRenderer.sharedMaterial : null);
+            }
+
             if (noteRoot != null)
                 Object.Destroy(noteRoot);
             if (laneTagLabel != null)
@@ -10584,6 +10614,12 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
                 Object.Destroy(resolvedFeedbackRoot);
             if (techniqueRoot != null)
                 Object.Destroy(techniqueRoot);
+        }
+
+        private static void DestroyOwnedMaterial(Material material)
+        {
+            if (material != null)
+                Object.Destroy(material);
         }
     }
 }
