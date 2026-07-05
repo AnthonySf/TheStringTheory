@@ -440,7 +440,7 @@ public sealed class MiniGameManager
         {
             id = "fight-club",
             title = "Fight Club",
-            subtitle = "Play three chords on the beat. Each round gets tighter.",
+            subtitle = "Play chords on beat. Each round gets tighter.",
             highScore = Mathf.Max(0, saveData?.fightClub?.highScore ?? 0),
             selected = selectedIndex == 0
         });

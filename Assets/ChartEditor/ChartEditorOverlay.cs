@@ -6275,6 +6275,30 @@ public sealed class ChartEditorOverlay
         panel.Add(flagDetails);
 
         TextField linkedFromField = null;
+        ChartEditorNote pendingLinkOrigin = null;
+        int pendingLinkOriginPeekedId = -1;
+
+        // Linked-from ids must live in the sourceNoteId space the exporter
+        // writes. The old ordered-list-index fallback collided with the
+        // imported loader ids 0..N-1 and shifted whenever notes were inserted,
+        // silently corrupting the link. Unsourced origins instead get the id
+        // the exporter's scheme would generate next — peeked here for display,
+        // and reserved permanently only when the user applies the popup.
+        int PeekNextGeneratedSourceNoteId()
+        {
+            int nextGeneratedNoteId = track?.notes?.Count ?? 0;
+            if (track?.notes != null)
+            {
+                for (int i = 0; i < track.notes.Count; i++)
+                {
+                    ChartEditorNote candidate = track.notes[i];
+                    if (candidate != null && candidate.sourceNoteId >= nextGeneratedNoteId)
+                        nextGeneratedNoteId = candidate.sourceNoteId + 1;
+                }
+            }
+
+            return nextGeneratedNoteId;
+        }
 
         int ResolveNoteExportId(ChartEditorNote source)
         {
@@ -6283,13 +6307,9 @@ public sealed class ChartEditorOverlay
             if (source.sourceNoteId >= 0)
                 return source.sourceNoteId;
 
-            List<ChartEditorNote> ordered = track?.notes?
-                .Where(candidate => candidate != null)
-                .OrderBy(candidate => candidate.timeSeconds)
-                .ThenBy(candidate => candidate.stringOrLane)
-                .ToList();
-            int resolvedIndex = ordered?.IndexOf(source) ?? -1;
-            return resolvedIndex >= 0 ? resolvedIndex : -1;
+            pendingLinkOrigin = source;
+            pendingLinkOriginPeekedId = PeekNextGeneratedSourceNoteId();
+            return pendingLinkOriginPeekedId;
         }
 
         int FindPreviousLinkedNoteId()
@@ -6659,10 +6679,13 @@ public sealed class ChartEditorOverlay
             note.palmMute = palmMute;
             note.fretHandMute = fretHandMute;
             note.muted = palmMute || fretHandMute;
+            // Runtime flags keep the techniques apart: only fret-hand mutes
+            // are dead/x notes at runtime; palm mutes must not render or
+            // judge as dead notes.
             note.hasRuntimeMuted = true;
-            note.runtimeMuted = note.muted;
+            note.runtimeMuted = fretHandMute;
             note.hasRuntimePalmMute = true;
-            note.runtimePalmMute = note.palmMute;
+            note.runtimePalmMute = palmMute;
             note.harmonic = harmonic;
             note.pinchHarmonic = pinchHarmonic;
             note.accent = accentFlag;
@@ -6670,7 +6693,19 @@ public sealed class ChartEditorOverlay
             note.tremolo = tremolo;
             note.legato = legato || hammerOn || pullOff;
             note.requiresPluck = hammerOn || pullOff ? false : requiresPluck;
-            note.linkedFromNoteId = note.legato || !note.requiresPluck ? linkedFromNoteId : -1;
+            int resolvedLinkedFromNoteId = note.legato || !note.requiresPluck ? linkedFromNoteId : -1;
+            if (resolvedLinkedFromNoteId >= 0 &&
+                pendingLinkOrigin != null &&
+                pendingLinkOrigin.sourceNoteId < 0 &&
+                resolvedLinkedFromNoteId == pendingLinkOriginPeekedId)
+            {
+                // Reserve the generated id only now that the link is actually
+                // being applied — cancelling the popup must not leave a hidden
+                // sourceNoteId mutation on the origin note.
+                pendingLinkOrigin.sourceNoteId = PeekNextGeneratedSourceNoteId();
+                resolvedLinkedFromNoteId = pendingLinkOrigin.sourceNoteId;
+            }
+            note.linkedFromNoteId = resolvedLinkedFromNoteId;
             ApplyTechniqueSegmentSummaries(note);
             if (hammerOn)
                 note.technique = NoteTechnique.HammerOn;
@@ -17247,15 +17282,18 @@ public sealed class ChartEditorOverlay
 
     private static bool IsPalmMuteEnabled(ChartEditorNote note)
     {
-        if (note == null)
-            return false;
-
-        return note.palmMute || (note.muted && !note.fretHandMute && !note.palmMute);
+        return note != null && note.palmMute;
     }
 
     private static bool IsFretHandMuteEnabled(ChartEditorNote note)
     {
-        return note != null && note.fretHandMute;
+        if (note == null)
+            return false;
+
+        // A note flagged muted without a specific mute technique is a dead/x
+        // note; surface it as a fret-hand mute so editing it keeps the note
+        // dead instead of guessing it into a palm mute (or dropping it).
+        return note.fretHandMute || (note.muted && !note.palmMute);
     }
 
     private static void SetPalmMute(ChartEditorNote note, bool enabled)
@@ -17267,8 +17305,10 @@ public sealed class ChartEditorOverlay
         if (enabled)
             note.fretHandMute = false;
         note.muted = note.palmMute || note.fretHandMute;
+        // Only fret-hand mutes are dead/x notes at runtime; palm mutes must
+        // not render or judge as dead notes.
         note.hasRuntimeMuted = true;
-        note.runtimeMuted = note.muted;
+        note.runtimeMuted = note.fretHandMute;
         note.hasRuntimePalmMute = true;
         note.runtimePalmMute = note.palmMute;
     }
@@ -17283,7 +17323,7 @@ public sealed class ChartEditorOverlay
             note.palmMute = false;
         note.muted = note.palmMute || note.fretHandMute;
         note.hasRuntimeMuted = true;
-        note.runtimeMuted = note.muted;
+        note.runtimeMuted = note.fretHandMute;
         note.hasRuntimePalmMute = true;
         note.runtimePalmMute = note.palmMute;
     }
@@ -18819,4 +18859,3 @@ public sealed class ChartEditorOverlay
             : fallback;
     }
 }
-                            

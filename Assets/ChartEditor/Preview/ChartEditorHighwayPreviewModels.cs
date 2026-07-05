@@ -63,7 +63,16 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
             frame.notes.Add(ToNoteData(orderedNotes[i], i, laneCount, track.role));
 
         if (track.role != ChartEditorTrackRole.Drums)
+        {
             ChartEditorRuntimeNoteSanitizer.TrimSameStringNoteOverlaps(frame.notes);
+            // The gameplay loader rewrites linked hammer-on/pull-off pairs into
+            // source-anchored transitions before the highway renderer sees them
+            // (legato arc from the origin, destination box hidden). Apply the
+            // same rewrite to this render-only list so the preview matches the
+            // in-game look; the editable project notes keep their stored form.
+            TheorySongLoader.NormalizeTheoryLegatoTransitions(frame.notes);
+        }
+
         return frame;
     }
 
@@ -130,6 +139,15 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
     {
         int sourceId = note.sourceNoteId >= 0 ? note.sourceNoteId : StableId(note.id, fallbackIndex);
         bool isDrums = role == ChartEditorTrackRole.Drums;
+        // Match the runtime mute split (TheorySongLoader.LoadSong): only
+        // dead/x notes render muted; palm mutes are a separate technique.
+        bool runtimeMuted = note.hasRuntimeMuted ? note.runtimeMuted : note.muted && !note.palmMute;
+        bool runtimePalmMute = note.hasRuntimePalmMute ? note.runtimePalmMute : note.palmMute;
+        if (runtimeMuted && note.palmMute && !note.fretHandMute)
+        {
+            runtimeMuted = false;
+            runtimePalmMute = true;
+        }
         List<NoteTechniqueSegmentData> segments = isDrums ? null : BuildPreviewTechniqueSegments(note);
         bool hammerOn = !isDrums && IsTechniqueEnabled(note, NoteTechnique.HammerOn);
         bool pullOff = !isDrums && IsTechniqueEnabled(note, NoteTechnique.PullOff);
@@ -164,8 +182,9 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
             isDrums ? -1f : note.bendVisualStartTime,
             isDrums ? 0f : note.bendVisualDuration,
             segments,
-            isDrums ? false : note.muted || note.palmMute || note.fretHandMute,
-            note.chordName ?? string.Empty);
+            isDrums ? false : runtimeMuted,
+            note.chordName ?? string.Empty,
+            palmMuted: !isDrums && runtimePalmMute);
     }
 
     private static List<NoteTechniqueSegmentData> BuildPreviewTechniqueSegments(ChartEditorNote note)
@@ -377,4 +396,3 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
         return string.Empty;
     }
 }
-                            

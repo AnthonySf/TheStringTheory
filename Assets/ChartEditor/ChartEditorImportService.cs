@@ -1844,6 +1844,15 @@ public static class ChartEditorImportService
         bool runtimePalmMute = source.hasRuntimePalmMute
             ? source.runtimePalmMute
             : source.palmMute;
+        // Repair packages written by the old psarc importer (and old editor
+        // saves), which OR'd palm mute into the runtime mute flag and dropped
+        // runtime palm mute entirely — mirrors TheorySongLoader.LoadSong.
+        if (runtimeMuted && source.palmMute && !source.fretHandMute)
+        {
+            runtimeMuted = false;
+            runtimePalmMute = true;
+        }
+
         bool muted = source.muted || source.palmMute || source.fretHandMute;
         ChartEditorNote note = new ChartEditorNote
         {
@@ -1866,7 +1875,10 @@ public static class ChartEditorImportService
             bendPreBend = source.bendPreBend,
             bendRelease = source.bendRelease,
             muted = muted,
-            palmMute = source.palmMute || (muted && !source.fretHandMute && !source.palmMute),
+            // Verbatim, matching the exporter: promoting muted-only notes to
+            // palm mutes turned genuine dead/x notes into PM notes on the
+            // first import→export cycle.
+            palmMute = source.palmMute,
             fretHandMute = source.fretHandMute,
             hasRuntimeMuted = true,
             runtimeMuted = runtimeMuted,
@@ -3497,4 +3509,3 @@ public static class ChartEditorValidationService
         return evidence;
     }
 }
-                                                                            

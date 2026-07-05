@@ -31467,4 +31467,18 @@ public sealed class TabsSongHeaderOverlay
 
         selectionSongsFolderButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
 
-        selectionRefreshButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayo
+        selectionRefreshButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
+
+
+        selectionCharacterButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
+
+        selectionStartButton.style.height = compactSelection ? 82f * menuLayoutScale : 94f * menuLayoutScale;
+
+    }
+
+}
+
+
+
+
+

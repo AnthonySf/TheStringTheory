@@ -33,6 +33,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private static readonly ProfilerMarker UpdateDetectorHintProfilerMarker = new ProfilerMarker("StringTheory.GuitarBridgeServer.Update.DetectorHint");
     private static readonly ProfilerMarker UpdateSnapshotRenderProfilerMarker = new ProfilerMarker("StringTheory.GuitarBridgeServer.Update.SnapshotRender");
     private static readonly ProfilerMarker UpdateToneLabOverlayProfilerMarker = new ProfilerMarker("StringTheory.GuitarBridgeServer.Update.ToneLabOverlay");
+    private static readonly ProfilerMarker FlushPendingBestScoreSaveProfilerMarker = new ProfilerMarker("StringTheory.GuitarBridgeServer.FlushPendingBestScoreSave");
 
     public enum TabsBackgroundMode
     {
@@ -1291,6 +1292,9 @@ public class GuitarBridgeServer : MonoBehaviour
     private int currentTrackHeroBestHeartsRemaining;
     private int currentTrackHeroBestHeartsTotal;
     private bool scoreSaveInvalidated;
+    private bool bestScoreSavePending;
+    private float bestScoreSaveRetryAtUnscaledTime;
+    private const float BestScoreSaveRetryCooldownSeconds = 5f;
     private readonly HashSet<int> sessionScoredNoteIds = new HashSet<int>();
     private readonly Dictionary<int, int> arcadeChordAwardedSustainScore = new Dictionary<int, int>();
     private int sessionScoreHits;
@@ -2300,6 +2304,8 @@ public class GuitarBridgeServer : MonoBehaviour
             gameplayUpdateMs = GetLoopCountdownElapsedMilliseconds(sectionStartTicks, afterGameplayUpdateTicks);
             sectionStartTicks = afterGameplayUpdateTicks;
         }
+
+        FlushPendingBestScoreSaveAtBreakPoint();
 
         UpdateInputLevelEstimate();
         if (shouldLogLoopCountdownFrame)
@@ -15321,8 +15327,21 @@ private void OpenOrFocusToneLab()
         }
     }
 
+    private void OnApplicationPause(bool pauseStatus)
+    {
+        if (pauseStatus)
+            FlushPendingBestScoreSave();
+    }
+
+    private void OnApplicationFocus(bool hasFocus)
+    {
+        if (!hasFocus)
+            FlushPendingBestScoreSave();
+    }
+
     private void OnApplicationQuit()
     {
+        FlushPendingBestScoreSave();
         StopLoopCountdownEditorLogSession("application-quit");
         isRunning = false;
         if (receiveThread != null && receiveThread.IsAlive) receiveThread.Join(500);
@@ -15336,6 +15355,7 @@ private void OpenOrFocusToneLab()
 
     private void OnDestroy()
     {
+        FlushPendingBestScoreSave();
         StopLoopCountdownEditorLogSession("destroy");
         CloseDetectorHintClient();
         StopArcadeMidiInput();
@@ -15346,6 +15366,7 @@ private void OpenOrFocusToneLab()
 
     private void OnDisable()
     {
+        FlushPendingBestScoreSave();
         StopLoopCountdownEditorLogSession("disable");
         CloseDetectorHintClient();
         StopArcadeMidiInput();
@@ -22515,6 +22536,23 @@ private void OpenOrFocusToneLab()
         if (verdict == null || state == null)
             return false;
 
+        // Legato notes (hammer-on/pull-off, requiresPluck=false) skip the
+        // onset requirement inside the native verifier and its pitch checks
+        // are scale-invariant energy ratios, so noise-floor input (e.g. an
+        // unplugged adapter) can produce false verdicts for them. Mirror the
+        // managed legato-match rule: the note they are hammered from must have
+        // been hit first. Verdict batches are processed in note-time order, so
+        // a source verdict in the same batch is applied before this check.
+        if (!state.data.requiresPluck && state.data.linkedFromNoteId >= 0)
+        {
+            if (!TryGetNoteStateById(state.data.linkedFromNoteId, out GameplayNoteState linkedSourceState) ||
+                linkedSourceState == null ||
+                !linkedSourceState.IsHit)
+            {
+                return false;
+            }
+        }
+
         if (verdict.noteTime >= 0f && Mathf.Abs(verdict.noteTime - state.data.time) > 0.08f)
             return false;
 
@@ -23778,6 +23816,11 @@ private void OpenOrFocusToneLab()
 
     private void InitializeSongMetadataAndAudio()
     {
+        // songMetadata is reloaded from disk below; persist any deferred
+        // best-score change first or it would be lost. currentSongFileName and
+        // the transient per-song fields still describe the outgoing song here.
+        FlushPendingBestScoreSave();
+
         EnsureBackingTrackSource();
 
         if (currentSongEntry == null)
@@ -24934,6 +24977,10 @@ private void OpenOrFocusToneLab()
         SongLibraryEntry entry = FindToneLabMappingSongEntry(songKey);
         if (entry == null || string.IsNullOrWhiteSpace(arrangementKey) || string.IsNullOrWhiteSpace(toneName))
             return;
+
+        // This may reload and replace songMetadata below; persist any deferred
+        // best-score change first so the reload sees it.
+        FlushPendingBestScoreSave();
 
         string metadataPath = BuildSongMetadataPath(entry);
         string metadataFileName = ResolveSongMetadataFileName(entry);
@@ -26194,7 +26241,7 @@ private void OpenOrFocusToneLab()
             UpsertHeroTrackScore(songMetadata, selectedMusicXmlPartId, trackName, scoreValue, percent, heartsRemaining, heroModeHeartCount);
             currentSongBestScoreValue = GetHighestTrackScoreValue(songMetadata);
             currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
-            SaveSongMetadata();
+            DeferBestScoreSave();
             return;
         }
 
@@ -26206,7 +26253,7 @@ private void OpenOrFocusToneLab()
         UpsertTrackScore(songMetadata, selectedMusicXmlPartId, trackName, scoreValue, percent);
         currentSongBestScoreValue = GetHighestTrackScoreValue(songMetadata);
         currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
-        SaveSongMetadata();
+        DeferBestScoreSave();
     }
 
     private void UpdateAndPersistDrumLaneBestScore()
@@ -26240,7 +26287,7 @@ private void OpenOrFocusToneLab()
             currentSongBestScoreValue = GetHighestTrackScoreValue(songMetadata);
             currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
             currentSongBestArcadeScoreValue = currentSongBestScoreValue;
-            SaveSongMetadata();
+            DeferBestScoreSave();
             return;
         }
 
@@ -26254,7 +26301,7 @@ private void OpenOrFocusToneLab()
         currentSongBestScoreValue = GetHighestTrackScoreValue(songMetadata);
         currentSongBestScorePercent = Mathf.Clamp(GetHighestTrackScore(songMetadata), 0f, 100f);
         currentSongBestArcadeScoreValue = currentSongBestScoreValue;
-        SaveSongMetadata();
+        DeferBestScoreSave();
     }
 
     private void UpdateAndPersistArcadeBestScore()
@@ -26296,7 +26343,52 @@ private void OpenOrFocusToneLab()
 
         UpsertArcadeScore(songMetadata, selectedArcadeArrangementId, arrangementName, selectedArcadeDifficulty, scoreValue, currentSessionScorePercent, heartsRemaining, heartsTotal);
         currentSongBestArcadeScoreValue = GetHighestArcadeScoreValue(songMetadata);
-        SaveSongMetadata();
+        DeferBestScoreSave();
+    }
+
+    // Persisting a best score does synchronous disk work (metadata JSON write,
+    // .theory zip inspection, full song-library cache rewrite) that costs tens
+    // of milliseconds per call. The Upsert* helpers have already applied the new
+    // best to the in-memory songMetadata, so mid-song we only mark it dirty and
+    // persist at the next natural break in gameplay.
+    private void DeferBestScoreSave()
+    {
+        bestScoreSavePending = true;
+    }
+
+    private void FlushPendingBestScoreSaveAtBreakPoint()
+    {
+        if (!bestScoreSavePending || Time.unscaledTime < bestScoreSaveRetryAtUnscaledTime)
+            return;
+
+        bool atBreakPoint = isPaused ||
+                            songHasEnded ||
+                            loopEnabled ||
+                            showMiniGames ||
+                            showChartEditor ||
+                            showMainMenu ||
+                            showStartMenu ||
+                            showSongSelection ||
+                            showTrackSelection;
+        if (atBreakPoint)
+            FlushPendingBestScoreSave();
+    }
+
+    private void FlushPendingBestScoreSave()
+    {
+        if (!bestScoreSavePending)
+            return;
+
+        using (FlushPendingBestScoreSaveProfilerMarker.Auto())
+        {
+            SaveSongMetadata();
+            if (bestScoreSavePending)
+            {
+                // The write failed; the score is still in songMetadata, so keep
+                // the flag but retry on a cooldown rather than every frame.
+                bestScoreSaveRetryAtUnscaledTime = Time.unscaledTime + BestScoreSaveRetryCooldownSeconds;
+            }
+        }
     }
 
     private SongMetadata LoadSongMetadata(string songFileName)
@@ -26485,10 +26577,15 @@ private void OpenOrFocusToneLab()
         return data;
     }
 
-    private void SaveSongMetadata()
+    private bool SaveSongMetadata()
     {
         if (string.IsNullOrEmpty(currentSongFileName))
-            return;
+        {
+            // No current song; a deferred best-score save can never succeed in
+            // this state, so drop it rather than retrying forever.
+            bestScoreSavePending = false;
+            return false;
+        }
 
         songMetadata.songFileName = currentSongFileName;
         songMetadata.audioOffsetMs = globalAudioOffsetMs;
@@ -26519,13 +26616,22 @@ private void OpenOrFocusToneLab()
         currentSongBestScorePercent = songMetadata.bestScorePercent;
         currentSongBestArcadeScoreValue = songMetadata.bestArcadeScoreValue;
 
-        SaveSongMetadata(songMetadata, GetMetadataPath(currentSongFileName), currentSongFileName);
+        bool saved = SaveSongMetadata(songMetadata, GetMetadataPath(currentSongFileName), currentSongFileName);
+        if (saved)
+        {
+            // Any successful full save persists the scores upserted into
+            // songMetadata, so a deferred best-score save is no longer
+            // outstanding after this point.
+            bestScoreSavePending = false;
+        }
+
+        return saved;
     }
 
-    private void SaveSongMetadata(SongMetadata metadata, string metadataPath, string songFileName)
+    private bool SaveSongMetadata(SongMetadata metadata, string metadataPath, string songFileName)
     {
         if (metadata == null || string.IsNullOrEmpty(metadataPath))
-            return;
+            return false;
 
         metadata.songFileName = songFileName;
         metadata.bestScoreValue = GetHighestTrackScoreValue(metadata);
@@ -26537,10 +26643,12 @@ private void OpenOrFocusToneLab()
         NormalizeSongTonePresetMappings(metadata);
         HeroScoreSummary heroSummary = GetHighestHeroTrackScoreSummary(metadata);
 
+        bool metadataFileWritten = false;
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(metadataPath));
             File.WriteAllText(metadataPath, JsonUtility.ToJson(metadata, true));
+            metadataFileWritten = true;
             SaveTheoryTonePresetMappingsIfChanged(metadata, primaryNotationPath);
         }
         catch (Exception ex)
@@ -26573,6 +26681,8 @@ private void OpenOrFocusToneLab()
             heroSummary.heartsRemaining,
             heroSummary.heartsTotal,
             metadata.bestArcadeScoreValue);
+
+        return metadataFileWritten;
     }
 
     private void ApplyTheoryTonePresetMappingsFromPackage(string metadataPath, SongMetadata metadata, string packagePath = null)
@@ -32183,4 +32293,103 @@ private void OpenOrFocusToneLab()
 
             songTimelineSections.Add(new SongTimelineSectionData
             {
-                index = songTimeline
+                index = songTimelineSections.Count,
+                name = FormatTimelineSectionName(source.name, songTimelineSections.Count),
+                startTime = Mathf.Max(0f, source.startTime),
+                endTime = Mathf.Max(source.startTime + 0.05f, source.endTime)
+            });
+        }
+    }
+
+    private void AddGeneratedTimelineSections(float duration)
+    {
+        if (tabSections == null || tabSections.Count == 0)
+            return;
+
+        int sectionStride = Mathf.Max(1, Mathf.RoundToInt(16f / Mathf.Max(0.01f, GetEffectiveTabSectionDuration())));
+        for (int i = 0; i < tabSections.Count; i += sectionStride)
+        {
+            TabSectionData source = tabSections[i];
+            if (source == null)
+                continue;
+
+            float endTime = i + sectionStride < tabSections.Count
+                ? tabSections[i + sectionStride].startTime
+                : Mathf.Max(duration, source.endTime);
+
+            songTimelineSections.Add(new SongTimelineSectionData
+            {
+                index = songTimelineSections.Count,
+                name = $"Part {songTimelineSections.Count + 1}",
+                startTime = Mathf.Max(0f, source.startTime),
+                endTime = Mathf.Max(source.startTime + 0.05f, endTime)
+            });
+        }
+    }
+
+    private void NormalizeTimelineSectionEnds(float duration)
+    {
+        if (songTimelineSections == null || songTimelineSections.Count == 0)
+            return;
+
+        songTimelineSections = songTimelineSections
+            .Where(section => section != null && section.startTime >= 0f)
+            .OrderBy(section => section.startTime)
+            .ToList();
+
+        for (int i = 0; i < songTimelineSections.Count; i++)
+        {
+            SongTimelineSectionData section = songTimelineSections[i];
+            section.index = i;
+            float nextStart = i + 1 < songTimelineSections.Count
+                ? songTimelineSections[i + 1].startTime
+                : duration;
+            section.endTime = Mathf.Max(section.startTime + 0.05f, nextStart);
+        }
+    }
+
+    private float GetTimelineLastEndTime()
+    {
+        if (songTimelineSections == null || songTimelineSections.Count == 0)
+            return 0f;
+
+        float max = 0f;
+        for (int i = 0; i < songTimelineSections.Count; i++)
+        {
+            SongTimelineSectionData section = songTimelineSections[i];
+            if (section != null)
+                max = Mathf.Max(max, section.endTime, section.startTime);
+        }
+
+        return max;
+    }
+
+    private static string FormatTimelineSectionName(string rawName, int index)
+    {
+        string normalized = string.IsNullOrWhiteSpace(rawName)
+            ? $"Part {index + 1}"
+            : rawName.Trim().Replace('_', ' ').Replace('-', ' ');
+
+        normalized = Regex.Replace(normalized, @"\s+", " ");
+        if (normalized.Length == 0)
+            return $"Part {index + 1}";
+
+        string key = normalized.Replace(" ", string.Empty).ToLowerInvariant();
+        switch (key)
+        {
+            case "noguitar":
+                return "No Guitar";
+            case "postvs":
+                return "Post Verse";
+            case "prevs":
+                return "Pre Verse";
+            case "modverse":
+                return "Verse";
+            case "modchorus":
+                return "Chorus";
+        }
+
+        TextInfo textInfo = CultureInfo.InvariantCulture.TextInfo;
+        return textInfo.ToTitleCase(normalized.ToLowerInvariant());
+    }
+}

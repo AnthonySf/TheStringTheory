@@ -1952,4 +1952,11 @@ public sealed class AudioPathRegressionTests
         public void Dispose()
         {
             if (Runtime != null)
-                SetField(Runti
+                SetField(Runtime, "settingsDirty", false);
+            if (GameObject != null)
+                UnityEngine.Object.DestroyImmediate(GameObject);
+            GameObject = null;
+            Runtime = null;
+        }
+    }
+}

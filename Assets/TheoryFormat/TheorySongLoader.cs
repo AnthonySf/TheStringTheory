@@ -88,6 +88,16 @@ public static class TheorySongLoader
             bool runtimePalmMute = source.hasRuntimePalmMute
                 ? source.runtimePalmMute
                 : source.palmMute;
+            // Repair packages written by the old psarc importer (and old
+            // editor saves), which OR'd palm mute into the runtime mute flag
+            // and dropped runtime palm mute entirely: a runtime-muted note
+            // that is palm-muted but not fret-hand-muted is a palm mute, not
+            // a dead/x note.
+            if (runtimeMuted && source.palmMute && !source.fretHandMute)
+            {
+                runtimeMuted = false;
+                runtimePalmMute = true;
+            }
             notes.Add(new NoteData(
                 source.id,
                 source.time,
@@ -115,8 +125,15 @@ public static class TheorySongLoader
                 palmMuted: runtimePalmMute));
         }
 
-        if (!arrangement.preserveImportedRuntimeNotes)
-            NormalizeTheoryLegatoTransitions(notes);
+        // Always rewrite linked legato pairs into the source-anchored form the
+        // highway renderer draws, including for preserveImportedRuntimeNotes
+        // packages (chart-editor exports): preserve mode protects the STORED
+        // note fields, but this is a presentation rewrite the renderer needs —
+        // skipping it made hammer-on arcs disappear from re-exported songs and
+        // diverge from the editor's 3D preview. The rewrite is idempotent, so
+        // packages that already carry source-anchored data (GP-derived
+        // exports) load unchanged.
+        NormalizeTheoryLegatoTransitions(notes);
         return notes;
     }
 
@@ -541,7 +558,14 @@ public static class TheorySongLoader
         return segments.Count > 0 ? segments : null;
     }
 
-    private static void NormalizeTheoryLegatoTransitions(List<NoteData> notes)
+    // Rewrites linked hammer-on / pull-off pairs from the stored form (technique
+    // on the destination note) into the source-anchored form the highway
+    // renderer draws: the origin carries the technique and slide target so it
+    // renders the legato arc, and the destination becomes the arc's landing
+    // point (its travelling box is hidden as a technique destination). Shared
+    // with the chart editor's 3D preview so both render identically; safe to
+    // run more than once on the same list.
+    public static void NormalizeTheoryLegatoTransitions(List<NoteData> notes)
     {
         if (notes == null || notes.Count == 0)
             return;
@@ -561,6 +585,13 @@ public static class TheorySongLoader
 
             NoteData origin = notes[originIndex];
             if (origin.stringIdx != destination.stringIdx)
+                continue;
+
+            // A legato origin always precedes its destination; a link that
+            // resolves to a later note is corrupt (e.g. a stale id from an
+            // older chart-editor project) and must not be rewritten into a
+            // backwards transition.
+            if (origin.time > destination.time + 0.0001f)
                 continue;
 
             float transitionDuration = Mathf.Max(0.05f, destination.time - origin.time);

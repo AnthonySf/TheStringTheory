@@ -85,9 +85,12 @@ public static class ChartEditorProjectStore
             if (!string.IsNullOrWhiteSpace(directory))
                 Directory.CreateDirectory(directory);
 
+            // The project is only clean once the file is actually on disk — a
+            // failed or interrupted write must leave the editor knowing there
+            // are unsaved changes.
+            WriteTextFileAtomic(path, JsonUtility.ToJson(project, true));
             project.savedProjectPath = path;
             project.dirty = false;
-            File.WriteAllText(path, JsonUtility.ToJson(project, true));
             savedPath = path;
             return true;
         }
@@ -238,6 +241,49 @@ public static class ChartEditorProjectStore
         }
     }
 
+    // Project JSON writes go through a temp file + replace so a crash or full
+    // disk mid-write can never truncate an existing save (.theory packages
+    // already write this way in TheoryPackageIO).
+    private static void WriteTextFileAtomic(string path, string contents)
+    {
+        string tempPath = path + ".tmp";
+        if (File.Exists(tempPath))
+            File.Delete(tempPath);
+
+        File.WriteAllText(tempPath, contents);
+        if (!File.Exists(path))
+        {
+            File.Move(tempPath, path);
+            return;
+        }
+
+        string backupPath = path + ".bak";
+        try
+        {
+            File.Replace(tempPath, path, backupPath, true);
+        }
+        catch (PlatformNotSupportedException)
+        {
+            File.Delete(path);
+            File.Move(tempPath, path);
+        }
+        catch (IOException)
+        {
+            File.Delete(path);
+            File.Move(tempPath, path);
+        }
+
+        try
+        {
+            if (File.Exists(backupPath))
+                File.Delete(backupPath);
+        }
+        catch
+        {
+            // A leftover .bak is harmless; never fail a successful save on it.
+        }
+    }
+
     public static bool ExportPlayableProject(ChartEditorProject project, out string exportDirectory, out string error)
     {
         return ExportPlayableProject(project, out exportDirectory, out _, out error);
@@ -270,7 +316,7 @@ public static class ChartEditorProjectStore
             exportDirectory = Path.Combine(ExternalContentPaths.PersistentSongsDirectory, BuildExportDirectoryName(project));
             Directory.CreateDirectory(exportDirectory);
 
-            File.WriteAllText(Path.Combine(exportDirectory, "chart_project_export.stchart.json"), JsonUtility.ToJson(project, true));
+            WriteTextFileAtomic(Path.Combine(exportDirectory, "chart_project_export.stchart.json"), JsonUtility.ToJson(project, true));
 
             if (!TheoryChartEditorExporter.ExportProject(project, exportDirectory, out theoryPackagePath, out string theoryError))
             {

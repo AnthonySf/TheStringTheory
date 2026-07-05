@@ -126,15 +126,27 @@ public sealed class MiniGamesScreenOverlay
         selectionRoot.style.paddingTop = 76f;
         selectionRoot.style.paddingBottom = 76f;
 
-        selectionTitleLabel = CreateLabel("Select Game", 132f, Color.white, true, TextAnchor.MiddleCenter, true);
+        Label selectionEyebrow = CreateLabel("MINI GAMES", 32f, new Color(0.12f, 0.93f, 1f, 0.96f), true, TextAnchor.MiddleCenter, false);
+        selectionEyebrow.style.unityFontDefinition = modernFontDefinition;
+        selectionEyebrow.style.unityFontStyleAndWeight = FontStyle.BoldAndItalic;
+        selectionEyebrow.style.letterSpacing = 2.4f;
+        selectionEyebrow.style.marginBottom = 4f;
+
+        selectionTitleLabel = CreateLabel("Select Game", 124f, Color.white, true, TextAnchor.MiddleCenter, true);
         selectionTitleLabel.style.unityFontDefinition = titleFontDefinition;
         selectionTitleLabel.style.letterSpacing = 0.8f;
-        selectionTitleLabel.style.marginBottom = 54f;
+
+        VisualElement selectionTitleRule = new VisualElement();
+        selectionTitleRule.style.width = 250f;
+        selectionTitleRule.style.height = 4f;
+        selectionTitleRule.style.marginTop = 12f;
+        selectionTitleRule.style.marginBottom = 48f;
+        selectionTitleRule.style.backgroundColor = new Color(0.08f, 0.92f, 1f, 0.92f);
 
         selectionList = new ScrollView(ScrollViewMode.Vertical);
         selectionList.style.width = Length.Percent(62f);
-        selectionList.style.minWidth = 620f;
-        selectionList.style.maxWidth = 980f;
+        selectionList.style.minWidth = 720f;
+        selectionList.style.maxWidth = 1080f;
         selectionList.style.maxHeight = Length.Percent(56f);
         selectionList.style.paddingLeft = 0f;
         selectionList.style.paddingRight = 0f;
@@ -142,11 +154,14 @@ public sealed class MiniGamesScreenOverlay
         selectionList.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
         selectionList.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
 
-        selectionFooterLabel = CreateLabel("Esc Back  •  Enter Select", 24f, new Color(0.78f, 0.88f, 0.98f, 0.82f), true, TextAnchor.MiddleCenter, false);
+        selectionFooterLabel = CreateLabel("Esc Back  •  Enter Select", 24f, new Color(0.78f, 0.88f, 0.98f, 0.72f), true, TextAnchor.MiddleCenter, false);
         selectionFooterLabel.style.unityFontDefinition = modernFontDefinition;
-        selectionFooterLabel.style.marginTop = 24f;
+        selectionFooterLabel.style.letterSpacing = 1.2f;
+        selectionFooterLabel.style.marginTop = 30f;
 
+        selectionRoot.Add(selectionEyebrow);
         selectionRoot.Add(selectionTitleLabel);
+        selectionRoot.Add(selectionTitleRule);
         selectionRoot.Add(selectionList);
         selectionRoot.Add(selectionFooterLabel);
 
@@ -983,6 +998,12 @@ public sealed class MiniGamesScreenOverlay
     private Button CreateGameListButton(MiniGameMenuEntrySnapshot entry, int index)
     {
         bool selected = entry != null && entry.selected;
+        Color accentColor = new Color(0.12f, 0.93f, 1f, 0.96f);
+        Color idleBorderColor = new Color(0.64f, 0.74f, 0.92f, 0.20f);
+        Color selectedBorderColor = new Color(0.12f, 0.93f, 1f, 0.66f);
+        Color idleBackgroundColor = new Color(0.004f, 0.014f, 0.030f, 0.72f);
+        Color selectedBackgroundColor = new Color(0.012f, 0.055f, 0.095f, 0.86f);
+
         Button button = new Button(() =>
         {
             owner?.SetMiniGameSelectionFromUi(index);
@@ -990,49 +1011,87 @@ public sealed class MiniGamesScreenOverlay
         });
         button.focusable = false;
         button.text = string.Empty;
-        button.style.minHeight = 118f;
-        button.style.marginBottom = 18f;
+        button.style.minHeight = 148f;
+        button.style.marginBottom = 22f;
         button.style.paddingLeft = 0f;
-        button.style.paddingRight = 0f;
-        button.style.paddingTop = 14f;
-        button.style.paddingBottom = 14f;
-        button.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
-        SetBorder(button, new Color(0f, 0f, 0f, 0f), 0f);
-        SetRadius(button, 0f);
-        button.style.scale = selected ? new Scale(new Vector3(1.10f, 1.10f, 1f)) : new Scale(Vector3.one);
+        button.style.paddingRight = 36f;
+        button.style.paddingTop = 0f;
+        button.style.paddingBottom = 0f;
+        button.style.backgroundColor = selected ? selectedBackgroundColor : idleBackgroundColor;
+        SetBorder(button, selected ? selectedBorderColor : idleBorderColor, selected ? 1.5f : 1f);
+        SetRadius(button, 14f);
+        button.style.overflow = Overflow.Hidden;
 
         VisualElement row = new VisualElement();
         row.style.flexDirection = FlexDirection.Row;
         row.style.alignItems = Align.Center;
+        row.style.flexGrow = 1f;
+        row.style.paddingTop = 26f;
+        row.style.paddingBottom = 26f;
 
-        Label arrow = CreateLabel("▶", 58f, new Color(0.63f, 0.93f, 1f, 1f), true, TextAnchor.MiddleCenter, true);
-        arrow.style.width = 76f;
-        arrow.style.marginRight = 24f;
-        arrow.style.opacity = selected ? 1f : 0f;
+        VisualElement accentBar = new VisualElement();
+        accentBar.style.width = 6f;
+        accentBar.style.alignSelf = Align.Stretch;
+        accentBar.style.marginRight = 34f;
+        accentBar.style.marginTop = -26f;
+        accentBar.style.marginBottom = -26f;
+        accentBar.style.backgroundColor = selected ? accentColor : new Color(0f, 0f, 0f, 0f);
 
         VisualElement textColumn = new VisualElement();
         textColumn.style.flexGrow = 1f;
         textColumn.style.flexShrink = 1f;
 
-        Label title = CreateLabel(entry?.title ?? "Mini Game", 58f, selected ? new Color(0.63f, 0.93f, 1f, 1f) : new Color(0.70f, 0.78f, 0.88f, 0.90f), true, TextAnchor.MiddleLeft, true);
+        Label title = CreateLabel(entry?.title ?? "Mini Game", 54f, selected ? new Color(0.63f, 0.93f, 1f, 1f) : new Color(0.88f, 0.92f, 0.97f, 0.95f), true, TextAnchor.MiddleLeft, true);
         title.style.unityFontDefinition = titleFontDefinition;
         title.style.letterSpacing = 1.1f;
-        Label subtitle = CreateLabel(entry?.subtitle ?? string.Empty, 24f, new Color(0.78f, 0.88f, 0.98f, 0.90f), false, TextAnchor.MiddleLeft, false);
+
+        Label subtitle = CreateLabel(entry?.subtitle ?? string.Empty, 26f, new Color(0.78f, 0.86f, 0.95f, selected ? 0.88f : 0.66f), false, TextAnchor.MiddleLeft, false);
         subtitle.style.unityFontDefinition = modernFontDefinition;
         subtitle.style.whiteSpace = WhiteSpace.Normal;
-        subtitle.style.display = DisplayStyle.None;
+        subtitle.style.marginTop = 8f;
+        subtitle.style.display = string.IsNullOrWhiteSpace(entry?.subtitle) ? DisplayStyle.None : DisplayStyle.Flex;
 
         textColumn.Add(title);
         textColumn.Add(subtitle);
-        row.Add(arrow);
+
+        row.Add(accentBar);
         row.Add(textColumn);
+
+        if (entry != null && entry.highScore > 0)
+        {
+            VisualElement scoreColumn = new VisualElement();
+            scoreColumn.style.alignItems = Align.FlexEnd;
+            scoreColumn.style.justifyContent = Justify.Center;
+            scoreColumn.style.marginLeft = 36f;
+            scoreColumn.style.flexShrink = 0f;
+
+            Label scoreCaption = CreateLabel("BEST", 20f, new Color(0.56f, 0.95f, 1f, selected ? 0.85f : 0.55f), true, TextAnchor.MiddleRight, false);
+            scoreCaption.style.unityFontDefinition = modernFontDefinition;
+            scoreCaption.style.letterSpacing = 2.2f;
+
+            Label scoreValue = CreateLabel(entry.highScore.ToString(CultureInfo.InvariantCulture), 44f, selected ? new Color(0.66f, 0.94f, 1f, 1f) : new Color(0.84f, 0.90f, 0.97f, 0.85f), true, TextAnchor.MiddleRight, false);
+            scoreValue.style.unityFontDefinition = modernFontDefinition;
+            scoreValue.style.whiteSpace = WhiteSpace.NoWrap;
+
+            scoreColumn.Add(scoreCaption);
+            scoreColumn.Add(scoreValue);
+            row.Add(scoreColumn);
+        }
+
         button.Add(row);
         button.RegisterCallback<MouseEnterEvent>(_ =>
         {
             owner?.HoverMiniGameSelectionFromUi(index);
-            button.style.scale = new Scale(new Vector3(1.10f, 1.10f, 1f));
+            SetBorder(button, selectedBorderColor, 1.5f);
+            button.style.backgroundColor = selectedBackgroundColor;
+            accentBar.style.backgroundColor = accentColor;
         });
-        button.RegisterCallback<MouseLeaveEvent>(_ => button.style.scale = selected ? new Scale(new Vector3(1.10f, 1.10f, 1f)) : new Scale(Vector3.one));
+        button.RegisterCallback<MouseLeaveEvent>(_ =>
+        {
+            SetBorder(button, selected ? selectedBorderColor : idleBorderColor, selected ? 1.5f : 1f);
+            button.style.backgroundColor = selected ? selectedBackgroundColor : idleBackgroundColor;
+            accentBar.style.backgroundColor = selected ? accentColor : new Color(0f, 0f, 0f, 0f);
+        });
         return button;
     }
 

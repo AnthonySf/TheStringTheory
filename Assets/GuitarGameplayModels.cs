@@ -709,4 +709,7 @@ public sealed class RuntimeSettingSnapshot
     public string valueType;
     public string value;
     public float min;
- 
+    public float max;
+    public float step;
+    public List<string> enumOptions;
+}

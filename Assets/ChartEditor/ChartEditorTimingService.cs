@@ -1496,8 +1496,7 @@ public static class ChartEditorTimingService
     // slides and bends desync from the resized sustain.
     private static void RescaleTechniqueSegments(ChartEditorNote note, double oldDurationSeconds)
     {
-        if (note?.techniqueSegments == null ||
-            note.techniqueSegments.Count == 0 ||
+        if (note == null ||
             oldDurationSeconds <= BeatEpsilon ||
             Math.Abs(note.durationSeconds - oldDurationSeconds) <= BeatEpsilon)
         {
@@ -1505,14 +1504,30 @@ public static class ChartEditorTimingService
         }
 
         float segmentScale = (float)(note.durationSeconds / oldDurationSeconds);
-        for (int segmentIndex = 0; segmentIndex < note.techniqueSegments.Count; segmentIndex++)
+        if (note.techniqueSegments != null)
         {
-            ChartEditorTechniqueSegment segment = note.techniqueSegments[segmentIndex];
-            if (segment == null)
-                continue;
+            for (int segmentIndex = 0; segmentIndex < note.techniqueSegments.Count; segmentIndex++)
+            {
+                ChartEditorTechniqueSegment segment = note.techniqueSegments[segmentIndex];
+                if (segment == null)
+                    continue;
 
-            segment.startOffset = Mathf.Max(0f, segment.startOffset * segmentScale);
-            segment.endOffset = Mathf.Max(segment.startOffset, segment.endOffset * segmentScale);
+                segment.startOffset = Mathf.Max(0f, segment.startOffset * segmentScale);
+                segment.endOffset = Mathf.Max(segment.startOffset, segment.endOffset * segmentScale);
+            }
+        }
+
+        // Bend curve points are offsets from the note start just like segment
+        // offsets — a stretched note must stretch its bend timing with it or
+        // the curve desyncs from the rescaled segments and sustain.
+        if (note.bendPoints != null)
+        {
+            for (int pointIndex = 0; pointIndex < note.bendPoints.Count; pointIndex++)
+            {
+                ChartEditorBendPoint point = note.bendPoints[pointIndex];
+                if (point != null)
+                    point.timeSeconds = Mathf.Max(0f, point.timeSeconds * segmentScale);
+            }
         }
     }
 

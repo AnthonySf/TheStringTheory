@@ -6337,4 +6337,3 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             Destroy(panelSettings);
     }
 }
-                

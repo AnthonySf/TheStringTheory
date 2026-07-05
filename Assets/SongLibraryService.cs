@@ -2397,4 +2397,74 @@ public static class SongLibraryService
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[SongLibraryService] Failed to read display name f
+            Debug.LogWarning($"[SongLibraryService] Failed to read display name from XML '{xmlPath}': {ex.Message}");
+        }
+
+        return null;
+    }
+
+    internal static string TryReadCreatorFromXml(string xmlPath)
+    {
+        if (string.IsNullOrEmpty(xmlPath) || !File.Exists(xmlPath))
+            return null;
+
+        try
+        {
+            XmlDocument xml = new XmlDocument();
+            xml.Load(xmlPath);
+
+            XmlNode creatorNode = xml.SelectSingleNode("//identification/creator[@type='composer']")
+                ?? xml.SelectSingleNode("//identification/creator")
+                ?? xml.SelectSingleNode("//creator");
+
+            if (creatorNode != null && !string.IsNullOrWhiteSpace(creatorNode.InnerText))
+                return creatorNode.InnerText.Trim();
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[SongLibraryService] Failed to read creator from XML '{xmlPath}': {ex.Message}");
+        }
+
+        return null;
+    }
+
+    private static SongLibraryEntry CloneEntry(SongLibraryEntry entry)
+    {
+        if (entry == null)
+            return null;
+
+        return new SongLibraryEntry
+        {
+            SongId = entry.SongId,
+            LibraryType = entry.LibraryType,
+            DisplayName = entry.DisplayName,
+            Artist = entry.Artist,
+            Album = entry.Album,
+            Subtitle = entry.Subtitle,
+            ArtworkPath = entry.ArtworkPath,
+            DifficultyRating = entry.DifficultyRating,
+            DifficultyDisplayLabel = entry.DifficultyDisplayLabel,
+            SongDirectory = entry.SongDirectory,
+            Mp3Path = entry.Mp3Path,
+            PrimaryNotationPath = entry.PrimaryNotationPath,
+            PrimaryNotationKind = entry.PrimaryNotationKind,
+            GpPath = entry.GpPath,
+            XmlPath = entry.XmlPath,
+            MetadataPath = entry.MetadataPath,
+            DurationSeconds = entry.DurationSeconds,
+            MidiPath = entry.MidiPath,
+            ArcadeChartPath = entry.ArcadeChartPath,
+            ArcadeSongIniPath = entry.ArcadeSongIniPath,
+            ArcadeDifficultySummary = entry.ArcadeDifficultySummary,
+            ArcadeAudioPaths = entry.ArcadeAudioPaths != null ? new List<string>(entry.ArcadeAudioPaths) : new List<string>(),
+            CachedFavoriteInLibrary = entry.CachedFavoriteInLibrary,
+            CachedBestScoreValue = entry.CachedBestScoreValue,
+            CachedBestScorePercent = entry.CachedBestScorePercent,
+            CachedHeroBestScoreValue = entry.CachedHeroBestScoreValue,
+            CachedHeroBestScorePercent = entry.CachedHeroBestScorePercent,
+            CachedHeroBestHeartsRemaining = entry.CachedHeroBestHeartsRemaining,
+            CachedHeroBestHeartsTotal = entry.CachedHeroBestHeartsTotal,
+            CachedBestArcadeScoreValue = entry.CachedBestArcadeScoreValue
+        };
+    }
+}
