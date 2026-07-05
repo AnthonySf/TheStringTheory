@@ -46,6 +46,7 @@ public sealed class TheoryImportProvenance
     public string sourcePath;
     public long sourceLastWriteUtcTicks;
     public long sourceSizeBytes;
+    public string sourceContentFingerprint;
     public long importedAtUtcTicks;
     public string converterName;
     public string converterVersion;

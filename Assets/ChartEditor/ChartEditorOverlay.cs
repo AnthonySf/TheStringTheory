@@ -1295,7 +1295,7 @@ public sealed class ChartEditorOverlay
         for (int i = 0; i < importers.Count; i++)
         {
             SongImporterDescriptor importer = importers[i];
-            if (importer == null)
+            if (importer == null || !SongImporterRegistry.ImporterHasUsableEntrypoint(importer))
                 continue;
 
             string importerId = importer.Id;
@@ -15600,6 +15600,12 @@ public sealed class ChartEditorOverlay
             return;
         }
 
+        if (!SongImporterRegistry.ImporterHasUsableEntrypoint(importer))
+        {
+            SetStatus($"{importer.DisplayName} importer is missing its executable for this platform.");
+            return;
+        }
+
         if (!ChartEditorFilePicker.TryPickImporterSourceFile(importer, out string sourcePath))
             return;
 
@@ -15618,6 +15624,12 @@ public sealed class ChartEditorOverlay
         if (!SongImporterRegistry.TryGetImporterById(importerId, out SongImporterDescriptor importer))
         {
             SetStatus("Importer is no longer available.");
+            return;
+        }
+
+        if (!SongImporterRegistry.ImporterHasUsableEntrypoint(importer))
+        {
+            SetStatus($"{importer.DisplayName} importer is missing its executable for this platform.");
             return;
         }
 

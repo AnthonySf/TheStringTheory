@@ -13,6 +13,7 @@ public sealed class SongImporterManifest
     public List<string> extensions = new List<string>();
     public List<SongImporterFolderSignature> folderSignatures = new List<SongImporterFolderSignature>();
     public List<SongImporterEntrypoint> entrypoints = new List<SongImporterEntrypoint>();
+    public List<string> cacheFolderNames = new List<string>();
 }
 
 [Serializable]
@@ -47,6 +48,7 @@ public sealed class SongImporterDescriptor
     public List<string> Extensions = new List<string>();
     public List<SongImporterFolderSignature> FolderSignatures = new List<SongImporterFolderSignature>();
     public List<SongImporterEntrypoint> Entrypoints = new List<SongImporterEntrypoint>();
+    public List<string> CacheFolderNames = new List<string>();
 }
 
 public sealed class SongImporterFolderMatch

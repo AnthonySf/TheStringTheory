@@ -147,3 +147,6 @@ LocalTestFixtures/
 Tools/NotesDetectorRegression/Generated/
 Tools/NotesDetectorRegression/bin/
 Tools/NotesDetectorRegression/obj/
+
+# Legacy bundled-song cache backup (moved out of StreamingAssets)
+legacySongsBackup/

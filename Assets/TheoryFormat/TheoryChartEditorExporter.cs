@@ -233,17 +233,7 @@ public static class TheoryChartEditorExporter
             coverArtEntry = coverEntry,
             durationSeconds = duration,
             difficultyRating = summaries.Count > 0 ? Mathf.Clamp(Mathf.RoundToInt((float)summaries.Average(summary => summary.difficultyRating)), 0, 5) : 0,
-            provenance = new TheoryImportProvenance
-            {
-                sourceType = "chart-editor",
-                sourceDisplayName = project.metadata?.title ?? string.Empty,
-                sourcePath = project.sourcePath ?? string.Empty,
-                sourceLastWriteUtcTicks = TryGetLastWriteUtcTicks(project.sourcePath),
-                sourceSizeBytes = TryGetFileSize(project.sourcePath),
-                importedAtUtcTicks = modifiedTicks,
-                converterName = "String Theory Chart Editor",
-                converterVersion = TheoryPackageFormat.SchemaVersion.ToString()
-            },
+            provenance = BuildProvenance(project, priorManifest, modifiedTicks),
             arrangements = summaries,
             audio = new List<TheoryAudioAsset>(),
             stems = preservedStems
@@ -1259,6 +1249,54 @@ public static class TheoryChartEditorExporter
         {
             return 0L;
         }
+    }
+
+    // Overwriting an existing package must not erase its import lineage: the
+    // song library relies on provenance (source path, stamps, content
+    // fingerprint) to know that a source file or folder was already converted.
+    // Editing a song in the chart editor does not change where it came from, so
+    // the prior provenance is carried over whenever it describes a real source.
+    private static TheoryImportProvenance BuildProvenance(
+        ChartEditorProject project,
+        TheorySongManifest priorManifest,
+        long modifiedTicks)
+    {
+        TheoryImportProvenance existing = priorManifest?.provenance;
+        if (existing != null &&
+            (!string.IsNullOrWhiteSpace(existing.sourceType) ||
+             !string.IsNullOrWhiteSpace(existing.sourcePath) ||
+             !string.IsNullOrWhiteSpace(existing.sourceContentFingerprint)))
+        {
+            return existing;
+        }
+
+        return new TheoryImportProvenance
+        {
+            sourceType = "chart-editor",
+            sourceDisplayName = project.metadata?.title ?? string.Empty,
+            sourcePath = project.sourcePath ?? string.Empty,
+            sourceLastWriteUtcTicks = TryGetLastWriteUtcTicks(project.sourcePath),
+            sourceSizeBytes = TryGetFileSize(project.sourcePath),
+            sourceContentFingerprint = BuildSourceContentFingerprint(project.sourcePath),
+            importedAtUtcTicks = modifiedTicks,
+            converterName = "String Theory Chart Editor",
+            converterVersion = TheoryPackageFormat.SchemaVersion.ToString()
+        };
+    }
+
+    // Notation sources (gp/musicxml) get the same portable content identity as importer
+    // sources, so the library recognizes an already-converted file even after it is
+    // moved or copied. A .theory source (project opened from a package) is not
+    // fingerprinted: packages are never import candidates themselves.
+    private static string BuildSourceContentFingerprint(string sourcePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath) ||
+            string.Equals(Path.GetExtension(sourcePath), TheoryPackageFormat.Extension, StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Empty;
+        }
+
+        return SongImporterRegistry.ComputeSourceContentFingerprint(sourcePath);
     }
 
     // Exports must be reproducible: a no-edit re-export should produce an

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -118,6 +119,91 @@ public static class SongImporterRegistry
         importer = GetAvailableImporters()
             .FirstOrDefault(candidate => string.Equals(candidate?.Id ?? string.Empty, importerId, StringComparison.OrdinalIgnoreCase));
         return importer != null;
+    }
+
+    public static bool ImporterHasUsableEntrypoint(SongImporterDescriptor importer)
+    {
+        return TryResolveEntrypoint(importer, out _, out _, out _);
+    }
+
+    /// <summary>
+    /// Computes a portable, format-agnostic identity for an importer source: a digest of the
+    /// relative file names and sizes (for folders) or the file name and size (for single files).
+    /// It survives moves and copies, requires no knowledge of the source format, and changes
+    /// whenever the content actually changes. Importer tools may pre-fill a richer fingerprint
+    /// in the .theory manifest; the stamped value is only set when the importer left it empty.
+    /// </summary>
+    public static string ComputeSourceContentFingerprint(string sourcePath)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath))
+                return string.Empty;
+
+            List<string> entries = new List<string>();
+            if (File.Exists(sourcePath))
+            {
+                FileInfo info = new FileInfo(sourcePath);
+                entries.Add(info.Name.ToLowerInvariant() + "|" + info.Length);
+            }
+            else if (Directory.Exists(sourcePath))
+            {
+                string root = Path.GetFullPath(sourcePath);
+                foreach (string filePath in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+                {
+                    if (IsGeneratedTheoryPackageInDirectorySource(filePath) ||
+                        filePath.EndsWith(".meta", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    string relativePath = Path.GetRelativePath(root, filePath)
+                        .Replace('\\', '/')
+                        .ToLowerInvariant();
+                    entries.Add(relativePath + "|" + new FileInfo(filePath).Length);
+                }
+            }
+            else
+            {
+                return string.Empty;
+            }
+
+            if (entries.Count == 0)
+                return string.Empty;
+
+            entries.Sort(StringComparer.Ordinal);
+            using (SHA1 sha1 = SHA1.Create())
+            {
+                byte[] hash = sha1.ComputeHash(Encoding.UTF8.GetBytes(string.Join("\n", entries)));
+                StringBuilder builder = new StringBuilder("v1:", 3 + hash.Length * 2);
+                for (int i = 0; i < hash.Length; i++)
+                    builder.Append(hash[i].ToString("x2"));
+                return builder.ToString();
+            }
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    public static HashSet<string> GetInstalledImporterCacheFolderNames(bool forceRefresh = false)
+    {
+        HashSet<string> names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (SongImporterDescriptor importer in GetAvailableImporters(forceRefresh))
+        {
+            if (importer?.CacheFolderNames == null)
+                continue;
+
+            for (int i = 0; i < importer.CacheFolderNames.Count; i++)
+            {
+                string name = importer.CacheFolderNames[i];
+                if (!string.IsNullOrWhiteSpace(name))
+                    names.Add(name.Trim());
+            }
+        }
+
+        return names;
     }
 
     public static bool ConvertSourceToTheoryPackage(
@@ -372,6 +458,14 @@ public static class SongImporterRegistry
                 return false;
             }
 
+            List<string> cacheFolderNames = (manifest.cacheFolderNames ?? new List<string>())
+                .Select(name => name?.Trim())
+                .Where(name => !string.IsNullOrWhiteSpace(name) &&
+                               name.IndexOf('/') < 0 &&
+                               name.IndexOf('\\') < 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
             descriptor = new SongImporterDescriptor
             {
                 Id = id,
@@ -383,7 +477,8 @@ public static class SongImporterRegistry
                 ManifestPath = manifestPath,
                 Extensions = extensions,
                 FolderSignatures = folderSignatures,
-                Entrypoints = entrypoints
+                Entrypoints = entrypoints,
+                CacheFolderNames = cacheFolderNames
             };
             return true;
         }
@@ -763,6 +858,8 @@ public static class SongImporterRegistry
         manifest.provenance.sourcePath = Path.GetFullPath(sourcePath);
         manifest.provenance.sourceLastWriteUtcTicks = TryGetLastWriteUtcTicks(sourcePath);
         manifest.provenance.sourceSizeBytes = TryGetFileSize(sourcePath);
+        if (string.IsNullOrWhiteSpace(manifest.provenance.sourceContentFingerprint))
+            manifest.provenance.sourceContentFingerprint = ComputeSourceContentFingerprint(sourcePath);
         if (manifest.provenance.importedAtUtcTicks <= 0L)
             manifest.provenance.importedAtUtcTicks = now.Ticks;
         if (string.IsNullOrWhiteSpace(manifest.provenance.converterName))
@@ -857,7 +954,8 @@ public static class SongImporterRegistry
                 .Select(CloneFolderSignature)
                 .Where(signature => signature != null)
                 .ToList(),
-            Entrypoints = new List<SongImporterEntrypoint>(source.Entrypoints ?? new List<SongImporterEntrypoint>())
+            Entrypoints = new List<SongImporterEntrypoint>(source.Entrypoints ?? new List<SongImporterEntrypoint>()),
+            CacheFolderNames = new List<string>(source.CacheFolderNames ?? new List<string>())
         };
     }
 

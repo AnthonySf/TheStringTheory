@@ -349,6 +349,7 @@ jobs:
           fi
 
           for rid in osx-arm64 osx-x64; do
+            importer_tool_dir="Assets/StreamingAssets/Importers/rocksmith-psarc/RocksmithImport/${rid}"
             dotnet publish External/RocksmithImportTool/RocksmithImportTool.csproj \
               -c Release \
               -f net10.0 \
@@ -356,9 +357,9 @@ jobs:
               --self-contained true \
               /p:UseRocksmithNet10=true \
               /p:NuGetAudit=false \
-              -o "Assets/StreamingAssets/RocksmithImport/${rid}"
-            chmod +x "Assets/StreamingAssets/RocksmithImport/${rid}/RocksmithImportTool"
-            install_macos_import_decoder_tools "${rid}" "Assets/StreamingAssets/RocksmithImport/${rid}"
+              -o "${importer_tool_dir}"
+            chmod +x "${importer_tool_dir}/RocksmithImportTool"
+            install_macos_import_decoder_tools "${rid}" "${importer_tool_dir}"
           done
 
       - name: Stage macOS LV2 plugins

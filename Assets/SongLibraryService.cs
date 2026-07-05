@@ -166,7 +166,7 @@ public static class SongLibraryService
 
         HashSet<string> seenSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         HashSet<string> cachedLegacySourceKeys = ReadCachedLegacySourceKeysUnchecked();
-        Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources = DiscoverConvertedTheorySourceStamps(songsDirectory);
+        ConvertedTheorySourceIndex convertedTheorySources = DiscoverConvertedTheorySourceStamps(songsDirectory);
 
         AddExternalImporterCandidates(songsDirectory, convertedTheorySources, seenSources, candidates);
         AddNotationImportCandidates(songsDirectory, cachedLegacySourceKeys, convertedTheorySources, seenSources, candidates);
@@ -189,7 +189,7 @@ public static class SongLibraryService
             return candidates;
 
         HashSet<string> seenSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources = DiscoverConvertedTheorySourceStamps(songsDirectory);
+        ConvertedTheorySourceIndex convertedTheorySources = DiscoverConvertedTheorySourceStamps(songsDirectory);
         AddNotationImportCandidates(
             songsDirectory,
             new HashSet<string>(StringComparer.OrdinalIgnoreCase),
@@ -353,7 +353,7 @@ public static class SongLibraryService
 
     private static void AddExternalImporterCandidates(
         string songsDirectory,
-        Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources,
+        ConvertedTheorySourceIndex convertedTheorySources,
         HashSet<string> seenSources,
         List<SongLibraryImportCandidate> candidates)
     {
@@ -361,9 +361,14 @@ public static class SongLibraryService
         if (importers.Count == 0)
             return;
 
+        HashSet<string> importerCacheFolderNames = SongImporterRegistry.GetInstalledImporterCacheFolderNames();
+
         foreach (SongImporterDescriptor importer in importers)
         {
-            if (importer?.Extensions != null && importer.Extensions.Count > 0)
+            if (importer == null || !SongImporterRegistry.ImporterHasUsableEntrypoint(importer))
+                continue;
+
+            if (importer.Extensions != null && importer.Extensions.Count > 0)
             {
                 for (int extensionIndex = 0; extensionIndex < importer.Extensions.Count; extensionIndex++)
                 {
@@ -374,7 +379,7 @@ public static class SongLibraryService
                     foreach (string sourcePath in EnumerateFilesSafe(songsDirectory, $"*{extension}", SearchOption.AllDirectories))
                     {
                         if (string.IsNullOrWhiteSpace(sourcePath) ||
-                            IsPathInsideImportedCacheDirectory(songsDirectory, sourcePath) ||
+                            IsPathInsideImportedCacheDirectory(songsDirectory, sourcePath, importerCacheFolderNames) ||
                             SourceHasCurrentTheoryConversion(sourcePath, convertedTheorySources) ||
                             !seenSources.Add(NormalizeFullPathKey(sourcePath)))
                         {
@@ -402,8 +407,7 @@ public static class SongLibraryService
         {
             string sourceKey = NormalizeFullPathKey(folderPath);
             if (string.IsNullOrWhiteSpace(sourceKey) ||
-                SourceHasCurrentTheoryConversion(folderPath, convertedTheorySources) ||
-                !seenSources.Add(sourceKey))
+                IsPathInsideImportedCacheDirectory(songsDirectory, folderPath, importerCacheFolderNames))
             {
                 continue;
             }
@@ -411,6 +415,13 @@ public static class SongLibraryService
             List<SongImporterFolderMatch> folderMatches = SongImporterRegistry.GetMatchingFolderImporters(folderPath);
             if (folderMatches.Count == 0)
                 continue;
+
+            if (DirectoryDirectlyContainsLoadableTheoryPackage(folderPath) ||
+                SourceHasCurrentTheoryConversion(folderPath, convertedTheorySources) ||
+                !seenSources.Add(sourceKey))
+            {
+                continue;
+            }
 
             SongImporterFolderMatch match = folderMatches[0];
             SongImporterDescriptor importer = match.importer;
@@ -459,7 +470,7 @@ public static class SongLibraryService
     private static void AddNotationImportCandidates(
         string songsDirectory,
         HashSet<string> cachedLegacySourceKeys,
-        Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources,
+        ConvertedTheorySourceIndex convertedTheorySources,
         HashSet<string> seenSources,
         List<SongLibraryImportCandidate> candidates,
         bool skipCachedLegacySources = true)
@@ -545,63 +556,118 @@ public static class SongLibraryService
         return keys;
     }
 
-    private static Dictionary<string, List<ConvertedTheorySourceStamp>> DiscoverConvertedTheorySourceStamps(string songsDirectory)
+    private sealed class ConvertedTheorySourceIndex
     {
-        Dictionary<string, List<ConvertedTheorySourceStamp>> stamps = new Dictionary<string, List<ConvertedTheorySourceStamp>>(StringComparer.OrdinalIgnoreCase);
+        public readonly Dictionary<string, List<ConvertedTheorySourceStamp>> StampsBySourcePath =
+            new Dictionary<string, List<ConvertedTheorySourceStamp>>(StringComparer.OrdinalIgnoreCase);
+        public readonly HashSet<string> StampFingerprints = new HashSet<string>(StringComparer.Ordinal);
+        public readonly HashSet<string> ContentFingerprints = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string BuildSourceStampFingerprint(long sizeBytes, long lastWriteUtcTicks)
+    {
+        return sizeBytes > 0L && lastWriteUtcTicks > 0L
+            ? sizeBytes.ToString() + ":" + lastWriteUtcTicks.ToString()
+            : string.Empty;
+    }
+
+    private static ConvertedTheorySourceIndex DiscoverConvertedTheorySourceStamps(string songsDirectory)
+    {
+        ConvertedTheorySourceIndex index = new ConvertedTheorySourceIndex();
         foreach (string packagePath in EnumerateFilesSafe(songsDirectory, $"*{TheoryPackageFormat.Extension}", SearchOption.AllDirectories))
         {
-            if (!TheoryPackageIO.TryReadManifest(packagePath, out TheorySongManifest manifest, out _) ||
-                string.IsNullOrWhiteSpace(manifest?.provenance?.sourcePath))
-            {
+            if (!TheoryPackageIO.TryReadManifest(packagePath, out TheorySongManifest manifest, out _))
                 continue;
-            }
 
-            string key = NormalizeFullPathKey(manifest.provenance.sourcePath);
+            TheoryImportProvenance provenance = manifest?.provenance;
+            if (provenance == null)
+                continue;
+
+            long stampTicks = Math.Max(0L, provenance.sourceLastWriteUtcTicks);
+            long stampSize = Math.Max(0L, provenance.sourceSizeBytes);
+
+            string fingerprint = BuildSourceStampFingerprint(stampSize, stampTicks);
+            if (!string.IsNullOrWhiteSpace(fingerprint))
+                index.StampFingerprints.Add(fingerprint);
+
+            if (!string.IsNullOrWhiteSpace(provenance.sourceContentFingerprint))
+                index.ContentFingerprints.Add(provenance.sourceContentFingerprint.Trim());
+
+            string key = NormalizeFullPathKey(provenance.sourcePath);
             if (string.IsNullOrWhiteSpace(key))
                 continue;
 
-            if (!stamps.TryGetValue(key, out List<ConvertedTheorySourceStamp> sourceStamps))
+            if (!index.StampsBySourcePath.TryGetValue(key, out List<ConvertedTheorySourceStamp> sourceStamps))
             {
                 sourceStamps = new List<ConvertedTheorySourceStamp>();
-                stamps[key] = sourceStamps;
+                index.StampsBySourcePath[key] = sourceStamps;
             }
 
             sourceStamps.Add(new ConvertedTheorySourceStamp
             {
-                LastWriteUtcTicks = Math.Max(0L, manifest.provenance.sourceLastWriteUtcTicks),
-                SizeBytes = Math.Max(0L, manifest.provenance.sourceSizeBytes)
+                LastWriteUtcTicks = stampTicks,
+                SizeBytes = stampSize
             });
         }
 
-        return stamps;
+        return index;
     }
 
     private static bool SourceHasCurrentTheoryConversion(
         string sourcePath,
-        Dictionary<string, List<ConvertedTheorySourceStamp>> convertedTheorySources)
+        ConvertedTheorySourceIndex convertedTheorySources)
     {
         if (string.IsNullOrWhiteSpace(sourcePath) || convertedTheorySources == null)
             return false;
 
         string key = NormalizeFullPathKey(sourcePath);
-        if (string.IsNullOrWhiteSpace(key) || !convertedTheorySources.TryGetValue(key, out List<ConvertedTheorySourceStamp> stamps))
+        if (string.IsNullOrWhiteSpace(key))
             return false;
+
+        bool hasPathStamps = convertedTheorySources.StampsBySourcePath.TryGetValue(key, out List<ConvertedTheorySourceStamp> stamps);
+        if (!hasPathStamps &&
+            convertedTheorySources.StampFingerprints.Count == 0 &&
+            convertedTheorySources.ContentFingerprints.Count == 0)
+        {
+            return false;
+        }
 
         long lastWriteUtcTicks = TryGetLastWriteUtcTicks(sourcePath);
         long sizeBytes = TryGetFileSize(sourcePath);
-        for (int i = 0; i < stamps.Count; i++)
-        {
-            ConvertedTheorySourceStamp stamp = stamps[i];
-            if (stamp == null)
-                continue;
 
-            bool timestampMatches = stamp.LastWriteUtcTicks <= 0L || lastWriteUtcTicks <= 0L || stamp.LastWriteUtcTicks == lastWriteUtcTicks;
-            bool sizeMatches = stamp.SizeBytes <= 0L || sizeBytes <= 0L || stamp.SizeBytes == sizeBytes;
-            if (timestampMatches && sizeMatches)
-                return true;
+        if (hasPathStamps)
+        {
+            for (int i = 0; i < stamps.Count; i++)
+            {
+                ConvertedTheorySourceStamp stamp = stamps[i];
+                if (stamp == null)
+                    continue;
+
+                bool timestampMatches = stamp.LastWriteUtcTicks <= 0L || lastWriteUtcTicks <= 0L || stamp.LastWriteUtcTicks == lastWriteUtcTicks;
+                bool sizeMatches = stamp.SizeBytes <= 0L || sizeBytes <= 0L || stamp.SizeBytes == sizeBytes;
+                if (timestampMatches && sizeMatches)
+                    return true;
+            }
         }
 
-        return false;
+        // Path-independent fallbacks: a previous conversion stamped an identity for this
+        // exact content, so the source was already imported even if it has been moved or
+        // copied to a different location since. The content fingerprint (relative file
+        // names + sizes) survives copies that reset timestamps; the size+timestamp stamp
+        // covers packages imported before content fingerprints existed.
+        if (convertedTheorySources.ContentFingerprints.Count > 0)
+        {
+            string contentFingerprint = SongImporterRegistry.ComputeSourceContentFingerprint(sourcePath);
+            if (!string.IsNullOrWhiteSpace(contentFingerprint) &&
+                convertedTheorySources.ContentFingerprints.Contains(contentFingerprint))
+            {
+                return true;
+            }
+        }
+
+        string sourceFingerprint = BuildSourceStampFingerprint(sizeBytes, lastWriteUtcTicks);
+        return !string.IsNullOrWhiteSpace(sourceFingerprint) &&
+               convertedTheorySources.StampFingerprints.Contains(sourceFingerprint);
     }
 
     private static string BuildImportCandidateSubtitle(string kindLabel, string sourceDirectory, string songsDirectory, string artist = null)
@@ -661,7 +727,21 @@ public static class SongLibraryService
         }
     }
 
-    private static bool IsPathInsideImportedCacheDirectory(string songsDirectory, string path)
+    private static bool DirectoryDirectlyContainsLoadableTheoryPackage(string directory)
+    {
+        try
+        {
+            return !string.IsNullOrWhiteSpace(directory) &&
+                   Directory.Exists(directory) &&
+                   !string.IsNullOrWhiteSpace(TheorySongLoader.FindPackageInDirectory(directory, requireLoadable: true));
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsPathInsideImportedCacheDirectory(string songsDirectory, string path, HashSet<string> importerCacheFolderNames)
     {
         if (string.IsNullOrWhiteSpace(songsDirectory) || string.IsNullOrWhiteSpace(path))
             return false;
@@ -675,14 +755,21 @@ public static class SongLibraryService
         for (int i = 0; i < segments.Length; i++)
         {
             string segment = segments[i];
-            if (segment.StartsWith("__psarc_", StringComparison.OrdinalIgnoreCase) ||
-                segment.StartsWith("__rocksmith_", StringComparison.OrdinalIgnoreCase))
+            if (segment.StartsWith(RocksmithCachedSongFormat.ImportedFolderPrefix, StringComparison.OrdinalIgnoreCase) ||
+                segment.StartsWith(RocksmithCachedSongFormat.LegacyImportedFolderPrefix, StringComparison.OrdinalIgnoreCase) ||
+                (importerCacheFolderNames != null && importerCacheFolderNames.Contains(segment)))
             {
                 return true;
             }
         }
 
-        return false;
+        // The chart editor's managed save folder is game-owned content; sources dropped
+        // there are never proposed for library import (the registry symmetrically refuses
+        // to write conversion output into it).
+        return string.Equals(
+            segments[0],
+            ChartEditorProjectStore.ChartEditorSaveFolderName,
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeFullPathKey(string path)
