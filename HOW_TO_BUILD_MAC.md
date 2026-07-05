@@ -76,7 +76,6 @@ Publish helper tools on macOS before building the Unity player:
 ```bash
 dotnet publish Tools/AlphaTabRenderHelper/AlphaTabRenderHelper.csproj -c Release -r osx-arm64 --self-contained true
 dotnet publish Tools/AlphaTabRenderHelper/AlphaTabRenderHelper.csproj -c Release -r osx-x64 --self-contained true
-dotnet publish External/RocksmithImportTool/RocksmithImportTool.csproj -c Release -r osx-arm64 --self-contained true
 ```
 
 For Intel builds, use `osx-x64`. For a universal Steam depot, publish both architectures
@@ -84,9 +83,8 @@ or build universal app/tool wrappers. The game looks for architecture-specific A
 helpers under `Assets/StreamingAssets/AlphaTabRenderHelper/osx-arm64` and
 `Assets/StreamingAssets/AlphaTabRenderHelper/osx-x64`.
 
-The Rocksmith importer currently publishes for `osx-arm64`, but its `Magick.NET-Q8-x64`
-dependency must be replaced or verified with a macOS-native package before PSARC import
-can be treated as supported on Mac.
+Importer add-ons are separate downloads that are not part of this repository;
+their macOS support depends on each add-on shipping macOS-native binaries.
 
 ## Stem separation
 

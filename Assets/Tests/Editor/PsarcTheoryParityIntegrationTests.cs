@@ -152,21 +152,21 @@ public sealed class PsarcTheoryParityIntegrationTests
             Application.dataPath,
             "StreamingAssets",
             "Importers",
-            "rocksmith-psarc",
-            "RocksmithImport",
-            "RocksmithImportTool.exe");
+            "psarc",
+            "PsarcImport",
+            "PsarcImportTool.exe");
         if (File.Exists(streamingImporter))
             return streamingImporter;
 
         return Path.Combine(
             ProjectRoot,
             "External",
-            "RocksmithImportTool",
+            "PsarcImportTool",
             "bin",
             "Debug",
             "net9.0",
             "win-x64",
-            "RocksmithImportTool.exe");
+            "PsarcImportTool.exe");
     }
 
     private static string RunImporter(string importerPath, string psarcPath, string theoryPath, string cacheDirectory)

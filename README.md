@@ -77,11 +77,11 @@ Tone Lab is intended to keep the core practice loop tight: load song, pick part,
 
 StringTheory is built around loading your own song files.
 
-### Rocksmith `.psarc` files
+### `.psarc` files
 
 You can simply drop `.psarc` files into `Assets/StreamingAssets/Songs/`, refresh the in-game library, and they will work without any extra setup.
 
-The library imports the package on refresh and exposes its arrangements in the normal song flow, including difficulty changes for Rocksmith arrangements that provide multiple difficulty levels.
+The library imports the package on refresh and exposes its arrangements in the normal song flow, including difficulty changes for psarc arrangements that provide multiple difficulty levels.
 
 ### Other song file types
 
@@ -131,7 +131,7 @@ Depending on the source file, the game can expose:
 
 - Lead / rhythm / bass arrangements
 - Multiple parts from the same score
-- Rocksmith arrangement variants
+- Psarc arrangement variants
 - Difficulty selection for supported rhythm charts
 
 That lets you practice the same song from different angles instead of treating each file as a single rigid playthrough.

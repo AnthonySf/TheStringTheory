@@ -183,18 +183,18 @@ Recommended setup:
 
 5. Place `libportaudio64bit-asio.dll` into `Assets/Plugins/x86_64/`.
 
-### B. PSARC import
+### B. Importer add-ons
 
-If you want the library to import `.psarc` files on refresh, place this executable here:
+The game supports optional importer add-ons that convert additional song file
+formats into playable `.theory` packages. Add-ons are not part of this
+repository and are not bundled with builds. To enable one, place its folder
+(containing an `importer.json` manifest and the converter tool it describes)
+here:
 
-- `Assets/StreamingAssets/RocksmithImport/RocksmithImportTool.exe`
+- In the project (for editor use and local builds): `Assets/StreamingAssets/Importers/<addon>/`
+- In an installed game: `%USERPROFILE%\AppData\LocalLow\StringTheory\StringTheory\Importers\<addon>\`
 
-To build it locally:
-
-```powershell
-git clone https://github.com/iminashi/Rocksmith2014.NET External/Rocksmith2014.NET
-dotnet publish External\RocksmithImportTool\RocksmithImportTool.csproj -c Release -r win-x64 --self-contained true -o Assets\StreamingAssets\RocksmithImport
-```
+The game discovers importer add-ons in both locations automatically.
 
 ### C. AlphaTab tabs rendering
 

@@ -85,9 +85,8 @@ Assets/Plugins/**/*.exp.meta
 Assets/Plugins/**/*.pdb
 Assets/StreamingAssets/NotesReader/*.exe
 Assets/StreamingAssets/NotesReader/Models/*.onnx
-Assets/StreamingAssets/Importers/rocksmith-psarc/RocksmithImport/*
-!Assets/StreamingAssets/Importers/rocksmith-psarc/RocksmithImport/
-!Assets/StreamingAssets/Importers/rocksmith-psarc/RocksmithImport.meta
+Assets/StreamingAssets/Importers/
+Assets/StreamingAssets/Importers.meta
 Assets/StreamingAssets/AlphaTabRenderHelper/*
 !Assets/StreamingAssets/AlphaTabRenderHelper/
 !Assets/StreamingAssets/AlphaTabRenderHelper/README.md
@@ -100,14 +99,6 @@ Assets/StreamingAssets/ToneLab/*.log
 Assets/StreamingAssets/ToneLab/**/tonelab_log.txt
 NativeNotesDetectorBridge/build/
 External/*
-!External/RocksmithImportTool/
-!External/RocksmithImportTool/RocksmithImportTool.csproj
-External/RocksmithImportTool/bin/
-External/RocksmithImportTool/obj/
-External/RocksmithImportTool/.vs/
-External/RocksmithImportTool/**/*.user
-External/RocksmithImportTool/**/*.suo
-External/RocksmithImportTool/**/*.tmp
 !Tools/AlphaTabRenderHelper/
 !Tools/AlphaTabRenderHelper/**
 !Tools/AlphaTabRenderHelper/AlphaTabRenderHelper.csproj

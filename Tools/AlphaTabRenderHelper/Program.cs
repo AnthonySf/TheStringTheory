@@ -465,10 +465,10 @@ internal static class Program
         if (!File.Exists(sidecarPath))
             return;
 
-        RocksmithAlphaTabTimingSidecar? sidecar;
+        PsarcAlphaTabTimingSidecar? sidecar;
         try
         {
-            sidecar = LoadJson<RocksmithAlphaTabTimingSidecar>(sidecarPath);
+            sidecar = LoadJson<PsarcAlphaTabTimingSidecar>(sidecarPath);
         }
         catch
         {
@@ -485,12 +485,12 @@ internal static class Program
         Console.Error.WriteLine($"[AlphaTabHelper] Applied {appliedOverrides} timing overrides from '{sidecarPath}'.");
     }
 
-    private static int ApplyTimingOverridesByDescriptor(List<RocksmithAlphaTabTimingBeatEntry> entries, List<BeatTiming> beatTimings)
+    private static int ApplyTimingOverridesByDescriptor(List<PsarcAlphaTabTimingBeatEntry> entries, List<BeatTiming> beatTimings)
     {
         if (entries == null || beatTimings == null)
             return 0;
 
-        Dictionary<(int bar, int voice), List<RocksmithAlphaTabTimingBeatEntry>> sidecarGroups = entries
+        Dictionary<(int bar, int voice), List<PsarcAlphaTabTimingBeatEntry>> sidecarGroups = entries
             .GroupBy(entry => (entry.masterBarIndex, entry.voiceIndex))
             .ToDictionary(group => group.Key, group => group.OrderBy(entry => entry.startTime).ToList());
 
@@ -499,18 +499,18 @@ internal static class Program
             .ToDictionary(group => group.Key, group => group.ToList());
 
         HashSet<BeatTiming> assigned = new HashSet<BeatTiming>();
-        HashSet<RocksmithAlphaTabTimingBeatEntry> assignedEntries = new HashSet<RocksmithAlphaTabTimingBeatEntry>();
+        HashSet<PsarcAlphaTabTimingBeatEntry> assignedEntries = new HashSet<PsarcAlphaTabTimingBeatEntry>();
         int applied = 0;
-        foreach (KeyValuePair<(int bar, int voice), List<RocksmithAlphaTabTimingBeatEntry>> pair in sidecarGroups)
+        foreach (KeyValuePair<(int bar, int voice), List<PsarcAlphaTabTimingBeatEntry>> pair in sidecarGroups)
         {
-            List<RocksmithAlphaTabTimingBeatEntry> groupEntries = pair.Value;
+            List<PsarcAlphaTabTimingBeatEntry> groupEntries = pair.Value;
             if (!beatGroups.TryGetValue(pair.Key, out List<BeatTiming>? groupBeats))
                 groupBeats = new List<BeatTiming>();
 
             int cursor = 0;
             for (int entryIndex = 0; entryIndex < groupEntries.Count; entryIndex++)
             {
-                RocksmithAlphaTabTimingBeatEntry entry = groupEntries[entryIndex];
+                PsarcAlphaTabTimingBeatEntry entry = groupEntries[entryIndex];
                 int matchIndex = FindMatchingBeatIndex(groupBeats, entry, cursor, assigned);
                 if (matchIndex < 0)
                     continue;
@@ -524,7 +524,7 @@ internal static class Program
             }
         }
 
-        Dictionary<int, List<RocksmithAlphaTabTimingBeatEntry>> sidecarBarGroups = entries
+        Dictionary<int, List<PsarcAlphaTabTimingBeatEntry>> sidecarBarGroups = entries
             .Where(entry => !assignedEntries.Contains(entry))
             .GroupBy(entry => entry.masterBarIndex)
             .ToDictionary(group => group.Key, group => group.OrderBy(entry => entry.startTime).ThenBy(entry => entry.voiceIndex).ToList());
@@ -534,13 +534,13 @@ internal static class Program
             .GroupBy(beat => beat.masterBarIndex)
             .ToDictionary(group => group.Key, group => group.OrderBy(beat => beat.startSeconds).ThenBy(beat => beat.voiceIndex).ToList());
 
-        foreach (KeyValuePair<int, List<RocksmithAlphaTabTimingBeatEntry>> pair in sidecarBarGroups)
+        foreach (KeyValuePair<int, List<PsarcAlphaTabTimingBeatEntry>> pair in sidecarBarGroups)
         {
             if (!beatBarGroups.TryGetValue(pair.Key, out List<BeatTiming>? groupBeats))
                 continue;
 
             int cursor = 0;
-            foreach (RocksmithAlphaTabTimingBeatEntry entry in pair.Value)
+            foreach (PsarcAlphaTabTimingBeatEntry entry in pair.Value)
             {
                 int matchIndex = FindMatchingBeatIndex(groupBeats, entry, cursor, assigned);
                 if (matchIndex < 0)
@@ -558,7 +558,7 @@ internal static class Program
         return applied;
     }
 
-    private static int FindMatchingBeatIndex(List<BeatTiming> beats, RocksmithAlphaTabTimingBeatEntry entry, int startIndex, HashSet<BeatTiming> assigned)
+    private static int FindMatchingBeatIndex(List<BeatTiming> beats, PsarcAlphaTabTimingBeatEntry entry, int startIndex, HashSet<BeatTiming> assigned)
     {
         if (beats == null || entry == null)
             return -1;
@@ -584,7 +584,7 @@ internal static class Program
         return -1;
     }
 
-    private static bool BeatMatchesEntry(BeatTiming beat, RocksmithAlphaTabTimingBeatEntry entry)
+    private static bool BeatMatchesEntry(BeatTiming beat, PsarcAlphaTabTimingBeatEntry entry)
     {
         if (beat == null || entry == null)
             return false;
@@ -601,7 +601,7 @@ internal static class Program
         return true;
     }
 
-    private static bool BeatMatchesEntryRelaxed(BeatTiming beat, RocksmithAlphaTabTimingBeatEntry entry)
+    private static bool BeatMatchesEntryRelaxed(BeatTiming beat, PsarcAlphaTabTimingBeatEntry entry)
     {
         if (beat == null || entry == null)
             return false;
@@ -614,7 +614,7 @@ internal static class Program
         return true;
     }
 
-    private static void ApplyTimingOverride(RocksmithAlphaTabTimingBeatEntry entry, BeatTiming beat)
+    private static void ApplyTimingOverride(PsarcAlphaTabTimingBeatEntry entry, BeatTiming beat)
     {
         beat.startSeconds = entry.startTime;
         beat.endSeconds = Math.Max(entry.endTime, entry.startTime + 0.001f);
@@ -1070,15 +1070,15 @@ public sealed class AlphaTabRenderBeatMarker
 }
 
 [Serializable]
-public sealed class RocksmithAlphaTabTimingSidecar
+public sealed class PsarcAlphaTabTimingSidecar
 {
     public int version = 2;
     public string notationPath = string.Empty;
-    public List<RocksmithAlphaTabTimingBeatEntry> beats = new List<RocksmithAlphaTabTimingBeatEntry>();
+    public List<PsarcAlphaTabTimingBeatEntry> beats = new List<PsarcAlphaTabTimingBeatEntry>();
 }
 
 [Serializable]
-public sealed class RocksmithAlphaTabTimingBeatEntry
+public sealed class PsarcAlphaTabTimingBeatEntry
 {
     public float startTime;
     public float endTime;

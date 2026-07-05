@@ -36,7 +36,7 @@ If you restore those pieces locally or ship them in a release, keep their upstre
 
 - Upstream: https://github.com/nickbabcock/Pfim
 - License: MIT
-- Purpose: managed DDS cover-art decoding for Rocksmith import
+- Purpose: managed DDS cover-art decoding for psarc import
 
 ### Stem Separation Runtime
 
@@ -47,13 +47,13 @@ If you restore those pieces locally or ship them in a release, keep their upstre
 ### FFmpeg
 
 - Upstream: https://ffmpeg.org/
-- Bundled package: macOS command-line ffmpeg for Rocksmith WEM audio import
+- Bundled package: macOS command-line ffmpeg for psarc WEM audio import
 - License: FFmpeg license terms vary by build configuration; the current macOS workflow downloads GPL-enabled static builds
 
 ### vgmstream
 
 - Upstream: https://github.com/vgmstream/vgmstream
-- Bundled package: macOS vgmstream-cli for Rocksmith WEM audio import
+- Bundled package: macOS vgmstream-cli for psarc WEM audio import
 - License: ISC-style terms with third-party portions as declared in upstream COPYING
 
 ### GxPlugins.lv2
