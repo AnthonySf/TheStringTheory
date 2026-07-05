@@ -184,61 +184,12 @@ public static class ChartEditorFilePicker
     }
 
 #if UNITY_STANDALONE_WIN && !UNITY_EDITOR
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
-    private sealed class OpenFileName
-    {
-        public int lStructSize;
-        public IntPtr hwndOwner;
-        public IntPtr hInstance;
-        public string lpstrFilter;
-        public string lpstrCustomFilter;
-        public int nMaxCustFilter;
-        public int nFilterIndex;
-        public StringBuilder lpstrFile;
-        public int nMaxFile;
-        public string lpstrFileTitle;
-        public int nMaxFileTitle;
-        public string lpstrInitialDir;
-        public string lpstrTitle;
-        public int flags;
-        public short nFileOffset;
-        public short nFileExtension;
-        public string lpstrDefExt;
-        public IntPtr lCustData;
-        public IntPtr lpfnHook;
-        public string lpTemplateName;
-        public IntPtr pvReserved;
-        public int dwReserved;
-        public int flagsEx;
-    }
-
-    [DllImport("comdlg32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-    private static extern bool GetOpenFileName([In, Out] OpenFileName ofn);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetActiveWindow();
-
     private static bool TryPickWindowsFile(string title, string filterName, string filterPattern, string initialDirectory, out string path)
     {
-        path = string.Empty;
-        string filter = $"{filterName}\0{filterPattern}\0All Files\0*.*\0\0";
-        OpenFileName ofn = new OpenFileName
-        {
-            lStructSize = Marshal.SizeOf(typeof(OpenFileName)),
-            hwndOwner = GetActiveWindow(),
-            lpstrFilter = filter,
-            lpstrFile = new StringBuilder(MaxPathBuffer),
-            nMaxFile = MaxPathBuffer,
-            lpstrInitialDir = initialDirectory,
-            lpstrTitle = title,
-            flags = 0x00080000 | 0x00001000 | 0x00000800 | 0x00000008
-        };
-
-        if (!GetOpenFileName(ofn))
-            return false;
-
-        path = ofn.lpstrFile.ToString();
-        return !string.IsNullOrWhiteSpace(path);
+        // Shown by an out-of-process helper: in-process native dialogs crash
+        // the Unity player (see WindowsOutOfProcessDialogs).
+        string filter = $"{filterName}|{filterPattern}|All Files|*.*";
+        return WindowsOutOfProcessDialogs.TryPickFile(title, filter, initialDirectory, out path);
     }
 #endif
 }

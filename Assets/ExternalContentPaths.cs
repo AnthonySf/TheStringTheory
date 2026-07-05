@@ -48,6 +48,8 @@ public static class ExternalContentPaths
     private static string toneLabEffectsDirectoryOverride = string.Empty;
     private static string cachedStreamingRoot = string.Empty;
     private static string cachedPersistentRoot = string.Empty;
+    private static string cachedCompanyName;
+    private static string cachedProductName;
 
     public static string StreamingRoot
     {
@@ -73,6 +75,10 @@ public static class ExternalContentPaths
             cachedStreamingRoot = Application.streamingAssetsPath;
         if (string.IsNullOrWhiteSpace(cachedPersistentRoot))
             cachedPersistentRoot = Application.persistentDataPath;
+        if (cachedCompanyName == null)
+            cachedCompanyName = Application.companyName ?? string.Empty;
+        if (cachedProductName == null)
+            cachedProductName = Application.productName ?? string.Empty;
     }
 
     public static string StreamingLegalDirectory => Path.Combine(StreamingRoot, LegalFolderName);
@@ -84,7 +90,30 @@ public static class ExternalContentPaths
     public static string StreamingStemSeparatorRuntimeDirectory => Path.Combine(StreamingStemSeparatorDirectory, StemSeparatorRuntimeFolderName);
     public static string StreamingStemSeparatorPackagePath => Path.Combine(StreamingStemSeparatorDirectory, StemSeparatorRuntimePackageFileName);
     public static string PersistentToneLabDirectory => Path.Combine(PersistentRoot, ToneLabFolderName);
-    public static string PersistentImportersDirectory => Path.Combine(PersistentRoot, ImportersFolderName);
+    // Importer add-ons contain executables, and on Windows they must NOT live
+    // under persistentDataPath: AppData\LocalLow carries the Low mandatory
+    // integrity label, files inherit it, and Windows caps a process at its
+    // image file's integrity — an importer exe stored there runs at Low
+    // integrity and every file access it makes is denied. AppData\Local has
+    // no such label, so add-ons install there instead.
+    public static string PersistentImportersDirectory => GetPersistentImportersDirectory();
+
+    private static string GetPersistentImportersDirectory()
+    {
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+        string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (!string.IsNullOrWhiteSpace(localAppData))
+        {
+            // Only the values cached at startup may be used here: the library
+            // refresh resolves this path from a background thread, where
+            // reading Application.companyName / productName throws.
+            string company = string.IsNullOrWhiteSpace(cachedCompanyName) ? "StringTheory" : cachedCompanyName;
+            string product = string.IsNullOrWhiteSpace(cachedProductName) ? "StringTheory" : cachedProductName;
+            return Path.Combine(localAppData, company, product, ImportersFolderName);
+        }
+#endif
+        return Path.Combine(PersistentRoot, ImportersFolderName);
+    }
     public static string PersistentToneLabPresetDirectory => Path.Combine(PersistentToneLabDirectory, ToneLabPresetsFolderName);
     public static string DefaultPersistentToneLabEffectsDirectory => PersistentToneLabDirectory;
     public static string PersistentToneLabEffectsDirectory => string.IsNullOrWhiteSpace(GetToneLabEffectsDirectoryOverride()) ? DefaultPersistentToneLabEffectsDirectory : GetToneLabEffectsDirectoryOverride();

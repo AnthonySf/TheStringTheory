@@ -1347,9 +1347,15 @@ public sealed class MiniGameFightStage3DRenderer
 
     private static Material CreateCharacterShadowCasterMaterial()
     {
-        Material material = CreateCharacterCutoutLitMaterial();
+        // Prefer the dedicated Resources shader: its alpha-clipped shadow
+        // pass is baked in, so it survives player shader stripping. The
+        // URP/Lit cutout route only worked in the editor — no build-time
+        // material references Lit with _ALPHATEST_ON, so the clipped
+        // shadow-caster variant was stripped from builds and the whole quad
+        // cast a square shadow instead of the sprite silhouette.
+        Material material = CreateCharacterAlphaShadowCasterMaterial();
         if (material == null)
-            material = CreateCharacterAlphaShadowCasterMaterial();
+            material = CreateCharacterCutoutLitMaterial();
         SetMaterialColor(material, Color.white);
         SetMaterialSmoothness(material, 0.12f);
         DisableExtraLitResponse(material);

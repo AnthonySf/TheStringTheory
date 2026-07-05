@@ -192,7 +192,7 @@ repository and are not bundled with builds. To enable one, place its folder
 here:
 
 - In the project (for editor use and local builds): `Assets/StreamingAssets/Importers/<addon>/`
-- In an installed game: `%USERPROFILE%\AppData\LocalLow\StringTheory\StringTheory\Importers\<addon>\`
+- In an installed game: `%LOCALAPPDATA%\StringTheory\StringTheory\Importers\<addon>\`
 
 The game discovers importer add-ons in both locations automatically.
 

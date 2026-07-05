@@ -1565,6 +1565,21 @@ public sealed class ChartEditorOverlay
         overlay.Add(highwayPreviewTitleLabel);
         overlay.Add(highwayPreviewMetaLabel);
         previewFrame.Add(overlay);
+
+        // Camera height nudge: the preview camera can sit too high for some
+        // charts, so a clamped vertical slider lets the user shift it without
+        // being able to break the framing. Applied render-only via the host.
+        Slider cameraHeightSlider = new Slider(null, PreviewCameraHeightMin, PreviewCameraHeightMax, SliderDirection.Vertical);
+        cameraHeightSlider.value = GetHighwayPreviewCameraHeightOffset();
+        cameraHeightSlider.tooltip = "Preview camera height (drag down to lower the camera)";
+        cameraHeightSlider.style.position = Position.Absolute;
+        cameraHeightSlider.style.right = 12f;
+        cameraHeightSlider.style.top = 90f;
+        cameraHeightSlider.style.bottom = 30f;
+        cameraHeightSlider.style.width = 30f;
+        cameraHeightSlider.style.opacity = 0.75f;
+        cameraHeightSlider.RegisterValueChangedCallback(evt => SetHighwayPreviewCameraHeightOffset(evt.newValue));
+        previewFrame.Add(cameraHeightSlider);
         panel.Add(previewFrame);
 
         UpdateHighwayPreview();
@@ -1829,6 +1844,7 @@ public sealed class ChartEditorOverlay
             highwayPreviewGuitarHost.TargetTexture = highwayPreviewTexture;
             highwayPreviewGuitarHost.RenderableStringCountOverride = frame.laneCount;
             highwayPreviewGuitarHost.FretLightColumnCountOverride = null;
+            highwayPreviewGuitarHost.CameraHeightOffset = GetHighwayPreviewCameraHeightOffset();
         }
 
         signature ??= BuildHighwayPreviewSignature(frame, project);
@@ -6086,7 +6102,7 @@ public sealed class ChartEditorOverlay
         if (note == null || segment == null)
             return;
 
-        double noteLimit = Math.Max(0.06, (project != null ? GetProjectDurationSeconds() : note.timeSeconds + GetNoteEffectiveDurationSeconds(note)) - note.timeSeconds);
+        double noteLimit = GetNoteDurationEditLimitSeconds(note);
         TextField typeField = CreatePopupTextField("Type", segment.type.ToString());
         TextField startField = CreatePopupTextField("Start Offset Seconds", Mathf.Max(0f, segment.startOffset).ToString("0.000", CultureInfo.InvariantCulture));
         TextField endField = CreatePopupTextField("End Offset Seconds", Mathf.Max(segment.startOffset + TechniqueSegmentMinimumSeconds, segment.endOffset).ToString("0.000", CultureInfo.InvariantCulture));
@@ -7703,7 +7719,7 @@ public sealed class ChartEditorOverlay
             return false;
         }
 
-        double noteLimit = Math.Max(0.06, (project != null ? GetProjectDurationSeconds() : note.timeSeconds + GetNoteEffectiveDurationSeconds(note)) - note.timeSeconds);
+        double noteLimit = GetNoteDurationEditLimitSeconds(note);
         if (!TryParseDoubleInRange(state.startField?.value, 0.0, noteLimit, out double start))
         {
             if (showError)
@@ -11595,6 +11611,36 @@ public sealed class ChartEditorOverlay
     // ChartEditorProject.DurationSeconds scans every note of every track per
     // access, which is far too slow for per-frame and per-pointer-move code.
     // All overlay reads go through this once-per-frame cache instead.
+    private const float PreviewCameraHeightMin = -4f;
+    private const float PreviewCameraHeightMax = 1.5f;
+    private const string PreviewCameraHeightPrefKey = "ChartEditor.PreviewCameraHeightOffset";
+    private float highwayPreviewCameraHeightOffset;
+    private bool highwayPreviewCameraHeightLoaded;
+
+    private float GetHighwayPreviewCameraHeightOffset()
+    {
+        if (!highwayPreviewCameraHeightLoaded)
+        {
+            highwayPreviewCameraHeightOffset = Mathf.Clamp(
+                PlayerPrefs.GetFloat(PreviewCameraHeightPrefKey, 0f),
+                PreviewCameraHeightMin,
+                PreviewCameraHeightMax);
+            highwayPreviewCameraHeightLoaded = true;
+        }
+
+        return highwayPreviewCameraHeightOffset;
+    }
+
+    private void SetHighwayPreviewCameraHeightOffset(float value)
+    {
+        highwayPreviewCameraHeightOffset = Mathf.Clamp(value, PreviewCameraHeightMin, PreviewCameraHeightMax);
+        highwayPreviewCameraHeightLoaded = true;
+        PlayerPrefs.SetFloat(PreviewCameraHeightPrefKey, highwayPreviewCameraHeightOffset);
+        if (highwayPreviewGuitarHost != null)
+            highwayPreviewGuitarHost.CameraHeightOffset = highwayPreviewCameraHeightOffset;
+        forceHighwayPreviewRender = true;
+    }
+
     private float GetProjectDurationSeconds()
     {
         if (project == null)
@@ -11608,6 +11654,29 @@ public sealed class ChartEditorOverlay
         }
 
         return cachedProjectDurationSeconds;
+    }
+
+    // Ceiling for how far a note may be lengthened. The project duration
+    // itself is derived from the furthest content, so clamping edits to it
+    // made sustains impossible to grow in a project without audio (the limit
+    // always equaled the current content end). With audio attached the audio
+    // length is the meaningful ceiling; without it, authoring gets free room
+    // and the chart end follows the content.
+    private const double MaxAuthoringNoteEndSeconds = 3600.0;
+
+    private double GetNoteDurationEditLimitSeconds(ChartEditorNote note)
+    {
+        if (note == null)
+            return 0.06;
+
+        if (project == null)
+            return Math.Max(0.06, GetNoteEffectiveDurationSeconds(note));
+
+        double audioDuration = project.audio?.durationSeconds ?? 0.0;
+        double endLimit = audioDuration > 0.05
+            ? Math.Max(audioDuration, GetProjectDurationSeconds())
+            : MaxAuthoringNoteEndSeconds;
+        return Math.Max(0.06, endLimit - note.timeSeconds);
     }
 
     private void UpdatePlaybackVisuals()
@@ -13425,7 +13494,7 @@ public sealed class ChartEditorOverlay
             Vector2 pointer = PointerPosition(evt);
             float horizontalDragPixels = GetTimelineDragPixelsWithAutoPan(pointer, startPointer, startTimelineScrollX);
             double requestedDuration = startDuration + PixelDeltaToSeconds(horizontalDragPixels);
-            double maxDuration = Math.Max(0.01, GetProjectDurationSeconds() - note.timeSeconds);
+            double maxDuration = Math.Max(0.01, GetNoteDurationEditLimitSeconds(note));
             double? nextTime = GetNextNoteTimeInLane(track, note, laneCount, selectedTrack);
             if (nextTime.HasValue)
                 maxDuration = Math.Max(0.01, Math.Min(maxDuration, nextTime.Value - note.timeSeconds - GetPasteVisualGapSeconds()));
@@ -17338,7 +17407,7 @@ public sealed class ChartEditorOverlay
 
         double defaultDuration = refs.Max(noteRef => Math.Max(0.25, GetNoteEffectiveDurationSeconds(noteRef.note)));
         double defaultSustain = Math.Min(2.0, Math.Max(0.0, defaultDuration - 0.25));
-        double maxDuration = refs.Min(noteRef => Math.Max(0.01, (project != null ? GetProjectDurationSeconds() : defaultDuration) - noteRef.note.timeSeconds));
+        double maxDuration = refs.Min(noteRef => Math.Max(0.01, GetNoteDurationEditLimitSeconds(noteRef.note)));
 
         TextField sustainField = CreatePopupTextField("Sustain Before Vibrato Seconds", defaultSustain.ToString("0.000", CultureInfo.InvariantCulture));
         TextField totalField = CreatePopupTextField("Total Note Duration Seconds", Math.Min(defaultDuration, maxDuration).ToString("0.000", CultureInfo.InvariantCulture));
@@ -18487,7 +18556,11 @@ public sealed class ChartEditorOverlay
         Color fill = new Color(0.94f, 0.97f, 1f, 1f);
         DrawResizeCursorGlyph(texture, horizontal, shadow, 1);
         DrawResizeCursorGlyph(texture, horizontal, fill, 0);
-        texture.Apply(false, true);
+        // The texture must stay CPU-readable: runtime UI Toolkit applies
+        // cursor styles through Cursor.SetCursor, which rejects non-readable
+        // textures in players (the editor has its own cursor path, so the
+        // hover cursors silently disappeared only in builds).
+        texture.Apply(false, false);
 
         if (horizontal)
             resizeHorizontalCursorTexture = texture;

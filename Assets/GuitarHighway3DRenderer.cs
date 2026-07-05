@@ -21,6 +21,9 @@ public sealed class GuitarHighway3DRenderHost
     public string RootName = "Highway3DRendererRoot";
     public int? RenderableStringCountOverride;
     public int? FretLightColumnCountOverride;
+    // Vertical camera nudge applied only for the duration of a manual render
+    // (host previews), so the renderer's own camera smoothing never sees it.
+    public float CameraHeightOffset;
 }
 
 public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
@@ -633,7 +636,15 @@ public sealed class GuitarHighway3DRenderer : IGuitarGameplayRenderer
         if (restoreRootInactive)
             root.SetActive(true);
         RenderTexture previousActive = RenderTexture.active;
+        // Apply the host's vertical nudge only around the actual render so the
+        // renderer's own camera positioning stays stateless across frames.
+        Vector3 originalCameraPosition = mainCamera.transform.position;
+        bool cameraNudged = Mathf.Abs(renderHost.CameraHeightOffset) > 0.0001f;
+        if (cameraNudged)
+            mainCamera.transform.position = originalCameraPosition + new Vector3(0f, renderHost.CameraHeightOffset, 0f);
         mainCamera.Render();
+        if (cameraNudged)
+            mainCamera.transform.position = originalCameraPosition;
         RenderTexture.active = previousActive;
         if (restoreRootInactive && root != null)
             root.SetActive(false);

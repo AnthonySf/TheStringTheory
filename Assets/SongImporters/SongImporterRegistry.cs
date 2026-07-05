@@ -351,9 +351,12 @@ public static class SongImporterRegistry
     {
         List<SongImporterDescriptor> result = new List<SongImporterDescriptor>();
         HashSet<string> seenIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        List<string> rootSummaries = new List<string>();
         foreach (string root in GetImporterRoots())
         {
-            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+            bool rootExists = !string.IsNullOrWhiteSpace(root) && Directory.Exists(root);
+            rootSummaries.Add($"'{root}' (exists={rootExists})");
+            if (!rootExists)
                 continue;
 
             foreach (string manifestPath in EnumerateImporterManifests(root))
@@ -370,6 +373,13 @@ public static class SongImporterRegistry
                 result.Add(descriptor);
                 seenIds.Add(descriptor.Id);
             }
+        }
+
+        Debug.Log($"[SongImporter] Discovered {result.Count} importer(s). Roots: {string.Join(" | ", rootSummaries)}");
+        foreach (SongImporterDescriptor importer in result)
+        {
+            bool entrypointUsable = TryResolveEntrypoint(importer, out _, out _, out string entrypointError);
+            Debug.Log($"[SongImporter] '{importer.Id}': extensions=[{string.Join(", ", importer.Extensions)}], folderSignatures={importer.FolderSignatures.Count}, entrypointUsable={entrypointUsable}{(entrypointUsable ? string.Empty : $" ({entrypointError})")}");
         }
 
         return result

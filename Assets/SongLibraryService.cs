@@ -361,9 +361,17 @@ public static class SongLibraryService
     {
         List<SongImporterDescriptor> importers = SongImporterRegistry.GetAvailableImporters(forceRefresh: true);
         if (importers.Count == 0)
+        {
+            Debug.Log("[SongLibrary] Importer candidate scan skipped: no importers are installed.");
             return;
+        }
 
         HashSet<string> importerCacheFolderNames = SongImporterRegistry.GetInstalledImporterCacheFolderNames();
+        int candidateStartCount = candidates.Count;
+        int matchedFiles = 0;
+        int excludedInsideCache = 0;
+        int excludedAlreadyConverted = 0;
+        int excludedDuplicate = 0;
 
         foreach (SongImporterDescriptor importer in importers)
         {
@@ -380,11 +388,25 @@ public static class SongLibraryService
 
                     foreach (string sourcePath in EnumerateFilesSafe(songsDirectory, $"*{extension}", SearchOption.AllDirectories))
                     {
-                        if (string.IsNullOrWhiteSpace(sourcePath) ||
-                            IsPathInsideImportedCacheDirectory(songsDirectory, sourcePath, importerCacheFolderNames) ||
-                            SourceHasCurrentTheoryConversion(sourcePath, convertedTheorySources) ||
-                            !seenSources.Add(NormalizeFullPathKey(sourcePath)))
+                        if (string.IsNullOrWhiteSpace(sourcePath))
+                            continue;
+
+                        matchedFiles++;
+                        if (IsPathInsideImportedCacheDirectory(songsDirectory, sourcePath, importerCacheFolderNames))
                         {
+                            excludedInsideCache++;
+                            continue;
+                        }
+
+                        if (SourceHasCurrentTheoryConversion(sourcePath, convertedTheorySources))
+                        {
+                            excludedAlreadyConverted++;
+                            continue;
+                        }
+
+                        if (!seenSources.Add(NormalizeFullPathKey(sourcePath)))
+                        {
+                            excludedDuplicate++;
                             continue;
                         }
 
@@ -447,6 +469,11 @@ public static class SongLibraryService
                 NotationKind = SongNotationSourceKind.None
             });
         }
+
+        Debug.Log(
+            $"[SongLibrary] Importer candidate scan of '{songsDirectory}': {importers.Count} importer(s), " +
+            $"{matchedFiles} source file(s) matched, {candidates.Count - candidateStartCount} candidate(s) offered; " +
+            $"excluded: insideCache={excludedInsideCache}, alreadyConverted={excludedAlreadyConverted}, duplicate={excludedDuplicate}");
     }
 
     private static IEnumerable<string> EnumerateDirectoriesSafe(string directory, bool includeRoot)

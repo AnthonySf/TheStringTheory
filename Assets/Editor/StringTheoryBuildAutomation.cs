@@ -16,6 +16,58 @@ public static class StringTheoryBuildAutomation
     {
         if (target == BuildTarget.StandaloneOSX)
             FinalizeMacAppBundle(NormalizeMacAppOutputPath(pathToBuiltProject));
+
+        StripImporterAddonsFromBuild(target, pathToBuiltProject);
+    }
+
+    // Importer add-ons are distributed separately and must never ship inside
+    // a player build. The project keeps them under
+    // Assets/StreamingAssets/Importers for editor use, which Unity copies
+    // into every build — so the copy is deleted from the build output
+    // automatically here.
+    private static void StripImporterAddonsFromBuild(BuildTarget target, string pathToBuiltProject)
+    {
+        try
+        {
+            string streamingAssets = ResolveBuildStreamingAssetsPath(target, pathToBuiltProject);
+            if (string.IsNullOrWhiteSpace(streamingAssets))
+                return;
+
+            string importers = Path.Combine(streamingAssets, "Importers");
+            if (!Directory.Exists(importers))
+                return;
+
+            Directory.Delete(importers, recursive: true);
+            UnityEngine.Debug.Log($"[Build] Stripped importer add-ons from the build output: {importers}");
+        }
+        catch (Exception ex)
+        {
+            UnityEngine.Debug.LogWarning($"[Build] Could not strip importer add-ons from the build output: {ex.Message}");
+        }
+    }
+
+    private static string ResolveBuildStreamingAssetsPath(BuildTarget target, string pathToBuiltProject)
+    {
+        if (string.IsNullOrWhiteSpace(pathToBuiltProject))
+            return null;
+
+        if (target == BuildTarget.StandaloneOSX)
+        {
+            string appPath = NormalizeMacAppOutputPath(pathToBuiltProject);
+            return Path.Combine(appPath, "Contents", "Resources", "Data", "StreamingAssets");
+        }
+
+        if (target == BuildTarget.StandaloneWindows || target == BuildTarget.StandaloneWindows64 || target == BuildTarget.StandaloneLinux64)
+        {
+            string directory = Path.GetDirectoryName(pathToBuiltProject);
+            if (string.IsNullOrWhiteSpace(directory))
+                return null;
+
+            string dataFolder = Path.GetFileNameWithoutExtension(pathToBuiltProject) + "_Data";
+            return Path.Combine(directory, dataFolder, "StreamingAssets");
+        }
+
+        return null;
     }
 
     public static void BuildMacOS()
