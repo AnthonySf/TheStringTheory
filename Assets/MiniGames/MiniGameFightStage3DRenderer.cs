@@ -47,6 +47,10 @@ public sealed class MiniGameFightStage3DRenderer
     private const float CharacterFootSink = -0.02f;
     private const float LeftCharacterBaseX = -5.05f;
     private const float RightCharacterBaseX = 5.05f;
+    // Test toggle: casts Skullhead as the left (playable) fighter and the
+    // default fighter as the right opponent. Every swap behavior is gated on
+    // this flag; false is the normal casting.
+    private const bool SwapFightersForTest = false;
     public const int StageUnityLayer = 29;
     public const int StageUnityLayerMask = 1 << StageUnityLayer;
 
@@ -832,8 +836,9 @@ public sealed class MiniGameFightStage3DRenderer
         bool opponentActionActive = now < opponentActionUntil;
         float idleBreath = (Mathf.Sin(now * 2.0f) + 1f) * 0.5f;
         float idleSway = Mathf.Sin(now * 1.35f);
-        bool rightUsesSkullhead = skullheadIdleTexture != null;
-        Texture2D leftTexture = idleSheetTexture;
+        bool rightUsesSkullhead = !SwapFightersForTest && skullheadIdleTexture != null;
+        bool leftUsesSkullhead = SwapFightersForTest && skullheadIdleTexture != null;
+        Texture2D leftTexture = leftUsesSkullhead ? skullheadIdleTexture : idleSheetTexture;
         Texture2D rightTexture = rightUsesSkullhead ? skullheadIdleTexture : idleSheetTexture;
         Vector2 leftScale = GetCharacterUvScale(leftTexture, idleSheetTexture);
         Vector2 rightScale = GetCharacterUvScale(rightTexture, idleSheetTexture);
@@ -845,19 +850,25 @@ public sealed class MiniGameFightStage3DRenderer
         float leftPoseWidth = GetPoseWidth(leftTexture, leftScale, leftPoseHeight);
         float rightPoseHeight = GetPoseHeight(rightTexture);
         float rightPoseWidth = GetPoseWidth(rightTexture, rightScale, rightPoseHeight);
+        float leftIdlePulse = leftUsesSkullhead ? Mathf.Sin(now * 2.35f + 0.45f) : idleBreath;
         float rightIdlePulse = rightUsesSkullhead ? Mathf.Sin(now * 2.35f + 0.45f) : idleBreath;
-        float leftScaledPoseHeight = leftPoseHeight * (1f + (idleBreath * 0.018f));
+        float leftScaledPoseHeight = leftPoseHeight * (leftUsesSkullhead
+            ? 1f + (leftIdlePulse * SkullheadIdleBreathHeight)
+            : 1f + (idleBreath * 0.018f));
         float rightScaledPoseHeight = rightPoseHeight * (rightUsesSkullhead
             ? 1f + (rightIdlePulse * SkullheadIdleBreathHeight)
             : 1f + (idleBreath * 0.018f));
-        float leftX = LeftCharacterBaseX;
+        float leftBaseX = GetLeftCharacterPoseBaseX();
+        float leftX = leftBaseX;
         float rightBaseX = GetRightCharacterPoseBaseX();
         float rightX = rightBaseX;
         float leftY = GetPoseCenterY(leftTexture, leftScaledPoseHeight);
         float rightY = GetPoseCenterY(rightTexture, rightScaledPoseHeight);
-        float leftRot = idleSway * 1.1f;
+        float leftRot = leftUsesSkullhead ? 0f : idleSway * 1.1f;
         float rightRot = rightUsesSkullhead ? 0f : -idleSway * 1.1f;
-        float leftScaleX = leftPoseWidth * (1f - (idleBreath * 0.012f));
+        float leftScaleX = leftPoseWidth * (leftUsesSkullhead
+            ? 1f - (leftIdlePulse * SkullheadIdleBreathWidth)
+            : 1f - (idleBreath * 0.012f));
         float rightScaleX = -rightPoseWidth * (rightUsesSkullhead
             ? 1f - (rightIdlePulse * SkullheadIdleBreathWidth)
             : 1f - (idleBreath * 0.012f));
@@ -871,7 +882,9 @@ public sealed class MiniGameFightStage3DRenderer
             float settle = Mathf.SmoothStep(1f, 0f, Mathf.Clamp01(t / 0.58f));
             float recoil = -0.24f * hitPulse;
             float shake = Mathf.Sin(t * 28f) * 0.035f * settle;
-            leftTexture = idlePoseTexture;
+            leftTexture = leftUsesSkullhead
+                ? (skullheadMissTexture != null ? skullheadMissTexture : skullheadIdleTexture)
+                : idlePoseTexture;
             if (leftTexture == null)
                 leftTexture = idleSheetTexture;
             leftScale = GetCharacterUvScale(leftTexture, idleSheetTexture);
@@ -882,7 +895,7 @@ public sealed class MiniGameFightStage3DRenderer
             leftPoseWidth = GetPoseWidth(leftTexture, leftScale, leftPoseHeight);
             leftScaleX = leftPoseWidth * (1f + (hitPulse * 0.075f));
             leftScaleY = leftPoseHeight * (1f - (hitPulse * 0.028f));
-            leftX = LeftCharacterBaseX + recoil + shake;
+            leftX = leftBaseX + recoil + shake;
             leftY = GetPoseCenterY(leftTexture, leftScaleY);
             leftRot = 0f;
         }
@@ -891,7 +904,22 @@ public sealed class MiniGameFightStage3DRenderer
             float t = Mathf.Clamp01((now - actionStartedAt) / ActionHoldSeconds);
             float power = Mathf.Sin(t * Mathf.PI);
             bool useJump = (lastActionChordIndex & 1) == 0;
-            Texture2D actionTexture = useJump ? actionJumpTexture : actionHeadbangTexture;
+            Texture2D actionTexture;
+            bool usedSkullheadAction = false;
+            if (leftUsesSkullhead)
+            {
+                actionTexture = !useJump && skullheadSuperTexture != null ? skullheadSuperTexture : skullheadHitTexture;
+                if (actionTexture == null)
+                    actionTexture = skullheadSuperTexture;
+                if (actionTexture == null)
+                    actionTexture = skullheadIdleTexture;
+                usedSkullheadAction = actionTexture != null;
+            }
+            else
+            {
+                actionTexture = useJump ? actionJumpTexture : actionHeadbangTexture;
+            }
+
             if (actionTexture != null)
             {
                 leftTexture = actionTexture;
@@ -901,11 +929,11 @@ public sealed class MiniGameFightStage3DRenderer
 
             leftPoseHeight = GetPoseHeight(leftTexture);
             leftPoseWidth = GetPoseWidth(leftTexture, leftScale, leftPoseHeight);
-            leftScaleY = leftPoseHeight * (1f + (power * 0.055f));
-            leftX = LeftCharacterBaseX + (0.64f * power);
-            leftY = GetPoseCenterY(leftTexture, leftScaleY) + (0.34f * power);
-            leftRot = useJump ? -5.0f * power : 4.0f * power;
-            leftScaleX = leftPoseWidth * (1f + (power * 0.10f));
+            leftScaleY = leftPoseHeight * (1f + (power * (usedSkullheadAction ? 0.025f : 0.055f)));
+            leftX = leftBaseX + ((usedSkullheadAction ? (!useJump ? 0.34f : 0.52f) : 0.64f) * power);
+            leftY = GetPoseCenterY(leftTexture, leftScaleY) + (usedSkullheadAction ? 0f : 0.34f * power);
+            leftRot = usedSkullheadAction ? 0f : (useJump ? -5.0f * power : 4.0f * power);
+            leftScaleX = leftPoseWidth * (1f + (power * (usedSkullheadAction ? 0.050f : 0.10f)));
         }
 
         if (opponentActionActive)
@@ -953,7 +981,18 @@ public sealed class MiniGameFightStage3DRenderer
 
     private float GetRightCharacterPoseBaseX()
     {
-        return skullheadIdleTexture != null ? RightCharacterBaseX + SkullheadRightBaseXOffset : RightCharacterBaseX;
+        return !SwapFightersForTest && skullheadIdleTexture != null
+            ? RightCharacterBaseX + SkullheadRightBaseXOffset
+            : RightCharacterBaseX;
+    }
+
+    private float GetLeftCharacterPoseBaseX()
+    {
+        // Mirror of the right-side skullhead nudge: the offset pulls the wider
+        // skullhead sprite toward stage center on whichever side it stands.
+        return SwapFightersForTest && skullheadIdleTexture != null
+            ? LeftCharacterBaseX - SkullheadRightBaseXOffset
+            : LeftCharacterBaseX;
     }
 
     private void ApplyCharacter(
