@@ -10,7 +10,7 @@ using AlphaTab.Exporter;
 using AlphaTab.Model;
 using UnityEngine;
 
-internal static class RocksmithAlphaTabScoreConverter
+internal static class PsarcAlphaTabScoreConverter
 {
     private const bool UseGameplayAlphaTabSimplification = true;
     private const bool UseGameplayHiddenBendContinuations = false;
@@ -19,9 +19,9 @@ internal static class RocksmithAlphaTabScoreConverter
 
     public static void WriteGp7(
         string outputGpPath,
-        RocksmithCachedSongManifest manifest,
-        RocksmithCachedArrangementSummary summary,
-        RocksmithCachedArrangementPart part)
+        PsarcCachedSongManifest manifest,
+        PsarcCachedArrangementSummary summary,
+        PsarcCachedArrangementPart part)
     {
         if (string.IsNullOrWhiteSpace(outputGpPath))
             throw new ArgumentException("Output GP path was empty.", nameof(outputGpPath));
@@ -34,7 +34,7 @@ internal static class RocksmithAlphaTabScoreConverter
         if (!string.IsNullOrWhiteSpace(directory))
             Directory.CreateDirectory(directory);
 
-        RocksmithAlphaTabTimingSidecar timingSidecar;
+        PsarcAlphaTabTimingSidecar timingSidecar;
         Score score = BuildScore(manifest, summary, part, outputGpPath, out timingSidecar);
 
         Settings settings = new Settings();
@@ -54,13 +54,13 @@ internal static class RocksmithAlphaTabScoreConverter
     }
 
     private static Score BuildScore(
-        RocksmithCachedSongManifest manifest,
-        RocksmithCachedArrangementSummary summary,
-        RocksmithCachedArrangementPart part,
+        PsarcCachedSongManifest manifest,
+        PsarcCachedArrangementSummary summary,
+        PsarcCachedArrangementPart part,
         string outputGpPath,
-        out RocksmithAlphaTabTimingSidecar timingSidecar)
+        out PsarcAlphaTabTimingSidecar timingSidecar)
     {
-        timingSidecar = new RocksmithAlphaTabTimingSidecar();
+        timingSidecar = new PsarcAlphaTabTimingSidecar();
 
         int[] tuningPitches = ResolveTuningPitches(part, summary);
         string trackName = !string.IsNullOrWhiteSpace(summary.displayName)
@@ -117,7 +117,7 @@ internal static class RocksmithAlphaTabScoreConverter
                 Voice voice = new Voice();
                 bar.AddVoice(voice);
 
-                List<RocksmithAlphaTabTimingBeatEntry> measureTimingEntries = new List<RocksmithAlphaTabTimingBeatEntry>();
+                List<PsarcAlphaTabTimingBeatEntry> measureTimingEntries = new List<PsarcAlphaTabTimingBeatEntry>();
                 List<BeatBuildInfo> beatInfos = BuildMeasureBeatInfos(
                     measureIndex,
                     measure,
@@ -145,7 +145,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return score;
     }
 
-    private static Track BuildTrack(string trackName, RocksmithCachedArrangementPart part, int[] tuningPitches)
+    private static Track BuildTrack(string trackName, PsarcCachedArrangementPart part, int[] tuningPitches)
     {
         PlaybackInformation playback = new PlaybackInformation
         {
@@ -167,7 +167,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return track;
     }
 
-    private static Staff BuildStaff(RocksmithCachedArrangementPart part, int[] tuningPitches)
+    private static Staff BuildStaff(PsarcCachedArrangementPart part, int[] tuningPitches)
     {
         string tuningName = !string.IsNullOrWhiteSpace(part?.tuningDisplayName)
             ? part.tuningDisplayName
@@ -311,7 +311,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
         foreach (KeyValuePair<int, CreatedNoteOccurrence> pair in buildState.attackNoteBySourceId)
         {
-            if (!context.notesById.TryGetValue(pair.Key, out RocksmithCachedNoteData destinationSource) ||
+            if (!context.notesById.TryGetValue(pair.Key, out PsarcCachedNoteData destinationSource) ||
                 destinationSource == null ||
                 destinationSource.linkedFromNoteId < 0)
             {
@@ -349,7 +349,7 @@ internal static class RocksmithAlphaTabScoreConverter
         List<EventSliceInfo> voiceSlices,
         int voiceIndex,
         NoteRenderContext noteRenderContext,
-        List<RocksmithAlphaTabTimingBeatEntry> timingEntries)
+        List<PsarcAlphaTabTimingBeatEntry> timingEntries)
     {
         int totalSlots = measure.TotalSlots;
         List<BeatBuildInfo> beats = new List<BeatBuildInfo>();
@@ -389,7 +389,7 @@ internal static class RocksmithAlphaTabScoreConverter
         List<BeatBuildInfo> beats,
         int slotCount,
         int slotsPerBeat,
-        List<RocksmithAlphaTabTimingBeatEntry> timingEntries,
+        List<PsarcAlphaTabTimingBeatEntry> timingEntries,
         float startTime,
         float endTime,
         int voiceIndex,
@@ -414,7 +414,7 @@ internal static class RocksmithAlphaTabScoreConverter
                 durationToken = token
             });
 
-            timingEntries?.Add(new RocksmithAlphaTabTimingBeatEntry
+            timingEntries?.Add(new PsarcAlphaTabTimingBeatEntry
             {
                 startTime = cursorTime,
                 endTime = nextTime,
@@ -434,7 +434,7 @@ internal static class RocksmithAlphaTabScoreConverter
         List<BeatBuildInfo> beats,
         QuantizedEvent quantized,
         int slotsPerBeat,
-        List<RocksmithAlphaTabTimingBeatEntry> timingEntries,
+        List<PsarcAlphaTabTimingBeatEntry> timingEntries,
         float startTime,
         float endTime,
         int voiceIndex,
@@ -462,7 +462,7 @@ internal static class RocksmithAlphaTabScoreConverter
             BeatBuildInfo beatInfo = BuildEventBeatInfo(quantized, token, isAttackToken, continuesFromPrevious, continuesToNext, cursorTime, nextTime, noteRenderContext);
             beats.Add(beatInfo);
 
-            timingEntries?.Add(new RocksmithAlphaTabTimingBeatEntry
+            timingEntries?.Add(new PsarcAlphaTabTimingBeatEntry
             {
                 startTime = cursorTime,
                 endTime = nextTime,
@@ -502,7 +502,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
         for (int i = 0; i < quantized.notes.Count; i++)
         {
-            RocksmithCachedNoteData note = quantized.notes[i];
+            PsarcCachedNoteData note = quantized.notes[i];
             NoteBuildInfo noteInfo = BuildNoteInfo(note, tokenStartTime, tokenEndTime, isAttackToken, continuesFromPrevious, continuesToNext, noteRenderContext);
             info.notes.Add(noteInfo);
 
@@ -522,7 +522,7 @@ internal static class RocksmithAlphaTabScoreConverter
     }
 
     private static NoteBuildInfo BuildNoteInfo(
-        RocksmithCachedNoteData note,
+        PsarcCachedNoteData note,
         float tokenStartTime,
         float tokenEndTime,
         bool isAttackToken,
@@ -592,7 +592,7 @@ internal static class RocksmithAlphaTabScoreConverter
         };
     }
 
-    private static bool HasBendSemantics(RocksmithCachedNoteData note)
+    private static bool HasBendSemantics(PsarcCachedNoteData note)
     {
         return note != null &&
                (((note.bendPoints?.Count) ?? 0) > 0 ||
@@ -602,13 +602,13 @@ internal static class RocksmithAlphaTabScoreConverter
                 note.maxBend > 0.01f);
     }
 
-    private static BendSlice BuildBendSlice(RocksmithCachedNoteData note, float tokenStartTime, float tokenEndTime)
+    private static BendSlice BuildBendSlice(PsarcCachedNoteData note, float tokenStartTime, float tokenEndTime)
     {
         BendSlice slice = default;
         if (note == null)
             return slice;
 
-        List<RocksmithCachedBendPointData> sourcePoints = note.bendPoints?
+        List<PsarcCachedBendPointData> sourcePoints = note.bendPoints?
             .Where(point => point != null)
             .OrderBy(point => point.timeSeconds)
             .ToList();
@@ -625,7 +625,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
             for (int i = 0; i < sourcePoints.Count; i++)
             {
-                RocksmithCachedBendPointData point = sourcePoints[i];
+                PsarcCachedBendPointData point = sourcePoints[i];
                 if (point.timeSeconds <= windowStart + 0.0005f || point.timeSeconds >= windowEnd - 0.0005f)
                     continue;
 
@@ -720,7 +720,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return BendType.Hold;
     }
 
-    private static VibratoType ResolveVibratoType(RocksmithCachedNoteData note, float tokenStartTime, float tokenEndTime)
+    private static VibratoType ResolveVibratoType(PsarcCachedNoteData note, float tokenStartTime, float tokenEndTime)
     {
         if (!HasVibratoDuringWindow(note, tokenStartTime, tokenEndTime))
             return VibratoType.None;
@@ -746,7 +746,7 @@ internal static class RocksmithAlphaTabScoreConverter
         }
     }
 
-    private static bool HasVibratoDuringWindow(RocksmithCachedNoteData note, float tokenStartTime, float tokenEndTime)
+    private static bool HasVibratoDuringWindow(PsarcCachedNoteData note, float tokenStartTime, float tokenEndTime)
     {
         if (note == null)
             return false;
@@ -761,7 +761,7 @@ internal static class RocksmithAlphaTabScoreConverter
         float relativeEnd = Math.Max(relativeStart, tokenEndTime - note.time);
         for (int i = 0; i < note.techniqueSegments.Count; i++)
         {
-            RocksmithCachedTechniqueSegmentData segment = note.techniqueSegments[i];
+            PsarcCachedTechniqueSegmentData segment = note.techniqueSegments[i];
             if (segment == null || segment.type != (int)NoteTechniqueSegmentType.Vibrato)
                 continue;
 
@@ -772,29 +772,29 @@ internal static class RocksmithAlphaTabScoreConverter
         return false;
     }
 
-    private static Dictionary<int, float> BuildEffectiveEndTimes(RocksmithCachedArrangementPart part)
+    private static Dictionary<int, float> BuildEffectiveEndTimes(PsarcCachedArrangementPart part)
     {
         Dictionary<int, float> effectiveEndTimes = new Dictionary<int, float>();
-        List<RocksmithCachedNoteData> notes = part?.notes;
+        List<PsarcCachedNoteData> notes = part?.notes;
         if (notes == null || notes.Count == 0)
             return effectiveEndTimes;
 
-        List<RocksmithCachedNoteData> sorted = notes
+        List<PsarcCachedNoteData> sorted = notes
             .Where(note => note != null)
             .OrderBy(note => note.time)
             .ThenBy(note => note.stringIdx)
             .ThenBy(note => note.id)
             .ToList();
 
-        Dictionary<int, RocksmithCachedNoteData> linkedChildrenByParentId = new Dictionary<int, RocksmithCachedNoteData>();
-        Dictionary<int, RocksmithCachedNoteData> nextNoteOnStringById = new Dictionary<int, RocksmithCachedNoteData>();
-        Dictionary<int, RocksmithCachedNoteData> nextGlobalNoteById = new Dictionary<int, RocksmithCachedNoteData>();
-        RocksmithCachedNoteData[] nextNoteOnString = new RocksmithCachedNoteData[8];
-        RocksmithCachedNoteData nextGlobalNote = null;
+        Dictionary<int, PsarcCachedNoteData> linkedChildrenByParentId = new Dictionary<int, PsarcCachedNoteData>();
+        Dictionary<int, PsarcCachedNoteData> nextNoteOnStringById = new Dictionary<int, PsarcCachedNoteData>();
+        Dictionary<int, PsarcCachedNoteData> nextGlobalNoteById = new Dictionary<int, PsarcCachedNoteData>();
+        PsarcCachedNoteData[] nextNoteOnString = new PsarcCachedNoteData[8];
+        PsarcCachedNoteData nextGlobalNote = null;
 
         for (int i = sorted.Count - 1; i >= 0; i--)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (note == null)
                 continue;
 
@@ -813,7 +813,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
         for (int i = 0; i < sorted.Count; i++)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (note == null)
                 continue;
 
@@ -827,7 +827,7 @@ internal static class RocksmithAlphaTabScoreConverter
             {
                 for (int segmentIndex = 0; segmentIndex < note.techniqueSegments.Count; segmentIndex++)
                 {
-                    RocksmithCachedTechniqueSegmentData segment = note.techniqueSegments[segmentIndex];
+                    PsarcCachedTechniqueSegmentData segment = note.techniqueSegments[segmentIndex];
                     if (segment == null)
                         continue;
                     segmentDuration = Mathf.Max(segmentDuration, Mathf.Max(0f, segment.endOffset));
@@ -837,20 +837,20 @@ internal static class RocksmithAlphaTabScoreConverter
             float endTime = note.time + Mathf.Max(explicitDuration, Mathf.Max(rawBendDuration, Mathf.Max(visualDuration, segmentDuration)));
             if (endTime <= note.time + 0.0005f)
             {
-                if (linkedChildrenByParentId.TryGetValue(note.id, out RocksmithCachedNoteData linkedChild) &&
+                if (linkedChildrenByParentId.TryGetValue(note.id, out PsarcCachedNoteData linkedChild) &&
                     linkedChild != null &&
                     linkedChild.time > note.time + 0.0005f)
                 {
                     endTime = linkedChild.time;
                 }
                 else if ((note.isLegato || !note.requiresPluck || note.linkedFromNoteId >= 0) &&
-                         nextNoteOnStringById.TryGetValue(note.id, out RocksmithCachedNoteData nextOnString) &&
+                         nextNoteOnStringById.TryGetValue(note.id, out PsarcCachedNoteData nextOnString) &&
                          nextOnString != null &&
                          nextOnString.time > note.time + 0.0005f)
                 {
                     endTime = nextOnString.time;
                 }
-                else if (nextGlobalNoteById.TryGetValue(note.id, out RocksmithCachedNoteData nextOnset) &&
+                else if (nextGlobalNoteById.TryGetValue(note.id, out PsarcCachedNoteData nextOnset) &&
                          nextOnset != null &&
                          nextOnset.time > note.time + 0.0005f)
                 {
@@ -876,7 +876,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return effectiveEndTimes;
     }
 
-    private static bool TryResolveNextBeatTime(List<RocksmithCachedEbeatData> ebeats, float noteTime, out float nextBeatTime)
+    private static bool TryResolveNextBeatTime(List<PsarcCachedEbeatData> ebeats, float noteTime, out float nextBeatTime)
     {
         nextBeatTime = 0f;
         if (ebeats == null || ebeats.Count == 0)
@@ -884,7 +884,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
         for (int i = 0; i < ebeats.Count; i++)
         {
-            RocksmithCachedEbeatData ebeat = ebeats[i];
+            PsarcCachedEbeatData ebeat = ebeats[i];
             if (ebeat == null)
                 continue;
 
@@ -898,7 +898,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return false;
     }
 
-    private static float ResolveNoteEndTime(RocksmithCachedNoteData note, Dictionary<int, float> effectiveEndTimes)
+    private static float ResolveNoteEndTime(PsarcCachedNoteData note, Dictionary<int, float> effectiveEndTimes)
     {
         if (note == null)
             return 0f;
@@ -909,9 +909,9 @@ internal static class RocksmithAlphaTabScoreConverter
         return note.time + Mathf.Max(0.05f, note.duration);
     }
 
-    private static List<MeasureInfo> BuildMeasures(RocksmithCachedArrangementPart part, Dictionary<int, float> effectiveEndTimes)
+    private static List<MeasureInfo> BuildMeasures(PsarcCachedArrangementPart part, Dictionary<int, float> effectiveEndTimes)
     {
-        List<RocksmithCachedEbeatData> ebeats = (part?.timing?.ebeats ?? new List<RocksmithCachedEbeatData>())
+        List<PsarcCachedEbeatData> ebeats = (part?.timing?.ebeats ?? new List<PsarcCachedEbeatData>())
             .Where(ebeat => ebeat != null)
             .OrderBy(ebeat => ebeat.timeSeconds)
             .ToList();
@@ -938,7 +938,7 @@ internal static class RocksmithAlphaTabScoreConverter
         {
             int startIndex = measureStartIndices[i];
             int nextIndex = i + 1 < measureStartIndices.Count ? measureStartIndices[i + 1] : ebeats.Count;
-            List<RocksmithCachedEbeatData> beats = ebeats.Skip(startIndex).Take(Math.Max(1, nextIndex - startIndex)).ToList();
+            List<PsarcCachedEbeatData> beats = ebeats.Skip(startIndex).Take(Math.Max(1, nextIndex - startIndex)).ToList();
             float startTime = i == 0 && startIndex > 0 ? 0f : beats[0].timeSeconds;
             float endTime = i + 1 < measureStartIndices.Count
                 ? ebeats[measureStartIndices[i + 1]].timeSeconds
@@ -973,7 +973,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return measures;
     }
 
-    private static float ResolveFallbackBeatSeconds(RocksmithCachedArrangementPart part)
+    private static float ResolveFallbackBeatSeconds(PsarcCachedArrangementPart part)
     {
         float averageTempo = part?.timing?.averageTempoBpm ?? 120f;
         if (averageTempo <= 0.01f)
@@ -981,7 +981,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return 60f / averageTempo;
     }
 
-    private static float ResolveFinalTime(RocksmithCachedArrangementPart part, List<RocksmithCachedEbeatData> ebeats, float fallbackBeatSeconds, Dictionary<int, float> effectiveEndTimes)
+    private static float ResolveFinalTime(PsarcCachedArrangementPart part, List<PsarcCachedEbeatData> ebeats, float fallbackBeatSeconds, Dictionary<int, float> effectiveEndTimes)
     {
         float noteEnd = 0f;
         if (part?.notes != null && part.notes.Count > 0)
@@ -994,7 +994,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return Math.Max(Math.Max(part?.durationSeconds ?? 0f, noteEnd), lastBeat + Math.Max(0.25f, fallbackBeatSeconds));
     }
 
-    private static float EstimateFinalMeasureEnd(List<RocksmithCachedEbeatData> beats, float finalTime, float fallbackBeatSeconds)
+    private static float EstimateFinalMeasureEnd(List<PsarcCachedEbeatData> beats, float finalTime, float fallbackBeatSeconds)
     {
         float startTime = beats.Count > 0 ? beats[0].timeSeconds : 0f;
         float averageBeat = fallbackBeatSeconds;
@@ -1009,7 +1009,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return Math.Max(finalTime, startTime + (averageBeat * Math.Max(1, beats.Count)));
     }
 
-    private static float EstimateTempoBpm(List<RocksmithCachedEbeatData> beats, float endTime, float fallbackTempoBpm)
+    private static float EstimateTempoBpm(List<PsarcCachedEbeatData> beats, float endTime, float fallbackTempoBpm)
     {
         float totalDuration = 0f;
         int segmentCount = 0;
@@ -1032,13 +1032,13 @@ internal static class RocksmithAlphaTabScoreConverter
         return averageBeatSeconds > 0.001f ? 60f / averageBeatSeconds : 120f;
     }
 
-    private static List<EventInfo> BuildEvents(List<RocksmithCachedNoteData> notes, Dictionary<int, float> effectiveEndTimes)
+    private static List<EventInfo> BuildEvents(List<PsarcCachedNoteData> notes, Dictionary<int, float> effectiveEndTimes)
     {
         List<EventInfo> events = new List<EventInfo>();
         if (notes == null || notes.Count == 0)
             return events;
 
-        List<RocksmithCachedNoteData> sorted = notes
+        List<PsarcCachedNoteData> sorted = notes
             .Where(note => note != null)
             .OrderBy(note => note.time)
             .ThenBy(note => note.chordId)
@@ -1049,7 +1049,7 @@ internal static class RocksmithAlphaTabScoreConverter
         int nextSourceEventId = 0;
         for (int i = 0; i < sorted.Count; i++)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (current == null || !current.CanAccept(note))
             {
                 current = new EventInfo(note, nextSourceEventId++, effectiveEndTimes);
@@ -1276,7 +1276,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
         for (int i = 0; i < slice.notes.Count; i++)
         {
-            RocksmithCachedNoteData note = slice.notes[i];
+            PsarcCachedNoteData note = slice.notes[i];
             if (note == null)
                 continue;
 
@@ -1557,7 +1557,7 @@ internal static class RocksmithAlphaTabScoreConverter
             .ToArray();
     }
 
-    private static NoteRenderContext BuildNoteRenderContext(List<RocksmithCachedNoteData> notes)
+    private static NoteRenderContext BuildNoteRenderContext(List<PsarcCachedNoteData> notes)
     {
         NoteRenderContext context = new NoteRenderContext();
         if (notes == null)
@@ -1565,7 +1565,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
         for (int i = 0; i < notes.Count; i++)
         {
-            RocksmithCachedNoteData note = notes[i];
+            PsarcCachedNoteData note = notes[i];
             if (note == null)
                 continue;
 
@@ -1577,7 +1577,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return context;
     }
 
-    private static NoteRenderContext BuildNoteRenderContext(List<RocksmithCachedNoteData> notes, Dictionary<int, float> effectiveEndTimes)
+    private static NoteRenderContext BuildNoteRenderContext(List<PsarcCachedNoteData> notes, Dictionary<int, float> effectiveEndTimes)
     {
         NoteRenderContext context = BuildNoteRenderContext(notes);
         if (effectiveEndTimes != null)
@@ -1589,7 +1589,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return context;
     }
 
-    private static NoteTechnique ResolveLegatoTechnique(RocksmithCachedNoteData note, NoteRenderContext context)
+    private static NoteTechnique ResolveLegatoTechnique(PsarcCachedNoteData note, NoteRenderContext context)
     {
         if (note == null)
             return NoteTechnique.None;
@@ -1612,7 +1612,7 @@ internal static class RocksmithAlphaTabScoreConverter
         if (note.isLegato && note.linkedFromNoteId >= 0)
         {
             if (context != null &&
-                context.notesById.TryGetValue(note.linkedFromNoteId, out RocksmithCachedNoteData previous) &&
+                context.notesById.TryGetValue(note.linkedFromNoteId, out PsarcCachedNoteData previous) &&
                 previous != null)
             {
                 if (note.fret > previous.fret)
@@ -1625,7 +1625,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return NoteTechnique.None;
     }
 
-    private static int[] ResolveTuningPitches(RocksmithCachedArrangementPart part, RocksmithCachedArrangementSummary summary)
+    private static int[] ResolveTuningPitches(PsarcCachedArrangementPart part, PsarcCachedArrangementSummary summary)
     {
         if (part?.tuningPitches != null && part.tuningPitches.Length > 0)
             return (int[])part.tuningPitches.Clone();
@@ -1660,7 +1660,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return semitoneStep * 4d;
     }
 
-    private static string SerializeTimingSidecar(RocksmithAlphaTabTimingSidecar sidecar)
+    private static string SerializeTimingSidecar(PsarcAlphaTabTimingSidecar sidecar)
     {
         StringBuilder builder = new StringBuilder(4096);
         builder.Append("{\n");
@@ -1668,10 +1668,10 @@ internal static class RocksmithAlphaTabScoreConverter
         builder.Append("  \"notationPath\": ").Append(QuoteJson(sidecar?.notationPath ?? string.Empty)).Append(",\n");
         builder.Append("  \"beats\": [\n");
 
-        List<RocksmithAlphaTabTimingBeatEntry> beats = sidecar?.beats ?? new List<RocksmithAlphaTabTimingBeatEntry>();
+        List<PsarcAlphaTabTimingBeatEntry> beats = sidecar?.beats ?? new List<PsarcAlphaTabTimingBeatEntry>();
         for (int i = 0; i < beats.Count; i++)
         {
-            RocksmithAlphaTabTimingBeatEntry beat = beats[i] ?? new RocksmithAlphaTabTimingBeatEntry();
+            PsarcAlphaTabTimingBeatEntry beat = beats[i] ?? new PsarcAlphaTabTimingBeatEntry();
             builder.Append("    {\n");
             builder.Append("      \"startTime\": ").Append(FormatJsonFloat(beat.startTime)).Append(",\n");
             builder.Append("      \"endTime\": ").Append(FormatJsonFloat(beat.endTime)).Append(",\n");
@@ -1738,7 +1738,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return value.ToString("0.######", CultureInfo.InvariantCulture);
     }
 
-    private static string BuildTimingNoteKey(IEnumerable<RocksmithCachedNoteData> notes)
+    private static string BuildTimingNoteKey(IEnumerable<PsarcCachedNoteData> notes)
     {
         if (notes == null)
             return "rest";
@@ -1753,7 +1753,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return parts.Count == 0 ? "rest" : string.Join("|", parts);
     }
 
-    private static float SampleBendStep(List<RocksmithCachedBendPointData> points, float timeSeconds, RocksmithCachedNoteData note)
+    private static float SampleBendStep(List<PsarcCachedBendPointData> points, float timeSeconds, PsarcCachedNoteData note)
     {
         if (points == null || points.Count == 0)
             return Mathf.Max(note?.bendStep ?? 0f, 0f);
@@ -1774,8 +1774,8 @@ internal static class RocksmithAlphaTabScoreConverter
 
         for (int i = 1; i < points.Count; i++)
         {
-            RocksmithCachedBendPointData previous = points[i - 1];
-            RocksmithCachedBendPointData current = points[i];
+            PsarcCachedBendPointData previous = points[i - 1];
+            PsarcCachedBendPointData current = points[i];
             if (timeSeconds <= current.timeSeconds + 0.0005f)
             {
                 float span = Math.Max(0.0001f, current.timeSeconds - previous.timeSeconds);
@@ -1787,7 +1787,7 @@ internal static class RocksmithAlphaTabScoreConverter
         return points[points.Count - 1].step;
     }
 
-    private static float ResolveInitialBendStep(List<RocksmithCachedBendPointData> points, RocksmithCachedNoteData note)
+    private static float ResolveInitialBendStep(List<PsarcCachedBendPointData> points, PsarcCachedNoteData note)
     {
         if (points == null || points.Count == 0)
             return Mathf.Max(note?.bendStep ?? 0f, 0f);
@@ -1810,7 +1810,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
     private sealed class CreatedNoteOccurrence
     {
-        public RocksmithCachedNoteData sourceNote;
+        public PsarcCachedNoteData sourceNote;
         public Note renderedNote;
         public int sourceEventId = -1;
         public bool isAttackToken;
@@ -1838,7 +1838,7 @@ internal static class RocksmithAlphaTabScoreConverter
 
     private sealed class NoteBuildInfo
     {
-        public RocksmithCachedNoteData sourceNote;
+        public PsarcCachedNoteData sourceNote;
         public int stringNumber;
         public int fret;
         public bool isVisible = true;
@@ -1864,9 +1864,9 @@ internal static class RocksmithAlphaTabScoreConverter
         public readonly float startTime;
         public float endTime;
         public int voiceIndex;
-        public readonly List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public readonly List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
 
-        public EventInfo(RocksmithCachedNoteData note, int sourceEventId, Dictionary<int, float> effectiveEndTimes)
+        public EventInfo(PsarcCachedNoteData note, int sourceEventId, Dictionary<int, float> effectiveEndTimes)
         {
             this.sourceEventId = sourceEventId;
             chordId = note.chordId;
@@ -1874,7 +1874,7 @@ internal static class RocksmithAlphaTabScoreConverter
             endTime = ResolveNoteEndTime(note, effectiveEndTimes);
         }
 
-        public bool CanAccept(RocksmithCachedNoteData note)
+        public bool CanAccept(PsarcCachedNoteData note)
         {
             return note != null &&
                    note.chordId == chordId &&
@@ -1891,7 +1891,7 @@ internal static class RocksmithAlphaTabScoreConverter
         public float sourceEndTime;
         public bool tieFromPrevious;
         public bool tieToNext;
-        public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
         public int DurationSlots => Math.Max(1, endSlot - startSlot);
     }
 
@@ -1903,7 +1903,7 @@ internal static class RocksmithAlphaTabScoreConverter
         public float endTime;
         public bool tieFromPrevious;
         public bool tieToNext;
-        public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
     }
 
     private sealed class MeasureInfo
@@ -1969,8 +1969,8 @@ internal static class RocksmithAlphaTabScoreConverter
 
     private sealed class NoteRenderContext
     {
-        public readonly Dictionary<int, RocksmithCachedNoteData> notesById = new Dictionary<int, RocksmithCachedNoteData>();
-        public readonly Dictionary<int, RocksmithCachedNoteData> legatoDestinationByOriginId = new Dictionary<int, RocksmithCachedNoteData>();
+        public readonly Dictionary<int, PsarcCachedNoteData> notesById = new Dictionary<int, PsarcCachedNoteData>();
+        public readonly Dictionary<int, PsarcCachedNoteData> legatoDestinationByOriginId = new Dictionary<int, PsarcCachedNoteData>();
         public readonly Dictionary<int, float> effectiveEndTimes = new Dictionary<int, float>();
     }
 

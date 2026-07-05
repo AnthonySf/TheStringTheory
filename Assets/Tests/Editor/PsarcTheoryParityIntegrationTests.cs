@@ -61,7 +61,7 @@ public sealed class PsarcTheoryParityIntegrationTests
             $"Expected at least {MinimumFixtureCount} PSARC fixtures in {fixtureRoot}.");
 
         string importerPath = ResolveImporterExecutablePath();
-        Assert.IsTrue(File.Exists(importerPath), $"Rocksmith importer executable was not found: {importerPath}");
+        Assert.IsTrue(File.Exists(importerPath), $"Psarc importer executable was not found: {importerPath}");
 
         string outputRoot = ResolveOutputRoot();
         Directory.CreateDirectory(outputRoot);
@@ -79,7 +79,7 @@ public sealed class PsarcTheoryParityIntegrationTests
                 string theoryPath = Path.Combine(caseRoot, "converted.theory");
                 string cacheDirectory = Path.Combine(caseRoot, "legacy-cache");
                 string importerOutput = RunImporter(importerPath, psarcPath, theoryPath, cacheDirectory);
-                string manifestPath = Path.Combine(cacheDirectory, RocksmithCachedSongFormat.ManifestFileName);
+                string manifestPath = Path.Combine(cacheDirectory, PsarcCachedSongFormat.ManifestFileName);
 
                 Assert.IsTrue(File.Exists(theoryPath), $"Importer did not create .theory output for {Path.GetFileName(psarcPath)}.\n{importerOutput}");
                 Assert.IsTrue(File.Exists(manifestPath), $"Importer did not leave the legacy cache manifest for {Path.GetFileName(psarcPath)}.\n{importerOutput}");
@@ -211,12 +211,12 @@ public sealed class PsarcTheoryParityIntegrationTests
         if (!process.WaitForExit(ImporterTimeoutMilliseconds))
         {
             TryKill(process);
-            Assert.Fail($"Rocksmith importer timed out after {ImporterTimeoutMilliseconds / 60000} minute(s) for {psarcPath}.\n{output}");
+            Assert.Fail($"Psarc importer timed out after {ImporterTimeoutMilliseconds / 60000} minute(s) for {psarcPath}.\n{output}");
         }
 
         process.WaitForExit();
         string processOutput = output.ToString();
-        Assert.AreEqual(0, process.ExitCode, $"Rocksmith importer failed for {psarcPath}.\n{processOutput}");
+        Assert.AreEqual(0, process.ExitCode, $"Psarc importer failed for {psarcPath}.\n{processOutput}");
         return processOutput;
     }
 
@@ -263,7 +263,7 @@ public sealed class PsarcTheoryParityIntegrationTests
 
         public static RuntimeSongSnapshot FromLegacyCache(string manifestPath)
         {
-            Assert.IsTrue(LegacyRocksmithCacheRuntimeLoader.TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest), $"Legacy cache manifest could not be loaded: {manifestPath}");
+            Assert.IsTrue(LegacyPsarcCacheRuntimeLoader.TryLoadManifest(manifestPath, out PsarcCachedSongManifest manifest), $"Legacy cache manifest could not be loaded: {manifestPath}");
 
             RuntimeSongSnapshot snapshot = new RuntimeSongSnapshot
             {
@@ -272,21 +272,21 @@ public sealed class PsarcTheoryParityIntegrationTests
                 DurationSeconds = manifest.durationSeconds
             };
 
-            List<MusicXmlLoader.MusicXmlPartSummary> summaries = LegacyRocksmithCacheRuntimeLoader.GetPartSummaries(manifestPath);
+            List<MusicXmlLoader.MusicXmlPartSummary> summaries = LegacyPsarcCacheRuntimeLoader.GetPartSummaries(manifestPath);
             snapshot.SummaryOrder = summaries.Select(BuildSummaryDigest).ToList();
             for (int i = 0; i < summaries.Count; i++)
             {
                 MusicXmlLoader.MusicXmlPartSummary summary = summaries[i];
-                List<NoteData> notes = LegacyRocksmithCacheRuntimeLoader.LoadSong(manifestPath, summary.Index);
-                List<ArpeggioGuideData> arpeggios = LegacyRocksmithCacheRuntimeLoader.LoadArpeggioGuides(manifestPath, summary.Index);
+                List<NoteData> notes = LegacyPsarcCacheRuntimeLoader.LoadSong(manifestPath, summary.Index);
+                List<ArpeggioGuideData> arpeggios = LegacyPsarcCacheRuntimeLoader.LoadArpeggioGuides(manifestPath, summary.Index);
                 Assert.IsTrue(
-                    LegacyRocksmithCacheRuntimeLoader.TryLoadArrangementPart(manifestPath, summary.Index, out _, out RocksmithCachedArrangementPart part),
+                    LegacyPsarcCacheRuntimeLoader.TryLoadArrangementPart(manifestPath, summary.Index, out _, out PsarcCachedArrangementPart part),
                     $"Legacy cache arrangement could not be loaded: {summary.PartId}");
 
                 snapshot.Arrangements.Add(RuntimeArrangementSnapshot.FromLegacy(summary, notes, arpeggios, part));
             }
 
-            snapshot.GeneratedPlayback = BuildGeneratedArrangementDigest(LegacyRocksmithCacheRuntimeLoader.LoadGeneratedArrangement(manifestPath));
+            snapshot.GeneratedPlayback = BuildGeneratedArrangementDigest(LegacyPsarcCacheRuntimeLoader.LoadGeneratedArrangement(manifestPath));
             return snapshot;
         }
 
@@ -352,7 +352,7 @@ public sealed class PsarcTheoryParityIntegrationTests
             MusicXmlLoader.MusicXmlPartSummary summary,
             List<NoteData> notes,
             List<ArpeggioGuideData> arpeggios,
-            RocksmithCachedArrangementPart part)
+            PsarcCachedArrangementPart part)
         {
             return new RuntimeArrangementSnapshot
             {
@@ -571,19 +571,19 @@ public sealed class PsarcTheoryParityIntegrationTests
             .ToList() ?? new List<string>();
     }
 
-    private static List<string> BuildCachedTimingDigest(RocksmithCachedArrangementTimingData timing)
+    private static List<string> BuildCachedTimingDigest(PsarcCachedArrangementTimingData timing)
     {
         List<string> digest = new List<string>
         {
             $"timing|tempo|{FormatFloat(timing?.averageTempoBpm ?? 0f)}|capo|{timing?.capo ?? 0}"
         };
-        digest.AddRange((timing?.ebeats ?? new List<RocksmithCachedEbeatData>())
+        digest.AddRange((timing?.ebeats ?? new List<PsarcCachedEbeatData>())
             .Select((beat, index) => string.Join("|",
                 "beat",
                 index.ToString(CultureInfo.InvariantCulture),
                 FormatFloat(beat.timeSeconds),
                 beat.measure.ToString(CultureInfo.InvariantCulture))));
-        digest.AddRange((timing?.sections ?? new List<RocksmithCachedSectionData>())
+        digest.AddRange((timing?.sections ?? new List<PsarcCachedSectionData>())
             .Select((section, index) => string.Join("|",
                 "section",
                 index.ToString(CultureInfo.InvariantCulture),
@@ -615,17 +615,17 @@ public sealed class PsarcTheoryParityIntegrationTests
         return digest;
     }
 
-    private static List<string> BuildCachedToneDigest(RocksmithCachedArrangementToneData tones)
+    private static List<string> BuildCachedToneDigest(PsarcCachedArrangementToneData tones)
     {
         List<string> digest = new List<string> { $"tone|base|{tones?.baseToneName ?? string.Empty}" };
-        digest.AddRange((tones?.changes ?? new List<RocksmithCachedToneChangeData>())
+        digest.AddRange((tones?.changes ?? new List<PsarcCachedToneChangeData>())
             .Select((change, index) => string.Join("|",
                 "tone-change",
                 index.ToString(CultureInfo.InvariantCulture),
                 FormatFloat(change.timeSeconds),
                 change.toneName ?? string.Empty,
                 change.toneId.ToString(CultureInfo.InvariantCulture))));
-        digest.AddRange((tones?.definitions ?? new List<RocksmithCachedToneDefinitionData>())
+        digest.AddRange((tones?.definitions ?? new List<PsarcCachedToneDefinitionData>())
             .OrderBy(definition => definition?.name ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ThenBy(definition => definition?.key ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .Select(definition => string.Join("|",
@@ -671,7 +671,7 @@ public sealed class PsarcTheoryParityIntegrationTests
             : string.Empty;
     }
 
-    private static List<string> BuildCachedGeneratedNoteDigest(List<RocksmithCachedGeneratedNoteEvent> notes)
+    private static List<string> BuildCachedGeneratedNoteDigest(List<PsarcCachedGeneratedNoteEvent> notes)
     {
         return notes?
             .Select((note, index) => BuildGeneratedNoteDigest(
@@ -859,11 +859,11 @@ public sealed class PsarcTheoryParityIntegrationTests
         return BitConverter.ToString(hash).Replace("-", string.Empty);
     }
 
-    private static class LegacyRocksmithCacheRuntimeLoader
+    private static class LegacyPsarcCacheRuntimeLoader
     {
         private const int MinimumSupportedSchemaVersion = 10;
 
-        public static bool TryLoadManifest(string manifestPath, out RocksmithCachedSongManifest manifest)
+        public static bool TryLoadManifest(string manifestPath, out PsarcCachedSongManifest manifest)
         {
             manifest = null;
             if (string.IsNullOrWhiteSpace(manifestPath) || !File.Exists(manifestPath))
@@ -871,7 +871,7 @@ public sealed class PsarcTheoryParityIntegrationTests
 
             try
             {
-                RocksmithCachedSongManifest loaded = JsonUtility.FromJson<RocksmithCachedSongManifest>(File.ReadAllText(manifestPath));
+                PsarcCachedSongManifest loaded = JsonUtility.FromJson<PsarcCachedSongManifest>(File.ReadAllText(manifestPath));
                 if (loaded == null || !IsSupportedSchemaVersion(loaded.schemaVersion))
                     return false;
 
@@ -888,13 +888,13 @@ public sealed class PsarcTheoryParityIntegrationTests
 
         public static List<MusicXmlLoader.MusicXmlPartSummary> GetPartSummaries(string manifestPath)
         {
-            if (!TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest))
+            if (!TryLoadManifest(manifestPath, out PsarcCachedSongManifest manifest))
                 return new List<MusicXmlLoader.MusicXmlPartSummary>();
 
             List<MusicXmlLoader.MusicXmlPartSummary> summaries = new List<MusicXmlLoader.MusicXmlPartSummary>();
             for (int i = 0; i < (manifest.arrangements?.Count ?? 0); i++)
             {
-                RocksmithCachedArrangementSummary arrangement = manifest.arrangements[i];
+                PsarcCachedArrangementSummary arrangement = manifest.arrangements[i];
                 if (arrangement == null || string.IsNullOrWhiteSpace(arrangement.partFilePath))
                     continue;
 
@@ -927,7 +927,7 @@ public sealed class PsarcTheoryParityIntegrationTests
 
         public static List<NoteData> LoadSong(string manifestPath, int targetPartIndex = -1)
         {
-            if (!TryLoadArrangementPart(manifestPath, targetPartIndex, out _, out RocksmithCachedArrangementPart part))
+            if (!TryLoadArrangementPart(manifestPath, targetPartIndex, out _, out PsarcCachedArrangementPart part))
                 return new List<NoteData>();
 
             List<NoteData> notes = new List<NoteData>(part.notes?.Count ?? 0);
@@ -936,7 +936,7 @@ public sealed class PsarcTheoryParityIntegrationTests
 
             for (int i = 0; i < part.notes.Count; i++)
             {
-                RocksmithCachedNoteData source = part.notes[i];
+                PsarcCachedNoteData source = part.notes[i];
                 notes.Add(new NoteData(
                     source.id,
                     source.time,
@@ -955,7 +955,7 @@ public sealed class PsarcTheoryParityIntegrationTests
                     source.bendRelease,
                     source.bendVisualStartTime,
                     source.bendVisualDuration,
-                    RocksmithTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source),
+                    PsarcTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source),
                     source.isMuted,
                     source.chordName));
             }
@@ -966,7 +966,7 @@ public sealed class PsarcTheoryParityIntegrationTests
 
         public static List<ArpeggioGuideData> LoadArpeggioGuides(string manifestPath, int targetPartIndex = -1)
         {
-            if (!TryLoadArrangementPart(manifestPath, targetPartIndex, out _, out RocksmithCachedArrangementPart part) ||
+            if (!TryLoadArrangementPart(manifestPath, targetPartIndex, out _, out PsarcCachedArrangementPart part) ||
                 part.arpeggioGuides == null)
             {
                 return new List<ArpeggioGuideData>();
@@ -975,7 +975,7 @@ public sealed class PsarcTheoryParityIntegrationTests
             List<ArpeggioGuideData> guides = new List<ArpeggioGuideData>(part.arpeggioGuides.Count);
             for (int i = 0; i < part.arpeggioGuides.Count; i++)
             {
-                RocksmithCachedArpeggioGuideData source = part.arpeggioGuides[i];
+                PsarcCachedArpeggioGuideData source = part.arpeggioGuides[i];
                 if (source == null || source.stringFrets == null || source.stringFrets.Length == 0)
                     continue;
 
@@ -995,12 +995,12 @@ public sealed class PsarcTheoryParityIntegrationTests
         public static bool TryLoadArrangementPart(
             string manifestPath,
             int targetPartIndex,
-            out RocksmithCachedArrangementSummary summary,
-            out RocksmithCachedArrangementPart part)
+            out PsarcCachedArrangementSummary summary,
+            out PsarcCachedArrangementPart part)
         {
             summary = null;
             part = null;
-            if (!TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest))
+            if (!TryLoadManifest(manifestPath, out PsarcCachedSongManifest manifest))
                 return false;
 
             int index = ResolveArrangementIndex(manifest, targetPartIndex);
@@ -1013,7 +1013,7 @@ public sealed class PsarcTheoryParityIntegrationTests
 
         public static GeneratedPlaybackArrangement LoadGeneratedArrangement(string manifestPath)
         {
-            if (!TryLoadManifest(manifestPath, out RocksmithCachedSongManifest manifest))
+            if (!TryLoadManifest(manifestPath, out PsarcCachedSongManifest manifest))
                 return null;
 
             GeneratedPlaybackArrangement arrangement = new GeneratedPlaybackArrangement
@@ -1022,12 +1022,12 @@ public sealed class PsarcTheoryParityIntegrationTests
                 durationSeconds = Mathf.Max(0f, manifest.durationSeconds)
             };
 
-            List<RocksmithCachedArrangementSummary> summaries = SelectGeneratedArrangementSummaries(manifest.arrangements);
+            List<PsarcCachedArrangementSummary> summaries = SelectGeneratedArrangementSummaries(manifest.arrangements);
             int nextChannel = 0;
             for (int i = 0; i < summaries.Count; i++)
             {
-                RocksmithCachedArrangementSummary summary = summaries[i];
-                if (!TryLoadPart(summary?.partFilePath, out RocksmithCachedArrangementPart part))
+                PsarcCachedArrangementSummary summary = summaries[i];
+                if (!TryLoadPart(summary?.partFilePath, out PsarcCachedArrangementPart part))
                     continue;
 
                 if (part.generatedPart != null)
@@ -1062,7 +1062,7 @@ public sealed class PsarcTheoryParityIntegrationTests
                 {
                     for (int noteIndex = 0; noteIndex < part.generatedNotes.Count; noteIndex++)
                     {
-                        RocksmithCachedGeneratedNoteEvent source = part.generatedNotes[noteIndex];
+                        PsarcCachedGeneratedNoteEvent source = part.generatedNotes[noteIndex];
                         if (source == null)
                             continue;
 
@@ -1090,7 +1090,7 @@ public sealed class PsarcTheoryParityIntegrationTests
                         {
                             for (int pointIndex = 0; pointIndex < source.pitchCurve.Count; pointIndex++)
                             {
-                                RocksmithCachedGeneratedPitchPoint point = source.pitchCurve[pointIndex];
+                                PsarcCachedGeneratedPitchPoint point = source.pitchCurve[pointIndex];
                                 if (point == null)
                                     continue;
 
@@ -1117,7 +1117,7 @@ public sealed class PsarcTheoryParityIntegrationTests
             return arrangement;
         }
 
-        private static bool TryLoadPart(string partFilePath, out RocksmithCachedArrangementPart part)
+        private static bool TryLoadPart(string partFilePath, out PsarcCachedArrangementPart part)
         {
             part = null;
             if (string.IsNullOrWhiteSpace(partFilePath) || !File.Exists(partFilePath))
@@ -1125,7 +1125,7 @@ public sealed class PsarcTheoryParityIntegrationTests
 
             try
             {
-                RocksmithCachedArrangementPart loaded = JsonUtility.FromJson<RocksmithCachedArrangementPart>(File.ReadAllText(partFilePath));
+                PsarcCachedArrangementPart loaded = JsonUtility.FromJson<PsarcCachedArrangementPart>(File.ReadAllText(partFilePath));
                 if (loaded == null || !IsSupportedSchemaVersion(loaded.schemaVersion))
                     return false;
 
@@ -1140,9 +1140,9 @@ public sealed class PsarcTheoryParityIntegrationTests
             }
         }
 
-        private static void NormalizeManifest(string manifestPath, RocksmithCachedSongManifest manifest)
+        private static void NormalizeManifest(string manifestPath, PsarcCachedSongManifest manifest)
         {
-            manifest.arrangements ??= new List<RocksmithCachedArrangementSummary>();
+            manifest.arrangements ??= new List<PsarcCachedArrangementSummary>();
             string manifestDirectory = Path.GetDirectoryName(manifestPath) ?? string.Empty;
 
             manifest.audioPath = ResolveStoredPath(manifestDirectory, manifest.audioPath);
@@ -1153,7 +1153,7 @@ public sealed class PsarcTheoryParityIntegrationTests
 
             for (int i = 0; i < manifest.arrangements.Count; i++)
             {
-                RocksmithCachedArrangementSummary arrangement = manifest.arrangements[i];
+                PsarcCachedArrangementSummary arrangement = manifest.arrangements[i];
                 if (arrangement == null)
                     continue;
 
@@ -1179,14 +1179,14 @@ public sealed class PsarcTheoryParityIntegrationTests
                 .ToList();
         }
 
-        private static void NormalizePart(RocksmithCachedArrangementPart part)
+        private static void NormalizePart(PsarcCachedArrangementPart part)
         {
-            part.timing ??= new RocksmithCachedArrangementTimingData();
-            part.tones ??= new RocksmithCachedArrangementToneData();
-            part.generatedPart ??= new RocksmithCachedGeneratedPartInfo();
-            part.notes ??= new List<RocksmithCachedNoteData>();
-            part.arpeggioGuides ??= new List<RocksmithCachedArpeggioGuideData>();
-            part.generatedNotes ??= new List<RocksmithCachedGeneratedNoteEvent>();
+            part.timing ??= new PsarcCachedArrangementTimingData();
+            part.tones ??= new PsarcCachedArrangementToneData();
+            part.generatedPart ??= new PsarcCachedGeneratedPartInfo();
+            part.notes ??= new List<PsarcCachedNoteData>();
+            part.arpeggioGuides ??= new List<PsarcCachedArpeggioGuideData>();
+            part.generatedNotes ??= new List<PsarcCachedGeneratedNoteEvent>();
             part.durationSeconds = Mathf.Max(0f, part.durationSeconds);
             part.difficultyRating = Mathf.Clamp(part.difficultyRating, 0, 5);
             part.difficultyLabel = NormalizeDifficultyLabel(part.difficultyLabel, part.difficultyUiIndex);
@@ -1194,13 +1194,13 @@ public sealed class PsarcTheoryParityIntegrationTests
             part.tuningDisplayName = string.IsNullOrWhiteSpace(part.tuningDisplayName)
                 ? StringTuningUtils.FormatTuningDisplayName(part.tuningPitches)
                 : part.tuningDisplayName;
-            part.timing.ebeats ??= new List<RocksmithCachedEbeatData>();
-            part.timing.sections ??= new List<RocksmithCachedSectionData>();
-            part.tones.changes ??= new List<RocksmithCachedToneChangeData>();
-            part.tones.definitions ??= new List<RocksmithCachedToneDefinitionData>();
+            part.timing.ebeats ??= new List<PsarcCachedEbeatData>();
+            part.timing.sections ??= new List<PsarcCachedSectionData>();
+            part.tones.changes ??= new List<PsarcCachedToneChangeData>();
+            part.tones.definitions ??= new List<PsarcCachedToneDefinitionData>();
         }
 
-        private static int ResolveArrangementIndex(RocksmithCachedSongManifest manifest, int targetPartIndex)
+        private static int ResolveArrangementIndex(PsarcCachedSongManifest manifest, int targetPartIndex)
         {
             if (manifest?.arrangements == null || manifest.arrangements.Count == 0)
                 return -1;
@@ -1211,7 +1211,7 @@ public sealed class PsarcTheoryParityIntegrationTests
             int bestScore = int.MinValue;
             for (int i = 0; i < manifest.arrangements.Count; i++)
             {
-                RocksmithCachedArrangementSummary arrangement = manifest.arrangements[i];
+                PsarcCachedArrangementSummary arrangement = manifest.arrangements[i];
                 int score = arrangement != null
                     ? GetDefaultRoutePriority(arrangement.route) + arrangement.score
                     : int.MinValue;
@@ -1225,10 +1225,10 @@ public sealed class PsarcTheoryParityIntegrationTests
             return bestIndex;
         }
 
-        private static List<RocksmithCachedArrangementSummary> SelectGeneratedArrangementSummaries(List<RocksmithCachedArrangementSummary> arrangements)
+        private static List<PsarcCachedArrangementSummary> SelectGeneratedArrangementSummaries(List<PsarcCachedArrangementSummary> arrangements)
         {
             if (arrangements == null || arrangements.Count == 0)
-                return new List<RocksmithCachedArrangementSummary>();
+                return new List<PsarcCachedArrangementSummary>();
 
             return arrangements
                 .GroupBy(arrangement => string.IsNullOrWhiteSpace(arrangement?.arrangementGroupId) ? arrangement?.partId ?? string.Empty : arrangement.arrangementGroupId, StringComparer.OrdinalIgnoreCase)
@@ -1240,7 +1240,7 @@ public sealed class PsarcTheoryParityIntegrationTests
                 .ToList();
         }
 
-        private static NoteTechnique ResolveRuntimePrimaryTechnique(RocksmithCachedNoteData source)
+        private static NoteTechnique ResolveRuntimePrimaryTechnique(PsarcCachedNoteData source)
         {
             if (source == null)
                 return NoteTechnique.None;
@@ -1317,7 +1317,7 @@ public sealed class PsarcTheoryParityIntegrationTests
         private static bool IsSupportedSchemaVersion(int schemaVersion)
         {
             return schemaVersion >= MinimumSupportedSchemaVersion &&
-                   schemaVersion <= RocksmithCachedSongFormat.SchemaVersion;
+                   schemaVersion <= PsarcCachedSongFormat.SchemaVersion;
         }
 
         private static string ResolveStoredPath(string baseDirectory, string storedPath)
@@ -1340,18 +1340,18 @@ public sealed class PsarcTheoryParityIntegrationTests
             string normalized = storedPath
                 .Replace('/', Path.DirectorySeparatorChar)
                 .Replace('\\', Path.DirectorySeparatorChar);
-            string legacyPrefix = RocksmithCachedSongFormat.LegacyContentDirectoryName + Path.DirectorySeparatorChar;
-            string currentPrefix = RocksmithCachedSongFormat.ContentDirectoryName + Path.DirectorySeparatorChar;
+            string legacyPrefix = PsarcCachedSongFormat.LegacyContentDirectoryName + Path.DirectorySeparatorChar;
+            string currentPrefix = PsarcCachedSongFormat.ContentDirectoryName + Path.DirectorySeparatorChar;
 
             if (normalized.StartsWith(legacyPrefix, StringComparison.OrdinalIgnoreCase))
             {
-                string remapped = RocksmithCachedSongFormat.ContentDirectoryName + normalized.Substring(RocksmithCachedSongFormat.LegacyContentDirectoryName.Length);
+                string remapped = PsarcCachedSongFormat.ContentDirectoryName + normalized.Substring(PsarcCachedSongFormat.LegacyContentDirectoryName.Length);
                 return Path.GetFullPath(Path.Combine(baseDirectory ?? string.Empty, remapped));
             }
 
             if (normalized.StartsWith(currentPrefix, StringComparison.OrdinalIgnoreCase))
             {
-                string remapped = RocksmithCachedSongFormat.LegacyContentDirectoryName + normalized.Substring(RocksmithCachedSongFormat.ContentDirectoryName.Length);
+                string remapped = PsarcCachedSongFormat.LegacyContentDirectoryName + normalized.Substring(PsarcCachedSongFormat.ContentDirectoryName.Length);
                 return Path.GetFullPath(Path.Combine(baseDirectory ?? string.Empty, remapped));
             }
 
@@ -1419,7 +1419,7 @@ public sealed class PsarcTheoryParityIntegrationTests
             return "guitar";
         }
 
-        private static int GetMaxPitchBendRange(List<RocksmithCachedGeneratedNoteEvent> notes)
+        private static int GetMaxPitchBendRange(List<PsarcCachedGeneratedNoteEvent> notes)
         {
             if (notes == null || notes.Count == 0)
                 return 0;
@@ -1431,3 +1431,4 @@ public sealed class PsarcTheoryParityIntegrationTests
         }
     }
 }
+                                                                                                                                                                                                                                                                                            

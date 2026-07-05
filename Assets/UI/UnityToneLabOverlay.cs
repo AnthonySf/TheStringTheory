@@ -2148,7 +2148,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             presetModalSubtitleLabel.text = isResetAll
                 ? "Restore the factory preset library and the active rig. Audio device routing and latency stay as they are."
                 : (isSaveGeneratedTone
-                    ? "Save this automatic song tone as a reusable preset and assign it to the selected Rocksmith tone."
+                    ? "Save this automatic song tone as a reusable preset and assign it to the selected PSARC tone."
                     : (isSaveAs
                     ? "Save the current pedalboard as a new custom preset without overwriting the active one."
                     : "Save the current pedalboard and gain staging as a reusable preset."));
@@ -2750,8 +2750,8 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         List<GuitarBridgeServer.ToneLabSongMappingSongSnapshot> songs = owner.GetToneLabSongMappingSongsForUi();
         if (songs == null || songs.Count == 0)
         {
-            AddSongMappingEmpty(songMappingLeftHost, "No imported Rocksmith songs found.");
-            AddSongMappingEmpty(songMappingToneHost, "Import a Rocksmith song first, then reopen this screen.");
+            AddSongMappingEmpty(songMappingLeftHost, "No imported PSARC songs found.");
+            AddSongMappingEmpty(songMappingToneHost, "Import a PSARC song first, then reopen this screen.");
             return;
         }
 
@@ -2857,7 +2857,7 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
         List<GuitarBridgeServer.ToneLabSongToneMappingSnapshot> tones = owner.GetToneLabSongToneMappingsForUi(selectedMappingSongKey, selectedMappingArrangementKey);
         if (tones == null || tones.Count == 0)
         {
-            AddSongMappingEmpty(songMappingToneHost, "No Rocksmith tones were found for this arrangement. Re-importing the song may be needed.");
+            AddSongMappingEmpty(songMappingToneHost, "No PSARC tones were found for this arrangement. Re-importing the song may be needed.");
             return;
         }
 
@@ -6337,3 +6337,4 @@ public sealed class UnityToneLabOverlay : MonoBehaviour
             Destroy(panelSettings);
     }
 }
+                

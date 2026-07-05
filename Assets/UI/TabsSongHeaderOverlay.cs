@@ -2117,7 +2117,7 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly Button selectionRefreshButton;
 
-    private readonly Button selectionConvertRawButton;
+    private Button libraryImportIncludeSkippedButton;
 
     private readonly Button selectionCharacterButton;
 
@@ -6733,74 +6733,83 @@ public sealed class TabsSongHeaderOverlay
 
         libraryImportPopupCard = new VisualElement();
         libraryImportPopupCard.style.width = Length.Percent(100f);
-        libraryImportPopupCard.style.maxWidth = 1180f;
-        libraryImportPopupCard.style.maxHeight = Length.Percent(88f);
+        libraryImportPopupCard.style.maxWidth = 1760f;
+        libraryImportPopupCard.style.height = Length.Percent(88f);
         libraryImportPopupCard.style.flexDirection = FlexDirection.Column;
         libraryImportPopupCard.style.alignItems = Align.Stretch;
-        libraryImportPopupCard.style.paddingLeft = 34f;
-        libraryImportPopupCard.style.paddingRight = 34f;
-        libraryImportPopupCard.style.paddingTop = 30f;
-        libraryImportPopupCard.style.paddingBottom = 26f;
+        libraryImportPopupCard.style.paddingLeft = 56f;
+        libraryImportPopupCard.style.paddingRight = 56f;
+        libraryImportPopupCard.style.paddingTop = 48f;
+        libraryImportPopupCard.style.paddingBottom = 42f;
         libraryImportPopupCard.style.backgroundColor = new Color(0.035f, 0.045f, 0.055f, 0.98f);
-        libraryImportPopupCard.style.borderTopWidth = 1f;
-        libraryImportPopupCard.style.borderRightWidth = 1f;
-        libraryImportPopupCard.style.borderBottomWidth = 1f;
-        libraryImportPopupCard.style.borderLeftWidth = 1f;
-        libraryImportPopupCard.style.borderTopColor = new Color(1f, 1f, 1f, 0.12f);
-        libraryImportPopupCard.style.borderRightColor = new Color(1f, 1f, 1f, 0.12f);
-        libraryImportPopupCard.style.borderBottomColor = new Color(1f, 1f, 1f, 0.12f);
-        libraryImportPopupCard.style.borderLeftColor = new Color(1f, 1f, 1f, 0.12f);
+        libraryImportPopupCard.style.borderTopWidth = 3f;
+        libraryImportPopupCard.style.borderRightWidth = 3f;
+        libraryImportPopupCard.style.borderBottomWidth = 3f;
+        libraryImportPopupCard.style.borderLeftWidth = 3f;
+        libraryImportPopupCard.style.borderTopColor = new Color(0.52f, 0.57f, 0.63f, 0.60f);
+        libraryImportPopupCard.style.borderRightColor = new Color(0.52f, 0.57f, 0.63f, 0.60f);
+        libraryImportPopupCard.style.borderBottomColor = new Color(0.52f, 0.57f, 0.63f, 0.60f);
+        libraryImportPopupCard.style.borderLeftColor = new Color(0.52f, 0.57f, 0.63f, 0.60f);
         libraryImportPopupCard.style.borderTopLeftRadius = 18f;
         libraryImportPopupCard.style.borderTopRightRadius = 18f;
         libraryImportPopupCard.style.borderBottomLeftRadius = 18f;
         libraryImportPopupCard.style.borderBottomRightRadius = 18f;
         libraryImportPopupCard.style.overflow = Overflow.Hidden;
 
-        Label libraryImportEyebrowLabel = CreateLabel("LIBRARY REFRESH", 20f, LibraryConfirmedSongColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        Label libraryImportEyebrowLabel = CreateLabel("LIBRARY REFRESH", 26f, LibraryConfirmedSongColor, true, TextAnchor.MiddleLeft, useTitleFont: false);
         libraryImportEyebrowLabel.style.unityFontDefinition = modernUiFontDefinition;
-        libraryImportEyebrowLabel.style.letterSpacing = 1.6f;
-        libraryImportEyebrowLabel.style.marginBottom = 8f;
+        libraryImportEyebrowLabel.style.letterSpacing = 2.4f;
+        libraryImportEyebrowLabel.style.marginBottom = 10f;
 
-        libraryImportPopupTitleLabel = CreateLabel("New Songs Found", 58f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+        libraryImportPopupTitleLabel = CreateLabel("New Songs Found", 92f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
         libraryImportPopupTitleLabel.style.unityFontDefinition = modernUiFontDefinition;
         libraryImportPopupTitleLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
         libraryImportPopupTitleLabel.style.whiteSpace = WhiteSpace.Normal;
-        libraryImportPopupTitleLabel.style.marginBottom = 10f;
+        libraryImportPopupTitleLabel.style.marginBottom = 12f;
 
         libraryImportPopupSummaryLabel = CreateLabel(
             "Choose which songs to convert into .theory packages before they are added to the library.",
-            27f,
-            new Color(0.78f, 0.86f, 0.94f, 0.96f),
+            33f,
+            new Color(0.78f, 0.86f, 0.94f, 0.90f),
             false,
             TextAnchor.MiddleLeft,
             useTitleFont: false);
         libraryImportPopupSummaryLabel.style.unityFontDefinition = modernUiFontDefinition;
         libraryImportPopupSummaryLabel.style.whiteSpace = WhiteSpace.Normal;
-        libraryImportPopupSummaryLabel.style.marginBottom = 18f;
+        libraryImportPopupSummaryLabel.style.marginBottom = 30f;
 
         VisualElement libraryImportToolbar = new VisualElement();
         libraryImportToolbar.style.flexDirection = FlexDirection.Row;
         libraryImportToolbar.style.alignItems = Align.Center;
         libraryImportToolbar.style.justifyContent = Justify.SpaceBetween;
-        libraryImportToolbar.style.marginBottom = 14f;
+        libraryImportToolbar.style.marginBottom = 20f;
+        libraryImportToolbar.style.paddingTop = 22f;
+        libraryImportToolbar.style.borderTopWidth = 2f;
+        libraryImportToolbar.style.borderTopColor = new Color(1f, 1f, 1f, 0.14f);
 
-        libraryImportPopupStatusLabel = CreateLabel(string.Empty, 24f, new Color(0.84f, 0.90f, 0.96f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+        libraryImportPopupStatusLabel = CreateLabel(string.Empty, 30f, new Color(0.84f, 0.90f, 0.96f, 0.94f), false, TextAnchor.MiddleLeft, useTitleFont: false);
         libraryImportPopupStatusLabel.style.unityFontDefinition = modernUiFontDefinition;
         libraryImportPopupStatusLabel.style.whiteSpace = WhiteSpace.Normal;
         libraryImportPopupStatusLabel.style.flexGrow = 1f;
         libraryImportPopupStatusLabel.style.minWidth = 0f;
 
+        libraryImportIncludeSkippedButton = CreateLibraryImportPopupButton("Show Skipped", false, () => owner?.ToggleLibraryImportIncludeSkippedFromUi());
+        libraryImportIncludeSkippedButton.style.minWidth = 320f;
+        libraryImportIncludeSkippedButton.style.marginRight = 14f;
+        libraryImportIncludeSkippedButton.style.display = DisplayStyle.None;
+
         libraryImportSelectAllButton = CreateLibraryImportPopupButton("Select All", false, () => owner?.SetAllLibraryImportCandidatesFromUi(true));
-        libraryImportSelectAllButton.style.minWidth = 168f;
+        libraryImportSelectAllButton.style.minWidth = 250f;
         libraryImportToolbar.Add(libraryImportPopupStatusLabel);
+        libraryImportToolbar.Add(libraryImportIncludeSkippedButton);
         libraryImportToolbar.Add(libraryImportSelectAllButton);
 
         libraryImportPopupScrollView = new ScrollView(ScrollViewMode.Vertical);
         libraryImportPopupScrollView.style.flexGrow = 1f;
+        libraryImportPopupScrollView.style.flexShrink = 1f;
         libraryImportPopupScrollView.style.flexBasis = 0f;
-        libraryImportPopupScrollView.style.minHeight = 220f;
-        libraryImportPopupScrollView.style.maxHeight = 540f;
-        libraryImportPopupScrollView.style.marginBottom = 22f;
+        libraryImportPopupScrollView.style.minHeight = 340f;
+        libraryImportPopupScrollView.style.marginBottom = 30f;
         libraryImportPopupScrollView.verticalScrollerVisibility = ScrollerVisibility.Hidden;
         libraryImportPopupScrollView.horizontalScrollerVisibility = ScrollerVisibility.Hidden;
         libraryImportPopupScrollView.style.backgroundColor = new Color(0f, 0f, 0f, 0f);
@@ -6819,8 +6828,8 @@ public sealed class TabsSongHeaderOverlay
 
         libraryImportSkipButton = CreateLibraryImportPopupButton("Skip", false, () => owner?.CloseLibraryImportPopupFromUi());
         libraryImportConvertButton = CreateLibraryImportPopupButton("Convert to .theory", true, () => owner?.ConvertSelectedLibraryImportsToTheoryFromUi());
-        libraryImportSkipButton.style.marginRight = 14f;
-        libraryImportConvertButton.style.minWidth = 300f;
+        libraryImportSkipButton.style.marginRight = 18f;
+        libraryImportConvertButton.style.minWidth = 460f;
         libraryImportActions.Add(libraryImportSkipButton);
         libraryImportActions.Add(libraryImportConvertButton);
 
@@ -9187,19 +9196,16 @@ public sealed class TabsSongHeaderOverlay
 
         selectionRefreshButton = CreateLibraryFooterButton("Refresh", new Color(0.149f, 0.169f, 0.20f, 1f), () => owner?.RefreshSongsFromUi());
 
-        selectionConvertRawButton = CreateLibraryFooterButton("Convert Raw", new Color(0.108f, 0.134f, 0.158f, 1f), () => owner?.ConvertExistingRawNotationSongsFromUi());
 
         selectionCharacterButton = CreateLibraryFooterButton("Character Selection", new Color(0.149f, 0.169f, 0.20f, 1f), () => owner?.OpenCharacterSelectionFromUi());
 
         selectionSongsFolderButton.style.marginRight = 14f;
         selectionRefreshButton.style.marginRight = 14f;
-        selectionConvertRawButton.style.marginRight = 14f;
 
         selectionUtilityButtons.Add(selectionSongsFolderButton);
 
         selectionUtilityButtons.Add(selectionRefreshButton);
 
-        selectionUtilityButtons.Add(selectionConvertRawButton);
 
         selectionUtilityButtons.Add(selectionCharacterButton);
 
@@ -17686,14 +17692,22 @@ public sealed class TabsSongHeaderOverlay
         EnsureLibraryImportCandidateRows(count);
 
         int selectedCount = snapshot.libraryImportCandidateSelected?.Count(value => value) ?? 0;
+        int newCandidateCount = snapshot.libraryImportNewCandidateCount;
         if (libraryImportPopupTitleLabel != null)
-            libraryImportPopupTitleLabel.text = snapshot.libraryImportIncludesCachedLegacySources
-                ? (count == 1 ? "Raw Song Found" : "Raw Songs Found")
-                : (count == 1 ? "New Song Found" : "New Songs Found");
+            libraryImportPopupTitleLabel.text = newCandidateCount > 0
+                ? (newCandidateCount == 1 ? "New Song Found" : "New Songs Found")
+                : "Library Import";
         if (libraryImportPopupSummaryLabel != null)
-            libraryImportPopupSummaryLabel.text = snapshot.libraryImportIncludesCachedLegacySources
-                ? "Convert selected raw GP and MusicXML sources into .theory packages."
-                : "Convert selected sources into .theory packages before adding them to the library.";
+            libraryImportPopupSummaryLabel.text = "Convert selected sources into .theory packages before adding them to the library.";
+
+        if (libraryImportIncludeSkippedButton != null)
+        {
+            int skippedAvailable = snapshot.libraryImportSkippedAvailableCount;
+            libraryImportIncludeSkippedButton.style.display = skippedAvailable > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            libraryImportIncludeSkippedButton.text = snapshot.libraryImportIncludeSkipped
+                ? $"Hide Skipped ({skippedAvailable})"
+                : $"Show Skipped ({skippedAvailable})";
+        }
         if (libraryImportPopupStatusLabel != null)
             libraryImportPopupStatusLabel.text = string.IsNullOrWhiteSpace(snapshot.libraryImportPopupStatusText)
                 ? $"{selectedCount}/{count} selected."
@@ -17782,21 +17796,21 @@ public sealed class TabsSongHeaderOverlay
             int rowIndex = i;
             Button rowButton = new Button(() => owner?.ToggleLibraryImportCandidateFromUi(rowIndex));
             rowButton.focusable = false;
-            rowButton.style.height = 86f;
-            rowButton.style.marginTop = 6f;
-            rowButton.style.marginBottom = 6f;
-            rowButton.style.paddingLeft = 16f;
-            rowButton.style.paddingRight = 16f;
+            rowButton.style.height = 104f;
+            rowButton.style.marginTop = 5f;
+            rowButton.style.marginBottom = 5f;
+            rowButton.style.paddingLeft = 24f;
+            rowButton.style.paddingRight = 24f;
             rowButton.style.paddingTop = 0f;
             rowButton.style.paddingBottom = 0f;
-            rowButton.style.borderTopLeftRadius = 12f;
-            rowButton.style.borderTopRightRadius = 12f;
-            rowButton.style.borderBottomLeftRadius = 12f;
-            rowButton.style.borderBottomRightRadius = 12f;
-            rowButton.style.borderTopWidth = 1f;
-            rowButton.style.borderRightWidth = 1f;
-            rowButton.style.borderBottomWidth = 1f;
-            rowButton.style.borderLeftWidth = 1f;
+            rowButton.style.borderTopLeftRadius = 14f;
+            rowButton.style.borderTopRightRadius = 14f;
+            rowButton.style.borderBottomLeftRadius = 14f;
+            rowButton.style.borderBottomRightRadius = 14f;
+            rowButton.style.borderTopWidth = 2f;
+            rowButton.style.borderRightWidth = 2f;
+            rowButton.style.borderBottomWidth = 2f;
+            rowButton.style.borderLeftWidth = 2f;
             rowButton.style.backgroundImage = StyleKeyword.None;
             rowButton.style.overflow = Overflow.Hidden;
 
@@ -17805,18 +17819,19 @@ public sealed class TabsSongHeaderOverlay
             content.style.alignItems = Align.Center;
             content.style.height = Length.Percent(100f);
 
-            Label checkLabel = CreateLabel(string.Empty, 28f, LibraryConfirmedSongColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
-            checkLabel.style.width = 38f;
-            checkLabel.style.height = 38f;
-            checkLabel.style.marginRight = 16f;
+            Label checkLabel = CreateLabel(string.Empty, 32f, LibraryConfirmedSongColor, true, TextAnchor.MiddleCenter, useTitleFont: false);
+            checkLabel.style.width = 48f;
+            checkLabel.style.height = 48f;
+            checkLabel.style.marginRight = 26f;
+            checkLabel.style.flexShrink = 0f;
             checkLabel.style.borderTopWidth = 2f;
             checkLabel.style.borderRightWidth = 2f;
             checkLabel.style.borderBottomWidth = 2f;
             checkLabel.style.borderLeftWidth = 2f;
-            checkLabel.style.borderTopLeftRadius = 8f;
-            checkLabel.style.borderTopRightRadius = 8f;
-            checkLabel.style.borderBottomLeftRadius = 8f;
-            checkLabel.style.borderBottomRightRadius = 8f;
+            checkLabel.style.borderTopLeftRadius = 10f;
+            checkLabel.style.borderTopRightRadius = 10f;
+            checkLabel.style.borderBottomLeftRadius = 10f;
+            checkLabel.style.borderBottomRightRadius = 10f;
             checkLabel.style.unityFontDefinition = modernUiFontDefinition;
             checkLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
 
@@ -17825,28 +17840,30 @@ public sealed class TabsSongHeaderOverlay
             textColumn.style.flexBasis = 0f;
             textColumn.style.minWidth = 0f;
 
-            Label nameLabel = CreateLabel(string.Empty, 28f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
+            Label nameLabel = CreateLabel(string.Empty, 34f, Color.white, true, TextAnchor.MiddleLeft, useTitleFont: false);
             nameLabel.style.unityFontDefinition = modernUiFontDefinition;
             nameLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
             nameLabel.style.whiteSpace = WhiteSpace.NoWrap;
             nameLabel.style.overflow = Overflow.Hidden;
 
-            Label metaLabel = CreateLabel(string.Empty, 20f, new Color(0.64f, 0.72f, 0.80f, 0.92f), false, TextAnchor.MiddleLeft, useTitleFont: false);
+            Label metaLabel = CreateLabel(string.Empty, 24f, new Color(0.64f, 0.72f, 0.80f, 0.92f), false, TextAnchor.MiddleLeft, useTitleFont: false);
             metaLabel.style.unityFontDefinition = modernUiFontDefinition;
             metaLabel.style.whiteSpace = WhiteSpace.NoWrap;
             metaLabel.style.overflow = Overflow.Hidden;
+            metaLabel.style.marginTop = 3f;
 
-            Label kindLabel = CreateLabel(string.Empty, 18f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
-            kindLabel.style.minWidth = 128f;
-            kindLabel.style.marginLeft = 18f;
-            kindLabel.style.paddingLeft = 12f;
-            kindLabel.style.paddingRight = 12f;
-            kindLabel.style.paddingTop = 5f;
-            kindLabel.style.paddingBottom = 5f;
-            kindLabel.style.borderTopLeftRadius = 8f;
-            kindLabel.style.borderTopRightRadius = 8f;
-            kindLabel.style.borderBottomLeftRadius = 8f;
-            kindLabel.style.borderBottomRightRadius = 8f;
+            Label kindLabel = CreateLabel(string.Empty, 22f, Color.white, true, TextAnchor.MiddleCenter, useTitleFont: false);
+            kindLabel.style.minWidth = 176f;
+            kindLabel.style.marginLeft = 26f;
+            kindLabel.style.flexShrink = 0f;
+            kindLabel.style.paddingLeft = 20f;
+            kindLabel.style.paddingRight = 20f;
+            kindLabel.style.paddingTop = 9f;
+            kindLabel.style.paddingBottom = 9f;
+            kindLabel.style.borderTopLeftRadius = 10f;
+            kindLabel.style.borderTopRightRadius = 10f;
+            kindLabel.style.borderBottomLeftRadius = 10f;
+            kindLabel.style.borderBottomRightRadius = 10f;
             kindLabel.style.unityFontDefinition = modernUiFontDefinition;
             kindLabel.style.unityFontStyleAndWeight = FontStyle.Bold;
 
@@ -24592,26 +24609,26 @@ public sealed class TabsSongHeaderOverlay
     {
         Button button = new Button(() => onClick?.Invoke()) { text = text };
         button.focusable = false;
-        button.style.height = 62f;
-        button.style.minWidth = primary ? 260f : 178f;
-        button.style.paddingLeft = 22f;
-        button.style.paddingRight = 22f;
+        button.style.height = 90f;
+        button.style.minWidth = primary ? 380f : 250f;
+        button.style.paddingLeft = 34f;
+        button.style.paddingRight = 34f;
         button.style.marginTop = 6f;
         button.style.marginBottom = 6f;
         button.style.backgroundColor = primary ? LibraryConfirmedSongColor : new Color(0f, 0f, 0f, 0f);
         button.style.color = primary ? LibraryConfirmedSongTextColor : new Color(0.88f, 0.93f, 0.97f, 0.96f);
-        button.style.fontSize = 23f;
+        button.style.fontSize = 33f;
         button.style.unityFontDefinition = modernUiFontDefinition;
         button.style.unityFontStyleAndWeight = FontStyle.Bold;
         button.style.unityTextAlign = TextAnchor.MiddleCenter;
-        button.style.borderTopLeftRadius = 10f;
-        button.style.borderTopRightRadius = 10f;
-        button.style.borderBottomLeftRadius = 10f;
-        button.style.borderBottomRightRadius = 10f;
-        button.style.borderTopWidth = 1f;
-        button.style.borderRightWidth = 1f;
-        button.style.borderBottomWidth = 1f;
-        button.style.borderLeftWidth = 1f;
+        button.style.borderTopLeftRadius = 12f;
+        button.style.borderTopRightRadius = 12f;
+        button.style.borderBottomLeftRadius = 12f;
+        button.style.borderBottomRightRadius = 12f;
+        button.style.borderTopWidth = 2f;
+        button.style.borderRightWidth = 2f;
+        button.style.borderBottomWidth = 2f;
+        button.style.borderLeftWidth = 2f;
         Color border = primary ? LibraryConfirmedSongColor : new Color(0.30f, 0.38f, 0.46f, 0.86f);
         button.style.borderTopColor = border;
         button.style.borderRightColor = border;
@@ -30563,7 +30580,7 @@ public sealed class TabsSongHeaderOverlay
 
 
 
-        foreach (Button button in new[] { selectionSongsFolderButton, selectionRefreshButton, selectionConvertRawButton, selectionCharacterButton, selectionBackButton, selectionStartButton })
+        foreach (Button button in new[] { selectionSongsFolderButton, selectionRefreshButton, selectionCharacterButton, selectionBackButton, selectionStartButton })
 
         {
 
@@ -31441,7 +31458,6 @@ public sealed class TabsSongHeaderOverlay
 
         selectionRefreshButton.style.minWidth = compactSelection ? 188f * menuLayoutScale : 230f * menuLayoutScale;
 
-        selectionConvertRawButton.style.minWidth = compactSelection ? 194f * menuLayoutScale : 232f * menuLayoutScale;
 
         selectionCharacterButton.style.minWidth = compactSelection ? 254f * menuLayoutScale : 308f * menuLayoutScale;
 
@@ -31451,19 +31467,4 @@ public sealed class TabsSongHeaderOverlay
 
         selectionSongsFolderButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
 
-        selectionRefreshButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
-
-        selectionConvertRawButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
-
-        selectionCharacterButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayoutScale;
-
-        selectionStartButton.style.height = compactSelection ? 82f * menuLayoutScale : 94f * menuLayoutScale;
-
-    }
-
-}
-
-
-
-
-
+        selectionRefreshButton.style.height = compactSelection ? 78f * menuLayoutScale : 88f * menuLayo

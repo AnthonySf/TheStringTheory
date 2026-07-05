@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Text;
 using UnityEngine;
 
-internal enum RocksmithToneLv2SlotRole
+internal enum PsarcToneLv2SlotRole
 {
     Dynamics,
     Gain,
@@ -15,19 +15,19 @@ internal enum RocksmithToneLv2SlotRole
     Ambience
 }
 
-internal readonly struct RocksmithToneLv2SlotMapping
+internal readonly struct PsarcToneLv2SlotMapping
 {
-    public RocksmithToneLv2SlotMapping(RocksmithToneLv2SlotRole role, UnityToneLabRuntime.ToneLabPedalSlot slot)
+    public PsarcToneLv2SlotMapping(PsarcToneLv2SlotRole role, UnityToneLabRuntime.ToneLabPedalSlot slot)
     {
         Role = role;
         Slot = slot;
     }
 
-    public RocksmithToneLv2SlotRole Role { get; }
+    public PsarcToneLv2SlotRole Role { get; }
     public UnityToneLabRuntime.ToneLabPedalSlot Slot { get; }
 }
 
-internal static class RocksmithToneLv2Mappings
+internal static class PsarcToneLv2Mappings
 {
     private const string GxPrefix = "http://guitarix.sourceforge.net/plugins/";
     private const string GxMicroAmp = GxPrefix + "gx_MicroAmp_#_MicroAmp_";
@@ -127,7 +127,7 @@ internal static class RocksmithToneLv2Mappings
         bool isBassRoute,
         bool highGain,
         float driveIntent,
-        out RocksmithToneLv2SlotMapping mapping)
+        out PsarcToneLv2SlotMapping mapping)
     {
         mapping = default;
         string text = NormalizeText($"{slotKey} {type} {name} {category}");
@@ -135,45 +135,45 @@ internal static class RocksmithToneLv2Mappings
             return false;
 
         if (ContainsAny(text, "gate", "noise suppress", "noise reduction", "hush"))
-            return Return(RocksmithToneLv2SlotRole.Dynamics, CreateNoiseGateSlot(knobs, driveIntent, highGain), out mapping);
+            return Return(PsarcToneLv2SlotRole.Dynamics, CreateNoiseGateSlot(knobs, driveIntent, highGain), out mapping);
 
         if (ContainsAny(text, "compress", "sustain", "limiter", "mbcomp", "studio compressor"))
-            return Return(RocksmithToneLv2SlotRole.Dynamics, CreateCompressorSlot(knobs, driveIntent), out mapping);
+            return Return(PsarcToneLv2SlotRole.Dynamics, CreateCompressorSlot(knobs, driveIntent), out mapping);
 
         if (ContainsAny(text, "cab", "cabinet", "speaker"))
         {
             UnityToneLabRuntime.ToneLabPedalSlot cabSlot = isBassRoute
                 ? null
                 : CreateUltraCabSlot(knobs, highGain, driveIntent);
-            return cabSlot != null && Return(RocksmithToneLv2SlotRole.Cab, cabSlot, out mapping);
+            return cabSlot != null && Return(PsarcToneLv2SlotRole.Cab, cabSlot, out mapping);
         }
 
         if (LooksLikeAmpGear(slotKey, type, name, category, text))
-            return Return(RocksmithToneLv2SlotRole.Amp, CreateAmpSlot(text, knobs, isBassRoute, highGain, driveIntent), out mapping);
+            return Return(PsarcToneLv2SlotRole.Amp, CreateAmpSlot(text, knobs, isBassRoute, highGain, driveIntent), out mapping);
 
         if (ContainsAny(text, "eq", "equalizer", "filter", "graphic"))
-            return Return(RocksmithToneLv2SlotRole.Eq, CreateEqSlot(text, knobs), out mapping);
+            return Return(PsarcToneLv2SlotRole.Eq, CreateEqSlot(text, knobs), out mapping);
 
         if (ContainsAny(text, "delay", "echo"))
-            return Return(RocksmithToneLv2SlotRole.Ambience, CreateDelaySlot(knobs), out mapping);
+            return Return(PsarcToneLv2SlotRole.Ambience, CreateDelaySlot(knobs), out mapping);
 
         if (ContainsAny(text, "reverb", "room", "hall", "plate", "spring", "verb"))
-            return Return(RocksmithToneLv2SlotRole.Ambience, CreateReverbSlot(text, knobs, highGain), out mapping);
+            return Return(PsarcToneLv2SlotRole.Ambience, CreateReverbSlot(text, knobs, highGain), out mapping);
 
         if (ContainsAny(text, "wah", "envelope", "auto wah", "quack"))
-            return Return(RocksmithToneLv2SlotRole.Modulation, CreateQuackSlot(knobs), out mapping);
+            return Return(PsarcToneLv2SlotRole.Modulation, CreateQuackSlot(knobs), out mapping);
 
         if (ContainsAny(text, "slowgear", "slow gear", "swell"))
-            return Return(RocksmithToneLv2SlotRole.Modulation, CreateSlowGearSlot(knobs), out mapping);
+            return Return(PsarcToneLv2SlotRole.Modulation, CreateSlowGearSlot(knobs), out mapping);
 
         if (ContainsAny(text, "octave", "pitch", "whammy", "harmon"))
-            return Return(RocksmithToneLv2SlotRole.Gain, CreatePitchShiftSlot(knobs), out mapping);
+            return Return(PsarcToneLv2SlotRole.Gain, CreatePitchShiftSlot(knobs), out mapping);
 
         if (ContainsAny(text, "drive", "dist", "fuzz", "muff", "screamer", "overdrive", "boost", "clean boost", "microamp", "micro amp", "preamp", "pre amp", "rat", "ds1", "sd1", "tube", "edenwtdi"))
-            return Return(RocksmithToneLv2SlotRole.Gain, CreateDriveSlot(text, knobs, isBassRoute), out mapping);
+            return Return(PsarcToneLv2SlotRole.Gain, CreateDriveSlot(text, knobs, isBassRoute), out mapping);
 
         if (ContainsAny(text, "acoustic emulator"))
-            return Return(RocksmithToneLv2SlotRole.Eq, CreateAcousticShapeSlot(knobs), out mapping);
+            return Return(PsarcToneLv2SlotRole.Eq, CreateAcousticShapeSlot(knobs), out mapping);
 
         return false;
     }
@@ -286,9 +286,9 @@ internal static class RocksmithToneLv2Mappings
             : CreateDragonflyRoomSlot(96f, 1.5f, 3.5f, 10f, 0.22f, 62f, 8200f, 90f);
     }
 
-    private static bool Return(RocksmithToneLv2SlotRole role, UnityToneLabRuntime.ToneLabPedalSlot slot, out RocksmithToneLv2SlotMapping mapping)
+    private static bool Return(PsarcToneLv2SlotRole role, UnityToneLabRuntime.ToneLabPedalSlot slot, out PsarcToneLv2SlotMapping mapping)
     {
-        mapping = slot == null ? default : new RocksmithToneLv2SlotMapping(role, slot);
+        mapping = slot == null ? default : new PsarcToneLv2SlotMapping(role, slot);
         return slot != null;
     }
 
@@ -946,7 +946,7 @@ internal static class RocksmithToneLv2Mappings
         if (value >= 20f)
             return Mathf.Clamp(value, 20f, 20000f);
 
-        // Several Rocksmith rack EQ fields store kHz-like frequency values.
+        // Several Psarc rack EQ fields store kHz-like frequency values.
         if (value > 0f && value <= 20f)
             return Mathf.Clamp(value * 1000f, 20f, 20000f);
 
@@ -1040,7 +1040,7 @@ internal static class RocksmithToneLv2Mappings
         }
 
         // Compound aliases such as "bassfreq" or "pre gain" intentionally match
-        // compact Rocksmith keys like "Rack_StudioEQ_BassFreq" and "Amp_PreGain".
+        // compact Psarc keys like "Rack_StudioEQ_BassFreq" and "Amp_PreGain".
         // Short generic aliases do not use substring matching because they can
         // incorrectly bind "bass" to "BassFreq" or "mid" to "HiMidFreq".
         if (aliasCompact.Length >= 5 && keyCompact.EndsWith(aliasCompact, StringComparison.Ordinal))

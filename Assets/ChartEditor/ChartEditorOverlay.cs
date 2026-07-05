@@ -12874,7 +12874,7 @@ public sealed class ChartEditorOverlay
             return;
         }
 
-        RocksmithCachedNoteData source = new RocksmithCachedNoteData
+        PsarcCachedNoteData source = new PsarcCachedNoteData
         {
             id = note.sourceNoteId,
             time = Mathf.Max(0f, (float)note.timeSeconds),
@@ -12890,8 +12890,8 @@ public sealed class ChartEditorOverlay
             bendRelease = note.bendRelease,
             hasVibrato = note.technique == NoteTechnique.Vibrato,
             maxBend = Mathf.Max(note.maxBend, note.bendStep),
-            bendPoints = new List<RocksmithCachedBendPointData>(),
-            techniqueSegments = new List<RocksmithCachedTechniqueSegmentData>()
+            bendPoints = new List<PsarcCachedBendPointData>(),
+            techniqueSegments = new List<PsarcCachedTechniqueSegmentData>()
         };
 
         for (int i = 0; i < note.bendPoints.Count; i++)
@@ -12900,7 +12900,7 @@ public sealed class ChartEditorOverlay
             if (point == null)
                 continue;
 
-            source.bendPoints.Add(new RocksmithCachedBendPointData
+            source.bendPoints.Add(new PsarcCachedBendPointData
             {
                 timeSeconds = point.timeSeconds,
                 step = point.step
@@ -12915,7 +12915,7 @@ public sealed class ChartEditorOverlay
                 if (segment == null)
                     continue;
 
-                source.techniqueSegments.Add(new RocksmithCachedTechniqueSegmentData
+                source.techniqueSegments.Add(new PsarcCachedTechniqueSegmentData
                 {
                     type = (int)segment.type,
                     startOffset = segment.startOffset,
@@ -12928,7 +12928,7 @@ public sealed class ChartEditorOverlay
             }
         }
 
-        List<NoteTechniqueSegmentData> normalized = RocksmithTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
+        List<NoteTechniqueSegmentData> normalized = PsarcTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
         if (normalized == null || normalized.Count == 0 || TechniqueSegmentsEquivalent(note.techniqueSegments, normalized))
             return;
 
@@ -18819,3 +18819,4 @@ public sealed class ChartEditorOverlay
             : fallback;
     }
 }
+                            

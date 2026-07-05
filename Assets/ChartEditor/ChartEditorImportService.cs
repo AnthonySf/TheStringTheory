@@ -726,7 +726,7 @@ public static class ChartEditorImportService
         return track;
     }
 
-    private static ChartEditorTrack BuildTrack(MusicXmlLoader.MusicXmlPartSummary summary, RocksmithCachedArrangementPart part)
+    private static ChartEditorTrack BuildTrack(MusicXmlLoader.MusicXmlPartSummary summary, PsarcCachedArrangementPart part)
     {
         string importedName = FirstNonEmpty(summary?.GroupDisplayName, summary?.Name, part?.arrangementDisplayName, part?.displayName, "Track");
         ChartEditorTrackRole role = ResolveRole(
@@ -770,7 +770,7 @@ public static class ChartEditorImportService
             generatedNotes = FromCachedGeneratedNotes(part?.generatedNotes)
         };
 
-        List<RocksmithCachedNoteData> sourceNotes = part?.notes ?? new List<RocksmithCachedNoteData>();
+        List<PsarcCachedNoteData> sourceNotes = part?.notes ?? new List<PsarcCachedNoteData>();
         for (int i = 0; i < sourceNotes.Count; i++)
             track.notes.Add(FromCachedNoteData(sourceNotes[i], i, role == ChartEditorTrackRole.Drums));
 
@@ -778,7 +778,7 @@ public static class ChartEditorImportService
         {
             for (int i = 0; i < part.arpeggioGuides.Count; i++)
             {
-                RocksmithCachedArpeggioGuideData guide = part.arpeggioGuides[i];
+                PsarcCachedArpeggioGuideData guide = part.arpeggioGuides[i];
                 if (guide == null)
                     continue;
 
@@ -887,7 +887,7 @@ public static class ChartEditorImportService
         return track;
     }
 
-    private static ChartEditorToneData FromCachedToneData(RocksmithCachedArrangementToneData source, string arrangementRoute)
+    private static ChartEditorToneData FromCachedToneData(PsarcCachedArrangementToneData source, string arrangementRoute)
     {
         ChartEditorToneData result = new ChartEditorToneData
         {
@@ -900,7 +900,7 @@ public static class ChartEditorImportService
         {
             for (int i = 0; i < source.changes.Count; i++)
             {
-                RocksmithCachedToneChangeData change = source.changes[i];
+                PsarcCachedToneChangeData change = source.changes[i];
                 if (change == null)
                     continue;
 
@@ -917,7 +917,7 @@ public static class ChartEditorImportService
         {
             for (int i = 0; i < source.definitions.Count; i++)
             {
-                RocksmithCachedToneDefinitionData definition = source.definitions[i];
+                PsarcCachedToneDefinitionData definition = source.definitions[i];
                 if (definition == null)
                     continue;
 
@@ -998,7 +998,7 @@ public static class ChartEditorImportService
             if (TryParseToneLabPreset(rawToneJson, out UnityToneLabRuntime.ToneLabPreset serializedPreset))
                 return FromUnityToneLabPreset(serializedPreset, source?.name, source?.key);
 
-            if (RocksmithTonePresetBuilder.TryBuildPreset(source?.name, arrangementRoute, rawToneJson, out UnityToneLabRuntime.ToneLabPreset convertedPreset))
+            if (PsarcTonePresetBuilder.TryBuildPreset(source?.name, arrangementRoute, rawToneJson, out UnityToneLabRuntime.ToneLabPreset convertedPreset))
                 return FromUnityToneLabPreset(convertedPreset, source?.name, source?.key);
         }
 
@@ -1049,7 +1049,7 @@ public static class ChartEditorImportService
         return rawJson ?? string.Empty;
     }
 
-    private static ChartEditorTonePresetData FromCachedToneDefinition(RocksmithCachedToneDefinitionData source, string arrangementRoute)
+    private static ChartEditorTonePresetData FromCachedToneDefinition(PsarcCachedToneDefinitionData source, string arrangementRoute)
     {
         if (source == null)
             return new ChartEditorTonePresetData();
@@ -1057,7 +1057,7 @@ public static class ChartEditorImportService
         if (TryParseToneLabPreset(source.rawJson, out UnityToneLabRuntime.ToneLabPreset serializedPreset))
             return FromUnityToneLabPreset(serializedPreset, source.name, source.key);
 
-        if (RocksmithTonePresetBuilder.TryBuildPreset(source.name, arrangementRoute, source.rawJson, out UnityToneLabRuntime.ToneLabPreset convertedPreset))
+        if (PsarcTonePresetBuilder.TryBuildPreset(source.name, arrangementRoute, source.rawJson, out UnityToneLabRuntime.ToneLabPreset convertedPreset))
             return FromUnityToneLabPreset(convertedPreset, source.name, source.key);
 
         return new ChartEditorTonePresetData
@@ -1067,7 +1067,7 @@ public static class ChartEditorImportService
         };
     }
 
-    private static ChartEditorToneFallbackData FromCachedToneFallback(RocksmithCachedToneDefinitionData source, string arrangementRoute)
+    private static ChartEditorToneFallbackData FromCachedToneFallback(PsarcCachedToneDefinitionData source, string arrangementRoute)
     {
         if (source == null)
             return new ChartEditorToneFallbackData();
@@ -1130,7 +1130,7 @@ public static class ChartEditorImportService
     {
         ChartEditorTonePresetData result = new ChartEditorTonePresetData
         {
-            presetId = RocksmithTonePresetBuilder.IsGeneratedPresetId(source?.preset_id)
+            presetId = PsarcTonePresetBuilder.IsGeneratedPresetId(source?.preset_id)
                 ? BuildNeutralTonePresetId(fallbackName, fallbackKey)
                 : FirstNonEmpty(source?.preset_id, BuildNeutralTonePresetId(fallbackName, fallbackKey)),
             presetName = FirstNonEmpty(source?.preset_name, fallbackName, fallbackKey),
@@ -1220,7 +1220,7 @@ public static class ChartEditorImportService
     }
 
     private static ChartEditorGeneratedPartInfo FromCachedGeneratedPart(
-        RocksmithCachedGeneratedPartInfo source,
+        PsarcCachedGeneratedPartInfo source,
         string fallbackPartId,
         string fallbackName,
         ChartEditorTrackRole role)
@@ -1344,7 +1344,7 @@ public static class ChartEditorImportService
                role == ChartEditorTrackRole.Custom;
     }
 
-    private static List<ChartEditorGeneratedNoteEvent> FromCachedGeneratedNotes(List<RocksmithCachedGeneratedNoteEvent> source)
+    private static List<ChartEditorGeneratedNoteEvent> FromCachedGeneratedNotes(List<PsarcCachedGeneratedNoteEvent> source)
     {
         List<ChartEditorGeneratedNoteEvent> result = new List<ChartEditorGeneratedNoteEvent>();
         if (source == null)
@@ -1352,7 +1352,7 @@ public static class ChartEditorImportService
 
         for (int i = 0; i < source.Count; i++)
         {
-            RocksmithCachedGeneratedNoteEvent note = source[i];
+            PsarcCachedGeneratedNoteEvent note = source[i];
             if (note == null)
                 continue;
 
@@ -1737,7 +1737,7 @@ public static class ChartEditorImportService
         return note;
     }
 
-    private static ChartEditorNote FromCachedNoteData(RocksmithCachedNoteData source, int fallbackIndex, bool drumTrack = false)
+    private static ChartEditorNote FromCachedNoteData(PsarcCachedNoteData source, int fallbackIndex, bool drumTrack = false)
     {
         if (source == null)
             return null;
@@ -1790,7 +1790,7 @@ public static class ChartEditorImportService
         {
             for (int i = 0; i < source.bendPoints.Count; i++)
             {
-                RocksmithCachedBendPointData point = source.bendPoints[i];
+                PsarcCachedBendPointData point = source.bendPoints[i];
                 if (point == null)
                     continue;
 
@@ -1802,7 +1802,7 @@ public static class ChartEditorImportService
             }
         }
 
-        List<NoteTechniqueSegmentData> normalizedSegments = RocksmithTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
+        List<NoteTechniqueSegmentData> normalizedSegments = PsarcTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
         if (normalizedSegments != null)
         {
             for (int i = 0; i < normalizedSegments.Count; i++)
@@ -1957,7 +1957,7 @@ public static class ChartEditorImportService
         ChartEditorDrumNoteSanitizer.Sanitize(note);
     }
 
-    private static NoteTechnique ResolveCachedPrimaryTechnique(RocksmithCachedNoteData source)
+    private static NoteTechnique ResolveCachedPrimaryTechnique(PsarcCachedNoteData source)
     {
         if (source == null)
             return NoteTechnique.None;
@@ -3497,3 +3497,4 @@ public static class ChartEditorValidationService
         return evidence;
     }
 }
+                                                                            

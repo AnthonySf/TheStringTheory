@@ -1028,16 +1028,16 @@ public sealed class ChartEditorRoundTripTests
         Assert.IsFalse(theorySegments.Any(segment => segment.type == NoteTechniqueSegmentType.Bend));
         AssertRuntimeSegment(FindRuntimeSegment(theorySegments, NoteTechniqueSegmentType.Sustain, 0f, 1f), 8, 8, 2f, 2f);
 
-        RocksmithCachedNoteData cachedNote = new RocksmithCachedNoteData
+        PsarcCachedNoteData cachedNote = new PsarcCachedNoteData
         {
             id = 902,
             duration = 1f,
             fret = 8,
             technique = (int)NoteTechnique.Bend,
             bendStep = 2f,
-            techniqueSegments = new List<RocksmithCachedTechniqueSegmentData>
+            techniqueSegments = new List<PsarcCachedTechniqueSegmentData>
             {
-                new RocksmithCachedTechniqueSegmentData
+                new PsarcCachedTechniqueSegmentData
                 {
                     type = (int)NoteTechniqueSegmentType.Bend,
                     startOffset = 0f,
@@ -1050,7 +1050,7 @@ public sealed class ChartEditorRoundTripTests
             }
         };
 
-        List<NoteTechniqueSegmentData> cachedSegments = RocksmithTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(cachedNote);
+        List<NoteTechniqueSegmentData> cachedSegments = PsarcTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(cachedNote);
         Assert.IsFalse(cachedSegments.Any(segment => segment.type == NoteTechniqueSegmentType.Bend));
         AssertRuntimeSegment(FindRuntimeSegment(cachedSegments, NoteTechniqueSegmentType.Sustain, 0f, 1f), 8, 8, 2f, 2f);
     }
@@ -1962,8 +1962,8 @@ public sealed class ChartEditorRoundTripTests
         Directory.CreateDirectory(arrangementsDirectory);
 
         int[] eStandard = { 40, 45, 50, 55, 59, 64 };
-        RocksmithCachedArrangementPart fullPart = CreateFullDifficultyCachedPart(eStandard);
-        RocksmithCachedArrangementPart easyPart = CreateEasyDifficultyCachedPart(eStandard);
+        PsarcCachedArrangementPart fullPart = CreateFullDifficultyCachedPart(eStandard);
+        PsarcCachedArrangementPart easyPart = CreateEasyDifficultyCachedPart(eStandard);
 
         string fullPartPath = Path.Combine(arrangementsDirectory, "lead_full.rs2part.json");
         string easyPartPath = Path.Combine(arrangementsDirectory, "lead_easy.rs2part.json");
@@ -1973,9 +1973,9 @@ public sealed class ChartEditorRoundTripTests
         string audioPath = Path.Combine(sourceDirectory, "silence.ogg");
         File.WriteAllBytes(audioPath, Array.Empty<byte>());
 
-        RocksmithCachedSongManifest manifest = new RocksmithCachedSongManifest
+        PsarcCachedSongManifest manifest = new PsarcCachedSongManifest
         {
-            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            schemaVersion = PsarcCachedSongFormat.SchemaVersion,
             sourcePsarcPath = string.Empty,
             sourcePsarcLastWriteUtcTicks = 0,
             importedAtUtcTicks = 123456789,
@@ -1986,9 +1986,9 @@ public sealed class ChartEditorRoundTripTests
             previewAudioPath = audioPath,
             durationSeconds = 8f,
             difficultyRating = 4,
-            arrangements = new List<RocksmithCachedArrangementSummary>
+            arrangements = new List<PsarcCachedArrangementSummary>
             {
-                new RocksmithCachedArrangementSummary
+                new PsarcCachedArrangementSummary
                 {
                     partId = "lead_easy",
                     displayName = "Lead Guitar",
@@ -2006,7 +2006,7 @@ public sealed class ChartEditorRoundTripTests
                     tuningPitches = (int[])eStandard.Clone(),
                     tuningDisplayName = "E Standard"
                 },
-                new RocksmithCachedArrangementSummary
+                new PsarcCachedArrangementSummary
                 {
                     partId = "lead_full",
                     displayName = "Lead Guitar",
@@ -2027,7 +2027,7 @@ public sealed class ChartEditorRoundTripTests
             }
         };
 
-        string manifestPath = Path.Combine(sourceDirectory, RocksmithCachedSongFormat.ManifestFileName);
+        string manifestPath = Path.Combine(sourceDirectory, PsarcCachedSongFormat.ManifestFileName);
         File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true));
         return manifestPath;
     }
@@ -2038,16 +2038,16 @@ public sealed class ChartEditorRoundTripTests
         string arrangementsDirectory = Path.Combine(sourceDirectory, "arrangements");
         Directory.CreateDirectory(arrangementsDirectory);
 
-        RocksmithCachedArrangementPart drumPart = CreateCachedDrumArrangementPart();
+        PsarcCachedArrangementPart drumPart = CreateCachedDrumArrangementPart();
         string drumPartPath = Path.Combine(arrangementsDirectory, "drums_full.rs2part.json");
         File.WriteAllText(drumPartPath, JsonUtility.ToJson(drumPart, true));
 
         string audioPath = Path.Combine(sourceDirectory, "silence.ogg");
         File.WriteAllBytes(audioPath, Array.Empty<byte>());
 
-        RocksmithCachedSongManifest manifest = new RocksmithCachedSongManifest
+        PsarcCachedSongManifest manifest = new PsarcCachedSongManifest
         {
-            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            schemaVersion = PsarcCachedSongFormat.SchemaVersion,
             sourcePsarcPath = Path.Combine(sourceDirectory, "source.psarc"),
             sourcePsarcLastWriteUtcTicks = 123456789,
             importedAtUtcTicks = 123456790,
@@ -2058,9 +2058,9 @@ public sealed class ChartEditorRoundTripTests
             previewAudioPath = audioPath,
             durationSeconds = 8f,
             difficultyRating = 4,
-            arrangements = new List<RocksmithCachedArrangementSummary>
+            arrangements = new List<PsarcCachedArrangementSummary>
             {
-                new RocksmithCachedArrangementSummary
+                new PsarcCachedArrangementSummary
                 {
                     partId = "drums_full",
                     displayName = "Drums",
@@ -2079,16 +2079,16 @@ public sealed class ChartEditorRoundTripTests
             }
         };
 
-        string manifestPath = Path.Combine(sourceDirectory, RocksmithCachedSongFormat.ManifestFileName);
+        string manifestPath = Path.Combine(sourceDirectory, PsarcCachedSongFormat.ManifestFileName);
         File.WriteAllText(manifestPath, JsonUtility.ToJson(manifest, true));
         return manifestPath;
     }
 
-    private static RocksmithCachedArrangementPart CreateCachedDrumArrangementPart()
+    private static PsarcCachedArrangementPart CreateCachedDrumArrangementPart()
     {
-        return new RocksmithCachedArrangementPart
+        return new PsarcCachedArrangementPart
         {
-            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            schemaVersion = PsarcCachedSongFormat.SchemaVersion,
             partId = "drums_full",
             displayName = "Drums",
             route = "Drums",
@@ -2099,7 +2099,7 @@ public sealed class ChartEditorRoundTripTests
             hasDifficultyVariants = false,
             durationSeconds = 8f,
             difficultyRating = 4,
-            generatedPart = new RocksmithCachedGeneratedPartInfo
+            generatedPart = new PsarcCachedGeneratedPartInfo
             {
                 partId = "drums_full",
                 displayName = "Drums",
@@ -2110,30 +2110,30 @@ public sealed class ChartEditorRoundTripTests
                 isDrum = true,
                 isGuitarFamily = false
             },
-            timing = new RocksmithCachedArrangementTimingData
+            timing = new PsarcCachedArrangementTimingData
             {
                 averageTempoBpm = 120f,
-                sections = new List<RocksmithCachedSectionData>
+                sections = new List<PsarcCachedSectionData>
                 {
-                    new RocksmithCachedSectionData { name = "intro", number = 1, timeSeconds = 0f }
+                    new PsarcCachedSectionData { name = "intro", number = 1, timeSeconds = 0f }
                 },
                 ebeats = BuildFixtureEbeats()
             },
-            notes = new List<RocksmithCachedNoteData>
+            notes = new List<PsarcCachedNoteData>
             {
-                new RocksmithCachedNoteData { id = 601, time = 0.25f, duration = 0.10f, stringIdx = 0, fret = 42, note = "Hi-Hat", requiresPluck = true },
-                new RocksmithCachedNoteData { id = 602, time = 0.50f, duration = 0.10f, stringIdx = 1, fret = 49, note = "Crash Cymbal", requiresPluck = true },
-                new RocksmithCachedNoteData { id = 603, time = 0.75f, duration = 0.10f, stringIdx = 2, fret = 38, note = "Snare", requiresPluck = true },
-                new RocksmithCachedNoteData { id = 604, time = 1.00f, duration = 0.10f, stringIdx = 4, fret = 36, note = "Kick", requiresPluck = true }
+                new PsarcCachedNoteData { id = 601, time = 0.25f, duration = 0.10f, stringIdx = 0, fret = 42, note = "Hi-Hat", requiresPluck = true },
+                new PsarcCachedNoteData { id = 602, time = 0.50f, duration = 0.10f, stringIdx = 1, fret = 49, note = "Crash Cymbal", requiresPluck = true },
+                new PsarcCachedNoteData { id = 603, time = 0.75f, duration = 0.10f, stringIdx = 2, fret = 38, note = "Snare", requiresPluck = true },
+                new PsarcCachedNoteData { id = 604, time = 1.00f, duration = 0.10f, stringIdx = 4, fret = 36, note = "Kick", requiresPluck = true }
             }
         };
     }
 
-    private static RocksmithCachedArrangementPart CreateFullDifficultyCachedPart(int[] tuningPitches)
+    private static PsarcCachedArrangementPart CreateFullDifficultyCachedPart(int[] tuningPitches)
     {
-        return new RocksmithCachedArrangementPart
+        return new PsarcCachedArrangementPart
         {
-            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            schemaVersion = PsarcCachedSongFormat.SchemaVersion,
             partId = "lead_full",
             displayName = "Lead Guitar",
             route = "Lead",
@@ -2146,7 +2146,7 @@ public sealed class ChartEditorRoundTripTests
             difficultyRating = 4,
             tuningPitches = (int[])tuningPitches.Clone(),
             tuningDisplayName = "E Standard",
-            generatedPart = new RocksmithCachedGeneratedPartInfo
+            generatedPart = new PsarcCachedGeneratedPartInfo
             {
                 partId = "lead_full",
                 displayName = "Lead Guitar",
@@ -2156,19 +2156,19 @@ public sealed class ChartEditorRoundTripTests
                 preferredBank = -1,
                 isGuitarFamily = true
             },
-            timing = new RocksmithCachedArrangementTimingData
+            timing = new PsarcCachedArrangementTimingData
             {
                 averageTempoBpm = 120f,
-                sections = new List<RocksmithCachedSectionData>
+                sections = new List<PsarcCachedSectionData>
                 {
-                    new RocksmithCachedSectionData { name = "intro", number = 1, timeSeconds = 0f },
-                    new RocksmithCachedSectionData { name = "solo", number = 1, timeSeconds = 4f }
+                    new PsarcCachedSectionData { name = "intro", number = 1, timeSeconds = 0f },
+                    new PsarcCachedSectionData { name = "solo", number = 1, timeSeconds = 4f }
                 },
                 ebeats = BuildFixtureEbeats()
             },
-            notes = new List<RocksmithCachedNoteData>
+            notes = new List<PsarcCachedNoteData>
             {
-                new RocksmithCachedNoteData
+                new PsarcCachedNoteData
                 {
                     id = 501,
                     time = 1.2f,
@@ -2182,7 +2182,7 @@ public sealed class ChartEditorRoundTripTests
                     bendPreBend = true,
                     requiresPluck = true
                 },
-                new RocksmithCachedNoteData
+                new PsarcCachedNoteData
                 {
                     id = 502,
                     time = 2.5f,
@@ -2195,14 +2195,14 @@ public sealed class ChartEditorRoundTripTests
                     maxBend = 2f,
                     bendRelease = true,
                     requiresPluck = true,
-                    bendPoints = new List<RocksmithCachedBendPointData>
+                    bendPoints = new List<PsarcCachedBendPointData>
                     {
-                        new RocksmithCachedBendPointData { timeSeconds = 0f, step = 0f },
-                        new RocksmithCachedBendPointData { timeSeconds = 0.3f, step = 2f },
-                        new RocksmithCachedBendPointData { timeSeconds = 0.65f, step = 0f }
+                        new PsarcCachedBendPointData { timeSeconds = 0f, step = 0f },
+                        new PsarcCachedBendPointData { timeSeconds = 0.3f, step = 2f },
+                        new PsarcCachedBendPointData { timeSeconds = 0.65f, step = 0f }
                     }
                 },
-                new RocksmithCachedNoteData
+                new PsarcCachedNoteData
                 {
                     id = 503,
                     time = 4.0f,
@@ -2217,9 +2217,9 @@ public sealed class ChartEditorRoundTripTests
                     isTap = true,
                     isTremolo = true,
                     requiresPluck = true,
-                    techniqueSegments = new List<RocksmithCachedTechniqueSegmentData>
+                    techniqueSegments = new List<PsarcCachedTechniqueSegmentData>
                     {
-                        new RocksmithCachedTechniqueSegmentData
+                        new PsarcCachedTechniqueSegmentData
                         {
                             type = (int)NoteTechniqueSegmentType.Slide,
                             startOffset = 0f,
@@ -2229,7 +2229,7 @@ public sealed class ChartEditorRoundTripTests
                         }
                     }
                 },
-                new RocksmithCachedNoteData
+                new PsarcCachedNoteData
                 {
                     id = 504,
                     time = 5.0f,
@@ -2243,7 +2243,7 @@ public sealed class ChartEditorRoundTripTests
                     isLegato = true,
                     requiresPluck = false
                 },
-                new RocksmithCachedNoteData
+                new PsarcCachedNoteData
                 {
                     id = 505,
                     time = 5.5f,
@@ -2259,7 +2259,7 @@ public sealed class ChartEditorRoundTripTests
                     isMuted = true,
                     isFretHandMute = true
                 },
-                new RocksmithCachedNoteData
+                new PsarcCachedNoteData
                 {
                     id = 506,
                     time = 6.0f,
@@ -2273,7 +2273,7 @@ public sealed class ChartEditorRoundTripTests
                     isPinchHarmonic = true,
                     requiresPluck = true
                 },
-                new RocksmithCachedNoteData
+                new PsarcCachedNoteData
                 {
                     id = 507,
                     time = 6.8f,
@@ -2287,9 +2287,9 @@ public sealed class ChartEditorRoundTripTests
                     requiresPluck = true
                 }
             },
-            arpeggioGuides = new List<RocksmithCachedArpeggioGuideData>
+            arpeggioGuides = new List<PsarcCachedArpeggioGuideData>
             {
-                new RocksmithCachedArpeggioGuideData
+                new PsarcCachedArpeggioGuideData
                 {
                     id = 701,
                     startTime = 1.0f,
@@ -2301,16 +2301,16 @@ public sealed class ChartEditorRoundTripTests
         };
     }
 
-    private static RocksmithCachedArrangementPart CreateEasyDifficultyCachedPart(int[] tuningPitches)
+    private static PsarcCachedArrangementPart CreateEasyDifficultyCachedPart(int[] tuningPitches)
     {
-        RocksmithCachedArrangementPart part = CreateFullDifficultyCachedPart(tuningPitches);
+        PsarcCachedArrangementPart part = CreateFullDifficultyCachedPart(tuningPitches);
         part.partId = "lead_easy";
         part.difficultyLabel = "1";
         part.difficultyUiIndex = 1;
         part.difficultyRating = 1;
-        part.notes = new List<RocksmithCachedNoteData>
+        part.notes = new List<PsarcCachedNoteData>
         {
-            new RocksmithCachedNoteData
+            new PsarcCachedNoteData
             {
                 id = 401,
                 time = 1.2f,
@@ -2321,16 +2321,16 @@ public sealed class ChartEditorRoundTripTests
                 requiresPluck = true
             }
         };
-        part.arpeggioGuides = new List<RocksmithCachedArpeggioGuideData>();
+        part.arpeggioGuides = new List<PsarcCachedArpeggioGuideData>();
         return part;
     }
 
-    private static List<RocksmithCachedEbeatData> BuildFixtureEbeats()
+    private static List<PsarcCachedEbeatData> BuildFixtureEbeats()
     {
-        List<RocksmithCachedEbeatData> ebeats = new List<RocksmithCachedEbeatData>();
+        List<PsarcCachedEbeatData> ebeats = new List<PsarcCachedEbeatData>();
         for (int i = 0; i <= 16; i++)
         {
-            ebeats.Add(new RocksmithCachedEbeatData
+            ebeats.Add(new PsarcCachedEbeatData
             {
                 timeSeconds = i * 0.5f,
                 measure = (short)(i % 4 == 0 ? i / 4 : -1)
@@ -2788,3 +2788,4 @@ public sealed class ChartEditorRoundTripTests
         field.SetValue(null, value);
     }
 }
+                                                                                                                                                                                                                                                                        

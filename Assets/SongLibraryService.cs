@@ -57,7 +57,9 @@ public sealed class SongLibraryImportCandidate
 public static class SongLibraryService
 {
     private const string SongDefinitionFileName = "song.json";
-    private const int SongLibraryCacheVersion = 11;
+    // v12: raw GP/MusicXML entries covered by a .theory conversion are filtered from
+    // the listing at scan time, so caches written by older versions must be rebuilt.
+    private const int SongLibraryCacheVersion = 12;
     private const int MaxSongDirectoryDiscoveryDepth = 12;
     private const string LegacyTheoryPackageFolderName = "theory";
     private static readonly string[] SupportedAudioExtensions = { ".ogg", ".mp3", ".wav", ".flac", ".m4a", ".aiff", ".aif" };
@@ -407,7 +409,7 @@ public static class SongLibraryService
         {
             string sourceKey = NormalizeFullPathKey(folderPath);
             if (string.IsNullOrWhiteSpace(sourceKey) ||
-                IsPathInsideImportedCacheDirectory(songsDirectory, folderPath, importerCacheFolderNames))
+                IsPathInsideImportedCacheDirectory(songsDirectory, folderPath, importerCacheFolderNames, allowLegacyUnpackedCacheRoot: true))
             {
                 continue;
             }
@@ -416,7 +418,8 @@ public static class SongLibraryService
             if (folderMatches.Count == 0)
                 continue;
 
-            if (DirectoryDirectlyContainsLoadableTheoryPackage(folderPath) ||
+            if (LegacyUnpackedCacheIsCoveredByPackedSource(songsDirectory, folderPath, convertedTheorySources) ||
+                DirectoryDirectlyContainsLoadableTheoryPackage(folderPath) ||
                 SourceHasCurrentTheoryConversion(folderPath, convertedTheorySources) ||
                 !seenSources.Add(sourceKey))
             {
@@ -436,7 +439,8 @@ public static class SongLibraryService
                 ImporterId = importer.Id,
                 SourcePath = Path.GetFullPath(folderPath),
                 SourceDirectory = folderPath,
-                DisplayName = Path.GetFileName(folderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)),
+                DisplayName = PsarcCachedSongFormat.StripImportedFolderDecorations(
+                    Path.GetFileName(folderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))),
                 Subtitle = BuildImportCandidateSubtitle(sourceLabel, folderPath, songsDirectory),
                 SourceKindLabel = sourceLabel,
                 AudioPath = string.Empty,
@@ -727,6 +731,56 @@ public static class SongLibraryService
         }
     }
 
+    // Legacy unpacked psarc caches ("__psarc_*" folders created by the pre-.theory
+    // pipeline) are importable folder sources, but they are skipped when their packed
+    // .psarc is still in the library folder (it gets offered itself) or was already
+    // converted — otherwise the popup would propose the same song twice.
+    private static bool LegacyUnpackedCacheIsCoveredByPackedSource(
+        string songsDirectory,
+        string folderPath,
+        ConvertedTheorySourceIndex convertedTheorySources)
+    {
+        string folderName = Path.GetFileName(folderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (!PsarcCachedSongFormat.IsImportedFolderName(folderName))
+            return false;
+
+        try
+        {
+            string manifestPath = Path.Combine(folderPath, PsarcCachedSongFormat.ManifestFileName);
+            if (!File.Exists(manifestPath))
+                return false;
+
+            PsarcCachedSongManifest cacheManifest = JsonUtility.FromJson<PsarcCachedSongManifest>(File.ReadAllText(manifestPath));
+            string packedSourcePath = cacheManifest?.sourcePsarcPath?.Trim();
+            if (string.IsNullOrWhiteSpace(packedSourcePath))
+                return false;
+
+            if (File.Exists(packedSourcePath) && PathIsUnderDirectory(songsDirectory, packedSourcePath))
+                return true;
+
+            return SourceHasCurrentTheoryConversion(packedSourcePath, convertedTheorySources);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool PathIsUnderDirectory(string directory, string path)
+    {
+        try
+        {
+            string parent = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            string child = Path.GetFullPath(path);
+            return child.StartsWith(parent + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) ||
+                   child.StartsWith(parent + Path.AltDirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool DirectoryDirectlyContainsLoadableTheoryPackage(string directory)
     {
         try
@@ -741,7 +795,7 @@ public static class SongLibraryService
         }
     }
 
-    private static bool IsPathInsideImportedCacheDirectory(string songsDirectory, string path, HashSet<string> importerCacheFolderNames)
+    private static bool IsPathInsideImportedCacheDirectory(string songsDirectory, string path, HashSet<string> importerCacheFolderNames, bool allowLegacyUnpackedCacheRoot = false)
     {
         if (string.IsNullOrWhiteSpace(songsDirectory) || string.IsNullOrWhiteSpace(path))
             return false;
@@ -755,9 +809,15 @@ public static class SongLibraryService
         for (int i = 0; i < segments.Length; i++)
         {
             string segment = segments[i];
-            if (segment.StartsWith(RocksmithCachedSongFormat.ImportedFolderPrefix, StringComparison.OrdinalIgnoreCase) ||
-                segment.StartsWith(RocksmithCachedSongFormat.LegacyImportedFolderPrefix, StringComparison.OrdinalIgnoreCase) ||
-                (importerCacheFolderNames != null && importerCacheFolderNames.Contains(segment)))
+            if (PsarcCachedSongFormat.IsImportedFolderName(segment))
+            {
+                // Legacy unpacked psarc caches are themselves importable folder sources,
+                // so the candidate folder itself may be allowed through; anything nested
+                // inside one is still internal content.
+                if (!allowLegacyUnpackedCacheRoot || i < segments.Length - 1)
+                    return true;
+            }
+            else if (importerCacheFolderNames != null && importerCacheFolderNames.Contains(segment))
             {
                 return true;
             }
@@ -956,8 +1016,47 @@ public static class SongLibraryService
                 $"Scanning songs... {i + 1}/{songDirectories.Count}");
         }
 
+        RemoveRawNotationEntriesCoveredByConversions(entries);
+
         progress?.Invoke(100f, "Library refresh complete.");
         return entries;
+    }
+
+    // A raw GP/MusicXML song whose notation was already converted to a .theory package
+    // (anywhere in the library) is represented by that package, so the raw entry is
+    // hidden from the library list. This uses the same identity checks as import
+    // candidate suppression (source path + stamps, then content fingerprint), so
+    // deleting the converted package or editing the raw source makes the raw entry
+    // reappear on the next rescan — the library cache signature covers both events.
+    private static void RemoveRawNotationEntriesCoveredByConversions(List<SongLibraryEntry> entries)
+    {
+        if (entries == null || entries.Count == 0)
+            return;
+
+        bool hasRawNotationEntries = entries.Any(IsRawNotationLibraryEntry);
+        if (!hasRawNotationEntries)
+            return;
+
+        ConvertedTheorySourceIndex convertedTheorySources = DiscoverConvertedTheorySourceStamps(ExternalContentPaths.PersistentSongsDirectory);
+        if (convertedTheorySources.StampsBySourcePath.Count == 0 &&
+            convertedTheorySources.StampFingerprints.Count == 0 &&
+            convertedTheorySources.ContentFingerprints.Count == 0)
+        {
+            return;
+        }
+
+        entries.RemoveAll(entry =>
+            IsRawNotationLibraryEntry(entry) &&
+            SourceHasCurrentTheoryConversion(entry.PrimaryNotationPath, convertedTheorySources));
+    }
+
+    private static bool IsRawNotationLibraryEntry(SongLibraryEntry entry)
+    {
+        return entry != null &&
+               entry.LibraryType == SongLibraryType.Guitar &&
+               (entry.PrimaryNotationKind == SongNotationSourceKind.Gp5 ||
+                entry.PrimaryNotationKind == SongNotationSourceKind.MusicXml) &&
+               !string.IsNullOrWhiteSpace(entry.PrimaryNotationPath);
     }
 
     private static bool TryLoadCacheManifest(out List<SongLibraryEntry> entries)
@@ -1068,6 +1167,18 @@ public static class SongLibraryService
     {
         if (string.IsNullOrWhiteSpace(directory))
             return true;
+
+        // Legacy unpacked psarc caches and their content folders are conversion
+        // sources, never playable song folders; stray notation files inside them
+        // must not surface as bogus library entries. (Conversion candidate scanning
+        // is unaffected — it enumerates directories independently.)
+        string folderName = Path.GetFileName(directory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (PsarcCachedSongFormat.IsImportedFolderName(folderName) ||
+            string.Equals(folderName, PsarcCachedSongFormat.ContentDirectoryName, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(folderName, PsarcCachedSongFormat.LegacyContentDirectoryName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
 
         try
         {
@@ -2286,74 +2397,4 @@ public static class SongLibraryService
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[SongLibraryService] Failed to read display name from XML '{xmlPath}': {ex.Message}");
-        }
-
-        return null;
-    }
-
-    internal static string TryReadCreatorFromXml(string xmlPath)
-    {
-        if (string.IsNullOrEmpty(xmlPath) || !File.Exists(xmlPath))
-            return null;
-
-        try
-        {
-            XmlDocument xml = new XmlDocument();
-            xml.Load(xmlPath);
-
-            XmlNode creatorNode = xml.SelectSingleNode("//identification/creator[@type='composer']")
-                ?? xml.SelectSingleNode("//identification/creator")
-                ?? xml.SelectSingleNode("//creator");
-
-            if (creatorNode != null && !string.IsNullOrWhiteSpace(creatorNode.InnerText))
-                return creatorNode.InnerText.Trim();
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[SongLibraryService] Failed to read creator from XML '{xmlPath}': {ex.Message}");
-        }
-
-        return null;
-    }
-
-    private static SongLibraryEntry CloneEntry(SongLibraryEntry entry)
-    {
-        if (entry == null)
-            return null;
-
-        return new SongLibraryEntry
-        {
-            SongId = entry.SongId,
-            LibraryType = entry.LibraryType,
-            DisplayName = entry.DisplayName,
-            Artist = entry.Artist,
-            Album = entry.Album,
-            Subtitle = entry.Subtitle,
-            ArtworkPath = entry.ArtworkPath,
-            DifficultyRating = entry.DifficultyRating,
-            DifficultyDisplayLabel = entry.DifficultyDisplayLabel,
-            SongDirectory = entry.SongDirectory,
-            Mp3Path = entry.Mp3Path,
-            PrimaryNotationPath = entry.PrimaryNotationPath,
-            PrimaryNotationKind = entry.PrimaryNotationKind,
-            GpPath = entry.GpPath,
-            XmlPath = entry.XmlPath,
-            MetadataPath = entry.MetadataPath,
-            DurationSeconds = entry.DurationSeconds,
-            MidiPath = entry.MidiPath,
-            ArcadeChartPath = entry.ArcadeChartPath,
-            ArcadeSongIniPath = entry.ArcadeSongIniPath,
-            ArcadeDifficultySummary = entry.ArcadeDifficultySummary,
-            ArcadeAudioPaths = entry.ArcadeAudioPaths != null ? new List<string>(entry.ArcadeAudioPaths) : new List<string>(),
-            CachedFavoriteInLibrary = entry.CachedFavoriteInLibrary,
-            CachedBestScoreValue = entry.CachedBestScoreValue,
-            CachedBestScorePercent = entry.CachedBestScorePercent,
-            CachedHeroBestScoreValue = entry.CachedHeroBestScoreValue,
-            CachedHeroBestScorePercent = entry.CachedHeroBestScorePercent,
-            CachedHeroBestHeartsRemaining = entry.CachedHeroBestHeartsRemaining,
-            CachedHeroBestHeartsTotal = entry.CachedHeroBestHeartsTotal,
-            CachedBestArcadeScoreValue = entry.CachedBestArcadeScoreValue
-        };
-    }
-}
+            Debug.LogWarning($"[SongLibraryService] Failed to read display name f

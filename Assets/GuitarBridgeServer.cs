@@ -1197,9 +1197,11 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool libraryRefreshShowsProgress;
     private bool showLibraryImportPopup;
     private string libraryImportPopupStatusText = string.Empty;
-    private bool pendingLibraryImportIncludesCachedLegacySources;
+    private bool libraryImportIncludeSkippedRaw;
     private readonly List<SongLibraryImportCandidate> pendingLibraryImportCandidates = new List<SongLibraryImportCandidate>();
     private readonly List<bool> pendingLibraryImportCandidateSelected = new List<bool>();
+    private readonly List<SongLibraryImportCandidate> pendingLibrarySkippedRawCandidates = new List<SongLibraryImportCandidate>();
+    private readonly List<bool> pendingLibrarySkippedRawSelected = new List<bool>();
     private bool firstStartCompleted;
     private StartMenuStep startMenuStep = StartMenuStep.SelectMode;
     private int selectedStartMenuModeIndex;
@@ -1321,15 +1323,15 @@ public class GuitarBridgeServer : MonoBehaviour
     private string activeSongToneMappingArrangementKey = string.Empty;
     private string activeSongToneMappingToneName = string.Empty;
     private string activeSongToneMappingPresetId = string.Empty;
-    private readonly Dictionary<string, UnityToneLabRuntime.ToneLabPreset> generatedRocksmithTonePresetCache = new Dictionary<string, UnityToneLabRuntime.ToneLabPreset>(StringComparer.Ordinal);
+    private readonly Dictionary<string, UnityToneLabRuntime.ToneLabPreset> generatedPsarcTonePresetCache = new Dictionary<string, UnityToneLabRuntime.ToneLabPreset>(StringComparer.Ordinal);
     private bool generatedToneExternalPedalLibraryReady;
     private string cachedSongToneMappingSongKey = string.Empty;
     private string cachedSongToneMappingArrangementKey = string.Empty;
     private string cachedSongToneMappingPartId = string.Empty;
     private string cachedSongToneMappingNotationPath = string.Empty;
     private string cachedSongToneMappingArrangementRoute = string.Empty;
-    private RocksmithCachedArrangementToneData cachedSongToneMappingToneData;
-    private List<RocksmithCachedToneChangeData> cachedSongToneMappingChanges = new List<RocksmithCachedToneChangeData>();
+    private PsarcCachedArrangementToneData cachedSongToneMappingToneData;
+    private List<PsarcCachedToneChangeData> cachedSongToneMappingChanges = new List<PsarcCachedToneChangeData>();
     private bool cachedSongToneMappingLoaded;
     private string cachedSongToneMappingToneName = string.Empty;
     private string cachedSongToneMappingPresetId = string.Empty;
@@ -3057,7 +3059,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
         if (!string.IsNullOrWhiteSpace(presetId))
         {
-            if (generatedRocksmithTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset) &&
+            if (generatedPsarcTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset) &&
                 unityToneLabRuntime.SetPlaybackPresetOverride(generatedPreset))
             {
                 return true;
@@ -3101,7 +3103,7 @@ public class GuitarBridgeServer : MonoBehaviour
                 arrangementKey,
                 partId,
                 activeSummary,
-                out RocksmithCachedArrangementToneData toneData,
+                out PsarcCachedArrangementToneData toneData,
                 out string arrangementRoute) ||
             toneData == null)
         {
@@ -6603,11 +6605,122 @@ public class GuitarBridgeServer : MonoBehaviour
             : StartCoroutine(RefreshSongsDeferred(songLibraryRefreshRequestId, refreshImports: false));
     }
 
+    private sealed class LibraryImportCandidateSets
+    {
+        public List<SongLibraryImportCandidate> NewCandidates = new List<SongLibraryImportCandidate>();
+        public List<SongLibraryImportCandidate> SkippedRawCandidates = new List<SongLibraryImportCandidate>();
+    }
+
+    // One discovery pass feeds the whole popup: new sources (pre-checked) plus raw
+    // GP/MusicXML songs already in the library (revealed by the popup toggle,
+    // unchecked by default). The second list is the raw discovery minus anything the
+    // pending discovery already reported.
+    private static LibraryImportCandidateSets DiscoverLibraryImportCandidateSets()
+    {
+        LibraryImportCandidateSets sets = new LibraryImportCandidateSets();
+        sets.NewCandidates = SongLibraryService.DiscoverPendingTheoryConversionCandidates() ?? new List<SongLibraryImportCandidate>();
+
+        HashSet<string> newSourceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < sets.NewCandidates.Count; i++)
+        {
+            string sourcePath = sets.NewCandidates[i]?.SourcePath;
+            if (!string.IsNullOrWhiteSpace(sourcePath))
+                newSourceKeys.Add(sourcePath);
+        }
+
+        List<SongLibraryImportCandidate> allRawCandidates =
+            SongLibraryService.DiscoverExistingRawNotationTheoryConversionCandidates() ?? new List<SongLibraryImportCandidate>();
+        for (int i = 0; i < allRawCandidates.Count; i++)
+        {
+            SongLibraryImportCandidate candidate = allRawCandidates[i];
+            if (candidate == null || string.IsNullOrWhiteSpace(candidate.SourcePath))
+                continue;
+            if (!newSourceKeys.Contains(candidate.SourcePath))
+                sets.SkippedRawCandidates.Add(candidate);
+        }
+
+        return sets;
+    }
+
+    private void PopulateLibraryImportPopupCandidates(LibraryImportCandidateSets candidateSets, bool resetIncludeSkippedRaw = true)
+    {
+        pendingLibraryImportCandidates.Clear();
+        pendingLibraryImportCandidateSelected.Clear();
+        if (candidateSets?.NewCandidates != null)
+        {
+            pendingLibraryImportCandidates.AddRange(candidateSets.NewCandidates);
+            for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
+                pendingLibraryImportCandidateSelected.Add(true);
+        }
+
+        pendingLibrarySkippedRawCandidates.Clear();
+        pendingLibrarySkippedRawSelected.Clear();
+        if (candidateSets?.SkippedRawCandidates != null)
+        {
+            pendingLibrarySkippedRawCandidates.AddRange(candidateSets.SkippedRawCandidates);
+            for (int i = 0; i < pendingLibrarySkippedRawCandidates.Count; i++)
+                pendingLibrarySkippedRawSelected.Add(false);
+        }
+
+        if (resetIncludeSkippedRaw || pendingLibrarySkippedRawCandidates.Count == 0)
+            libraryImportIncludeSkippedRaw = false;
+
+        libraryImportPopupStatusText = BuildLibraryImportDiscoveryStatusText();
+    }
+
+    private void BuildVisibleLibraryImportSnapshotLists(
+        out List<string> names,
+        out List<string> subtitles,
+        out List<string> kindLabels,
+        out List<bool> selected)
+    {
+        int newCount = pendingLibraryImportCandidates.Count;
+        int skippedCount = libraryImportIncludeSkippedRaw ? pendingLibrarySkippedRawCandidates.Count : 0;
+        int total = newCount + skippedCount;
+        names = new List<string>(total);
+        subtitles = new List<string>(total);
+        kindLabels = new List<string>(total);
+        selected = new List<bool>(total);
+
+        for (int i = 0; i < newCount; i++)
+        {
+            SongLibraryImportCandidate candidate = pendingLibraryImportCandidates[i];
+            names.Add(candidate?.DisplayName ?? string.Empty);
+            subtitles.Add(candidate?.Subtitle ?? string.Empty);
+            kindLabels.Add(candidate?.SourceKindLabel ?? string.Empty);
+            selected.Add(i < pendingLibraryImportCandidateSelected.Count && pendingLibraryImportCandidateSelected[i]);
+        }
+
+        for (int i = 0; i < skippedCount; i++)
+        {
+            SongLibraryImportCandidate candidate = pendingLibrarySkippedRawCandidates[i];
+            names.Add(candidate?.DisplayName ?? string.Empty);
+            subtitles.Add(candidate?.Subtitle ?? string.Empty);
+            kindLabels.Add(string.IsNullOrWhiteSpace(candidate?.SourceKindLabel)
+                ? "Skipped"
+                : candidate.SourceKindLabel);
+            selected.Add(i < pendingLibrarySkippedRawSelected.Count && pendingLibrarySkippedRawSelected[i]);
+        }
+    }
+
+    private string BuildLibraryImportDiscoveryStatusText()
+    {
+        int newCount = pendingLibraryImportCandidates.Count;
+        int skippedCount = pendingLibrarySkippedRawCandidates.Count;
+        string newText = newCount > 0
+            ? $"{newCount} new song{(newCount == 1 ? string.Empty : "s")} found."
+            : "No new songs found.";
+        if (skippedCount > 0)
+            return $"{newText} {skippedCount} previously skipped song{(skippedCount == 1 ? string.Empty : "s")} available.";
+
+        return newText;
+    }
+
     private System.Collections.IEnumerator DiscoverLibraryImportsDeferred(int requestId)
     {
         yield return null;
 
-        Task<List<SongLibraryImportCandidate>> discoverTask = Task.Run(SongLibraryService.DiscoverPendingTheoryConversionCandidates);
+        Task<LibraryImportCandidateSets> discoverTask = Task.Run(DiscoverLibraryImportCandidateSets);
         while (!discoverTask.IsCompleted)
             yield return null;
 
@@ -6624,62 +6737,10 @@ public class GuitarBridgeServer : MonoBehaviour
             yield break;
         }
 
-        List<SongLibraryImportCandidate> candidates = discoverTask.Result ?? new List<SongLibraryImportCandidate>();
-        if (candidates.Count > 0)
+        LibraryImportCandidateSets candidateSets = discoverTask.Result ?? new LibraryImportCandidateSets();
+        if (candidateSets.NewCandidates.Count > 0 || candidateSets.SkippedRawCandidates.Count > 0)
         {
-            pendingLibraryImportCandidates.Clear();
-            pendingLibraryImportCandidates.AddRange(candidates);
-            pendingLibraryImportIncludesCachedLegacySources = false;
-            pendingLibraryImportCandidateSelected.Clear();
-            for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
-                pendingLibraryImportCandidateSelected.Add(true);
-
-            libraryImportPopupStatusText = $"{candidates.Count} new song{(candidates.Count == 1 ? string.Empty : "s")} found.";
-            showSongSelection = true;
-            showLibraryImportPopup = true;
-            showLibraryLoadingOverlay = false;
-            SetSongLibraryRefreshOverlayState(false, 0f, string.Empty, false);
-            songLibraryRefreshRoutine = null;
-            runtimeSettingsSnapshotDirty = true;
-            yield break;
-        }
-
-        songLibraryRefreshRoutine = null;
-        BeginSongLibraryRefresh(refreshImports: false);
-    }
-
-    private System.Collections.IEnumerator DiscoverExistingRawNotationImportsDeferred(int requestId)
-    {
-        yield return null;
-
-        Task<List<SongLibraryImportCandidate>> discoverTask = Task.Run(SongLibraryService.DiscoverExistingRawNotationTheoryConversionCandidates);
-        while (!discoverTask.IsCompleted)
-            yield return null;
-
-        if (requestId != songLibraryRefreshRequestId)
-            yield break;
-
-        if (discoverTask.IsFaulted || discoverTask.IsCanceled)
-        {
-            Exception exception = discoverTask.Exception?.GetBaseException();
-            if (exception != null)
-                Debug.LogWarning($"[SongLibrary] Existing raw notation discovery failed: {exception.Message}");
-            songLibraryRefreshRoutine = null;
-            BeginSongLibraryRefresh(refreshImports: false);
-            yield break;
-        }
-
-        List<SongLibraryImportCandidate> candidates = discoverTask.Result ?? new List<SongLibraryImportCandidate>();
-        if (candidates.Count > 0)
-        {
-            pendingLibraryImportCandidates.Clear();
-            pendingLibraryImportCandidates.AddRange(candidates);
-            pendingLibraryImportIncludesCachedLegacySources = true;
-            pendingLibraryImportCandidateSelected.Clear();
-            for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
-                pendingLibraryImportCandidateSelected.Add(true);
-
-            libraryImportPopupStatusText = $"{candidates.Count} raw song{(candidates.Count == 1 ? string.Empty : "s")} ready to convert.";
+            PopulateLibraryImportPopupCandidates(candidateSets);
             showSongSelection = true;
             showLibraryImportPopup = true;
             showLibraryLoadingOverlay = false;
@@ -6740,13 +6801,12 @@ public class GuitarBridgeServer : MonoBehaviour
         public int ConvertedCount;
         public List<string> Errors = new List<string>();
         public List<SongLibraryEntry> Songs = new List<SongLibraryEntry>();
-        public List<SongLibraryImportCandidate> RemainingCandidates = new List<SongLibraryImportCandidate>();
+        public LibraryImportCandidateSets RemainingCandidateSets = new LibraryImportCandidateSets();
     }
 
     private System.Collections.IEnumerator ConvertSelectedLibraryImportsDeferred(
         int requestId,
-        List<SongLibraryImportCandidate> selectedCandidates,
-        bool includeCachedLegacySourcesForRemaining)
+        List<SongLibraryImportCandidate> selectedCandidates)
     {
         yield return null;
 
@@ -6804,18 +6864,16 @@ public class GuitarBridgeServer : MonoBehaviour
             UpdateSongLibraryRefreshProgress(90f, convertedCount > 0 ? "Refreshing converted songs..." : "Refreshing library...");
             SongLibraryService.ClearCache();
             List<SongLibraryEntry> songs = SongLibraryService.GetAvailableSongs(forceRefresh: true, refreshImports: false);
-            List<SongLibraryImportCandidate> remainingCandidates = conversionErrors.Count > 0
-                ? includeCachedLegacySourcesForRemaining
-                    ? SongLibraryService.DiscoverExistingRawNotationTheoryConversionCandidates()
-                    : SongLibraryService.DiscoverPendingTheoryConversionCandidates()
-                : new List<SongLibraryImportCandidate>();
+            LibraryImportCandidateSets remainingCandidateSets = conversionErrors.Count > 0
+                ? DiscoverLibraryImportCandidateSets()
+                : new LibraryImportCandidateSets();
 
             return new LibraryImportConversionTaskResult
             {
                 ConvertedCount = convertedCount,
                 Errors = conversionErrors,
                 Songs = songs,
-                RemainingCandidates = remainingCandidates
+                RemainingCandidateSets = remainingCandidateSets
             };
         });
 
@@ -6867,31 +6925,24 @@ public class GuitarBridgeServer : MonoBehaviour
 
                 if (conversionResult.Errors != null && conversionResult.Errors.Count > 0)
                 {
-                    pendingLibraryImportCandidates.Clear();
-                    if (conversionResult.RemainingCandidates != null)
-                        pendingLibraryImportCandidates.AddRange(conversionResult.RemainingCandidates);
-                    pendingLibraryImportIncludesCachedLegacySources = includeCachedLegacySourcesForRemaining;
-
-                    pendingLibraryImportCandidateSelected.Clear();
-                    for (int i = 0; i < pendingLibraryImportCandidates.Count; i++)
-                        pendingLibraryImportCandidateSelected.Add(true);
+                    // Keep the skipped-raw toggle state so failed raw conversions stay
+                    // visible for retry when the user had revealed that section.
+                    PopulateLibraryImportPopupCandidates(conversionResult.RemainingCandidateSets, resetIncludeSkippedRaw: false);
 
                     int attemptedCount = selectedCandidates?.Count ?? 0;
+                    int remainingVisibleCount = pendingLibraryImportCandidates.Count +
+                        (libraryImportIncludeSkippedRaw ? pendingLibrarySkippedRawCandidates.Count : 0);
                     libraryImportPopupStatusText = BuildLibraryImportConversionErrorStatusText(
                         conversionResult.ConvertedCount,
                         attemptedCount,
                         conversionResult.Errors.Count,
-                        pendingLibraryImportCandidates.Count);
+                        remainingVisibleCount);
                     showSongSelection = true;
                     showLibraryImportPopup = true;
                 }
                 else
                 {
-                    pendingLibraryImportCandidates.Clear();
-                    pendingLibraryImportIncludesCachedLegacySources = false;
-                    pendingLibraryImportCandidateSelected.Clear();
-                    showLibraryImportPopup = false;
-                    libraryImportPopupStatusText = string.Empty;
+                    ClearLibraryImportPopupState();
                 }
             }
 
@@ -6930,15 +6981,28 @@ public class GuitarBridgeServer : MonoBehaviour
                 selected.Add(pendingLibraryImportCandidates[i]);
         }
 
+        // Hidden skipped-raw candidates can never be converted: they only
+        // participate while the toggle keeps them visible in the popup.
+        if (libraryImportIncludeSkippedRaw)
+        {
+            for (int i = 0; i < pendingLibrarySkippedRawCandidates.Count; i++)
+            {
+                if (i < pendingLibrarySkippedRawSelected.Count && pendingLibrarySkippedRawSelected[i])
+                    selected.Add(pendingLibrarySkippedRawCandidates[i]);
+            }
+        }
+
         return selected;
     }
 
     private string BuildLibraryImportPopupStatusText()
     {
-        int total = pendingLibraryImportCandidates.Count;
-        int selected = pendingLibraryImportCandidateSelected.Count(value => value);
+        int total = pendingLibraryImportCandidates.Count +
+                    (libraryImportIncludeSkippedRaw ? pendingLibrarySkippedRawCandidates.Count : 0);
+        int selected = pendingLibraryImportCandidateSelected.Count(value => value) +
+                       (libraryImportIncludeSkippedRaw ? pendingLibrarySkippedRawSelected.Count(value => value) : 0);
         if (total == 0)
-            return "No new songs found.";
+            return BuildLibraryImportDiscoveryStatusText();
 
         return $"{selected}/{total} selected.";
     }
@@ -6947,9 +7011,11 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         showLibraryImportPopup = false;
         libraryImportPopupStatusText = string.Empty;
-        pendingLibraryImportIncludesCachedLegacySources = false;
+        libraryImportIncludeSkippedRaw = false;
         pendingLibraryImportCandidates.Clear();
         pendingLibraryImportCandidateSelected.Clear();
+        pendingLibrarySkippedRawCandidates.Clear();
+        pendingLibrarySkippedRawSelected.Clear();
     }
 
     private void UpdateSongLibraryRefreshProgress(float progressPercent, string statusText)
@@ -12464,35 +12530,47 @@ public class GuitarBridgeServer : MonoBehaviour
         songSelectionSongConfirmed = false;
     }
 
-    public void ConvertExistingRawNotationSongsFromUi()
-    {
-        if (songLibraryRefreshRoutine != null)
-            return;
-
-        ClearSongSelectionCaches();
-        SongLibraryService.ClearCache();
-        songLibraryRefreshRequestId++;
-        showLibraryLoadingOverlay = true;
-        ClearLibraryImportPopupState();
-        SetSongLibraryRefreshOverlayState(
-            inProgress: true,
-            progressPercent: 0f,
-            statusText: "Searching for raw GP and MusicXML songs...",
-            showProgress: false);
-        songLibraryRefreshRoutine = StartCoroutine(DiscoverExistingRawNotationImportsDeferred(songLibraryRefreshRequestId));
-        songSelectionSongConfirmed = false;
-    }
-
     public void ToggleLibraryImportCandidateFromUi(int candidateIndex)
     {
-        if (!showLibraryImportPopup ||
-            candidateIndex < 0 ||
-            candidateIndex >= pendingLibraryImportCandidateSelected.Count)
+        if (!showLibraryImportPopup || candidateIndex < 0)
+            return;
+
+        // The popup renders one flattened row list: new candidates first, then the
+        // skipped-raw section while its toggle keeps it visible.
+        if (candidateIndex < pendingLibraryImportCandidateSelected.Count)
+        {
+            pendingLibraryImportCandidateSelected[candidateIndex] = !pendingLibraryImportCandidateSelected[candidateIndex];
+        }
+        else if (libraryImportIncludeSkippedRaw)
+        {
+            int skippedIndex = candidateIndex - pendingLibraryImportCandidateSelected.Count;
+            if (skippedIndex < 0 || skippedIndex >= pendingLibrarySkippedRawSelected.Count)
+                return;
+
+            pendingLibrarySkippedRawSelected[skippedIndex] = !pendingLibrarySkippedRawSelected[skippedIndex];
+        }
+        else
         {
             return;
         }
 
-        pendingLibraryImportCandidateSelected[candidateIndex] = !pendingLibraryImportCandidateSelected[candidateIndex];
+        libraryImportPopupStatusText = BuildLibraryImportPopupStatusText();
+    }
+
+    public void ToggleLibraryImportIncludeSkippedFromUi()
+    {
+        if (!showLibraryImportPopup || pendingLibrarySkippedRawCandidates.Count == 0)
+            return;
+
+        libraryImportIncludeSkippedRaw = !libraryImportIncludeSkippedRaw;
+        if (!libraryImportIncludeSkippedRaw)
+        {
+            // Hiding the section always deselects it: conversion can only ever act on
+            // candidates that are visible in the popup.
+            for (int i = 0; i < pendingLibrarySkippedRawSelected.Count; i++)
+                pendingLibrarySkippedRawSelected[i] = false;
+        }
+
         libraryImportPopupStatusText = BuildLibraryImportPopupStatusText();
     }
 
@@ -12503,6 +12581,12 @@ public class GuitarBridgeServer : MonoBehaviour
 
         for (int i = 0; i < pendingLibraryImportCandidateSelected.Count; i++)
             pendingLibraryImportCandidateSelected[i] = selected;
+
+        if (libraryImportIncludeSkippedRaw)
+        {
+            for (int i = 0; i < pendingLibrarySkippedRawSelected.Count; i++)
+                pendingLibrarySkippedRawSelected[i] = selected;
+        }
 
         libraryImportPopupStatusText = BuildLibraryImportPopupStatusText();
     }
@@ -12522,13 +12606,12 @@ public class GuitarBridgeServer : MonoBehaviour
         songLibraryRefreshRequestId++;
         showLibraryImportPopup = false;
         showLibraryLoadingOverlay = true;
-        bool includeCachedLegacySources = pendingLibraryImportIncludesCachedLegacySources;
         SetSongLibraryRefreshOverlayState(
             inProgress: true,
             progressPercent: 0f,
             statusText: "Converting selected songs to .theory...",
             showProgress: true);
-        songLibraryRefreshRoutine = StartCoroutine(ConvertSelectedLibraryImportsDeferred(songLibraryRefreshRequestId, selectedCandidates, includeCachedLegacySources));
+        songLibraryRefreshRoutine = StartCoroutine(ConvertSelectedLibraryImportsDeferred(songLibraryRefreshRequestId, selectedCandidates));
     }
 
     public void CloseLibraryImportPopupFromUi()
@@ -21943,18 +22026,18 @@ private void OpenOrFocusToneLab()
         string notesDetectorBackendLabelSnapshot = buildNotesDetectorStatusSnapshot ? GetNotesDetectorBackendLabel() : string.Empty;
         string notesDetectorStatusTextSnapshot = buildNotesDetectorStatusSnapshot ? GetNotesDetectorStatusText() : string.Empty;
         string notesDetectorDetailTextSnapshot = buildNotesDetectorStatusSnapshot ? GetNotesDetectorDetailText() : string.Empty;
-        List<string> libraryImportCandidateNames = buildLibraryImportSnapshot
-            ? pendingLibraryImportCandidates.Select(candidate => candidate?.DisplayName ?? string.Empty).ToList()
-            : EmptyStringSnapshotList;
-        List<string> libraryImportCandidateSubtitles = buildLibraryImportSnapshot
-            ? pendingLibraryImportCandidates.Select(candidate => candidate?.Subtitle ?? string.Empty).ToList()
-            : EmptyStringSnapshotList;
-        List<string> libraryImportCandidateKindLabels = buildLibraryImportSnapshot
-            ? pendingLibraryImportCandidates.Select(candidate => candidate?.SourceKindLabel ?? string.Empty).ToList()
-            : EmptyStringSnapshotList;
-        List<bool> libraryImportCandidateSelected = buildLibraryImportSnapshot
-            ? new List<bool>(pendingLibraryImportCandidateSelected)
-            : EmptyBoolSnapshotList;
+        List<string> libraryImportCandidateNames = EmptyStringSnapshotList;
+        List<string> libraryImportCandidateSubtitles = EmptyStringSnapshotList;
+        List<string> libraryImportCandidateKindLabels = EmptyStringSnapshotList;
+        List<bool> libraryImportCandidateSelected = EmptyBoolSnapshotList;
+        if (buildLibraryImportSnapshot)
+        {
+            BuildVisibleLibraryImportSnapshotLists(
+                out libraryImportCandidateNames,
+                out libraryImportCandidateSubtitles,
+                out libraryImportCandidateKindLabels,
+                out libraryImportCandidateSelected);
+        }
         GetSongLibraryRefreshOverlayState(
             out bool libraryRefreshInProgressSnapshot,
             out float libraryRefreshProgressPercentSnapshot,
@@ -22088,7 +22171,9 @@ private void OpenOrFocusToneLab()
             libraryImportCandidateKindLabels = libraryImportCandidateKindLabels,
             libraryImportCandidateSelected = libraryImportCandidateSelected,
             libraryImportPopupStatusText = libraryImportPopupStatusText,
-            libraryImportIncludesCachedLegacySources = pendingLibraryImportIncludesCachedLegacySources,
+            libraryImportNewCandidateCount = pendingLibraryImportCandidates.Count,
+            libraryImportSkippedAvailableCount = pendingLibrarySkippedRawCandidates.Count,
+            libraryImportIncludeSkipped = libraryImportIncludeSkippedRaw,
             selectedStartMenuStepIndex = (int)startMenuStep,
             selectedStartMenuModeIndex = selectedStartMenuModeIndex,
             selectedStartMenuArcadeSetupIndex = selectedStartMenuArcadeSetupIndex,
@@ -24767,9 +24852,9 @@ private void OpenOrFocusToneLab()
                     arrangementKey,
                     preferred?.PartId ?? string.Empty,
                     preferred,
-                    out RocksmithCachedArrangementToneData toneData,
+                    out PsarcCachedArrangementToneData toneData,
                     out _);
-                List<string> toneNames = GetRocksmithToneNames(toneData);
+                List<string> toneNames = GetPsarcToneNames(toneData);
                 return new ToneLabSongMappingArrangementSnapshot
                 {
                     songKey = BuildToneLabSongMappingSongKey(entry),
@@ -24797,9 +24882,9 @@ private void OpenOrFocusToneLab()
             arrangementKey,
             string.Empty,
             null,
-            out RocksmithCachedArrangementToneData toneData,
+            out PsarcCachedArrangementToneData toneData,
             out string arrangementRoute);
-        List<string> toneNames = GetRocksmithToneNames(toneData);
+        List<string> toneNames = GetPsarcToneNames(toneData);
         SongMetadata metadata = LoadSongMetadataForEntry(entry);
 
         List<ToneLabSongToneMappingSnapshot> snapshots = new List<ToneLabSongToneMappingSnapshot>();
@@ -24892,7 +24977,7 @@ private void OpenOrFocusToneLab()
             arrangementKey,
             string.Empty,
             null,
-            out RocksmithCachedArrangementToneData toneData,
+            out PsarcCachedArrangementToneData toneData,
             out string arrangementRoute);
         string automaticPresetId = ResolveAutomaticTonePresetId(toneName, string.IsNullOrWhiteSpace(arrangementRoute) ? arrangementKey : arrangementRoute, toneData);
         if (string.IsNullOrWhiteSpace(automaticPresetId))
@@ -24907,8 +24992,8 @@ private void OpenOrFocusToneLab()
             ? BuildAutoGeneratedTonePresetDefaultName(toneName, sourcePresetName)
             : presetName.Trim();
 
-        string createdPresetId = RocksmithTonePresetBuilder.IsGeneratedPresetId(automaticPresetId) &&
-                                 generatedRocksmithTonePresetCache.TryGetValue(automaticPresetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset)
+        string createdPresetId = PsarcTonePresetBuilder.IsGeneratedPresetId(automaticPresetId) &&
+                                 generatedPsarcTonePresetCache.TryGetValue(automaticPresetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset)
             ? unityToneLabRuntime.CreatePresetCopy(generatedPreset, resolvedPresetName)
             : unityToneLabRuntime.CreatePresetCopy(automaticPresetId, resolvedPresetName);
         if (string.IsNullOrWhiteSpace(createdPresetId))
@@ -24973,7 +25058,7 @@ private void OpenOrFocusToneLab()
         return 0;
     }
 
-    private static List<string> GetRocksmithToneNames(RocksmithCachedArrangementToneData toneData)
+    private static List<string> GetPsarcToneNames(PsarcCachedArrangementToneData toneData)
     {
         List<string> names = new List<string>();
         HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -24991,13 +25076,13 @@ private void OpenOrFocusToneLab()
         AddName(toneData?.baseToneName);
         if (toneData?.changes != null)
         {
-            foreach (RocksmithCachedToneChangeData change in toneData.changes.OrderBy(change => change?.timeSeconds ?? 0f))
+            foreach (PsarcCachedToneChangeData change in toneData.changes.OrderBy(change => change?.timeSeconds ?? 0f))
                 AddName(change?.toneName);
         }
 
         if (toneData?.definitions != null)
         {
-            foreach (RocksmithCachedToneDefinitionData definition in toneData.definitions)
+            foreach (PsarcCachedToneDefinitionData definition in toneData.definitions)
                 AddName(definition?.name);
         }
 
@@ -25009,7 +25094,7 @@ private void OpenOrFocusToneLab()
         string arrangementKey,
         string partId,
         MusicXmlLoader.MusicXmlPartSummary summary,
-        out RocksmithCachedArrangementToneData toneData,
+        out PsarcCachedArrangementToneData toneData,
         out string arrangementRoute)
     {
         toneData = null;
@@ -25034,16 +25119,16 @@ private void OpenOrFocusToneLab()
         return false;
     }
 
-    private static RocksmithCachedArrangementToneData ToCachedToneData(TheoryToneData source, string packagePath = null)
+    private static PsarcCachedArrangementToneData ToCachedToneData(TheoryToneData source, string packagePath = null)
     {
         if (source == null)
             return null;
 
-        RocksmithCachedArrangementToneData result = new RocksmithCachedArrangementToneData
+        PsarcCachedArrangementToneData result = new PsarcCachedArrangementToneData
         {
             baseToneName = source.baseToneName ?? string.Empty,
-            changes = new List<RocksmithCachedToneChangeData>(),
-            definitions = new List<RocksmithCachedToneDefinitionData>()
+            changes = new List<PsarcCachedToneChangeData>(),
+            definitions = new List<PsarcCachedToneDefinitionData>()
         };
 
         if (source.changes != null)
@@ -25054,7 +25139,7 @@ private void OpenOrFocusToneLab()
                 if (change == null)
                     continue;
 
-                result.changes.Add(new RocksmithCachedToneChangeData
+                result.changes.Add(new PsarcCachedToneChangeData
                 {
                     timeSeconds = Mathf.Max(0f, change.timeSeconds),
                     toneName = change.toneName ?? string.Empty,
@@ -25071,7 +25156,7 @@ private void OpenOrFocusToneLab()
                 if (definition == null)
                     continue;
 
-                result.definitions.Add(new RocksmithCachedToneDefinitionData
+                result.definitions.Add(new PsarcCachedToneDefinitionData
                 {
                     name = definition.name ?? string.Empty,
                     key = definition.key ?? string.Empty,
@@ -25157,7 +25242,7 @@ private void OpenOrFocusToneLab()
             return new TheoryTonePresetData();
 
         string normalizedPresetId = presetId.Trim();
-        if (generatedRocksmithTonePresetCache.TryGetValue(normalizedPresetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset))
+        if (generatedPsarcTonePresetCache.TryGetValue(normalizedPresetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset))
             return ToTheoryTonePreset(generatedPreset);
 
         EnsureToneLabRuntimeComponent();
@@ -25289,7 +25374,7 @@ private void OpenOrFocusToneLab()
         return string.Empty;
     }
 
-    private static string ResolveToneNameAtTime(RocksmithCachedArrangementToneData toneData, float timeSeconds)
+    private static string ResolveToneNameAtTime(PsarcCachedArrangementToneData toneData, float timeSeconds)
     {
         return TryResolveToneWindowAtTime(
                 toneData,
@@ -25302,10 +25387,10 @@ private void OpenOrFocusToneLab()
             : string.Empty;
     }
 
-    private static List<RocksmithCachedToneChangeData> BuildSortedToneChanges(RocksmithCachedArrangementToneData toneData)
+    private static List<PsarcCachedToneChangeData> BuildSortedToneChanges(PsarcCachedArrangementToneData toneData)
     {
         if (toneData?.changes == null || toneData.changes.Count == 0)
-            return new List<RocksmithCachedToneChangeData>();
+            return new List<PsarcCachedToneChangeData>();
 
         return toneData.changes
             .Where(change => change != null && !string.IsNullOrWhiteSpace(change.toneName))
@@ -25314,8 +25399,8 @@ private void OpenOrFocusToneLab()
     }
 
     private static bool TryResolveToneWindowAtTime(
-        RocksmithCachedArrangementToneData toneData,
-        IReadOnlyList<RocksmithCachedToneChangeData> sortedChanges,
+        PsarcCachedArrangementToneData toneData,
+        IReadOnlyList<PsarcCachedToneChangeData> sortedChanges,
         float timeSeconds,
         out string toneName,
         out float toneStartTimeSeconds,
@@ -25334,7 +25419,7 @@ private void OpenOrFocusToneLab()
             const float epsilonSeconds = 0.0001f;
             for (int i = 0; i < sortedChanges.Count; i++)
             {
-                RocksmithCachedToneChangeData change = sortedChanges[i];
+                PsarcCachedToneChangeData change = sortedChanges[i];
                 if (change == null || string.IsNullOrWhiteSpace(change.toneName))
                     continue;
 
@@ -25355,7 +25440,7 @@ private void OpenOrFocusToneLab()
         return !string.IsNullOrWhiteSpace(toneName);
     }
 
-    private static int CountToneSwitches(RocksmithCachedArrangementToneData toneData, string toneName)
+    private static int CountToneSwitches(PsarcCachedArrangementToneData toneData, string toneName)
     {
         if (toneData?.changes == null || string.IsNullOrWhiteSpace(toneName))
             return 0;
@@ -25363,12 +25448,12 @@ private void OpenOrFocusToneLab()
         return toneData.changes.Count(change => change != null && string.Equals(change.toneName ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static float GetFirstToneSwitchTime(RocksmithCachedArrangementToneData toneData, string toneName)
+    private static float GetFirstToneSwitchTime(PsarcCachedArrangementToneData toneData, string toneName)
     {
         if (toneData?.changes == null || string.IsNullOrWhiteSpace(toneName))
             return -1f;
 
-        RocksmithCachedToneChangeData first = toneData.changes
+        PsarcCachedToneChangeData first = toneData.changes
             .Where(change => change != null && string.Equals(change.toneName ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase))
             .OrderBy(change => change.timeSeconds)
             .FirstOrDefault();
@@ -25379,7 +25464,7 @@ private void OpenOrFocusToneLab()
         SongMetadata metadata,
         string arrangementKey,
         string toneName,
-        RocksmithCachedArrangementToneData toneData,
+        PsarcCachedArrangementToneData toneData,
         string arrangementRoute,
         out UnityToneLabRuntime.ToneLabPreset presetSnapshot)
     {
@@ -25411,14 +25496,14 @@ private void OpenOrFocusToneLab()
             string.Equals(entry.toneName ?? string.Empty, toneName, StringComparison.OrdinalIgnoreCase));
     }
 
-    private string ResolveAutomaticTonePresetId(string toneName, string arrangementRoute, RocksmithCachedArrangementToneData toneData)
+    private string ResolveAutomaticTonePresetId(string toneName, string arrangementRoute, PsarcCachedArrangementToneData toneData)
     {
-        RocksmithCachedToneDefinitionData definition = GetToneDefinition(toneData, toneName);
+        PsarcCachedToneDefinitionData definition = GetToneDefinition(toneData, toneName);
         string rawToneJson = definition?.rawJson ?? string.Empty;
         if (TryResolveGeneratedToneLabPresetId(toneName, arrangementRoute, rawToneJson, out string toneLabPresetId))
             return toneLabPresetId;
 
-        if (TryResolveGeneratedRocksmithTonePresetId(toneName, arrangementRoute, rawToneJson, out string generatedPresetId))
+        if (TryResolveGeneratedPsarcTonePresetId(toneName, arrangementRoute, rawToneJson, out string generatedPresetId))
             return generatedPresetId;
 
         string preferredPresetId = FindToneLabPresetIdByName(definition?.preferredPresetName);
@@ -25447,7 +25532,7 @@ private void OpenOrFocusToneLab()
         return unityToneLabRuntime.FindPresetIdByName(presetName.Trim());
     }
 
-    private bool TryResolveGeneratedRocksmithTonePresetId(
+    private bool TryResolveGeneratedPsarcTonePresetId(
         string toneName,
         string arrangementRoute,
         string rawToneJson,
@@ -25456,7 +25541,7 @@ private void OpenOrFocusToneLab()
         presetId = string.Empty;
         EnsureGeneratedToneExternalPedalLibraryReady();
 
-        if (!RocksmithTonePresetBuilder.TryBuildPreset(
+        if (!PsarcTonePresetBuilder.TryBuildPreset(
                 toneName,
                 arrangementRoute,
                 rawToneJson,
@@ -25468,7 +25553,7 @@ private void OpenOrFocusToneLab()
             return false;
         }
 
-        generatedRocksmithTonePresetCache[preset.preset_id] = preset;
+        generatedPsarcTonePresetCache[preset.preset_id] = preset;
         presetId = preset.preset_id;
         return true;
     }
@@ -25507,7 +25592,7 @@ private void OpenOrFocusToneLab()
             ? BuildGeneratedTonePresetName(toneName)
             : preset.preset_name.Trim();
 
-        generatedRocksmithTonePresetCache[preset.preset_id] = preset;
+        generatedPsarcTonePresetCache[preset.preset_id] = preset;
         presetId = preset.preset_id;
         return true;
     }
@@ -25567,12 +25652,12 @@ private void OpenOrFocusToneLab()
         return ToneLabPedalRegistry.HasDescriptor(descriptorId);
     }
 
-    private static string GetToneDefinitionRawJson(RocksmithCachedArrangementToneData toneData, string toneName)
+    private static string GetToneDefinitionRawJson(PsarcCachedArrangementToneData toneData, string toneName)
     {
         return GetToneDefinition(toneData, toneName)?.rawJson ?? string.Empty;
     }
 
-    private static RocksmithCachedToneDefinitionData GetToneDefinition(RocksmithCachedArrangementToneData toneData, string toneName)
+    private static PsarcCachedToneDefinitionData GetToneDefinition(PsarcCachedArrangementToneData toneData, string toneName)
     {
         if (toneData?.definitions == null || string.IsNullOrWhiteSpace(toneName))
             return null;
@@ -25699,12 +25784,12 @@ private void OpenOrFocusToneLab()
         if (string.IsNullOrWhiteSpace(presetId))
             return string.Empty;
 
-        if (RocksmithTonePresetBuilder.IsGeneratedPresetId(presetId) &&
-            generatedRocksmithTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset))
+        if (PsarcTonePresetBuilder.IsGeneratedPresetId(presetId) &&
+            generatedPsarcTonePresetCache.TryGetValue(presetId, out UnityToneLabRuntime.ToneLabPreset generatedPreset))
         {
             string generatedName = generatedPreset != null && !string.IsNullOrWhiteSpace(generatedPreset.preset_name)
                 ? generatedPreset.preset_name.Trim()
-                : "Rocksmith Tone";
+                : "PSARC Tone";
             return automaticMapping
                 ? $"Auto Generated: {generatedName}"
                 : generatedName;
@@ -31854,7 +31939,7 @@ private void OpenOrFocusToneLab()
         {
             AddArcadeTimelineSections(duration);
         }
-        else if (TryGetCurrentArrangementTimelineSections(out List<RocksmithCachedSectionData> arrangementSections, out float arrangementDuration) &&
+        else if (TryGetCurrentArrangementTimelineSections(out List<PsarcCachedSectionData> arrangementSections, out float arrangementDuration) &&
                  arrangementSections != null &&
                  arrangementSections.Count > 0)
         {
@@ -31871,7 +31956,7 @@ private void OpenOrFocusToneLab()
         NormalizeTimelineSectionEnds(Mathf.Max(duration, GetTimelineLastEndTime()));
     }
 
-    private bool TryGetCurrentArrangementTimelineSections(out List<RocksmithCachedSectionData> sections, out float duration)
+    private bool TryGetCurrentArrangementTimelineSections(out List<PsarcCachedSectionData> sections, out float duration)
     {
         sections = null;
         duration = 0f;
@@ -31887,7 +31972,7 @@ private void OpenOrFocusToneLab()
         return false;
     }
 
-    private bool TryGetCurrentTheoryTimelineSections(out List<RocksmithCachedSectionData> sections, out float duration)
+    private bool TryGetCurrentTheoryTimelineSections(out List<PsarcCachedSectionData> sections, out float duration)
     {
         sections = null;
         duration = 0f;
@@ -31973,7 +32058,7 @@ private void OpenOrFocusToneLab()
     private static bool TryConvertTheoryTimelineSections(
         TheoryArrangementData arrangement,
         float manifestDuration,
-        out List<RocksmithCachedSectionData> sections,
+        out List<PsarcCachedSectionData> sections,
         out float duration)
     {
         sections = null;
@@ -31981,14 +32066,14 @@ private void OpenOrFocusToneLab()
         if (arrangement?.timing?.sections == null || arrangement.timing.sections.Count == 0)
             return false;
 
-        List<RocksmithCachedSectionData> converted = new List<RocksmithCachedSectionData>();
+        List<PsarcCachedSectionData> converted = new List<PsarcCachedSectionData>();
         for (int i = 0; i < arrangement.timing.sections.Count; i++)
         {
             TheorySectionData source = arrangement.timing.sections[i];
             if (source == null || source.timeSeconds < 0f)
                 continue;
 
-            converted.Add(new RocksmithCachedSectionData
+            converted.Add(new PsarcCachedSectionData
             {
                 name = source.name,
                 number = source.number,
@@ -32049,7 +32134,7 @@ private void OpenOrFocusToneLab()
         }
     }
 
-    private void AddArrangementTimelineSections(List<RocksmithCachedSectionData> sections, float duration)
+    private void AddArrangementTimelineSections(List<PsarcCachedSectionData> sections, float duration)
     {
         if (sections == null)
             return;
@@ -32058,7 +32143,7 @@ private void OpenOrFocusToneLab()
         float lastTime = -1f;
         for (int i = 0; i < sections.Count; i++)
         {
-            RocksmithCachedSectionData source = sections[i];
+            PsarcCachedSectionData source = sections[i];
             if (source == null || source.timeSeconds < 0f)
                 continue;
 
@@ -32098,103 +32183,4 @@ private void OpenOrFocusToneLab()
 
             songTimelineSections.Add(new SongTimelineSectionData
             {
-                index = songTimelineSections.Count,
-                name = FormatTimelineSectionName(source.name, songTimelineSections.Count),
-                startTime = Mathf.Max(0f, source.startTime),
-                endTime = Mathf.Max(source.startTime + 0.05f, source.endTime)
-            });
-        }
-    }
-
-    private void AddGeneratedTimelineSections(float duration)
-    {
-        if (tabSections == null || tabSections.Count == 0)
-            return;
-
-        int sectionStride = Mathf.Max(1, Mathf.RoundToInt(16f / Mathf.Max(0.01f, GetEffectiveTabSectionDuration())));
-        for (int i = 0; i < tabSections.Count; i += sectionStride)
-        {
-            TabSectionData source = tabSections[i];
-            if (source == null)
-                continue;
-
-            float endTime = i + sectionStride < tabSections.Count
-                ? tabSections[i + sectionStride].startTime
-                : Mathf.Max(duration, source.endTime);
-
-            songTimelineSections.Add(new SongTimelineSectionData
-            {
-                index = songTimelineSections.Count,
-                name = $"Part {songTimelineSections.Count + 1}",
-                startTime = Mathf.Max(0f, source.startTime),
-                endTime = Mathf.Max(source.startTime + 0.05f, endTime)
-            });
-        }
-    }
-
-    private void NormalizeTimelineSectionEnds(float duration)
-    {
-        if (songTimelineSections == null || songTimelineSections.Count == 0)
-            return;
-
-        songTimelineSections = songTimelineSections
-            .Where(section => section != null && section.startTime >= 0f)
-            .OrderBy(section => section.startTime)
-            .ToList();
-
-        for (int i = 0; i < songTimelineSections.Count; i++)
-        {
-            SongTimelineSectionData section = songTimelineSections[i];
-            section.index = i;
-            float nextStart = i + 1 < songTimelineSections.Count
-                ? songTimelineSections[i + 1].startTime
-                : duration;
-            section.endTime = Mathf.Max(section.startTime + 0.05f, nextStart);
-        }
-    }
-
-    private float GetTimelineLastEndTime()
-    {
-        if (songTimelineSections == null || songTimelineSections.Count == 0)
-            return 0f;
-
-        float max = 0f;
-        for (int i = 0; i < songTimelineSections.Count; i++)
-        {
-            SongTimelineSectionData section = songTimelineSections[i];
-            if (section != null)
-                max = Mathf.Max(max, section.endTime, section.startTime);
-        }
-
-        return max;
-    }
-
-    private static string FormatTimelineSectionName(string rawName, int index)
-    {
-        string normalized = string.IsNullOrWhiteSpace(rawName)
-            ? $"Part {index + 1}"
-            : rawName.Trim().Replace('_', ' ').Replace('-', ' ');
-
-        normalized = Regex.Replace(normalized, @"\s+", " ");
-        if (normalized.Length == 0)
-            return $"Part {index + 1}";
-
-        string key = normalized.Replace(" ", string.Empty).ToLowerInvariant();
-        switch (key)
-        {
-            case "noguitar":
-                return "No Guitar";
-            case "postvs":
-                return "Post Verse";
-            case "prevs":
-                return "Pre Verse";
-            case "modverse":
-                return "Verse";
-            case "modchorus":
-                return "Chorus";
-        }
-
-        TextInfo textInfo = CultureInfo.InvariantCulture.TextInfo;
-        return textInfo.ToTitleCase(normalized.ToLowerInvariant());
-    }
-}
+                index = songTimeline

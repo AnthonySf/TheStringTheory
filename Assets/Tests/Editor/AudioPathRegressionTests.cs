@@ -828,7 +828,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithAutomaticTonePresetMapping_MapsCommonToneFamilies()
+    public void PsarcAutomaticTonePresetMapping_MapsCommonToneFamilies()
     {
         Assert.AreEqual("Bass Grind", InvokeGuitarBridgeStatic<string>("ResolveAutomaticTonePresetName", "Finger Bass", "Bass", ""));
         Assert.AreEqual("Drop Modern", InvokeGuitarBridgeStatic<string>("ResolveAutomaticTonePresetName", "Drop Metal", "Lead", "{\"Amp\":\"5150\"}"));
@@ -837,7 +837,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_BuildsStructuredGearToneWithoutTreatingBassKnobAsBassRoute()
+    public void PsarcTonePresetBuilder_BuildsStructuredGearToneWithoutTreatingBassKnobAsBassRoute()
     {
         const string gxSd1 = "http://guitarix.sourceforge.net/plugins/gx_sd1sim_#_sd1sim_";
         const string gxPlexi = "http://guitarix.sourceforge.net/plugins/gx_plexi_#_plexi_";
@@ -875,8 +875,8 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Clean Verse", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
-        Assert.IsTrue(RocksmithTonePresetBuilder.IsGeneratedPresetId(preset.preset_id));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Clean Verse", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.IsGeneratedPresetId(preset.preset_id));
         CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin);
         AssertHasLv2Plugin(preset, gxSd1);
         AssertHasLv2Plugin(preset, gxPlexi);
@@ -889,7 +889,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_MapsRocksmithGraphicEqBandsToLv2GraphicEq()
+    public void PsarcTonePresetBuilder_MapsPsarcGraphicEqBandsToLv2GraphicEq()
     {
         const string zamGeq31 = "urn:zamaudio:ZamGEQ31";
         string rawToneJson =
@@ -905,7 +905,7 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Graphic EQ", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Graphic EQ", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
         ToneLabExternalPedalSettings eqSettings = FindLv2Settings(preset, zamGeq31);
         Assert.AreEqual(-5f, GetExternalParameter(eqSettings, "band3"), 0.0001f);
         Assert.AreEqual(4f, GetExternalParameter(eqSettings, "band15"), 0.0001f);
@@ -913,7 +913,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_TreatsMicroAmpAsGainPedalNotMainAmp()
+    public void PsarcTonePresetBuilder_TreatsMicroAmpAsGainPedalNotMainAmp()
     {
         const string gxMicroAmp = "http://guitarix.sourceforge.net/plugins/gx_MicroAmp_#_MicroAmp_";
         const string gxPlexi = "http://guitarix.sourceforge.net/plugins/gx_plexi_#_plexi_";
@@ -935,13 +935,13 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Boosted Amp", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Boosted Amp", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
         AssertHasLv2Plugin(preset, gxMicroAmp);
         AssertHasLv2Plugin(preset, gxPlexi);
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_MapsStudioEqFrequencyAndGainKnobsSeparately()
+    public void PsarcTonePresetBuilder_MapsStudioEqFrequencyAndGainKnobsSeparately()
     {
         const string zamEq2 = "urn:zamaudio:ZamEQ2";
         const string zamGeq31 = "urn:zamaudio:ZamGEQ31";
@@ -967,7 +967,7 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Studio EQ", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Studio EQ", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
         Assert.IsFalse(HasLv2Plugin(preset, zamGeq31), "Studio EQ frequency knobs should not be mistaken for graphic-EQ gain bands.");
 
         ToneLabExternalPedalSettings eqSettings = FindLv2Settings(preset, zamEq2);
@@ -982,7 +982,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_MapsGermaniumDriveToSmootherOverdrive()
+    public void PsarcTonePresetBuilder_MapsGermaniumDriveToSmootherOverdrive()
     {
         const string gxTimRay = "http://guitarix.sourceforge.net/plugins/gx_timray_#_timray_";
         const string gxGuvnor = "http://guitarix.sourceforge.net/plugins/gx_guvnor_#_guvnor_";
@@ -999,7 +999,7 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Germanium Lead", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Germanium Lead", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
         AssertHasLv2Plugin(preset, gxTimRay);
         Assert.IsFalse(HasLv2Plugin(preset, gxGuvnor), "Germanium Drive should not fall through to the brighter generic distortion mapping.");
 
@@ -1009,7 +1009,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_MapsStudioChamberAsTightAmbience()
+    public void PsarcTonePresetBuilder_MapsStudioChamberAsTightAmbience()
     {
         const string dragonflyRoom = "urn:dragonfly:room";
         string rawToneJson =
@@ -1025,7 +1025,7 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Chamber Drive", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Chamber Drive", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
         ToneLabExternalPedalSettings reverbSettings = FindLv2Settings(preset, dragonflyRoom);
         Assert.Greater(GetExternalParameter(reverbSettings, "dry_level"), 95f);
         Assert.Less(GetExternalParameter(reverbSettings, "late_level"), 5f);
@@ -1033,7 +1033,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_DoesNotTreatLowReverbTimeAsHalfDecay()
+    public void PsarcTonePresetBuilder_DoesNotTreatLowReverbTimeAsHalfDecay()
     {
         const string dragonflyRoom = "urn:dragonfly:room";
         string rawToneJson =
@@ -1049,13 +1049,13 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Short Chamber", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Short Chamber", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
         ToneLabExternalPedalSettings reverbSettings = FindLv2Settings(preset, dragonflyRoom);
         Assert.Less(GetExternalParameter(reverbSettings, "decay"), 0.25f);
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_UsesBassLv2AmpWithoutAddingGuitarCabForBassRoutes()
+    public void PsarcTonePresetBuilder_UsesBassLv2AmpWithoutAddingGuitarCabForBassRoutes()
     {
         const string gxAmpegSvt = "http://guitarix.sourceforge.net/plugins/gx_ampegsvt_#_ampegsvt_";
         const string gxUltraCab = "http://guitarix.sourceforge.net/plugins/gx_ultracab_#_ultracab_";
@@ -1076,14 +1076,14 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Bass Tone", "Bass", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Bass Tone", "Bass", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
         ToneLabExternalPedalSettings ampSettings = FindLv2Settings(preset, gxAmpegSvt);
         Assert.AreEqual(1f, GetExternalParameter(ampSettings, "CABSWITCH"), 0.0001f);
         Assert.IsFalse(HasLv2Plugin(preset, gxUltraCab), "Bass LV2 amp already carries its cabinet model, so generated bass routes should not add a guitar cab slot.");
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_DoesNotTreatSmallDelayMixAsFullyWet()
+    public void PsarcTonePresetBuilder_DoesNotTreatSmallDelayMixAsFullyWet()
     {
         string rawToneJson =
             @"{
@@ -1109,7 +1109,7 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Delay Transition", "Lead", rawToneJson, _ => false, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Delay Transition", "Lead", rawToneJson, _ => false, out UnityToneLabRuntime.ToneLabPreset preset));
 
         UnityToneLabRuntime.ToneLabPedalSlot delaySlot = preset.pedal_chain.First(slot => slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.Delay);
         DelayPedalSettings delaySettings = (DelayPedalSettings)ToneLabPedalRegistry
@@ -1122,7 +1122,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_MapsLowRocksmithDelayPercentagesToSubtleZamDelay()
+    public void PsarcTonePresetBuilder_MapsLowPsarcDelayPercentagesToSubtleZamDelay()
     {
         const string zamDelay = "urn:zamaudio:ZamDelay";
         string rawToneJson =
@@ -1139,7 +1139,7 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Delay Transition", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Delay Transition", "Lead", rawToneJson, out UnityToneLabRuntime.ToneLabPreset preset));
 
         ToneLabExternalPedalSettings delaySettings = FindLv2Settings(preset, zamDelay);
         Assert.AreEqual(340f, GetExternalParameter(delaySettings, "time"), 0.001f);
@@ -1149,7 +1149,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_FallsBackToBuiltInPedalsWhenLv2CatalogIsUnavailable()
+    public void PsarcTonePresetBuilder_FallsBackToBuiltInPedalsWhenLv2CatalogIsUnavailable()
     {
         string rawToneJson =
             @"{
@@ -1174,7 +1174,7 @@ public sealed class AudioPathRegressionTests
                 }
             }";
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("LV2 Missing Safe Fallback", "Lead", rawToneJson, _ => false, out UnityToneLabRuntime.ToneLabPreset preset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("LV2 Missing Safe Fallback", "Lead", rawToneJson, _ => false, out UnityToneLabRuntime.ToneLabPreset preset));
         Assert.IsFalse(preset.pedal_chain.Any(slot => slot.pedal_type == UnityToneLabRuntime.ToneLabPedalType.Lv2Plugin));
         CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Distortion);
         CollectionAssert.Contains(preset.pedal_chain.Select(slot => slot.pedal_type).ToArray(), UnityToneLabRuntime.ToneLabPedalType.Amp);
@@ -1182,7 +1182,7 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
-    public void RocksmithTonePresetBuilder_AppliesRootToneVolumeAsOutputCalibration()
+    public void PsarcTonePresetBuilder_AppliesRootToneVolumeAsOutputCalibration()
     {
         string loudToneJson =
             @"{
@@ -1207,8 +1207,8 @@ public sealed class AudioPathRegressionTests
             .Replace(@"""Key"": ""Tone_Loud""", @"""Key"": ""Tone_Soft""")
             .Replace(@"""Volume"": ""-24.000""", @"""Volume"": ""-16.000""");
 
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Volume Loud", "Lead", loudToneJson, out UnityToneLabRuntime.ToneLabPreset loudPreset));
-        Assert.IsTrue(RocksmithTonePresetBuilder.TryBuildPreset("Volume Soft", "Lead", softToneJson, out UnityToneLabRuntime.ToneLabPreset softPreset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Volume Loud", "Lead", loudToneJson, out UnityToneLabRuntime.ToneLabPreset loudPreset));
+        Assert.IsTrue(PsarcTonePresetBuilder.TryBuildPreset("Volume Soft", "Lead", softToneJson, out UnityToneLabRuntime.ToneLabPreset softPreset));
 
         Assert.Greater(loudPreset.output_gain_db, softPreset.output_gain_db);
         Assert.AreEqual(8f, loudPreset.output_gain_db - softPreset.output_gain_db, 0.05f);
@@ -1952,11 +1952,4 @@ public sealed class AudioPathRegressionTests
         public void Dispose()
         {
             if (Runtime != null)
-                SetField(Runtime, "settingsDirty", false);
-            if (GameObject != null)
-                UnityEngine.Object.DestroyImmediate(GameObject);
-            GameObject = null;
-            Runtime = null;
-        }
-    }
-}
+                SetField(Runti

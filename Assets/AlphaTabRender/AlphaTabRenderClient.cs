@@ -224,9 +224,9 @@ public static class TheoryAlphaTabGpSourceBuilder
             throw new InvalidOperationException($"Failed to load theory arrangement {resolvedIndex} from '{normalizedPackagePath}': {arrangementError}");
         }
 
-        RocksmithCachedSongManifest convertedManifest = ToCachedManifest(manifest, normalizedPackagePath);
-        RocksmithCachedArrangementSummary convertedSummary = ToCachedSummary(theorySummary, resolvedIndex);
-        RocksmithCachedArrangementPart convertedPart = ToCachedPart(theoryArrangement, convertedSummary, manifest.durationSeconds);
+        PsarcCachedSongManifest convertedManifest = ToCachedManifest(manifest, normalizedPackagePath);
+        PsarcCachedArrangementSummary convertedSummary = ToCachedSummary(theorySummary, resolvedIndex);
+        PsarcCachedArrangementPart convertedPart = ToCachedPart(theoryArrangement, convertedSummary, manifest.durationSeconds);
 
         string cacheDirectory = Path.Combine(
             ExternalContentPaths.PersistentAlphaTabRenderCacheDirectory,
@@ -241,7 +241,7 @@ public static class TheoryAlphaTabGpSourceBuilder
         if (outputTicks >= sourceTicks && File.Exists(outputGpPath))
             return outputGpPath;
 
-        RocksmithAlphaTabGpWriter.Write(outputGpPath, convertedManifest, convertedSummary, convertedPart);
+        PsarcAlphaTabGpWriter.Write(outputGpPath, convertedManifest, convertedSummary, convertedPart);
         return outputGpPath;
     }
 
@@ -265,12 +265,12 @@ public static class TheoryAlphaTabGpSourceBuilder
         return 0;
     }
 
-    private static RocksmithCachedSongManifest ToCachedManifest(TheorySongManifest source, string packagePath)
+    private static PsarcCachedSongManifest ToCachedManifest(TheorySongManifest source, string packagePath)
     {
         FileInfo info = new FileInfo(packagePath);
-        return new RocksmithCachedSongManifest
+        return new PsarcCachedSongManifest
         {
-            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            schemaVersion = PsarcCachedSongFormat.SchemaVersion,
             sourcePsarcPath = string.Empty,
             sourcePsarcLastWriteUtcTicks = info.LastWriteTimeUtc.Ticks,
             importedAtUtcTicks = ResolveManifestTimestamp(source),
@@ -280,7 +280,7 @@ public static class TheoryAlphaTabGpSourceBuilder
             subtitle = source.subtitle ?? string.Empty,
             durationSeconds = Mathf.Max(0f, source.durationSeconds),
             difficultyRating = Mathf.Clamp(source.difficultyRating, 0, 5),
-            arrangements = new List<RocksmithCachedArrangementSummary>()
+            arrangements = new List<PsarcCachedArrangementSummary>()
         };
     }
 
@@ -291,12 +291,12 @@ public static class TheoryAlphaTabGpSourceBuilder
         return source.modifiedAtUtcTicks > 0 ? source.modifiedAtUtcTicks : source.createdAtUtcTicks;
     }
 
-    private static RocksmithCachedArrangementSummary ToCachedSummary(TheoryArrangementSummary source, int index)
+    private static PsarcCachedArrangementSummary ToCachedSummary(TheoryArrangementSummary source, int index)
     {
         string partId = string.IsNullOrWhiteSpace(source?.arrangementId)
             ? $"arrangement_{index.ToString(CultureInfo.InvariantCulture)}"
             : source.arrangementId;
-        return new RocksmithCachedArrangementSummary
+        return new PsarcCachedArrangementSummary
         {
             partId = partId,
             displayName = source?.displayName ?? partId,
@@ -316,14 +316,14 @@ public static class TheoryAlphaTabGpSourceBuilder
         };
     }
 
-    private static RocksmithCachedArrangementPart ToCachedPart(
+    private static PsarcCachedArrangementPart ToCachedPart(
         TheoryArrangementData source,
-        RocksmithCachedArrangementSummary summary,
+        PsarcCachedArrangementSummary summary,
         float manifestDuration)
     {
-        RocksmithCachedArrangementPart part = new RocksmithCachedArrangementPart
+        PsarcCachedArrangementPart part = new PsarcCachedArrangementPart
         {
-            schemaVersion = RocksmithCachedSongFormat.SchemaVersion,
+            schemaVersion = PsarcCachedSongFormat.SchemaVersion,
             partId = source.arrangementId ?? summary.partId,
             displayName = source.displayName ?? summary.displayName,
             route = source.route ?? summary.route,
@@ -340,46 +340,46 @@ public static class TheoryAlphaTabGpSourceBuilder
             generatedPart = ToCachedGeneratedPart(source.generatedPart, source),
             notes = ToCachedNotes(source.notes),
             arpeggioGuides = ToCachedArpeggioGuides(source.arpeggioGuides),
-            generatedNotes = new List<RocksmithCachedGeneratedNoteEvent>()
+            generatedNotes = new List<PsarcCachedGeneratedNoteEvent>()
         };
 
         return part;
     }
 
-    private static RocksmithCachedArrangementTimingData ToCachedTiming(TheoryTimingData source)
+    private static PsarcCachedArrangementTimingData ToCachedTiming(TheoryTimingData source)
     {
-        return new RocksmithCachedArrangementTimingData
+        return new PsarcCachedArrangementTimingData
         {
             averageTempoBpm = Mathf.Max(1f, source?.averageTempoBpm ?? 120f),
             capo = Mathf.Max(0, source?.capo ?? 0),
             ebeats = source?.beats?
                 .Where(beat => beat != null && beat.timeSeconds >= 0f)
                 .OrderBy(beat => beat.timeSeconds)
-                .Select(beat => new RocksmithCachedEbeatData
+                .Select(beat => new PsarcCachedEbeatData
                 {
                     timeSeconds = Mathf.Max(0f, beat.timeSeconds),
                     measure = beat.measure
                 })
-                .ToList() ?? new List<RocksmithCachedEbeatData>(),
+                .ToList() ?? new List<PsarcCachedEbeatData>(),
             sections = source?.sections?
                 .Where(section => section != null && section.timeSeconds >= 0f)
                 .OrderBy(section => section.timeSeconds)
-                .Select(section => new RocksmithCachedSectionData
+                .Select(section => new PsarcCachedSectionData
                 {
                     name = section.name ?? string.Empty,
                     number = section.number,
                     timeSeconds = Mathf.Max(0f, section.timeSeconds)
                 })
-                .ToList() ?? new List<RocksmithCachedSectionData>()
+                .ToList() ?? new List<PsarcCachedSectionData>()
         };
     }
 
-    private static RocksmithCachedGeneratedPartInfo ToCachedGeneratedPart(TheoryGeneratedPartInfo source, TheoryArrangementData arrangement)
+    private static PsarcCachedGeneratedPartInfo ToCachedGeneratedPart(TheoryGeneratedPartInfo source, TheoryArrangementData arrangement)
     {
         if (source == null)
             return null;
 
-        return new RocksmithCachedGeneratedPartInfo
+        return new PsarcCachedGeneratedPartInfo
         {
             partId = source.partId ?? arrangement?.arrangementId ?? string.Empty,
             displayName = source.displayName ?? arrangement?.displayName ?? string.Empty,
@@ -393,19 +393,19 @@ public static class TheoryAlphaTabGpSourceBuilder
         };
     }
 
-    private static List<RocksmithCachedNoteData> ToCachedNotes(List<TheoryNoteData> source)
+    private static List<PsarcCachedNoteData> ToCachedNotes(List<TheoryNoteData> source)
     {
         return source?
             .Where(note => note != null)
             .OrderBy(note => note.time)
             .ThenBy(note => note.stringIndex)
             .Select(ToCachedNote)
-            .ToList() ?? new List<RocksmithCachedNoteData>();
+            .ToList() ?? new List<PsarcCachedNoteData>();
     }
 
-    private static RocksmithCachedNoteData ToCachedNote(TheoryNoteData source)
+    private static PsarcCachedNoteData ToCachedNote(TheoryNoteData source)
     {
-        return new RocksmithCachedNoteData
+        return new PsarcCachedNoteData
         {
             id = source.id,
             time = Mathf.Max(0f, source.time),
@@ -441,15 +441,15 @@ public static class TheoryAlphaTabGpSourceBuilder
             linkedFromNoteId = source.linkedFromNoteId,
             bendPoints = source.bendPoints?
                 .Where(point => point != null)
-                .Select(point => new RocksmithCachedBendPointData
+                .Select(point => new PsarcCachedBendPointData
                 {
                     timeSeconds = point.timeSeconds,
                     step = point.step
                 })
-                .ToList() ?? new List<RocksmithCachedBendPointData>(),
+                .ToList() ?? new List<PsarcCachedBendPointData>(),
             techniqueSegments = source.techniqueSegments?
                 .Where(segment => segment != null)
-                .Select(segment => new RocksmithCachedTechniqueSegmentData
+                .Select(segment => new PsarcCachedTechniqueSegmentData
                 {
                     type = segment.type,
                     startOffset = segment.startOffset,
@@ -459,15 +459,15 @@ public static class TheoryAlphaTabGpSourceBuilder
                     startBend = segment.startBend,
                     endBend = segment.endBend
                 })
-                .ToList() ?? new List<RocksmithCachedTechniqueSegmentData>()
+                .ToList() ?? new List<PsarcCachedTechniqueSegmentData>()
         };
     }
 
-    private static List<RocksmithCachedArpeggioGuideData> ToCachedArpeggioGuides(List<TheoryArpeggioGuideData> source)
+    private static List<PsarcCachedArpeggioGuideData> ToCachedArpeggioGuides(List<TheoryArpeggioGuideData> source)
     {
         return source?
             .Where(guide => guide != null)
-            .Select(guide => new RocksmithCachedArpeggioGuideData
+            .Select(guide => new PsarcCachedArpeggioGuideData
             {
                 id = guide.id,
                 startTime = Mathf.Max(0f, guide.startTime),
@@ -475,7 +475,7 @@ public static class TheoryAlphaTabGpSourceBuilder
                 chordName = guide.chordName ?? string.Empty,
                 stringFrets = guide.stringFrets != null ? (int[])guide.stringFrets.Clone() : null
             })
-            .ToList() ?? new List<RocksmithCachedArpeggioGuideData>();
+            .ToList() ?? new List<PsarcCachedArpeggioGuideData>();
     }
 
     private static string ComputeCacheKey(string packagePath, string arrangementId, string arrangementEntry)
@@ -501,7 +501,7 @@ public static class TheoryAlphaTabGpSourceBuilder
 }
 
 
-public static class RocksmithMusicXmlWriter
+public static class PsarcMusicXmlWriter
 {
     private const int DefaultSlotsPerBeat = 8;
     private static readonly int[] SupportedSlotsPerBeat = { 8, 16, 32 };
@@ -510,9 +510,9 @@ public static class RocksmithMusicXmlWriter
 
     public static void Write(
         string outputPath,
-        RocksmithCachedSongManifest manifest,
-        RocksmithCachedArrangementSummary summary,
-        RocksmithCachedArrangementPart part)
+        PsarcCachedSongManifest manifest,
+        PsarcCachedArrangementSummary summary,
+        PsarcCachedArrangementPart part)
     {
         if (string.IsNullOrWhiteSpace(outputPath))
             throw new ArgumentException("Output path was empty.", nameof(outputPath));
@@ -521,7 +521,7 @@ public static class RocksmithMusicXmlWriter
         if (part == null)
             throw new ArgumentNullException(nameof(part));
 
-        RocksmithAlphaTabTimingSidecar timingSidecar;
+        PsarcAlphaTabTimingSidecar timingSidecar;
         XDocument document = BuildDocument(manifest, summary, part, out timingSidecar);
         string directory = Path.GetDirectoryName(outputPath);
         if (!string.IsNullOrWhiteSpace(directory))
@@ -533,12 +533,12 @@ public static class RocksmithMusicXmlWriter
     }
 
     private static XDocument BuildDocument(
-        RocksmithCachedSongManifest manifest,
-        RocksmithCachedArrangementSummary summary,
-        RocksmithCachedArrangementPart part,
-        out RocksmithAlphaTabTimingSidecar timingSidecar)
+        PsarcCachedSongManifest manifest,
+        PsarcCachedArrangementSummary summary,
+        PsarcCachedArrangementPart part,
+        out PsarcAlphaTabTimingSidecar timingSidecar)
     {
-        timingSidecar = new RocksmithAlphaTabTimingSidecar();
+        timingSidecar = new PsarcAlphaTabTimingSidecar();
         int[] tuningPitches = ResolveTuningPitches(part, summary);
         string trackName = !string.IsNullOrWhiteSpace(summary.displayName)
             ? summary.displayName
@@ -588,7 +588,7 @@ public static class RocksmithMusicXmlWriter
             int resolvedSlotsPerBeat = ResolveSlotsPerBeatForMeasure(slicesByVoice.Values, measure);
             measure.SetSlotsPerBeat(resolvedSlotsPerBeat);
             int totalSlots = measure.TotalSlots;
-            List<RocksmithAlphaTabTimingBeatEntry> measureTimingEntries = new List<RocksmithAlphaTabTimingBeatEntry>();
+            List<PsarcAlphaTabTimingBeatEntry> measureTimingEntries = new List<PsarcAlphaTabTimingBeatEntry>();
 
             if (slicesByVoice.Count == 0)
             {
@@ -656,7 +656,7 @@ public static class RocksmithMusicXmlWriter
             new XElement("identification",
                 new XElement("creator", new XAttribute("type", "composer"), manifest?.artist ?? string.Empty),
                 new XElement("encoding",
-                    new XElement("software", "StringTheory Rocksmith AlphaTab Export"))),
+                    new XElement("software", "StringTheory PSARC AlphaTab Export"))),
             new XElement("part-list", scorePart),
             partElement);
 
@@ -730,9 +730,9 @@ public static class RocksmithMusicXmlWriter
             new XElement("sound", new XAttribute("tempo", tempoBpm.ToString("0.###", CultureInfo.InvariantCulture))));
     }
 
-    private static List<MeasureInfo> BuildMeasures(RocksmithCachedArrangementPart part, Dictionary<int, float> effectiveEndTimes)
+    private static List<MeasureInfo> BuildMeasures(PsarcCachedArrangementPart part, Dictionary<int, float> effectiveEndTimes)
     {
-        List<RocksmithCachedEbeatData> ebeats = (part?.timing?.ebeats ?? new List<RocksmithCachedEbeatData>())
+        List<PsarcCachedEbeatData> ebeats = (part?.timing?.ebeats ?? new List<PsarcCachedEbeatData>())
             .Where(ebeat => ebeat != null)
             .OrderBy(ebeat => ebeat.timeSeconds)
             .ToList();
@@ -759,7 +759,7 @@ public static class RocksmithMusicXmlWriter
         {
             int startIndex = measureStartIndices[i];
             int nextIndex = i + 1 < measureStartIndices.Count ? measureStartIndices[i + 1] : ebeats.Count;
-            List<RocksmithCachedEbeatData> beats = ebeats.Skip(startIndex).Take(Math.Max(1, nextIndex - startIndex)).ToList();
+            List<PsarcCachedEbeatData> beats = ebeats.Skip(startIndex).Take(Math.Max(1, nextIndex - startIndex)).ToList();
             float startTime = i == 0 && startIndex > 0 ? 0f : beats[0].timeSeconds;
             float endTime = i + 1 < measureStartIndices.Count
                 ? ebeats[measureStartIndices[i + 1]].timeSeconds
@@ -795,7 +795,7 @@ public static class RocksmithMusicXmlWriter
         return measures;
     }
 
-    private static float ResolveFallbackBeatSeconds(RocksmithCachedArrangementPart part)
+    private static float ResolveFallbackBeatSeconds(PsarcCachedArrangementPart part)
     {
         float averageTempo = part?.timing?.averageTempoBpm ?? 120f;
         if (averageTempo <= 0.01f)
@@ -803,14 +803,14 @@ public static class RocksmithMusicXmlWriter
         return 60f / averageTempo;
     }
 
-    private static float ResolveFinalTime(RocksmithCachedArrangementPart part, List<RocksmithCachedEbeatData> ebeats, float fallbackBeatSeconds, Dictionary<int, float> effectiveEndTimes)
+    private static float ResolveFinalTime(PsarcCachedArrangementPart part, List<PsarcCachedEbeatData> ebeats, float fallbackBeatSeconds, Dictionary<int, float> effectiveEndTimes)
     {
         float noteEnd = 0f;
         if (part?.notes != null && part.notes.Count > 0)
         {
             for (int i = 0; i < part.notes.Count; i++)
             {
-                RocksmithCachedNoteData note = part.notes[i];
+                PsarcCachedNoteData note = part.notes[i];
                 noteEnd = Math.Max(noteEnd, ResolveNoteEndTime(note, effectiveEndTimes));
             }
         }
@@ -819,7 +819,7 @@ public static class RocksmithMusicXmlWriter
         return Math.Max(Math.Max(part?.durationSeconds ?? 0f, noteEnd), lastBeat + Math.Max(0.25f, fallbackBeatSeconds));
     }
 
-    private static float EstimateFinalMeasureEnd(List<RocksmithCachedEbeatData> beats, float finalTime, float fallbackBeatSeconds)
+    private static float EstimateFinalMeasureEnd(List<PsarcCachedEbeatData> beats, float finalTime, float fallbackBeatSeconds)
     {
         float startTime = beats.Count > 0 ? beats[0].timeSeconds : 0f;
         float averageBeat = fallbackBeatSeconds;
@@ -834,7 +834,7 @@ public static class RocksmithMusicXmlWriter
         return Math.Max(finalTime, startTime + (averageBeat * Math.Max(1, beats.Count)));
     }
 
-    private static float EstimateTempoBpm(List<RocksmithCachedEbeatData> beats, float endTime, float fallbackTempoBpm)
+    private static float EstimateTempoBpm(List<PsarcCachedEbeatData> beats, float endTime, float fallbackTempoBpm)
     {
         float totalDuration = 0f;
         int segmentCount = 0;
@@ -857,13 +857,13 @@ public static class RocksmithMusicXmlWriter
         return averageBeatSeconds > 0.001f ? 60f / averageBeatSeconds : 120f;
     }
 
-    private static List<EventInfo> BuildEvents(List<RocksmithCachedNoteData> notes, Dictionary<int, float> effectiveEndTimes)
+    private static List<EventInfo> BuildEvents(List<PsarcCachedNoteData> notes, Dictionary<int, float> effectiveEndTimes)
     {
         List<EventInfo> events = new List<EventInfo>();
         if (notes == null || notes.Count == 0)
             return events;
 
-        List<RocksmithCachedNoteData> sorted = notes
+        List<PsarcCachedNoteData> sorted = notes
             .Where(note => note != null)
             .OrderBy(note => note.time)
             .ThenBy(note => note.chordId)
@@ -874,7 +874,7 @@ public static class RocksmithMusicXmlWriter
         int nextSourceEventId = 0;
         for (int i = 0; i < sorted.Count; i++)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (current == null || !current.CanAccept(note))
             {
                 current = new EventInfo(note, nextSourceEventId++, effectiveEndTimes);
@@ -916,7 +916,7 @@ public static class RocksmithMusicXmlWriter
         }
     }
 
-    private static NoteRenderContext BuildNoteRenderContext(List<RocksmithCachedNoteData> notes)
+    private static NoteRenderContext BuildNoteRenderContext(List<PsarcCachedNoteData> notes)
     {
         NoteRenderContext context = new NoteRenderContext();
         if (notes == null)
@@ -924,7 +924,7 @@ public static class RocksmithMusicXmlWriter
 
         for (int i = 0; i < notes.Count; i++)
         {
-            RocksmithCachedNoteData note = notes[i];
+            PsarcCachedNoteData note = notes[i];
             if (note == null)
                 continue;
 
@@ -936,29 +936,29 @@ public static class RocksmithMusicXmlWriter
         return context;
     }
 
-    private static Dictionary<int, float> BuildEffectiveEndTimes(RocksmithCachedArrangementPart part)
+    private static Dictionary<int, float> BuildEffectiveEndTimes(PsarcCachedArrangementPart part)
     {
         Dictionary<int, float> effectiveEndTimes = new Dictionary<int, float>();
-        List<RocksmithCachedNoteData> notes = part?.notes;
+        List<PsarcCachedNoteData> notes = part?.notes;
         if (notes == null || notes.Count == 0)
             return effectiveEndTimes;
 
-        List<RocksmithCachedNoteData> sorted = notes
+        List<PsarcCachedNoteData> sorted = notes
             .Where(note => note != null)
             .OrderBy(note => note.time)
             .ThenBy(note => note.stringIdx)
             .ThenBy(note => note.id)
             .ToList();
 
-        Dictionary<int, RocksmithCachedNoteData> linkedChildrenByParentId = new Dictionary<int, RocksmithCachedNoteData>();
-        Dictionary<int, RocksmithCachedNoteData> nextNoteOnStringById = new Dictionary<int, RocksmithCachedNoteData>();
-        Dictionary<int, RocksmithCachedNoteData> nextGlobalNoteById = new Dictionary<int, RocksmithCachedNoteData>();
-        RocksmithCachedNoteData[] nextNoteOnString = new RocksmithCachedNoteData[8];
-        RocksmithCachedNoteData nextGlobalNote = null;
+        Dictionary<int, PsarcCachedNoteData> linkedChildrenByParentId = new Dictionary<int, PsarcCachedNoteData>();
+        Dictionary<int, PsarcCachedNoteData> nextNoteOnStringById = new Dictionary<int, PsarcCachedNoteData>();
+        Dictionary<int, PsarcCachedNoteData> nextGlobalNoteById = new Dictionary<int, PsarcCachedNoteData>();
+        PsarcCachedNoteData[] nextNoteOnString = new PsarcCachedNoteData[8];
+        PsarcCachedNoteData nextGlobalNote = null;
 
         for (int i = sorted.Count - 1; i >= 0; i--)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (note == null)
                 continue;
 
@@ -977,7 +977,7 @@ public static class RocksmithMusicXmlWriter
 
         for (int i = 0; i < sorted.Count; i++)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (note == null)
                 continue;
 
@@ -988,7 +988,7 @@ public static class RocksmithMusicXmlWriter
             {
                 for (int segmentIndex = 0; segmentIndex < note.techniqueSegments.Count; segmentIndex++)
                 {
-                    RocksmithCachedTechniqueSegmentData segment = note.techniqueSegments[segmentIndex];
+                    PsarcCachedTechniqueSegmentData segment = note.techniqueSegments[segmentIndex];
                     if (segment == null)
                         continue;
                     segmentDuration = Mathf.Max(segmentDuration, Mathf.Max(0f, segment.endOffset));
@@ -998,20 +998,20 @@ public static class RocksmithMusicXmlWriter
             float endTime = note.time + Mathf.Max(explicitDuration, Mathf.Max(visualDuration, segmentDuration));
             if (endTime <= note.time + 0.0005f)
             {
-                if (linkedChildrenByParentId.TryGetValue(note.id, out RocksmithCachedNoteData linkedChild) &&
+                if (linkedChildrenByParentId.TryGetValue(note.id, out PsarcCachedNoteData linkedChild) &&
                     linkedChild != null &&
                     linkedChild.time > note.time + 0.0005f)
                 {
                     endTime = linkedChild.time;
                 }
                 else if ((note.isLegato || !note.requiresPluck || note.linkedFromNoteId >= 0) &&
-                         nextNoteOnStringById.TryGetValue(note.id, out RocksmithCachedNoteData nextOnString) &&
+                         nextNoteOnStringById.TryGetValue(note.id, out PsarcCachedNoteData nextOnString) &&
                          nextOnString != null &&
                          nextOnString.time > note.time + 0.0005f)
                 {
                     endTime = nextOnString.time;
                 }
-                else if (nextGlobalNoteById.TryGetValue(note.id, out RocksmithCachedNoteData nextOnset) &&
+                else if (nextGlobalNoteById.TryGetValue(note.id, out PsarcCachedNoteData nextOnset) &&
                          nextOnset != null &&
                          nextOnset.time > note.time + 0.0005f)
                 {
@@ -1037,7 +1037,7 @@ public static class RocksmithMusicXmlWriter
         return effectiveEndTimes;
     }
 
-    private static bool TryResolveNextBeatTime(List<RocksmithCachedEbeatData> ebeats, float noteTime, out float nextBeatTime)
+    private static bool TryResolveNextBeatTime(List<PsarcCachedEbeatData> ebeats, float noteTime, out float nextBeatTime)
     {
         nextBeatTime = 0f;
         if (ebeats == null || ebeats.Count == 0)
@@ -1045,7 +1045,7 @@ public static class RocksmithMusicXmlWriter
 
         for (int i = 0; i < ebeats.Count; i++)
         {
-            RocksmithCachedEbeatData ebeat = ebeats[i];
+            PsarcCachedEbeatData ebeat = ebeats[i];
             if (ebeat == null)
                 continue;
 
@@ -1059,7 +1059,7 @@ public static class RocksmithMusicXmlWriter
         return false;
     }
 
-    private static float ResolveNoteEndTime(RocksmithCachedNoteData note, Dictionary<int, float> effectiveEndTimes)
+    private static float ResolveNoteEndTime(PsarcCachedNoteData note, Dictionary<int, float> effectiveEndTimes)
     {
         if (note == null)
             return 0f;
@@ -1280,7 +1280,7 @@ public static class RocksmithMusicXmlWriter
         XElement measureElement,
         int slotCount,
         int slotsPerBeat,
-        List<RocksmithAlphaTabTimingBeatEntry> timingEntries,
+        List<PsarcAlphaTabTimingBeatEntry> timingEntries,
         float startTime,
         float endTime,
         int voiceNumber)
@@ -1298,7 +1298,7 @@ public static class RocksmithMusicXmlWriter
                 ? endTime
                 : Mathf.Lerp(startTime, endTime, consumedSlots / (float)totalSlots);
             nextTime = Math.Max(cursorTime + 0.001f, nextTime);
-            timingEntries?.Add(new RocksmithAlphaTabTimingBeatEntry
+            timingEntries?.Add(new PsarcAlphaTabTimingBeatEntry
             {
                 startTime = cursorTime,
                 endTime = nextTime,
@@ -1317,7 +1317,7 @@ public static class RocksmithMusicXmlWriter
         QuantizedEvent quantized,
         int[] tuningPitches,
         int slotsPerBeat,
-        List<RocksmithAlphaTabTimingBeatEntry> timingEntries,
+        List<PsarcAlphaTabTimingBeatEntry> timingEntries,
         float startTime,
         float endTime,
         int voiceNumber,
@@ -1337,7 +1337,7 @@ public static class RocksmithMusicXmlWriter
 
             for (int noteIndex = 0; noteIndex < quantized.notes.Count; noteIndex++)
             {
-                RocksmithCachedNoteData note = quantized.notes[noteIndex];
+                PsarcCachedNoteData note = quantized.notes[noteIndex];
                 measureElement.Add(BuildNoteElement(note, token, tuningPitches, noteIndex > 0, tieStart, tieStop, voiceNumber, noteRenderContext));
             }
 
@@ -1346,7 +1346,7 @@ public static class RocksmithMusicXmlWriter
                 ? endTime
                 : Mathf.Lerp(startTime, endTime, consumedSlots / (float)totalSlots);
             nextTime = Math.Max(cursorTime + 0.001f, nextTime);
-            timingEntries?.Add(new RocksmithAlphaTabTimingBeatEntry
+            timingEntries?.Add(new PsarcAlphaTabTimingBeatEntry
             {
                 startTime = cursorTime,
                 endTime = nextTime,
@@ -1385,7 +1385,7 @@ public static class RocksmithMusicXmlWriter
     }
 
     private static XElement BuildNoteElement(
-        RocksmithCachedNoteData note,
+        PsarcCachedNoteData note,
         DurationToken token,
         int[] tuningPitches,
         bool isChordTone,
@@ -1465,7 +1465,7 @@ public static class RocksmithMusicXmlWriter
         return bend;
     }
 
-    private static void AppendTechniqueElements(RocksmithCachedNoteData note, XElement technical)
+    private static void AppendTechniqueElements(PsarcCachedNoteData note, XElement technical)
     {
         if (technical == null || note == null)
             return;
@@ -1481,7 +1481,7 @@ public static class RocksmithMusicXmlWriter
             technical.Add(new XElement("tap"));
     }
 
-    private static void AppendLinkedTechniqueNotations(RocksmithCachedNoteData note, XElement notations, NoteRenderContext context)
+    private static void AppendLinkedTechniqueNotations(PsarcCachedNoteData note, XElement notations, NoteRenderContext context)
     {
         if (note == null || notations == null || context == null)
             return;
@@ -1490,7 +1490,7 @@ public static class RocksmithMusicXmlWriter
         if (technical == null)
             return;
 
-        if (context.legatoDestinationByOriginId.TryGetValue(note.id, out RocksmithCachedNoteData destination))
+        if (context.legatoDestinationByOriginId.TryGetValue(note.id, out PsarcCachedNoteData destination))
             AddLegatoNotation(technical, notations, ResolveLegatoTechnique(destination, context), isStart: true);
 
         if (note.isLegato && note.linkedFromNoteId >= 0)
@@ -1519,7 +1519,7 @@ public static class RocksmithMusicXmlWriter
         }
     }
 
-    private static void AppendExpressiveNotations(RocksmithCachedNoteData note, XElement notations)
+    private static void AppendExpressiveNotations(PsarcCachedNoteData note, XElement notations)
     {
         if (note == null || notations == null)
             return;
@@ -1555,7 +1555,7 @@ public static class RocksmithMusicXmlWriter
         return child;
     }
 
-    private static NoteTechnique ResolveLegatoTechnique(RocksmithCachedNoteData note, NoteRenderContext context)
+    private static NoteTechnique ResolveLegatoTechnique(PsarcCachedNoteData note, NoteRenderContext context)
     {
         if (note == null)
             return NoteTechnique.None;
@@ -1573,7 +1573,7 @@ public static class RocksmithMusicXmlWriter
         if (note.isLegato && note.linkedFromNoteId >= 0)
         {
             if (context != null &&
-                context.notesById.TryGetValue(note.linkedFromNoteId, out RocksmithCachedNoteData previous) &&
+                context.notesById.TryGetValue(note.linkedFromNoteId, out PsarcCachedNoteData previous) &&
                 previous != null)
             {
                 if (note.fret > previous.fret)
@@ -1586,7 +1586,7 @@ public static class RocksmithMusicXmlWriter
         return NoteTechnique.None;
     }
 
-    private static bool IsVibrato(RocksmithCachedNoteData note)
+    private static bool IsVibrato(PsarcCachedNoteData note)
     {
         if (note == null)
             return false;
@@ -1609,7 +1609,7 @@ public static class RocksmithMusicXmlWriter
         return false;
     }
 
-    private static bool IsHarmonic(RocksmithCachedNoteData note)
+    private static bool IsHarmonic(PsarcCachedNoteData note)
     {
         return note != null && (note.isHarmonic || note.isPinchHarmonic);
     }
@@ -1676,7 +1676,7 @@ public static class RocksmithMusicXmlWriter
             .ToArray();
     }
 
-    private static int[] ResolveTuningPitches(RocksmithCachedArrangementPart part, RocksmithCachedArrangementSummary summary)
+    private static int[] ResolveTuningPitches(PsarcCachedArrangementPart part, PsarcCachedArrangementSummary summary)
     {
         if (part?.tuningPitches != null && part.tuningPitches.Length > 0)
             return (int[])part.tuningPitches.Clone();
@@ -1689,7 +1689,7 @@ public static class RocksmithMusicXmlWriter
         return StringTuningUtils.CloneOrDefault(null, preferBass);
     }
 
-    private static int ResolveMidiFromNote(RocksmithCachedNoteData note, int[] tuningPitches)
+    private static int ResolveMidiFromNote(PsarcCachedNoteData note, int[] tuningPitches)
     {
         int[] resolvedTuning = tuningPitches != null && tuningPitches.Length > 0
             ? tuningPitches
@@ -1744,9 +1744,9 @@ public static class RocksmithMusicXmlWriter
         public readonly float startTime;
         public float endTime;
         public int voiceIndex;
-        public readonly List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public readonly List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
 
-        public EventInfo(RocksmithCachedNoteData note, int sourceEventId, Dictionary<int, float> effectiveEndTimes)
+        public EventInfo(PsarcCachedNoteData note, int sourceEventId, Dictionary<int, float> effectiveEndTimes)
         {
             this.sourceEventId = sourceEventId;
             chordId = note.chordId;
@@ -1754,7 +1754,7 @@ public static class RocksmithMusicXmlWriter
             endTime = ResolveNoteEndTime(note, effectiveEndTimes);
         }
 
-        public bool CanAccept(RocksmithCachedNoteData note)
+        public bool CanAccept(PsarcCachedNoteData note)
         {
             return note != null &&
                    note.chordId == chordId &&
@@ -1771,7 +1771,7 @@ public static class RocksmithMusicXmlWriter
         public float sourceEndTime;
         public bool tieFromPrevious;
         public bool tieToNext;
-        public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
 
         public int DurationSlots => Math.Max(1, endSlot - startSlot);
     }
@@ -1784,7 +1784,7 @@ public static class RocksmithMusicXmlWriter
         public float endTime;
         public bool tieFromPrevious;
         public bool tieToNext;
-        public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
     }
 
     private sealed class MeasureInfo
@@ -1851,21 +1851,21 @@ public static class RocksmithMusicXmlWriter
 
     private sealed class NoteRenderContext
     {
-        public readonly Dictionary<int, RocksmithCachedNoteData> notesById = new Dictionary<int, RocksmithCachedNoteData>();
-        public readonly Dictionary<int, RocksmithCachedNoteData> legatoDestinationByOriginId = new Dictionary<int, RocksmithCachedNoteData>();
+        public readonly Dictionary<int, PsarcCachedNoteData> notesById = new Dictionary<int, PsarcCachedNoteData>();
+        public readonly Dictionary<int, PsarcCachedNoteData> legatoDestinationByOriginId = new Dictionary<int, PsarcCachedNoteData>();
     }
 }
 
 [Serializable]
-public sealed class RocksmithAlphaTabTimingSidecar
+public sealed class PsarcAlphaTabTimingSidecar
 {
     public int version = 2;
     public string notationPath = string.Empty;
-    public List<RocksmithAlphaTabTimingBeatEntry> beats = new List<RocksmithAlphaTabTimingBeatEntry>();
+    public List<PsarcAlphaTabTimingBeatEntry> beats = new List<PsarcAlphaTabTimingBeatEntry>();
 }
 
 [Serializable]
-public sealed class RocksmithAlphaTabTimingBeatEntry
+public sealed class PsarcAlphaTabTimingBeatEntry
 {
     public float startTime;
     public float endTime;
@@ -1878,7 +1878,7 @@ public sealed class RocksmithAlphaTabTimingBeatEntry
     public string noteKey = string.Empty;
 }
 
-internal static class RocksmithAlphaTabGpWriter
+internal static class PsarcAlphaTabGpWriter
 {
     private const int DefaultSlotsPerBeat = 8;
     private static readonly int[] SupportedSlotsPerBeat = { 8, 16, 32 };
@@ -1888,9 +1888,9 @@ internal static class RocksmithAlphaTabGpWriter
 
     public static void Write(
         string outputGpPath,
-        RocksmithCachedSongManifest manifest,
-        RocksmithCachedArrangementSummary summary,
-        RocksmithCachedArrangementPart part)
+        PsarcCachedSongManifest manifest,
+        PsarcCachedArrangementSummary summary,
+        PsarcCachedArrangementPart part)
     {
         if (string.IsNullOrWhiteSpace(outputGpPath))
             throw new ArgumentException("Output AlphaTex path was empty.", nameof(outputGpPath));
@@ -1899,7 +1899,7 @@ internal static class RocksmithAlphaTabGpWriter
         if (!string.IsNullOrWhiteSpace(directory))
             Directory.CreateDirectory(directory);
 
-        RocksmithAlphaTabTimingSidecar timingSidecar;
+        PsarcAlphaTabTimingSidecar timingSidecar;
         string alphaTex = BuildAlphaTex(manifest, summary, part, out timingSidecar);
         File.WriteAllText(outputGpPath, alphaTex, Utf8WithoutBom);
 
@@ -1909,12 +1909,12 @@ internal static class RocksmithAlphaTabGpWriter
     }
 
     private static string BuildAlphaTex(
-        RocksmithCachedSongManifest manifest,
-        RocksmithCachedArrangementSummary summary,
-        RocksmithCachedArrangementPart part,
-        out RocksmithAlphaTabTimingSidecar timingSidecar)
+        PsarcCachedSongManifest manifest,
+        PsarcCachedArrangementSummary summary,
+        PsarcCachedArrangementPart part,
+        out PsarcAlphaTabTimingSidecar timingSidecar)
     {
-        timingSidecar = new RocksmithAlphaTabTimingSidecar();
+        timingSidecar = new PsarcAlphaTabTimingSidecar();
 
         int[] tuningPitches = ResolveTuningPitches(part, summary);
         string trackName = !string.IsNullOrWhiteSpace(summary.displayName)
@@ -1946,7 +1946,7 @@ internal static class RocksmithAlphaTabGpWriter
 
             for (int voiceIndex = 0; voiceIndex < voiceCount; voiceIndex++)
             {
-                List<RocksmithAlphaTabTimingBeatEntry> measureTimingEntries = new List<RocksmithAlphaTabTimingBeatEntry>();
+                List<PsarcAlphaTabTimingBeatEntry> measureTimingEntries = new List<PsarcAlphaTabTimingBeatEntry>();
                 string measureText = BuildMeasureAlphaTex(
                     measure,
                     measureIndex,
@@ -1999,8 +1999,8 @@ internal static class RocksmithAlphaTabGpWriter
     }
 
     private static string BuildInitialMeasureMetadata(
-        RocksmithCachedArrangementSummary summary,
-        RocksmithCachedArrangementPart part,
+        PsarcCachedArrangementSummary summary,
+        PsarcCachedArrangementPart part,
         MeasureInfo measure)
     {
         StringBuilder builder = new StringBuilder();
@@ -2032,7 +2032,7 @@ internal static class RocksmithAlphaTabGpWriter
                 builder.Append("\\ts ").Append(current.beatCount.ToString(CultureInfo.InvariantCulture)).Append(" 4");
         }
 
-        // AlphaTab sheet rendering in this path uses the Rocksmith timing sidecar for all
+        // AlphaTab sheet rendering in this path uses the Psarc timing sidecar for all
         // playback/cursor timing. Emitting bar tempo metadata here is not required for layout
         // and causes parser incompatibilities across AlphaTex versions, so we leave it out.
     }
@@ -2045,7 +2045,7 @@ internal static class RocksmithAlphaTabGpWriter
         int[] tuningPitches,
         int voiceIndex,
         NoteRenderContext noteRenderContext,
-        List<RocksmithAlphaTabTimingBeatEntry> timingEntries)
+        List<PsarcAlphaTabTimingBeatEntry> timingEntries)
     {
         int totalSlots = measure.TotalSlots;
         List<string> beats = new List<string>();
@@ -2089,7 +2089,7 @@ internal static class RocksmithAlphaTabGpWriter
         List<string> beats,
         int slotCount,
         int slotsPerBeat,
-        List<RocksmithAlphaTabTimingBeatEntry> timingEntries,
+        List<PsarcAlphaTabTimingBeatEntry> timingEntries,
         float startTime,
         float endTime,
         int masterBarIndex,
@@ -2108,7 +2108,7 @@ internal static class RocksmithAlphaTabGpWriter
                 ? endTime
                 : Mathf.Lerp(startTime, endTime, consumedSlots / (float)totalSlots);
             nextTime = Math.Max(cursorTime + 0.001f, nextTime);
-            timingEntries?.Add(new RocksmithAlphaTabTimingBeatEntry
+            timingEntries?.Add(new PsarcAlphaTabTimingBeatEntry
             {
                 startTime = cursorTime,
                 endTime = nextTime,
@@ -2129,7 +2129,7 @@ internal static class RocksmithAlphaTabGpWriter
         QuantizedEvent quantized,
         int[] tuningPitches,
         int slotsPerBeat,
-        List<RocksmithAlphaTabTimingBeatEntry> timingEntries,
+        List<PsarcAlphaTabTimingBeatEntry> timingEntries,
         float startTime,
         float endTime,
         int masterBarIndex,
@@ -2162,7 +2162,7 @@ internal static class RocksmithAlphaTabGpWriter
 
             beats.Add(BuildEventBeatText(quantized, token, tuningPitches, noteRenderContext, isAttackToken, cursorTime, nextTime));
 
-            timingEntries?.Add(new RocksmithAlphaTabTimingBeatEntry
+            timingEntries?.Add(new PsarcAlphaTabTimingBeatEntry
             {
                 startTime = cursorTime,
                 endTime = nextTime,
@@ -2191,7 +2191,7 @@ internal static class RocksmithAlphaTabGpWriter
         List<string> noteTokens = new List<string>(quantized.notes.Count);
         for (int i = 0; i < quantized.notes.Count; i++)
         {
-            RocksmithCachedNoteData note = quantized.notes[i];
+            PsarcCachedNoteData note = quantized.notes[i];
             noteTokens.Add(BuildNoteText(note, stringCount, noteRenderContext, isAttackToken, tokenStartTime, tokenEndTime));
         }
 
@@ -2207,7 +2207,7 @@ internal static class RocksmithAlphaTabGpWriter
     }
 
     private static string BuildNoteText(
-        RocksmithCachedNoteData note,
+        PsarcCachedNoteData note,
         int stringCount,
         NoteRenderContext noteRenderContext,
         bool isAttackToken,
@@ -2231,7 +2231,7 @@ internal static class RocksmithAlphaTabGpWriter
         return text;
     }
 
-    private static void AppendAttackEffects(List<string> effects, RocksmithCachedNoteData note, NoteRenderContext noteRenderContext)
+    private static void AppendAttackEffects(List<string> effects, PsarcCachedNoteData note, NoteRenderContext noteRenderContext)
     {
         if (note == null || effects == null)
             return;
@@ -2251,7 +2251,7 @@ internal static class RocksmithAlphaTabGpWriter
             effects.Add("nh");
     }
 
-    private static void AppendSustainEffects(List<string> effects, RocksmithCachedNoteData note, float tokenStartTime, float tokenEndTime)
+    private static void AppendSustainEffects(List<string> effects, PsarcCachedNoteData note, float tokenStartTime, float tokenEndTime)
     {
         if (note == null || effects == null)
             return;
@@ -2285,7 +2285,7 @@ internal static class RocksmithAlphaTabGpWriter
         return 8;
     }
 
-    private static string BuildTimingNoteKey(IEnumerable<RocksmithCachedNoteData> notes, int stringCount)
+    private static string BuildTimingNoteKey(IEnumerable<PsarcCachedNoteData> notes, int stringCount)
     {
         if (notes == null)
             return "rest";
@@ -2304,7 +2304,7 @@ internal static class RocksmithAlphaTabGpWriter
         return parts.Count == 0 ? "rest" : string.Join("|", parts);
     }
 
-    private static string SerializeTimingSidecar(RocksmithAlphaTabTimingSidecar sidecar)
+    private static string SerializeTimingSidecar(PsarcAlphaTabTimingSidecar sidecar)
     {
         StringBuilder builder = new StringBuilder(4096);
         builder.Append("{\n");
@@ -2312,10 +2312,10 @@ internal static class RocksmithAlphaTabGpWriter
         builder.Append("  \"notationPath\": ").Append(QuoteJson(sidecar?.notationPath ?? string.Empty)).Append(",\n");
         builder.Append("  \"beats\": [\n");
 
-        List<RocksmithAlphaTabTimingBeatEntry> beats = sidecar?.beats ?? new List<RocksmithAlphaTabTimingBeatEntry>();
+        List<PsarcAlphaTabTimingBeatEntry> beats = sidecar?.beats ?? new List<PsarcAlphaTabTimingBeatEntry>();
         for (int i = 0; i < beats.Count; i++)
         {
-            RocksmithAlphaTabTimingBeatEntry beat = beats[i] ?? new RocksmithAlphaTabTimingBeatEntry();
+            PsarcAlphaTabTimingBeatEntry beat = beats[i] ?? new PsarcAlphaTabTimingBeatEntry();
             builder.Append("    {\n");
             builder.Append("      \"startTime\": ").Append(FormatJsonFloat(beat.startTime)).Append(",\n");
             builder.Append("      \"endTime\": ").Append(FormatJsonFloat(beat.endTime)).Append(",\n");
@@ -2382,10 +2382,10 @@ internal static class RocksmithAlphaTabGpWriter
         return value.ToString("0.######", CultureInfo.InvariantCulture);
     }
 
-    private static bool TryResolveOriginLegatoEffect(RocksmithCachedNoteData origin, NoteRenderContext context, out string effect)
+    private static bool TryResolveOriginLegatoEffect(PsarcCachedNoteData origin, NoteRenderContext context, out string effect)
     {
         effect = string.Empty;
-        if (origin == null || context == null || !context.legatoDestinationByOriginId.TryGetValue(origin.id, out RocksmithCachedNoteData destination) || destination == null)
+        if (origin == null || context == null || !context.legatoDestinationByOriginId.TryGetValue(origin.id, out PsarcCachedNoteData destination) || destination == null)
             return false;
 
         if (destination.slideTargetFret >= 0 || (NoteTechnique)Mathf.Clamp(destination.technique, 0, (int)NoteTechnique.Vibrato) == NoteTechnique.Slide)
@@ -2431,10 +2431,10 @@ internal static class RocksmithAlphaTabGpWriter
 
         for (int i = 0; i < quantized.notes.Count; i++)
         {
-            RocksmithCachedNoteData origin = quantized.notes[i];
+            PsarcCachedNoteData origin = quantized.notes[i];
             if (origin == null)
                 continue;
-            if (!context.legatoDestinationByOriginId.TryGetValue(origin.id, out RocksmithCachedNoteData destination) || destination == null)
+            if (!context.legatoDestinationByOriginId.TryGetValue(origin.id, out PsarcCachedNoteData destination) || destination == null)
                 continue;
             if (destination.time <= origin.time + 0.0005f)
                 continue;
@@ -2446,7 +2446,7 @@ internal static class RocksmithAlphaTabGpWriter
         return false;
     }
 
-    private static bool HasVibratoDuringWindow(RocksmithCachedNoteData note, float tokenStartTime, float tokenEndTime)
+    private static bool HasVibratoDuringWindow(PsarcCachedNoteData note, float tokenStartTime, float tokenEndTime)
     {
         if (note == null)
             return false;
@@ -2461,7 +2461,7 @@ internal static class RocksmithAlphaTabGpWriter
         float relativeEnd = Math.Max(relativeStart, tokenEndTime - note.time);
         for (int i = 0; i < note.techniqueSegments.Count; i++)
         {
-            RocksmithCachedTechniqueSegmentData segment = note.techniqueSegments[i];
+            PsarcCachedTechniqueSegmentData segment = note.techniqueSegments[i];
             if (segment == null || segment.type != (int)NoteTechniqueSegmentType.Vibrato)
                 continue;
 
@@ -2472,12 +2472,12 @@ internal static class RocksmithAlphaTabGpWriter
         return false;
     }
 
-    private static string BuildBendEffect(RocksmithCachedNoteData note, float tokenStartTime, float tokenEndTime)
+    private static string BuildBendEffect(PsarcCachedNoteData note, float tokenStartTime, float tokenEndTime)
     {
         if (note == null)
             return string.Empty;
 
-        List<RocksmithCachedBendPointData> bendPoints = note.bendPoints?
+        List<PsarcCachedBendPointData> bendPoints = note.bendPoints?
             .Where(point => point != null)
             .OrderBy(point => point.timeSeconds)
             .ToList();
@@ -2497,7 +2497,7 @@ internal static class RocksmithAlphaTabGpWriter
 
         for (int i = 0; i < bendPoints.Count; i++)
         {
-            RocksmithCachedBendPointData point = bendPoints[i];
+            PsarcCachedBendPointData point = bendPoints[i];
             if (point.timeSeconds <= windowStart + 0.0005f || point.timeSeconds >= windowEnd - 0.0005f)
                 continue;
 
@@ -2529,7 +2529,7 @@ internal static class RocksmithAlphaTabGpWriter
         return builder.ToString();
     }
 
-    private static string BuildFallbackBendEffect(RocksmithCachedNoteData note)
+    private static string BuildFallbackBendEffect(PsarcCachedNoteData note)
     {
         if (note == null)
             return string.Empty;
@@ -2548,7 +2548,7 @@ internal static class RocksmithAlphaTabGpWriter
         return $"be (0 0 60 {value.ToString("0.###", CultureInfo.InvariantCulture)})";
     }
 
-    private static float SampleBendStep(List<RocksmithCachedBendPointData> points, float timeSeconds, RocksmithCachedNoteData note)
+    private static float SampleBendStep(List<PsarcCachedBendPointData> points, float timeSeconds, PsarcCachedNoteData note)
     {
         if (points == null || points.Count == 0)
             return Mathf.Max(note?.bendStep ?? 0f, 0f);
@@ -2569,8 +2569,8 @@ internal static class RocksmithAlphaTabGpWriter
 
         for (int i = 1; i < points.Count; i++)
         {
-            RocksmithCachedBendPointData previous = points[i - 1];
-            RocksmithCachedBendPointData current = points[i];
+            PsarcCachedBendPointData previous = points[i - 1];
+            PsarcCachedBendPointData current = points[i];
             if (timeSeconds <= current.timeSeconds + 0.0005f)
             {
                 float span = Math.Max(0.0001f, current.timeSeconds - previous.timeSeconds);
@@ -2582,7 +2582,7 @@ internal static class RocksmithAlphaTabGpWriter
         return points[points.Count - 1].step;
     }
 
-    private static float ResolveInitialBendStep(List<RocksmithCachedBendPointData> points, RocksmithCachedNoteData note)
+    private static float ResolveInitialBendStep(List<PsarcCachedBendPointData> points, PsarcCachedNoteData note)
     {
         if (points == null || points.Count == 0)
             return Mathf.Max(note?.bendStep ?? 0f, 0f);
@@ -2601,29 +2601,29 @@ internal static class RocksmithAlphaTabGpWriter
         return Mathf.Round(semitoneStep * 2f);
     }
 
-    private static Dictionary<int, float> BuildEffectiveEndTimes(RocksmithCachedArrangementPart part)
+    private static Dictionary<int, float> BuildEffectiveEndTimes(PsarcCachedArrangementPart part)
     {
         Dictionary<int, float> effectiveEndTimes = new Dictionary<int, float>();
-        List<RocksmithCachedNoteData> notes = part?.notes;
+        List<PsarcCachedNoteData> notes = part?.notes;
         if (notes == null || notes.Count == 0)
             return effectiveEndTimes;
 
-        List<RocksmithCachedNoteData> sorted = notes
+        List<PsarcCachedNoteData> sorted = notes
             .Where(note => note != null)
             .OrderBy(note => note.time)
             .ThenBy(note => note.stringIdx)
             .ThenBy(note => note.id)
             .ToList();
 
-        Dictionary<int, RocksmithCachedNoteData> linkedChildrenByParentId = new Dictionary<int, RocksmithCachedNoteData>();
-        Dictionary<int, RocksmithCachedNoteData> nextNoteOnStringById = new Dictionary<int, RocksmithCachedNoteData>();
-        Dictionary<int, RocksmithCachedNoteData> nextGlobalNoteById = new Dictionary<int, RocksmithCachedNoteData>();
-        RocksmithCachedNoteData[] nextNoteOnString = new RocksmithCachedNoteData[8];
-        RocksmithCachedNoteData nextGlobalNote = null;
+        Dictionary<int, PsarcCachedNoteData> linkedChildrenByParentId = new Dictionary<int, PsarcCachedNoteData>();
+        Dictionary<int, PsarcCachedNoteData> nextNoteOnStringById = new Dictionary<int, PsarcCachedNoteData>();
+        Dictionary<int, PsarcCachedNoteData> nextGlobalNoteById = new Dictionary<int, PsarcCachedNoteData>();
+        PsarcCachedNoteData[] nextNoteOnString = new PsarcCachedNoteData[8];
+        PsarcCachedNoteData nextGlobalNote = null;
 
         for (int i = sorted.Count - 1; i >= 0; i--)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (note == null)
                 continue;
 
@@ -2642,7 +2642,7 @@ internal static class RocksmithAlphaTabGpWriter
 
         for (int i = 0; i < sorted.Count; i++)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (note == null)
                 continue;
 
@@ -2656,7 +2656,7 @@ internal static class RocksmithAlphaTabGpWriter
             {
                 for (int segmentIndex = 0; segmentIndex < note.techniqueSegments.Count; segmentIndex++)
                 {
-                    RocksmithCachedTechniqueSegmentData segment = note.techniqueSegments[segmentIndex];
+                    PsarcCachedTechniqueSegmentData segment = note.techniqueSegments[segmentIndex];
                     if (segment == null)
                         continue;
                     segmentDuration = Mathf.Max(segmentDuration, Mathf.Max(0f, segment.endOffset));
@@ -2666,20 +2666,20 @@ internal static class RocksmithAlphaTabGpWriter
             float endTime = note.time + Mathf.Max(explicitDuration, Mathf.Max(rawBendDuration, Mathf.Max(visualDuration, segmentDuration)));
             if (endTime <= note.time + 0.0005f)
             {
-                if (linkedChildrenByParentId.TryGetValue(note.id, out RocksmithCachedNoteData linkedChild) &&
+                if (linkedChildrenByParentId.TryGetValue(note.id, out PsarcCachedNoteData linkedChild) &&
                     linkedChild != null &&
                     linkedChild.time > note.time + 0.0005f)
                 {
                     endTime = linkedChild.time;
                 }
                 else if ((note.isLegato || !note.requiresPluck || note.linkedFromNoteId >= 0) &&
-                         nextNoteOnStringById.TryGetValue(note.id, out RocksmithCachedNoteData nextOnString) &&
+                         nextNoteOnStringById.TryGetValue(note.id, out PsarcCachedNoteData nextOnString) &&
                          nextOnString != null &&
                          nextOnString.time > note.time + 0.0005f)
                 {
                     endTime = nextOnString.time;
                 }
-                else if (nextGlobalNoteById.TryGetValue(note.id, out RocksmithCachedNoteData nextOnset) &&
+                else if (nextGlobalNoteById.TryGetValue(note.id, out PsarcCachedNoteData nextOnset) &&
                          nextOnset != null &&
                          nextOnset.time > note.time + 0.0005f)
                 {
@@ -2705,7 +2705,7 @@ internal static class RocksmithAlphaTabGpWriter
         return effectiveEndTimes;
     }
 
-    private static bool TryResolveNextBeatTime(List<RocksmithCachedEbeatData> ebeats, float noteTime, out float nextBeatTime)
+    private static bool TryResolveNextBeatTime(List<PsarcCachedEbeatData> ebeats, float noteTime, out float nextBeatTime)
     {
         nextBeatTime = 0f;
         if (ebeats == null || ebeats.Count == 0)
@@ -2713,7 +2713,7 @@ internal static class RocksmithAlphaTabGpWriter
 
         for (int i = 0; i < ebeats.Count; i++)
         {
-            RocksmithCachedEbeatData ebeat = ebeats[i];
+            PsarcCachedEbeatData ebeat = ebeats[i];
             if (ebeat == null)
                 continue;
 
@@ -2727,7 +2727,7 @@ internal static class RocksmithAlphaTabGpWriter
         return false;
     }
 
-    private static float ResolveNoteEndTime(RocksmithCachedNoteData note, Dictionary<int, float> effectiveEndTimes)
+    private static float ResolveNoteEndTime(PsarcCachedNoteData note, Dictionary<int, float> effectiveEndTimes)
     {
         if (note == null)
             return 0f;
@@ -2738,9 +2738,9 @@ internal static class RocksmithAlphaTabGpWriter
         return note.time + Mathf.Max(0.05f, note.duration);
     }
 
-    private static List<MeasureInfo> BuildMeasures(RocksmithCachedArrangementPart part, Dictionary<int, float> effectiveEndTimes)
+    private static List<MeasureInfo> BuildMeasures(PsarcCachedArrangementPart part, Dictionary<int, float> effectiveEndTimes)
     {
-        List<RocksmithCachedEbeatData> ebeats = (part?.timing?.ebeats ?? new List<RocksmithCachedEbeatData>())
+        List<PsarcCachedEbeatData> ebeats = (part?.timing?.ebeats ?? new List<PsarcCachedEbeatData>())
             .Where(ebeat => ebeat != null)
             .OrderBy(ebeat => ebeat.timeSeconds)
             .ToList();
@@ -2767,7 +2767,7 @@ internal static class RocksmithAlphaTabGpWriter
         {
             int startIndex = measureStartIndices[i];
             int nextIndex = i + 1 < measureStartIndices.Count ? measureStartIndices[i + 1] : ebeats.Count;
-            List<RocksmithCachedEbeatData> beats = ebeats.Skip(startIndex).Take(Math.Max(1, nextIndex - startIndex)).ToList();
+            List<PsarcCachedEbeatData> beats = ebeats.Skip(startIndex).Take(Math.Max(1, nextIndex - startIndex)).ToList();
             float startTime = i == 0 && startIndex > 0 ? 0f : beats[0].timeSeconds;
             float endTime = i + 1 < measureStartIndices.Count
                 ? ebeats[measureStartIndices[i + 1]].timeSeconds
@@ -2802,7 +2802,7 @@ internal static class RocksmithAlphaTabGpWriter
         return measures;
     }
 
-    private static float ResolveFallbackBeatSeconds(RocksmithCachedArrangementPart part)
+    private static float ResolveFallbackBeatSeconds(PsarcCachedArrangementPart part)
     {
         float averageTempo = part?.timing?.averageTempoBpm ?? 120f;
         if (averageTempo <= 0.01f)
@@ -2810,7 +2810,7 @@ internal static class RocksmithAlphaTabGpWriter
         return 60f / averageTempo;
     }
 
-    private static float ResolveFinalTime(RocksmithCachedArrangementPart part, List<RocksmithCachedEbeatData> ebeats, float fallbackBeatSeconds, Dictionary<int, float> effectiveEndTimes)
+    private static float ResolveFinalTime(PsarcCachedArrangementPart part, List<PsarcCachedEbeatData> ebeats, float fallbackBeatSeconds, Dictionary<int, float> effectiveEndTimes)
     {
         float noteEnd = 0f;
         if (part?.notes != null && part.notes.Count > 0)
@@ -2823,7 +2823,7 @@ internal static class RocksmithAlphaTabGpWriter
         return Math.Max(Math.Max(part?.durationSeconds ?? 0f, noteEnd), lastBeat + Math.Max(0.25f, fallbackBeatSeconds));
     }
 
-    private static float EstimateFinalMeasureEnd(List<RocksmithCachedEbeatData> beats, float finalTime, float fallbackBeatSeconds)
+    private static float EstimateFinalMeasureEnd(List<PsarcCachedEbeatData> beats, float finalTime, float fallbackBeatSeconds)
     {
         float startTime = beats.Count > 0 ? beats[0].timeSeconds : 0f;
         float averageBeat = fallbackBeatSeconds;
@@ -2838,7 +2838,7 @@ internal static class RocksmithAlphaTabGpWriter
         return Math.Max(finalTime, startTime + (averageBeat * Math.Max(1, beats.Count)));
     }
 
-    private static float EstimateTempoBpm(List<RocksmithCachedEbeatData> beats, float endTime, float fallbackTempoBpm)
+    private static float EstimateTempoBpm(List<PsarcCachedEbeatData> beats, float endTime, float fallbackTempoBpm)
     {
         float totalDuration = 0f;
         int segmentCount = 0;
@@ -2861,13 +2861,13 @@ internal static class RocksmithAlphaTabGpWriter
         return averageBeatSeconds > 0.001f ? 60f / averageBeatSeconds : 120f;
     }
 
-    private static List<EventInfo> BuildEvents(List<RocksmithCachedNoteData> notes, Dictionary<int, float> effectiveEndTimes)
+    private static List<EventInfo> BuildEvents(List<PsarcCachedNoteData> notes, Dictionary<int, float> effectiveEndTimes)
     {
         List<EventInfo> events = new List<EventInfo>();
         if (notes == null || notes.Count == 0)
             return events;
 
-        List<RocksmithCachedNoteData> sorted = notes
+        List<PsarcCachedNoteData> sorted = notes
             .Where(note => note != null)
             .OrderBy(note => note.time)
             .ThenBy(note => note.chordId)
@@ -2878,7 +2878,7 @@ internal static class RocksmithAlphaTabGpWriter
         int nextSourceEventId = 0;
         for (int i = 0; i < sorted.Count; i++)
         {
-            RocksmithCachedNoteData note = sorted[i];
+            PsarcCachedNoteData note = sorted[i];
             if (current == null || !current.CanAccept(note))
             {
                 current = new EventInfo(note, nextSourceEventId++, effectiveEndTimes);
@@ -3163,7 +3163,7 @@ internal static class RocksmithAlphaTabGpWriter
         return slotCount;
     }
 
-    private static NoteRenderContext BuildNoteRenderContext(List<RocksmithCachedNoteData> notes)
+    private static NoteRenderContext BuildNoteRenderContext(List<PsarcCachedNoteData> notes)
     {
         NoteRenderContext context = new NoteRenderContext();
         if (notes == null)
@@ -3171,7 +3171,7 @@ internal static class RocksmithAlphaTabGpWriter
 
         for (int i = 0; i < notes.Count; i++)
         {
-            RocksmithCachedNoteData note = notes[i];
+            PsarcCachedNoteData note = notes[i];
             if (note == null)
                 continue;
 
@@ -3183,7 +3183,7 @@ internal static class RocksmithAlphaTabGpWriter
         return context;
     }
 
-    private static int[] ResolveTuningPitches(RocksmithCachedArrangementPart part, RocksmithCachedArrangementSummary summary)
+    private static int[] ResolveTuningPitches(PsarcCachedArrangementPart part, PsarcCachedArrangementSummary summary)
     {
         if (part?.tuningPitches != null && part.tuningPitches.Length > 0)
             return (int[])part.tuningPitches.Clone();
@@ -3223,9 +3223,9 @@ internal static class RocksmithAlphaTabGpWriter
         public readonly float startTime;
         public float endTime;
         public int voiceIndex;
-        public readonly List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public readonly List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
 
-        public EventInfo(RocksmithCachedNoteData note, int sourceEventId, Dictionary<int, float> effectiveEndTimes)
+        public EventInfo(PsarcCachedNoteData note, int sourceEventId, Dictionary<int, float> effectiveEndTimes)
         {
             this.sourceEventId = sourceEventId;
             chordId = note.chordId;
@@ -3233,7 +3233,7 @@ internal static class RocksmithAlphaTabGpWriter
             endTime = ResolveNoteEndTime(note, effectiveEndTimes);
         }
 
-        public bool CanAccept(RocksmithCachedNoteData note)
+        public bool CanAccept(PsarcCachedNoteData note)
         {
             return note != null &&
                    note.chordId == chordId &&
@@ -3250,7 +3250,7 @@ internal static class RocksmithAlphaTabGpWriter
         public float sourceEndTime;
         public bool tieFromPrevious;
         public bool tieToNext;
-        public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
         public int DurationSlots => Math.Max(1, endSlot - startSlot);
     }
 
@@ -3262,7 +3262,7 @@ internal static class RocksmithAlphaTabGpWriter
         public float endTime;
         public bool tieFromPrevious;
         public bool tieToNext;
-        public List<RocksmithCachedNoteData> notes = new List<RocksmithCachedNoteData>();
+        public List<PsarcCachedNoteData> notes = new List<PsarcCachedNoteData>();
     }
 
     private sealed class MeasureInfo
@@ -3328,8 +3328,8 @@ internal static class RocksmithAlphaTabGpWriter
 
     private sealed class NoteRenderContext
     {
-        public readonly Dictionary<int, RocksmithCachedNoteData> notesById = new Dictionary<int, RocksmithCachedNoteData>();
-        public readonly Dictionary<int, RocksmithCachedNoteData> legatoDestinationByOriginId = new Dictionary<int, RocksmithCachedNoteData>();
+        public readonly Dictionary<int, PsarcCachedNoteData> notesById = new Dictionary<int, PsarcCachedNoteData>();
+        public readonly Dictionary<int, PsarcCachedNoteData> legatoDestinationByOriginId = new Dictionary<int, PsarcCachedNoteData>();
     }
 
     private readonly struct DurationToken
@@ -3346,3 +3346,4 @@ internal static class RocksmithAlphaTabGpWriter
         }
     }
 }
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           

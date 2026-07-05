@@ -206,7 +206,7 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
         if (!wantsBendVisual && !wantsNormalizedFlagSegment)
             return segments;
 
-        RocksmithCachedNoteData source = new RocksmithCachedNoteData
+        PsarcCachedNoteData source = new PsarcCachedNoteData
         {
             id = note.sourceNoteId,
             time = Mathf.Max(0f, (float)note.timeSeconds),
@@ -222,8 +222,8 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
             bendRelease = note.bendRelease,
             hasVibrato = primaryTechnique == NoteTechnique.Vibrato,
             maxBend = Mathf.Max(note.maxBend, note.bendStep),
-            bendPoints = new List<RocksmithCachedBendPointData>(),
-            techniqueSegments = new List<RocksmithCachedTechniqueSegmentData>()
+            bendPoints = new List<PsarcCachedBendPointData>(),
+            techniqueSegments = new List<PsarcCachedTechniqueSegmentData>()
         };
 
         if (note.bendPoints != null)
@@ -234,7 +234,7 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
                 if (point == null)
                     continue;
 
-                source.bendPoints.Add(new RocksmithCachedBendPointData
+                source.bendPoints.Add(new PsarcCachedBendPointData
                 {
                     timeSeconds = point.timeSeconds,
                     step = point.step
@@ -247,7 +247,7 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
             for (int i = 0; i < segments.Count; i++)
             {
                 NoteTechniqueSegmentData segment = segments[i];
-                source.techniqueSegments.Add(new RocksmithCachedTechniqueSegmentData
+                source.techniqueSegments.Add(new PsarcCachedTechniqueSegmentData
                 {
                     type = (int)segment.type,
                     startOffset = segment.startOffset,
@@ -260,7 +260,7 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
             }
         }
 
-        return RocksmithTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
+        return PsarcTechniqueSegmentNormalizer.BuildNormalizedTechniqueSegments(source);
     }
 
     private static NoteTechnique ResolvePrimaryTechnique(ChartEditorNote note)
@@ -377,3 +377,4 @@ public static class ChartEditorHighwayPreviewSnapshotBuilder
         return string.Empty;
     }
 }
+                            

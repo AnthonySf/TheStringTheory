@@ -517,7 +517,9 @@ public sealed class GuitarGameplaySnapshot
     public List<string> libraryImportCandidateKindLabels;
     public List<bool> libraryImportCandidateSelected;
     public string libraryImportPopupStatusText;
-    public bool libraryImportIncludesCachedLegacySources;
+    public int libraryImportNewCandidateCount;
+    public int libraryImportSkippedAvailableCount;
+    public bool libraryImportIncludeSkipped;
     public int selectedStartMenuStepIndex;
     public int selectedStartMenuModeIndex;
     public int selectedStartMenuArcadeSetupIndex;
@@ -707,7 +709,4 @@ public sealed class RuntimeSettingSnapshot
     public string valueType;
     public string value;
     public float min;
-    public float max;
-    public float step;
-    public List<string> enumOptions;
-}
+ 
