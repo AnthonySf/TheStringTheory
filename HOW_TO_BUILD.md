@@ -196,6 +196,8 @@ here:
 
 The game discovers importer add-ons in both locations automatically.
 
+See [IMPORTERS.md](IMPORTERS.md) for more details.
+
 ### C. AlphaTab tabs rendering
 
 If you want the `Tabs (AlphaTab)` and `3D + Tabs` render modes to work, publish the Windows helper into `StreamingAssets`:
