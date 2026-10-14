@@ -437,6 +437,21 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void SongLibraryFilters_MatchArrangementDifficultyAndTreatComboAsLeadOrRhythm()
+    {
+        var combo = new SongLibraryEntry { DifficultyRating = 4, ArrangementRoutes = new List<string> { "Combo", "Bass" } };
+        var lead = new SongLibraryEntry { DifficultyRating = 5, ArrangementRoutes = new List<string> { "Lead" } };
+
+        Assert.IsTrue(InvokeGuitarBridgeStatic<bool>("MatchesSongLibraryFilters", combo, "Lead", 0));
+        Assert.IsTrue(InvokeGuitarBridgeStatic<bool>("MatchesSongLibraryFilters", combo, "Rhythm", 4));
+        Assert.IsTrue(InvokeGuitarBridgeStatic<bool>("MatchesSongLibraryFilters", combo, "Bass", 0));
+        Assert.IsFalse(InvokeGuitarBridgeStatic<bool>("MatchesSongLibraryFilters", lead, "Bass", 0));
+        Assert.IsFalse(InvokeGuitarBridgeStatic<bool>("MatchesSongLibraryFilters", lead, "Rhythm", 0));
+        Assert.IsFalse(InvokeGuitarBridgeStatic<bool>("MatchesSongLibraryFilters", combo, string.Empty, 5));
+        Assert.IsTrue(InvokeGuitarBridgeStatic<bool>("MatchesSongLibraryFilters", lead, string.Empty, 0));
+    }
+
+    [Test]
     public void SharedAudioNativeDetectorResolution_PrefersStableHostForSamePhysicalInput()
     {
         GameObject gameObject = new GameObject("AudioPathRegressionTests_Bridge");

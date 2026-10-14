@@ -1250,6 +1250,14 @@ public class GuitarBridgeServer : MonoBehaviour
     private SongLibraryBrowseMode songLibraryBrowseMode = SongLibraryBrowseMode.All;
     private string songLibraryBrowseScopeKey = string.Empty;
     private string songLibrarySearchQuery = string.Empty;
+    private string songLibraryArrangementFilter = string.Empty;
+    private int songLibraryDifficultyFilter;
+    private bool songLibraryFilterChoicesDirty = true;
+    private List<string> songLibraryArrangementFilterChoices;
+    private List<string> songLibraryDifficultyFilterChoices;
+    // Short on purpose: the library toolbar dropdowns are narrow; these read as "no filter".
+    private const string AllArrangementsFilterLabel = "Arrangement";
+    private const string AllDifficultiesFilterLabel = "Difficulty";
     private bool songLibrarySearchInputFocused;
     private readonly List<MusicXmlLoader.MusicXmlPartSummary> pendingTrackSelectionParts = new List<MusicXmlLoader.MusicXmlPartSummary>();
 
@@ -7276,10 +7284,133 @@ public class GuitarBridgeServer : MonoBehaviour
     private IEnumerable<SongLibraryEntry> GetSearchFilteredSongLibraryEntries()
     {
         string normalizedQuery = NormalizeSongLibrarySearchQuery(songLibrarySearchQuery);
+        IEnumerable<SongLibraryEntry> filtered = availableSongs.Where(song =>
+            MatchesSongLibraryFilters(song, songLibraryArrangementFilter, songLibraryDifficultyFilter));
         if (string.IsNullOrEmpty(normalizedQuery))
-            return availableSongs.Where(song => song != null);
+            return filtered;
 
-        return availableSongs.Where(song => song != null && MatchesSongLibrarySearch(song, normalizedQuery));
+        return filtered.Where(song => MatchesSongLibrarySearch(song, normalizedQuery));
+    }
+
+    // Empty arrangement / difficulty 0 means "all".
+    private static bool MatchesSongLibraryFilters(SongLibraryEntry song, string arrangementRoute, int difficultyRating)
+    {
+        if (song == null)
+            return false;
+        if (song.LibraryType == SongLibraryType.Arcade)
+            return true; // the filter dropdowns are hidden in the Arcade library
+        if (difficultyRating > 0 && song.DifficultyRating != difficultyRating)
+            return false;
+
+        return string.IsNullOrEmpty(arrangementRoute) ||
+               (song.ArrangementRoutes != null && song.ArrangementRoutes.Any(route => ArrangementRouteMatchesFilter(route, arrangementRoute)));
+    }
+
+    // A Rocksmith "Combo" part is lead and rhythm guitar in one, so it satisfies either filter (not Bass).
+    private const string ComboArrangementRoute = "Combo";
+
+    private static bool ArrangementRouteMatchesFilter(string route, string filterRoute)
+    {
+        if (string.Equals(route, filterRoute, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        return string.Equals(route, ComboArrangementRoute, StringComparison.OrdinalIgnoreCase) &&
+               (string.Equals(filterRoute, "Lead", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(filterRoute, "Rhythm", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Rebuilt only when the displayed library is rebuilt; the UI polls these every refresh.
+    public List<string> GetSongLibraryArrangementFilterChoices()
+    {
+        EnsureSongLibraryFilterChoices();
+        return songLibraryArrangementFilterChoices;
+    }
+
+    public List<string> GetSongLibraryDifficultyFilterChoices()
+    {
+        EnsureSongLibraryFilterChoices();
+        return songLibraryDifficultyFilterChoices;
+    }
+
+    private void EnsureSongLibraryFilterChoices()
+    {
+        if (!songLibraryFilterChoicesDirty)
+            return;
+
+        songLibraryFilterChoicesDirty = false;
+        songLibraryArrangementFilterChoices = new List<string> { AllArrangementsFilterLabel };
+        songLibraryArrangementFilterChoices.AddRange(availableSongs
+            .Where(song => song?.ArrangementRoutes != null)
+            .SelectMany(song => song.ArrangementRoutes)
+            .Where(route => !string.IsNullOrWhiteSpace(route))
+            .SelectMany(route => string.Equals(route, ComboArrangementRoute, StringComparison.OrdinalIgnoreCase) ? new[] { "Lead", "Rhythm" } : new[] { route })
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(route => route, StringComparer.OrdinalIgnoreCase)
+            .Select(GetArrangementFilterDisplayLabel));
+
+        songLibraryDifficultyFilterChoices = new List<string> { AllDifficultiesFilterLabel };
+        songLibraryDifficultyFilterChoices.AddRange(availableSongs
+            .Where(song => song != null && song.DifficultyRating > 0)
+            .Select(song => song.DifficultyRating)
+            .Distinct()
+            .OrderBy(rating => rating)
+            .Select(SongLibraryService.GetDifficultyLabel));
+    }
+
+    public string GetSongLibraryArrangementFilterLabel()
+    {
+        return string.IsNullOrEmpty(songLibraryArrangementFilter) ? AllArrangementsFilterLabel : GetArrangementFilterDisplayLabel(songLibraryArrangementFilter);
+    }
+
+    // "Rhythm" alone would read like the Rhythm (arcade) library button next to it.
+    private static string GetArrangementFilterDisplayLabel(string route)
+    {
+        if (string.Equals(route, "Lead", StringComparison.OrdinalIgnoreCase))
+            return "Lead guitar";
+        if (string.Equals(route, "Rhythm", StringComparison.OrdinalIgnoreCase))
+            return "Rhythm guitar";
+        return route;
+    }
+
+    public string GetSongLibraryDifficultyFilterLabel()
+    {
+        return songLibraryDifficultyFilter > 0 ? SongLibraryService.GetDifficultyLabel(songLibraryDifficultyFilter) : AllDifficultiesFilterLabel;
+    }
+
+    public void SetSongLibraryArrangementFilterFromUi(string label)
+    {
+        string route = string.Equals(label, AllArrangementsFilterLabel, StringComparison.Ordinal) ? string.Empty
+            : string.Equals(label, "Lead guitar", StringComparison.Ordinal) ? "Lead"
+            : string.Equals(label, "Rhythm guitar", StringComparison.Ordinal) ? "Rhythm"
+            : label ?? string.Empty;
+        if (string.Equals(songLibraryArrangementFilter, route, StringComparison.Ordinal))
+            return;
+
+        songLibraryArrangementFilter = route;
+        ApplySongLibraryFilterChange();
+    }
+
+    public void SetSongLibraryDifficultyFilterFromUi(string label)
+    {
+        int rating = 0;
+        for (int candidate = 1; candidate <= 5; candidate++)
+        {
+            if (string.Equals(label, SongLibraryService.GetDifficultyLabel(candidate), StringComparison.Ordinal))
+                rating = candidate;
+        }
+
+        if (songLibraryDifficultyFilter == rating)
+            return;
+
+        songLibraryDifficultyFilter = rating;
+        ApplySongLibraryFilterChange();
+    }
+
+    private void ApplySongLibraryFilterChange()
+    {
+        selectedSongListIndex = 0;
+        songSelectionSongConfirmed = false;
+        RebuildDisplayedSongLibraryEntries();
     }
 
     private static string NormalizeSongLibrarySearchQuery(string query)
@@ -7342,6 +7473,7 @@ public class GuitarBridgeServer : MonoBehaviour
 
     private void RebuildDisplayedSongLibraryEntries()
     {
+        songLibraryFilterChoicesDirty = true;
         SongLibraryBrowseEntry previousEntry = GetSelectedSongLibraryBrowseEntry();
         string previousSongKey = previousEntry != null && previousEntry.IsSong ? GetSongEntryIdentityKey(previousEntry.Song) : string.Empty;
         string previousGroupKey = previousEntry != null && !previousEntry.IsSong ? previousEntry.GroupKey : string.Empty;

@@ -32,6 +32,7 @@ public sealed class SongLibraryEntry
     public string ArcadeSongIniPath;
     public string ArcadeDifficultySummary;
     public List<string> ArcadeAudioPaths = new List<string>();
+    public List<string> ArrangementRoutes = new List<string>();
     public bool CachedFavoriteInLibrary;
     public int CachedBestScoreValue;
     public float CachedBestScorePercent;
@@ -59,7 +60,8 @@ public static class SongLibraryService
     private const string SongDefinitionFileName = "song.json";
     // v12: raw GP/MusicXML entries covered by a .theory conversion are filtered from
     // the listing at scan time, so caches written by older versions must be rebuilt.
-    private const int SongLibraryCacheVersion = 12;
+    // v13: entries carry ArrangementRoutes for the library arrangement filter.
+    private const int SongLibraryCacheVersion = 13;
     private const int MaxSongDirectoryDiscoveryDepth = 12;
     private const string LegacyTheoryPackageFolderName = "theory";
     private static readonly string[] SupportedAudioExtensions = { ".ogg", ".mp3", ".wav", ".flac", ".m4a", ".aiff", ".aif" };
@@ -1397,6 +1399,8 @@ public static class SongLibraryService
                 clone.Album = theoryManifest.album ?? string.Empty;
             if (string.IsNullOrWhiteSpace(clone.DifficultyDisplayLabel))
                 clone.DifficultyDisplayLabel = BuildTheoryDifficultySummary(theoryManifest);
+            if (clone.ArrangementRoutes == null || clone.ArrangementRoutes.Count == 0)
+                clone.ArrangementRoutes = BuildTheoryArrangementRoutes(theoryManifest);
             if (clone.DurationSeconds <= 0.01f)
                 clone.DurationSeconds = Mathf.Max(0f, theoryManifest.durationSeconds);
 
@@ -1406,6 +1410,17 @@ public static class SongLibraryService
 
         normalized = clone;
         return true;
+    }
+
+    private static List<string> BuildTheoryArrangementRoutes(TheorySongManifest manifest)
+    {
+        return manifest?.arrangements == null
+            ? new List<string>()
+            : manifest.arrangements
+                .Select(arrangement => arrangement?.route?.Trim())
+                .Where(route => !string.IsNullOrEmpty(route))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
     }
 
     private static string BuildTheoryDifficultySummary(TheorySongManifest manifest)
@@ -1917,6 +1932,7 @@ public static class SongLibraryService
                 ArtworkPath = cachedCoverPath,
                 DifficultyRating = Mathf.Clamp(theoryManifest.difficultyRating, 0, 5),
                 DifficultyDisplayLabel = BuildTheoryDifficultySummary(theoryManifest),
+                ArrangementRoutes = BuildTheoryArrangementRoutes(theoryManifest),
                 SongDirectory = songDirectory,
                 Mp3Path = !string.IsNullOrWhiteSpace(cachedAudioPath) && File.Exists(cachedAudioPath) ? cachedAudioPath : null,
                 PrimaryNotationPath = primaryNotationPath,
@@ -2484,6 +2500,7 @@ public static class SongLibraryService
             ArcadeSongIniPath = entry.ArcadeSongIniPath,
             ArcadeDifficultySummary = entry.ArcadeDifficultySummary,
             ArcadeAudioPaths = entry.ArcadeAudioPaths != null ? new List<string>(entry.ArcadeAudioPaths) : new List<string>(),
+            ArrangementRoutes = entry.ArrangementRoutes != null ? new List<string>(entry.ArrangementRoutes) : new List<string>(),
             CachedFavoriteInLibrary = entry.CachedFavoriteInLibrary,
             CachedBestScoreValue = entry.CachedBestScoreValue,
             CachedBestScorePercent = entry.CachedBestScorePercent,

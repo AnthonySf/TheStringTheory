@@ -2054,6 +2054,10 @@ public sealed class TabsSongHeaderOverlay
 
     private readonly VisualElement selectionLibrarySearchRoot;
 
+    private readonly DropdownField selectionArrangementFilterDropdown;
+
+    private readonly DropdownField selectionDifficultyFilterDropdown;
+
     private readonly TextField selectionLibrarySearchField;
 
     private readonly Label selectionLibrarySearchPlaceholderLabel;
@@ -9042,6 +9046,14 @@ public sealed class TabsSongHeaderOverlay
 
         selectionLibrarySearchRoot = CreateLibrarySearchField("search...", out selectionLibrarySearchField, out selectionLibrarySearchPlaceholderLabel);
 
+        selectionArrangementFilterDropdown = CreateLibraryFilterDropdown(value => owner?.SetSongLibraryArrangementFilterFromUi(value));
+
+        selectionDifficultyFilterDropdown = CreateLibraryFilterDropdown(value => owner?.SetSongLibraryDifficultyFilterFromUi(value));
+
+        selectionBrowseButtonsRow.Add(selectionArrangementFilterDropdown);
+
+        selectionBrowseButtonsRow.Add(selectionDifficultyFilterDropdown);
+
         selectionBrowseButtonsRow.Add(selectionLibrarySearchRoot);
 
         selectionBrowseButtonsRow.Add(selectionBrowseArtistsButton);
@@ -15447,6 +15459,40 @@ public sealed class TabsSongHeaderOverlay
         return root;
     }
 
+    private DropdownField CreateLibraryFilterDropdown(Action<string> onChanged)
+    {
+        DropdownField dropdown = new DropdownField();
+        StyleNotesDetectorDropdown(dropdown, 0f);
+        dropdown.style.flexShrink = 1f;
+        dropdown.style.unityFontDefinition = modernUiFontDefinition;
+        dropdown.RegisterCallback<AttachToPanelEvent>(_ =>
+        {
+            Label textLabel = dropdown.Q<Label>(className: "unity-base-popup-field__text");
+            if (textLabel != null)
+                textLabel.style.unityFontDefinition = modernUiFontDefinition;
+        });
+        dropdown.RegisterCallback<KeyDownEvent>(evt => evt.StopPropagation());
+        dropdown.RegisterValueChangedCallback(evt => onChanged(evt.newValue));
+        return dropdown;
+    }
+
+    private static void SyncLibraryFilterDropdown(DropdownField dropdown, bool visible, List<string> choices, string selected)
+    {
+        if (dropdown == null)
+            return;
+
+        dropdown.style.display = visible && choices != null && choices.Count > 1 ? DisplayStyle.Flex : DisplayStyle.None;
+        if (choices == null || choices.Count == 0)
+            return;
+
+        if (!DropdownChoicesMatch(dropdown, choices))
+            dropdown.choices = new List<string>(choices);
+
+        string value = choices.Contains(selected) ? selected : choices[0];
+        if (!string.Equals(dropdown.value, value, StringComparison.Ordinal))
+            dropdown.SetValueWithoutNotify(value);
+    }
+
     private void RefreshLibrarySearchVisualState()
     {
         if (selectionLibrarySearchRoot == null || selectionLibrarySearchField == null || selectionLibrarySearchPlaceholderLabel == null)
@@ -16010,6 +16056,10 @@ public sealed class TabsSongHeaderOverlay
                 selectionLibrarySearchField.SetValueWithoutNotify(searchQuery);
             RefreshLibrarySearchVisualState();
         }
+
+        bool showLibraryFilters = snapshot.songLibraryType != SongLibraryType.Arcade;
+        SyncLibraryFilterDropdown(selectionArrangementFilterDropdown, showLibraryFilters, owner?.GetSongLibraryArrangementFilterChoices(), owner?.GetSongLibraryArrangementFilterLabel());
+        SyncLibraryFilterDropdown(selectionDifficultyFilterDropdown, showLibraryFilters, owner?.GetSongLibraryDifficultyFilterChoices(), owner?.GetSongLibraryDifficultyFilterLabel());
 
         UpdateLibraryTypeButtons(snapshot.selectedSongLibraryTypeIndex);
 
@@ -30633,6 +30683,16 @@ public sealed class TabsSongHeaderOverlay
                 selectionLibrarySearchPlaceholderLabel.style.fontSize = librarySearchFontSize;
             ApplyLibrarySearchFieldStyle(selectionLibrarySearchField, librarySearchFontSize);
             RefreshLibrarySearchVisualState();
+
+            foreach (DropdownField filterDropdown in new[] { selectionArrangementFilterDropdown, selectionDifficultyFilterDropdown })
+            {
+                if (filterDropdown == null)
+                    continue;
+
+                filterDropdown.style.height = librarySearchHeight;
+                filterDropdown.style.width = Mathf.Clamp((currentCompactSelectionLayout ? 200f : 240f) * menuLayoutScale, 150f, 260f);
+                filterDropdown.style.marginRight = Mathf.Clamp(12f * menuLayoutScale, 8f, 14f);
+            }
         }
 
 
