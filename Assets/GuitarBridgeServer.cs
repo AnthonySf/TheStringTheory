@@ -31838,10 +31838,7 @@ private void OpenOrFocusToneLab()
             return;
 
         float timelineAudioTime = audioSongTimer + (audioOffsetMs / 1000f);
-        float audioTime = Mathf.Clamp(timelineAudioTime, 0f, backingTrackSource.clip.length);
-
-        if (forceSeek || Mathf.Abs(backingTrackSource.time - audioTime) > 0.04f)
-            backingTrackSource.time = audioTime;
+        float audioTime = SyncAudioSourceTime(backingTrackSource, timelineAudioTime, forceSeek);
 
         bool shouldBeSilentForCountdown = timelineAudioTime <= 0f;
         if (shouldBeSilentForCountdown)
@@ -31868,6 +31865,24 @@ private void OpenOrFocusToneLab()
             SyncStemAudioSources(timelineAudioTime, playImmediately, forceSeek);
     }
 
+    // Unity rejects AudioSource.time == clip.length (logged every frame once the chart
+    // outruns the audio); past the end the clip has simply finished, so stop it instead.
+    private static float SyncAudioSourceTime(AudioSource source, float timelineAudioTime, bool forceSeek)
+    {
+        float audioTime = Mathf.Clamp(timelineAudioTime, 0f, source.clip.length);
+        if (audioTime >= source.clip.length)
+        {
+            if (source.isPlaying)
+                source.Pause();
+        }
+        else if (forceSeek || Mathf.Abs(source.time - audioTime) > 0.04f)
+        {
+            source.time = audioTime;
+        }
+
+        return audioTime;
+    }
+
     private void SyncStemAudioSources(float timelineAudioTime, bool playImmediately, bool forceSeek)
     {
         if (stemAudioSources == null || stemAudioSources.Count <= 1)
@@ -31880,9 +31895,7 @@ private void OpenOrFocusToneLab()
             if (source == null || source.clip == null)
                 continue;
 
-            float audioTime = Mathf.Clamp(timelineAudioTime, 0f, source.clip.length);
-            if (forceSeek || Mathf.Abs(source.time - audioTime) > 0.04f)
-                source.time = audioTime;
+            float audioTime = SyncAudioSourceTime(source, timelineAudioTime, forceSeek);
 
             if (shouldBeSilentForCountdown || !playImmediately)
             {
@@ -31921,9 +31934,7 @@ private void OpenOrFocusToneLab()
             if (source == null || source.clip == null)
                 continue;
 
-            float audioTime = Mathf.Clamp(timelineAudioTime, 0f, source.clip.length);
-            if (forceSeek || Mathf.Abs(source.time - audioTime) > 0.04f)
-                source.time = audioTime;
+            float audioTime = SyncAudioSourceTime(source, timelineAudioTime, forceSeek);
 
             if (shouldBeSilentForCountdown || !playImmediately)
             {
