@@ -1199,6 +1199,7 @@ public class GuitarBridgeServer : MonoBehaviour
     private bool showLibraryImportPopup;
     private string libraryImportPopupStatusText = string.Empty;
     private bool libraryImportIncludeSkippedRaw;
+    private int pendingLibraryImportMissingPsarcImporterCount;
     private readonly List<SongLibraryImportCandidate> pendingLibraryImportCandidates = new List<SongLibraryImportCandidate>();
     private readonly List<bool> pendingLibraryImportCandidateSelected = new List<bool>();
     private readonly List<SongLibraryImportCandidate> pendingLibrarySkippedRawCandidates = new List<SongLibraryImportCandidate>();
@@ -6615,6 +6616,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         public List<SongLibraryImportCandidate> NewCandidates = new List<SongLibraryImportCandidate>();
         public List<SongLibraryImportCandidate> SkippedRawCandidates = new List<SongLibraryImportCandidate>();
+        public int MissingPsarcImporterCount;
     }
 
     // One discovery pass feeds the whole popup: new sources (pre-checked) plus raw
@@ -6625,6 +6627,7 @@ public class GuitarBridgeServer : MonoBehaviour
     {
         LibraryImportCandidateSets sets = new LibraryImportCandidateSets();
         sets.NewCandidates = SongLibraryService.DiscoverPendingTheoryConversionCandidates() ?? new List<SongLibraryImportCandidate>();
+        sets.MissingPsarcImporterCount = SongLibraryService.CountPendingPsarcSourcesWithoutImporter();
 
         HashSet<string> newSourceKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < sets.NewCandidates.Count; i++)
@@ -6671,6 +6674,7 @@ public class GuitarBridgeServer : MonoBehaviour
         if (resetIncludeSkippedRaw || pendingLibrarySkippedRawCandidates.Count == 0)
             libraryImportIncludeSkippedRaw = false;
 
+        pendingLibraryImportMissingPsarcImporterCount = Math.Max(0, candidateSets?.MissingPsarcImporterCount ?? 0);
         libraryImportPopupStatusText = BuildLibraryImportDiscoveryStatusText();
     }
 
@@ -6716,6 +6720,14 @@ public class GuitarBridgeServer : MonoBehaviour
         string newText = newCount > 0
             ? $"{newCount} new song{(newCount == 1 ? string.Empty : "s")} found."
             : "No new songs found.";
+        if (pendingLibraryImportMissingPsarcImporterCount > 0)
+        {
+            string psarcText = $"{pendingLibraryImportMissingPsarcImporterCount} PSARC file{(pendingLibraryImportMissingPsarcImporterCount == 1 ? string.Empty : "s")} found, but no PSARC importer add-on is installed. Install a PSARC importer or use .theory packages, then refresh.";
+            return newCount > 0 || skippedCount > 0
+                ? $"{newText} {psarcText}"
+                : psarcText;
+        }
+
         if (skippedCount > 0)
             return $"{newText} {skippedCount} previously skipped song{(skippedCount == 1 ? string.Empty : "s")} available.";
 
@@ -6744,7 +6756,7 @@ public class GuitarBridgeServer : MonoBehaviour
         }
 
         LibraryImportCandidateSets candidateSets = discoverTask.Result ?? new LibraryImportCandidateSets();
-        if (candidateSets.NewCandidates.Count > 0 || candidateSets.SkippedRawCandidates.Count > 0)
+        if (candidateSets.NewCandidates.Count > 0 || candidateSets.SkippedRawCandidates.Count > 0 || candidateSets.MissingPsarcImporterCount > 0)
         {
             PopulateLibraryImportPopupCandidates(candidateSets);
             showSongSelection = true;
@@ -7018,6 +7030,7 @@ public class GuitarBridgeServer : MonoBehaviour
         showLibraryImportPopup = false;
         libraryImportPopupStatusText = string.Empty;
         libraryImportIncludeSkippedRaw = false;
+        pendingLibraryImportMissingPsarcImporterCount = 0;
         pendingLibraryImportCandidates.Clear();
         pendingLibraryImportCandidateSelected.Clear();
         pendingLibrarySkippedRawCandidates.Clear();
@@ -12605,7 +12618,11 @@ public class GuitarBridgeServer : MonoBehaviour
         List<SongLibraryImportCandidate> selectedCandidates = GetSelectedLibraryImportCandidates();
         if (selectedCandidates.Count == 0)
         {
-            libraryImportPopupStatusText = "Select at least one song to convert.";
+            libraryImportPopupStatusText = pendingLibraryImportMissingPsarcImporterCount > 0 &&
+                                           pendingLibraryImportCandidates.Count == 0 &&
+                                           (!libraryImportIncludeSkippedRaw || pendingLibrarySkippedRawCandidates.Count == 0)
+                ? BuildLibraryImportDiscoveryStatusText()
+                : "Select at least one song to convert.";
             return;
         }
 

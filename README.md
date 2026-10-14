@@ -81,9 +81,13 @@ StringTheory is built around loading your own song files.
 
 ### `.psarc` files
 
-You can simply drop `.psarc` files into `Assets/StreamingAssets/Songs/`, refresh the in-game library, and they will work without any extra setup.
+StringTheory imports `.psarc` files through a separate PSARC importer add-on. The public source tree and release builds do not bundle importer add-ons, so a fresh clone cannot convert raw `.psarc` files until a PSARC importer has been installed.
 
-The library imports the package on refresh and exposes its arrangements in the normal song flow, including difficulty changes for psarc arrangements that provide multiple difficulty levels.
+One currently available importer is [odejesush/psarc-importer](https://github.com/odejesush/psarc-importer). Build or download a release for your platform, then copy its published folder so that `importer.json` and the importer executable are in the add-on folder.
+
+After installing a PSARC importer, drop `.psarc` files into `Assets/StreamingAssets/Songs/` for editor/local builds or into the in-game songs folder opened from the library UI. Refresh the in-game library, convert the detected sources to `.theory`, and the resulting arrangements will appear in the normal song flow, including difficulty changes for PSARC arrangements that provide multiple difficulty levels.
+
+If refresh reports that PSARC files were found but no PSARC importer add-on is installed, install the importer under `Assets/StreamingAssets/Importers/<addon>/` for editor use or `%LOCALAPPDATA%\StringTheory\StringTheory\Importers\<addon>\` for an installed game, then refresh again.
 
 ### Other song file types
 

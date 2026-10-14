@@ -196,6 +196,11 @@ here:
 
 The game discovers importer add-ons in both locations automatically.
 
+Raw `.psarc` songs require a PSARC importer add-on, such as
+[odejesush/psarc-importer](https://github.com/odejesush/psarc-importer). Without it, refresh can
+copy or see the `.psarc` files, but it cannot convert them into playable
+`.theory` packages.
+
 ### C. AlphaTab tabs rendering
 
 If you want the `Tabs (AlphaTab)` and `3D + Tabs` render modes to work, publish the Windows helper into `StreamingAssets`:

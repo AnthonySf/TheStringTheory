@@ -57,6 +57,7 @@ public sealed class SongLibraryImportCandidate
 public static class SongLibraryService
 {
     private const string SongDefinitionFileName = "song.json";
+    private const string PsarcExtension = ".psarc";
     // v12: raw GP/MusicXML entries covered by a .theory conversion are filtered from
     // the listing at scan time, so caches written by older versions must be rebuilt.
     private const int SongLibraryCacheVersion = 12;
@@ -181,6 +182,45 @@ public static class SongLibraryService
                 : string.Compare(a?.SourcePath ?? string.Empty, b?.SourcePath ?? string.Empty, StringComparison.OrdinalIgnoreCase);
         });
         return candidates;
+    }
+
+    public static bool HasAvailablePsarcImporter(bool forceRefresh = false)
+    {
+        return SongImporterRegistry.GetAvailableImporters(forceRefresh)
+            .Any(importer =>
+                importer?.Extensions != null &&
+                importer.Extensions.Any(extension => string.Equals(NormalizeImporterExtension(extension), PsarcExtension, StringComparison.OrdinalIgnoreCase)) &&
+                SongImporterRegistry.ImporterHasUsableEntrypoint(importer));
+    }
+
+    public static int CountPendingPsarcSourcesWithoutImporter()
+    {
+        if (HasAvailablePsarcImporter(forceRefresh: true))
+            return 0;
+
+        string songsDirectory = ExternalContentPaths.PersistentSongsDirectory;
+        if (string.IsNullOrWhiteSpace(songsDirectory) || !Directory.Exists(songsDirectory))
+            return 0;
+
+        ConvertedTheorySourceIndex convertedTheorySources = DiscoverConvertedTheorySourceStamps(songsDirectory);
+        HashSet<string> importerCacheFolderNames = SongImporterRegistry.GetInstalledImporterCacheFolderNames(forceRefresh: false);
+        HashSet<string> seenSources = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int count = 0;
+
+        foreach (string sourcePath in EnumerateFilesSafe(songsDirectory, $"*{PsarcExtension}", SearchOption.AllDirectories))
+        {
+            if (string.IsNullOrWhiteSpace(sourcePath) ||
+                IsPathInsideImportedCacheDirectory(songsDirectory, sourcePath, importerCacheFolderNames) ||
+                SourceHasCurrentTheoryConversion(sourcePath, convertedTheorySources) ||
+                !seenSources.Add(NormalizeFullPathKey(sourcePath)))
+            {
+                continue;
+            }
+
+            count++;
+        }
+
+        return count;
     }
 
     public static List<SongLibraryImportCandidate> DiscoverExistingRawNotationTheoryConversionCandidates()
