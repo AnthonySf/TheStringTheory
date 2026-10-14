@@ -221,6 +221,34 @@ public static class SharedAudioSettingsUtility
     private static readonly Regex WindowsDuplicateDevicePrefixRegex = new Regex(@"\(\s*\d+\s*-\s*", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Regex WhitespaceRegex = new Regex(@"\s+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
+    // Name fragments of guitar cables and instrument interfaces, used when the saved input is unplugged.
+    private static readonly string[] GuitarInputNameHints =
+    {
+        "rocksmith", "guitar", "instrument", "hi-z", "bass", "scarlett", "focusrite", "audient", "evo4", "evo 4",
+        "umc", "behringer", "irig", "line 6", "steinberg", "presonus", "motu", "volt"
+    };
+
+    public static int FindGuitarLikeInputIndex(IReadOnlyList<string> deviceNames)
+    {
+        if (deviceNames == null)
+            return -1;
+
+        for (int i = 0; i < deviceNames.Count; i++)
+        {
+            string name = deviceNames[i];
+            if (string.IsNullOrWhiteSpace(name))
+                continue;
+
+            for (int h = 0; h < GuitarInputNameHints.Length; h++)
+            {
+                if (name.IndexOf(GuitarInputNameHints[h], StringComparison.OrdinalIgnoreCase) >= 0)
+                    return i;
+            }
+        }
+
+        return -1;
+    }
+
     public static SharedAudioSettings Load(string path)
     {
         if (string.IsNullOrWhiteSpace(path))

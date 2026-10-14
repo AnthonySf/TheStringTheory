@@ -437,6 +437,23 @@ public sealed class AudioPathRegressionTests
     }
 
     [Test]
+    public void GuitarInputFallback_PicksGuitarInputsAndIgnoresOrdinaryMics()
+    {
+        Assert.AreEqual(1, SharedAudioSettingsUtility.FindGuitarLikeInputIndex(new[]
+        {
+            "14: Microphone (Jabra SPEAK 410 USB)",
+            "11: Microphone (Rocksmith USB Guitar Adapter)"
+        }));
+        Assert.AreEqual(0, SharedAudioSettingsUtility.FindGuitarLikeInputIndex(new[] { "Analogue 1 + 2 (Focusrite USB Audio)" }));
+        Assert.AreEqual(-1, SharedAudioSettingsUtility.FindGuitarLikeInputIndex(new[]
+        {
+            "14: Microphone (Jabra SPEAK 410 USB)",
+            "15: Microphone Array (Intel® Smart Sound Technology for Digital Microphones)"
+        }));
+        Assert.AreEqual(-1, SharedAudioSettingsUtility.FindGuitarLikeInputIndex(null));
+    }
+
+    [Test]
     public void SharedAudioNativeDetectorResolution_PrefersStableHostForSamePhysicalInput()
     {
         GameObject gameObject = new GameObject("AudioPathRegressionTests_Bridge");
@@ -460,6 +477,17 @@ public sealed class AudioPathRegressionTests
         {
             UnityEngine.Object.DestroyImmediate(gameObject);
         }
+    }
+
+    [Test]
+    public void PortAudioDeviceResolution_MatchesMmeTruncatedNames()
+    {
+        object rocksmith = Device(11, "11: Microphone (Rocksmith USB Guitar Adapter)", "Microphone (Rocksmith USB Guitar Adapter)", "Windows WASAPI", 1, 0, 48000);
+        object laptopMic = Device(9, "9: Microphone Array (Intel Smart Sound)", "Microphone Array (Intel Smart Sound)", "Windows WASAPI", 2, 0, 48000);
+        Array devices = DeviceArray(laptopMic, rocksmith);
+
+        Assert.AreSame(rocksmith, InvokeRuntimeStatic("ResolvePortAudioDevice", "2: Microphone (Rocksmith USB Guita", devices));
+        Assert.IsNull(InvokeRuntimeStatic("ResolvePortAudioDevice", "2: Microphone (Rocksmith", devices));
     }
 
     [Test]

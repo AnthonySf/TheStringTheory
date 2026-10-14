@@ -566,6 +566,8 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     private readonly Dictionary<int, float[]> portAudioProcessBuffersBySampleCount = new Dictionary<int, float[]>();
     private float[] unityOutputMixBuffer = Array.Empty<float>();
     private string statusMessage = "Stopped";
+    private bool savedInputMissing;
+    private string fallbackInputDeviceName = string.Empty;
     private bool settingsLoaded;
     private bool settingsDirty;
     private float nextSettingsSaveTime = -1f;
@@ -751,6 +753,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public bool IsMonitoring => monitoring;
     public bool IsAwaitingStartup => awaitingMicrophoneStart;
     public string StatusMessage => statusMessage;
+    public bool SavedInputMissing => savedInputMissing;
     public int ActiveSampleRate => activeSampleRate;
     public int ActiveDspBufferSize => activeDspBufferSize;
     public string InputRouteLabel => inputRouteLabel;
@@ -1336,7 +1339,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             .ToList();
 
         ToneLabPortAudio.DeviceDescriptor selectedInput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredInputDeviceName, inputCandidates, input: true)
-            ?? ResolvePortAudioDevice(settings.input_device_name, inputCandidates.ToArray());
+            ?? ResolvePortAudioDevice(ActiveInputDeviceName, inputCandidates.ToArray());
         ToneLabPortAudio.DeviceDescriptor selectedOutput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredOutputDeviceName, outputCandidates, input: false)
             ?? ResolvePortAudioDevice(settings.output_device_name, outputCandidates.ToArray());
 
@@ -1424,7 +1427,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             .ToList();
 
         ToneLabPortAudio.DeviceDescriptor selectedInput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredInputDeviceName, inputCandidates, input: true)
-            ?? ResolvePortAudioDevice(settings.input_device_name, inputCandidates.ToArray());
+            ?? ResolvePortAudioDevice(ActiveInputDeviceName, inputCandidates.ToArray());
         ToneLabPortAudio.DeviceDescriptor selectedOutput = ResolveAdvancedDeviceSelection(advancedRoutingOptions.preferredOutputDeviceName, outputCandidates, input: false)
             ?? ResolvePortAudioDevice(settings.output_device_name, outputCandidates.ToArray());
 
@@ -1507,7 +1510,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         if (inputCandidates.Count == 0 || outputCandidates.Count == 0)
             return new List<PortAudioRoutePlan>();
 
-        ToneLabPortAudio.DeviceDescriptor selectedInput = ResolvePortAudioDevice(settings?.input_device_name, inputCandidates.ToArray());
+        ToneLabPortAudio.DeviceDescriptor selectedInput = ResolvePortAudioDevice(ActiveInputDeviceName, inputCandidates.ToArray());
         ToneLabPortAudio.DeviceDescriptor selectedOutput = ResolvePortAudioDevice(settings?.output_device_name, outputCandidates.ToArray());
 
         List<(ToneLabPortAudio.DeviceDescriptor input, ToneLabPortAudio.DeviceDescriptor output, int rank)> rankedPairs =
@@ -1732,6 +1735,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
     public void RefreshInputDevices(bool forcePortAudioRescan = false)
     {
         EnsureSettingsLoaded();
+        savedInputMissing = false;
         bool restartMonitoringAfterRescan = forcePortAudioRescan && (monitoring || awaitingMicrophoneStart || usingPortAudioBackend);
         if (forcePortAudioRescan)
         {
@@ -1763,15 +1767,15 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 return;
             }
 
-            string resolvedInput = ResolveSavedDeviceName(settings.input_device_name, portAudioInputDevices);
-            if (string.IsNullOrWhiteSpace(resolvedInput))
-                resolvedInput = inputDevices[0];
-            if (!string.Equals(settings.input_device_name, resolvedInput, StringComparison.Ordinal))
+            string resolvedInput = ResolveInputWithGuitarFallback(ResolveSavedDeviceName(settings.input_device_name, portAudioInputDevices));
+            if (!savedInputMissing && !string.Equals(settings.input_device_name, resolvedInput, StringComparison.Ordinal))
             {
                 settings.input_device_name = resolvedInput;
                 MarkSettingsDirty();
             }
-            inputRouteLabel = string.IsNullOrWhiteSpace(resolvedInput) ? "Automatic Input" : resolvedInput;
+            inputRouteLabel = savedInputMissing
+                ? $"{resolvedInput} (fallback)"
+                : string.IsNullOrWhiteSpace(resolvedInput) ? "Automatic Input" : resolvedInput;
 
             string resolvedOutput = ResolveSavedDeviceName(settings.output_device_name, portAudioOutputDevices);
             if (string.IsNullOrWhiteSpace(resolvedOutput))
@@ -1806,9 +1810,11 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(settings.input_device_name) || Array.IndexOf(inputDevices, settings.input_device_name) < 0)
+        string resolvedMicrophone = ResolveInputWithGuitarFallback(
+            Array.IndexOf(inputDevices, settings.input_device_name) >= 0 ? settings.input_device_name : string.Empty);
+        if (!savedInputMissing && !string.Equals(settings.input_device_name, resolvedMicrophone, StringComparison.Ordinal))
         {
-            settings.input_device_name = inputDevices[0];
+            settings.input_device_name = resolvedMicrophone;
             MarkSettingsDirty();
         }
 
@@ -1818,7 +1824,9 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
             MarkSettingsDirty();
         }
 
-        inputRouteLabel = string.IsNullOrWhiteSpace(settings.input_device_name) ? "Automatic Input" : settings.input_device_name;
+        inputRouteLabel = savedInputMissing
+            ? $"{resolvedMicrophone} (fallback)"
+            : string.IsNullOrWhiteSpace(settings.input_device_name) ? "Automatic Input" : settings.input_device_name;
         outputRouteLabel = "System Default Output";
         if (restartMonitoringAfterRescan)
             TryStartMonitoring();
@@ -2875,7 +2883,7 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         ApplyLowLatencyAudioConfiguration();
         StopMonitoringInternal(restoreAudioConfiguration: false);
 
-        pendingDeviceName = ResolveUnityMicrophoneDeviceName(settings.input_device_name, inputDevices);
+        pendingDeviceName = ResolveUnityMicrophoneDeviceName(ActiveInputDeviceName, inputDevices);
         if (string.IsNullOrWhiteSpace(pendingDeviceName))
             pendingDeviceName = inputDevices[0];
         inputRouteLabel = pendingDeviceName;
@@ -3243,6 +3251,30 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
         nextSettingsSaveTime = Time.unscaledTime + SettingsSaveDelaySeconds;
     }
 
+    // Saved input unplugged: fall back to an obvious guitar input, else the first input (a mic is
+    // fine), but keep the saved choice so Refresh switches back once it is plugged in again.
+    // An empty saved name (Automatic) just takes a guitar input or the first device.
+    private string ResolveInputWithGuitarFallback(string resolvedSavedInput)
+    {
+        savedInputMissing = false;
+        fallbackInputDeviceName = string.Empty;
+        if (!string.IsNullOrWhiteSpace(resolvedSavedInput))
+            return resolvedSavedInput;
+
+        int guitarIndex = SharedAudioSettingsUtility.FindGuitarLikeInputIndex(inputDevices);
+        string fallback = inputDevices[guitarIndex >= 0 ? guitarIndex : 0];
+        if (string.IsNullOrWhiteSpace(settings.input_device_name))
+            return fallback;
+
+        savedInputMissing = true;
+        fallbackInputDeviceName = fallback;
+        statusMessage = $"{settings.input_device_name} is not connected, using {fallback}. Plug it in and press Refresh to switch back.";
+        return fallback;
+    }
+
+    // The device to open: the saved input, or the fallback while the saved one is unplugged.
+    private string ActiveInputDeviceName => savedInputMissing ? fallbackInputDeviceName : settings?.input_device_name;
+
     private static string ResolveSavedDeviceName(string savedName, ToneLabPortAudio.DeviceDescriptor[] devices)
     {
         if (devices == null || devices.Length == 0)
@@ -3261,10 +3293,22 @@ public sealed class UnityToneLabRuntime : MonoBehaviour
                 || string.Equals(candidate.Name, normalizedSavedName, StringComparison.OrdinalIgnoreCase));
             if (normalized != null)
                 return normalized.DisplayName;
+
+            // Windows MME cuts device names to 31 characters ("Microphone (Rocksmith USB Guita"),
+            // and the shared audio settings can hold that form.
+            if (normalizedSavedName.Length == MmeTruncatedDeviceNameLength)
+            {
+                ToneLabPortAudio.DeviceDescriptor truncated = Array.Find(devices, candidate =>
+                    NormalizePortAudioDeviceName(candidate.DisplayName).StartsWith(normalizedSavedName, StringComparison.OrdinalIgnoreCase));
+                if (truncated != null)
+                    return truncated.DisplayName;
+            }
         }
 
         return string.Empty;
     }
+
+    private const int MmeTruncatedDeviceNameLength = 31;
 
     private static ToneLabPortAudio.DeviceDescriptor ResolvePortAudioDevice(string savedName, ToneLabPortAudio.DeviceDescriptor[] devices)
     {

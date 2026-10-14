@@ -15507,6 +15507,9 @@ private void OpenOrFocusToneLab()
             RefreshNativeNotesDetectorUiState();
             RefreshSelectedNativeDetectorInputDeviceFromSharedSettings(savePreference: true);
             UnityToneLabRuntime.SharedInputRouteInfo sharedRoute = unityToneLabRuntime?.GetActiveSharedInputRouteInfo();
+            if (sharedRoute == null)
+                ResolveNativeDetectorFallbackInput();
+
             bool started = sharedRoute != null
                 ? StartNativeDetectorFromToneLabSharedInput(sharedRoute)
                 : nativeNotesDetectorBridge?.Start(selectedNativeNotesDetectorInputDeviceIndex, GetSharedAudioInputChannelModeLabel()) == true;
@@ -15518,6 +15521,28 @@ private void OpenOrFocusToneLab()
 
         if (autoLaunchNotesDetector)
             TryLaunchNotesDetector();
+    }
+
+    // Saved input unplugged: prefer an obvious guitar input over the native bridge's default device
+    // (index -1); with none connected the default device (e.g. a mic) is still used.
+    private void ResolveNativeDetectorFallbackInput()
+    {
+        string storedInput = sharedAudioSettings?.inputDeviceName;
+        if (selectedNativeNotesDetectorInputDeviceIndex >= 0 || IsSharedAudioAutomaticValue(storedInput))
+            return;
+
+        List<string> labels = nativeNotesDetectorInputDevices.Select(ResolveNativeDetectorInputDeviceDisplayLabel).ToList();
+        int guitarIndex = SharedAudioSettingsUtility.FindGuitarLikeInputIndex(labels);
+        if (guitarIndex >= 0)
+            selectedNativeNotesDetectorInputDeviceIndex = ResolveNativeDetectorSharedDeviceIndex(labels[guitarIndex]);
+        Debug.Log($"[NativeNotesDetector] '{storedInput}' is not connected; using {(guitarIndex >= 0 ? labels[guitarIndex] : "the default input")}.");
+    }
+
+    private string GetMissingSharedInputLabel()
+    {
+        return unityToneLabRuntime != null && unityToneLabRuntime.SavedInputMissing && !IsSharedAudioAutomaticValue(sharedAudioSettings?.inputDeviceName)
+            ? $"{sharedAudioSettings.inputDeviceName} (not connected)"
+            : string.Empty;
     }
 
     private bool StartNativeDetectorFromToneLabSharedInput(UnityToneLabRuntime.SharedInputRouteInfo route)
@@ -15759,6 +15784,10 @@ private void OpenOrFocusToneLab()
 
         for (int i = 0; i < nativeNotesDetectorInputDevices.Count; i++)
             AddSharedAudioChoice(sharedAudioInputDeviceChoices, ResolveNativeDetectorInputDeviceDisplayLabel(nativeNotesDetectorInputDevices[i]));
+
+        string missingInputLabel = GetMissingSharedInputLabel();
+        if (!string.IsNullOrEmpty(missingInputLabel))
+            sharedAudioInputDeviceChoices.Add(missingInputLabel);
 
         sharedAudioOutputDeviceChoices.Clear();
         sharedAudioOutputDeviceChoices.Add(SharedAudioAutomaticLabel);
@@ -16175,6 +16204,10 @@ private void OpenOrFocusToneLab()
 
     public string GetSharedAudioSelectedInputLabel()
     {
+        string missingInputLabel = GetMissingSharedInputLabel();
+        if (!string.IsNullOrEmpty(missingInputLabel))
+            return missingInputLabel;
+
         if (sharedAudioSettings?.advanced?.betaEnabled == true)
         {
             string advancedChoice = ResolveChoiceByNormalizedName(
@@ -16801,8 +16834,12 @@ private void OpenOrFocusToneLab()
 
     public void RefreshSharedAudioDevicesFromUi()
     {
+        bool inputWasMissing = unityToneLabRuntime != null && unityToneLabRuntime.SavedInputMissing;
         RefreshSharedAudioRoutingCatalogs(refreshToneLabDevices: true, refreshDetectorDevices: true, forcePortAudioRescan: true);
         ApplySharedAudioSettingsToSubsystems(restartDetector: false, restartToneLab: false, refreshCatalogs: false);
+        // Cable plugged back in: start audio now instead of waiting for the next tuner/song.
+        if (inputWasMissing && !unityToneLabRuntime.SavedInputMissing)
+            unityToneLabRuntime.StartBackgroundMonitoring();
         SaveSharedAudioSettingsToDisk();
         sharedAudioRefreshActionLabel = "DONE";
         sharedAudioRefreshActionResetAt = Time.unscaledTime + 1f;
@@ -16811,6 +16848,10 @@ private void OpenOrFocusToneLab()
 
     public void SetSharedAudioInputDeviceFromUi(string selectedLabel)
     {
+        string missingInputLabel = GetMissingSharedInputLabel();
+        if (!string.IsNullOrEmpty(missingInputLabel) && string.Equals(selectedLabel, missingInputLabel, StringComparison.Ordinal))
+            return;
+
         string normalized = IsSharedAudioAutomaticValue(selectedLabel)
             ? string.Empty
             : NormalizeSharedAudioStoredSelection(selectedLabel);
