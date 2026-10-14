@@ -662,6 +662,7 @@ public sealed class GuitarGameplaySnapshot
     public bool showBackgroundMoodSetter;
     public bool showDiagnosticsConsentPopup;
     public int selectedDiagnosticsConsentIndex;
+    public string gameplayNoticeText;
     public bool showBugReportScreen;
     public int selectedBugReportActionIndex;
     public string bugReportDescription;
